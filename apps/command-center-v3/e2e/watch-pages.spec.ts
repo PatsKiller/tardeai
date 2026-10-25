@@ -30,11 +30,16 @@ async function mock(page: Page, writes: { path: string; body: any }[]) {
   })
 }
 async function shot(page: Page, name: string) {
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: false })
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/impl-${name}.png`, fullPage: false })
 }
 async function noSideScroll(page: Page) {
   const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   expect(sw, 'no horizontal page scroll').toBeLessThanOrEqual(iw + 1)
+  if (iw <= 820) {
+    const panels = await page.locator('.watch-record-panel, .watch-universe-panel, [data-opportunity-table]').evaluateAll(els =>
+      els.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })))
+    for (const panel of panels) expect(panel.scroll, 'key record fields fit without panel sideways scroll').toBeLessThanOrEqual(panel.width + 1)
+  }
 }
 
 for (const w of WIDTHS) {
@@ -52,6 +57,20 @@ for (const w of WIDTHS) {
       await expect(page.getByTestId('mine-row')).toHaveCount(FIX.curation.my_watchlist.rows.length)
       await expect(page.getByTestId('mine-row').first().getByTestId('mine-star')).toHaveAttribute('data-on', '1')
       await noSideScroll(page)
+      if (w === 1440) {
+        const whys = page.locator('.watch-card-why')
+        expect(await whys.count()).toBe(FIX.curation.my_watchlist.rows.length)
+        const fullText = await whys.evaluateAll(els => els.every(el => {
+          const st = getComputedStyle(el)
+          return st.whiteSpace !== 'nowrap' && el.getAttribute('title') === el.textContent
+        }))
+        expect(fullText, 'approved setup wraps while keeping the complete source text and tooltip').toBe(true)
+      } else {
+        await expect(page.locator('.watch-card-header').first()).toBeHidden()
+        await expect(page.locator('.watch-mobile-facts').first()).toBeVisible()
+        await expect(page.locator('.watch-mobile-facts').first()).toContainText(/Held in|Sold in/)
+        await expect(page.locator('.watch-card-phone-price').first()).toBeVisible()
+      }
       await shot(page, `my-watchlist_${w}`)
       // typeahead → add with a note
       await page.getByTestId('mine-add-input').fill('nvid')
@@ -62,6 +81,7 @@ for (const w of WIDTHS) {
       // star off = remove; explicit Remove with a reason
       await page.getByTestId('mine-row').nth(1).getByTestId('mine-star').click()
       page.once('dialog', d => d.accept('done with it'))
+      await page.getByTestId('mine-row').nth(2).getByRole('button', { name: 'More actions', exact: true }).click()
       await page.getByTestId('mine-row').nth(2).getByTestId('mine-remove').click()
       await expect.poll(() => writes.map(x => `${x.path}:${x.body?.action}`)).toEqual([
         '/api/v3/watch/commands/mine:add', '/api/v3/watch/commands/mine:remove', '/api/v3/watch/commands/mine:remove'])
@@ -71,6 +91,8 @@ for (const w of WIDTHS) {
       await page.getByTestId('mine-row').first().locator('button[aria-pressed]').nth(1).click()
       await expect(page.getByTestId('watch-detail')).toBeVisible()
       await shot(page, `my-watchlist-detail_${w}`)
+      await page.getByRole('button', { name: 'Close record', exact: true }).click()
+      await expect(page.getByTestId('watch-detail')).toBeHidden()
       // filters in the URL; empty-state hint when nothing matches
       await page.getByRole('button', { name: /Position filters/ }).first().click()
       await page.locator('[data-filter="position"][data-opt="held"]').first().click()
@@ -90,8 +112,10 @@ for (const w of WIDTHS) {
       await noSideScroll(page)
       await shot(page, `suggests_${w}`)
       await rows.first().getByTestId('mine-star').click()
+      await rows.nth(1).getByRole('button', { name: 'More actions', exact: true }).click()
       await rows.nth(1).getByTestId('suggest-add').click()
       page.once('dialog', d => d.accept('not my style'))
+      await rows.nth(2).getByRole('button', { name: 'More actions', exact: true }).click()
       await rows.nth(2).getByTestId('suggest-dismiss').click()
       await expect.poll(() => writes.map(x => x.path)).toEqual([
         '/api/v3/watch/commands/mine', '/api/v3/watch/commands/mine', '/api/v3/watch/commands/suggest-dismiss'])
@@ -106,6 +130,12 @@ for (const w of WIDTHS) {
       await expect(page.getByTestId('watch-row').first().getByTestId('mine-star')).toBeVisible()
       await expect(page.getByTestId('prospects-position-filters')).toBeVisible()
       await noSideScroll(page)
+      if (w === 412) {
+        const first = await page.getByTestId('watch-lane-actionable').boundingBox()
+        const second = await page.getByTestId('watch-lane-forming').boundingBox()
+        expect(first && second && Math.abs(first.y - second.y) < 2, 'two stage cards share each phone row').toBe(true)
+        await expect(page.locator('.watch-table-head').first()).toBeHidden()
+      }
       await shot(page, `prospects_${w}`)
       await page.getByTestId('watch-row').first().getByTestId('mine-star').click()
       await page.getByTestId('watch-lane-manage').click()
@@ -125,6 +155,12 @@ for (const w of WIDTHS) {
       await expect(navn).not.toContainText('Add-On')
       await expect(navn.getByTestId('mine-star')).toBeVisible()
       await noSideScroll(page)
+      if (w === 412) {
+        await expect(page.locator('[data-opportunity-table] thead')).toBeHidden()
+        await expect(navn.locator('.watch-universe-mobile-facts')).toBeVisible()
+        await expect(navn.locator('[data-label="Last P/L"]')).toBeVisible()
+        await expect(navn.locator('[data-label="Re-entry · next trigger"]')).toBeVisible()
+      }
       await shot(page, `full-universe_${w}`)
       await navn.click()
       await expect(page.locator('[data-opportunity-detail="NAVN"]')).toContainText('25.853 / 25.1 / 26.02')

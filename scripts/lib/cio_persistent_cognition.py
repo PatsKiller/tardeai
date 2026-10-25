@@ -73,6 +73,8 @@ V2_SECTIONS = (
     "RESEARCH_GAPS",
     "CONTRADICTIONS",
     "EVENTS_CATALYSTS",
+    "COMPANY_FACTS",
+    "REVIEW_LIFECYCLE",
     "RELEVANT_FEEDBACK",
     "MATURE_OUTCOMES",
     "LESSONS",
@@ -417,6 +419,7 @@ def cognition_for_symbol(
     reentry: set[str] | None = None,
     office_truth: dict[str, Any] | None = None,
     large_exposure: set[str] | None = None,
+    record_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     held = held or set()
     watch = watch or set()
@@ -522,8 +525,15 @@ def cognition_for_symbol(
             security_guid=sec,
         ),
     }
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot, for_security
+    saved_research = for_security(load_snapshot(root) if record_snapshot is None else record_snapshot, sym, sec)
+    for name, key in (("COMPANY_FACTS", "company_facts"), ("REVIEW_LIFECYCLE", "review_lifecycle")):
+        sections[name] = _section(saved_research[key], authority=AUTH_RESEARCH,
+                                  source=f"InstrumentRecord.research.{key}", version="v1",
+                                  as_of=None, security_guid=sec, freshness="PER_FIELD_SOURCE_CLOCKS")
     out = {
         "schema": SCHEMA,
+        "cio_record_research": saved_research,
         "symbol": sym,
         "query": symbol,
         "identity": ident,
@@ -631,6 +641,14 @@ def build_cio_context_v2(
     items = pack.get("items") or []
     first = items[0] if items else {}
     sections = dict((first.get("sections") or {}))
+    # Shared CIO record facts are available to every selected security, not only
+    # the first ranked item. No raw private research fields enter the envelope.
+    for name, key in (("COMPANY_FACTS", "company_facts"), ("REVIEW_LIFECYCLE", "review_lifecycle")):
+        sections[name] = _section(
+            [{"symbol": r.get("symbol"), "security_guid": r.get("security_guid"),
+              **((r.get("cio_record_research") or {}).get(key) or {"status": "MISSING"})} for r in items],
+            authority=AUTH_RESEARCH, source=f"InstrumentRecord.research.{key}",
+            version="v1", as_of=None, security_guid=None, freshness="PER_FIELD_SOURCE_CLOCKS")
     sections["OFFICE_TRUTH"] = _section(
         office_truth,
         authority=AUTH_FINANCIAL,
@@ -703,9 +721,12 @@ def build_cio_cognition(
         ranked.append((rank, normalize_symbol(raw)))
     ranked.sort()
     selected = [s for _, s in ranked[:limit]]
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot
+    record_facts = load_snapshot(root)
     rows = [
         cognition_for_symbol(
-            root, s, held=held_s, watch=watch_s, reentry=reentry_s, office_truth=office_truth
+            root, s, held=held_s, watch=watch_s, reentry=reentry_s, office_truth=office_truth,
+            record_snapshot=record_facts
         )
         for s in selected
     ]
@@ -789,6 +810,7 @@ def telegram_fields(row: dict[str, Any]) -> dict[str, Any]:
         "question": row.get("question"),
         "authority": AUTHORITY,
         "fork": False,
+        "cio_record_research": row.get("cio_record_research") or {},
     }
 
 

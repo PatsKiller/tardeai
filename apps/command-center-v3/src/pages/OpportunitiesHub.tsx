@@ -9,6 +9,7 @@
  *  trip and the re-entry advice (CIO prospect lifecycle). A sold name shows Type "Re-entry", status "formerly held",
  *  with the curator's own type/stance kept in the row detail. Every filter and sort is a URL parameter applied on the
  *  server. Dense rows: Risk / Reward / R:R share one cell; technical, sector and coverage live in the row detail. */
+import './WatchLayout.css'
 import { Fragment, useMemo, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -19,8 +20,8 @@ import { condLabel, convictionColor, money, pct, typeLabel } from '../components
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { MINE_TIPS, StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, riskRewardCell,
-  roundTripLabel, roundTripPath, unwrapAny, withQuery, type ListRow,
+  alertLevelsLabel, heldAccountNames, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, riskRewardCell,
+  roundTripLabel, roundTripPath, soldByName, unwrapAny, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
 const MUTED = 'var(--text3)'
@@ -138,8 +139,8 @@ export default function OpportunitiesHub() {
       {body && items.length === 0 && body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Nothing matches these filters.</div>}
 
       {items.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: TYPE.base }} data-opportunity-table>
+        <div className="watch-universe-panel">
+          <table className="watch-universe-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: TYPE.base }} data-opportunity-table>
             <thead>
               <tr style={{ color: MUTED, fontSize: TYPE.xs, textTransform: 'uppercase', letterSpacing: '.04em', textAlign: 'left' }}>
                 {HEAD.map(([h, tip]) => <th key={h} title={tip} style={{ ...td, padding: '3px 6px', borderBottom: `1px solid ${BORDER}`, fontWeight: 800 }}>{h}</th>)}
@@ -152,28 +153,33 @@ export default function OpportunitiesHub() {
                 const isOpen = expanded === a.symbol
                 return (
                   <Fragment key={a.symbol}>
-                    <tr onClick={() => setExpanded(isOpen ? null : a.symbol)} data-opportunity-row={a.symbol} aria-expanded={isOpen}
+                    <tr onClick={() => setExpanded(isOpen ? null : a.symbol)} className="watch-universe-row" data-opportunity-row={a.symbol} aria-expanded={isOpen} tabIndex={0}
+                      onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setExpanded(isOpen ? null : a.symbol) } }}
                       style={{ cursor: 'pointer', borderBottom: `1px solid ${BORDER}`, background: isOpen ? 'var(--bg2)' : undefined }}>
-                      <td style={{ ...td, width: 22 }}><StarToggle symbol={a.symbol} on={!!a.mine} surface="watch.full_universe" size="sm" onChanged={setNote} /></td>
-                      <td style={{ ...td, ...numStyle, color: TEXT2 }}>{(a as any).rank ?? '—'}</td>
-                      <td style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={(a as any).company || ''}>
+                      <td className="watch-universe-star" data-label="Watchlist" style={{ ...td, width: 22 }}><StarToggle symbol={a.symbol} on={!!a.mine} surface="watch.full_universe" size="sm" onChanged={setNote} /></td>
+                      <td data-label="Rank" style={{ ...td, ...numStyle, color: TEXT2 }}>{(a as any).rank ?? '—'}</td>
+                      <td className="watch-universe-symbol" data-label="Symbol" style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={(a as any).company || ''}>
                         <b style={{ fontFamily: 'var(--font-mono)' }}>{a.symbol}</b>
                         <span style={{ fontSize: TYPE.xs, color: MUTED }}> {(a as any).company || ''}</span>
                         {chip && <span data-position-chip={a.position_state} title={chip.tip} style={{ marginLeft: 4, fontSize: TYPE.xs, fontWeight: 700, color: toneVars(chip.tone).color }}>· {chip.label}</span>}
+                        <span className="watch-universe-mobile-facts">
+                          <span><b>Account</b> {heldAccountNames(a).join(', ') || soldByName(a) || 'Unknown'}</span>
+                          <span><b>Stage</b> {a.stage?.replace(/_/g, ' ') || 'Not supplied'}</span>
+                        </span>
                       </td>
-                      <td style={{ ...td, ...numStyle, fontWeight: 900, color: convictionColor(a.conviction) }}>{a.conviction != null ? Math.round(a.conviction) : '—'}</td>
-                      <td style={{ ...td, color: TEXT2 }} title={(a as any).ownership_note || (a as any).stance_rationale || ''}>
+                      <td data-label="Conviction" style={{ ...td, ...numStyle, fontWeight: 900, color: convictionColor(a.conviction) }}>{a.conviction != null ? Math.round(a.conviction) : '—'}</td>
+                      <td data-label="Type · stance" style={{ ...td, color: TEXT2 }} title={(a as any).ownership_note || (a as any).stance_rationale || ''}>
                         {typeLabel((a as any).type)} · <b style={{ color: TEXT }}>{String(a.stance || '—').replace('_', '-')}</b>
                         {(a as any).ownership_note ? <span style={{ color: TOKENS.warning }}> ⚠</span> : null}
                       </td>
-                      <td style={{ ...td, ...numStyle }} title={rr.rr_flag || ''}>{riskRewardCell(rr)}</td>
-                      <td style={{ ...td, ...numStyle, color: Number((a as any).upside_pct) >= 0 ? TOKENS.success : TOKENS.danger }} title={(a as any).upside_flag || ''}>{pct((a as any).upside_pct, 0)}{(a as any).upside_flag ? ' ⚠' : ''}</td>
-                      <td style={{ ...td, ...numStyle, color: toneVars(resultTone(a.last_round_trip)).color }} title={a.last_round_trip ? roundTripPath(a.last_round_trip) : ''}>{a.last_round_trip ? roundTripLabel(a.last_round_trip) : '—'}</td>
-                      <td style={{ ...td, color: toneVars(readinessTone(a.reentry)).color, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.reentry ? `${a.reentry.state} — ${a.reentry.reason || ''}` : ''}>{a.reentry ? reentryLabel(a.reentry) : '—'}</td>
-                      <td style={{ ...td, ...numStyle }}>{money(rr.current_price)}</td>
+                      <td data-label="Risk / Reward · R:R" style={{ ...td, ...numStyle }} title={rr.rr_flag || ''}>{riskRewardCell(rr)}</td>
+                      <td data-label="Upside" style={{ ...td, ...numStyle, color: Number((a as any).upside_pct) >= 0 ? TOKENS.success : TOKENS.danger }} title={(a as any).upside_flag || ''}>{pct((a as any).upside_pct, 0)}{(a as any).upside_flag ? ' ⚠' : ''}</td>
+                      <td data-label="Last P/L" style={{ ...td, ...numStyle, color: toneVars(resultTone(a.last_round_trip)).color }} title={a.last_round_trip ? roundTripPath(a.last_round_trip) : ''}>{a.last_round_trip ? roundTripLabel(a.last_round_trip) : '—'}</td>
+                      <td data-label="Re-entry · next trigger" style={{ ...td, color: toneVars(readinessTone(a.reentry)).color, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.reentry ? `${a.reentry.state} — ${a.reentry.reason || ''}` : ''}>{a.reentry ? reentryLabel(a.reentry) : '—'}</td>
+                      <td data-label="Price" style={{ ...td, ...numStyle }}>{money(rr.current_price)}</td>
                     </tr>
                     {isOpen && (
-                      <tr data-opportunity-detail={a.symbol}>
+                      <tr className="watch-universe-detail" data-opportunity-detail={a.symbol}>
                         <td colSpan={HEAD.length} style={{ padding: '4px 10px 8px', background: 'var(--bg2)', fontSize: TYPE.base, color: TEXT2, whiteSpace: 'normal' }}>
                           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                             <span>Technical <b style={{ color: TEXT }}>{condLabel((a as any).technical_condition)}</b></span>

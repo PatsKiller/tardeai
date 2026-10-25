@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
@@ -68,6 +68,8 @@ function readHeaderExpanded(): boolean {
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
   const [alertsOpen, setAlertsOpen] = useState(false)
+  const metricsViewport = useRef<HTMLDivElement>(null)
+  const [metricsOverflow, setMetricsOverflow] = useState(false)
   // Ticks the run-age mark between API refreshes (120 s), so "4 min ago" does not freeze.
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -94,6 +96,16 @@ export default function MetricStrip({ onDrill }: Props) {
   // that could gate a divergence, an underfilled run or degraded quotes. See
   // PROTECTED_SIGNALS in scripts/lib/design_features.py.
   const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000)
+  useEffect(() => {
+    const viewport = metricsViewport.current
+    if (!viewport) return
+    const update = () => setMetricsOverflow(viewport.scrollWidth > viewport.clientWidth + 1)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(viewport)
+    if (viewport.firstElementChild) observer.observe(viewport.firstElementChild)
+    return () => observer.disconnect()
+  }, [overview, readiness, regime, tradeAi, gate, health, designCfg])
   const dx = designCfg?.header ?? {}
   const showStateDots = dx.state_dots !== false
   const showTileRails = dx.tile_rails !== false
@@ -619,6 +631,9 @@ export default function MetricStrip({ onDrill }: Props) {
       </button>
     </div>
     <div id="ms-full" className="metric-strip-row" data-density={dx.density === 'compact' ? 'compact' : 'normal'} style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+      <div className="ms-metrics" ref={metricsViewport} role="region" aria-label="Header metrics; scroll horizontally for more"
+        tabIndex={metricsOverflow ? 0 : -1}>
+      <div className="ms-metric-track">
       {/* Fixed width, and min-width:0 so the flex algorithm may actually shrink
           it. The stamp had maxWidth:280 with overflow:visible, so its 603px of
           text painted straight over the PORTFOLIO tile — a 323px spill that no
@@ -664,8 +679,8 @@ export default function MetricStrip({ onDrill }: Props) {
           style={{
             // padding is owned by index.css, selected by data-density on the row.
             cursor: 'pointer', textAlign: 'center',
-            // index.css keys `flex-shrink: 0` off this inline borderRight. Removing
-            // it makes tiles squash instead of the strip scrolling.
+            // Keep each tile's width inside the metrics scroll viewport. The
+            // separate attention group never joins that scrollable content.
             borderRight: '1px solid var(--border)',
             flex: '0 0 auto', minWidth: (t as any).minWidth ?? 106, maxWidth: (t as any).maxWidth ?? 210,
             // The rail is the state signal that costs no width and no height —
@@ -701,6 +716,10 @@ export default function MetricStrip({ onDrill }: Props) {
         </div>
         )
       })}
+      </div>
+      </div>
+      {metricsOverflow && <span className="ms-scroll-cue" aria-hidden="true" title="More header metrics — scroll horizontally">↔</span>}
+      <div className="ms-actions" role="group" aria-label="Header alerts and live status">
       <div
         data-testid="alerts-center-chip"
         onClick={() => setAlertsOpen(true)}
@@ -734,6 +753,7 @@ export default function MetricStrip({ onDrill }: Props) {
         color: operatorLive ? BB.green : liveBadgeBlocked ? BB.amber : BB.green,
       }}>
         {liveBadge}
+      </div>
       </div>
     </div>
     <AlertsCenterModal open={alertsOpen} onClose={() => setAlertsOpen(false)} />

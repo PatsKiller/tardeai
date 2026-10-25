@@ -1,0 +1,166 @@
+{
+  "schema": "WP36ScopedLiveObservation@v1",
+  "expected_sha": "d0c8b70d8d915098094aa7180f25d6b0b0e0cffe",
+  "started_at": "2026-10-24T03:36:24.240Z",
+  "finished_at": "2026-10-24T03:37:15.674Z",
+  "scope": [
+    "/v3/retirement"
+  ],
+  "widths": [
+    1440,
+    412
+  ],
+  "requests_sent": 49,
+  "method_counts": {
+    "GET": 49
+  },
+  "http_status_counts": {
+    "200": 49
+  },
+  "initial_minimum_start_gap_ms": 999.0096080000003,
+  "initial_rate_contract": "NOT_ACCEPTED: fractional timer wakeup allowed a sub-millisecond short interval; corrected in the delivered harness",
+  "results": [
+    {
+      "url": "/v3/retirement",
+      "width": 1440,
+      "status": "WARN",
+      "started_at": "2026-10-24T03:36:25.250Z",
+      "observation": {
+        "title": "Command Center v3",
+        "width": 1440,
+        "scroll_width": 1440,
+        "loading": false,
+        "error_boundary": false,
+        "text_length": 1983
+      },
+      "page_errors": [],
+      "held": [
+        {
+          "path": "/api/v2/brokers/schwab/token-health",
+          "method": "GET",
+          "code": "ACTION_QUERY_REFUSED"
+        },
+        {
+          "path": "/api/v2/data-sources/finviz/credential-health",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        }
+      ],
+      "shot": "1440-_v3_retirement.png"
+    },
+    {
+      "url": "/v3/retirement",
+      "width": 412,
+      "status": "WARN",
+      "started_at": "2026-10-24T03:36:50.930Z",
+      "observation": {
+        "title": "Command Center v3",
+        "width": 412,
+        "scroll_width": 412,
+        "loading": false,
+        "error_boundary": false,
+        "text_length": 1209
+      },
+      "page_errors": [],
+      "held": [
+        {
+          "path": "/api/v2/brokers/schwab/token-health",
+          "method": "GET",
+          "code": "ACTION_QUERY_REFUSED"
+        },
+        {
+          "path": "/api/v2/data-sources/finviz/credential-health",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        },
+        {
+          "path": "/api/v2/live-trading-gate",
+          "method": "GET",
+          "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+        }
+      ],
+      "shot": "412-_v3_retirement.png"
+    }
+  ],
+  "held": [
+    {
+      "path": "/api/v2/brokers/schwab/token-health",
+      "method": "GET",
+      "code": "ACTION_QUERY_REFUSED"
+    },
+    {
+      "path": "/api/v2/data-sources/finviz/credential-health",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/brokers/schwab/token-health",
+      "method": "GET",
+      "code": "ACTION_QUERY_REFUSED"
+    },
+    {
+      "path": "/api/v2/data-sources/finviz/credential-health",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    },
+    {
+      "path": "/api/v2/live-trading-gate",
+      "method": "GET",
+      "code": "OWNER_HELD_BUSINESS_OR_AUTH_ENDPOINT"
+    }
+  ],
+  "screenshots_committed": false,
+  "raw_receipt_path": "/home/johnclaw/.cache/rtc/codex-wp36-20261024/live-retirement/receipt.json",
+  "raw_receipt_sha256": "3ff5bac7f743e6a0de888b10dc9f85cb91824efe8708aa872e9316496ca39792",
+  "full_remaining_coverage": "NOT_MEASURED; other ordinary pages not attempted; HEAVY endpoints owner-held"
+}

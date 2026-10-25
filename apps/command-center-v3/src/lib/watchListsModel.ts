@@ -35,7 +35,18 @@ export type PositionFacts = {
   last_sell_account?: string | null; last_sell_account_label?: string | null
 }
 export type Membership = { kind: string; label: string; at: string | null; ref: unknown }
+export type WatchMarketField = {
+  value: number | null; as_of: string | null; source: string | null; source_label: string
+  stale: boolean | null; freshness: string; reason: string | null
+  compatibility?: string; as_of_basis?: string | null
+  broken_reference?: { value: number; source: string; source_label: string; as_of: string | null; relation: string } | null
+  fallback_status?: string | null
+}
+export type WatchMarketFacts = {
+  schema: string; evaluated_at: string; price: WatchMarketField; support: WatchMarketField; resistance: WatchMarketField
+}
 export type ListRow = ProspectRow & PositionFacts & {
+  market_facts?: WatchMarketFacts | null
   mine?: boolean; starred?: boolean; membership?: Membership[]
   expiry_suggestion?: { reason: string; suggest: string } | null
   universe_rank?: number | null
@@ -46,11 +57,16 @@ export type Facets = Record<string, Record<string, number>>
 
 /** Position filter keys, in display order (mirror of watch_position_facts.FILTERS; the server is the authority). */
 export const POSITION_FILTER_KEYS = [
+  'conv', 'stance', 'stage',
   'position', 'result', 'pnl_usd_min', 'pnl_usd_max', 'pnl_pct_min', 'pnl_pct_max', 'exit_cause', 'exited_within',
   'reentry', 'reentry_dist_min', 'reentry_dist_max', 'r_min', 'r_max',
 ] as const
-export const POSITION_SORTS = ['formerly_held_first', 'exit_date', 'pnl_pct', 'pnl_usd', 'r', 'reentry_distance'] as const
+export const POSITION_SORTS = ['conviction_desc', 'conviction_asc', 'setup', 'formerly_held_first', 'exit_date', 'pnl_pct', 'pnl_usd', 'r', 'reentry_distance'] as const
 export const OPTION_LABEL: Record<string, string> = {
+  conviction_desc: 'Conviction ↓', conviction_asc: 'Conviction ↑', setup: 'Setup: most ready first',
+  any: 'Any', '80': '≥ 80', '70': '≥ 70', '60': '≥ 60', lt60: '< 60', none: 'No score',
+  actionable: 'Actionable', reentry: 'Re-entry near', forming: 'Forming', manage: 'Held', expired: 'Invalidated / expired',
+  blocked: 'Blocked', has_catalyst: 'Has catalyst', no_catalyst: 'No catalyst',
   held: 'Held', formerly_held: 'Formerly held', never_held: 'Never held',
   won: 'Won', lost: 'Lost', breakeven: 'Breakeven',
   stop: 'Stop hit', trailing: 'Trailing stop', target: 'Target', manual: 'Manual', time: 'Time', unknown: 'Unknown',
@@ -186,7 +202,7 @@ export function positionChip(f: PositionFacts): { label: string; tone: 'info' | 
 /** Count chips for one filter key from the server facets, in the option order the server declares. */
 export function chipsFor(key: string, spec: FilterSpec | undefined, facets: Facets | undefined): { opt: string; label: string; count: number }[] {
   const opts = spec?.options || []
-  return opts.map(opt => ({ opt, label: OPTION_LABEL[opt] || opt, count: (facets?.[key] || {})[opt] || 0 }))
+  return opts.map(opt => ({ opt, label: key === 'stance' && opt === 'none' ? 'No stance' : OPTION_LABEL[opt] || opt, count: (facets?.[key] || {})[opt] || 0 }))
 }
 
 /** Armed Watch alerts per symbol (active only). */

@@ -2,7 +2,7 @@
 
 ```
 Status:  ACTIVE (registry + read-only Work board); ids per AGENTS.md 20.0.0 §28 (PROPOSED until ratified)
-as_of:   2026-10-23 (backfill 18:40Z)
+as_of:   2026-10-23 (backfill 18:20Z)
 Code:    scripts/lib/design_registry.py · GET /api/v2/coordination/designs and /tasks · CC Coordination → Work board
 ```
 

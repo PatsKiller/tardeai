@@ -21,6 +21,7 @@ name: cio-full-suite-sharded
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
   # 2026-10-21 (alignment audit H1): the NIGHTLY full-suite run of main. Replaces the serial
   # `cio-hardening-full` nightly in cio-production-hardening-ci.yml, which hit its 40-minute
@@ -50,6 +51,7 @@ env:
 
 jobs:
   shard:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -88,11 +90,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-${{ matrix.shard }}
+          name: cio-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
   serial:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard serial
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -123,11 +126,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-serial
+          name: cio-shard-serial-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
   pg:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard pg
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -183,13 +187,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-pg
+          name: cio-shard-pg-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
   # The rails `cio-hardening` runs after its gates, so `ci-gate` can replace it without
   # dropping one (audit table "Where each moved or removed check keeps its guarantee").
   integrity:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: integrity rails
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -264,7 +269,7 @@ jobs:
     # unless every dependency succeeded AND the shard manifests prove completeness.
     name: ci-gate
     needs: [shard, serial, pg, integrity]
-    if: always()
+    if: (always()) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -280,9 +285,9 @@ jobs:
       - name: Download shard manifests
         uses: actions/download-artifact@v4
         with:
-          pattern: cio-shard-*
+          pattern: cio-shard-*-attempt-*
           path: ${{ runner.temp }}/manifests
-          merge-multiple: true
+          merge-multiple: false
       - name: Verify every job passed and the shards ran exactly the registered files
         env:
           CI_GATE_NEEDS: ${{ toJSON(needs) }}
@@ -295,7 +300,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-timings
+          name: cio-timings-attempt-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/timings/
             ${{ runner.temp }}/manifests/
@@ -304,7 +309,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-gate-attestation
+          name: ci-gate-attestation-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation/
           if-no-files-found: ignore
 

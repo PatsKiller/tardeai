@@ -50,11 +50,11 @@ export default function PositionFilterBar({ specs, facets, sortable = true, test
       <div key={key} style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }} title={spec.server}>
         <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2], minWidth: 92 }}>{spec.label}</span>
         {chipsFor(key, spec, facets || undefined).map(c => {
-          const active = on.has(c.opt)
+          const active = on.has(c.opt) || key === 'conv' && c.opt === 'any' && !cur
           return (
             <button key={c.opt} type="button" aria-pressed={active} data-filter={key} data-opt={c.opt}
               title={`${spec.server}. ${c.count} row(s) carry “${c.label}”.`}
-              onClick={() => set({ [key]: single ? (active ? '' : c.opt) : toggleOption(cur, c.opt) })}
+              onClick={() => set({ [key]: key === 'conv' && c.opt === 'any' ? '' : single ? (active ? '' : c.opt) : toggleOption(cur, c.opt) })}
               style={{ ...chipStyle(active ? 'info' : 'neutral', active ? 'soft' : 'outline', 'sm'), cursor: 'pointer' }}>
               {c.label} <b>{c.count}</b>
             </button>
@@ -82,11 +82,11 @@ export default function PositionFilterBar({ specs, facets, sortable = true, test
             </select>
           </label>
         )}
-        {n > 0 && <button type="button" onClick={clear} style={{ ...chipStyle('neutral', 'outline', 'sm'), cursor: 'pointer' }}>Clear position filters</button>}
+        {(n > 0 || sp.get('psort')) && <button type="button" onClick={clear} style={{ ...chipStyle('neutral', 'outline', 'sm'), cursor: 'pointer' }}>Clear filters</button>}
       </div>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-          {['result', 'exit_cause', 'exited_within', 'reentry'].map(multi)}
+          {['conv', 'stance', 'stage', 'result', 'exit_cause', 'exited_within', 'reentry'].map(multi)}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {RANGES.map(r => (
               <span key={r.key} style={{ display: 'flex', gap: 3, alignItems: 'center', fontSize: TYPE.xs, color: TOKENS.text[2] }}

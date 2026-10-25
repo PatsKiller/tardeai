@@ -342,6 +342,28 @@ def _operator_watch_memberships(symbol: str, memberships) -> list:
         return [str(m) for m in raw if str(m or "").strip()]
 
 
+def _thesis_version_presentation(version: Any) -> dict[str, str]:
+    """Describe the source pin without turning a missing value into a version.
+
+    Keep the raw nullable identity in `version`; these additive fields tell
+    narrative consumers what to say, without promoting the thesis state.
+    """
+    text = str(version).strip() if isinstance(version, (str, int)) and not isinstance(version, bool) else ""
+    available = text.casefold() not in {
+        "", "null", "none", "undefined", "unknown", "n/a", "unavailable",
+        "not_measured", "v.null", "v.none", "v.undefined",
+    }
+    return {
+        "version_status": "AVAILABLE" if available else "UNAVAILABLE",
+        "version_display": f"thesis version {text}" if available else "thesis version unavailable",
+        "version_rendering_rule": (
+            "Use version_display verbatim when naming the standing thesis version; "
+            "version is nullable source identity. Never prepend 'v' to version or "
+            "infer a version from state, dates, or prior research."
+        ),
+    }
+
+
 def build_research_prompt_context(
     symbol: str,
     *,
@@ -394,6 +416,7 @@ def build_research_prompt_context(
         "standing_thesis": {
             "thesis_id": fields.get("symbol_thesis_id"),
             "version": fields.get("symbol_thesis_version"),
+            **_thesis_version_presentation(fields.get("symbol_thesis_version")),
             "state": fields.get("thesis_state"),
             "stance": fields.get("thesis_stance"),
             "summary": fields.get("thesis_summary"),

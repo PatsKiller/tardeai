@@ -5794,7 +5794,7 @@
         "match": "scripts/run_finviz_momentum_scalp_scan.py --hot-list-only",
         "stage": "shadow",
         "wave": "W5",
-        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 110 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list"
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=170 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 180 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list  (budget 170s, operator 2026-10-23)"
       },
       "expected_cadence_hours": 0.034,
       "active_days": [
@@ -18022,6 +18022,206 @@
       }
     },
     {
+      "lane_id": "release-train-request-timer-1800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-request@1800.timer",
+        "timezone": "America/New_York",
+        "cadence": "18:00 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 18:00 ET window: tradeai-release-train-request@1800.service runs `scripts/release_train_window_request.py --window 1800 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-1800-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @1800.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-1800_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Same writer, same lane receipt file as the n8n row release-train-request-1800 (the writer names its receipt by slot); run_id host-timer-1800 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
+    },
+    {
+      "lane_id": "release-train-request-timer-0000",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-request@0000.timer",
+        "timezone": "America/New_York",
+        "cadence": "00:00 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 00:00 ET window: tradeai-release-train-request@0000.service runs `scripts/release_train_window_request.py --window 0000 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0000-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0000.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0000_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0000 (the writer names its receipt by slot); run_id host-timer-0000 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
+    },
+    {
+      "lane_id": "release-train-request-timer-0600",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-request@0600.timer",
+        "timezone": "America/New_York",
+        "cadence": "06:00 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 06:00 ET window: tradeai-release-train-request@0600.service runs `scripts/release_train_window_request.py --window 0600 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0600-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0600.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0600_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0600 (the writer names its receipt by slot); run_id host-timer-0600 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
+    },
+    {
+      "lane_id": "release-train-request-timer-0800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-request@0800.timer",
+        "timezone": "America/New_York",
+        "cadence": "08:00 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 08:00 ET window: tradeai-release-train-request@0800.service runs `scripts/release_train_window_request.py --window 0800 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0800-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0800.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0800_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0800 (the writer names its receipt by slot); run_id host-timer-0800 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
+    },
+    {
+      "lane_id": "pr-census-timer-1800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-census@1800.timer",
+        "timezone": "America/New_York",
+        "cadence": "17:40 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 17:40 ET, 20 minutes before the 18:00 window: tradeai-pr-census@1800.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @1800.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/pr-hygiene-audit_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Low",
+      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-1800."
+    },
+    {
+      "lane_id": "pr-census-timer-0000",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-census@0000.timer",
+        "timezone": "America/New_York",
+        "cadence": "23:40 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 23:40 ET, 20 minutes before the 00:00 window: tradeai-pr-census@0000.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0000.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/pr-hygiene-audit_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Low",
+      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0000."
+    },
+    {
+      "lane_id": "pr-census-timer-0600",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-census@0600.timer",
+        "timezone": "America/New_York",
+        "cadence": "05:40 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 05:40 ET, 20 minutes before the 06:00 window: tradeai-pr-census@0600.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0600.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/pr-hygiene-audit_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Low",
+      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0600."
+    },
+    {
+      "lane_id": "pr-census-timer-0800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-census@0800.timer",
+        "timezone": "America/New_York",
+        "cadence": "07:40 daily"
+      },
+      "rollout_stage": "shadow",
+      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-23",
+      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 07:40 ET, 20 minutes before the 08:00 window: tradeai-pr-census@0800.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0800.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/pr-hygiene-audit_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Low",
+      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0800."
+    },
+    {
       "lane_id": "ops-controls-applier",
       "owner": "platform",
       "scheduler": {
@@ -18088,6 +18288,87 @@
         "priority": 5,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "cio-prospect-shadow",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/cio_prospect_shadow_build.py",
+        "cadence": "*/30 9-16 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.5,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator directive 2026-10-22 (CIO prospect data foundation is the baseline of the site; AGENTS.md §26 18.0.0 ACTIVE; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P1 Shadow). n8n-native dispatcher lane at stage SHADOW: every 30 min in market hours the stage clamp runs --dry-run (assembles one prospect per security_guid from the existing CIO stores, prints the summary, writes nothing). No cron line exists or is added (cron freeze 2026-10-09). Canary (--write-shadow: the shadow artifact the cio_prospect projection serves) is a later registry PR after the owner marks the health contract REVIEWED. Historical contract review is retained unchanged; any canary still needs its separate approved registry PR.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_cio_prospect_shadow_readonly_20261023.py (static transitive closure has no forbidden broker/order/sender capability; injected-query core parity); tests/test_cio_prospect_foundation_20261022.py (write-free dry run, MBI, conflicts and identity). Historical operative contract review retained from operator item F on #1953; no canary/live authority added.",
+      "review_by": "2026-11-05",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-prospect-shadow_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Read-only shadow builder (scripts/lib/cio_prospect_builder.py): CIO files, the held set through the positions_context projection (holdings via lib.portfolio_positions; never positions_current) and, with --with-db, bulk SELECTs on a READ ONLY session. No broker call, no model, no send, no store write; never calls InstrumentRecordStore. Exit 0 = built; 1 = no prospect assembled (empty output is a failure); 2 = could not run.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/30 9-16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "cio-company-facts-populate",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-24",
+      "reason_confidence": "CORRELATED",
+      "state_reason": "Source proposal only; native admission and runtime coverage are not proven. Keep unscheduled until an actual reviewed contract, schema capability and exact workflow activation are accepted.",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24,
+      "severity": "Medium",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/cio-company-facts-populate_last.json"
+      },
+      "native_apply_proposal": {
+        "workflow_id": "tradeai-cio-company-facts-populate-native",
+        "active": false,
+        "mode": "live",
+        "schedules": [
+          "0 35 6 * * 1-5",
+          "0 35 15 * * 1-5"
+        ],
+        "timezone": "America/New_York",
+        "packet": "docs/ops/packets/c1-company-population-20261024",
+        "class": "learn",
+        "retry_policy": "none",
+        "contract_status": "DRAFT",
+        "reviewed_by": null
+      },
+      "note": "Source apply mode, never shadow. Do not mark ACTIVE/native until accepted contract and policy/allowlist admission; no scheduler mutation performed."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -25334,5 +25615,23 @@
         "tick:system-freshness-monitor"
       ]
     }
-  ]
+  ],
+  "pending_changes": {
+    "disk-hygiene-standing-apply-20261024": {
+      "status": "PENDING_OPERATOR_REVIEW_DISABLED",
+      "lane_id": "disk-hygiene",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "cadence": "0 4 * * 1,3,5,0",
+        "tz": "America/New_York",
+        "expected_cadence_hours": 48,
+        "minimum_gap_hours": 24,
+        "nominal_max_gap_local_hours": 48,
+        "maximum_elapsed_gap_hours": 49,
+        "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
+      },
+      "requires": "Atomic contract/admission/enable review; current operative schedule remains plan-only"
+    }
+  }
 }

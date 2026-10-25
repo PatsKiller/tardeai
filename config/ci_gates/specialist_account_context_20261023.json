@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "specialist_account_context_20261023",
+  "files": [
+    "tests/test_specialist_account_context_20261023.py"
+  ],
+  "comment": [
+    "Specialist account-location facts: shared names/type/status, multi-account evidence, unknowns and number privacy; no live sources."
+  ]
+}

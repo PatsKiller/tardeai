@@ -1535,6 +1535,24 @@
    "reason": "staging rows drained into cio_directive_hits (37,233 rows, 27 MB, oldest 2026-08-13); drained rows have no reader after a quarter; hygiene UNCOVERED_TABLE",
    "since": "2026-10-08",
    "archive_first": true
+  },
+  {
+   "table": "cio_prospect",
+   "ts_column": "as_of",
+   "class": "KEEP_FOREVER",
+   "archive": false,
+   "owner": "cio",
+   "reason": "Existing canonical CIO record/current projection and append-only event history; company-facts population adds no deletion or new store. Lifecycle remains under existing writer/schema grants.",
+   "since": "2026-10-24"
+  },
+  {
+   "table": "cio_prospect_events",
+   "ts_column": "recorded_at",
+   "class": "KEEP_FOREVER",
+   "archive": false,
+   "owner": "cio",
+   "reason": "Existing canonical CIO record/current projection and append-only event history; company-facts population adds no deletion or new store. Lifecycle remains under existing writer/schema grants.",
+   "since": "2026-10-24"
   }
  ],
  "archive_growth_cap_gb_month": 2.0,

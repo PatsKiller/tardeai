@@ -1,0 +1,249 @@
+{
+  "fixture": true,
+  "cases": [
+    {
+      "name": "watch-freshness-1440-200",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 200,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          }
+        ]
+      },
+      "curation": 1,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nObserve\n—\nRemove\nPrice\n$10.00\nClosed session · 2026-10-23\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nIntraday observation\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "watch-freshness-1440-503",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 503,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nObserve\n—\nRemove\nPrice\n$10.00\nLast snapshot\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nPrice observation is stale.\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nLast snapshot\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "watch-freshness-1440-403",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 403,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          },
+          {
+            "client": 1102,
+            "scroll": 1102
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nObserve\n—\nRemove\nPrice\n$10.00\nLast snapshot\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nPrice observation is stale.\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nLast snapshot\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "watch-freshness-412-200",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 200,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          }
+        ]
+      },
+      "curation": 1,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nStage watch\nAccount Unknown\nLast P/L Not available\nObserve\n—\nRemove\nPrice\n$10.00\nClosed session · 2026-10-23\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nIntraday observation\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "watch-freshness-412-503",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 503,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nStage watch\nAccount Unknown\nLast P/L Not available\nObserve\n—\nRemove\nPrice\n$10.00\nLast snapshot\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nPrice observation is stale.\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nLast snapshot\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "watch-freshness-412-403",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 403,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          },
+          {
+            "client": 386,
+            "scroll": 386
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\n50\nWATCH\nForming · Stored evidence only\nStage watch\nAccount Unknown\nLast P/L Not available\nObserve\n—\nRemove\nPrice\n$10.00\nLast snapshot\nStored quote · schwab\nAs of Oct 23, 2026, 03:45:00 PM EDT\nPrice observation is stale.\nSupport\n$9.00\nMaster\nResistance\n$8.00 broken — nearest valid level: $11.00\nClosed session\ntime unknown\nLast snapshot\nSource details",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    }
+  ]
+}

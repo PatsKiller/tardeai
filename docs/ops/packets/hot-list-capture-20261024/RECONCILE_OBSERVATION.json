@@ -1,0 +1,16 @@
+{
+  "capture_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+  "cron_entries": 348,
+  "distinct_active_cron_lines": 348,
+  "full_registry_candidate_committed": false,
+  "full_replay_problems": [],
+  "host_calls": 0,
+  "observed_at": "2026-10-24T04:43:31.613062+00:00",
+  "scheduler_write_attempts": 0,
+  "schema": "CapturedCronReconcileObservation@v1",
+  "target_maps_once_to_lane": true,
+  "target_survives_reconcile_exactly": true,
+  "units_observation": "HISTORICAL_2026-10-09; NOT a fresh systemd census",
+  "units_source": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+  "units_source_sha256": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f"
+}

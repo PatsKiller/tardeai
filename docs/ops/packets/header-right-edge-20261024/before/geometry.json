@@ -1,0 +1,1243 @@
+[
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 1280,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 1280,
+      "pageScrollWidth": 1280,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 1280,
+        "height": 74,
+        "right": 1280,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 1440,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 1440,
+      "pageScrollWidth": 1440,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 1440,
+        "height": 74,
+        "right": 1440,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 1920,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 1920,
+      "pageScrollWidth": 1920,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 1920,
+        "height": 74,
+        "right": 1920,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 2560,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 2560,
+      "pageScrollWidth": 2560,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 2560,
+        "height": 74,
+        "right": 2560,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 2123,
+          "y": 53.5,
+          "width": 75.421875,
+          "height": 19,
+          "right": 2198.421875,
+          "bottom": 72.5,
+          "textBox": {
+            "x": 2135,
+            "right": 2186.421875,
+            "y": 57.5,
+            "bottom": 68.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 2206.421875,
+          "y": 53.5,
+          "width": 118.03125,
+          "height": 19,
+          "right": 2324.453125,
+          "bottom": 72.5,
+          "textBox": {
+            "x": 2218.421875,
+            "right": 2312.453125,
+            "y": 57.5,
+            "bottom": 68.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 2332.453125,
+          "y": 53.5,
+          "width": 132.5625,
+          "height": 19,
+          "right": 2465.015625,
+          "bottom": 72.5,
+          "textBox": {
+            "x": 2344.453125,
+            "right": 2453.015625,
+            "y": 57.5,
+            "bottom": 68.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 2473.015625,
+          "y": 53.5,
+          "width": 70.984375,
+          "height": 19,
+          "right": 2544,
+          "bottom": 72.5,
+          "textBox": {
+            "x": 2487.015625,
+            "right": 2530,
+            "y": 57.5,
+            "bottom": 68.5
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 412,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 412,
+      "pageScrollWidth": 412,
+      "row": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "rowCssHeight": "auto",
+      "compact": {
+        "x": 0,
+        "y": 24,
+        "width": 412,
+        "height": 44,
+        "right": 412,
+        "bottom": 68
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "textBox": {
+            "x": 0,
+            "right": 0,
+            "y": 0,
+            "bottom": 0
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "textBox": {
+            "x": 0,
+            "right": 0,
+            "y": 0,
+            "bottom": 0
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "textBox": {
+            "x": 0,
+            "right": 0,
+            "y": 0,
+            "bottom": 0
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "textBox": {
+            "x": 0,
+            "right": 0,
+            "y": 0,
+            "bottom": 0
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    },
+    "expanded": {
+      "width": 412,
+      "pageScrollWidth": 412,
+      "row": {
+        "x": 0,
+        "y": 72,
+        "width": 412,
+        "height": 270,
+        "right": 412,
+        "bottom": 342
+      },
+      "rowCssHeight": "270px",
+      "compact": {
+        "x": 0,
+        "y": 24,
+        "width": 412,
+        "height": 44,
+        "right": 412,
+        "bottom": 68
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 55.984375,
+          "y": 302.1875,
+          "width": 75.421875,
+          "height": 19,
+          "right": 131.40625,
+          "bottom": 321.1875,
+          "textBox": {
+            "x": 67.984375,
+            "right": 119.40625,
+            "y": 306.1875,
+            "bottom": 317.1875
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 139.40625,
+          "y": 302.1875,
+          "width": 118.03125,
+          "height": 19,
+          "right": 257.4375,
+          "bottom": 321.1875,
+          "textBox": {
+            "x": 151.40625,
+            "right": 245.4375,
+            "y": 306.1875,
+            "bottom": 317.1875
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 265.4375,
+          "y": 302.1875,
+          "width": 132.5625,
+          "height": 19,
+          "right": 398,
+          "bottom": 321.1875,
+          "textBox": {
+            "x": 277.4375,
+            "right": 386,
+            "y": 306.1875,
+            "bottom": 317.1875
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 6,
+          "y": 321.1875,
+          "width": 70.984375,
+          "height": 19,
+          "right": 76.984375,
+          "bottom": 340.1875,
+          "textBox": {
+            "x": 20,
+            "right": 62.984375,
+            "y": 325.1875,
+            "bottom": 336.1875
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 821,
+    "stress": false,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 821,
+      "pageScrollWidth": 821,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 821,
+        "height": 74,
+        "right": 821,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 3 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 24 HEALTH (4 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 821,
+    "stress": true,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 821,
+      "pageScrollWidth": 821,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 821,
+        "height": 74,
+        "right": 821,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 125 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 125 HEALTH (12 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 1280,
+    "stress": true,
+    "badge": "2FA LIVE",
+    "initial": {
+      "width": 1280,
+      "pageScrollWidth": 1280,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 1280,
+        "height": 74,
+        "right": 1280,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 125 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 125 HEALTH (12 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "2FA LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 50.234375,
+          "height": 30,
+          "right": 1934.671875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1920.671875,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 821,
+    "stress": true,
+    "badge": "AUTO BLOCKED",
+    "initial": {
+      "width": 821,
+      "pageScrollWidth": 821,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 821,
+        "height": 74,
+        "right": 821,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 125 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 125 HEALTH (12 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "AUTO BLOCKED",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 77.4375,
+          "height": 30,
+          "right": 1961.875,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1947.890625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  },
+  {
+    "fixture": true,
+    "clock": "2026-10-23T15:00:00Z",
+    "before": true,
+    "baseSha": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+    "width": 821,
+    "stress": true,
+    "badge": "AUTO LIVE",
+    "initial": {
+      "width": 821,
+      "pageScrollWidth": 821,
+      "row": {
+        "x": 0,
+        "y": 24,
+        "width": 821,
+        "height": 74,
+        "right": 821,
+        "bottom": 98
+      },
+      "rowCssHeight": "62px",
+      "compact": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "actions": null,
+      "controls": [
+        {
+          "text": "⚑ ALERTS",
+          "x": 1647.140625,
+          "y": 48,
+          "width": 64,
+          "height": 30,
+          "right": 1711.140625,
+          "bottom": 78,
+          "textBox": {
+            "x": 1659.140625,
+            "right": 1699.140625,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        },
+        {
+          "text": "⚑ 125 APPROVALS →",
+          "x": 1719.140625,
+          "y": 42.5,
+          "width": 85.484375,
+          "height": 41,
+          "right": 1804.625,
+          "bottom": 83.5,
+          "textBox": {
+            "x": 1731.140625,
+            "right": 1792.640625,
+            "y": 46.5,
+            "bottom": 79.5
+          },
+          "clipped": false
+        },
+        {
+          "text": "♥ 125 HEALTH (12 crit) →",
+          "x": 1812.625,
+          "y": 37,
+          "width": 63.8125,
+          "height": 52,
+          "right": 1876.4375,
+          "bottom": 89,
+          "textBox": {
+            "x": 1824.625,
+            "right": 1864.4375,
+            "y": 41,
+            "bottom": 85
+          },
+          "clipped": false
+        },
+        {
+          "text": "AUTO LIVE",
+          "x": 1884.4375,
+          "y": 48,
+          "width": 56.15625,
+          "height": 30,
+          "right": 1940.59375,
+          "bottom": 78,
+          "textBox": {
+            "x": 1898.4375,
+            "right": 1926.59375,
+            "y": 52,
+            "bottom": 74
+          },
+          "clipped": false
+        }
+      ],
+      "tileLines": [],
+      "metrics": null,
+      "cueVisible": false
+    },
+    "traffic": {
+      "api": [
+        "/api/v2/overview",
+        "/api/v2/paper-trade-readiness",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/live-trading-gate",
+        "/api/v2/health",
+        "/api/v2/design-features"
+      ],
+      "external": [],
+      "mutations": [],
+      "unexpected": [],
+      "errors": []
+    }
+  }
+]

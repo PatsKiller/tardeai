@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "registry_capture_review_packet_20261024",
+  "files": [
+    "tests/test_registry_capture_review_packet_20261024.py"
+  ],
+  "anchor": "REGISTRY_CAPTURE_REVIEW_PACKET_20261024",
+  "comment": [
+    "ANCHOR: REGISTRY_CAPTURE_REVIEW_PACKET_20261024 — offline source-bound patch/ledger review; no host authority"
+  ]
+}

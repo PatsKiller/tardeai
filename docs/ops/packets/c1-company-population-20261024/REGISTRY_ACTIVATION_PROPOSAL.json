@@ -1,0 +1,42 @@
+{
+  "lane_id": "cio-company-facts-populate",
+  "owner": "cio",
+  "state": "ACTIVE",
+  "state_since": "2026-10-24",
+  "reason_confidence": "CORRELATED",
+  "state_reason": "Source proposal only; native admission and runtime coverage are not proven. Keep unscheduled until an actual reviewed contract, schema capability and exact workflow activation are accepted.",
+  "scheduler": {
+    "kind": "n8n",
+    "expression": "tradeai-cio-company-facts-populate-native",
+    "match": "scripts/cio_company_facts_populate.py",
+    "cadence": "35 6,15 * * 1-5"
+  },
+  "expected_cadence_hours": 24,
+  "severity": "Medium",
+  "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/cio-company-facts-populate_last.json"
+  },
+  "native_apply_proposal": {
+    "workflow_id": "tradeai-cio-company-facts-populate-native",
+    "active": false,
+    "mode": "live",
+    "schedules": [
+      "0 35 6 * * 1-5",
+      "0 35 15 * * 1-5"
+    ],
+    "timezone": "America/New_York",
+    "packet": "docs/ops/packets/c1-company-population-20261024",
+    "class": "learn",
+    "retry_policy": "none",
+    "contract_status": "DRAFT",
+    "reviewed_by": null
+  },
+  "note": "Source apply mode, never shadow. Do not mark ACTIVE/native until accepted contract and policy/allowlist admission; no scheduler mutation performed.",
+  "dispatch": {
+    "class": "learn",
+    "mode": "live",
+    "retry_policy": "none",
+    "concurrency_key": "cio-company-facts-populate"
+  }
+}

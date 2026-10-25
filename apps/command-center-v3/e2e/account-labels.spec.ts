@@ -98,7 +98,8 @@ for (const width of [1440, 412]) {
 
     test(`Journal table: Account column shows names (${width})`, async ({ page }) => {
       await fixtures(page)
-      await page.goto('/v3/journal')
+      // /v3/journal opens the per-trade journey view (#1955); the trade log table is on the classic journal.
+      await page.goto('/v3/journal?view=classic')
       const table = page.getByRole('button', { name: 'Table', exact: true })
       await table.click()
       const rows = page.locator('tr[data-account]').filter({ hasText: 'SPCX' })

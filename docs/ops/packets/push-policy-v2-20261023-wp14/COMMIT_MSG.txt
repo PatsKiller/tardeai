@@ -1,0 +1,11 @@
+WP-14 policy(push): propose class-based push accounting on current main
+
+Operator-applied package: AI_WORK_POLICY section 29 remains PROPOSED. Existing
+sections 1-28 are byte-identical. Includes wip/review/operator classes, append-only
+accounting, live claim binding and immutable policy-root loading.
+
+Train ref/reason identifiers alone now refuse with TRAIN_AUTHORITY_UNPROVEN.
+Verified host-service reservation wiring needs a separate reviewed integration;
+neither AUTHORIZED nor an override substitutes for it. No live policy activated.
+
+Design-Task: DSN-20261023-handoff-v3-P3-T14

@@ -13,7 +13,7 @@ import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watchProspectsModel'
 import { armedBySymbol, askCioReview, unwrapAny, type ListRow } from '../lib/watchListsModel'
-import { Detail, GRID, Row } from './WatchProspects'
+import { Detail, Row } from './WatchProspects'
 import { laneWord } from './WatchMyList'
 import { MINE_TIPS, mineAction } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
@@ -110,9 +110,9 @@ export default function WatchSuggests() {
         </span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-        <section aria-label="System Suggests" style={{ ...panel, flex: '999 1 700px', overflowX: 'auto' }}>
-          <div style={{ minWidth: 760 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '6px 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...head }}>
+        <section className="watch-record-panel" aria-label="System Suggests" style={{ ...panel, flex: '999 1 700px' }}>
+          <div className="watch-record-table">
+            <div className="watch-table-head" style={{ gap: 8, padding: '6px 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...head }}>
               <span title="★ = on your watchlist. The # is the rank in the Full universe (the curator's conviction order).">★ Symbol · #</span>
               <span title={TOOLTIPS.conviction}>Conviction</span><span title={TOOLTIPS.stance}>Stance</span>
               <span title="Why it is suggested (entered / steady / holding, with the reason) · stage">Why suggested · stage</span>

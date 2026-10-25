@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_grant_capability_binding_20261022",
+  "files": [
+    "tests/test_release_grant_capability_binding_20261022.py"
+  ],
+  "anchor": "RELEASE_GRANT_CAPABILITY_BINDING_20261022",
+  "comment": [
+    "ANCHOR: RELEASE_GRANT_CAPABILITY_BINDING_20261022 — arming packet §K: release_grant_preflight accepts a train's",
+    "prepare/promote on a RESERVED, host-signed ReleaseCapability@v1 (campaign identifies; the capability authorizes).",
+    "Inert: CAPABILITY_BINDING_STATUS = PROPOSED. Adversarial: forged, expired, wrong-SHA, wrong-phase, replayed,",
+    "STOP / epoch change between reserve and preflight, another train's reservation, env cannot grant."
+  ]
+}

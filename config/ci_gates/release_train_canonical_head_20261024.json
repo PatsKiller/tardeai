@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_canonical_head_20261024",
+  "files": [
+    "tests/test_release_train_canonical_head_20261024.py"
+  ],
+  "anchor": "RELEASE_TRAIN_CANONICAL_HEAD_20261024",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_CANONICAL_HEAD_20261024 — clean canonical alignment after exact-main CI and before prepare-capability issuance; dirty/error refusal, already-aligned no-op, STOP/CURRENT rails and sanitized schema-valid events; only fake issuer/Git or owned temporary Git fixtures, no live state."
+  ]
+}

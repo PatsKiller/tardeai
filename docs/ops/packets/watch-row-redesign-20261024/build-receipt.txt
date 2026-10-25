@@ -1,0 +1,1273 @@
+
+> command-center-v3@3.0.0 build
+> bash ../../scripts/check_design_tokens.sh && node ../../scripts/check_ui_standards.mjs && node ../../scripts/check_token_contrast.mjs && node ../../scripts/gen_metric_guide_keys.mjs --check && node ../../scripts/test_chip_scope.mjs && node ../../scripts/test_metric_strip_labels.mjs && node src/lib/surfaceFreshness.test.ts && node src/lib/agentModelLabel.test.ts && node src/lib/observationEnvelope.test.ts && node src/lib/setupRunSummary.test.ts && node src/lib/homeWinRate.test.ts && node src/lib/retainedObservation.test.ts && node src/lib/surfaceAuthority.test.ts && node src/lib/operatorBoundary.test.ts && node src/lib/httpOutcome.test.ts && node src/lib/surfaceProjection.test.ts && node src/lib/bookTreemapLayout.test.ts && node src/lib/oscillatorDisplay.test.ts && node src/lib/designTokens.test.ts && node src/lib/tableSort.test.ts && node src/lib/metricGuideEnvelope.test.ts && node src/lib/optionsCardV5.test.ts && node src/lib/optionsDeskTruth.test.ts && node src/lib/optionChainTruth.test.ts && node --experimental-strip-types src/lib/optionsGlossary.test.ts && node --experimental-strip-types src/lib/optionsDeskModel.test.ts && node --experimental-strip-types src/lib/optionsDesk.view.test.mjs && node --experimental-strip-types src/lib/optionsLifecycleDesk.test.ts && node src/lib/entryAlerts.test.ts && node --experimental-strip-types src/lib/alertsCenter.test.ts && node --experimental-strip-types src/lib/tradingDeepLink.test.ts && node --experimental-strip-types src/lib/tradingCommandTriage.test.ts && node --experimental-strip-types src/lib/openTradesDesk.test.ts && node --experimental-strip-types src/lib/tradeAiOpportunities.test.ts && node --experimental-strip-types src/lib/scanRunAge.test.ts && node --experimental-strip-types src/lib/cioHubTabs.test.ts && node --experimental-strip-types src/lib/cioDecisionLineage.test.ts && node --experimental-strip-types src/lib/agentCalibration.test.ts && node --experimental-strip-types src/lib/hermesResearchLinks.test.ts && node --experimental-strip-types src/lib/cioProjection.test.ts && node --experimental-strip-types src/lib/agentRuntimeSurfaceContract.test.ts && node --experimental-strip-types src/lib/cioOperatorArtifacts.test.ts && node --experimental-strip-types src/lib/coordinationEvents.test.ts && node --experimental-strip-types src/lib/outboxProjection.test.ts && node --experimental-strip-types src/lib/approvalBoard.test.ts && node --experimental-strip-types src/lib/migrationBoard.test.ts && node --experimental-strip-types src/lib/coordinationTruth.test.ts && node --experimental-strip-types src/lib/n8nTodayProjection.test.ts && node --experimental-strip-types src/lib/projectionReadProtocol.test.ts && node --experimental-strip-types src/lib/buildIdentity.test.ts && node --experimental-strip-types src/lib/rotationPublication.test.ts && node --experimental-strip-types src/lib/rotationExpiry.test.ts && node src/lib/rotationPublication.view.test.mjs && node --experimental-strip-types src/lib/commsDeliveryHealth.test.ts && node --experimental-strip-types src/lib/overnightQueueHealth.test.ts && node --experimental-strip-types src/lib/dataPlausibility.test.ts && node --experimental-strip-types src/lib/pipelineFailures.test.ts && node --experimental-strip-types src/lib/needsAction.test.ts && node --experimental-strip-types src/lib/homeDoNow.test.ts && node --experimental-strip-types src/lib/accountLabels.test.ts && node --experimental-strip-types src/lib/schedulerOperations.test.ts && node --experimental-strip-types src/lib/platformHealth.test.ts && node --experimental-strip-types src/lib/releaseTrain.test.ts && node --experimental-strip-types src/lib/releasesSchedules.test.ts && node --experimental-strip-types src/lib/recommendationOrigin.test.ts && node --experimental-strip-types src/lib/tradeJourneyModel.test.ts && node --experimental-strip-types src/lib/watchProspectsModel.test.ts && node --experimental-strip-types src/lib/watchListsModel.test.ts && node --experimental-strip-types src/lib/opsControls.test.ts && node --experimental-strip-types src/lib/pageVisibility.test.ts && node --experimental-strip-types src/lib/opsControlsJobs.test.ts && node --experimental-strip-types src/lib/opsControlsData.test.ts && node --experimental-strip-types src/lib/reconnectProbe.test.ts && node --experimental-strip-types src/lib/clipText.test.ts && node --experimental-strip-types src/lib/navLocate.test.ts && node --experimental-strip-types src/lib/agentClaimLifecycle.test.ts && node --experimental-strip-types src/lib/workBoard.test.ts && node --experimental-strip-types src/lib/opsControlsN8n.test.ts && node --experimental-strip-types src/lib/asOfDisplay.test.ts && node --experimental-strip-types src/lib/displayLabels.test.ts && node --experimental-strip-types src/lib/workPipeline.test.ts && node --experimental-strip-types src/lib/workPipelineTier2.test.ts && node --experimental-strip-types src/lib/askCioModel.test.ts && tsc && vite build
+
+[design-guard] pass (438 files checked against baseline)
+[ui-standards] pass — 611 files; debt hex=3222 font=1371 radius=2189 shadow=34 guide=129
+[contrast] 141/141 pairs pass across 3 themes (min 4.5:1)
+[metric-guide] keys current (167)
+✓ ranks scoped to rendered list
+✓ new-to-list entrant flagged, no phantom delta
+✓ callout: improvement vs deterioration separated correctly
+ALL CHIP-SCOPE TESTS PASS
+  [PASS] renderer no longer hardcodes the as_of label
+  [PASS] renderer takes the label from the tile
+  [PASS] no tile labels a clock "data_as_of" any more
+  [PASS] the portfolio tile names the position-observation clock
+  [PASS] the today tile names the P&L's own session
+  [PASS] no two tiles share a static clock label
+  [PASS] the value coverage the headline date speaks for still reaches the tooltip
+  [PASS] coverage-% no longer competes for tile-face width
+  [PASS] the oldest contributor carries a stamp and an age, not just a name
+  [PASS] the oldest contributor is on HOVER (tip), not concatenated into face asOfNote
+  [PASS] face portfolio note carries no account census
+  [PASS] the divergence mark is not gated on any design flag
+  [PASS] the four aggregate clocks are rendered as separate lines
+  [PASS] an empty account cannot make TODAY incomplete
+  [PASS] TODAY distinguishes empty accounts from ones that did not report
+  [PASS] today's coverage is stated over FUNDED accounts, not linked ones
+  [PASS] today's coverage names the missing accounts rather than only a count
+  [PASS] the setups tile carries its run id
+  [PASS] unaccounted setup rows are shown on the tile face
+  [PASS] a divergence between the two position-clock copies is shown, not resolved
+  [PASS] accounts holding nothing are named, not counted as unobserved
+  [PASS] undated is counted over contributors, not over every account row
+  [PASS] degraded quotes state their symbol coverage
+  [PASS] the selected quote observation is its own mark
+  [PASS] an UNDATED tile renders a line rather than nothing
+  [PASS] the overview mark names data_as_of and states UNDATED
+  [PASS] every tile renders a fixed three-element subtree, so no ordinal CSS rule can retarget the value
+  [PASS] the value line states its own size rather than inheriting an ordinal override
+  [PASS] no line in a tile may wrap
+  [PASS] the price stamp is clipped, not spilled
+  [PASS] the full price stamp survives in the title rather than being dropped
+  [PASS] run health is read from freshness_status, never inferred from reconciliation
+  [PASS] run health and reconciliation stay separately named on the tile
+  [PASS] the underfill floor is stated beside the scanned count
+  [PASS] the two run clocks are named scheduled vs finished
+  [PASS] an unzoned run stamp is marked unzoned, never given an assumed zone
+  [PASS] the source no longer claims the run zone is stated
+  [PASS] a quiet face still leaves the clock facts stated on hover
+  [PASS] quote coverage stays on the face in the healthy state
+  [PASS] a tile signals state through a rail, at zero width cost
+
+metric_strip_labels: 40 passed, 0 failed
+  [PASS] the TODAY tile no longer attributes an all-accounts figure to one account
+  [PASS] the TODAY tile keeps account census on hover, not face asOfNote
+  [PASS] the TODAY provenance note is derived from the contributing accounts
+  [PASS] the TODAY hover note falls back to a scope, never a single account name
+  [PASS] the TRADING tile value is built by the shared labeller from win rate, count and P&L
+  [PASS] the TRADING face labels its win rate and its P&L
+  [PASS] the TRADING tooltip spells out win rate, trade count and P&L
+  [PASS] only the TRADING value may wrap, clamped to two lines
+  [PASS] the short price stamp keeps quote coverage on the face
+  [PASS] a date-only clock on a tile face is shown as its date
+
+metric_strip_header_truth: 50 passed, 0 failed
+  [PASS] ISO Z parses
+  [PASS] date-only parses
+  [PASS] null → null
+  [PASS] garbage → null
+  [PASS] fresh scan not stale
+  [PASS] fresh has no surfaceLabel
+  [PASS] TTL-stale populated scan is not chrome STALE
+  [PASS] TTL-stale populated has no surfaceLabel
+  [PASS] empty stale cache is stale despite today run_date
+  [PASS] surfaceLabel starts with STALE
+  [PASS] reason mentions empty or cache
+  [PASS] asOf is cached_at
+  [PASS] ageHours ~84h
+  [PASS] prior run_date is stale
+  [PASS] Fri run, Sat 00:59 ET: not stale
+  [PASS] Fri run, Sun 20:00 ET: not stale
+  [PASS] Fri run, Mon 09:29 ET: not stale
+  [PASS] Fri run, Mon 09:31 ET: prior session
+  [PASS] Wed run, Thu 02:00 ET: not stale
+  [PASS] Wed run, Thu 10:00 ET: stale
+  [PASS] DST weekend Mon 09:29 EST: not stale
+  [PASS] DST weekend Mon 09:31 EST: stale
+  [PASS] overview fresh data -> not stale
+  [PASS] overview fresh reports dataAsOf
+  [PASS] stale data beats a recent loader run
+  [PASS] age is dated from data_as_of, not as_of
+  [PASS] chip names the account that owns the stale row
+  [PASS] chip reports data_as_of as its asOf
+  [PASS] mutation: as_of would under-report the age by weeks
+  [PASS] no data_as_of -> UNDATED, not fresh
+  [PASS] UNDATED says so
+  [PASS] UNDATED does not invent an age
+  [PASS] UNDATED does not invent a date
+  [PASS] UNDATED renders no date at all
+  [PASS] UNDATED does not borrow the loader-run date
+  [PASS] UNDATED still says UNDATED on the surface
+  [PASS] UNDATED still reports stale
+  [PASS] UNDATED still names the responsible account
+  [PASS] UNDATED with an account still renders no date
+  [PASS] a dated block still exposes the data clock
+  [PASS] a dated block never exposes the loader clock
+  [PASS] WI dataSource is decision_projection
+  [PASS] WI liveClaim false
+  [PASS] WI spine false
+  [PASS] WI surfaceNote mentions InstrumentRecord
+
+surfaceFreshness: 45 passed, 0 failed
+agentModelLabel.test: ok
+  [PASS] business date resolves to an instant
+  [PASS] business date anchors to 16:00 ET = 20:00Z in EDT
+  [PASS] business date handles EST without a DST table
+  [PASS] malformed business date → null
+  [PASS] empty business date → null
+  [PASS] business date is labelled as a session date
+  [PASS] absent business date renders UNDATED, not blank
+  [PASS] fresh envelope is OK transport
+  [PASS] fresh envelope renders no state chip
+  [PASS] current-looking value with stale metadata is labelled STALE
+  [PASS] a stale envelope never reports null chrome
+  [PASS] missing value fails closed to UNKNOWN
+  [PASS] missing value is never FRESH
+  [PASS] value with no clock is PARTIAL, not current
+  [PASS] clockless envelope explains itself
+  [PASS] malformed date is dropped, not coerced
+  [PASS] future business date still parses to a real instant (caller judges skew)
+  [PASS] future-skewed observation is not rendered as fresh
+  [PASS] transport error is visible
+  [PASS] 304 retained + stale renders both facts
+  [PASS] 304 updated receivedAt only
+  [PASS] 304 did NOT advance the observation clock
+  [PASS] retained data is never silently OK
+  [PASS] two identities coalesce to PARTIAL
+  [PASS] mixed-source note names both identities
+  [PASS] one identity stays coherent
+  [PASS] value carries its own clock and freshness
+  [PASS] any stale part makes the whole stale
+  [PASS] unknown part downgrades a fresh whole
+  [PASS] server freshness is echoed, never recomputed from age
+  [PASS] ERROR outranks PARTIAL
+  [PASS] PARTIAL outranks RETAINED
+  [PASS] OK is the floor
+  [PASS] every transport/freshness pair has a non-empty aria label
+  [PASS] fresh+OK speaks as current
+  [PASS] partial speaks its cause
+  [PASS] server FRESH maps
+  [PASS] server STALE maps
+  [PASS] absent observation fails closed
+  [PASS] unrecognised status fails closed
+  [PASS] fallback used only when observation absent
+  [PASS] server STALE beats fallback FRESH
+
+observationEnvelope: 42 passed, 0 failed
+  [PASS] null summary → DATA_UNAVAILABLE
+  [PASS] undefined summary → DATA_UNAVAILABLE
+  [PASS] fully reconciled summary → RECONCILED
+  [PASS] GO+WAIT+NOGO != classified → COUNT_MISMATCH even if wire says RECONCILED
+  [PASS] classified+excluded+unclassified != scanned → COUNT_MISMATCH
+  [PASS] missing classified_count is never RECONCILED
+  [PASS] missing classified_count surfaces a residual verdict
+  [PASS] missing scanned_count → DATA_UNAVAILABLE
+  [PASS] residual server verdict is surfaced
+  [PASS] counts partition the three labels
+  [PASS] population names every non-zero class, omitting none
+  [PASS] a fully accounted run shows no UNACCOUNTED marker
+  [PASS] reconciled render is not degraded
+  [PASS] go>0 marks the strip green
+  [PASS] run id is carried
+  [PASS] run timestamp is carried
+  [PASS] mismatched run renders degraded
+  [PASS] mismatched run carries the integrity verdict
+  [PASS] mismatched run is degraded first, so go>0 cannot light green
+  [PASS] no summary renders an explicit pre-run label
+  [PASS] no summary has no population
+  [PASS] no summary is degraded
+  [PASS] stale render uses the stale label verbatim
+  [PASS] stale render is degraded
+  [PASS] stale render is never goPositive
+  [PASS] zero-GO run is not goPositive
+
+setupRunSummary: 26 passed, 0 failed
+  [PASS] the 12 escalations are named on the tile
+  [PASS] the escalations are not folded into NOGO
+  [PASS] nothing is left for the reader to subtract
+  [PASS] a fully accounted, reconciled run is not degraded
+  [PASS] the run id survives to the tile
+  [PASS] unaccounted rows are stated, never silently dropped
+  [PASS] an unaccounted run is degraded regardless of the wire verdict
+  [PASS] unaccounted count is exposed to callers
+  [PASS] a reconciled run can still be an unhealthy one
+  [PASS] reconciliation stays false-negative-free: degraded is about the tally only
+  [PASS] the raw producer status is carried, not re-derived
+  [PASS] the health tier matches the classifier the Trading panel uses
+  [PASS] a healthy run with an unaccounted tally is still degraded
+  [PASS] a healthy run is not health-degraded
+  [PASS] the two verdicts are independent
+  [PASS] a stale surface still reports the run health it last saw
+  [PASS] an absent summary reports unknown health, never healthy
+  [PASS] paper value from readiness.win_rate
+  [PASS] paper trades from readiness.closed_usable
+  [PASS] paper names its source
+  [PASS] paper names its basis
+  [PASS] paper scope is paper
+  [PASS] paper window is all_time
+  [PASS] paper carries its observation time
+  [PASS] paper with no readiness win_rate is null, not a borrowed journal value
+  [PASS] paper with no readiness win_rate still names its own source
+  [PASS] journal value from overview.journal.win_rate
+  [PASS] journal trades from overview.journal.trade_count
+  [PASS] journal names its source
+  [PASS] journal carries its basis
+  [PASS] journal carries its account scope
+  [PASS] journal carries its window
+  [PASS] journal carries its observation time
+  [PASS] journal with no win_rate is null, not a borrowed readiness value
+  [PASS] journal with no win_rate still names its own source
+  [PASS] paper and journal are two distinct sources
+  [PASS] paper value is not the journal value
+  [PASS] paper trades are not the journal trades
+  [PASS] neither helper mentions the other endpoint
+
+homeWinRate: 22 passed, 0 failed
+  [PASS] retained value is unchanged
+  [PASS] retained identity is unchanged
+  [PASS] retained sourceLabel is unchanged
+  [PASS] retained businessDate is unchanged
+  [PASS] retained observedAt is unchanged
+  [PASS] retained lastRefreshAt is unchanged
+  [PASS] retained freshness is unchanged
+  [PASS] retained transport is RETAINED
+  [PASS] retained receivedAt advances
+  [PASS] retained envelope explains itself
+  [PASS] age is measured from observedAt
+  [PASS] retained observation ages identically
+  [PASS] age grows across repeated 304s
+  [PASS] data clock never moved
+  [PASS] receipt clock tracked each 304
+  [PASS] not stale below threshold
+  [PASS] stale AT the threshold
+  [PASS] stale past the threshold
+  [PASS] retained observation surfaces the retention
+  [PASS] stale + retained renders both facts
+  [PASS] undatable observation has no age
+  [PASS] undatable observation is never stale
+
+retainedObservation: 22 passed, 0 failed
+  [PASS] LIVE_GOVERNED is live
+  [PASS] LIVE_GOVERNED needs no banner
+  [PASS] LIVE_GOVERNED keeps the server reason
+  [PASS] PREVIEW_FIXTURE is not live
+  [PASS] PREVIEW_FIXTURE requires a banner
+  [PASS] PREVIEW_FIXTURE banner is undismissable
+  [PASS] PREVIEW_FIXTURE label names the mode
+  [PASS] FROZEN_SNAPSHOT is not live
+  [PASS] FROZEN_SNAPSHOT requires a banner
+  [PASS] FROZEN_SNAPSHOT banner is undismissable
+  [PASS] FROZEN_SNAPSHOT label names the mode
+  [PASS] UNAVAILABLE is not live
+  [PASS] UNAVAILABLE requires a banner
+  [PASS] UNAVAILABLE banner is undismissable
+  [PASS] UNAVAILABLE label names the mode
+  [PASS] UNKNOWN is not live
+  [PASS] UNKNOWN requires a banner
+  [PASS] UNKNOWN banner is undismissable
+  [PASS] UNKNOWN label names the mode
+  [PASS] missing authority is UNKNOWN
+  [PASS] missing authority is not live
+  [PASS] missing authority still banners
+  [PASS] UNAVAILABLE endpoint is UNKNOWN
+  [PASS] UNAVAILABLE endpoint surfaces the server reason
+  [PASS] a route with no row is UNKNOWN
+  [PASS] a route with no row names itself in the reason
+  [PASS] an unrecognised mode is UNKNOWN, not trusted
+  [PASS] an unrecognised mode is not live
+  [PASS] a malformed surfaces field is UNKNOWN
+  [PASS] the bundled fixture is disclosed
+  [PASS] the fixture path is named
+  [PASS] a fixture may never render as live
+  [PASS] a failed live read does not become live via the fixture
+  [PASS] a failed live read still discloses the fixture
+  [PASS] asking for a different route does not inherit another route verdict
+  [PASS] a mismatched route is not live
+
+surfaceAuthority: 36 passed, 0 failed
+  [PASS] enforced gate reports ENFORCED
+  [PASS] enforced gate lets controls arm
+  [PASS] enforced gate has no disabled reason
+  [PASS] identity is still never verified
+  [PASS] declared-but-unconfigured reports OPEN
+  [PASS] an open door does not arm controls
+  [PASS] the disabled reason names ADMIN_WRITE_TOKEN
+  [PASS] the reason explains declared vs effective
+  [PASS] no declared gate reports OPEN
+  [PASS] no declared gate does not arm controls
+  [PASS] no declared gate says so
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] UNKNOWN surfaces the server reason verbatim
+  [PASS] audit label is marked unverified
+  [PASS] an empty name is not silently accepted
+  [PASS] whitespace is not an operator
+  [PASS] a blank operator falls back to unnamed
+
+operatorBoundary: 25 passed, 0 failed
+  [PASS] 401 is UNAUTHORIZED
+  [PASS] 401 is terminal
+  [PASS] 401 is NOT retryable
+  [PASS] 401 does not raise the reconnect banner
+  [PASS] 401 keeps the last-good body
+  [PASS] 401 says waiting will not help
+  [PASS] 401 never says reconnecting
+  [PASS] 403 is FORBIDDEN
+  [PASS] 403 is terminal
+  [PASS] 403 is NOT retryable
+  [PASS] 403 does not raise the reconnect banner
+  [PASS] 403 keeps the last-good body
+  [PASS] 403 says waiting will not help
+  [PASS] 403 never says reconnecting
+  [PASS] 400 is CLIENT_ERROR
+  [PASS] 400 is terminal
+  [PASS] 400 is not retryable
+  [PASS] 404 is CLIENT_ERROR
+  [PASS] 404 is terminal
+  [PASS] 404 is not retryable
+  [PASS] 409 is CLIENT_ERROR
+  [PASS] 409 is terminal
+  [PASS] 409 is not retryable
+  [PASS] 422 is CLIENT_ERROR
+  [PASS] 422 is terminal
+  [PASS] 422 is not retryable
+  [PASS] 408 is TIMEOUT
+  [PASS] 408 is retryable
+  [PASS] 408 is not terminal
+  [PASS] 425 is TIMEOUT
+  [PASS] 425 is retryable
+  [PASS] 425 is not terminal
+  [PASS] 429 is RATE_LIMITED
+  [PASS] 429 is retryable
+  [PASS] 429 is not terminal
+  [PASS] 500 is SERVER_ERROR
+  [PASS] 500 is retryable
+  [PASS] 500 is not terminal
+  [PASS] 502 is SERVER_ERROR
+  [PASS] 502 is retryable
+  [PASS] 502 is not terminal
+  [PASS] 503 is SERVER_BUSY
+  [PASS] 503 is retryable
+  [PASS] 503 is not terminal
+  [PASS] 504 is SERVER_ERROR
+  [PASS] 504 is retryable
+  [PASS] 504 is not terminal
+  [PASS] 503 does not raise the reconnect banner
+  [PASS] 500 does raise the reconnect banner
+  [PASS] 200 is OK
+  [PASS] 304 is NOT_MODIFIED
+  [PASS] 304 keeps the last-good body
+  [PASS] 304 is not an error to retry
+  [PASS] delta-seconds parses
+  [PASS] zero is honoured, not treated as absent
+  [PASS] an HTTP-date parses to a delay
+  [PASS] a past date clamps to zero
+  [PASS] an absurd delay is capped
+  [PASS] garbage is null, not a guess
+  [PASS] missing is null
+  [PASS] empty is null
+  [PASS] 429 carries the server-directed delay
+  [PASS] 503 carries the server-directed delay
+  [PASS] 401 exposes no retry delay to act on
+  [PASS] an abort is a TIMEOUT
+  [PASS] an abort is retryable
+  [PASS] an abort raises the reconnect banner
+  [PASS] a network error is NETWORK
+  [PASS] a network error is retryable
+  [PASS] a network error keeps the last-good body
+  [PASS] authorization and busy are not the same class
+  [PASS] only one of them is retryable
+  [PASS] only one of them is terminal
+
+httpOutcome: 73 passed, 0 failed
+surfaceProjection: every state a surface can reach
+  [PASS] POPULATED is a measurement
+  [PASS] POPULATED carries its reason
+  [PASS] LEGITIMATE_EMPTY is a measurement
+  [PASS] LEGITIMATE_EMPTY carries its reason
+  [PASS] STALE is a measurement
+  [PASS] STALE carries its reason
+  [PASS] PARTIAL is a measurement
+  [PASS] PARTIAL carries its reason
+  [PASS] DEGRADED is a measurement
+  [PASS] DEGRADED carries its reason
+  [PASS] DISCONNECTED measured nothing
+  [PASS] DISCONNECTED may not render a count
+  [PASS] UNAUTHORIZED measured nothing
+  [PASS] UNAUTHORIZED may not render a count
+  [PASS] FORBIDDEN measured nothing
+  [PASS] FORBIDDEN may not render a count
+  [PASS] MALFORMED measured nothing
+  [PASS] MALFORMED may not render a count
+  [PASS] ERROR measured nothing
+  [PASS] ERROR may not render a count
+  [PASS] LOADING measured nothing
+  [PASS] LOADING may not render a count
+  [PASS] POPULATED shows no notice
+  [PASS] LEGITIMATE_EMPTY shows no notice
+  [PASS] STALE shows a notice
+  [PASS] UNAUTHORIZED shows a notice
+  [PASS] a missing envelope is ERROR not empty
+  [PASS] a missing envelope explains itself
+surfaceProjection: a failed read never renders a number
+  [PASS] failed read yields null not 0
+  [PASS] failed read yields null for a real count
+  [PASS] a real empty renders 0
+  [PASS] a populated count renders
+  [PASS] a non-numeric count is null
+  [PASS] NaN is not a count
+surfaceProjection: conflict scope is per record, never global
+  [PASS] one unresolved record is counted
+  [PASS] the disputed field is named
+  [PASS] an unrelated record in the same store is untouched
+  [PASS] an unrelated store is untouched
+  [PASS] every blocked calculation names the record
+  [PASS] nothing global is blocked
+  [PASS] both originals are preserved
+  [PASS] no conflicts blocks nothing
+  [PASS] a missing conflict envelope blocks nothing but counts nothing
+
+surfaceProjection: 43 passed, 0 failed
+surfaceProjection: data mode is about the bytes, not the transport
+  [PASS] LIVE is operational truth
+  [PASS] STALE is still real data
+  [PASS] MOCK is never operational truth
+  [PASS] DIVERGED is never operational truth
+  [PASS] UNAVAILABLE is not operational truth
+  [PASS] a missing data_mode defaults to UNAVAILABLE
+  [PASS] a missing envelope is UNAVAILABLE
+  [PASS] MOCK still reports its state
+
+surfaceProjection(data mode): 51 passed, 0 failed
+BookTreemap squarify: geometry is always finite
+  [PASS] zero height emits no rects
+  [PASS] zero width emits no rects
+  [PASS] negative height emits no rects
+  [PASS] NaN height emits no rects
+  [PASS] Infinity width emits no rects
+  [PASS] a normal box still lays out every item
+  [PASS] a normal box is entirely finite
+  [PASS] a normal box has no negative dimensions
+  [PASS] all-zero sizes emit no rects
+  [PASS] a NaN size is dropped, not laid out
+  [PASS] an empty item list is fine
+  [PASS] a one-pixel strip is finite
+
+BookTreemap squarify: 12 passed, 0 failed
+  [PASS] breadth_pct carries %
+  [PASS] breadth formats as 27%
+  [PASS] rs_score carries no %
+  [PASS] rs_score formats as 100
+  [PASS] RS20 carries no unit
+  [PASS] rel1m carries no unit
+  [PASS] null reading_name carries no unit
+  [PASS] undefined reading_name carries no unit
+  [PASS] null → null, not "never"
+  [PASS] undefined → null
+  [PASS] empty string → null
+  [PASS] unparseable → null, not NaN
+  [PASS] 30 minutes
+  [PASS] 5 hours
+  [PASS] 17 days
+oscillatorDisplay: 15 passed, 0 failed
+✓ every tone resolves to its three css vars
+✓ legacy verdict vocabulary maps onto tones
+✓ chip recipe and token maps are literal-free
+✓ chart hex is the only literal palette, both themes
+✓ sortRows numeric/text/empties/stable
+✓ nextSort cycles and switches keys
+✓ compareValues
+✓ fillGuide substitutes payload values only
+[metricGuideEnvelope] ok
+[optionsCardV5] ok
+optionsDeskTruth ok
+[optionChainTruth] ok
+optionsGlossary: ok
+optionsDeskModel: ok
+optionsDesk.view: ok (104 literal glossary keys)
+optionsLifecycleDesk: ok
+[entryAlerts] ok
+[alertsCenter] ok
+tradingDeepLink
+  [PASS] default tab Trade AI
+  [PASS] alias Manual ToS → Proposals
+  [PASS] alias Broker Proposals
+  [PASS] plus encoded Open+Trades
+  [PASS] proposal without tab → Proposals
+  [PASS] parse Broker Orders
+  [PASS] parse intent
+  [PASS] proposal implies Proposals
+  [PASS] symbol upper
+  [PASS] proposal id
+  [PASS] intent alone → Broker Orders
+  [PASS] tab synced
+  [PASS] proposal cleared off Proposals
+  [PASS] symbol kept for Open Trades
+  [PASS] pq_* cleared leaving Proposals
+  [PASS] pq kind
+  [PASS] pq rr
+  [PASS] pq view expired
+  [PASS] pq held
+  [PASS] pq page
+  [PASS] intent cleared
+  [PASS] four visible tabs
+  [PASS] Entry Desk → Proposals
+  [PASS] Entry Desk → section path-a
+  [PASS] Entry Desk keeps symbol
+  [PASS] Manual%20ToS → Proposals path-a
+  [PASS] Broker Recon → Open Trades
+  [PASS] Broker Recon → recon drawer
+  [PASS] Schwab Accounts → Broker Orders desk
+  [PASS] Broker Orders desk still reachable from approval links
+  [PASS] Scalp leaves the hub with its symbol
+  [PASS] Scalp root
+  [PASS] ATM Controls → System Broker Access
+  [PASS] Execution → Journal
+  [PASS] in-hub tabs never redirect
+  [PASS] unknown tab → Trade AI
+  [PASS] section dropped leaving Proposals
+  [PASS] drawer dropped leaving Open Trades
+  [PASS] symbol kept for the Options desk
+  [PASS] classic view + otab dropped leaving Options
+  [PASS] classic view kept on Options
+  [PASS] Entry Desk → Proposals + path-a, symbol kept
+  [PASS] Manual ToS → Proposals + path-a
+  [PASS] Broker Recon → Open Trades + recon drawer
+  [PASS] Schwab Accounts → Broker Orders + monitor section
+  [PASS] Broker Proposals alias → Proposals, proposal id kept
+  [PASS] case variant → canonical spelling
+  [PASS] explicit section is not overwritten
+  [PASS] canonical URL is left alone (no loop)
+  [PASS] rewritten URL is itself canonical
+  [PASS] tabs that left the hub are not rewritten here
+  [PASS] no tab / unknown tab left alone
+  [PASS] the rewritten tab parses to the same desk
+
+53 passed, 0 failed
+tradingCommandTriage
+  [PASS] has unprotected priority
+  [PASS] has near stop
+  [PASS] has route ready
+  [PASS] has blocked
+  [PASS] has recon
+  [PASS] has standing 2fa
+  [PASS] V sample on unprot
+  [PASS] route ready count 2
+  [PASS] recon count 3
+  [PASS] recon opens the Open Trades reconciliation drawer
+  [PASS] no paper when queue active
+  [PASS] all clear when quiet
+  [PASS] empty sources → no fake clear
+  [PASS] unprotected excludes fund / small / write-off
+  [PASS] near-stop samples are the near rows
+
+15 passed, 0 failed
+openTradesDesk
+  [PASS] write-off SRNE is out of the table
+  [PASS] headline excludes the write-off
+  [PASS] headline unrealized = served total (write-off excluded)
+  [PASS] small positions folded into the drawer
+  [PASS] table keeps the 10 larger positions
+  [PASS] protect-first is largest dollar exposure first
+  [PASS] protect-first only rows with no working stop
+  [PASS] mutual fund is not "no working stop"
+  [PASS] fractional moomoo NVDA is n/a
+  [PASS] working stop text from the live mark
+  [PASS] XLB proximity from the live mark
+  [PASS] near when the served flag says so
+  [PASS] paper row badged
+  [PASS] account label from broker_accounts
+  [PASS] stale mark keeps its age, day move hidden
+  [PASS] filter unprot
+  [PASS] filter paper
+  [PASS] filter by account
+  [PASS] sort by stop puts unprotected first
+  [PASS] sort by P/L worst first
+  [PASS] stop history names the broker order
+  [PASS] stop history partial coverage
+  [PASS] stop history fallback
+  [PASS] money signed
+  [PASS] age text
+  [PASS] unknown basis shows as pending, not zero
+
+26 passed, 0 failed
+tradeAiOpportunities
+  [PASS] decisions normalised
+  [PASS] float from float_m
+  [PASS] zero float is unknown, not micro
+  [PASS] empty catalyst is null, never ""
+  [PASS] Gate 2 fields are null until served
+  [PASS] six tiles
+  [PASS] GO tile counts GO rows
+  [PASS] decision tiles name today's universe, not the latest run
+  [PASS] grade tile disabled without Gate 2
+  [PASS] float tile counts < 5M
+  [PASS] float filter
+  [PASS] combined filters
+  [PASS] sector filter
+  [PASS] chips name each filter
+  [PASS] float sort ascending, unknown last
+  [PASS] default sort puts GO first
+  [PASS] rvol sort descending
+  [PASS] float band
+  [PASS] formatting
+  [PASS] latest alert row found case-insensitively
+  [PASS] L2 watched with state
+  [PASS] spread chip from l2.spread_bps
+  [PASS] depth ratio chip
+  [PASS] served signal lit
+  [PASS] served signal not lit
+  [PASS] exit signals are not served → null
+  [PASS] summary counts lit entry signals
+  [PASS] unwatched symbol says so
+  [PASS] stale book flagged
+  [PASS] SAIQ: served verdict is UNVERIFIED_HEADLINE, never the catalyst
+  [PASS] SAIQ: readiness parsed — 4/5, one missing line naming Hermes
+  [PASS] no served verdict + verified=false → unverified headline (fallback)
+  [PASS] fallback never invents VERIFIED
+  [PASS] no headline → UNKNOWN
+  [PASS] readiness absent → null
+  [PASS] AT veto is named as AT, not as L2
+  [PASS] lit count is over computed signals (2), not 5
+  [PASS] veto reasons in the tooltip
+  [PASS] unwatched brief
+
+39 passed, 0 failed
+  [PASS] finished time is rendered in ET
+  [PASS] age is whole minutes
+  [PASS] face label states finished + age
+  [PASS] 3 min old in window is ok
+  [PASS] slot 0700 finishing 08:52 is a re-run
+  [PASS] re-run tooltip says the data is not from 07:00
+  [PASS] 7 min old in window is amber
+  [PASS] exactly 10 min is still amber
+  [PASS] 11 min old in window is red
+  [PASS] 2 h old in window is red
+  [PASS] outside the window (13:00) a 4 h old run is neutral
+  [PASS] weekend is outside the window
+  [PASS] 05:59 ET is outside, 06:00 inside, 12:00 outside
+  [PASS] a run finishing 07:05 for slot 0700 is not a re-run
+  [PASS] naive stamp: age unknown, never assumed UTC/ET
+  [PASS] missing stamp is amber and says so
+  [PASS] future stamp clamps to 0 (clock skew)
+  [PASS] ageText formats hours
+  [PASS] latest-run phrase from SetupRunSummary
+  [PASS] latest-run phrase is null without a summary
+  [PASS] scan_freshness.latest_scan_at preferred over latest_run_timestamp
+  [PASS] scan label says latest scan, not finished
+  [PASS] server STALE forces red
+  [PASS] falls back to the run stamp when scan_freshness is absent
+
+scanRunAge: 24 passed, 0 failed
+cioHubTabs.test.ts: ok
+cioDecisionLineage.test.ts: ok
+cioDecisionLineage.test.ts deep links: ok
+cioDecisionLineage.test.ts stage values: ok
+cioDecisionLineage.test.ts routerPath: ok
+agentCalibration.test: ok
+  [PASS] malformed rows are dropped
+  [PASS] recorded decision link stays RECORDED
+  [PASS] absent decision link is NOT_RECORDED
+  [PASS] RECORDED state without ids is not trusted
+  [PASS] decision href targets CIO decision lineage
+  [PASS] research links url carries filters
+  [PASS] internal hrefs are router-relative (no /v3/ prefix)
+  [PASS] no payload keeps NOT EXPOSED BY READ CONTRACT
+  [PASS] recorded wake is RUNTIME
+  [PASS] unattributable memory is NOT_EXPOSED
+  [PASS] agent with no rows is NOT_RECORDED, never RUNTIME
+  [PASS] decision count rendered
+  [PASS] attributed memory retrieval names count, memories and wake
+  [PASS] agent without attributed retrievals stays NOT_RECORDED
+
+14 passed, 0 failed
+cioProjection.test.ts: ok
+  [PASS] SHADOW remains an explicit runtime state
+  [PASS] FIXTURE remains an explicit runtime state
+  [PASS] STALE remains an explicit runtime state
+  [PASS] UNAVAILABLE remains an explicit runtime state
+  [PASS] NOT_CONNECTED is disclosed as UNAVAILABLE
+  [PASS] adapter cannot promote NOT_CONNECTED to LIVE
+
+6 passed, 0 failed
+cioOperatorArtifacts.test.ts: ok
+  [PASS] NO_LEDGER is an explicit state, not an empty success
+  [PASS] NO_LEDGER carries a warning tone
+  [PASS] NO_LEDGER keeps the server note
+  [PASS] a dated projection is not UNDATED
+  [PASS] no payload is UNAVAILABLE
+  [PASS] no payload is UNDATED
+  [PASS] no payload renders no rows
+  [PASS] transport ERROR is surfaced
+  [PASS] OK status
+  [PASS] rows are projected
+  [PASS] counts partition by phase
+  [PASS] epoch recorded_at becomes ISO and an age
+  [PASS] ISO recorded_at parses
+  [PASS] missing recorded_at is null, never 0
+  [PASS] consumer and receipt id are joined
+  [PASS] artifact ref renders store:ref
+  [PASS] artifact alias (projection field) renders
+  [PASS] origin sha is shortened
+  [PASS] refusal reason is kept verbatim
+  [PASS] stale retained transport is labelled
+  [PASS] wave B spotlights project
+  [PASS] lane filter keeps research-intake only
+  [PASS] laneCounts include incident-fanin
+  [PASS] tone: CONSUMED success
+  [PASS] tone: ARTIFACT_WRITTEN info
+  [PASS] tone: STARTED warning
+  [PASS] tone: REFUSED danger
+  [PASS] tone: unknown state is neutral, never success
+  [PASS] phase: DEAD_LETTER is failed
+  [PASS] phase: unknown is other
+
+coordinationEvents: 30 passed, 0 failed
+  [PASS] no payload is UNAVAILABLE with a danger tone
+  [PASS] an unavailable projection keeps the server note
+  [PASS] legacy response is labelled sample with unknown completeness
+  [PASS] counts flatten per outbox and state, largest first
+  [PASS] rows keep state, reason and age
+  [PASS] tones: sent success, suppressed neutral, withdrawn danger, recorded warning
+outboxProjection: 6 passed, 0 failed
+  [PASS] full window count is independent of sampled details
+  [PASS] retained error cannot expose current counts
+  [PASS] unknown major is unavailable
+  [PASS] UNAVAILABLE explicit null never treats capture as last-good
+  [PASS] UNAVAILABLE retained explicit null never invents last-good on API error
+  [PASS] STALE explicit null never treats capture as last-good
+  [PASS] STALE retained explicit null never invents last-good on API error
+  [PASS] OK explicit null never treats capture as last-good
+  [PASS] OK retained explicit null never invents last-good on API error
+  [PASS] no payload is UNAVAILABLE with a danger tone
+  [PASS] a partial board names the dead source
+  [PASS] package rows carry the pending count and a long ttl label
+  [PASS] OK label carries the row total and the as-of clock
+  [PASS] expiring rows are flagged from the server list
+  [PASS] tones: ≤10 min danger, ≤30 min warning, expired danger
+  [PASS] ttl labels
+  [PASS] grant rows keep uses left
+  [PASS] counts flatten per kind and state
+  [PASS] state tones without a clock
+approvalBoard: 10 passed, 0 failed
+  [PASS] no payload is UNAVAILABLE with a danger tone
+  [PASS] a missing board file is NO BOARD (warning), not an error
+  [PASS] phase chips always cover the five phases
+  [PASS] OK label carries the lane count; a risk turns the status chip warning
+  [PASS] phase tones: CUT_OVER success, CANARY info, SHADOW ai
+  [PASS] last run label and tone
+  [PASS] signal age labels and staleness (> 2x cadence)
+  [PASS] readiness tones
+  [PASS] rollback and registry flags
+  [PASS] tranche chips: a risk is danger, all cut over is success
+  [PASS] helpers without a run
+  [PASS] a 13-day-old board is STALE with its age in the banner
+  [PASS] a fresh live board is not stale and shows 13 cutover / 47 canary / 47 shadow
+  [PASS] boundary: exactly 24 h is fresh, just over is stale
+  [PASS] undated or server-flagged boards are stale
+  [PASS] a file fallback says the live build failed
+migrationBoard: 16 passed, 0 failed
+coordination truth assertions passed
+n8nTodayProjection: unavailable/stale/partial, exact source coverage, v1/v2 and unknown-version cases passed
+projectionReadProtocol: explicit major, separate URL cache keys and closed read catalogue passed
+buildIdentity: loaded/served identities remain distinct; malformed/missing metadata is unavailable
+rotation publication display contract: passed
+rotation passive expiry and resume: passed
+{
+  "source_root": "/home/johnclaw/wt-codex-watch-row-redesign-20261024",
+  "results": [
+    {
+      "name": "ready control",
+      "passed": true
+    },
+    {
+      "name": "unavailable hides old advice",
+      "passed": true
+    },
+    {
+      "name": "stale hides old advice",
+      "passed": true
+    },
+    {
+      "name": "unversioned producer is unavailable",
+      "passed": true
+    },
+    {
+      "name": "expired ready is stale",
+      "passed": true
+    },
+    {
+      "name": "fetch error supersedes retained ready",
+      "passed": true
+    }
+  ],
+  "passed": 6,
+  "failed": 0
+}
+  [PASS] no payload is UNAVAILABLE with null counts, never zero
+  [PASS] a failed first fetch is UNAVAILABLE with the error
+  [PASS] first load is LOADING, not zero
+  [PASS] a server UNAVAILABLE keeps its reason and null counts
+  [PASS] a malformed OK (missing counts) is UNAVAILABLE
+  [PASS] a fresh OK carries the server counts and backlog age
+  [PASS] an old answer is STALE but keeps the last counts
+  [PASS] a failed refresh over a kept payload is STALE
+  [PASS] age labels
+  [PASS] hook stale alone wins over retained OK
+  [PASS] last good age is source age
+  [PASS] unversioned is unavailable
+  [PASS] future is unavailable
+  [PASS] incomplete is unavailable
+  [PASS] fractional is unavailable
+  [PASS] contradictory is unavailable
+  [PASS] unmeasured is unavailable
+  [PASS] unbounded is unavailable
+  [PASS] window is unavailable
+  [PASS] reaped unclaimed copies are their own count, not failed
+  [PASS] an older summary without the field is still OK, reaped unknown
+  [PASS] telegram send failures are a separate figure; delivery failed stays 0
+  [PASS] archive holds are carried as held, not failed
+  [PASS] by-channel detail sorted by count
+  [PASS] an unmeasured telegram ledger is null with its error, never zero
+  [PASS] no payload: telegram figures null
+commsDeliveryHealth: 26 passed, 0 failed
+  [PASS] live backlog is CRIT with every reason
+  [PASS] CRIT tone is danger
+  [PASS] small queue is OK
+  [PASS] WARN on backlog; drain computed when absent
+  [PASS] measured=false is UNAVAILABLE, never zero
+  [PASS] no payload is UNAVAILABLE; loading is LOADING
+overnightQueueHealth: 6 passed, 0 failed
+  [PASS] old receipt: counts, no rules, note kept
+  [PASS] BLOCK carries per-rule rows
+  [PASS] BLOCK tone danger, STALE warning
+  [PASS] unknown status is UNAVAILABLE
+  [PASS] NO_RECEIPT is not green
+  [PASS] no payload UNAVAILABLE
+dataPlausibility: 6 passed, 0 failed
+  [PASS] sorted by count, totals
+  [PASS] empty error text is null
+  [PASS] zombie-cleared count carried; absent is null
+  [PASS] UNAVAILABLE is not an empty OK list
+  [PASS] empty OK list is OK with 0
+  [PASS] loading
+pipelineFailures: 6 passed, 0 failed
+  [PASS] counts by severity; unknown severities dropped
+  [PASS] sorted P0 first; where made router-relative
+  [PASS] empty + every source answered = CLEAR
+  [PASS] empty but a source missing is never CLEAR
+  [PASS] fetch error with no payload is UNAVAILABLE
+  [PASS] loading
+  [PASS] a failed refresh keeps items as STALE
+  [PASS] old answer is STALE
+  [PASS] malformed is UNAVAILABLE
+  [PASS] routerPath
+  [PASS] tones
+needsAction: 11 passed, 0 failed
+  [PASS] ITEMS; junk category/severity dropped; server order kept
+  [PASS] counts per tab
+  [PASS] where made router-relative
+  [PASS] NO_RECEIPT is answered, not unavailable
+  [PASS] rolled-up totals carried
+  [PASS] numbers carried with basis
+  [PASS] top 7 by default
+  [PASS] show all
+  [PASS] tab filter
+  [PASS] empty + all answered = CLEAR
+  [PASS] empty with a source down is never CLEAR
+  [PASS] error without payload = UNAVAILABLE
+  [PASS] loading
+  [PASS] failed refresh keeps items as STALE
+  [PASS] old answer is STALE
+  [PASS] wrong schema is UNAVAILABLE
+  [PASS] numbers unavailable never zero
+  [PASS] routerPath
+  [PASS] market hours detection
+  [PASS] 50 min old in market hours is STALE
+  [PASS] 10 min old is fresh
+  [PASS] server STALE wins
+  [PASS] no observation time is STALE
+  [PASS] after hours, 50 min is not STALE
+  [PASS] movers sorted by absolute $; zero dropped; widths relative
+  [PASS] movers sum + total for the rest-of-book line
+  [PASS] all-accounts row prefers display_change (ex-transfers) and flags ≈
+  [PASS] account rows by NAME; 1D falls back to overview
+  [PASS] fallback to today_by_account when performance missing
+  [PASS] cash pct
+  [PASS] formatting
+  [PASS] briefing object → its content
+  [PASS] briefing never [object Object]
+  [PASS] briefing plain string kept
+  [PASS] briefing JSON string parsed
+  [PASS] briefing truncated with ellipsis
+  [PASS] briefing empty/null → empty
+  [PASS] ET stamp parsed (EDT)
+  [PASS] ET stamp parsed (EST)
+  [PASS] ISO still parsed
+  [PASS] garbage is NaN
+  [PASS] ET-stamped FRESH envelope after hours is not STALE / not age unknown
+  [PASS] observed_at_utc preferred
+  [PASS] movers: one bar per symbol
+  [PASS] movers: per-symbol sum
+  [PASS] SPCX grouped: one row, 2 accounts, sum +1,995
+  [PASS] SPCX parts keep the account names and amounts
+  [PASS] single-account rows carry their account name
+  [PASS] footer sums unchanged: shown = sum of groups; rest = day − shown
+  [PASS] no account number in any label
+  [PASS] do-now carries only evidenced account names, deduped and number-safe
+  [PASS] account evidence preserves action, risk and queue order
+  [PASS] no evidence never infers an account from symbol
+  [PASS] safe server label remains available without a key
+homeDoNow: 54 passed, 0 failed
+accountLabels
+  [PASS] rollover name
+  [PASS] taxable name is "Schwab Individual"
+  [PASS] holdings alias schwab_roth → Schwab Roth IRA
+  [PASS] paper name
+  [PASS] every configured name is digit-free
+  [PASS] names are unique
+  [PASS] a raw account number is never echoed
+  [PASS] a masked number is never echoed
+  [PASS] a server label with a masked number is ignored
+  [PASS] a digit-free server label wins
+  [PASS] unknown key is title-cased
+  [PASS] empty → unlabelled
+  [PASS] row with account_id
+  [PASS] row with account
+  [PASS] SPCX grouped with two labelled parts
+  [PASS] SPCX parts keep both names
+  [PASS] single-account symbol not multi
+  [PASS] multiAccountSymbols finds SPCX only
+  [PASS] badge text
+
+19 passed, 0 failed
+  [PASS] Problems = actionable states only
+  [PASS] NOT_MEASURED is never a problem, even with drift flags
+  [PASS] EXPECTED_SILENT and INFRASTRUCTURE are never problems
+  [PASS] NO_SIGNAL with a declared reason is not a problem
+  [PASS] a Not measured filter exists and shows only NOT_MEASURED
+  [PASS] All is unchanged
+
+schedulerOperations: 6 passed, 0 failed
+  [PASS] no payload is UNAVAILABLE, no rows, never OK
+  [PASS] first load is LOADING
+  [PASS] failed first fetch keeps the error
+  [PASS] server UNAVAILABLE is UNAVAILABLE
+  [PASS] empty items is UNAVAILABLE, not OK
+  [PASS] UNKNOWN row shows UNKNOWN, not a value or zero
+  [PASS] UNKNOWN is never toned success
+  [PASS] WARN row keeps its count and reason
+  [PASS] overall is the worst row (WARN beats UNKNOWN and OK)
+  [PASS] groups follow the platform order
+  [PASS] counts label
+  [PASS] an unrecognised status is UNKNOWN, never OK
+  [PASS] as_of older than 2 min is STALE
+  [PASS] missing as_of is STALE, not OK
+  [PASS] a failed refresh over a kept payload is STALE
+  [PASS] a kept UNKNOWN stays UNKNOWN on refresh failure
+  [PASS] CRIT dominates and tones danger
+  [PASS] worstOf empty is UNKNOWN
+  [PASS] value 0 from a real measurement is shown as 0
+platformHealth: 19 passed, 0 failed
+  [PASS] summary/queue/events paths
+  [PASS] stop path is the served STOP endpoint
+  [PASS] train id pattern (API §6)
+  [PASS] train detail path
+  [PASS] no payload, loading → LOADING
+  [PASS] no payload, error → UNAVAILABLE with reason
+  [PASS] fresh response → OK
+  [PASS] undated response → STALE
+  [PASS] old response → STALE with age
+  [PASS] kept response after failed refresh → STALE
+  [PASS] field OK
+  [PASS] field UNAVAILABLE keeps reason
+  [PASS] field missing → UNAVAILABLE
+  [PASS] unknown freshness word → UNAVAILABLE, never OK
+  [PASS] field STALE is STALE
+  [PASS] OK field over a STALE transport is STALE
+  [PASS] missing count is UNAVAILABLE, not 0
+  [PASS] measured 0 shows 0
+  [PASS] ready/held from queue_counts
+  [PASS] next window: time, role, countdown, not armed
+  [PASS] last outcome keeps its class
+  [PASS] current train derived from queue in-train row
+  [PASS] policy NOT_CONFIGURED, not armed, warning
+  [PASS] stop CLEAR → not stopped
+  [PASS] not migrated: counts UNAVAILABLE with reason, never 0
+  [PASS] not migrated: current train UNAVAILABLE
+  [PASS] not migrated: last outcome UNAVAILABLE
+  [PASS] degraded list names the unavailable fields
+  [PASS] no_outcome_recorded is a real empty
+  [PASS] summary down: every field UNAVAILABLE
+  [PASS] summary down: STOP fails closed (API rule 3)
+  [PASS] UNREADABLE stop is effective
+  [PASS] stale summary labels values STALE
+  [PASS] census COMPLETE + open = sum → OK
+  [PASS] zero buckets hidden, largest first
+  [PASS] server INCOMPLETE → INCOMPLETE with reasons
+  [PASS] open ≠ sum → INCOMPLETE even if server says COMPLETE
+  [PASS] invariant_holds missing → INCOMPLETE
+  [PASS] null bucket count → INCOMPLETE
+  [PASS] census UNAVAILABLE (no receipt)
+  [PASS] census STALE (>36 h, server verdict)
+  [PASS] queue rows
+  [PASS] age from age_seconds
+  [PASS] age from submitted_at when age_seconds is null
+  [PASS] undated row says UNDATED
+  [PASS] held risk is danger; risk reason kept
+  [PASS] eligible is success; unknown risk never success
+  [PASS] missing title says UNAVAILABLE
+  [PASS] dependencies rendered
+  [PASS] queue not migrated → not usable, store state kept
+  [PASS] queue transport down → not usable
+  [PASS] each design outcome is its own category
+  [PASS] in-progress train counted apart
+  [PASS] PR-subject events are not trains
+  [PASS] newest first
+  [PASS] merged queue state is not merged-not-live
+  [PASS] rollback failed is never rolled back
+  [PASS] history_class words map
+  [PASS] unknown outcome is UNKNOWN
+  [PASS] members from payload, else UNAVAILABLE
+  [PASS] bad sha is UNAVAILABLE
+  [PASS] events unavailable → not usable
+  [PASS] train detail SHAs
+  [PASS] members in freeze order
+  [PASS] timeline ascending
+  [PASS] outcome from history_class while in progress
+  [PASS] elapsed and checks
+  [PASS] served ≠ candidate is flagged
+  [PASS] served unknown is null, not a match
+  [PASS] missing train → null
+  [PASS] no request, latch absent → not stopped, no step done
+  [PASS] resume command is the host CLI
+  [PASS] requested only
+  [PASS] acknowledged needs the server read-back, with its timestamp
+  [PASS] acknowledged is not yet stopped without an independent read
+  [PASS] stopped after independent read with no window running
+  [PASS] latch body shown (actor, reason, time)
+  [PASS] a status read older than the acknowledgement never confirms stopped
+  [PASS] window mid-run → settling, not stopped
+  [PASS] stale latch read never confirms stopped
+  [PASS] status unavailable → treat as STOPPED, never "not stopped"
+  [PASS] refusal shown with its code; not acknowledged
+  [PASS] transport failure is unconfirmed, not success
+  [PASS] unreadable latch is an effective STOP under a fail-closed runner
+  [PASS] unreadable latch under main's fail-open runner says NOT SET, never "stopped"
+  [PASS] reason required
+  [PASS] idempotency key matches the server pattern
+releaseTrain: 87 passed, 0 failed
+releasesSchedules: OK/STALE/UNAVAILABLE sections, KPI never-zero, PR/verify/stage labels passed
+  [PASS] linked trade says From recommendation with the short id and source
+  [PASS] exact confidence is labelled and toned success
+  [PASS] plan shows zone, stop, target
+  [PASS] R achieved is signed with two decimals
+  [PASS] planned R:R
+  [PASS] target outcome
+  [PASS] zone confidence is info, proposal label
+  [PASS] window-only is warning and its chip says timing
+  [PASS] unmatched trade reads as your own trade
+  [PASS] own trade has no plan and an explained missing R
+  [PASS] wrong-side stop explains the missing R
+  [PASS] journal stop is disclosed
+  [PASS] migration not applied → unknown, never own
+  [PASS] not linked yet → unknown, never own
+  [PASS] missing status → unknown even with a block
+  [PASS] shortRecId
+  [PASS] formatR / formatRr nulls
+  [PASS] single-price plan prints one entry
+  [PASS] penny prices keep 4 dp
+
+recommendationOrigin: 19 passed, 0 failed
+tradeJourneyModel: all checks passed
+watchProspectsModel: all checks passed
+watchListsModel: ok
+  [PASS] canAct: ACTIVE + store OK + supported kind
+  [PASS] canAct refuses when policy NOT_ACTIVE (inert)
+  [PASS] canAct refuses UNREADABLE policy, missing state, unmigrated store
+  [PASS] canAct refuses unsupported and unknown kinds, with the host-terminal reason
+  [PASS] kindFor finds by name, null otherwise
+  [PASS] isTerminal
+  [PASS] phraseMatches: whitespace-collapsed exact compare
+  [PASS] base64url round trip (all byte values, every length mod 3)
+  [PASS] toPublicKeyRequestOptions decodes challenge and allowCredentials ids (bare or {publicKey})
+  [PASS] toPublicKeyCreationOptions decodes challenge, user.id, excludeCredentials ids
+  [PASS] credentialToJSON encodes every binary field base64url
+  [PASS] validateSetting enforces type, range and choices
+  [PASS] windowCovers: an open window covers an ordinary risky kind
+  [PASS] windowCovers refuses always-fresh kinds, sudo settings, safe kinds, no token and inert/closed windows
+  [PASS] fmtRemaining
+  [PASS] killSwitchSummary is fail-closed and reads the global switch
+opsControls: 16 passed
+  [PASS] remediation poll is 5 minutes
+  [PASS] visible document is visible
+  [PASS] hidden document is not visible
+  [PASS] no document counts as visible
+  [PASS] hidden then visible notified once each
+  [PASS] unsubscribe removes the listener
+  [PASS] no notification after unsubscribe
+
+pageVisibility: 7 passed, 0 failed
+  [PASS] humanize: the operator example — weekdays every 15 min in market hours
+  [PASS] humanize: single times, lists and hourly windows
+  [PASS] humanize: all-day cadences, days of month, names, keywords
+  [PASS] humanize: refuses what it cannot read (never guesses)
+  [PASS] extractCronExpr skips a multi-word paused note; startsWithCron rejects it
+  [PASS] parsePausedLine: SPCX convention keeps the incident in the reason and is not page-resumable
+  [PASS] agree: ACTIVE+ACTIVE running, PAUSED+PAUSED paused, ABSENT+RETIRED retired and quiet
+  [PASS] mismatch: ACTIVE + registry RETIRED / PAUSED / NEVER_SCHEDULED
+  [PASS] mismatch: ABSENT + registry ACTIVE, unless n8n runs it live
+  [PASS] mismatch: PAUSED + registry ACTIVE; page-paused line is resumable
+  [PASS] no mismatch: ABSENT + registry PAUSED; PAUSED + RETIRED is retired
+  [PASS] AMBIGUOUS: uses match_counts when present, never acts, still flags a disagreement
+  [PASS] registry expression with several schedules is humanized part by part
+  [PASS] filters, counts and search
+opsControlsJobs: 14 passed
+  [PASS] summary strip counts from the rows
+  [PASS] verdict labels: operator-approved row with a pending PR is said so, never "approved"
+  [PASS] writer wording: single vs not consolidated, with today's count and target
+  [PASS] freshness: measured / stale / missing / declared-column mismatch / unavailable
+  [PASS] filters and order: not ready first, unchecked last
+  [PASS] finding and scan wording
+  [PASS] explainer says what approval does and does not do
+opsControlsData: 7 passed
+  [PASS] health never failed → endpoint-only, no recover
+  [PASS] one OK probe is not enough
+  [PASS] outage then two OK → recover
+  [PASS] flapping resets the OK streak
+  [PASS] outage remembered across the streak
+reconnectProbe: 5 passed, 0 failed
+  [PASS] never cuts inside a number
+  [PASS] ends with ellipsis when clipped
+  [PASS] short text untouched
+  [PASS] null-safe
+  [PASS] whitespace collapsed
+clipText: 5 passed, 0 failed
+  [PASS] home is home
+  [PASS] rail hub
+  [PASS] /intelligence is not Home
+  [PASS] /portfolio/re-entry under Portfolio section
+  [PASS] /watch/intelligence/AAPL stays Watch
+  [PASS] /watch-legacy is not Watch or Home
+  [PASS] unknown path does not claim Home
+  [PASS] every off-rail hub resolves to itself
+navLocate: 8 passed, 0 failed
+  [PASS] every stage is a kanban column, cards land in their stage
+  [PASS] older server without lifecycle fields: stage derived from status + PR
+  [PASS] finished = released, abandoned, or done with no PR in flight
+  [PASS] filters by vendor and by stage (a stage filter shows finished cards of that stage)
+  [PASS] CI label, tone and tooltip
+  [PASS] PR label
+  [PASS] lock state: held, free after merge, stale not protected
+  [PASS] timeline lists reached stages in order with times
+  [PASS] age and warning
+  [PASS] worklog plan progress chip
+  [PASS] task board columns, owner and cost/time
+agentClaimLifecycle: 11 passed
+  [PASS] six stage columns; unknown stage lands in open
+  [PASS] filters: source, stage, holder prefix, text
+  [PASS] take command only for open board tasks
+  [PASS] design and phase progress, status tone
+workBoard: 4 passed
+  [PASS] stage in plain words, corrected by what a fire really does
+  [PASS] glossary covers every word on the tab and states the live-list rule
+  [PASS] last run: ✓ / ✗ / skipped / never / not measured, with time-ago and the reason in the tooltip
+  [PASS] time-ago / time-until
+  [PASS] health, failures badge, runs, next run
+  [PASS] promotion readiness labels carry the missing evidence
+  [PASS] filters, counts, search, summary strip and sort
+opsControlsN8n: 7 passed
+  [PASS] UTC-midnight widened date is date-only
+  [PASS] Z form is date-only
+  [PASS] zero fraction is date-only
+  [PASS] bare date is date-only
+  [PASS] a real stamp is not date-only
+  [PASS] non-zero fraction at midnight is a real stamp
+  [PASS] midnight in another zone is a real stamp
+  [PASS] null / number are not date-only
+  [PASS] monthDay
+  [PASS] monthDay January
+  [PASS] date-only renders as a date, not 20:00 ET the day before
+  [PASS] bare date renders the same
+  [PASS] zoned UTC stamp renders in ET (EDT)
+  [PASS] time-only form
+  [PASS] EST after the November change
+  [PASS] offset stamp renders in ET
+  [PASS] unzoned stamp is shown as published, no zone assumed
+  [PASS] missing → null
+  [PASS] blank → null
+  [PASS] garbage passes through clipped
+  [PASS] fmtDeskTimestamp date-only
+  [PASS] fmtDeskTimestamp bare date
+  [PASS] fmtDeskTimestamp real stamp still formats as a time
+asOfDisplay: 23 passed, 0 failed
+  [PASS] fib_retracement_bounce
+  [PASS] acronym kept upper-case
+  [PASS] REIT acronym
+  [PASS] assessment maintain_current
+  [PASS] assessment review_risk_reward
+  [PASS] minor word stays lower-case mid-label
+  [PASS] kebab case
+  [PASS] single word capitalised
+  [PASS] already human text unchanged
+  [PASS] mixed case unchanged
+  [PASS] null / empty → empty string
+  [PASS] looksLikeIdentifier
+  [PASS] TRADING value
+  [PASS] TRADING value no longer repeats "trades"
+  [PASS] TRADING without count
+  [PASS] TRADING without P&L
+  [PASS] TRADING face without a journal win rate
+  [PASS] price source short
+  [PASS] unknown price source readable
+  [PASS] price stamp face
+  [PASS] price stamp face fits the 210 px stamp column (≤ 40 chars)
+  [PASS] price stamp degraded
+  [PASS] price stamp without coverage
+  [PASS] slot clock
+  [PASS] VIX from a scanner run
+  [PASS] VIX from a feed
+  [PASS] VIX source unknown
+  [PASS] reason chips
+  [PASS] duplicate meanings collapse
+  [PASS] unknown code shown as words
+displayLabels: 30 passed, 0 failed
+  [PASS] URL params round-trip and unknown values are dropped
+  [PASS] finished items hidden by default; toggle and Live today show them
+  [PASS] presets: Needs me, Queued, Waiting for batch, Blocked/red
+  [PASS] filters: stage, RAG, owner, vendor, design, batch, text (files too)
+  [PASS] summary strip: per-stage counts of unfinished items, red/amber, Needs me
+  [PASS] Queued section: free tasks by priority, green PRs not batched, operator to-dos
+  [PASS] card actions follow the server list; RAG tones; labels
+  [PASS] commands: one endpoint, the actor is never in the body; split grammar
+workPipeline: 8 passed
+  [PASS] approvals carry the operator words; merge does not
+  [PASS] a disabled kind cannot create a request and says why
+  [PASS] typed phrase: whitespace collapsed, otherwise exact
+workPipelineTier2: 3 passed
+askCioModel: all checks passed
+vite v5.4.21 building for production...
+<script src="/v3/cc-boot.js"> in "/index.html" can't be bundled without type="module" attribute
+transforming...
+✓ 1546 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               0.64 kB │ gzip:     0.35 kB
+dist/assets/index-Du9qpuWR.css               67.80 kB │ gzip:    12.92 kB
+dist/assets/OpportunityModal-CMn_RYlX.js     22.30 kB │ gzip:     7.45 kB
+dist/assets/index-BXUQMtep.js             5,524.41 kB │ gzip: 1,510.96 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 6.41s

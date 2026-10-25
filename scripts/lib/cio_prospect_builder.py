@@ -420,9 +420,9 @@ def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[
                                            "not_read (no read-only db_query injected)")}
     try:
         try:
-            from scripts.lib.data_broker.catalyst_record import get_catalyst_records_bulk
+            from scripts.lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk
         except ImportError:  # scripts/ on sys.path
-            from lib.data_broker.catalyst_record import get_catalyst_records_bulk  # type: ignore
+            from lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk  # type: ignore
         by = get_catalyst_records_bulk(db_query, days=CATALYST_WINDOW_DAYS) or {}
     except Exception as exc:  # noqa: BLE001 — reported, never invented
         return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
@@ -456,9 +456,9 @@ def load_directive_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict
                                       None, "not_read (no read-only db_query injected)")}
     try:
         try:
-            from scripts.lib.data_broker.watch_intelligence import active_ticker_directives
+            from scripts.lib.data_broker.watch_directives_readonly import active_ticker_directives
         except ImportError:  # scripts/ on sys.path
-            from lib.data_broker.watch_intelligence import active_ticker_directives  # type: ignore
+            from lib.data_broker.watch_directives_readonly import active_ticker_directives  # type: ignore
         rows = active_ticker_directives(strict=True, db_query=db_query) or []
     except Exception as exc:  # noqa: BLE001 — reported, never invented
         return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
@@ -551,7 +551,11 @@ def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[s
                       else hc.get("catalyst_summary"), "catalyst_type": hc.get("catalyst_type"), "verified": False,
                       "verification_basis": "HERMES_SEARCH_" + ("NONE_FOUND" if none_found else "FOUND"),
                       "strength": hc.get("catalyst_strength"), "confidence": hc.get("confidence"),
-                      "observed_at": ts or None, "source_count": hc.get("source_count")})
+                      "observed_at": ts or None, "source_count": hc.get("source_count"),
+                      # Preserve the producer evidence needed by read-side identity
+                      # verification; a selected search headline alone is insufficient.
+                      "identity_record": {"catalyst_summary": hc.get("catalyst_summary"),
+                                          "sources": hc.get("sources") or []}})
     re_cat = ((g("reentry") or {}).get("catalyst") or {}) if not store_read else {}
     if re_cat.get("headline"):
         facts.append({"source": "reentry_decision_desk (derived: catalyst_record)", "headline": re_cat.get("headline"),
@@ -1043,12 +1047,17 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
                       "at": _iso(_ts(wl_item.get("updated_at")))})
     watch = wl_rules.membership(cands, rules)
 
-    research = {"thesis_stance": (thesis_stance or "").lower() or None,
+    research = {**((irec or {}).get("research") or {}), "thesis_stance": (thesis_stance or "").lower() or None,
                 "thesis_version": (thesis or {}).get("thesis_version"),
                 "thesis_status": (thesis or {}).get("status"),
                 "spine_stance": sp_stance, "spine_state": th.get("state"),
                 "spine_as_of": (spine or {}).get("as_of"),
                 "contribution_count": (spine or {}).get("contribution_count")}
+
+    from scripts.lib.cio_company_facts import assemble as company_facts
+    research["company_facts"] = company_facts(
+        sym, identity, ((inputs.get("company_facts") or {}).get("rows") or {}).get("batch", {}), catalyst=cat_block,
+        prior=((irec or {}).get("research") or {}).get("company_facts"), now=now)
 
     sources_used = {n: (inputs.get(n) or {}).get("as_of") for n in inputs if g(n) is not None}
     base = ir.new_record("HELD" if is_held else "WATCH", sym)
@@ -1124,6 +1133,10 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
     if symbols is not None:
         universe = {str(s).upper() for s in symbols}
     universe = {s for s in universe if s and s not in ir.NON_INSTRUMENT_SYMBOLS}
+
+    from scripts.lib.cio_company_facts import collect_inputs as company_inputs
+    company = company_inputs(Path(state_root), sorted(universe), db_query=db_query, now=now)
+    inputs["company_facts"] = {"rows": {"batch": company}, "status": "stored_batch", "count": len(universe), "as_of": None}
 
     prospects: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []

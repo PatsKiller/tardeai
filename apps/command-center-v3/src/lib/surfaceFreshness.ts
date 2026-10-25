@@ -33,7 +33,7 @@ export type SurfaceFreshness = {
   dataAsOfAccount: string | null
 }
 
-import { businessDateToSessionInstant, etCalendarDate } from './observationEnvelope.ts'
+import { businessDateToSessionInstant, latestSessionDate } from './observationEnvelope.ts'
 
 const HOUR_MS = 3_600_000
 
@@ -145,7 +145,9 @@ export function tradeAiSurfaceFreshness(
       // 16:50Z was already on "tomorrow" and flagged the current session's scan
       // as prior. Four assertions in this file's own suite failed under
       // TZ=Asia/Tokyo on HEAD for exactly that reason.
-      runDatePrior = m[1] < etCalendarDate(now)
+      // Prior means older than the latest session that has OPENED, not older than today's
+      // calendar date: Friday's scan is current all weekend and Monday pre-market.
+      runDatePrior = m[1] < latestSessionDate(now)
     }
   }
 

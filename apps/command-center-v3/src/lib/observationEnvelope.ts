@@ -111,6 +111,34 @@ export function etCalendarDate(at: Date): string {
   return fmt.format(at)   // en-CA yields YYYY-MM-DD
 }
 
+/**
+ * The date of the latest US equity session that has OPENED at `at`, as 'YYYY-MM-DD' in ET.
+ *
+ * A weekday at or after 09:30 ET is its own session; before the open, and all weekend,
+ * the latest session is the previous weekday. So Friday's scan is still the current
+ * session on Saturday, Sunday and Monday pre-market, instead of reading "prior session"
+ * from the first minute after midnight. Exchange holidays are owned by the backend
+ * market_session module (as in watchlistCardV4); a holiday reads as a weekday here.
+ */
+export function latestSessionDate(at: Date): string {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET, hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit',
+  })
+  const parts = Object.fromEntries(
+    fmt.formatToParts(at).filter(p => p.type !== 'literal').map(p => [p.type, p.value]),
+  ) as Record<string, string>
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday)
+  const minutes = (Number(parts.hour) % 24) * 60 + Number(parts.minute)
+  let back = 0
+  if (dow === 6) back = 1                                  // Sat → Fri
+  else if (dow === 0) back = 2                             // Sun → Fri
+  else if (minutes < 9 * 60 + 30) back = dow === 1 ? 3 : 1 // weekday pre-open → previous weekday
+  // Step back whole days from the ET calendar date; noon UTC avoids DST-edge rollovers.
+  const [y, m, d] = etCalendarDate(at).split('-').map(Number)
+  const day = new Date(Date.UTC(y, m - 1, d, 12) - back * 86_400_000)
+  return day.toISOString().slice(0, 10)
+}
+
 /** Minutes to ADD to an ET wall-clock reading to reach UTC (e.g. 240 in EDT). */
 function etOffsetMinutes(at: Date): number {
   // Intl gives us the ET wall clock for a known instant; the difference between

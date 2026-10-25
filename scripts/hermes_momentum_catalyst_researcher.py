@@ -24,6 +24,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib.hermes_scalp_catalyst_record import generic_index_page  # noqa: E402
+
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
 MAX_SOURCES_PER_TICKER = 3
 MAX_TOTAL_SOURCES = 15
@@ -69,6 +71,15 @@ def classify_catalyst(text):
     return "news_momentum"
 
 
+def filter_article_sources(sources):
+    """Keep provider order while excluding the same index pages the read-side validator rejects.
+
+    This is source selection only: company identity and approval remain the readers' existing checks.
+    Error rows pass through unchanged so the existing routing/error contract is preserved.
+    """
+    return [s for s in sources if not generic_index_page(s.get("title"), s.get("url"))]
+
+
 def _hot_research_on():
     """Hot-tier research path: knob on AND the routing engine importable (never a direct provider call)."""
     try:
@@ -98,7 +109,7 @@ def _routed(symbol, query_suffix, *, caller, dry_run, priority):
         "engine": x.get("engine") or r.get("provider") or "",
         "published": x.get("published") or x.get("publishedDate", ""),
         "routed": {"provider": r.get("provider"), "cache_hit": r.get("cache_hit"), "decision": r.get("decision")},
-    } for x in results[:MAX_SOURCES_PER_TICKER]]
+    } for x in filter_article_sources(results)[:MAX_SOURCES_PER_TICKER]]
 
 
 def _routed_search(symbol, query, candidate=None, caller="hermes_momentum_catalyst", intent=None):
@@ -122,13 +133,14 @@ def _routed_search(symbol, query, candidate=None, caller="hermes_momentum_cataly
         # A declared no_coverage is an honest empty answer; anything else is an error row.
         reason = str(out.get("denied_reason") or "")
         return [] if reason.startswith("NO_COVERAGE") else [{"error": reason[:100]}]
-    results = out["results"][:MAX_SOURCES_PER_TICKER]
+    results = out["results"]
     try:
         from hermes_source_policy import filter_search_results
         results = filter_search_results(results)
     except Exception:
         pass
-    return [{k: r.get(k, "") for k in ("title", "url", "content", "engine", "published")} for r in results]
+    return [{k: r.get(k, "") for k in ("title", "url", "content", "engine", "published")}
+            for r in filter_article_sources(results)[:MAX_SOURCES_PER_TICKER]]
 
 
 def search_catalyst(symbol, query_suffix="latest news", *, caller=None, dry_run=False, priority=False,
@@ -152,7 +164,7 @@ def search_catalyst(symbol, query_suffix="latest news", *, caller=None, dry_run=
         req = urllib.request.Request(f"{SEARXNG_URL}?{params}", method="GET")
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read())
-        results = data.get("results", [])[:MAX_SOURCES_PER_TICKER]
+        results = data.get("results", [])
         try:
             from hermes_source_policy import filter_search_results
             results = filter_search_results(results)
@@ -164,7 +176,7 @@ def search_catalyst(symbol, query_suffix="latest news", *, caller=None, dry_run=
             "content": r.get("content", "")[:200],
             "engine": r.get("engine", ""),
             "published": r.get("publishedDate", ""),
-        } for r in results]
+        } for r in filter_article_sources(results)[:MAX_SOURCES_PER_TICKER]]
     except Exception as e:
         return [{"error": str(e)[:100]}]
 
@@ -181,7 +193,7 @@ def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
         if len(all_sources) >= MAX_SOURCES_PER_TICKER:
             break
         sources = search_catalyst(symbol, q, caller=caller, dry_run=dry_run, priority=priority)
-        for s in sources:
+        for s in filter_article_sources(sources):
             if not s.get("error") and s.get("url") not in [x.get("url") for x in all_sources]:
                 all_sources.append(s)
         time.sleep(0.5)  # Rate limit

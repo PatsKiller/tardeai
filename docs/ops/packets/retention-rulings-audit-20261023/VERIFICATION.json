@@ -1,0 +1,327 @@
+{
+  "cached_hygiene": {
+    "as_of": "2026-10-23T05:15:44.639512+00:00",
+    "by_code": {
+      "DUPLICATE_INDEX": 8,
+      "SIZE_BUDGET": 1,
+      "STALE_WINDOW": 3,
+      "TABLE_BUDGET": 1,
+      "UNCOVERED_TABLE": 1
+    },
+    "db_bytes": 16095434419,
+    "findings": [
+      {
+        "code": "SIZE_BUDGET",
+        "detail": "16.1 GB > budget 16.0 GB",
+        "item": "trade_ai",
+        "severity": "P2"
+      },
+      {
+        "code": "TABLE_BUDGET",
+        "detail": "526 MB > 256 MB",
+        "item": "hermes_external_research",
+        "severity": "P2"
+      },
+      {
+        "code": "UNCOVERED_TABLE",
+        "detail": "22 MB, no retention row",
+        "item": "options_approval_queue",
+        "severity": "P2"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "price_cache_symbol_date_unique~idx_price_cache_lookup",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "portfolio_snapshots_date_unique~idx_snapshots_date",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "idx_state_freshness_checked_at~idx_state_freshness_checked",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "ticker_prices_symbol_price_date_key~idx_ticker_prices_symbol_date",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "market_ohlcv_bars_symbol_timeframe_bar_time_key~idx_market_ohlcv_symbol_time",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "redeploy_exposure_loss_deploy_event_id_version_key~idx_redeploy_exposure_event",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "redeploy_portfolio_context_snapshot_deploy_event_id_version_key~idx_redeploy_context_event",
+        "severity": "P3"
+      },
+      {
+        "code": "DUPLICATE_INDEX",
+        "detail": "exact duplicate definition",
+        "item": "ticker_dividends_symbol_ex_date_key~idx_ticker_dividends_symbol",
+        "severity": "P3"
+      },
+      {
+        "code": "STALE_WINDOW",
+        "detail": "3 rows older than 90+2 d; retention not enforcing",
+        "item": "aegis_steph_escalations",
+        "severity": "P2"
+      },
+      {
+        "code": "STALE_WINDOW",
+        "detail": "483 rows older than 90+2 d; retention not enforcing",
+        "item": "decision_packets",
+        "severity": "P2"
+      },
+      {
+        "code": "STALE_WINDOW",
+        "detail": "1 rows older than 90+2 d; retention not enforcing",
+        "item": "news_articles",
+        "severity": "P2"
+      }
+    ],
+    "ok": false,
+    "schema": "DbHygieneReport@v1",
+    "size_budget_gb": 16.0
+  },
+  "cached_nightly": {
+    "as_of": "2026-10-23T05:15:44Z",
+    "failed_steps": [
+      "report_db_hygiene"
+    ],
+    "ok": false,
+    "run_dir": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/pipelines/platform-maintenance/nightly/run_20261023_051502",
+    "schema": "PlatformMaintenanceRun@v1",
+    "served_sha": "f7c1e96cbcab399082de186e6367fa834df48e1c",
+    "steps": [
+      {
+        "duration_s": 0,
+        "rc": 0,
+        "skipped_lock": false,
+        "skipped_missing": false,
+        "step": "siem_retention_purge",
+        "timed_out": false
+      },
+      {
+        "duration_s": 1,
+        "rc": 0,
+        "skipped_lock": false,
+        "skipped_missing": false,
+        "step": "hermes_universe_history_retention",
+        "timed_out": false
+      },
+      {
+        "duration_s": 22,
+        "rc": 0,
+        "skipped_lock": false,
+        "skipped_missing": false,
+        "step": "db_retention",
+        "timed_out": false
+      },
+      {
+        "duration_s": 9,
+        "rc": 1,
+        "skipped_lock": false,
+        "skipped_missing": false,
+        "step": "report_db_hygiene",
+        "timed_out": false
+      }
+    ]
+  },
+  "cached_retention_log": {
+    "archived_first": 118132,
+    "arithmetic_matches": true,
+    "hard_deleted_market_quotes": 4398,
+    "independent_archive_verification": "NOT_MEASURED",
+    "total_deleted": 122530
+  },
+  "cron_census": "NOT_MEASURED",
+  "current_directory": "/home/johnclaw/trade-ai-releases/portfolio-server/d0c8b70d8-main-exact-phase2-20261023-182515",
+  "decision_path": "/home/johnclaw/n8n-maturity-verification/packets/retention-all-managed/OPERATOR_DECISION.md",
+  "live_db_queried": false,
+  "observed_at": "2026-10-24T03:46:15.256540+00:00",
+  "per_ruling_runtime_accepted": "NOT_MEASURED",
+  "policy_or_runtime_changes": false,
+  "policy_validator": {
+    "archive_then_delete": 29,
+    "delete": 97,
+    "errors": [],
+    "keep_forever": 11,
+    "rows": 140
+  },
+  "rulings": 21,
+  "schema": "RetentionRulingsAudit@v1",
+  "source_file_identity": [
+    {
+      "current_file_sha256": "ecaac37ea9799460c9c6455cb28b2ef55b5d9ca3f310a3a9e07eb342ca914413",
+      "identical_to_current_file": true,
+      "path": "config/data_retention_policy.json",
+      "source_sha256": "ecaac37ea9799460c9c6455cb28b2ef55b5d9ca3f310a3a9e07eb342ca914413"
+    },
+    {
+      "current_file_sha256": "56ca688c8f1d60dee997645a1b668da6c003be1d63883c0df2e28619f92fca82",
+      "identical_to_current_file": true,
+      "path": "config/hermes_librarian_policy.yaml",
+      "source_sha256": "56ca688c8f1d60dee997645a1b668da6c003be1d63883c0df2e28619f92fca82"
+    },
+    {
+      "current_file_sha256": "9733d730d0109e6cbadf1302cfbabb97cad9ff4b26ae7c7d747bddf763c94857",
+      "identical_to_current_file": true,
+      "path": "linux_launchers/run_pg_backup.sh",
+      "source_sha256": "9733d730d0109e6cbadf1302cfbabb97cad9ff4b26ae7c7d747bddf763c94857"
+    },
+    {
+      "current_file_sha256": "2625892ee77c34e8cd87f6930977d4d96b02df1238b7cca9f19321d2b4e73197",
+      "identical_to_current_file": true,
+      "path": "scripts/backup_enforcer.py",
+      "source_sha256": "2625892ee77c34e8cd87f6930977d4d96b02df1238b7cca9f19321d2b4e73197"
+    },
+    {
+      "current_file_sha256": "8dcb845b9e8c74374fd3bba0b4645893d24a228b636af03fd26c80ba40f2d9c6",
+      "identical_to_current_file": true,
+      "path": "scripts/comms_lifecycle.py",
+      "source_sha256": "8dcb845b9e8c74374fd3bba0b4645893d24a228b636af03fd26c80ba40f2d9c6"
+    },
+    {
+      "current_file_sha256": "c519395ac77045ddae9055033b39990d50c045bf3842fc6b3142975d84757337",
+      "identical_to_current_file": true,
+      "path": "scripts/disk_hygiene_enforcer.py",
+      "source_sha256": "c519395ac77045ddae9055033b39990d50c045bf3842fc6b3142975d84757337"
+    },
+    {
+      "current_file_sha256": "e51b4f2734fec7cab4ce43022619ee6011d57836fb394d93db4e84ed5cd7b3e3",
+      "identical_to_current_file": true,
+      "path": "scripts/finviz_market_movers.py",
+      "source_sha256": "e51b4f2734fec7cab4ce43022619ee6011d57836fb394d93db4e84ed5cd7b3e3"
+    },
+    {
+      "current_file_sha256": "82b5d17e758282f9c150f0e1999f181bf865d693459fd2a30d9b1ba4f223df34",
+      "identical_to_current_file": true,
+      "path": "scripts/health_agent.py",
+      "source_sha256": "82b5d17e758282f9c150f0e1999f181bf865d693459fd2a30d9b1ba4f223df34"
+    },
+    {
+      "current_file_sha256": "134e2287f1cb9c6e079aca4830ef27ed8a628cd1a9a8edef9ea233c63eb24a27",
+      "identical_to_current_file": true,
+      "path": "scripts/hermes_autonomous_self_tune.py",
+      "source_sha256": "134e2287f1cb9c6e079aca4830ef27ed8a628cd1a9a8edef9ea233c63eb24a27"
+    },
+    {
+      "current_file_sha256": "ca8574a9e9610d948ca7d8b3d8006769ceab99e004210d22d8b8d87015c829aa",
+      "identical_to_current_file": true,
+      "path": "scripts/hermes_score_history_retention.py",
+      "source_sha256": "ca8574a9e9610d948ca7d8b3d8006769ceab99e004210d22d8b8d87015c829aa"
+    },
+    {
+      "current_file_sha256": "17eb52e2e4254d4f684deb3f5ae721d4532990d022d4c1813c7b2a6eb996408f",
+      "identical_to_current_file": true,
+      "path": "scripts/hermes_source_registry.py",
+      "source_sha256": "17eb52e2e4254d4f684deb3f5ae721d4532990d022d4c1813c7b2a6eb996408f"
+    },
+    {
+      "current_file_sha256": "125247b1a676419cd37d8dda3b3b44aaff592aee1f251bda4a17697c92600f1d",
+      "identical_to_current_file": true,
+      "path": "scripts/lib/scalp_cycle_receipt.py",
+      "source_sha256": "125247b1a676419cd37d8dda3b3b44aaff592aee1f251bda4a17697c92600f1d"
+    },
+    {
+      "current_file_sha256": "6b9cb0c6bc78496a177a9e56cc0d6d2b276602f094b10095e341e35e8c5db2b7",
+      "identical_to_current_file": true,
+      "path": "scripts/news_symbol_guard.py",
+      "source_sha256": "6b9cb0c6bc78496a177a9e56cc0d6d2b276602f094b10095e341e35e8c5db2b7"
+    },
+    {
+      "current_file_sha256": "2539540c861ebcfbda49f6aef5c7faac96f2eb8160bb7eced3d01be839725ebc",
+      "identical_to_current_file": true,
+      "path": "scripts/options_desk_enterprise.py",
+      "source_sha256": "2539540c861ebcfbda49f6aef5c7faac96f2eb8160bb7eced3d01be839725ebc"
+    },
+    {
+      "current_file_sha256": "fc1060abea77b5b6e7c2f072f45d8ca19c7d19cb52a05b737a26871da8eda784",
+      "identical_to_current_file": true,
+      "path": "scripts/portfolio_monthly_report.py",
+      "source_sha256": "fc1060abea77b5b6e7c2f072f45d8ca19c7d19cb52a05b737a26871da8eda784"
+    },
+    {
+      "current_file_sha256": "98dd9786105048c8561c5d32fe1145d929565248a5853898fa17c517ca5f49a3",
+      "identical_to_current_file": true,
+      "path": "scripts/portfolio_monthly_synthesis.py",
+      "source_sha256": "98dd9786105048c8561c5d32fe1145d929565248a5853898fa17c517ca5f49a3"
+    },
+    {
+      "current_file_sha256": "c5e5a48e676e479e7b2fd10fd30c4be3ed4517bba677239f90309840b494e155",
+      "identical_to_current_file": true,
+      "path": "scripts/portfolio_news.py",
+      "source_sha256": "c5e5a48e676e479e7b2fd10fd30c4be3ed4517bba677239f90309840b494e155"
+    },
+    {
+      "current_file_sha256": "2bdea07f7cdff1bbe3bd39d736b4b75286ef1efa1b93c5d5a06421f103561150",
+      "identical_to_current_file": true,
+      "path": "scripts/portfolio_weekly_report.py",
+      "source_sha256": "2bdea07f7cdff1bbe3bd39d736b4b75286ef1efa1b93c5d5a06421f103561150"
+    },
+    {
+      "current_file_sha256": "bb24590ba442a6b288ecf7740bf4fba40536f50b1a882c4f6342974efcc7d321",
+      "identical_to_current_file": true,
+      "path": "scripts/prune_document_mentions.py",
+      "source_sha256": "bb24590ba442a6b288ecf7740bf4fba40536f50b1a882c4f6342974efcc7d321"
+    },
+    {
+      "current_file_sha256": "976eb523f462b5861bba3b34415f2d654381f0c76a3ecfb7b20714eb74315451",
+      "identical_to_current_file": true,
+      "path": "scripts/purge_youtube_transcripts.py",
+      "source_sha256": "976eb523f462b5861bba3b34415f2d654381f0c76a3ecfb7b20714eb74315451"
+    },
+    {
+      "current_file_sha256": "b5743d9dacfd76b7a2c970db7e7a6ff5e9cf543ae53c28448e22b6c5b40ed0c1",
+      "identical_to_current_file": true,
+      "path": "scripts/reports_portal.py",
+      "source_sha256": "b5743d9dacfd76b7a2c970db7e7a6ff5e9cf543ae53c28448e22b6c5b40ed0c1"
+    },
+    {
+      "current_file_sha256": "113f349cf7afd900200d3988da6984291f4838bbe65bb35b153a5ae875fadaf0",
+      "identical_to_current_file": true,
+      "path": "scripts/research_critique_pipeline.py",
+      "source_sha256": "113f349cf7afd900200d3988da6984291f4838bbe65bb35b153a5ae875fadaf0"
+    },
+    {
+      "current_file_sha256": "8dd2df4c5db09baa44ffa5a29660314988bcae4b4ef6ba1e52f70b9b760cc42e",
+      "identical_to_current_file": true,
+      "path": "scripts/rotate_runtime_logs.sh",
+      "source_sha256": "8dd2df4c5db09baa44ffa5a29660314988bcae4b4ef6ba1e52f70b9b760cc42e"
+    },
+    {
+      "current_file_sha256": "00d5cf949449aa15a665c702f5dac7010dfc4680c4d261233f098260d346e3d7",
+      "identical_to_current_file": true,
+      "path": "scripts/siem_retention_purge.py",
+      "source_sha256": "00d5cf949449aa15a665c702f5dac7010dfc4680c4d261233f098260d346e3d7"
+    },
+    {
+      "current_file_sha256": "92f63b0466442d164b9ebe3556d6ba0fc52731113db0cc3effd9e18b8a9e4385",
+      "identical_to_current_file": true,
+      "path": "scripts/transcript_processor.py",
+      "source_sha256": "92f63b0466442d164b9ebe3556d6ba0fc52731113db0cc3effd9e18b8a9e4385"
+    }
+  ],
+  "source_present": 21,
+  "source_sha": "325ff34f2b3b272090b78d5210a2847c8c30bd2a",
+  "tests": {
+    "log": "/home/johnclaw/.cache/rtc/codex-wp39-retention-20261023/regression.log",
+    "passed": 90
+  }
+}

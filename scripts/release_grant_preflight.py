@@ -21,6 +21,15 @@ which proves the outage itself before activation.
 The deploy's promote calls it first, then runs conformance and the exact-SHA
 ``--ci-only`` re-query (which writes the receipt), then the consuming call,
 whose CI gate reuses that receipt. One use, consumed only after all of them.
+
+Standing-release binding (arming packet §K, 2026-10-22; PROPOSED, inert). While
+``release_grant_binding.CAPABILITY_BINDING_STATUS`` is "PROPOSED" nothing below
+changes. When a reviewed PR sets it ACTIVE, a ``prepare``/``promote`` under campaign
+``release-train-<train_id>`` that no grant binds is accepted on the host capability
+ledger instead (``decide_capability``: a signed, RESERVED promote-phase capability for
+this train and exact SHA, live lock holder, latch ABSENT, current epoch and digest).
+The campaign only identifies the train. The guard ledger is not consumed then; a
+promote still reads exact-SHA CI first. ``--artifact-digest`` can only narrow.
 """
 from __future__ import annotations
 
@@ -36,7 +45,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.release_grant_binding import ReleaseAction, decide_from_disk  # noqa: E402
+from scripts.lib.release_grant_binding import (  # noqa: E402
+    ReleaseAction, capability_binding_active, decide_capability, decide_from_disk,
+)
 
 
 GUARD_LEDGER = ROOT / ".cursor" / "hooks" / "guard_ledger.py"
@@ -269,6 +280,9 @@ def main() -> int:
     ap.add_argument("--backstop-receipt", type=Path, default=BACKSTOP_RECEIPT)
     ap.add_argument("--skip-ci-gate", action="store_true",
                     help="promote only: do not read exact-SHA CI before consuming (CI-outage emergency path only)")
+    ap.add_argument("--artifact-digest", default=None,
+                    help="capability binding only (packet §K, inert while CAPABILITY_BINDING_STATUS is PROPOSED): "
+                         "the prepared artifact digest; it can only narrow, never grant")
     args = ap.parse_args()
     if args.backstop_check:
         return backstop_check(args.sha, args.backstop_receipt)
@@ -285,10 +299,24 @@ def main() -> int:
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
     _bind_consume_grant(v.grant_id)  # 2026-10-21: a use is consumed only from the grant this verdict approved
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
+    # Packet §K (2026-10-22): the standing-release binding. Inert while CAPABILITY_BINDING_STATUS is PROPOSED (this
+    # block never runs and the output above is unchanged). A grant naming the release is tried first and keeps
+    # working; only a train campaign with no binding grant consults the host capability ledger, and the campaign
+    # only identifies the train: the signed, RESERVED capability is the authority.
+    cap_allowed = False
+    if (not v.allowed and capability_binding_active() and args.action in ("prepare", "promote")
+            and str(args.campaign or "").startswith("release-train-")):
+        cv = decide_capability(args.action, args.sha, args.campaign, artifact_digest=args.artifact_digest)
+        out["capability_binding"] = cv.to_dict()
+        if cv.allowed:
+            cap_allowed = True
+            out.update(allowed=True, reason=cv.reason, matched_by=list(cv.matched_by),
+                       binding_source="capability_ledger")
+    allowed = v.allowed or cap_allowed
     # The CI gate guards the consume. A --no-consume call (the deploy script's early binding verdict) consumes
     # nothing, so it reads no CI; the deploy's own exact-SHA re-query and this gate on the consuming call do
     # (release-1 integration of #1628 + release train, 2026-10-21: one use, consumed only after CI).
-    if v.allowed and args.action == "promote" and not args.skip_ci_gate and not args.no_consume:
+    if allowed and args.action == "promote" and not args.skip_ci_gate and not args.no_consume:
         gate = promote_ci_gate(args.sha, args.ci_receipt)
         out["ci_gate"] = gate
         if not gate["ok"]:
@@ -297,16 +325,20 @@ def main() -> int:
             print("RELEASE GRANT: exact-SHA push/main CI is not green for " + args.sha
                   + " — promote refused, no grant use consumed", file=sys.stderr)
             return 3
-    if v.allowed and args.action in ("prepare", "promote", "rollback"):
+    if allowed and args.action in ("prepare", "promote", "rollback"):
         # C-10 (2026-09-26): the deploy path never consumed a grant use, so the
         # ledger under-counted every Claude Code promote (both P1 grants showed
         # unconsumed uses after being exercised). One use per release action.
         # 2026-10-21: a promote refused by the exact-SHA CI re-query had already
         # consumed its use (71df62acc, post_merge_ci_refused). cmd_promote now
         # decides with --no-consume first and consumes only after CI passed.
-        out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
+        if cap_allowed and not args.no_consume:
+            # §K: the guard ledger is not consumed; the capability's attempt budget is the accounting.
+            out["consumed"] = {"skipped": "capability_binding"}
+        else:
+            out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
     print(json.dumps(out, sort_keys=True))
-    if v.allowed:
+    if allowed:
         return 0
     if mode == "warn":
         print("RELEASE GRANT BINDING: REFUSED (warn mode — continuing): " + v.reason, file=sys.stderr)

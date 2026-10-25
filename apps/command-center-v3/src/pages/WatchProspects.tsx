@@ -8,11 +8,17 @@
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
+import './WatchLayout.css'
+import { WatchCompanyFacts } from '../components/watch/WatchCompanyFacts'
+import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
+import WatchMarketFacts from '../components/watch/WatchMarketFacts'
+import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
+import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars, type Tone } from '../lib/designTokens'
+import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
   LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, convictionTone, drawers, headerChips, laneById,
   proposeSeed, stanceLabel, stanceTone, stepTone, tieAlerts, unwrap,
@@ -23,7 +29,7 @@ import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, money, positionChip, soldByName, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
+  alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
   roundTripPath, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
@@ -33,7 +39,20 @@ const panel: CSSProperties = {
 const label: CSSProperties = {
   fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2],
 }
-export const GRID = '96px 104px 84px minmax(180px, 1fr) 160px 130px'
+
+// Storage keys are not display names. Keep the shared alias/digit checks, but never humanize an unknown key.
+function displayAccountName(key: unknown, supplied?: unknown): string {
+  const known = canonicalAccountKey(key)
+  return accountName(Object.prototype.hasOwnProperty.call(ACCOUNT_NAMES, known) ? known : '', supplied)
+}
+function heldDisplayNames(r: ListRow): string[] {
+  return (r.held_accounts || []).map((key, i) => displayAccountName(key, r.held_account_labels?.[i]))
+}
+function soldDisplayName(r: ListRow): string {
+  const key = r.last_sell_account || r.last_round_trip?.account || ''
+  const supplied = r.last_sell_account_label || r.last_round_trip?.account_label || ''
+  return key || supplied ? displayAccountName(key, supplied) : ''
+}
 
 function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; height?: number }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, value))
@@ -45,17 +64,18 @@ function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; he
 }
 
 export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: ProspectRow) => void }) {
+  const navigate = useNavigate()
   const a = row.next_action
   const t = toneVars(stepTone(a.kind))
   const style: CSSProperties = {
-    whiteSpace: 'nowrap', fontSize: TYPE.base, fontWeight: 700, padding: '3px 8px', borderRadius: RADIUS.md,
-    minHeight: 26, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    whiteSpace: 'normal', fontSize: TYPE.base + 1, fontWeight: 600, padding: '8px 12px', borderRadius: RADIUS.md,
+    minHeight: 40, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     background: t.bg, border: `1px solid ${t.border}`, color: t.color, cursor: 'pointer', textDecoration: 'none',
   }
-  if (a.kind === 'none') return <span style={{ color: TOKENS.text[3] }} title={a.reason}>—</span>
+  if (a.kind === 'none') return <button type="button" disabled style={{ ...style, color: TOKENS.text[2], cursor: 'default' }} title={a.reason}>{a.label === '—' ? 'No action' : a.label || 'No action'}</button>
   if (a.href && (a.kind === 'protect' || a.kind === 'decide' || a.kind === 'open_position' || a.kind === 'review_add')) {
     const to = a.href.replace(/^\/v3/, '')
-    return <Link to={to} title={a.reason} style={style} data-testid="watch-step" data-step={a.kind}>{a.label}</Link>
+    return <button type="button" onClick={() => navigate(to)} title={a.reason} style={style} data-testid="watch-step" data-step={a.kind} data-href={a.href}>{a.label}</button>
   }
   return (
     <button type="button" title={a.reason} style={style} onClick={() => onStep(row)} data-testid="watch-step" data-step={a.kind}>
@@ -72,57 +92,50 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
-export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra }: {
+export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
-  onMineChanged?: (msg: string) => void; extra?: ReactNode
+  onMineChanged?: (msg: string) => void; extra?: ReactNode; retained?: boolean; onAlert?: (r: ProspectRow) => void
 }) {
-  const ct = convictionTone(r.conviction)
   const lr = r as ListRow
-  const pchip = positionChip(lr)
-  return (
-    <div
-      data-testid="watch-row" data-symbol={r.symbol} data-lane={r.lane}
-      style={{
-        display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '3px 12px', alignItems: 'center',
-        borderBottom: `1px solid ${TOKENS.borderSubtle}`,
-        background: selected ? TOKENS.bg[2] : undefined,
-        borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}`,
-      }}
-    >
-      <span style={{ display: 'flex', gap: 4, alignItems: 'flex-start', minWidth: 0 }}>
-      <StarToggle symbol={r.symbol} on={!!lr.mine} onChanged={onMineChanged} surface="watch.row" size="sm" />
-      <button
-        type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${r.symbol} record`}
-        style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 26 }}
-      >
-        {r.symbol}
-        {lr.mine && !lr.starred && <span title={(lr.membership || []).map(m => m.label).join(' · ') || 'Your name'} style={{ marginLeft: 3, fontSize: TYPE.xs, color: TOKENS.info }}>●</span>}
-        {alerts > 0 && <span title={`${alerts} armed Watch alert(s) on this symbol`} style={{ marginLeft: 4, fontSize: TYPE.xs, color: TOKENS.warning }}>🔔{alerts}</span>}
-        {pchip && <span title={pchip.tip} data-testid="watch-position-chip" style={{ display: 'block', fontFamily: FONT.sans, fontWeight: 600, fontSize: TYPE.xs, color: toneVars(pchip.tone).color }}>{pchip.label}</span>}
-      </button>
-      </span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={TOOLTIPS.conviction}>
-        <span style={{ ...numStyle, fontWeight: 700, color: r.conviction == null ? TOKENS.text[3] : TOKENS.text[0] }}>
-          {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)}
-          {r.conviction_stale && <span style={{ color: TOKENS.warning, fontSize: TYPE.xs }}> stale</span>}
-        </span>
-        <Bar value={r.conviction} tone={ct} />
-      </span>
-      <span title={TOOLTIPS.stance} style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars(stanceTone(r.stance)).color }}>{stanceLabel(r.stance)}</span>
-      <span style={{ fontSize: TYPE.base, lineHeight: 1.35, color: TOKENS.text[1] }}>
-        {r.why}
-        {lr.expiry_suggestion && <span style={{ display: 'block', color: TOKENS.warning }} title="Your names never expire off the page; an expired signal only suggests a review.">Review suggested: {lr.expiry_suggestion.suggest}</span>}
-        {lr.last_round_trip && <span data-testid="watch-last-trade" style={{ display: 'block', color: toneVars(resultTone(lr.last_round_trip)).color }} title={`Last round trip ${roundTripPath(lr.last_round_trip)}. ${lr.last_round_trip.exit_cause_evidence || ''}`}>Last trade {roundTripLabel(lr.last_round_trip)}</span>}
-        {lr.reentry && <span style={{ display: 'block', color: toneVars(readinessTone(lr.reentry)).color }} title={`Re-Entry Desk classifier: ${lr.reentry.state}. Alert levels ${alertLevelsLabel(lr.reentry)}.`}>Re-entry {reentryLabel(lr.reentry)}</span>}
-        {r.whats_missing[0] && <span style={{ display: 'block', color: TOKENS.text[3] }}>Missing: {r.whats_missing[0]}</span>}
-        {r.conflicts.map((c, i) => (
-          <span key={i} data-testid="watch-conflict" style={{ display: 'block', color: TOKENS.warning }}>⚠ {c.summary}</span>
-        ))}
-      </span>
-      <span title={TOOLTIPS.trigger} style={{ fontFamily: FONT.mono, fontSize: TYPE.base, color: TOKENS.text[1] }}>{r.next_trigger.label}</span>
-      <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}><StepButton row={r} onStep={onStep} />{extra}</span>
-    </div>
-  )
+  const names = lr.position_state === 'held' ? heldDisplayNames(lr) : lr.position_state === 'formerly_held' ? [soldDisplayName(lr)].filter(Boolean) : []
+  const accountKeys = lr.position_state === 'held' ? lr.held_accounts || [] : [lr.last_sell_account || lr.last_round_trip?.account || '']
+  const ownership = lr.position_state === 'held' ? 'Held in' : lr.position_state === 'formerly_held'
+    ? `Formerly held${lr.last_sell_at ? ` · sold ${String(lr.last_sell_at).slice(5, 10).replace('-', '/')}` : ''} ·` : ''
+  const accounts = names.length ? names : ownership ? ['Unlabelled account'] : []
+  const reasons = blockingReasons(lr)
+  const warning = toneVars('warning')
+  const stanceToneName = ['ADD', 'RE_ENTER', 'RE-ENTER'].includes(String(r.stance || '').toUpperCase()) ? 'info' : toneFromVerdict(r.stance)
+  const stance = toneVars(stanceToneName)
+  const score = r.conviction != null && Number.isFinite(r.conviction) ? r.conviction : null
+  const stage = ({ actionable: 'Actionable', reentry: 'Re-entry near', forming: 'Forming', manage: 'Held', expired: 'Signal invalidated / expired' } as Record<string, string>)[r.lane] || r.stage?.replace(/_/g, ' ') || 'No setup'
+  const ticker = <><StarToggle symbol={r.symbol} on={!!lr.mine} onChanged={onMineChanged} surface="watch.row" size="sm" />
+    <button type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${r.symbol} record`}
+      style={{ background: 'none', border: 'none', padding: 0, fontFamily: FONT.mono, fontSize: TYPE.lg, fontWeight: 600, color: TOKENS.text[0], cursor: 'pointer' }}>{r.symbol}</button>
+    {alerts > 0 && <span title={`${alerts} armed Watch alerts`} aria-label={`${alerts} armed Watch alerts`}>🔔{alerts}</span>}</>
+  const ownershipNode = ownership ? <>{ownership} <span data-testid="watch-row-account-names" role="group" aria-label={lr.position_state === 'held' ? 'Held accounts' : 'Last sell account'}>
+    {accounts.map((name, i) => <AccountChip key={`${accountKeys[i]}-${i}`} account={accountKeys[i]} label={name} compact />)}</span></> : null
+  const phoneOwnership = ownership ? <span className="watch-mobile-facts" data-testid="watch-phone-ownership"><span><b>{lr.position_state === 'held' ? 'Held in' : 'Sold in'}</b> {accounts.join(', ')}</span></span> : null
+  return <WatchRecordCard symbol={r.symbol} selected={selected} lane={r.lane} rail={cardRail(lr)}
+    company={<WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="company" ticker={ticker} ownership={ownershipNode} />}
+    setup={<>
+      <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
+      <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
+      {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
+        border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+        <span>Not actionable: {reasons[0]}</span>
+      </div>}
+      {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
+    </>}
+    market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}
+    conviction={<>
+      <div><span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }} data-testid="watch-conviction">{score == null ? 'n/a' : score.toFixed(0)}</span> <span className="watch-card-score-denominator" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>/ 100</span></div>
+      {score != null && <div className="watch-card-score-bar" aria-label={`Conviction ${score} of 100`}><span style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: score >= 75 ? TOKENS.success : TOKENS.warning }} /></div>}
+      <span className="watch-card-stance" style={{ color: stance.color, background: stance.bg, borderRadius: RADIUS.sm, fontSize: TYPE.base, fontWeight: 600, padding: '3px 8px' }}>{r.stance ? stanceLabel(r.stance) : 'no stance'}</span>
+    </>}
+    primary={<StepButton row={r} onStep={onStep} />}
+    secondary={<>{onAlert && <button type="button" onClick={() => onAlert(r)} style={{ ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Set alert</button>}{extra}
+      <button type="button" onClick={onSelect} style={{ ...chipStyle('neutral', 'outline', 'md'), cursor: 'pointer' }}>View record</button></>} />
 }
 
 export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: ProspectRow) => void; cioMsg: string }) {
@@ -134,6 +147,9 @@ export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCi
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{r.company || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />
+      <div data-testid="watch-detail-why" style={{ fontSize: TYPE.base, lineHeight: 1.5 }}><b>Why here:</b> {r.why}</div>
+      {(r as ListRow).expiry_suggestion && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Review suggested: {(r as ListRow).expiry_suggestion?.suggest}</div>}
       <PositionDetail r={r as ListRow} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-components">
         <span style={label} title={TOOLTIPS.conviction}>
@@ -154,7 +170,7 @@ export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCi
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-detail-conflicts">
           <span style={label} title={TOOLTIPS.conflicts}>Conflicts — shown, not resolved</span>
           {r.conflicts.map((c, i) => (
-            <div key={i} style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
+            <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
               <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
               <div><b>{String(c.a.value)}</b> · {c.a.source || '—'} · {c.a.at ? c.a.at.slice(0, 16).replace('T', ' ') : 'time unknown'}</div>
               <div><b>{String(c.b.value)}</b> · {c.b.source || '—'} · {c.b.at ? c.b.at.slice(0, 16).replace('T', ' ') : 'time unknown'}</div>
@@ -211,7 +227,7 @@ export function PositionDetail({ r }: { r: ListRow }) {
         <div data-testid="watch-round-trip">
           <span style={label} title="The last closed round trip, from the CIO prospect lifecycle (fills, observed stop path, exit cause).">Last trade · {r.position_label}</span>
           <div style={{ fontFamily: FONT.mono }}>{roundTripPath(rt)}</div>
-          {soldByName(r) && <div data-testid="watch-sold-account" style={{ color: TOKENS.text[2] }}>Sold in <AccountChip account={r.last_sell_account || rt.account} label={soldByName(r)} compact /></div>}
+          {soldDisplayName(r) && <div data-testid="watch-sold-account" style={{ color: TOKENS.text[2] }}>Sold in <AccountChip account={r.last_sell_account || rt.account} label={soldDisplayName(r)} compact /></div>}
           <div style={{ color: toneVars(resultTone(rt)).color, fontWeight: 700 }}>{roundTripLabel(rt)}</div>
           <div style={{ color: TOKENS.text[2] }} title={rt.r_basis ? `R measured against the ${rt.r_basis}` : undefined}>
             {rt.stop_raised != null ? `Stop raised ${rt.stop_raised}× (${money(rt.stop_initial)} → ${money(rt.stop_last)})` : 'No stop history'}
@@ -262,7 +278,6 @@ function AlertsBody({ t, now }: { t: TiedAlerts; now: Date }) {
 export default function WatchProspects() {
   const [params, setParams] = useSearchParams()
   const pq = positionQuery(params)
-  delete pq.sort
   const { data: raw, loading, error, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-prospects', pq), 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const p: ProspectsPayload | null = useMemo(() => unwrap(raw), [raw])
@@ -336,7 +351,7 @@ export default function WatchProspects() {
         ))}
       </div>
 
-      <div role="group" aria-label="Stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div className="watch-stage-grid" role="group" aria-label="Stages">
         {p.lanes.map(l => {
           const on = l.id === lane
           const tone = toneVars(LANE_TONE[l.id])
@@ -356,46 +371,41 @@ export default function WatchProspects() {
         })}
       </div>
 
-      <PositionFilterBar specs={(p as any).position_filters} facets={(p as any).position_facets} sortable={false} testId="prospects-position-filters" />
+      <PositionFilterBar specs={(p as any).position_filters} facets={(p as any).position_facets} testId="prospects-position-filters" />
+      <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Prospects filters, sorts and facet counts apply to shown lane rows. Rows below each lane cap are retained and have not been evaluated by these controls. My Watchlist evaluates every name in your list.</div>
 
       {toast && <div role="status" style={{ ...chipStyle('success', 'soft', 'md'), alignSelf: 'flex-start' }}>{toast}</div>}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-        <section aria-label="Prospects" style={{ ...panel, flex: '999 1 700px', overflowX: 'auto' }}>
-          <div style={{ minWidth: 800 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
+      <div className="watch-card-list-viewport">
+        <section className="watch-record-panel" aria-label="Prospects" style={{ minWidth: 0 }}>
+          <div className="watch-record-table watch-card-list">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 16px', flexWrap: 'wrap', gap: 6, borderBottom: `1px solid ${TOKENS.border}` }}>
               <h2 style={{ margin: 0, fontSize: TYPE.md + 2 }} data-testid="watch-list-title">
-                {current?.label} · {current?.count ?? 0}{current && current.items.length < current.count ? ` (top ${current.items.length} shown)` : ''}
+                {current?.label} · {(p as any).counts?.filtered ? 'filtered shown ' : ''}{current?.count ?? 0}{current && current.items.length < current.count ? ` (top ${current.items.length} shown)` : ''}
               </h2>
               <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }} title={p.curation?.sort_order}>sorted by conviction, then priority</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...label }}>
-              <span>Symbol</span>
-              <span title={TOOLTIPS.conviction}>Conviction</span>
-              <span title={TOOLTIPS.stance}>Stance</span>
-              <span title={TOOLTIPS.why}>Why it's here · what's missing</span>
-              <span title={TOOLTIPS.trigger}>Next trigger</span>
-              <span title={TOOLTIPS.step}>Next step</span>
-            </div>
+            <WatchCardHeader />
             {(current?.items || []).length === 0 && (
               <div style={{ padding: 16, color: TOKENS.text[2] }}>Nothing in {current?.label ?? 'this lane'} right now.</div>
             )}
             {(current?.items || []).map(r => (
               <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep}
-                alerts={(tied.bySymbol[r.symbol] || []).length} onMineChanged={m => { setToast(m); refetch() }} />
+                onAlert={r => setAlertFor(r)} alerts={(tied.bySymbol[r.symbol] || []).length} onMineChanged={m => { setToast(m); refetch() }} />
             ))}
             {current && current.overflow.length > 0 && (
               <div data-testid="watch-overflow" style={{ padding: '10px 16px', fontSize: TYPE.base, color: TOKENS.text[2] }}
                 title="The lane is capped so it stays readable; these rows are below the cap by conviction, not hidden by judgment.">
-                {current.overflow.length} more below the {current.cap}-row cap: {current.overflow.slice(0, 30).join(', ')}{current.overflow.length > 30 ? '…' : ''}
+                {current.overflow.length} more below the {current.cap}-row cap{(p as any).counts?.filtered ? ' (not evaluated against active filters)' : ''}: {current.overflow.slice(0, 30).join(', ')}{current.overflow.length > 30 ? '…' : ''}
               </div>
             )}
           </div>
         </section>
 
-        <aside aria-label="Prospect record" style={{ ...panel, flex: '1 1 320px', maxWidth: 460, padding: 16 }}>
+        {selected && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
+          <button type="button" onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Close record</button>
           <Detail r={selected} onAskCio={askCio} cioMsg={cioMsg} />
-        </aside>
+        </aside>}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -1,0 +1,15 @@
+{
+  "status": "INERT_OPERATOR_ONLY",
+  "change": {
+    "path": "/standing_apply/enabled",
+    "from": false,
+    "to": true
+  },
+  "requires": [
+    "direct-session approval provenance",
+    "exact accepted-main and frozen proposal union pins",
+    "reviewed contract/allowlist/routes",
+    "operator review of first quoted dry run",
+    "native schedule parity with no legacy duplicate"
+  ]
+}

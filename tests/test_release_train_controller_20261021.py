@@ -227,7 +227,18 @@ class FakeHost:
         # CANONICAL_SOURCE (the dev tree the deploy runs its verifier from). None = fast-forwarded to the train's
         # merge commit (World wires main_ref to the fake writer's merge); a test pins a stale HEAD by setting a SHA.
         self.canonical_sha: str | None = None
+        self.canonical = tmp / "canonical-fixture"
+        self.canonical_dirty = False
         self.main_ref = lambda: ""
+
+    def _run(self, args):
+        assert args[:3] == ["git", "-C", str(self.canonical)]
+        self.calls.append(("canonical_git", *args[3:]))
+        if args[3:] == ["status", "--porcelain", "--untracked-files=all"]:
+            return 0, " M fixture.txt" if self.canonical_dirty else ""
+        assert args[3:5] == ["checkout", "--detach"]
+        self.canonical_sha = args[5]
+        return 0, ""
 
     def canonical_head(self):
         self.calls.append(("canonical_head",))
@@ -496,12 +507,16 @@ def test_dry_run_of_an_unarmed_host_lists_what_live_would_refuse(tmp_path):
     assert any("delegation MISSING" in x for x in rec["would_refuse"])
 
 
-def test_cli_live_is_refused_while_build_only(capsys):
+def test_cli_live_is_refused_while_build_only(capsys, monkeypatch):
+    # Arming packet I.4 PR 1 flipped the module constant to ACTIVE; the BUILD_ONLY refusal stays pinned here.
+    monkeypatch.setattr(T, "TRAIN_CONTROLLER_STATUS", "BUILD_ONLY")
     assert RW.main(["train-run", "--live"]) == T.EXIT_REFUSED
     assert "REFUSED_BUILD_ONLY" in capsys.readouterr().out
 
 
-def test_real_github_writer_refuses_until_d2_and_policy_are_active():
+def test_real_github_writer_refuses_until_d2_and_policy_are_active(monkeypatch):
+    # Arming packet I.4 PR 2 flipped GITHUB_WRITES_STATUS to ACTIVE; the refusal while not ACTIVE stays pinned.
+    monkeypatch.setattr(T, "GITHUB_WRITES_STATUS", "PROPOSED")
     with pytest.raises(T.WriterNotArmed):
         T.GhCliWriter(RW.Host(), T.GhCliReader(RW.Host()))
 
@@ -1417,7 +1432,9 @@ def test_incomplete_queue_selects_nothing(tmp_path):
     assert rec["outcome"] == "NO_OP" and rec["reason"] == "QUEUE_INCOMPLETE"
 
 
-def test_fallback_queue_uses_receipt_source_only_when_store_absent():
+def test_census_first_queue_reads_the_census_whether_the_store_is_absent_or_empty():
+    # D7 (DSN-20261021-release-train-P6-T9): the store-first FallbackQueueSource is gone; live reads the census too,
+    # and the store (absent, or readable and empty) never empties the queue.
     class Store:
         name = "phase1"
 
@@ -1427,11 +1444,12 @@ def test_fallback_queue_uses_receipt_source_only_when_store_absent():
         def snapshot(self):
             return self.snap
 
-    fb = StaticQueue([T.QueueEntry(pr=5, head_sha="a" * 40)])
-    absent = T.FallbackQueueSource(Store(T.QueueSnapshot("phase1", None, False, [], ["store:not_migrated"])), fb)
-    assert [e.pr for e in absent.snapshot().entries] == [5]
-    empty = T.FallbackQueueSource(Store(T.QueueSnapshot("phase1", "t", True, [], [])), fb)
-    assert empty.snapshot().entries == []
+    census = StaticQueue([T.QueueEntry(pr=5, head_sha="a" * 40)])
+    absent = T.ShadowQueueSource(Store(T.QueueSnapshot("phase1", None, False, [], ["store:not_migrated"])), census)
+    assert [e.pr for e in absent.snapshot().entries] == [5] and absent.snapshot().complete
+    empty = T.ShadowQueueSource(Store(T.QueueSnapshot("phase1", "t", True, [], [])), census)
+    assert [e.pr for e in empty.snapshot().entries] == [5]
+    assert not hasattr(T, "FallbackQueueSource")
 
 
 def test_phase1_store_queue_source_reads_riding_rows(monkeypatch):
@@ -1627,10 +1645,11 @@ def test_off_window_shadow_request_is_evaluated_at_its_window(tmp_path):
 
 
 def test_live_request_is_refused_while_build_only(tmp_path):
+    # Arming packet I.4 PR 1 flipped the module constant to ACTIVE; the BUILD_ONLY refusal stays pinned here.
     w = World(tmp_path)
     req = request(shadow=False, shadow_reason=None)
     put(w, req)
-    claim(w)
+    claim(w, status="BUILD_ONLY")
     r = receipt(w, req["request_id"])
     assert r["state"] == "REFUSED" and r["refusal"]["code"] == "CONTROLLER_BUILD_ONLY" and r["mode"] == "live"
     assert w.writer.calls == []
@@ -1768,15 +1787,27 @@ def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
 # ── CANONICAL_SOURCE HEAD (2026-10-21, release-1 promote failure) ─────────────────────────────────
 
 
-def test_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path):
+def test_clean_stale_canonical_source_aligns_and_preserves_full_train_verification(tmp_path):
+    w = World(tmp_path)
+    w.host.canonical_sha = w.repo.base
+    code, rec, _ = w.run()
+    assert code == T.EXIT_OK and rec["outcome"] == T.RELEASED_VERIFIED
+    assert ("canonical_git", "checkout", "--detach", w.writer.merged) in w.host.calls
+    assert w.host.canonical_head() == w.writer.merged
+    assert [d[1] for d in w.deploys()] == ["prepare", "promote"]
+    assert all(v["ok"] for v in rec["verification"].values())
+
+
+def test_dirty_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path):
     """The deploy script runs its release verifier from CANONICAL_SOURCE; a dev tree not at the merge commit is an
-    older verifier. The controller refuses before issuing a prepare capability or calling the deploy script."""
+    older verifier. A dirty tree refuses before issuing a prepare capability or calling the deploy script."""
     w = World(tmp_path)
     w.host.canonical_sha = "5" * 40  # dev tree left on an older main
+    w.host.canonical_dirty = True
     code, rec, _ = w.run()
-    assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH", rec["reason"]
+    assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_DIRTY", rec["reason"]
     assert w.deploys() == []  # no prepare, no promote
-    assert ("canonical_head",) in w.host.calls
+    assert not any(c[0] == "canonical_git" and c[1] == "checkout" for c in w.host.calls)
     actions = {i["action"] for i in w.ledger()["intents"].values()}
     assert "prepare_release" not in actions and "promote_release" not in actions
 

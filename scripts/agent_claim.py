@@ -16,6 +16,7 @@ commits, ``check`` tells it whether another live session holds them. Store and s
   precommit  --paths P [P ...]                     the pre-commit gate: warn-only below AGENTS.md 20.0.0 ACTIVE;
              from 20.0.0 ACTIVE exit 10 (hook: 1) when a staged file is held by another live session or not covered by
              one of this session's claims. TRADEAI_CLAIM_OVERRIDE=<reason> bypasses and is logged to the history
+             During a merge, derives paths against MERGE_HEAD itself; caller paths cannot omit own edits.
   release    CLAIM_ID [--status done|abandoned] [--note X]
   list       [--json] [--all]                      live + stale by default; --all adds done/abandoned
   check      --paths P [P ...] [--no-gh] [--warn-only] [--exclude-branch B]
@@ -318,17 +319,55 @@ def cmd_precommit(a: argparse.Namespace) -> int:
         return 3
 
 
+def _precommit_paths(supplied: list[str]) -> tuple[list[str], str]:
+    """Merge ownership is the index versus the incoming parent, not index versus our HEAD.
+
+    The existing hook's staged list includes inherited main changes and omits our
+    already-committed branch work. Resolve the marker through git for linked worktrees,
+    and recompute the complete scope rather than intersecting a caller-supplied subset.
+    A failed git read raises: the hook already treats gate failure as closed under
+    the active policy. Ordinary callers keep their existing explicit-path behavior.
+    """
+    marker = _git(["rev-parse", "--git-path", "MERGE_HEAD"])
+    if marker is None:
+        raise RuntimeError("git merge state unavailable")
+    if not Path(marker).exists():
+        return supplied, "caller"
+
+    def staged_against(ref: str) -> list[str]:
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "-z", ref, "--"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"},
+        )
+        return [path for path in diff.stdout.split("\0") if path]
+
+    own = staged_against("MERGE_HEAD")
+    # Only accepted main history receives the inherited-file exemption. Importing
+    # an unmerged feature branch must not make its unclaimed files disappear.
+    accepted_main = _git(["merge-base", "--is-ancestor", "MERGE_HEAD", "refs/remotes/origin/main"])
+    if accepted_main is not None:
+        return own, "MERGE_HEAD"
+    return sorted(set(own) | set(staged_against("HEAD"))), "MERGE_HEAD+HEAD"
+
+
 def _precommit(a: argparse.Namespace) -> int:
+    paths, basis = _precommit_paths(a.paths)
     branch = a.exclude_branch if a.exclude_branch is not None else B.current_branch()
     res = B.precommit_gate(
         _board(a),
-        a.paths,
+        paths,
         session=_session(a),
         vendor=a.vendor or B.detect_vendor(),
         branch=branch,
         agents_md=Path(a.agents_md) if a.agents_md else ROOT / "AGENTS.md",
         override=os.environ.get(B.ENV_OVERRIDE),
     )
+    res["path_basis"] = basis
+    res["evaluated_paths"] = paths
     for line in res["messages"]:
         print(line, file=sys.stderr)
     if a.json:

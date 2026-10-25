@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_github_app_config_20261023",
+  "files": [
+    "tests/test_release_train_github_app_config_20261023.py"
+  ],
+  "anchor": "RELEASE_TRAIN_GITHUB_APP_CONFIG_20261023",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_GITHUB_APP_CONFIG_20261023 — decision D2: the operator-run helper",
+    "scripts/ops/release_train_github_app_config.py discovers the App installation for the repository owner",
+    "(GET /app/installations, RS256 JWT from GitHubAppTokenMinter.jwt), proves access with one narrowed installation",
+    "token that is dropped (GitHubAppTokenMinter.mint + GET /installation/repositories) and writes github-app.json",
+    "atomically, mode 600, archiving a differing old file. Refuses a wrong owner, an ambiguous or suspended",
+    "installation, a token that cannot see the repo, a key not mode 600 and a symlinked output. --dry-run writes",
+    "nothing. No key, JWT or token in stdout/stderr. Hermetic: throwaway RSA key in tmp_path, fake HTTP layer."
+  ]
+}

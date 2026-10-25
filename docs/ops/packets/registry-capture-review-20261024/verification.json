@@ -1,0 +1,27 @@
+{
+  "schema": "RegistryCaptureReviewVerification@v1",
+  "tested_at_utc": "2026-10-24T04:52:45.270557+00:00",
+  "profile": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical virtualenv Python",
+  "focused_test_files": [
+    "tests/test_registry_capture_review_packet_20261024.py",
+    "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+    "tests/test_ci_gates_registry_20261021.py"
+  ],
+  "result": "84 passed in13.68s",
+  "new_cases": 26,
+  "existing_reconcile_cases": 33,
+  "existing_gate_registry_cases": 25,
+  "host_path_new_violations": 0,
+  "new_ungated_tests": 0,
+  "semantic_ledger_ids": 13,
+  "semantic_ledger_leaves": 177,
+  "all_entries_reason_and_disposition": true,
+  "restriction_historical_fixedpoint": true,
+  "provenance_historical_fixedpoint": false,
+  "provenance_disposition": "HELD; expected failure explicitly tested, not weakened",
+  "mechanical_disposition": "REJECTED; all177leaves independently compared",
+  "operative_registry_mutations": 0,
+  "host_census_network_database_broker_calls": 0,
+  "raw_private_capture_committed": false,
+  "source_authority_applied": false
+}

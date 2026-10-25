@@ -1,0 +1,5016 @@
+{
+  "fixture": true,
+  "clock": "2026-10-24T14:00:00Z",
+  "cases": [
+    {
+      "kind": "held",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "FATN",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "FATN Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Held in",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Schwab Individual",
+          "ratio": 11.492191184337477
+        },
+        {
+          "text": "Held",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Managing an existing position",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "−10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "85",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "HOLD",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Open position",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "FATN",
+        "security_guid": "fixture-guid-FATN",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-FATN",
+          "status": "CURRENT",
+          "company": {
+            "value": "FATN Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "manage",
+        "stage": "held_review",
+        "why": "Managing an existing position",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 85,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "HOLD",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "open_position",
+          "label": "Open position",
+          "href": "/v3/trading?tab=open-trades&symbol=FATN",
+          "reason": "Existing position navigation only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "held",
+        "held": true,
+        "held_accounts": [
+          "schwab_rollover_ira",
+          "schwab_taxable"
+        ],
+        "held_account_labels": [
+          "Schwab Rollover IRA",
+          "Schwab Individual"
+        ],
+        "last_sell_at": null,
+        "last_sell_account": null,
+        "last_sell_account_label": null,
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nFATN\nFATN Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nHeld in Schwab Rollover IRASchwab Individual\nHeld · Managing an existing position\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n85 / 100\nHOLD\nOpen position\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "formerly-held",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "ANET",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "ANET Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Formerly held · sold 10/22 ·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "−10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "77",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "ANET",
+        "security_guid": "fixture-guid-ANET",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-ANET",
+          "status": "CURRENT",
+          "company": {
+            "value": "ANET Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 77,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nANET\nANET Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nFormerly held · sold 10/22 · Schwab Rollover IRA\nRe-entry near · Sold; near your re-entry level\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n77 / 100\nRE-ENTER\nSet alert\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "never-held",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "SMCI",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "SMCI Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Forming",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Watching the setup develop",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "−10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "68",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "WATCH",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "SMCI",
+        "security_guid": "fixture-guid-SMCI",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-SMCI",
+          "status": "CURRENT",
+          "company": {
+            "value": "SMCI Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "forming",
+        "stage": "re_entry",
+        "why": "Watching the setup develop",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 68,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "WATCH",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "never_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": null,
+        "last_sell_account": null,
+        "last_sell_account_label": null,
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nSMCI\nSMCI Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nForming · Watching the setup develop\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n68 / 100\nWATCH\nSet alert\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "conflict",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "DXCM",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "DXCM Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Formerly held · sold 10/22 ·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Not actionable:",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Trade AI deterministic check fails",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Missing:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fundamental factor not scored",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "−10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "79",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Resolve conflict",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "DXCM",
+        "security_guid": "fixture-guid-DXCM",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-DXCM",
+          "status": "CURRENT",
+          "company": {
+            "value": "DXCM Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 79,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [
+          {
+            "kind": "stance",
+            "summary": "Desk disagreement retained in record",
+            "a": {
+              "value": "RE_ENTER"
+            },
+            "b": {
+              "value": "WAIT"
+            }
+          },
+          {
+            "kind": "trade_ai_block",
+            "summary": "Trade AI deterministic check fails",
+            "a": {
+              "value": "RE_ENTER"
+            },
+            "b": {
+              "value": "DETERMINISTIC_FAIL"
+            }
+          }
+        ],
+        "whats_missing": [
+          "Fundamental factor not scored"
+        ],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "resolve_conflict",
+          "label": "Resolve conflict",
+          "reason": "Two existing sources disagree"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false,
+        "trade_ai_state": "DETERMINISTIC_FAIL"
+      },
+      "displayed": "★\nDXCM\nDXCM Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nFormerly held · sold 10/22 · Schwab Rollover IRA\nRe-entry near · Sold; near your re-entry level\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\nNot actionable: Trade AI deterministic check fails\nMissing: Fundamental factor not scored\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n79 / 100\nRE-ENTER\nResolve conflict\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "no-catalyst",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NCAT",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NCAT Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Formerly held · sold 10/22 ·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "None on file",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "−10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "72",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "NCAT",
+        "security_guid": "fixture-guid-NCAT",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NCAT",
+          "status": "CURRENT",
+          "company": {
+            "value": "NCAT Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "MISSING",
+            "headline": null,
+            "missing_reason": "no_current_dated_catalyst"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 72,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNCAT\nNCAT Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nFormerly held · sold 10/22 · Schwab Rollover IRA\nRe-entry near · Sold; near your re-entry level\nCATALYST\nNone on file\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n72 / 100\nRE-ENTER\nSet alert\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "missing-level",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NLEV",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NLEV Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Formerly held · sold 10/22 ·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "$10.00",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "—",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "No reference",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "—",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "+10.0%",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "No reference · Observation time unknown · not exposed by source · No stored support reference.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "55",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "NLEV",
+        "security_guid": "fixture-guid-NLEV",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NLEV",
+          "status": "CURRENT",
+          "company": {
+            "value": "NLEV Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": null,
+            "source_label": "No reference",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "No stored support reference.",
+            "value": null
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 55,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNLEV\nNLEV Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nFormerly held · sold 10/22 · Schwab Rollover IRA\nRe-entry near · Sold; near your re-entry level\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n—\nNo reference\n—\nZone\n$9.50–$10.50\nResistance\n$11.00\n+10.0%\nlevels: Master ·\ntime unknown\nSource details\n55 / 100\nRE-ENTER\nSet alert\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "missing-price",
+      "width": 1440,
+      "geometry": {
+        "client": 1396,
+        "scroll": 1396,
+        "document": 1440,
+        "viewport": 1440
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NPRC",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NPRC Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Builds precision instruments for industrial quality testing.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.389993321727427
+        },
+        {
+          "text": "Formerly held · sold 10/22 ·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 11.097589166389863
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "—",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Missing",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.00",
+          "ratio": 9.050111686825366
+        },
+        {
+          "text": "—",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.107037784233016
+        },
+        {
+          "text": "—",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Price unavailable; nearest relation unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "No quote",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Observation time unknown",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote is missing.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "n/a",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "/ 100",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "no stance",
+          "ratio": 6.414421977641709
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert · Remove",
+          "ratio": 10.927764807655889
+        }
+      ],
+      "input": {
+        "symbol": "NPRC",
+        "security_guid": "fixture-guid-NPRC",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NPRC",
+          "status": "CURRENT",
+          "company": {
+            "value": "NPRC Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": null,
+            "as_of": null,
+            "source": null,
+            "source_label": "No quote",
+            "stale": true,
+            "freshness": "MISSING",
+            "reason": "Stored quote is missing."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "UNKNOWN"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "UNKNOWN"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": null,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": null,
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": null,
+        "price_as_of": null,
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNPRC\nNPRC Fixture Instruments Inc.\n\nBuilds precision instruments for industrial quality testing.\n\nTechnology\nScientific & Technical Instruments\nFormerly held · sold 10/22 · Schwab Rollover IRA\nRe-entry near · Sold; near your re-entry level\nCATALYST\nFixture company publication\n2026-10-23 · Company publication\n—\nMissing\nSupport\n$9.00\n—\nZone\n$9.50–$10.50\nResistance\n$11.00\n—\nlevels: Master ·\ntime unknown\nPrice unavailable; nearest relation unknown\nSource details\nn/a / 100\nno stance\nSet alert\nSet alert · Remove",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "held",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "FATN",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "FATN Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Held",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Managing an existing position",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Held in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA, Schwab Individual",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "85",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "HOLD",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Open position",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "FATN",
+        "security_guid": "fixture-guid-FATN",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-FATN",
+          "status": "CURRENT",
+          "company": {
+            "value": "FATN Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "manage",
+        "stage": "held_review",
+        "why": "Managing an existing position",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 85,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "HOLD",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "open_position",
+          "label": "Open position",
+          "href": "/v3/trading?tab=open-trades&symbol=FATN",
+          "reason": "Existing position navigation only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "held",
+        "held": true,
+        "held_accounts": [
+          "schwab_rollover_ira",
+          "schwab_taxable"
+        ],
+        "held_account_labels": [
+          "Schwab Rollover IRA",
+          "Schwab Individual"
+        ],
+        "last_sell_at": null,
+        "last_sell_account": null,
+        "last_sell_account_label": null,
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nFATN\nFATN Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nHeld · Managing an existing position\nCATALYSTFixture company publication2026-10-23 · Company publication\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50 · Held in Schwab Rollover IRA, Schwab Individual\nlevels: Master ·\ntime unknown\nSource details\n85\nHOLD\nOpen position\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "formerly-held",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "ANET",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "ANET Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Sold in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "77",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "ANET",
+        "security_guid": "fixture-guid-ANET",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-ANET",
+          "status": "CURRENT",
+          "company": {
+            "value": "ANET Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 77,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nANET\nANET Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nRe-entry near · Sold; near your re-entry level\nCATALYSTFixture company publication2026-10-23 · Company publication\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50 · Sold in Schwab Rollover IRA\nlevels: Master ·\ntime unknown\nSource details\n77\nRE-ENTER\nSet alert\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "never-held",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "SMCI",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "SMCI Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Forming",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Watching the setup develop",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "68",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "WATCH",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "SMCI",
+        "security_guid": "fixture-guid-SMCI",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-SMCI",
+          "status": "CURRENT",
+          "company": {
+            "value": "SMCI Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "forming",
+        "stage": "re_entry",
+        "why": "Watching the setup develop",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 68,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "WATCH",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "never_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": null,
+        "last_sell_account": null,
+        "last_sell_account_label": null,
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nSMCI\nSMCI Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nForming · Watching the setup develop\nCATALYSTFixture company publication2026-10-23 · Company publication\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50\nlevels: Master ·\ntime unknown\nSource details\n68\nWATCH\nSet alert\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "conflict",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "DXCM",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "DXCM Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Not actionable:",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Trade AI deterministic check fails",
+          "ratio": 7.536919236401112
+        },
+        {
+          "text": "Missing:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fundamental factor not scored",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Sold in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "79",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Resolve conflict",
+          "ratio": 7.536919236401112
+        }
+      ],
+      "input": {
+        "symbol": "DXCM",
+        "security_guid": "fixture-guid-DXCM",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-DXCM",
+          "status": "CURRENT",
+          "company": {
+            "value": "DXCM Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 79,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [
+          {
+            "kind": "stance",
+            "summary": "Desk disagreement retained in record",
+            "a": {
+              "value": "RE_ENTER"
+            },
+            "b": {
+              "value": "WAIT"
+            }
+          },
+          {
+            "kind": "trade_ai_block",
+            "summary": "Trade AI deterministic check fails",
+            "a": {
+              "value": "RE_ENTER"
+            },
+            "b": {
+              "value": "DETERMINISTIC_FAIL"
+            }
+          }
+        ],
+        "whats_missing": [
+          "Fundamental factor not scored"
+        ],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "resolve_conflict",
+          "label": "Resolve conflict",
+          "reason": "Two existing sources disagree"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false,
+        "trade_ai_state": "DETERMINISTIC_FAIL"
+      },
+      "displayed": "★\nDXCM\nDXCM Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nRe-entry near · Sold; near your re-entry level\nCATALYSTFixture company publication2026-10-23 · Company publication\nNot actionable: Trade AI deterministic check fails\nMissing: Fundamental factor not scored\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50 · Sold in Schwab Rollover IRA\nlevels: Master ·\ntime unknown\nSource details\n79\nRE-ENTER\nResolve conflict\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "no-catalyst",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NCAT",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NCAT Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "None on file",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Sold in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "72",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "NCAT",
+        "security_guid": "fixture-guid-NCAT",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NCAT",
+          "status": "CURRENT",
+          "company": {
+            "value": "NCAT Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "MISSING",
+            "headline": null,
+            "missing_reason": "no_current_dated_catalyst"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "BELOW_OR_AT_PRICE"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 72,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNCAT\nNCAT Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nRe-entry near · Sold; near your re-entry level\nCATALYSTNone on file\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50 · Sold in Schwab Rollover IRA\nlevels: Master ·\ntime unknown\nSource details\n72\nRE-ENTER\nSet alert\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "missing-level",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NLEV",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NLEV Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Closed session · 2026-10-23",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "· intraday 15:45 ET",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "—",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "No reference",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$10.00",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Sold in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote · schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "data_broker.latest_quote:schwab",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "As of Oct 23, 2026, 03:45:00 PM EDT",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Intraday observation",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price observation is stale.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "No reference · Observation time unknown · not exposed by source · No stored support reference.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "55",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "RE-ENTER",
+          "ratio": 6.652019007912427
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "NLEV",
+        "security_guid": "fixture-guid-NLEV",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NLEV",
+          "status": "CURRENT",
+          "company": {
+            "value": "NLEV Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": 10,
+            "as_of": "2026-10-23T19:45:00Z",
+            "source": "data_broker.latest_quote:schwab",
+            "source_label": "Stored quote · schwab",
+            "stale": true,
+            "freshness": "STALE",
+            "reason": "Price observation is stale."
+          },
+          "support": {
+            "as_of": null,
+            "source": null,
+            "source_label": "No reference",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "No stored support reference.",
+            "value": null
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "ABOVE_OR_AT_PRICE"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": 55,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": "RE_ENTER",
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": 10,
+        "price_as_of": "2026-10-23T19:45:00Z",
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNLEV\nNLEV Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nRe-entry near · Sold; near your re-entry level\nCATALYSTFixture company publication2026-10-23 · Company publication\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n—\nNo reference\nPrice\n$10.00\nResistance\n$11.00\nZone $9.50–$10.50 · Sold in Schwab Rollover IRA\nlevels: Master ·\ntime unknown\nSource details\n55\nRE-ENTER\nSet alert\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "kind": "missing-price",
+      "width": 412,
+      "geometry": {
+        "client": 368,
+        "scroll": 368,
+        "document": 412,
+        "viewport": 412
+      },
+      "contrast": [
+        {
+          "text": "★",
+          "ratio": 9.74419719314123
+        },
+        {
+          "text": "NPRC",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "NPRC Fixture Instruments Inc.",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Technology",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Scientific & Technical Instruments",
+          "ratio": 14.481508292066573
+        },
+        {
+          "text": "Re-entry near",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "·",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "Sold; near your re-entry level",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "CATALYST",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Fixture company publication",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "2026-10-23",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Company publication",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Missing",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Support",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$9.00",
+          "ratio": 8.99292008178796
+        },
+        {
+          "text": "Price",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "—",
+          "ratio": 16.955105845628285
+        },
+        {
+          "text": "Resistance",
+          "ratio": 10.858707493177558
+        },
+        {
+          "text": "$11.00",
+          "ratio": 6.068444747484882
+        },
+        {
+          "text": "Zone",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "$9.50–$10.50",
+          "ratio": 8.36901170750327
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Sold in",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Schwab Rollover IRA",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "levels:",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Master",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "·",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "time unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Price unavailable; nearest relation unknown",
+          "ratio": 10.927764807655889
+        },
+        {
+          "text": "Source details",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Price:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "No quote",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Observation time unknown",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "·",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Stored quote is missing.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Support:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Resistance:",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "Watch symbol master · watchlist_symbol_master · Observation time unknown · not exposed by source · Level observation time unavailable.",
+          "ratio": 7.181986978427372
+        },
+        {
+          "text": "n/a",
+          "ratio": 17.062933971317335
+        },
+        {
+          "text": "no stance",
+          "ratio": 6.414421977641709
+        },
+        {
+          "text": "Set alert",
+          "ratio": 6.652019007912427
+        }
+      ],
+      "input": {
+        "symbol": "NPRC",
+        "security_guid": "fixture-guid-NPRC",
+        "company": "Legacy company name must not replace CIO facts",
+        "company_facts": {
+          "schema": "CIOCompanyFacts@v1",
+          "security_guid": "fixture-guid-NPRC",
+          "status": "CURRENT",
+          "company": {
+            "value": "NPRC Fixture Instruments Inc.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "description": {
+            "value": "Builds precision instruments for industrial quality testing.",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "sector": {
+            "value": "Technology",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "industry": {
+            "value": "Scientific & Technical Instruments",
+            "source": "symbol_profiles:fixture",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "clock_kind": "source_observation"
+          },
+          "catalyst": {
+            "status": "CURRENT",
+            "headline": "Fixture company publication",
+            "published_at": "2026-10-23T12:00:00Z",
+            "observed_at": "2026-10-23T19:45:00Z",
+            "source": "news_articles:fixture",
+            "feed": "Company publication",
+            "url": "https://example.invalid/fixture-publication",
+            "factual_verification_status": "SOURCE_DECLARED"
+          }
+        },
+        "market_facts": {
+          "schema": "WatchMarketFacts@v1",
+          "evaluated_at": "2026-10-24T14:00:00Z",
+          "price": {
+            "value": null,
+            "as_of": null,
+            "source": null,
+            "source_label": "No quote",
+            "stale": true,
+            "freshness": "MISSING",
+            "reason": "Stored quote is missing."
+          },
+          "support": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 9,
+            "compatibility": "UNKNOWN"
+          },
+          "resistance": {
+            "as_of": null,
+            "source": "watchlist_symbol_master",
+            "source_label": "Watch symbol master",
+            "stale": null,
+            "freshness": "UNKNOWN",
+            "as_of_basis": "not exposed by source",
+            "reason": "Level observation time unavailable.",
+            "value": 11,
+            "compatibility": "UNKNOWN"
+          }
+        },
+        "lane": "reentry",
+        "stage": "re_entry",
+        "why": "Sold; near your re-entry level",
+        "summary": "Synthetic fixture. Existing stored facts only; advisory actions only.",
+        "conviction": null,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_stale": false,
+        "conviction_source": "fixture",
+        "conviction_as_of": "2026-10-23T19:45:00Z",
+        "stance": null,
+        "conflicts": [],
+        "whats_missing": [],
+        "next_trigger": {
+          "label": "Zone $9.50–$10.50",
+          "level_ref": 10,
+          "inside": true,
+          "distance_pct": 0,
+          "observed_by": "fixture"
+        },
+        "next_action": {
+          "kind": "set_alert",
+          "label": "Set alert",
+          "reason": "Advisory notification only"
+        },
+        "surfaces": [],
+        "price": null,
+        "price_as_of": null,
+        "levels_ref": {
+          "entry_low_ref": 9.5,
+          "entry_high_ref": 10.5,
+          "support_ref": 9,
+          "resistance_ref": 11
+        },
+        "mine": true,
+        "starred": true,
+        "membership": [],
+        "position_state": "formerly_held",
+        "held": false,
+        "held_accounts": [],
+        "held_account_labels": [],
+        "last_sell_at": "2026-10-22T14:00:00Z",
+        "last_sell_account": "schwab_rollover_ira",
+        "last_sell_account_label": "Schwab Rollover IRA",
+        "last_round_trip": null,
+        "reentry": null,
+        "evidence_at": "2026-10-23T19:45:00Z",
+        "expires_at": null,
+        "stale": false
+      },
+      "displayed": "★\nNPRC\nNPRC Fixture Instruments Inc.\nTechnology\nScientific & Technical Instruments\nRe-entry near · Sold; near your re-entry level\nCATALYSTFixture company publication2026-10-23 · Company publication\nMissing\nSupport\n$9.00\nPrice\n—\nResistance\n$11.00\nZone $9.50–$10.50 · Sold in Schwab Rollover IRA\nlevels: Master ·\ntime unknown\nPrice unavailable; nearest relation unknown\nSource details\nn/a\nno stance\nSet alert\n⋯",
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "interaction": true,
+      "width": 1440,
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          },
+          {
+            "sort": "conviction_desc",
+            "_": "1792850400000"
+          },
+          {
+            "sort": "conviction_asc",
+            "_": "1792850400000"
+          },
+          {
+            "_": "1792850400000"
+          },
+          {
+            "sort": "setup",
+            "_": "1792850400000"
+          },
+          {
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "sort": "conviction_desc",
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "stance": "RE-ENTER",
+            "sort": "conviction_desc",
+            "_": "1792850400000"
+          },
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "interaction": true,
+      "width": 412,
+      "traffic": {
+        "queries": [
+          {
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "sort": "conviction_desc",
+            "_": "1792850400000"
+          },
+          {
+            "conv": "70",
+            "stance": "RE-ENTER",
+            "sort": "conviction_desc",
+            "_": "1792850400000"
+          },
+          {
+            "_": "1792850400000"
+          }
+        ],
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    }
+  ]
+}

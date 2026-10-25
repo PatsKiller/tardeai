@@ -626,6 +626,10 @@ def test_run_deep_research_returns_a_valid_contract_answer():
     assert (ans.status, ans.depth, ans.ask_id, ans.version) == ("deep", "deep", ctx.request.ask_id, 1)
     pr = ans.prospectus[0]
     assert pr.street_target.low == 150.0 and pr.street_target.high == 400.0 and pr.street_target.median is None
+    assert pr.street_target.mean == 260.0
+    assert pr.horizons["12m"]["bull"].citation["value"] == 400.0
+    assert pr.horizons["12m"]["bull"].citation["citation"]
+    assert pr.horizons["3m"]["base"].citation is None
     assert pr.horizons["12m"]["bull"].price == 400.0 and pr.horizons["3m"]["base"].price is None
     assert pr.stance == "constructive"
     assert [d.model for d in ans.model_dissent if d.differs_on == "stance"] == ["grok"]

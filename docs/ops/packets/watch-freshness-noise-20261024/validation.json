@@ -1,0 +1,70 @@
+{
+  "schema": "WatchFreshnessNoiseValidation@v1",
+  "created_at": "2026-10-24T15:05:18.281262+00:00",
+  "task": "DSN-20261024-watch-freshness-noise-P1-T1",
+  "session": "codex-watch-freshness-20261024",
+  "claim": "20261024T144728Z-codex-c5abe281",
+  "base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "scope": "candidate source and isolated fixtures only; no publication or runtime acceptance",
+  "python": {
+    "result": "96 passed in 93.83s",
+    "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q tests/test_watch_freshness_noise_20261024.py tests/test_watch_market_facts_20261024.py tests/test_data_source_authority_20260913.py tests/test_ci_gates_registry_20261021.py",
+    "log_sha256": "bba3335def541357c79d19004133886fc0ab1855276a7cb619785fd7600a8560"
+  },
+  "presentation": {
+    "result": "35 assertions passed",
+    "command": "node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts"
+  },
+  "browser": {
+    "new_cases": 6,
+    "existing_market_facts_tests": 18,
+    "new_command": "node e2e/watch-freshness-noise.fixture.mjs <evidence-directory>",
+    "existing_command": "PLAYWRIGHT_BASE_URL=<isolated-static-preview-origin> playwright test e2e/watch-market-facts.spec.ts --project=chromium --reporter=line",
+    "no_live_7777": true,
+    "synthetic_intercepted_APIs_only": true,
+    "source_details_keyboard": true,
+    "inspected": [
+      "watch-freshness-1440-200.png",
+      "watch-freshness-412-200.png"
+    ]
+  },
+  "build": {
+    "command": "npm run build",
+    "exit_code": 0,
+    "existing_warning": "chunk size advisory",
+    "log_sha256": "d5e6bc20d53d4bfc8b6b430e8528ff3508b46ea3f03c664c8bf64868fbd1895c"
+  },
+  "ratchets": {
+    "host_paths_new": 0,
+    "coverage_unlisted_new": [],
+    "commands": [
+      "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/check_test_host_paths.py --fail-on-new",
+      "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/check_test_coverage.py --fail-on-new --json"
+    ],
+    "host_paths_log_sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+    "coverage_log_sha256": "1258757a5eaf4e6b4c1bebde1ac07f3e4f1b404701657afb3e0efd0282461fe4"
+  },
+  "source_sha256": {
+    "apps/command-center-v3/src/components/watch/WatchMarketFacts.tsx": "d6e63217a004d2cdc96b2ff021b0fe81073141ebf19f2dcaebc61ba94460366c",
+    "apps/command-center-v3/src/lib/watchMarketFactsPresentation.ts": "f752c6c15fc06bfdac341cd5c1f356a43f626c9d7c701f6603c13dc728e63220",
+    "apps/command-center-v3/src/lib/watchMarketFactsPresentation.test.ts": "67f6d54ef8b77f581ef029686997ad2e99f8ad09486a2aa2270dc9984c37f074",
+    "apps/command-center-v3/src/lib/watchListsModel.ts": "18faac39698359e0b11c3c922a2c6e0943e623e4a5b139fbaadbda578e4d8e87",
+    "apps/command-center-v3/src/pages/WatchLayout.css": "b80011700538a4ced563fd1fc2142f94afd1c9d8f435c28207aa3f3fe9553d98",
+    "scripts/lib/data_broker/watch_market_facts.py": "a3647fb5761cb4c766d955159f916da54d766fa27d266fe0ffde42b7ad156081",
+    "tests/test_watch_freshness_noise_20261024.py": "ab7a3f3b922fdfc1ab1cbb7c1c7ef8732cc10d604d685ce8182952c6fdff200f",
+    "config/ci_gates/watch_freshness_noise_20261024.json": "e21ad3f734acb22715790f5c0c3fc5953548919ee10496d1601e2ca6c8a96c5e",
+    ".github/workflows/watch-freshness-noise-fixture.yml": "39f3498e4209d9e96fb9e0d43c673e2b99a2b2aadea659c6c8548c8b96f9d87c",
+    "apps/command-center-v3/e2e/watch-freshness-noise.fixture.mjs": "616ac798046247048faf299096cd816e8d9d062ca6d6b544cefecde92174f19c",
+    "apps/command-center-v3/e2e/watch-market-facts.spec.ts": "c346e00437e0f37ddb6031db7d73a4a65b18a03a9b3c970016dce392efd70e49"
+  },
+  "artifact_sha256": {
+    "watch-freshness-412-503.png": "335a251b3ac2bb0069cc7bb73add4f65d48354ec1341efcbde98932a5d01a0fc",
+    "results.json": "72d7baafa81c4648096614a659cca916d0218639c8ad391ab94b6e0d4aa33182",
+    "watch-freshness-412-200.png": "db4d84e476189e36c3043f457fb2bc44d622744a15c4af26d71a20a9d1b6f1ae",
+    "watch-freshness-1440-403.png": "fbf53ab7b9a39eea05658afda191d2a695364c538a95223ef9cb23b3dc691d9f",
+    "watch-freshness-412-403.png": "335a251b3ac2bb0069cc7bb73add4f65d48354ec1341efcbde98932a5d01a0fc",
+    "watch-freshness-1440-503.png": "a73d84eb8b585612a45105f78660f4f76fad2a6ebe61ea9b9a056f8d2ce39e61",
+    "watch-freshness-1440-200.png": "fc93fb99f0179d4c47e4bf240b75a70c74e4e9bafc99d53eda7d960602545726",
+    "preview-isolation.json": "4dd8938cd1413aca611a311440b1fc8d0fc2d15c26d3359f24e3227d69989e69"
+  }
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "lane_id": "holdings-drift-monitor",
+    "proposed_kind": "n8n",
+    "proposed_stage": "shadow",
+    "main_kind": null,
+    "proposed_contract_status": "REVIEWED",
+    "main_contract_status": null,
+    "same_registry_record": false
+  },
+  {
+    "lane_id": "options-desk-staleness-monitor",
+    "proposed_kind": "n8n",
+    "proposed_stage": "shadow",
+    "main_kind": null,
+    "proposed_contract_status": "REVIEWED",
+    "main_contract_status": null,
+    "same_registry_record": false
+  },
+  {
+    "lane_id": "held-exit-coverage-monitor",
+    "proposed_kind": "n8n",
+    "proposed_stage": "shadow",
+    "main_kind": null,
+    "proposed_contract_status": "REVIEWED",
+    "main_contract_status": null,
+    "same_registry_record": false
+  },
+  {
+    "lane_id": "options-desk-quote-refresh",
+    "proposed_kind": "none",
+    "proposed_stage": null,
+    "main_kind": null,
+    "proposed_contract_status": "REVIEWED",
+    "main_contract_status": null,
+    "same_registry_record": false
+  },
+  {
+    "lane_id": "schwab-position-sync",
+    "proposed_kind": "cron",
+    "proposed_stage": null,
+    "main_kind": "cron",
+    "proposed_contract_status": "REVIEWED",
+    "main_contract_status": null,
+    "same_registry_record": false
+  }
+]

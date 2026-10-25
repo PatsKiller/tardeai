@@ -786,7 +786,7 @@ def _curator_projection() -> dict[str, Any]:
         return {}
 
 
-def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None) -> dict[str, Any]:
     """The ONE composition behind every Watch list (cached 60 s): Prospects lanes, My Watchlist and System Suggests
     read the same rows, so a symbol shows the same conviction, stance and stage on all three (operator 2026-10-23,
     "they don't even align"). Returns {payload (WatchProspects@v1), rows {SYM: row}, row_for(sym), opps, proj_meta,
@@ -795,7 +795,7 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     fresh = str((query or {}).get("fresh") or "") in ("1", "true")
     if not fresh and _CACHE["val"] is not None and now_m - _CACHE["at"] < CACHE_S:
         return _CACHE["val"]
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     recs, cp_status = _cio_prospect_records()
     opmem = _operator_membership()
     operator = opmem.get("names") or {}
@@ -843,6 +843,14 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     out["data_broker"] = {"package": "scripts/lib/data_broker", "projection": "watch_prospects",
                           "catalog": "/api/v3/data-broker", "read_only": True, "provider_calls": 0}
     rows = {r["symbol"]: r for lane in out["lanes"] for r in lane["items"]}
+    # Stored evidence is fetched once for this shared cache. Request-time views
+    # recompute freshness separately, without mutating cached decisions or quotes.
+    from lib.data_broker.watch_market_facts import load_snapshot
+
+    market_reader = db_query
+    if market_reader is None and operator:
+        market_reader = _db_query()
+    market_snapshot = load_snapshot(market_reader, operator, now=now, cards=cards)
     # Position facts on every row: held / formerly held / never held, the last round trip, the re-entry advice
     # (lib/data_broker/watch_position_facts.py; operator 2026-10-23 "it should be tracked that formerly held").
     try:
@@ -856,7 +864,14 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         facts_for = None
         out["position_facts"] = {"status": f"error:{type(e).__name__}"}
 
+    from lib.data_broker.cio_company_facts import load_snapshot as company_snapshot, for_security
+    saved_company_facts = company_snapshot()
+    out["company_facts_source"] = "CIO InstrumentRecord.research.company_facts"
+
     def _attach(r: dict[str, Any]) -> dict[str, Any]:
+        saved = for_security(saved_company_facts, r["symbol"], r.get("security_guid"), now=now)
+        r["company_facts"] = saved["company_facts"]
+        r["company"] = (saved["company_facts"].get("company") or {}).get("value")
         if facts_for is not None and "position_state" not in r:
             r.update({k: v for k, v in facts_for(r["symbol"]).items()})
         return r
@@ -875,7 +890,7 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
 
     val = {"payload": out, "rows": rows, "row_for": row_for, "opps": opps, "proj_meta": proj_meta, "held": held,
            "held_source": held_source, "held_detail": hd, "operator": operator, "cp_status": cp_status,
-           "now": now}
+           "now": now, "market_snapshot": market_snapshot}
     _CACHE.update(at=now_m, val=val)
     return val
 
@@ -888,26 +903,35 @@ def list_watch_prospects(query: Optional[dict[str, Any]] = None) -> dict[str, An
     return filter_payload(payload, q)
 
 
-def filter_payload(payload: dict[str, Any], q: dict[str, Any]) -> dict[str, Any]:
+def filter_payload(payload: dict[str, Any], q: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
     """Apply the position filters (watch_position_facts.FILTERS, query parameters) to the lanes. Counts are
     recomputed over the kept rows; ``filters`` says what was applied and ``position_facets`` are the count chips."""
     from lib.data_broker import watch_position_facts as wpf
 
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     active = wpf.active_filters(q)
     all_rows = [r for lane in payload.get("lanes") or [] for r in lane.get("items") or []]
     out = dict(payload)
-    out["position_facets"] = wpf.facet_counts(all_rows, now=now)
+    out["position_facets"] = wpf.facet_counts(all_rows, now=now, filters=active)
     out["position_filters"] = wpf.FILTERS
     out["filters"] = active
-    if not active:
+    out["filter_scope"] = "shown_lane_rows"
+    out["unevaluated_overflow"] = sum(max(0, int(lane.get("count") or 0) - len(lane.get("items") or [])) for lane in payload.get("lanes") or [])
+    sort = str(q.get("sort") or "")
+    if not active and sort not in wpf.SORTS:
         return out
     lanes = []
     for lane in payload.get("lanes") or []:
         keep = [r for r in lane.get("items") or [] if wpf.passes(r, active, now=now)]
-        lanes.append({**lane, "items": keep, "count": len(keep), "overflow": [],
-                      "unfiltered_count": lane.get("count")})
+        if sort in wpf.SORTS:
+            keep.sort(key=lambda r: (*wpf.sort_key(sort, r, r.get("conviction")), r["symbol"]))
+        lanes.append({**lane, "items": keep, **({"count": len(keep),
+                      "unfiltered_count": lane.get("count")} if active else {})})
     out["lanes"] = lanes
+    out["sort"] = sort if sort in wpf.SORTS else None
+    if not active:
+        return out  # Reordering the shown window does not remove the capped population.
     out["counts"] = {**(payload.get("counts") or {}), **{lane["id"]: lane["count"] for lane in lanes},
-                     "total": sum(lane["count"] for lane in lanes), "filtered": True}
+                     "total": sum(lane["count"] for lane in lanes), "filtered": True,
+                     "unevaluated_overflow": out["unevaluated_overflow"]}
     return out

@@ -309,10 +309,15 @@ def process_operator_message(
     send_fn: Optional[SendFn] = None,
     wakes_limit: Optional[int] = None,
     actor_id: str = "cio_converse",
+    ask_options: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Channel-agnostic converse processor.
 
     send_fn(chat_id, text, reply_to=None) -> {ok, message_id?, error?}
+
+    ask_options (Ask the CIO, docs/ops/ASK_THE_CIO.md): {thread_id, depth, turn_kind, trigger, deps}. The desk
+    branch records every question as an ask thread, with CIO memory, auto-tracking and the thread footer, through
+    scripts/lib/cio_ask_core.py — the same path for CC and Telegram, so both channels get the same answer.
     """
     out: dict[str, Any] = {
         "handled": False,
@@ -555,6 +560,20 @@ def process_operator_message(
         })
         return out
 
+    # Ask the CIO: thread, entities, operator-named quantities and CIO-memory recall. Writes nothing yet; a
+    # failure here never costs the operator the answer (the desk loop below runs regardless).
+    ask_turn = None
+    _ask = None
+    try:
+        from scripts.lib import cio_ask_core as _ask  # noqa: PLC0415
+
+        ask_turn = _ask.begin_turn(
+            channel=channel, chat_id=chat_id, message_id=message_id_s, text=text,
+            reply_to_message_id=reply_to_message_id, reply_to_text=reply_to_text, options=ask_options,
+        )
+    except Exception:  # noqa: BLE001
+        ask_turn = None
+
     # Trade-AI desk loop: Flash analyzes intent → pull vetted facts → answer or defer
     # Natural language understanding is Flash's job; numbers only from Trade-AI.
     # Stage 1+3: Maria skill calls scripts.lib.operator_internal_first.answer_internal_first
@@ -567,6 +586,8 @@ def process_operator_message(
         channel=channel,
         dry_run=dry_run,
         reply_to_text=reply_to_text,
+        **({"reply_context_symbols": ask_turn.symbols}
+           if ask_turn is not None and ask_turn.turn_kind != "ask" and ask_turn.symbols else {}),
     )
     # The unanswerable branch carries its refusal in `reply_preview`, not `text`;
     # reading only `text` replaced "I can't answer that from Trade-AI" with a
@@ -606,6 +627,11 @@ def process_operator_message(
             desk_prov.citations = list(desk_prov.citations or []) + _join.citations()
     except Exception:  # noqa: BLE001
         pass
+    if ask_turn is not None:
+        try:
+            reply = _ask.compose(ask_turn, reply, dry_run=dry_run, deps=(ask_options or {}).get("deps"))
+        except Exception:  # noqa: BLE001
+            pass
     final_reply = _prepare_reply(reply, desk_prov)
 
     # Scope comms-editor footer links to this turn's primary symbols only
@@ -678,6 +704,21 @@ def process_operator_message(
                 reset_primary_symbols(_primary_tok)
             except Exception:
                 pass
+    if ask_turn is not None:
+        try:
+            _ans = _ask.finish_turn(
+                ask_turn, final_text=final_reply, provenance=out.get("reply_provenance"),
+                outbound_message_id=sent.get("message_id"), dry_run=dry_run,
+                deps=(ask_options or {}).get("deps"),
+            )
+            out["ask"] = {"ask_id": ask_turn.ask_id, "thread_id": ask_turn.thread_id,
+                          "version": _ans.version if _ans else None, "turn_kind": ask_turn.turn_kind,
+                          "deep_requested": ask_turn.deep_requested}
+            if _ans is not None and ask_turn.deep_requested and not (ask_options or {}).get("defer_deep"):
+                out["ask"]["deep"] = _ask.request_deep(ask_turn.thread_id, ask_turn.ask_id,
+                                                       deps=(ask_options or {}).get("deps"))
+        except Exception as _ask_exc:  # noqa: BLE001
+            out["ask"] = {"error": type(_ask_exc).__name__}
     out.update({
         "handled": True,
         "kind": "operator_desk",

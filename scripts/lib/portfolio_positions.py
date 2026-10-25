@@ -28,9 +28,15 @@ CONFIG_PATH = ROOT / "config" / "portfolio_positions.yaml"
 STORE_REL = ("data", "portfolios", "state", "holdings" + ".json")
 
 
-def store_path() -> Path:
+def store_path(root: Path | str | None = None) -> Path:
     """The position store under the persistent-state root (TRADEAI_PERSISTENT_STATE_ROOT, see
-    lib/persistent_overlay.overlay_data_source) — never a hardcoded host path."""
+    lib/persistent_overlay.overlay_data_source) — never a hardcoded host path.
+
+    A named state root (offline COPY/fixture or explicit batch state) uses the
+    same canonical relative path, owned here rather than copied into callers.
+    """
+    if root is not None:
+        return Path(root).joinpath(*STORE_REL)
     try:
         from lib.persistent_overlay import overlay_data_source  # type: ignore
     except ImportError:

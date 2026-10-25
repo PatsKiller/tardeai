@@ -1,0 +1,191 @@
+{
+  "capture_sha256": "492e92efe00a6395041b80070f5747f7a9e926a15dd1b82cc62f2f22f8a15d1a",
+  "source": "PRIVATE_PRODUCTION_COPY, no live mutation",
+  "captured_at": "2026-10-24T20:00:49.398467+00:00",
+  "rows": [
+    {
+      "symbol": "FATN",
+      "security_guid": "14471622-998e-5507-9d73-b1f5cf3cc1d6",
+      "company_facts": {
+        "assembled_at": "2026-10-24T20:00:49.398467+00:00",
+        "catalyst": {
+          "headline": null,
+          "missing_reason": "no_dated_current_catalyst_on_file",
+          "status": "MISSING"
+        },
+        "company": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:09:24.779657+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:09:24.779657",
+          "value": "Fatpipe Inc"
+        },
+        "conflicts": [
+          {
+            "field": "company",
+            "reason": "source_values_disagree",
+            "values": [
+              {
+                "clock_kind": "cached_at",
+                "identity_binding": "confirmed_registry_symbol_at_batch",
+                "missing_reason": null,
+                "observed_at": "2026-10-24T13:09:24.779657+00:00",
+                "producer_source": null,
+                "source": "finviz_enrichment",
+                "source_identity": "symbol_keyed",
+                "source_time_raw": "2026-10-24T09:09:24.779657",
+                "value": "Fatpipe Inc"
+              },
+              {
+                "clock_kind": "profile_updated_at",
+                "identity_binding": "confirmed_registry_symbol_at_batch",
+                "missing_reason": null,
+                "observed_at": "2026-08-23T23:56:50+00:00",
+                "producer_source": null,
+                "source": "ticker_research_graph.profile",
+                "source_identity": "symbol_keyed",
+                "source_time_raw": "2026-08-23T23:56:50+00:00",
+                "value": "FatPipe, Inc. develops application-aware, secure software-defined wide area network, secure access service edge, and network monitoring service (NMS) software solutions in the United States, India, and internationally."
+              }
+            ]
+          }
+        ],
+        "description": {
+          "clock_kind": "row_updated_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-09-21T04:03:56.813669+00:00",
+          "producer_source": "yfinance",
+          "source": "symbol_profiles",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-09-21 00:03:56.813669-04:00",
+          "value": "FatPipe, Inc. develops application-aware, secure software-defined wide area network, secure access service edge, and network monitoring service (NMS) software solutions in the United States, India, and internationally."
+        },
+        "industry": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:09:24.779657+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:09:24.779657",
+          "value": "Software - Infrastructure"
+        },
+        "missing_reason": null,
+        "schema": "CIOCompanyFacts@v1",
+        "sector": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:09:24.779657+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:09:24.779657",
+          "value": "Technology"
+        },
+        "security_guid": "14471622-998e-5507-9d73-b1f5cf3cc1d6",
+        "source_errors": [],
+        "status": "AVAILABLE",
+        "symbol": "FATN"
+      }
+    },
+    {
+      "symbol": "ANET",
+      "security_guid": "53c69778-fab8-5be7-ae9f-00dd2f248d9a",
+      "company_facts": {
+        "assembled_at": "2026-10-24T20:00:49.398467+00:00",
+        "catalyst": {
+          "headline": null,
+          "missing_reason": "no_dated_current_catalyst_on_file",
+          "status": "MISSING"
+        },
+        "company": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:06:24.754762+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:06:24.754762",
+          "value": "Arista Networks Inc"
+        },
+        "conflicts": [
+          {
+            "field": "company",
+            "reason": "source_values_disagree",
+            "values": [
+              {
+                "clock_kind": "cached_at",
+                "identity_binding": "confirmed_registry_symbol_at_batch",
+                "missing_reason": null,
+                "observed_at": "2026-10-24T13:06:24.754762+00:00",
+                "producer_source": null,
+                "source": "finviz_enrichment",
+                "source_identity": "symbol_keyed",
+                "source_time_raw": "2026-10-24T09:06:24.754762",
+                "value": "Arista Networks Inc"
+              },
+              {
+                "clock_kind": "profile_updated_at",
+                "identity_binding": "confirmed_registry_symbol_at_batch",
+                "missing_reason": null,
+                "observed_at": "2026-08-23T23:56:50+00:00",
+                "producer_source": null,
+                "source": "ticker_research_graph.profile",
+                "source_identity": "symbol_keyed",
+                "source_time_raw": "2026-08-23T23:56:50+00:00",
+                "value": "Arista Networks, Inc. engages in the development, marketing, and sale of data-driven, client to cloud networking solutions for AI, data center, campus, and routing environments in the Americas, Europe, the Middle East, Africa, and the Asia-Pacific."
+              }
+            ]
+          }
+        ],
+        "description": {
+          "clock_kind": "row_updated_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-09-21T04:03:56.813669+00:00",
+          "producer_source": "yfinance",
+          "source": "symbol_profiles",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-09-21 00:03:56.813669-04:00",
+          "value": "Arista Networks, Inc. engages in the development, marketing, and sale of data-driven, client to cloud networking solutions for AI, data center, campus, and routing environments in the Americas, Europe, the Middle East, Africa, and the Asia-Pacific."
+        },
+        "industry": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:06:24.754762+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:06:24.754762",
+          "value": "Computer Hardware"
+        },
+        "missing_reason": null,
+        "schema": "CIOCompanyFacts@v1",
+        "sector": {
+          "clock_kind": "cached_at",
+          "identity_binding": "confirmed_registry_symbol_at_batch",
+          "missing_reason": null,
+          "observed_at": "2026-10-24T13:06:24.754762+00:00",
+          "producer_source": null,
+          "source": "finviz_enrichment",
+          "source_identity": "symbol_keyed",
+          "source_time_raw": "2026-10-24T09:06:24.754762",
+          "value": "Technology"
+        },
+        "security_guid": "53c69778-fab8-5be7-ae9f-00dd2f248d9a",
+        "source_errors": [],
+        "status": "AVAILABLE",
+        "symbol": "ANET"
+      }
+    }
+  ]
+}

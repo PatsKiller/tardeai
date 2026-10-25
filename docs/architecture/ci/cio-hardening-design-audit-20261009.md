@@ -525,3 +525,43 @@ Combined effect of the quick wins:
 - **PR #1547 run** (37939842296): `changed=5 tier=high ... selected_files=115 ... deferred=0 select_secs=19.2`. The longest unit was `ci_self_guards (23 files, 135.9s)`.
 - **Live promote refusal:** `~/.local/state/cio-phase2-exact-main/deploy_receipt.json` has `extra: post_merge_ci_refused` at 2026-10-09T14:01:17Z for `3b5c24856`. Prepare had created `/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833`.
 - **Repo merge settings:** `allow_auto_merge: true`, `allow_update_branch: true` (`gh api repos/PatsKiller/tardeai`).
+
+---
+
+## Addendum 2026-10-23: `cio-hardening` runs as parallel shards on every event
+
+**Why.** A release waited on `cio-hardening` twice: on the release PR, then on the exact-main push. Measured with `gh`
+(read-only) on 2026-10-23:
+
+- Push to main, last 10 runs: 20.9-38.8 min (median about 37). Run 39999528705 took 38.8 min.
+- Release-batch PRs: 37.8 min (39968620315, batch 8), 38.0 min (39994133076, batch 9), 38.4 min (40001978010,
+  batch 10). Their large diff made the PR profile select almost every gate, in one job.
+- Ordinary PRs: 15-20 min when green.
+- One step, "CIO hardening gates (unit + manifest)", was about 97% of the job every time.
+
+**What changed** (`.github/workflows/cio-production-hardening-ci.yml`; supersedes #1943, which split push only and went
+stale). On pull_request, push and dispatch the workflow runs the `cio-full-suite-sharded.yml` pattern:
+
+| job | check name | runs |
+|---|---|---|
+| `cio-shard` (matrix 0..7) | `hardening shard N` | `run_cio_hardening_ci.py --jobs 4 --shard N/8` |
+| `cio-serial` | `hardening shard serial` | `--shard serial/8` |
+| `cio-pg` | `hardening shard pg` | `--shard pg/8` on the throwaway M2 service |
+| `cio-integrity` | `hardening integrity rails` | every rail the single job ran after its gates, the runner's tail checks (docs index, committed and candidate manifest) and the report smokes |
+| `cio-hardening` | `cio-hardening` (required, unchanged) | the aggregate: `--verify-shards` with `CI_GATE_NEEDS` |
+
+- **No gate is dropped.** `cio-hardening` is green only when every job succeeded and the manifests prove each registered
+  file ran exactly once, on this tree and this plan. A registered file no shard ran, a file run twice, a missing shard
+  manifest, a skipped job or a registered file missing from disk fails it. Pinned by
+  `tests/test_ci_cio_hardening_fast_shards_20261022.py` against the real 8-shard plan.
+- **Alerting.** On push the aggregate runs under `always()`, so a failed, cancelled or timed-out shard gives a red
+  `cio-hardening` and `main-red-alert` fires. On a PR it runs under `!cancelled()`, so a superseded run is never
+  reported green. A draft PR runs none of it (push policy v2, #2032).
+- **The PR profile no longer runs in CI.** On a release PR it was slower than every gate in shards. It stays for local
+  use (`scripts/fast_check.sh`).
+- **Not changed:** branch protection (`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`), the per-SHA
+  push concurrency group, `cio-hardening-full` (dispatch only) and the `ci-main-red` alert.
+
+**Trade-off (risk 6 above).** A PR now runs the registered suite twice in parallel, once for `ci-gate` and once for
+`cio-hardening`: 12 more runners per PR. Operator decision, not made here: make `ci-gate` the only full-suite context
+on PRs, and keep `cio-hardening` for push.

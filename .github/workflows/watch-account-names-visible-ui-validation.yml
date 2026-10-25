@@ -1,0 +1,87 @@
+name: watch-account-names-visible-ui-validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/watch-account-names-visible-ui-validation.yml'
+      - 'apps/command-center-v3/e2e/watch-account-names-visible.spec.ts'
+      - 'apps/command-center-v3/src/pages/WatchHub.tsx'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+      - 'apps/command-center-v3/src/pages/WatchProspects.tsx'
+      - 'apps/command-center-v3/src/pages/WatchLayout.css'
+      - 'apps/command-center-v3/src/components/AccountChip.tsx'
+      - 'apps/command-center-v3/src/lib/accountLabels.ts'
+      - 'apps/command-center-v3/src/lib/watchListsModel.ts'
+      - 'apps/command-center-v3/src/fixtures/watchLists.fixture.ts'
+  push:
+    branches: ['main']
+    paths:
+      - '.github/workflows/watch-account-names-visible-ui-validation.yml'
+      - 'apps/command-center-v3/e2e/watch-account-names-visible.spec.ts'
+      - 'apps/command-center-v3/src/pages/WatchHub.tsx'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+      - 'apps/command-center-v3/src/pages/WatchProspects.tsx'
+      - 'apps/command-center-v3/src/pages/WatchLayout.css'
+      - 'apps/command-center-v3/src/components/AccountChip.tsx'
+      - 'apps/command-center-v3/src/lib/accountLabels.ts'
+      - 'apps/command-center-v3/src/lib/watchListsModel.ts'
+      - 'apps/command-center-v3/src/fixtures/watchLists.fixture.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: watch-account-names-visible-${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  watch-account-names-visible-ui:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Verify visible names and heading using an API-free static preview
+        shell: bash
+        env:
+          WATCH_ACCOUNTS_SHOTS: ${{ runner.temp }}/watch-account-names-visible
+          WATCH_PORT_FILE: ${{ runner.temp }}/watch-visible-port
+          WATCH_ENV_DIR: ${{ runner.temp }}/watch-empty-env
+        run: |
+          set -euo pipefail
+          mkdir -p "$WATCH_ENV_DIR"
+          node --input-type=module -e 'import {preview} from "vite"; import {writeFileSync} from "node:fs"; const p=await preview({configFile:false,envDir:process.env.WATCH_ENV_DIR,base:"/v3/",preview:{host:"127.0.0.1",port:0,strictPort:true,proxy:{}}});writeFileSync(process.env.WATCH_PORT_FILE,String(p.httpServer.address().port));' > "$RUNNER_TEMP/watch-visible-preview.log" 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            [ -s "$WATCH_PORT_FILE" ] && break
+            sleep 0.2
+          done
+          test -s "$WATCH_PORT_FILE"
+          export PLAYWRIGHT_BASE_URL="http://127.0.0.1:$(cat "$WATCH_PORT_FILE")"
+          npx playwright test e2e/watch-account-names-visible.spec.ts --project=chromium --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-account-names-visible
+          path: |
+            ${{ runner.temp }}/watch-account-names-visible/
+            ${{ runner.temp }}/watch-visible-preview.log
+            apps/command-center-v3/test-results/
+          if-no-files-found: warn

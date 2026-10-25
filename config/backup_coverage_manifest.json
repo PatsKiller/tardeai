@@ -223,7 +223,8 @@
     "store:watch_directives",
     "store:watch_discovery",
     "store:social_posts",
-    "store:yfinance_info_snapshot"
+    "store:yfinance_info_snapshot",
+    "store:cio_prospect"
    ]
   },
   {
@@ -263,7 +264,8 @@
     "store:redeploy_analytics",
     "store:research_write_path_receipts",
     "store:sec_filing_events",
-    "store:finviz_enrichment"
+    "store:finviz_enrichment",
+    "store:cio_asks"
    ]
   },
   {

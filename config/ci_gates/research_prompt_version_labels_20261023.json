@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_prompt_version_labels_20261023",
+  "files": [
+    "tests/test_research_prompt_version_labels_20261023.py"
+  ],
+  "comment": [
+    "WP-36 item6: canonical research context preserves raw nullable thesis identity and adds explicit narrative version display/status/rules; missing versions stay unavailable, known numeric/canonical pins are copied without an extra v prefix, and the context hash binds display semantics. Pure fixtures; no provider, DB, memory service or production-state calls."
+  ]
+}

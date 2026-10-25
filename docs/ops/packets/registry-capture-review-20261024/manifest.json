@@ -1,0 +1,74 @@
+{
+  "schema": "RegistryCaptureReview@v1",
+  "status": "PROPOSED; no operative changes or approval implied",
+  "task_id": "DSN-20261024-registry-reconcile-P2-T1",
+  "source_base_head": "0764cad27840f7e3de2af7e77f2d921d256925d2",
+  "delivery_worktree_base_head": "68994d0c20b49c913d9fa7f7f2f3ef778d370fe0",
+  "source_base_registry_sha256": "f5af4203e3329053194a6113117d2992c31be0ded9c86963e8d1238e5d8db6e1",
+  "source_reconciler_sha256": "800c19b59a91b8a5aefb0e2492dcb68a4cdda6d9096a789df02462a5b7bfe13c",
+  "operator_capture": {
+    "sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+    "line_count": 1077,
+    "active_cron_entries": 348,
+    "captured_at_utc": "2026-10-24T04:35:03Z",
+    "captured_by": "claude-coordinator-66faaf81",
+    "grant": "7cf078bf; read-only only",
+    "raw_capture_included": false,
+    "provenance": "Supplied coordinator crontab.txt and README; full raw scheduler commands remain in private operator capture, SHA verified before analysis. No new host read."
+  },
+  "units_comparator": {
+    "path": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+    "sha256": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+    "units_count": 140,
+    "provenance": "Historical Oct09 committed units held fixed; not a current-unit census or current-host completeness claim."
+  },
+  "semantic_counts": {
+    "affected_ids": 13,
+    "existing_modified_ids": 9,
+    "added_ids": 2,
+    "removed_ids": 2,
+    "logical_identity_replacements": 2,
+    "changed_json_leaves": 177
+  },
+  "cases": {
+    "restriction": {
+      "file": "restriction-only.PROPOSED.patch",
+      "status": "PROPOSED_REVIEW_REQUIRED",
+      "added_lines": 14,
+      "removed_lines": 4,
+      "canonical_historical_fixed_point": true,
+      "candidate_sha256": "33924899cfc7c6695a469635c07e762a1e5720e948ea0d3173f00638b6682707"
+    },
+    "provenance": {
+      "file": "provenance-only.HELD.patch",
+      "status": "HELD_CANONICAL_FIXEDPOINT",
+      "added_lines": 1,
+      "removed_lines": 1,
+      "canonical_historical_fixed_point": false,
+      "candidate_sha256": "674e6b8992a74ba8c4876ce84fdf6433ed80d6bb29e9d936927062433c55ad19"
+    },
+    "mechanical": {
+      "file": "mechanical.REJECTED.patch",
+      "status": "REJECTED_SEMANTIC_REGRESSIONS",
+      "added_lines": 77,
+      "removed_lines": 103,
+      "canonical_historical_fixed_point": null,
+      "candidate_sha256": "18f091a5edc1ee99e87af5bfe242d2b7fe6ddc40c5f2423c2b15e676f29bc207"
+    }
+  },
+  "files": {
+    "README.md": "529d9f0c2b8dfc72f11b5ff863d45cd9c43ddd7e7407904a27090143d2a51cf3",
+    "base-registry-0764.json.gz": "9e8b5fd277f79a1eaabb7d0c7371280245bf4594d054408add0c5e14646076dc",
+    "focused-tests.txt": "dccfa43441794ef4e3761ccdc50e58f221235ad5dc01da99a5196012f3ad3012",
+    "host-paths.txt": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+    "local-validation.json": "8737a2333c7fd7cccb92d8b51405eb30a561f690963dc3b9f064e5b851dc1fc0",
+    "mechanical.REJECTED.patch": "454c77526efe91bf6532712c0197c2692d7830b8ee59021901a8fee8d1360e9f",
+    "provenance-only.HELD.patch": "2f2ca751f64118b8dc80de8f229e6be3c5a48b470fd3e49a05ee64f4822d6b3c",
+    "restriction-only.PROPOSED.patch": "ee7d71573787a6ea2ebe5d18c259d9d6ba9574a4de876e81f6646a1c541b2342",
+    "review_packet.py": "276203c1f14eee911a0a782952a32cc62b51bce1d844ed92d2a972e189bf2d51",
+    "semantic-fields.csv": "0a8bbea03c24a34d1267ae71bb2b63da37368b266ae4afb7ceca225e0607d5cc",
+    "semantic-fields.json": "9380d9d601f92b98dabd6c0f66fe6b644d879d81e6935efc1f710d06bab8f40a",
+    "test-coverage.json": "ca8d2ffd7172f92ac225d41dd589a41f98fc4c174654081bf3e0c8b541c1b2f1",
+    "verification.json": "41849036c19e862a84bc86505b19a1faab9b62aaba03546e47782c9a60d7fca4"
+  }
+}

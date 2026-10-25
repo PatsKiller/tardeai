@@ -13,6 +13,11 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from .watch_directives_readonly import (
+    ACTIVE_TICKER_DIRECTIVES_SQL as ACTIVE_TICKER_DIRECTIVES_SQL,
+    active_ticker_directives as _read_active_ticker_directives,
+)
+
 CONTRACT_VERSION = "watch_intelligence.broker.v1"
 
 # Views exposed on the unified primary page
@@ -1520,39 +1525,23 @@ def get_watch_intelligence() -> dict[str, Any]:
     return projection
 
 
-ACTIVE_TICKER_DIRECTIVES_SQL = """
-            SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
-                   UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
-                   trade_ai_enabled, hermes_enabled, created_at, updated_at
-              FROM watch_directives
-             WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
-             ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
-            """
-
-
 def active_ticker_directives(*, strict: bool = False, db_query: Any = None) -> list[dict[str, Any]]:
-    """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
+    """Active ticker directives through the canonical injected-query read core.
 
-    The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
-    owner) so hub handlers do not grow direct reads of the store. Fail-soft: no DB or
-    a query error yields [] — the caller still serves its manual list. ``strict=True``
-    re-raises instead, for a caller that must tell "no directives" from "lookup failed"
-    (Open Trades' directive_state, 2026-10-22).
+    Existing API callers keep the optional host DB fallback and fail-soft behavior.
+    Scheduled read-only consumers import the narrow core and inject their session.
     """
     try:
-        if db_query is not None:   # an injected read-only ``db_query(sql) -> rows`` (the CIO prospect builder, 2026-10-23)
-            rows = db_query(ACTIVE_TICKER_DIRECTIVES_SQL)
-        else:
+        if db_query is None:
             from db_adapter import _execute
 
-            rows = _execute(ACTIVE_TICKER_DIRECTIVES_SQL, fetch="all")
+            def db_query(sql):
+                return _execute(sql, fetch="all")
+        return _read_active_ticker_directives(strict=strict, db_query=db_query)
     except Exception:
         if strict:
             raise
         return []
-    out = [dict(r) for r in rows or []]
-    out.sort(key=lambda r: r["created_at"], reverse=True)
-    return out
 
 
 #: watch_directives.created_by values that mean "the operator made this directive". Every other creator

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_company_facts_20261024",
+  "files": [
+    "tests/test_cio_company_facts_20261024.py"
+  ],
+  "anchor": "CIO_COMPANY_FACTS_20261024",
+  "comment": [
+    "C1 shared CIO company facts. ANCHOR: CIO_COMPANY_FACTS_20261024"
+  ]
+}

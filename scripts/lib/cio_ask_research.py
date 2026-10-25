@@ -480,6 +480,7 @@ class ResearchContext:
     dry_run: bool = False
     env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
     now: datetime = field(default_factory=_now)
+    state_root: Path | str | None = None
 
 
 SourceFn = Callable[[Entity, ResearchContext], list[Fact]]
@@ -605,6 +606,42 @@ def _db(ctx: ResearchContext) -> Callable[..., Any]:
         return mod._execute(sql, params, fetch=fetch)
 
     return query
+
+
+def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """Saved shared CIO facts; source timestamps are never replaced by cache/write time."""
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot, for_security
+    saved = for_security(load_snapshot(ctx.state_root), ent.symbol or "", ent.security_guid, now=ctx.now)
+    facts = saved["company_facts"]
+    out = []
+    citation = {"store": "cio_instrument_records", "field": "research.company_facts",
+                "security_guid": ent.security_guid}
+    for key in ("company", "description", "sector", "industry", "catalyst"):
+        value = facts.get(key) or {}
+        text = value.get("headline") if key == "catalyst" else value.get("value")
+        at = value.get("published_at") or value.get("observed_at")
+        reason = value.get("missing_reason")
+        # An availability observation uses the check clock, explicitly labelled;
+        # it is not a new observation of the underlying source value.
+        claim = f"CIO stored {key}: {text or 'unavailable'}; source {value.get('source') or 'not on file'}"
+        if reason or not at:
+            claim += f"; gap {reason or 'source_observation_time_unavailable'}"
+        out.append(make_fact(source="internal.cio_record_research", family="internal", kind="company_evidence",
+                             subject_key=ent.subject_key, symbol=ent.symbol, claim=claim,
+                             as_of=at or ctx.now, citation={**citation, "source_url": value.get("url"),
+                             "source_observed_at": at, "clock_kind": value.get("clock_kind")
+                             or ("published_at" if value.get("published_at") else "observed_at"), "as_of_basis": "source_clock" if at else "availability_check"},
+                             field=key))
+    review = saved["review_lifecycle"]
+    out.append(make_fact(source="internal.cio_record_research", family="internal", kind="review_lifecycle",
+                         subject_key=ent.subject_key, symbol=ent.symbol,
+                         claim="CIO review lifecycle: " + json.dumps(review, sort_keys=True, default=str),
+                         as_of=review.get("conflict_resolved_at") or review.get("updated_at") or review.get("answered_at")
+                         or review.get("completed_at") or review.get("researching_at") or review.get("started_at")
+                         or review.get("requested_at") or review.get("created_at") or ctx.now,
+                         citation={"store": "cio_instrument_records", "field": "research.review_lifecycle",
+                                   "security_guid": ent.security_guid}))
+    return out
 
 
 def _src_prospect(ent: Entity, ctx: ResearchContext) -> list[Fact]:
@@ -995,6 +1032,7 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
 
 def default_sources() -> list[SourceSpec]:
     return [
+        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
         SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
         SourceSpec("internal.thesis", "internal", _src_thesis, 6.0),
@@ -2071,19 +2109,29 @@ def _contract_prospectus(p: Mapping[str, Any], ent: Entity, facts: Sequence[Mapp
                 lead = "No sourced number for this horizon (gap; none invented)."
             narrative = (lead + (" Assumption: " + assumptions if assumptions else "")).strip()
             ret = round((price / ref - 1.0) * 100.0, 2) if price is not None and ref else None
-            horizons[h][case] = C.Scenario(narrative=narrative, price=price, return_pct=ret)
+            horizons[h][case] = C.Scenario(
+                narrative=narrative,
+                price=price,
+                return_pct=ret,
+                citation=dict(anchor) if anchor else None,
+            )
     st = p.get("street") or {}
     street = None
-    if st.get("range") or st.get("analyst_count"):
-        as_ofs = [v.get("as_of") for v in (st.get(k) for k in ("target_low", "target_high", "analyst_count")) if v]
+    if st.get("range") or st.get("target_mean") or st.get("analyst_count"):
+        as_ofs = [
+            v.get("as_of")
+            for v in (st.get(k) for k in ("target_low", "target_mean", "target_high", "analyst_count"))
+            if v
+        ]
         cnt = (st.get("analyst_count") or {}).get("value")
         street = C.StreetTarget(
             low=(st.get("target_low") or {}).get("value"),
-            median=None,  # sources publish a mean, not a median: the mean is in provenance.street_mean
+            mean=(st.get("target_mean") or {}).get("value"),
+            median=None,  # a published mean is never a median
             high=(st.get("target_high") or {}).get("value"),
             n_analysts=int(cnt) if cnt is not None else None,
             as_of=max(as_ofs) if as_ofs else None,
-            source=(st.get("target_low") or st.get("target_high") or {}).get("source"),
+            source=(st.get("target_mean") or st.get("target_low") or st.get("target_high") or {}).get("source"),
         )
     catalysts = []
     for c in p.get("catalysts") or []:

@@ -13,6 +13,7 @@ Names live in ``config/account_display_names.json``. A key that is not configure
 the key; a key that looks like a broker account number (a run of 3+ digits, or a masked ``...258`` /
 ``··1234`` form) is never echoed: it becomes ``Unlabelled account``.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,6 +62,23 @@ def account_label(raw: Any) -> str:
             return UNLABELLED
         name = re.sub(r"\bIra\b", "IRA", key.replace("_", " ").title())
     return UNLABELLED if looks_like_number(name) else str(name)
+
+
+def location_facts(row: Mapping[str, Any]) -> dict[str, str]:
+    """Names and declared account type for specialist context; no account number.
+
+    Type/status come from the same registry row as the display name. A symbol,
+    legacy narrative or friendly label never infers tax treatment.
+    """
+    key = row_account(row)
+    entry = (_load().get("names") or {}).get(key) or {}
+    entry = entry if isinstance(entry, Mapping) else {}
+    return {
+        "account_name": account_label(key),
+        "account_type": str(entry.get("type") or "unknown"),
+        "account_name_status": str(entry.get("status") or "unknown"),
+        "account_metadata_source": "config/account_display_names.json",
+    }
 
 
 def labels_map(keys: Iterable[Any] | None = None) -> dict[str, str]:

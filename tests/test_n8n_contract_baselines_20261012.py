@@ -65,7 +65,8 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # = 156 (release-3 integration: counted in config/n8n_health_contracts.json after the merge).
     # + 1 (2026-10-22 calibration-shadow-harness n8n-native report shadow, DRAFT;
     # tests/test_calibration_shadow_harness_20261022.py) = 157.
-    assert len(catalogue["contracts"]) == 157
+    # WP-21 restores the unchanged owner-reviewed cio-prospect-shadow contract from #1953.
+    assert len(catalogue["contracts"]) == 158
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

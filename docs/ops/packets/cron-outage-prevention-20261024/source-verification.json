@@ -1,0 +1,43 @@
+{
+  "broad_scoped_profile": {
+    "passed": 347,
+    "log": "/home/johnclaw/.cache/rtc/codex-cron-outage-prevention-20261024/final-frozen.log",
+    "xml": "/home/johnclaw/.cache/rtc/codex-cron-outage-prevention-20261024/final-frozen.xml",
+    "source_unchanged_during_profile": true
+  },
+  "root_review_adjustment": {
+    "passed": 96,
+    "log": "/home/johnclaw/.cache/rtc/codex-cron-outage-prevention-20261024/post-review.log",
+    "xml": "/home/johnclaw/.cache/rtc/codex-cron-outage-prevention-20261024/post-review.xml",
+    "changed_paths_since_broad_profile": [
+      "scripts/cron_outage_watchdog.py",
+      "scripts/lib/platform_health.py",
+      "tests/test_cron_outage_prevention_20261024.py"
+    ],
+    "meaning": "Independent input-blindness incident + delivery/recovery, no fabricated success/misses."
+  },
+  "final_source_sha256": {
+    ".github/workflows/shared-infra-review.yml": "16824e9f412343be75e233a5457b71b54655fa6e96ddaab630aca51be55b1e0e",
+    "config/ci_gates/cron_outage_prevention_20261024.json": "055d3c03ecd228ddf1049352db05ece26c8492beccaa1151a44b7f65ceb7e1c3",
+    "config/cron_outage_watchdog.json": "f25a5b3f3ca7a40b94de46b16eb08324c13d6952a83daf0e964abfcbf3653cf0",
+    "config/release_wrapper_preflight.json": "ed88170ee133fb63a4715f73a16864e7620a748adc0151d40c9c1d8fa7c3d0fe",
+    "config/shared_infra_paths.json": "709303d0b53386d5f5a05e2d5cb10aedb500f1452d0a6327498840e3c47e43f6",
+    "ops/systemd/tradeai-cron-outage-watchdog.service": "d8ac47df3f684e96dca73da1ccb3589198ce17656edb2630c052ac746872a61a",
+    "ops/systemd/tradeai-cron-outage-watchdog.timer": "8c59a3b3d70dcb8e7a209d9e9ed7b70ec70f77ad25f42fddf546777d74166917",
+    "scripts/check_shared_infra_pr.py": "79975a45066fe07b3440af10e82705ab0fc67d9fa08284437ff7676c0fd1bbf6",
+    "scripts/cio_phase2_exact_main_deploy.sh": "39e2a071b53b7fe73d48fe6b3936fab6874feb7c8deb7b7ffd0e79531d620e06",
+    "scripts/cron_outage_watchdog.py": "c65cef831a5c72b0d1d0b0b826b3e54f954f85eb62c49ed83fae78bc9f0ad699",
+    "scripts/cron_wrapper.sh": "70fedc282fbcbe02653c0bb551e40238c753399299b7df5993cb17a83c25496b",
+    "scripts/lib/cron_outage_watchdog.py": "958f6b0121595be3f6277ffb1e484e89a5aacfd4d1925e8cc3d333f6b27933ea",
+    "scripts/lib/platform_health.py": "5b0329ff09acb5d76bb77c4eb73323e91b91db6e9787d23b893aea4099de7335",
+    "scripts/lib/release_wrapper_preflight.py": "ca272c1ab1f9258ba7da6532a7343f0376ecbced2bc30ee43369e56af842705e",
+    "scripts/lib/wrapper_events.py": "fe0b4e1dc59dfa8b5e4a07987727d89925ea259827abfd21d452e5a58b163a61",
+    "scripts/release_window.py": "d3b5a73593d52d056dd9b3a1b1b0048270d04139a5d30db9f33c44e1e5fb8f07",
+    "scripts/release_wrapper_preflight.py": "fa39f29fdcb8664a5050ab1ac927eed75213f893bb6c095d23c7f2c4f4018190",
+    "scripts/safe_flock.sh": "5fea235ff6127df26b886f74bba4f8280291dc0640929d8f445bce12e2f391d8",
+    "tests/support/real_release_layout.py": "f595962ff962c2bfeb526c0444aec811320dd544ac49132e7a15d9c2233087a3",
+    "tests/test_cron_outage_prevention_20261024.py": "a6605ffa5be127ac0b73ef1eac0e89bfb0a40d65279a168f111b2cb598d68b54",
+    "tests/test_safe_flock_os_lock.py": "2961eb7746c949c89fe02535c93d9bb2044c4621176c6eb85a42cf90591268d3"
+  },
+  "note": "347 and96 are overlapping profiles, not a sum or full-project CI. Source/native proof only; operator admission/CI/live proof pending."
+}

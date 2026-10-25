@@ -15,6 +15,7 @@ from scripts.cio_completeness_measurement import (
     deep_visibility,
     render_closure_text,
     verify_record_edge,
+    _function_reaches_store,
 )
 from scripts.cio_payload_flow import PayloadFlow, consumer_reads_path
 
@@ -198,6 +199,12 @@ def test_real_tree_every_non_surfaced_item_is_classified_and_none_is_stale():
     assert report["classification_stale"] == []
     for edge in report["record_edges"]:
         assert edge["verified"], edge
+    company = next(e for e in report["record_edges"] if e["name"] == "schema:CIOCompanyFacts@v1")
+    assert company["route"] == "/api/v3/data-broker/watch-curation"
+    assert company["path"] == ["my_watchlist", "rows", "company_facts"]
+    assert company["store"] == "cio_instrument_records.jsonl"
+    assert all(company["checks"].values()), company
+    assert report["visibility_evidence"]["schema:CIOCompanyFacts@v1"]["method"] == "RECORD_EDGE_VERIFIED"
     # every remaining operator-relevant gap is an explicit, reasoned SURFACE entry
     entries = {e["name"]: e for e in json.loads(Path("config/cio_surface_classification.json").read_text())["entries"]}
     for name in report["produced_not_surfaced_operator_relevant"]:
@@ -208,3 +215,63 @@ def test_real_tree_every_non_surfaced_item_is_classified_and_none_is_stale():
     for name in ("schema:MarketContextState@v1", "schema:CapitalDeploymentPlan@v1", "route:/api/v3/cio/brain/market-context",
                  "route:/api/v3/cio/brain/maturity-contract", "route:/api/v3/cio/records", "schema:OutcomeCheckpoint@v1"):
         assert name in visible, name
+
+
+def test_query_wrapped_supplemental_surface_requires_a_real_fetch_and_handler(tmp_path):
+    from scripts.cio_api_contract_census import scan_frontend, scan_api_v2, match_route
+    _write(tmp_path, "apps/command-center-v3/src/pages/Facts.tsx", """
+const unused = withQuery('/api/v3/data-broker/unused', {})
+const {data: raw} = useApi(withQuery('/api/v3/data-broker/watch-curation', {}), 120000)
+export default () => <i>{raw.my_watchlist.rows}</i>
+""")
+    _write(tmp_path, "scripts/api_v2.py", '\n'.join([
+        'def handle(base_path, method):',
+        '    if method == "GET" and (base_path == "/api/v3/data-broker" or base_path.startswith("/api/v3/data-broker/")):',
+        '        import api_rows as rows',
+        '        p = base_path[len("/api/v3/data-broker/"):].strip("/")',
+        '        if p == "watch-curation":',
+        '            return 200, rows.get_rows()',
+    ]))
+    fetches, _, _ = scan_frontend(tmp_path, surfaces={"Facts": "pages/Facts.tsx"})
+    assert [f.route for f in fetches] == ["/api/v3/data-broker/watch-curation"]
+    assert fetches[0].bound_names == ["raw"] and fetches[0].used is True
+    handler, how = match_route(fetches[0].route, scan_api_v2(tmp_path), "GET")
+    assert how == "EXACT" and handler.producer == "api_rows.py::get_rows"
+
+
+def test_derived_row_jsx_counts_but_unrelated_import_does_not(tmp_path):
+    _write(tmp_path, "apps/src/Page.tsx", """
+import Child from './Child'
+import Ignored from './Ignored'
+const {data: raw} = useApi('/api/v3/cio/facts')
+const c = useMemo(() => unwrap(raw), [raw])
+const mw = c?.my_watchlist
+const rows = mw?.rows || []
+export default () => rows.map((row) => <Child row={row} />)
+""")
+    _write(tmp_path, "apps/src/Child.tsx", "export default ({row}) => <i>{row.company_facts.description}</i>")
+    _write(tmp_path, "apps/src/Ignored.tsx", "export default ({row}) => <i>{row.ignored_secret}</i>")
+    text = render_closure_text(tmp_path, "apps/src/Page.tsx", ["raw"])
+    assert consumer_reads_path(text, ("my_watchlist", "rows", "company_facts"))
+    assert not consumer_reads_path(text, ("my_watchlist", "rows", "ignored_secret"))
+
+
+def test_store_provenance_requires_used_import_or_called_facade(tmp_path):
+    _write(tmp_path, "scripts/lib/store.py", 'DEFAULT_PATH = "data/cio/record.jsonl"\ndef reader():\n return DEFAULT_PATH\n')
+    _write(tmp_path, "scripts/lib/adapter.py", """
+from scripts.lib.store import DEFAULT_PATH, reader
+
+def calls_store():
+    return reader()
+
+def uses_imported_path():
+    return DEFAULT_PATH
+
+def unrelated():
+    return []
+""")
+    flow = PayloadFlow(tmp_path)
+    for name in ("calls_store", "uses_imported_path"):
+        assert _function_reaches_store(tmp_path, f"lib/adapter.py::{name}", "record.jsonl", flow)
+        assert not _function_reaches_store(tmp_path, f"lib/adapter.py::{name}", "other.jsonl", flow)
+    assert not _function_reaches_store(tmp_path, "lib/adapter.py::unrelated", "record.jsonl", flow)

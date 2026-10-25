@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "moomoo_retirement_packet_20261023",
+  "files": [
+    "tests/test_moomoo_retirement_packet_20261023.py"
+  ],
+  "comment": [
+    "WP-30: fixture-only retirement proposal/privacy and archive-after-authorized-readback boundary."
+  ]
+}

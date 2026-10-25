@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_row_sort_filter_20261024",
+  "files": [
+    "tests/test_watch_row_sort_filter_20261024.py"
+  ],
+  "anchor": "WATCH_ROW_SORT_FILTER_20261024",
+  "comment": [
+    "ANCHOR: WATCH_ROW_SORT_FILTER_20261024 — approved stored-row conviction, stance and setup sorts/filters/facets.",
+    "Pinned fixture AND semantics, no-score last/starred order, causal CIO catalyst evidence, URL roundtrip and capped-population preservation. No provider, DB, source writer or readiness changes."
+  ]
+}

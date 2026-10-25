@@ -407,6 +407,7 @@ def build_curation(
     dismissed: Optional[dict[str, dict[str, Any]]] = None,
     dismissed_status: str = "ok",
     filters: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Pure over gather() output: the WatchCuration@v1 payload."""
     dismissed = dismissed or {}
@@ -424,6 +425,11 @@ def build_curation(
         r["universe_rank"] = m["universe_rank"]
         sug_rows.append(r)
     mine_all = my_rows(operator, row_for, opps)
+    from lib.data_broker.watch_market_facts import view as market_view
+
+    request_now = now or datetime.now(timezone.utc)
+    for row in mine_all:
+        row["market_facts"] = market_view(g.get("market_snapshot"), row["symbol"], now=request_now)
     from lib.data_broker import watch_position_facts as wpf
 
     now = g.get("now") or datetime.now(timezone.utc)
@@ -460,7 +466,7 @@ def build_curation(
             "rows": mine_rows,
             "sources": (payload.get("operator_sources") or {}),
             "filters": active,
-            "position_facets": wpf.facet_counts(mine_all, now=now),
+            "position_facets": wpf.facet_counts(mine_all, now=now, filters=active),
             "position_filters": wpf.FILTERS,
             "position_sorts": wpf.SORTS,
             "never_capped": True,
@@ -555,14 +561,15 @@ def read_dismissed(
     return out, "ok"
 
 
-def list_watch_curation(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def list_watch_curation(query: Optional[dict[str, Any]] = None, *, now: Optional[datetime] = None) -> dict[str, Any]:
     """GET /api/v3/data-broker/watch-curation?n=20 — My Watchlist + System Suggests (shares the Prospects cache)."""
     from lib.data_broker.watch_prospects import gather
 
     q = query or {}
     g = gather(q)
     dismissed, status = read_dismissed()
-    out = build_curation(g, n=q.get("n") or DEFAULT_N, dismissed=dismissed, dismissed_status=status, filters=q)
+    out = build_curation(g, n=q.get("n") or DEFAULT_N, dismissed=dismissed, dismissed_status=status, filters=q,
+                         now=now or datetime.now(timezone.utc))
     out["data_broker"] = {
         "package": "scripts/lib/data_broker",
         "projection": "watch_curation",

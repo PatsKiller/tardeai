@@ -142,8 +142,20 @@ def test_every_section_28_8_bullet_cites_its_cause():
 # ---------------------------------------------------------------------------------- MINOR: nothing else moves
 
 
+# The SOURCE_OF_TRUTH table in §7A is GENERATED from config/data_source_authority.json (render_source_of_truth.py)
+# and changes whenever the operator grants a registry domain; the 18.0.0/20.0.0 tests blank it before comparing.
+# 20.1.0 did not, so every domain grant (approval E, PR #2030) was refused. Blank it here too; every hand-written
+# byte stays pinned. Base hash below = pre_20_1_0(AGENTS) with the generated table blanked (operator fix 2026-10-23).
+BASE_AGENTS_SHA256_BLANKED = "ee251b2c42032c8ae11140d5eb2936d4d2856e1bfccf1d9dac724617de80d25b"
+
+
+def _blank_generated(text: str) -> str:
+    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
+                  r"\1\n<generated>\n\2", text, flags=re.S)
+
+
 def test_everything_else_is_byte_identical_to_20_0_0():
-    assert h(pre_20_1_0(AGENTS)) == BASE_AGENTS_SHA256
+    assert h(_blank_generated(pre_20_1_0(AGENTS))) == BASE_AGENTS_SHA256_BLANKED
 
 
 def test_adapters_are_unchanged():

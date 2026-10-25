@@ -644,6 +644,10 @@ def _parse_now(text: Optional[str]) -> Optional[datetime]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # Receipt timing is the real execution window, independent of the report's
+    # rounded/injected observation clock. Rounding down can precede the host's
+    # fractional start and make a completed report fail strict output binding.
+    attempt_started_at = datetime.now(timezone.utc)
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--dry-run", action="store_true", help="the default: print the report, write nothing")
@@ -704,7 +708,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                                           "by_code", "fingerprint", "not_measured", "declared_counts", "error")}
     summary["contradictions"] = [{"code": c["code"], "lane_id": c["lane_id"]} for c in report.get("contradictions") or []]
     summary["alert"] = alert
-    written = R.write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=now, script=SCRIPT,
+    written = R.write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=attempt_started_at, script=SCRIPT,
                                    summary=summary, error=report.get("error"), path=receipt, output=output)
     print(json.dumps({"mode": "apply", "ok": ok, "receipt": str(written) if written else None,
                       "contradiction_count": report.get("contradiction_count"), "by_code": report.get("by_code"),

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_claim_merge_paths_20261024",
+  "files": [
+    "tests/test_agent_claim_merge_paths_20261024.py"
+  ],
+  "comment": [
+    "WP-02: merge precommit derives own staged paths versus MERGE_HEAD; real local git fixtures and fail-closed errors."
+  ]
+}

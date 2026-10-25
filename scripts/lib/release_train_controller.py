@@ -61,6 +61,7 @@ scratch integration, bisect, CI evidence reader, GitHub writer interface, event 
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -106,9 +107,9 @@ SCHEMA_RUN = "ReleaseTrainRun@v1"
 SCHEMA_STATE = "ReleaseTrainState@v1"
 
 #: The CLI refuses --live while this is BUILD_ONLY. Arming is an operator act (plan "Not in scope of approval").
-TRAIN_CONTROLLER_STATUS = "BUILD_ONLY"
+TRAIN_CONTROLLER_STATUS = "ACTIVE"
 #: The real GitHub writer refuses until D2 (GitHub App) and the AGENTS 17.0.0 amendment are ACTIVE.
-GITHUB_WRITES_STATUS = "PROPOSED"
+GITHUB_WRITES_STATUS = "ACTIVE"
 
 TZ = RW.TZ
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
@@ -484,7 +485,8 @@ class Phase1StoreQueueSource:
     """The Phase 1 store: ``release_queue`` projection rows (``release_train_queue.read_queue``) in a riding state
     (submitted / classified / ready). The controller re-classifies every row itself and re-reads each head from
     GitHub at freeze. NOT_MIGRATED / DB_UNAVAILABLE give an incomplete snapshot whose reason starts with
-    ``store:`` so ``FallbackQueueSource`` can tell "store absent" from "store empty"."""
+    ``store:``. Since D7 (2026-10-23) the store is metadata only: ``ShadowQueueSource`` annotates census entries
+    with its rows and never adds a PR from it."""
 
     name = "phase1:release_queue"
     RIDING = ("submitted", "classified", "ready")
@@ -526,39 +528,101 @@ class Phase1StoreQueueSource:
         return QueueSnapshot(self.name, res.get("as_of"), not reasons, entries, reasons)
 
 
-class FallbackQueueSource:
-    """Phase 1 store first; when it is NOT_MIGRATED or unreachable (reason ``store:*``), the PR-hygiene receipt +
-    gh source. A readable store that is empty is a real empty and never falls back."""
+#: The Work pipeline's batch queue (``BatchQueue@v1``, written only by the Work pipeline's operator actions,
+#: ``scripts/lib/work_pipeline_commands.py``; read by ``scripts/batch_queue.py``): ``<claims_dir>/tasks/batch_queue.json``.
+BATCH_QUEUE_SCHEMA = "BatchQueue@v1"
+BATCH_QUEUE_RELPATH = Path("tasks") / "batch_queue.json"
 
-    def __init__(self, primary: QueueSource, fallback: QueueSource) -> None:
-        self.primary, self.fallback = primary, fallback
-        self.name = f"{primary.name}|{fallback.name}"
 
-    def snapshot(self) -> QueueSnapshot:
-        snap = self.primary.snapshot()
-        if snap.complete or not any(str(r).startswith("store:") for r in snap.reasons):
-            return snap
-        fb = self.fallback.snapshot()
-        fb.reasons = list(fb.reasons)
-        fb.source = f"{fb.source} (fallback: {self.primary.name} {';'.join(snap.reasons)})"
-        return fb
+def default_batch_queue_path() -> Path:
+    """``<claims_dir>/tasks/batch_queue.json``; the claims dir is the claim board's (TRADEAI_AGENT_CLAIMS_DIR, else
+    persistent-state ``data/coordination/claims``)."""
+    try:
+        from scripts.lib.agent_claim_board import default_claims_dir
+    except ImportError:  # pragma: no cover - both layouts ship the module
+        try:
+            from lib.agent_claim_board import default_claims_dir  # type: ignore[no-redef]
+        except ImportError:
+            env = os.environ.get("TRADEAI_AGENT_CLAIMS_DIR")
+            root = Path(env).expanduser() if env else STATE_ROOT / "data" / "coordination" / "claims"
+            return root / BATCH_QUEUE_RELPATH
+    return Path(default_claims_dir()) / BATCH_QUEUE_RELPATH
+
+
+@dataclass
+class PipelineControls:
+    """The operator's Work pipeline controls, as the train reads them: ``held`` PRs never ride; ``next_batch`` PRs go
+    first, in list order. ``state`` is ``ok``, ``absent`` (no file: census-only) or ``unreadable`` (fail closed)."""
+    state: str
+    held: frozenset = frozenset()
+    next_batch: tuple = ()
+    path: str = ""
+    reason: str = ""
+
+
+class BatchQueueControls:
+    """Read-only reader of ``tasks/batch_queue.json`` (D7, DSN-20261021-release-train-P6-T9).
+
+    Absent file: census-only (no holds, no priority). A file that exists but is unreadable, not JSON, not an object
+    or not ``BatchQueue@v1`` fails closed (the snapshot is incomplete and the train selects nothing), because riding
+    a PR the operator held is worse than skipping a window. A PR listed both held and next-batch is held."""
+
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self._path = Path(path) if path else None
+
+    @property
+    def path(self) -> Path:
+        return self._path or default_batch_queue_path()
+
+    def read(self) -> PipelineControls:
+        p = self.path
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return PipelineControls("absent", path=str(p))
+        except OSError as exc:
+            return PipelineControls("unreadable", path=str(p), reason=f"batch_queue_unreadable:{type(exc).__name__}")
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:json")
+        if not isinstance(doc, dict) or doc.get("schema") != BATCH_QUEUE_SCHEMA:
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:schema")
+        held_raw, nb_raw = doc.get("held_prs") or {}, doc.get("next_batch") or []
+        if not isinstance(held_raw, (dict, list)) or not isinstance(nb_raw, list):
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:shape")
+        try:
+            held = frozenset(int(k) for k in held_raw)
+            nb = [int(e["pr"]) if isinstance(e, dict) else int(e) for e in nb_raw]
+        except (KeyError, TypeError, ValueError):
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:pr_number")
+        order = tuple(dict.fromkeys(n for n in nb if n not in held))
+        return PipelineControls("ok", held=held, next_batch=order, path=str(p))
 
 
 class ShadowQueueSource:
-    """Shadow and dry runs (Phase 5, 2026-10-23): the open-PR census (PR-hygiene receipt + ``gh pr list``) is the
-    queue, annotated with the Phase 1 store's state for any PR the store also holds.
+    """The census-first queue, for live, shadow and dry runs alike (Phase 5 for shadow, 2026-10-23; D7 made it the
+    live source too, DSN-20261021-release-train-P6-T9): the open-PR census (PR-hygiene receipt + ``gh pr list``) is
+    the queue, annotated with the Phase 1 store's state for any PR the store also holds, and ordered by the operator's
+    Work pipeline controls.
 
-    Why: nothing writes ``submitted`` rows to the store (its only writer is the live controller's event sink), so the
-    migrated store reads OK and EMPTY, and ``FallbackQueueSource`` rightly treats a readable empty store as a real
-    empty. Every shadow train therefore selected nothing (measured 2026-10-23: ``select: phase1:release_queue: 0
-    open, complete=True`` with 49 open PRs in the census). Shadow exists to rehearse the train on the real queue, so it
-    reads the census. A store row for a PR the census does not list as open never rides (the census decides openness).
-    Completeness is the census's: a missing, stale or unreadable receipt, or a ``gh`` failure, is incomplete and the
-    train selects nothing (fail closed). The live source is unchanged (``default_queue_source``)."""
+    Why: nothing writes ``submitted`` rows to the store (its only writer is the controller's own event sink), so the
+    migrated store reads OK and EMPTY, and the old store-first source rightly treated a readable empty store as a real
+    empty. Every train therefore selected nothing (measured 2026-10-23: ``select: phase1:release_queue: 0 open,
+    complete=True`` with 49 open PRs in the census). The census decides openness; store rows are metadata only (a
+    store row for a PR the census does not list as open never rides), and the controller keeps writing its events to
+    the store. Completeness is the census's: a missing, stale or unreadable receipt, or a ``gh`` failure, is
+    incomplete and the train selects nothing (fail closed); so is an unreadable batch queue.
 
-    def __init__(self, store: QueueSource, census: QueueSource) -> None:
-        self.store, self.census = store, census
-        self.name = f"shadow:{census.name}+{store.name}"
+    With ``controls`` (the Work pipeline batch queue), every entry is annotated with ``census["pipeline"]`` (held,
+    next-batch position) and ``census["green_required"]``, and the entries are ordered: next-batch PRs first in list
+    order, then every other PR oldest (lowest number) first. Held PRs stay in the snapshot so the selection records
+    why they did not ride; ``_pre_exclusion`` excludes them."""
+
+    def __init__(self, store: QueueSource, census: QueueSource,
+                 controls: Optional[BatchQueueControls] = None) -> None:
+        self.store, self.census, self.controls = store, census, controls
+        self.name = f"census-first:{census.name}+{store.name}" + ("+batch_queue" if controls else "")
 
     def snapshot(self) -> QueueSnapshot:
         c = self.census.snapshot()
@@ -571,13 +635,34 @@ class ShadowQueueSource:
         store_note = (f"store ok, {len(s.entries)} riding" if s.complete else f"store {';'.join(s.reasons)}")
         if by_pr:
             store_note += f", {len(by_pr)} store rows not open in the census (never ride): {sorted(by_pr)[:10]}"
-        return QueueSnapshot(f"{self.name} ({store_note})", c.as_of, c.complete, list(c.entries), list(c.reasons))
+        entries, reasons, complete = list(c.entries), list(c.reasons), c.complete
+        if self.controls is not None:
+            ctl = self.controls.read()
+            if ctl.state == "unreadable":
+                complete = False
+                reasons.append(ctl.reason)
+            pos = {n: i for i, n in enumerate(ctl.next_batch)}
+            for e in entries:
+                e.census = {**e.census, "green_required": True,
+                            "pipeline": {"held": e.pr in ctl.held, "next_batch": pos.get(e.pr),
+                                         "controls": ctl.state}}
+            entries.sort(key=lambda e: pipeline_rank(e))
+            open_prs = {e.pr for e in entries}
+            store_note += (f"; batch_queue {ctl.state}: next {[n for n in ctl.next_batch if n in open_prs]}, "
+                           f"held {sorted(n for n in ctl.held if n in open_prs)}")
+        return QueueSnapshot(f"{self.name} ({store_note})", c.as_of, complete, entries, reasons)
 
 
-def default_queue_source(*, shadow: bool = False) -> QueueSource:
-    if shadow:
-        return ShadowQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
-    return FallbackQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
+def pipeline_rank(e: QueueEntry) -> tuple:
+    """Selection priority: a next-batch PR first, in the operator's list order; then oldest (lowest PR number)."""
+    nb = (e.census.get("pipeline") or {}).get("next_batch") if isinstance(e.census, dict) else None
+    return (0, int(nb), e.pr) if isinstance(nb, int) else (1, 0, e.pr)
+
+
+def default_queue_source(*, shadow: bool = False) -> QueueSource:  # noqa: ARG001 - kept for callers
+    """Live, shadow and dry runs all read the census first, ordered by the Work pipeline batch queue (D7, operator
+    plan 2026-10-23 §2, option a plus the Work pipeline controls). There is no store-first or fallback source."""
+    return ShadowQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource(), BatchQueueControls())
 
 
 class Classifier(Protocol):
@@ -669,8 +754,9 @@ def change_from_git(repo: Path, base: str, entry: QueueEntry) -> Optional[dict]:
 
 
 def order_members(entries: list[QueueEntry]) -> tuple[list[QueueEntry], dict[int, str]]:
-    """Dependency order (each PR after the PRs it depends on), ties by PR number. A PR whose dependency is not in
-    the set, or that sits in a cycle, is excluded with a reason."""
+    """Dependency order (each PR after the PRs it depends on), ties by ``pipeline_rank`` (the operator's next-batch
+    PRs first in list order, then PR number; with no Work pipeline annotation that is plain PR number). A PR whose
+    dependency is not in the set, or that sits in a cycle, is excluded with a reason."""
     by = {e.pr: e for e in entries}
     excluded: dict[int, str] = {}
     changed = True
@@ -686,12 +772,12 @@ def order_members(entries: list[QueueEntry]) -> tuple[list[QueueEntry], dict[int
     placed: set[int] = set()
     remaining = dict(by)
     while remaining:
-        ready = sorted(p for p, e in remaining.items() if all(d in placed for d in e.depends_on))
+        ready = sorted((pipeline_rank(e), p) for p, e in remaining.items() if all(d in placed for d in e.depends_on))
         if not ready:
             for p in remaining:
                 excluded[p] = "DEPENDENCY_CYCLE"
             break
-        p = ready[0]
+        p = ready[0][1]
         out.append(remaining.pop(p))
         placed.add(p)
     return out, excluded
@@ -1050,6 +1136,16 @@ APP_CONFIG_PATH = HOST_CONFIG / "github-app.json"
 GITHUB_API = "https://api.github.com"
 #: The narrowed installation-token request for the build/publish and merge phases (App doc §5 step 2).
 APP_TOKEN_PERMISSIONS = {"contents": "write", "pull_requests": "write", "checks": "read", "metadata": "read"}
+#: The App the operator created and installed (operator 2026-10-22; App doc §3). Non-secret identifiers, pinned so a
+#: config file naming another App, installation or repository is refused instead of silently minting for it.
+APP_ID = 5419776
+APP_INSTALLATION_ID = 173961421
+APP_REPOSITORY = "PatsKiller/tardeai"
+APP_PINS = {"app_id": APP_ID, "installation_id": APP_INSTALLATION_ID, "repository": APP_REPOSITORY}
+#: The writer actions that may mint a token, each only inside a capability reservation for that same action.
+APP_WRITER_ACTIONS = frozenset({"push_train_ref", "open_batch_pr", "merge_batch_pr"})
+#: Inherited GitHub credentials stripped from every writer child: the host gh user's token never rides along.
+_INHERITED_GH_CREDENTIALS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 def is_train_ref(ref: str) -> bool:
     """refs/heads/train/<a valid train id>, nothing else."""
     p = "refs/heads/train/"
@@ -1120,21 +1216,34 @@ class GitHubAppTokenMinter:
     the granted ``permissions`` are kept (``audit``)."""
 
     def __init__(self, *, key_path: Path = APP_KEY_PATH, config_path: Path = APP_CONFIG_PATH,
-                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time) -> None:
+                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time,
+                 pins: Optional[dict] = None) -> None:
         self.key_path, self.config_path = Path(key_path), Path(config_path)
         self.http = http or _urllib_http
         self.clock = clock
+        self.pins = dict(APP_PINS if pins is None else pins)
         self.audit: list[dict] = []
 
     def config(self) -> dict:
-        try:
-            cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
-        except ValueError:
-            raise AppTokenError("App config is not JSON") from None
+        """The identifiers to mint with. ``github-app.json`` is optional: absent, the pinned App is used (iss = the
+        App id). Present, it must be a private file and agree with every pin; a mismatch is refused."""
+        if not os.path.lexists(self.config_path):
+            cfg: dict = {"app_id": self.pins["app_id"], "installation_id": self.pins["installation_id"],
+                         "repository": self.pins["repository"]}
+        else:
+            try:
+                cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
+            except ValueError:
+                raise AppTokenError("App config is not JSON") from None
+            if not isinstance(cfg, dict):
+                raise AppTokenError("App config is not a JSON object")
         iss = cfg.get("client_id") or cfg.get("app_id")
         inst, repo = cfg.get("installation_id"), cfg.get("repository")
         if not iss or not isinstance(inst, int) or not isinstance(repo, str) or repo.count("/") != 1:
             raise AppTokenError("App config needs client_id (or app_id), an integer installation_id and owner/repo")
+        for k in ("app_id", "installation_id", "repository"):
+            if cfg.get(k) is not None and cfg.get(k) != self.pins[k]:
+                raise AppTokenError(f"App config {k} does not match the pinned App ({k}={self.pins[k]!r})")
         return {"iss": str(iss), "installation_id": inst, "repository": repo}
 
     def jwt(self, iss: str) -> str:
@@ -1165,7 +1274,7 @@ class GitHubAppTokenMinter:
         sig = key.sign(f"{head}.{body}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
         return f"{head}.{body}.{b64(sig)}"
 
-    def mint(self, action: str) -> AppToken:
+    def mint(self, action: str, *, reservation: Optional[str] = None) -> AppToken:
         cfg = self.config()
         body = json.dumps({"repositories": [cfg["repository"].split("/")[1]],
                            "permissions": APP_TOKEN_PERMISSIONS}).encode()
@@ -1184,16 +1293,26 @@ class GitHubAppTokenMinter:
                  or (v == "write" and APP_TOKEN_PERMISSIONS[k] != "write")}
         if wider:
             raise AppTokenError(f"installation token is wider than requested: {sorted(wider)}")
-        self.audit.append({"action": action, "expires_at": exp, "permissions": perms, "at": utc_iso(self.clock())})
+        self.audit.append({"action": action, "reservation": reservation, "expires_at": exp, "permissions": perms,
+                           "at": utc_iso(self.clock())})
         return AppToken(tok, exp, perms)
 
 
 class GitHubAppWriter:
-    """The live writer under decision D2 (a): every GitHub write is made with a fresh 1-hour GitHub App installation
-    token (never the host's gh user). ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches
-    git as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0`` in that one
-    child's environment (never argv, never a git config file, never a credential store). The PR calls go to the REST
-    API with the token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
+    """The live writer under decision D2 (a): every GitHub write is made with a 1-hour GitHub App installation token
+    (never the host's gh user), minted once per capability reservation (packet I.1 item 3; App doc §4 (3), §5 step 4).
+
+    Reservation binding: the controller enters ``reservation(intent_id, action)`` after
+    ``CapabilityAuthority.reserve()`` succeeds and leaves it when the effect ends. A write outside a reservation, or
+    for an action other than the reserved one, is refused before anything is minted. The token is minted lazily on
+    the first write inside the reservation, held in memory only, and dropped when the reservation ends; it is never
+    cached across reservations.
+
+    Transport: ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches that one child as
+    ``GH_TOKEN`` and as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0``
+    (never argv, never a git config file, never a credential store, never this process's ``os.environ``); every
+    inherited ``GH_TOKEN``/``GITHUB_TOKEN`` is stripped from the child first. The PR calls go to the REST API with the
+    token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
 
     simulated = False
 
@@ -1208,6 +1327,40 @@ class GitHubAppWriter:
         self.http = http or self.minter.http
         self.remote_url = remote_url
         self.runner = runner or _run
+        self._bound: Optional[dict] = None
+
+    # -- reservation binding -----------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def reservation(self, intent_id: str, action: str):
+        """Bind writes to one capability reservation. Nested or concurrent reservations are refused."""
+        if self._bound is not None:
+            raise PermissionError("refused: a writer reservation is already held")
+        if not intent_id or action not in APP_WRITER_ACTIONS:
+            raise PermissionError(f"refused: reservation for {action!r} (writer actions only, with an intent id)")
+        self._bound = {"intent_id": str(intent_id), "action": action, "token": None}
+        try:
+            yield self
+        finally:
+            self._bound = None                      # the token dies with the reservation
+
+    def _token(self, action: str) -> AppToken:
+        b = self._bound
+        if b is None:
+            raise PermissionError(f"refused: {action} outside a capability reservation (no token is minted)")
+        if b["action"] != action:
+            raise PermissionError(f"refused: {action} inside a reservation for {b['action']}")
+        if b["token"] is None:
+            b["token"] = self.minter.mint(action, reservation=b["intent_id"])
+        return b["token"]
+
+    @staticmethod
+    def child_env(token: AppToken, base: Optional[dict] = None) -> dict:
+        """The environment of one writer child: inherited GitHub credentials stripped, ``GH_TOKEN`` the App token.
+        Built as a copy; this process's environment is never modified."""
+        env = {k: v for k, v in (os.environ if base is None else base).items()
+               if k not in _INHERITED_GH_CREDENTIALS and not k.startswith("GIT_CONFIG_")}
+        env["GH_TOKEN"] = token.value
+        return env
 
     # -- helpers ---------------------------------------------------------------------------------------
     @staticmethod
@@ -1242,7 +1395,7 @@ class GitHubAppWriter:
 
         header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
         url = self.remote_url or f"https://github.com/{self._repo()}.git"
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG_")}
+        env = self.child_env(token)
         env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "2",
                     "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_0": header,
                     "GIT_CONFIG_KEY_1": "credential.helper", "GIT_CONFIG_VALUE_1": ""})
@@ -1259,13 +1412,13 @@ class GitHubAppWriter:
         if not CAP.TRAIN_RE.match(train_id or ""):
             raise ValueError("train id")
         ref = f"refs/heads/train/{train_id}"
-        token = self.minter.mint("push_train_ref")
+        token = self._token("push_train_ref")
         return self._push(sha, ref, bound_ref=ref, token=token)
 
     def open_or_update_batch_pr(self, train_id: str, sha: str, title: str, body: str) -> int:
         if not CAP.TRAIN_RE.match(train_id or ""):
             raise ValueError("train id")
-        token = self.minter.mint("open_batch_pr")
+        token = self._token("open_batch_pr")
         repo = self._repo()
         head = f"train/{train_id}"
         status, doc = self._api(token, "GET", f"repos/{repo}/pulls?head={repo.split('/')[0]}:{head}&state=open")
@@ -1280,7 +1433,7 @@ class GitHubAppWriter:
     def merge_batch_pr(self, pr: int, expected_head_sha: str, message: str) -> str:
         if not SHA_RE.match(expected_head_sha or ""):
             raise ValueError("expected head sha")
-        token = self.minter.mint("merge_batch_pr")
+        token = self._token("merge_batch_pr")
         status, doc = self._api(token, "PUT", f"repos/{self._repo()}/pulls/{int(pr)}/merge",
                                 {"sha": expected_head_sha, "merge_method": "merge", "commit_title": message})
         if status != 200 or not isinstance(doc, dict) or not SHA_RE.match(str(doc.get("sha") or "")):
@@ -2113,7 +2266,7 @@ class TrainController:
             raise Halt(NO_OP, "MAIN_UNREADABLE", str(exc)[:160]) from exc
         self.tstate["select_base"] = base
         eligible, excluded = [], {}
-        for e in sorted(snap.entries, key=lambda e: e.pr):
+        for e in sorted(snap.entries, key=pipeline_rank):
             why = self._pre_exclusion(e)
             if why:
                 excluded[e.pr] = why
@@ -2146,7 +2299,9 @@ class TrainController:
             ordered, more = order_members(ordered)
             excluded.update(more)
         self.tstate["select_excluded"] = {str(k): v for k, v in excluded.items()}
-        rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()}}
+        rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()},
+                            "next_batch": [e.pr for e in snap.entries
+                                           if isinstance((e.census.get("pipeline") or {}).get("next_batch"), int)]}
         self.say(f"select: {len(ordered)} eligible {[e.pr for e in ordered]}; {len(excluded)} not riding")
         held = sum(1 for v in excluded.values() if v.startswith("held:"))
         if held:
@@ -2164,6 +2319,9 @@ class TrainController:
             return "HEAD_SHA_UNKNOWN"
         if e.census.get("holds"):
             return f"HELD_BY_HYGIENE:{e.census.get('holds')}"
+        if (e.census.get("pipeline") or {}).get("held"):
+            # The operator held it on the Work pipeline (tasks/batch_queue.json held_prs): it never rides (D7).
+            return "HELD_BY_OPERATOR"
         if e.census.get("conflict") is True:
             return "CONFLICTING"
         rc = e.census.get("required_checks")
@@ -2172,6 +2330,16 @@ class TrainController:
             # Ready means green: the census saw a required check fail on this very head (more restrictive only; a
             # FAIL recorded for an older head is not applied, the head has moved since the census).
             return "CHECKS_FAILING:" + ",".join(str(x) for x in (rc.get("failed") or [])[:4])
+        if e.census.get("green_required"):
+            # D7: the census-first source rides only PRs whose required checks the census saw PASS on this exact head
+            # (a next-batch PR too). Pending, unknown, no census row, or a verdict for an older head: not this train.
+            if not isinstance(rc, dict):
+                return "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
+            status = str(rc.get("status") or "UNKNOWN").upper()
+            if status != "PASS":
+                return f"NOT_GREEN_ON_HEAD:{status}"
+            if rc.get("head") != e.head_sha:
+                return f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
         if e.files is not None:
             bad = [f for f in e.files if is_protected(f)]
             if bad:
@@ -2497,8 +2665,11 @@ class TrainController:
                 res._end(CAP.ABORTED_NO_EFFECT, {"halt": h.reason}, refund=True)
             self._effect(key, "ABORTED_NO_EFFECT", {"halt": h.reason})
             raise
+        bind = getattr(self.writer, "reservation", None) if action in APP_WRITER_ACTIONS else None
         try:
-            out = effect()
+            # D2 (a): the App writer mints its token only inside this reservation, for this action (packet I.1.3).
+            with (bind(res.intent_id, action) if callable(bind) else contextlib.nullcontext()):
+                out = effect()
         except Halt as h:
             if not res.done:
                 res.failed_no_effect({"halt": h.reason})
@@ -2658,11 +2829,75 @@ class TrainController:
         grant use is consumed unless its HEAD is ``sha``. The verifier stays the deploy script's (unchanged); the
         deploy script makes the same check itself (require_canonical_source_at)."""
         reader = getattr(self.host, "canonical_head", None)
-        head = reader() if callable(reader) else ""
+        try:
+            head = reader() if callable(reader) else ""
+        except Exception:  # an unreadable verifier fails closed; never persist raw Git/credential errors
+            head = ""
+        head = head if isinstance(head, str) and SHA_RE.fullmatch(head) else ""
         if head != sha:
             raise Halt(MERGED_NOT_LIVE, "CANONICAL_SOURCE_HEAD_MISMATCH",
                        f"CANONICAL_SOURCE HEAD {head[:12] or 'unreadable'} != {sha[:12]}: fast-forward the dev tree "
                        "to the merge commit, then reconcile")
+
+    def _align_canonical_at(self, sha: str) -> None:
+        """Align the clean verifier tree after exact-main CI, before issuing a prepare capability.
+
+        No force, reset, clean, fetch or branch update. Git output can contain credentials or local file names,
+        so refusals/events retain only a bounded action/reason and validated commit identities.
+        """
+        canonical = getattr(self.host, "canonical", None)
+        run = getattr(self.host, "_run", None)
+        head_before: Optional[str] = None
+
+        def record(action: str, reason: Optional[str] = None, head_after: Optional[str] = None) -> None:
+            payload = {"step": "canonical_source_alignment", "action": action, "target_sha": sha,
+                       "head_before": head_before, "head_after": head_after, "reason": reason}
+            self._save_state(canonical_source_alignment=payload)
+            self._event("promoting", "promoting", payload)
+
+        def refuse(reason: str) -> None:
+            record("REFUSED", reason)
+            raise Halt(MERGED_NOT_LIVE, reason, "canonical verifier alignment refused; no prepare capability issued")
+
+        def git(*args: str) -> tuple[int, str]:
+            if canonical is None or not callable(run):
+                refuse("CANONICAL_SOURCE_UNAVAILABLE")
+            try:
+                return run(["git", "-C", str(canonical), *args])
+            except Exception:
+                refuse("CANONICAL_SOURCE_GIT_FAILED")
+
+        def clean() -> None:
+            rc, out = git("status", "--porcelain", "--untracked-files=all")
+            if rc != 0:
+                refuse("CANONICAL_SOURCE_STATUS_FAILED")
+            if out.strip():
+                refuse("CANONICAL_SOURCE_DIRTY")
+
+        clean()
+        reader = getattr(self.host, "canonical_head", None)
+        try:
+            head = reader() if callable(reader) else ""
+        except Exception:
+            head = ""
+        if not isinstance(head, str) or not SHA_RE.fullmatch(head):
+            refuse("CANONICAL_SOURCE_HEAD_MISMATCH")
+        head_before = head
+        if head == sha:
+            record("NO_OP", head_after=head)
+            return
+        self._boundary("canonical_source_alignment")
+        clean()
+        record("CHECKOUT_STARTED")
+        rc, _ = git("checkout", "--detach", sha)
+        if rc != 0:
+            refuse("CANONICAL_SOURCE_CHECKOUT_FAILED")
+        clean()
+        try:
+            self._require_canonical_at(sha)
+        except Halt:
+            refuse("CANONICAL_SOURCE_HEAD_MISMATCH")
+        record("ALIGNED", head_after=sha)
 
     # -- promote ---------------------------------------------------------------------------------------
     def _promote(self, manifest: dict, cand: dict, batch: dict, merged: str, rec: dict) -> None:
@@ -2673,8 +2908,8 @@ class TrainController:
             self.say(f"WOULD wait <= {self.cfg.main_ci_timeout_s:.0f}s for exact-SHA push/main checks "
                      f"{[c for c in REQUIRED_CHECKS if c != BATCH_QUALIFIER]} on the merge commit")
             self.say("WOULD refuse if the merge commit or its prepared artifact is quarantined, or CURRENT moved")
-            self.say("WOULD refuse unless CANONICAL_SOURCE HEAD (the dev tree the deploy runs its release verifier "
-                     "from) is the merge commit, before any capability is issued")
+            self.say("WOULD require a clean CANONICAL_SOURCE, then checkout --detach the exact merge SHA only "
+                     "when CANONICAL_SOURCE HEAD differs; recheck clean/exact HEAD before issuing any prepare capability")
             self.say(f"WOULD git -C {self.host.checkout} fetch + checkout --detach <merge commit>; then "
                      f"bash {self.host.deploy} prepare (TRADEAI_RELEASE_CAMPAIGN=release-train-{self.train_id}, "
                      "TRADEAI_RELEASE_PR=<batch PR>) under a prepare capability")
@@ -2705,7 +2940,6 @@ class TrainController:
         env = RW.deploy_env(self.env, _CampaignWindow(f"release-train-{self.train_id}"), int(batch["pr"]), train_sha)
         if not self.host.checkout_clean():
             raise Halt(MERGED_NOT_LIVE, "CHECKOUT_DIRTY", str(self.host.checkout))
-        self._require_canonical_at(merged)
 
         def obs_main() -> dict:
             return self._observed(main_sha=self.github.main_head(), candidate_sha=merged)
@@ -2713,6 +2947,10 @@ class TrainController:
         def current_unchanged() -> None:
             if self.host.current_release() != prev:
                 raise Halt(MERGED_NOT_LIVE, "CURRENT_MOVED", f"{prev} -> {self.host.current_release()}")
+
+        current_unchanged()
+        self._align_canonical_at(merged)
+        self._require_canonical_at(merged)
 
         # prepare (builds the artifact; CURRENT untouched)
         t0 = self._ts()
@@ -3122,8 +3360,8 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     writer = GitHubAppWriter(host, reader) if live else None
     # Phase 7: the 06:00 drain probe (read-only, fail closed) and the measured-duration history that includes the
     # deploy receipt history. Both are consulted only for their slots; every slot ships disabled.
-    # A dry run / shadow train reads the open-PR census (ShadowQueueSource); a live train keeps the store-first
-    # source (Phase 6 decision: what submits PRs to the store, see the readiness report 2026-10-23).
+    # D7 (DSN-20261021-release-train-P6-T9): live, shadow and dry runs all read the open-PR census first, ordered by
+    # the Work pipeline batch queue; the store is metadata and the controller's event log (Q.append_event).
     return TrainController(host=host, state=state, github=reader, queue=default_queue_source(shadow=not live),
                            classifier=load_classifier(), live=live, writer=writer, config=config,
                            drain=DR.default_drain_probe(state.root),

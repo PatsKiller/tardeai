@@ -1,6 +1,7 @@
 name: options-lifecycle-ci
 on:
   push:
+    branches: [main]
     paths: &lifecycle_paths
       - 'scripts/options_*.py'
       - 'scripts/lib/options_*.py'
@@ -46,12 +47,20 @@ on:
       - 'config/health_agent_policy.json'
       - 'tests/test_agent_flash_governance.py'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: *lifecycle_paths
   workflow_dispatch: {}
 permissions:
   contents: read
+# Push policy v2 (2026-10-23): a new push to a PR supersedes the run in flight; a push to main gets
+# one group per SHA so a merged SHA is never left without CI evidence.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -107,6 +116,7 @@ jobs:
             /tmp/junit.xml
             /tmp/pytest.out
   frontend:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
