@@ -2104,6 +2104,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
+| `docs/ops/W3_SIGNALS_20261024.md` | W3: sector strength and triggered-only pullback proposals |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |

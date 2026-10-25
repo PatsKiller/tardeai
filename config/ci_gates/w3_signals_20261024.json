@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w3_signals_20261024",
+  "files": [
+    "tests/test_sector_signals_20261024.py",
+    "tests/test_pullback_reconcile_tiers_20260915.py"
+  ],
+  "comment": [
+    "W3 approved multi-horizon sector truth and trigger-only advisory queue."
+  ]
+}

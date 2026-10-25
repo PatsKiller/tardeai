@@ -5124,6 +5124,119 @@
         "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
         "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
       }
+    },
+    {
+      "domain": "operator_decisions",
+      "status": "proposed",
+      "entity": "Operator document reviews, decisions and rule feedback",
+      "title": "Approvals Center operator decision ledger",
+      "class": "native",
+      "facts": [
+        "exact document reviewed",
+        "operator decision",
+        "per-change read marker",
+        "rule feedback",
+        "evidence-backed enforcement audit proposals (no decisions)"
+      ],
+      "store": {
+        "file": "governance/operator_decisions.jsonl"
+      },
+      "writer": "scripts/lib/operator_approvals.py",
+      "writer_status": "single",
+      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
+      "stale_after_hours": 720,
+      "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "operator document review",
+        "never_list": true,
+        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
+      },
+      "projection": "scripts/lib/operator_approvals_api.py::queue_summary",
+      "readers": [
+        "Approvals Center",
+        "Rulebook",
+        "CIO approval truth projection",
+        "agents (read only)"
+      ],
+      "derived_copies": [],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "codex-w11-approvals-20261024",
+        "proposed_on": "2026-10-24",
+        "reference": "DSN-20261024-approvals; boards 19-21 build instruction",
+        "decision": "Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval."
+      },
+      "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions."
+    },
+    {
+      "domain": "conflict_ledger",
+      "status": "proposed",
+      "approval": null,
+      "entity": "Site-wide conflict lifecycle",
+      "title": "Conflict ledger and decisions",
+      "class": "derived",
+      "store": {
+        "file": "data/conflicts/conflict_events.jsonl"
+      },
+      "writer": "scripts/lib/conflicts/ledger.py",
+      "facts": [
+        "finding",
+        "lifecycle",
+        "owner decision",
+        "source supersession"
+      ],
+      "cadence": "event changes; conflict-resolver shadow cadence separately owned by W8",
+      "stale_after_hours": 0.5,
+      "freshness_sla": "30 min while scheduled; no produced evidence means a gap",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "conflict-resolver",
+        "note": "W8 owns inactive declaration/admission; no live flip by W10"
+      },
+      "projection": "scripts.lib.conflicts.api.records_section",
+      "readers": [
+        "Watch",
+        "Home",
+        "CIO",
+        "Risk",
+        "Advisory",
+        "Ops Jobs and health",
+        "Approvals",
+        "CIO brief",
+        "Ask the CIO",
+        "Telegram digest"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "conflict_events"
+          },
+          "role": "derived",
+          "how": "gated PG dual write only after operator migration; immutable event_id idempotency"
+        }
+      ],
+      "no_coverage": "say_so",
+      "proposal": {
+        "proposed_by": "W10",
+        "proposed_on": "2026-10-24",
+        "reference": "conflict-engine-build.md; DESIGN sections7/12; EXCEPTIONS_MATRIX R4",
+        "decision": "Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts."
+      },
+      "retention_days": 400,
+      "retention_mode": "archive_then_tripwire; no deletion by this module"
     }
   ],
   "data_dictionary": {
