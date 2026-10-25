@@ -422,9 +422,10 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
                         stop: Optional[Mapping[str, Any]] = None, hours: int = 48,
                         main_ci_receipt: Optional[Path] = None) -> dict[str, Any]:
     """Each row: {at, kind, detail, source}. Sources this can see; anything else is listed as not covered."""
-    src = "release_window/windows/*.json + release_pins/rollback-*.json + deploy_receipt.json + post_merge_ci.json"
+    src = "release_window/windows/*.json + release_pins/rollback-*.json + deploy_receipt.json + deploy_receipt_history.jsonl + post_merge_ci.json"
     since = now - timedelta(hours=hours)
     rows: list[dict[str, Any]] = []
+    coverage_gaps = []
     read_any = False
     wdir = Path(rw_state_dir) / "windows"
     try:
@@ -474,6 +475,37 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
                 rows.append({"at": c.get("updated_at"), "kind": "main CI " + str(c.get("conclusion") or c.get("status")),
                              "detail": f"{c.get('name')} on {str(ci.get('candidate_sha'))[:9]}",
                              "source": "post_merge_ci.json", "url": c.get("url")})
+    # A later successful promote must not overwrite the earlier failed attempts.
+    history = Path(deploy_state_dir) / "deploy_receipt_history.jsonl"
+    try:
+        with history.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            start = max(0, stream.tell() - 2 * 1024 * 1024)
+            stream.seek(start)
+            raw = stream.read(2 * 1024 * 1024)
+        read_any = True
+        if start:
+            raw = raw.partition(b"\n")[2]
+            coverage_gaps.append("Older deploy attempts outside the bounded history window")
+        for line in raw.splitlines():
+            try:
+                attempt = json.loads(line)
+            except (ValueError, UnicodeError):
+                coverage_gaps.append("Malformed deploy history record")
+                continue
+            if not isinstance(attempt, dict):
+                continue
+            at = _parse(attempt.get("at"))
+            if (attempt.get("ok") is False or attempt.get("rolled_back")) and at and since <= at <= now:
+                if any(r.get("at") == _iso(at) and r.get("source") == "deploy_receipt.json" for r in rows):
+                    continue
+                rows.append({"at": _iso(at), "kind": f"deploy {attempt.get('mode')} not ok",
+                             "detail": str(attempt.get("extra") or attempt.get("health") or "Failure diagnostic was not retained")[:240],
+                             "source": "deploy_receipt_history.jsonl"})
+    except FileNotFoundError:
+        coverage_gaps.append("Deploy attempt history is not available; latest receipt only")
+    except OSError:
+        coverage_gaps.append("Deploy attempt history could not be read")
     watch = _read_json(Path(main_ci_receipt)) if main_ci_receipt is not None else None
     ws = (watch or {}).get("summary") if isinstance((watch or {}).get("summary"), dict) else {}
     if watch and str(watch.get("status")) == "ok" and ws.get("state") == "FAILURE":
@@ -492,7 +524,8 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
     rows.sort(key=lambda r: str(r.get("at") or ""), reverse=True)
     not_covered = ("main CI failures of SHAs other than the one the main-ci-watch receipt last checked "
                    "(GitHub is not called from this page)")
-    return field({"rows": rows[:MAX_ERRORS], "window_hours": hours, "not_covered": not_covered},
+    return field({"rows": rows[:MAX_ERRORS], "window_hours": hours, "not_covered": not_covered,
+                  "coverage_gaps": sorted(set(coverage_gaps))},
                  _iso(now), "OK", src, None, now=now)
 
 
@@ -673,6 +706,22 @@ def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
 
 
+def _cause(receipt: Mapping[str, Any]) -> str:
+    """The bounded, redacted stderr cause, else a non-generic reason, else an explicit missing-diagnostic gap.
+
+    Same rule as W4's n8n_dlq_disposition.cause (AGENTS.md 28.9: a failure shows its real cause, not exit_1); kept
+    local so this shared view does not depend on a module that ships in a separate batch.
+    """
+    from scripts.lib.scheduler_operations import redact_command
+    stderr = receipt.get("stderr_tail")
+    if isinstance(stderr, str) and stderr.strip():
+        return redact_command(stderr.strip())[-600:]
+    reason = str(receipt.get("reason") or "").strip()
+    if reason and not re.fullmatch(r"exit[_ :\-]?\d+", reason, flags=re.I):
+        return redact_command(reason)[:600]
+    return "Failure recorded; stderr diagnostic was not retained"
+
+
 def _receipt_bits(raw: Any) -> dict[str, Any]:
     try:
         doc = json.loads(raw or "{}")
@@ -681,7 +730,9 @@ def _receipt_bits(raw: Any) -> dict[str, Any]:
     if not isinstance(doc, dict):
         return {}
     ov = doc.get("output_verdict") if isinstance(doc.get("output_verdict"), dict) else {}
-    return {"reason": doc.get("reason"), "why": ov.get("why"), "timed_out": doc.get("timed_out")}
+    reason = _cause(doc)
+    return {"reason": reason, "cause": reason, "stderr_tail": doc.get("stderr_tail"),
+            "why": ov.get("why"), "timed_out": doc.get("timed_out")}
 
 
 def read_ledger_today(ledger: Path, now: datetime) -> dict[str, Any]:
