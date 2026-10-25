@@ -104,16 +104,17 @@ function serverMemory(): number | null {
   } catch { return null }
 }
 async function memoryGate(): Promise<boolean> {
+  // Operator rule: pause 30s above 1.2 GB, abort above 1.3 GB (checked again after the pause).
   if (!isProduction(BASE)) return true
-  for (let i = 0; i < 6; i++) {
-    const m = serverMemory()
-    if (m == null || m <= MEM_PAUSE) return true
-    if (m > MEM_ABORT) { aborted = `portfolio-server MemoryCurrent ${(m / 1e9).toFixed(2)} GB > 1.3 GB`; return false }
+  let m = serverMemory()
+  if (m == null || m <= MEM_PAUSE) return true
+  if (m <= MEM_ABORT) {
     console.log(`[mem] ${(m / 1e9).toFixed(2)} GB > 1.2 GB — pausing 30s`)
     await new Promise(r => setTimeout(r, 30_000))
+    m = serverMemory()
   }
-  aborted = 'portfolio-server memory stayed above 1.2 GB for 3 minutes'
-  return false
+  if (m != null && m > MEM_ABORT) { aborted = `portfolio-server MemoryCurrent ${(m / 1e9).toFixed(2)} GB > 1.3 GB`; return false }
+  return true
 }
 
 // ---------------------------------------------------------------- route discovery
@@ -644,5 +645,6 @@ async function main() {
   await browser.close()
   writeReport(todo)
   console.log(`[sweep] done in ${((Date.now() - startedAt) / 60000).toFixed(1)} min; ${findings.length} findings → ${OUT}/summary.md`)
+  if (aborted) process.exit(2) // partial sweep: never report success
 }
 main().catch(e => { console.error(e); try { writeReport([]) } catch { /* */ } process.exit(1) })
