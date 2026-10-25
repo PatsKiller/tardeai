@@ -37,6 +37,7 @@ def _bytes(value):
 def collect_inputs(root, now):
     """Only registered W1 canonical and existing read-only broker projections."""
     from scripts.lib.cio_truth import resolve, security_inputs_for, stances_for_symbols
+    from scripts.lib.ips_policy import policy_for_security
     from scripts.lib.data_broker.cio_prospect import get_prospects
     from scripts.lib.data_broker.watch_intelligence import compose_universe
     from scripts.lib.data_broker.watch_decision import reentry_rows
@@ -52,6 +53,7 @@ def collect_inputs(root, now):
         guid = (canonicals.get(symbol) or {}).get("security_guid")
         truth = security_inputs_for(guid, document=document, projection=projection, now=now)
         truth["symbol"] = symbol
+        truth.setdefault("context", {})["concentration_policy"] = policy_for_security(guid, document=document)
         bundles.append(security_inputs_from_truth(truth, card=cards.get(symbol), reentry=desk.get(symbol)))
     return bundles
 

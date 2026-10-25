@@ -269,7 +269,8 @@ def decision_inputs(root, subject, *, now):
         decision = record.get("decision") or {}
         expires = timestamp(decision.get("expires_at"))
         at = timestamp(decision.get("at"))
-        if record.get("tier", 4) <= 1 or not expires or expires <= now or not at or at > now:
+        if (record.get("kind") != "CONFLICT" or record.get("rule") not in {"U2", "U3", "U7", "R11"} or
+                record.get("never_auto") or record.get("tier", 4) <= 1 or not expires or expires <= now or not at or at > now):
             continue
         output.append(Input("operator decision" if decision["actor_kind"] == "operator" else "CIO decision",
             decision["chosen_side"], at, role="judgment", subject_id=subject.id,
