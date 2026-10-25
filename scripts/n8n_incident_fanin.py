@@ -627,10 +627,19 @@ def _dlq_ledger_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
         dead = [
             dict(r)
             for r in conn.execute(
-                "SELECT slot_key, lane_id, mode, attempts, last_state, last_reason, dead_at FROM dead_letters"
+                "SELECT * FROM dead_letters"
                 " WHERE released_at IS NULL ORDER BY dead_at, slot_key"
             )
         ]
+        if "runs" in tables:
+            for dead_row in dead:
+                raw = conn.execute("SELECT receipt_json FROM runs WHERE run_id=?", (dead_row.get("last_run_id"),)).fetchone()
+                if raw:
+                    try:
+                        rec = json.loads(raw[0] or "{}")
+                        dead_row["stderr_tail"] = rec.get("stderr_tail") if isinstance(rec, dict) else None
+                    except (ValueError, TypeError):
+                        pass
         brk = [
             dict(r)
             for r in conn.execute("SELECT lane_id, opened_at, consecutive, released_at FROM breakers ORDER BY lane_id")
@@ -665,21 +674,55 @@ def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     found: list[dict[str, Any]] = []
     dead, breakers = rows if rows is not None else ([], [])
+    from scripts.lib import n8n_dlq_disposition as DD
+    try:
+        acknowledged = DD.acknowledgements(root / DD.RECEIPTS_REL)
+        successes = DD.successful_runs(ledger, now=now)
+    except Exception as exc:
+        acknowledged, successes = {}, {}
+        NOTES["dlq_recovery_source"] = f"unavailable:{type(exc).__name__}"
+    groups = {}
     for d in dead:
-        found.append(
-            {
+        if DD.is_acknowledged(d, acknowledged):
+            continue
+        finding = {
                 "source": "dlq",
                 "item": f"dlq:{d.get('slot_key')}",
                 "severity": "P2",
-                "detail": f"{d.get('lane_id')} {d.get('mode') or ''} {d.get('last_state') or ''} "
-                f"{d.get('last_reason') or ''} attempts {d.get('attempts')}"[:160],
+                "detail": f"{d.get('lane_id')} {DD.cause(d, d.get('last_reason'))}; attempts {d.get('attempts')}"[:600],
                 "artifact_rel": LEDGER_REL,
                 "store": "persistent-state",
                 "detected_at": d.get("dead_at") or day,
                 "lane": d.get("lane_id"),  # flood-policy auto-resolve evidence; not part of the event payload
                 "mode": d.get("mode"),
             }
-        )
+        # Respect the existing protected-incident boundary before changing presentation.
+        from scripts.lib import incident_flood_policy as FP
+        if FP.is_protected(finding, FP.load_policy()):
+            found.append(finding)
+            continue
+        run = successes.get((d.get("lane_id"), d.get("mode")))
+        recovered = DD.recovery(d, run, now=now)[0]
+        text = str(d.get("stderr_tail") or d.get("last_reason") or "")
+        wrapper = "safe_flock" in text and any(x in text.lower() for x in ("refus", "symlink", "unsafe", "log path component is not a real directory"))
+        root_cause = "lock wrapper refused the release path" if wrapper else DD.cause(d, d.get("last_reason"))
+        # A shared wrapper signature is cross-lane evidence; generic exit codes are not.
+        group = (str(d.get("dead_at") or "")[:10], root_cause,
+                 "wrapper" if wrapper else d.get("lane_id"), recovered)
+        groups.setdefault(group, []).append((finding, d, run))
+    for (day_key, root_cause, scope, recovered), members in sorted(groups.items(), key=lambda x: str(x[0])):
+        if len(members) == 1 and not recovered:
+            found.append(members[0][0])
+            continue
+        import hashlib
+        key = hashlib.sha256(f"{day_key}:{root_cause}:{scope}".encode()).hexdigest()[:16]
+        lanes = sorted({str(d.get("lane_id")) for _, d, _ in members})
+        found.append({**members[0][0], "item": f"dlq:{'recovery' if recovered else 'burst'}:{key}",
+            "severity": "P3" if recovered else "P2", "count": len(members), "lanes": lanes,
+            "detail": f"{len(members)} dead letters from {day_key}: {root_cause}; "
+                      + ("lanes have later receipt-verified successes" if recovered else "recovery not proven"),
+            "recovered": recovered, "superseded_by": sorted({r["run_id"] for _, _, r in members if r}),
+            "slot_keys": [d["slot_key"] for _, d, _ in members]})
     open_lanes = {str(b.get("lane_id")): b for b in breakers}
     ledger_lanes = set(open_lanes)
     for lane in (status or {}).get("breakers_open") or []:

@@ -655,6 +655,22 @@ def probe_postgres(deps: Deps) -> list[dict]:
 
 WRAPPER_WATCHDOG_SPEC = ("schedulers.wrapper_watchdog", "host", "scheduled success / wrapper refusals",
                          "independent systemd cron_outage_watchdog receipt")
+JOB_EXECUTION_SPEC = ("schedulers.job_execution", "host", "scheduled job execution",
+                      "JobsHealth@v1 / receipt-verified execution and independent watchdog")
+
+
+def probe_job_execution(deps: Deps) -> list[dict]:
+    from scripts.lib import jobs_health
+    reader = deps.extra.get("jobs_health_reader") or jobs_health.get_jobs_health
+    report = reader({"filter": "attention", "limit": 1}, state_root=deps.state_root or _default_state_root(), now=deps.now())
+    summary = report.get("summary") or {}
+    failed, missed, unknown = (summary.get(key) for key in ("failed", "missed", "unknown"))
+    if any(value is None for value in (failed, missed, unknown)):
+        return [_unknown(JOB_EXECUTION_SPEC, "Job execution observation unavailable", report.get("as_of"))]
+    status = "CRIT" if failed or missed else "UNKNOWN" if unknown or report.get("monitor", {}).get("status") != "OK" else "OK"
+    return [_item(*JOB_EXECUTION_SPEC, status, None if status == "UNKNOWN" else f"{failed} failed; {missed} missed; {unknown} unmeasured",
+                  None if status == "OK" else "Review Jobs & health for real causes and evidence gaps",
+                  report.get("as_of"), {"summary": summary, "monitor": report.get("monitor"), "href": "/ops/jobs"})]
 
 
 def probe_wrapper_watchdog(deps: Deps) -> list[dict]:
@@ -705,6 +721,7 @@ PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_backup_unit, [BACKUP_UNIT_SPEC]),
     (probe_postgres, [PG_SPEC]),
     (probe_wrapper_watchdog, [WRAPPER_WATCHDOG_SPEC]),
+    (probe_job_execution, [JOB_EXECUTION_SPEC]),
 ]
 
 _POOL = ThreadPoolExecutor(max_workers=len(PROBES), thread_name_prefix="platform-health")

@@ -214,6 +214,11 @@ def _db(sql, params=None, fetch="one"):
 
 
 def _file_age_h(path: Path):
+    if path.suffix == ".log":
+        from scripts.lib.jobs_health import last_log_success
+        now = datetime.now(timezone.utc)
+        at = last_log_success(path, now=now)
+        return round((now - at).total_seconds() / 3600, 2) if at else None
     if not path.exists():
         return None
     return round((datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600, 1)
@@ -255,14 +260,9 @@ def _freshest_log_path(name: str) -> Path | None:
 
 
 def _freshest_log_age_h(name: str):
-    """Age in hours of the freshest copy of logs/<name>; None when no copy exists."""
-    path = _freshest_log_path(name)
-    if path is None:
-        return None
-    try:
-        return round((datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600, 2)
-    except OSError:
-        return None
+    """Age of the latest explicit successful completion across admitted log copies."""
+    ages = [_file_age_h(root / name) for root in (LOG_DIR, DEV_ROOT / "logs")]
+    return min(age for age in ages if age is not None) if any(age is not None for age in ages) else None
 
 
 def _is_portfolio_market_hours() -> bool:
@@ -2213,6 +2213,8 @@ def collect_log_errors() -> list[dict]:
         # email lane was invisible to this scraper, 2026-07-06 audit); the colon keeps
         # prose like "HTTP Error 404" from matching
         r"|\bError:"
+        r"|safe_flock:.*(?:refus|unsafe|symlink|not (?:a |writ)|permission denied|log path component)"
+        r'|"event_type"\s*:\s*"refused"'
     )
     now = _t.time()
     try:
@@ -2612,6 +2614,9 @@ def _assess_momentum_scalp_scan(
     {finding: bool, type, severity, message} or {finding: False}."""
     if not in_window:
         return {"finding": False, "reason": "off_window"}
+    if log_exists and log_age_min is None:
+        return {"finding": True, "type": "momentum_scalp_success_unmeasured", "severity": "warning",
+                "message": "Scan completion is not measured; a fresh log is not a successful run"}
     # Cron is every 5 min; >12 min of no fresh log output ⇒ ≥2 missed runs (or the scan is hung).
     if not log_exists:
         return {
@@ -2662,7 +2667,8 @@ def collect_momentum_scalp_source_health() -> list[dict]:
         in_window = lane.is_trading_day(t) and lane.in_window(t)
         log = PROJECT_ROOT / "logs" / "finviz_momentum_scalp_scan.log"
         log_exists = log.exists()
-        age_min = (_file_age_h(log) or 0) * 60 if log_exists else None
+        log_age_h = _file_age_h(log) if log_exists else None
+        age_min = log_age_h * 60 if log_age_h is not None else None
         last_status, failed_stages = None, None
         skipped_refresh_min = None
         if log_exists:
@@ -2854,7 +2860,8 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
 
         # SEC/Form 4 context — log freshness. Auto-remediable (re-run the context wrapper).
         sec_log = PROJECT_ROOT / "logs" / "sec_form4_momentum_context.log"
-        sec_age = (_file_age_h(sec_log) or 0) * 60 if sec_log.exists() else None
+        sec_age_h = _file_age_h(sec_log) if sec_log.exists() else None
+        sec_age = sec_age_h * 60 if sec_age_h is not None else None
         a = _assess_source_stale(sec_age, 240, in_sec, present=sec_log.exists())
         if a["finding"]:
             out.append(
