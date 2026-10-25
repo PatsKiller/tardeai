@@ -55430,6 +55430,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # AI-proposed conflict rules (operator 2026-10-25; docs/ops/CONFLICT_RULE_PROPOSALS.md). Must precede the
+    # /api/v3/conflicts/{key} catch-all below. GET is read-only; POST .../decision is operator identity + CSRF only
+    # and answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED until config decision_writes_enabled is flipped.
+    if base_path.rstrip("/") == "/api/v3/conflicts/proposals" or base_path.startswith("/api/v3/conflicts/proposals/"):
+        try:
+            from scripts.lib.conflicts import proposals_api as _proposals_api
+
+            _proposals_out = _proposals_api.handle(base_path, method, body, query)
+            if _proposals_out is not None:
+                status, payload = _proposals_out
+                if status == 200 and not (isinstance(payload, dict) and "ok" in payload):
+                    payload = {"ok": True, "data": payload}
+                elif status != 200 and isinstance(payload, dict) and "ok" not in payload:
+                    payload = {"ok": False, **payload}
+                return status, payload
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # Conflict engine ledger (AGENTS.md 28.10, W10; docs/ops/CONFLICT_LEDGER.md). GET list/detail are read-only;
     # POST .../decision is operator-identity + CSRF only and stays refused (CONFLICT_WRITER_NOT_ACTIVATED) until the
     # operator activates the writer. Agents never decide a conflict.
