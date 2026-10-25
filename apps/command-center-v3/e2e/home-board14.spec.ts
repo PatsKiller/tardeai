@@ -59,14 +59,25 @@ function payload() {
   }
 }
 
-async function stub(page: Page) {
+function overflowPayload() {
+  const base = payload()
+  const rows = Array.from({ length: 8 }, (_, i) => ({
+    id: `protection:acct_${i + 1}:SYM${String(i + 1).padStart(3, '0')}`, kind: 'STOP', symbol: `SYM${String(i + 1).padStart(3, '0')}`,
+    title: 'stop awaiting activation', why: 'Synthetic account', cta: 'Review protection', action: { label: 'Review protection', where: '/v3/risk' },
+  }))
+  const approval = { id: 'approvals:pending', kind: 'REVIEW', symbol: '', title: '3 approvals waiting', why: 'Review the typed approval queues',
+    cta: 'Review approvals', action: { label: 'Review approvals', where: '/v3/trading?tab=Proposals' } }
+  return { ...base, do_now: { ...base.do_now, items: [...rows.slice(0, 6), approval], all_items: [...rows, approval], total: 9, limit: 7, hidden_count: 2 } }
+}
+
+async function stub(page: Page, body: () => unknown = payload) {
   const writes: string[] = []
   await page.route('**/api/**', route => {
     const req = route.request()
     const path = new URL(req.url()).pathname
     if (req.method() !== 'GET') { writes.push(`${req.method()} ${path}`); return route.abort() }
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-    if (path === '/api/v2/cio/pages') return json({ ok: true, data: payload() })
+    if (path === '/api/v2/cio/pages') return json({ ok: true, data: body() })
     if (path.startsWith('/api/v2/desk-sources')) return json({ ok: true, data: { observed_at: '2026-10-25T20:00:00Z', writers: [] } })
     return json({ ok: true, items: [], rows: [], data: {} })
   })
@@ -99,5 +110,47 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
       await expect(page).toHaveURL(/\/v3\/risk/)
     }
     expect(writes).toEqual([])
+  })
+}
+
+for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
+  test(`Home Do now shows +N more and keeps approvals ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    const writes = await stub(page, overflowPayload)
+    await page.goto('/v3/')
+    await expect(page.getByTestId('home-do-now-row')).toHaveCount(7)
+    await expect(page.getByTestId('home-do-now-row').last()).toContainText('3 approvals waiting')
+    await expect(page.getByTestId('home-do-now')).toContainText('top 7 of 9')
+    await expect(page.getByRole('link', { name: 'Releases to merge' })).toHaveAttribute('href', '/v3/system/releases')
+    const more = page.getByTestId('home-do-now-more')
+    await expect(more).toHaveText(/\+2 more/)
+    const box = (await more.boundingBox())!
+    expect(box.height).toBeGreaterThanOrEqual(44)
+    if (width < 821) await more.tap(); else await more.click()
+    const sheet = page.getByRole('dialog', { name: 'Do now · all 9' })
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByTestId('home-do-now-all-row')).toHaveCount(9)
+    await expect(page).toHaveURL(/detail=do-now-all/)
+    if (width < 821) {
+      const sheetBox = (await sheet.boundingBox())!
+      expect(sheetBox.width).toBeGreaterThanOrEqual(width - 1)
+      expect(sheetBox.y).toBeLessThanOrEqual(1)
+      await sheet.getByRole('button', { name: '← Back' }).tap()
+    } else {
+      await sheet.getByRole('button', { name: '← Back' }).click()
+    }
+    await expect(sheet).toHaveCount(0)
+    await expect(page.getByTestId('home-do-now-more')).toBeVisible()
+    const overflowX = await page.evaluate(() => document.scrollingElement!.scrollWidth - innerWidth)
+    expect(overflowX).toBeLessThanOrEqual(1)
+    expect(writes).toEqual([])
+  })
+
+  test(`Home Do now with no overflow shows no more button ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await stub(page)
+    await page.goto('/v3/')
+    await expect(page.getByTestId('home-do-now-row')).toHaveCount(2)
+    await expect(page.getByTestId('home-do-now-more')).toHaveCount(0)
   })
 }

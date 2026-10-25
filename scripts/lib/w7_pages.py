@@ -154,9 +154,8 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     # Forward W1's values, including None, provenance, stop state and conflicts.
     result = {name: truth.get(name) or unavailable("CIO field unavailable")[name]
               for name in ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "sectors")}
-    from scripts.lib.home_board14 import shape_do_now
-    ranked = shape_do_now(result["do_now"])
-    result["do_now"] = {**ranked, "items": (ranked.get("items") or [])[:7]}
+    from scripts.lib.home_board14 import cap_do_now
+    result["do_now"] = cap_do_now(result["do_now"])
     # Engine findings are a registered read projection. Legacy record diagnostics
     # are never reclassified into a page warning here.
     result["conflicts"] = truth.get("conflicts") or {

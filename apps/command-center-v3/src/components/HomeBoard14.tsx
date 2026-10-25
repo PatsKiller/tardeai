@@ -2,6 +2,9 @@ import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import { W7Gap, W7Metric, W7Panel, grid, line, linkStyle, mono, pct, text, when } from './W7PagePanels'
+import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
+
+const DO_NOW_SHEET = 'do-now-all'
 
 const localHref = (v: unknown) => typeof v === 'string' ? v.replace(/^\/v3(?=\/|$)/, '') || '/' : null
 
@@ -36,6 +39,25 @@ function gapText(gap: unknown) {
   return typeof gap === 'string' ? gap : (gap as { reason?: string }).reason
 }
 
+const moreStyle: CSSProperties = {
+  ...linkStyle, width: '100%', minHeight: 44, justifyContent: 'center', marginTop: 8, cursor: 'pointer',
+  background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, font: 'inherit',
+}
+
+function DoNowRow({ item, testId }: { item: any; testId: string }) {
+  const href = itemHref(item)
+  return <div data-testid={testId} style={{ ...line, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 220px', minWidth: 0 }}>
+      <KindChip kind={item.kind} />
+      <b>{item.symbol && <span style={mono}>{item.symbol} </span>}{item.title || item.text}</b>
+      {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
+      <div style={{ color: TOKENS.text[2] }}>{item.reason || item.why || item.detail}</div>
+      {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
+    </div>
+    {href && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={href}>{item.cta || item.action?.label || 'Review'} →</Link>}
+  </div>
+}
+
 /** Board 14 Home body. Facts come from the CIO page payload. Nothing here calls a broker. */
 export default function HomeBoard14({ data }: { data: any }) {
   const todo = data.do_now || {}
@@ -45,6 +67,12 @@ export default function HomeBoard14({ data }: { data: any }) {
   const questions = data.questions || {}
   const releases = data.releases || {}
   const items: any[] = todo.items || []
+  const allItems: any[] = Array.isArray(todo.all_items) && todo.all_items.length >= items.length ? todo.all_items : items
+  const limit = typeof todo.limit === 'number' ? todo.limit : 7
+  // Rows the panel does not show. Never silent: the button below names the count and opens the full list.
+  const hidden = Math.max(0, typeof todo.hidden_count === 'number' ? todo.hidden_count
+    : (typeof todo.total === 'number' ? todo.total : allItems.length) - items.length)
+  const detail = useW7Detail()
   const nearest = stops.nearest
   const awaiting: any[] = stops.awaiting_fill || []
   const filledAwaitingSync: any[] = stops.filled_awaiting_sync || []
@@ -57,20 +85,20 @@ export default function HomeBoard14({ data }: { data: any }) {
   const releaseCount = releases.count == null ? 'Not available' : String(releases.count)
   return <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))' }}>
     <W7Panel title="Do now" testId="home-do-now">
-      <p style={{ color: TOKENS.text[2], marginTop: 0 }}>Ranked by the CIO · up to 7</p>
+      <p style={{ color: TOKENS.text[2], marginTop: 0 }}>Ranked by the CIO · {hidden > 0 ? `top ${items.length} of ${items.length + hidden}` : `up to ${limit}`}</p>
       {todo.gap && <W7Gap>{gapText(todo.gap)}</W7Gap>}
       {!items.length && !todo.gap && <p>No actions published by the CIO.</p>}
-      {items.map((item, i) => <div key={item.id || i} data-testid="home-do-now-row" style={{ ...line, alignItems: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 220px', minWidth: 0 }}>
-          <KindChip kind={item.kind} />
-          <b>{item.symbol && <span style={mono}>{item.symbol} </span>}{item.title || item.text}</b>
-          {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
-          <div style={{ color: TOKENS.text[2] }}>{item.reason || item.why || item.detail}</div>
-          {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
-        </div>
-        {itemHref(item) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={itemHref(item)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
-      </div>)}
+      {items.map((item, i) => <DoNowRow key={item.id || i} item={item} testId="home-do-now-row" />)}
+      {hidden > 0 && <button type="button" data-testid="home-do-now-more" onClick={() => detail.open(DO_NOW_SHEET)} style={moreStyle}>
+        +{hidden} more · see all {allItems.length}
+      </button>}
     </W7Panel>
+    {detail.selected === DO_NOW_SHEET && <W7DetailSheet title={`Do now · all ${allItems.length}`} onClose={detail.close}>
+      <p style={{ color: TOKENS.text[2], marginTop: 0 }}>Every action the CIO ranked, in the same order. Home shows the top {limit}.</p>
+      <div data-testid="home-do-now-all">
+        {allItems.map((item, i) => <DoNowRow key={item.id || i} item={item} testId="home-do-now-all-row" />)}
+      </div>
+    </W7DetailSheet>}
     <div style={{ display: 'grid', gap: 12 }}>
       <W7Panel title="Protection">
         <div style={grid}>
@@ -98,7 +126,7 @@ export default function HomeBoard14({ data }: { data: any }) {
         {approvals.gap && <W7Gap>{gapText(approvals.gap)}</W7Gap>}
         <div style={line}><Link to="/cio/questions" style={linkStyle}>Questions answered</Link><b data-testid="home-questions-count" style={mono}>{questionCount}</b></div>
         {questions.gap && <W7Gap>{gapText(questions.gap)}</W7Gap>}
-        <div style={line}><Link to="/releases" style={linkStyle}>Releases to merge</Link><b data-testid="home-releases-count" style={mono}>{releaseCount}</b></div>
+        <div style={line}><Link to="/system/releases" style={linkStyle}>Releases to merge</Link><b data-testid="home-releases-count" style={mono}>{releaseCount}</b></div>
         {releases.gap && <W7Gap>{gapText(releases.gap)}</W7Gap>}
       </W7Panel>
     </div>

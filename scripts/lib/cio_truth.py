@@ -1088,7 +1088,8 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                           "Review the typed approval queues", "Review approvals", "/v3/trading?tab=Proposals",
                           "cio_truth.approvals", evidence={"counts": approvals["by_type"]}))
     ranked = sort_items(merge(items))
-    return {"items": ranked[:7], "total": len(ranked), "ranking": "home_do_now.sort_items",
+    # ``all_items`` is the full ranked list so Home can show "+N more" instead of silently dropping rows.
+    return {"items": ranked[:7], "all_items": ranked, "total": len(ranked), "ranking": "home_do_now.sort_items",
             **_evidence("CIO shared protection + typed approval queues", now, now,
                         reason="approval count unavailable" if approvals.get("total") is None else None)}
 
