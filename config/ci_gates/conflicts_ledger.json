@@ -6,10 +6,11 @@
     "tests/test_conflict_api.py",
     "tests/test_conflict_review.py",
     "tests/test_conflict_runner.py",
-    "tests/test_cio_agent_brief.py"
+    "tests/test_cio_agent_brief.py",
+    "tests/test_conflict_ask_hook.py"
   ],
   "anchor": "CONFLICTS_LEDGER_20261024",
   "comment": [
-    "ANCHOR: CONFLICTS_LEDGER_20261024 — lifecycle, identity/expiry/readback, shadow reports and actual CIO brief content."
+    "ANCHOR: CONFLICTS_LEDGER_20261024 — lifecycle, actual brief content, and proposed owner Ask read hook without model or poll writes."
   ]
 }

@@ -1,0 +1,50 @@
+--- a/scripts/lib/cio_ask_memory.py
++++ b/scripts/lib/cio_ask_memory.py
+@@ -44,9 +44,10 @@
+ class SpineAskMemory:
+     """Default memory: research spine for securities, ask ledger for private entities."""
+ 
+-    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None):
++    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None, conflict_reader=None):
+         self.spine_path = spine_path
+         self.ledger = ledger
++        self.conflict_reader = conflict_reader
+ 
+     # ── write ──────────────────────────────────────────────────────────────────────────────────────────────────────
+     def append(self, *, entity: EntityRef, kind: str, summary: str, ref: str, extra: Optional[dict] = None) -> dict:
+@@ -108,7 +109,16 @@
+             items += [i for i in self._recall_ledger(entity) if str(i.get("ref")) not in seen]
+         items = [i for i in items if not any(str(i.get("ref") or "").startswith(x) for x in exclude_refs if x)]
+         items.sort(key=lambda i: str(i.get("at") or ""), reverse=True)
+-        return items[:limit]
++        current = []
++        if self.conflict_reader is not None and entity.kind == "security" and entity.security_guid:
++            try:
++                current = self.conflict_reader(entity.security_guid) or []
++            except Exception:
++                current = [{"at": None, "kind": "conflict.current", "summary": "Current conflict evaluation unavailable",
++                            "ref": f"conflicts:{entity.security_guid}:unavailable", "source": "conflict_events.jsonl",
++                            "current_conflicts": [], "gap": {"reason": "conflict reader unavailable"}}]
++        # Current state is not historical recall, and is never appended to memory.
++        return current[:1] + items[:max(0, limit - len(current[:1]))]
+ 
+     def _recall_ledger(self, entity: EntityRef) -> list[dict]:
+         key = entity.memory_key
+--- a/scripts/lib/cio_ask_core.py
++++ b/scripts/lib/cio_ask_core.py
+@@ -279,12 +279,14 @@
+ 
+     cfg = load_config()
+     store = AskEventStore()
++    from scripts.lib.cio_conflicts import ask_context_rows
++    conflict_root = store.path.resolve().parent.parent.parent
+     if not store.write_authorized():
+         cfg = {**cfg, "enabled": False, "_error": "CIO_ASK_STORE_NOT_APPROVED"}
+     at = cfg.get("auto_track") or {}
+     return AskDeps(
+         store=store,
+-        memory=SpineAskMemory(ledger=store),
++        memory=SpineAskMemory(ledger=store, conflict_reader=lambda guid: ask_context_rows(conflict_root, guid)),
+         tracker=Tracker(
+             directives=DirectiveBackend(ttl_days=int(at.get("directive_ttl_days") or 90)),
+             enabled_steps={k: bool(at.get(k, True)) for k in ("watchlist", "cio_record", "directive")},
