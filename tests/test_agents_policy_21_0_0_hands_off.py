@@ -101,7 +101,7 @@ def test_self_heal():
 
 
 def test_hands_off_items():
-    _items(_handsoff(), 8)
+    _items(_handsoff(), 9)
     f = _flat(_handsoff())
     for needle in ("is 5 authorized pushes", "Only the coordinator session", "TRADEAI_REMOTE_PUSH_OVERRIDE=1",
                    "Operator-approval:", "Force-push stays forbidden", "§0 rule 3",
@@ -117,7 +117,12 @@ def test_hands_off_items():
                    "render_n8n_relay_env.py", "override only", "never widened", "TTY", "Bitwarden",
                    "/v3/system/ops-controls", "config/secret_registry.yaml", "`permitted_classes`", "change-scope",
                    "at the same moment as ratifying this version",
-                   # item 8: the complete list
+                   # item 8: no guard grant for routine pushes and toolchains
+                   "without a guard `git-push` grant", "fast-forward only", "data/coordination/handoffs/",
+                   "never force-pushes, resets", "Pushes to `main`, history rewrites and force pushes still need the operator",
+                   "never in the `deps` scope", "`npx playwright test`", "lockfile changes", "guard hook must classify",
+                   "16:14 ET", "Cursor",
+                   # item 9: the complete list
                    "The complete list of what reaches the operator", "Approve version X", "never delegable",
                    "Credentials and secrets", "Design approvals (§28.13)", "Alerts and escalations",
                    "Everything else ships with no operator input"):
@@ -132,5 +137,6 @@ def test_ai_work_policy_matches():
     assert "the hook allows pushes 1 through 5 on every branch" in f
     assert "AGENTS.md 21.0.0 (§28.15 items 2, 3 and 7)" in f and "veto window of at least 3 h" in f
     assert "Agents still never merge" in f
+    assert "needs no guard `git-push` grant" in f and "AGENTS.md §28.15 item 8" in f
     assert "maximum pushes without explicit operator approval: 2" in POLICY
     assert "20.4.0" not in POLICY

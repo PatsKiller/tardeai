@@ -529,7 +529,12 @@ Hands-off delivery (AGENTS.md 21.0.0 §28.15; binding only once ACTIVE and
 the hook change is merged; see section 3): the hook allows pushes 1 through 5 on
 every branch, and the override below is the coordinator session's alone, on a PR
 linked to an operator-approved scope, logged with its approval reference.
-Force-push is never allowed.
+Force-push is never allowed. Under an operator-approved plan or scope (a claim
+plan with an `Operator-approval:` reference, or a coordinator-assigned task file
+under data/coordination/handoffs/), an agent's fast-forward push of its own
+feature branch needs no guard `git-push` grant; the guard records it. Pushes to
+`main` or release branches, force pushes, resets, filter-branch and remote
+branch deletion still need the operator (AGENTS.md §28.15 item 8).
 
 Override (not the normal path; requires explicit operator approval):
 
