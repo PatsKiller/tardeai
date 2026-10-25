@@ -69,8 +69,9 @@ def snapshot(root: Path, *, policy=None, now=None, configured=None) -> dict:
         missing_cost=any(row.get('calculated_cost_usd') is None for row in selected)
         if missing_cost: coverage='INCOMPLETE'
         total=None if missing_cost else sum(float(row['calculated_cost_usd']) for row in selected)
+        measured_attempts=sum(r.get('outcome','success')=='success' for r in selected)+len(errors)
         usage[label]={'calls':len(selected),'usd':total,'failure_attempts':len(errors),
-                      'error_rate':len(errors)/(len(selected)+len(errors)) if selected or errors else None}
+                      'error_rate':len(errors)/measured_attempts if measured_attempts else None}
         if label=='seven_days':
             for row in selected:
                 m=models[str(row.get('model') or 'unknown')]
@@ -79,7 +80,8 @@ def snapshot(root: Path, *, policy=None, now=None, configured=None) -> dict:
                     m['usd']=None
                 else:
                     m['usd']+=float(row['calculated_cost_usd'])
-                success_times.append(row['usage_start'])
+                if row.get('outcome','success')=='success':
+                    success_times.append(row['usage_start'])
     fallbacks=[row for row in records if row['event']=='fallback']
     last_error=failures[-1] if failures else None
     last_success=max(success_times,default=None)

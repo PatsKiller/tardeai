@@ -72,11 +72,13 @@ def test_corrupt_accounting_never_becomes_zero_healthy_credit(tmp_path):
 
 def test_unknown_cost_never_becomes_a_measured_zero(tmp_path):
     p=load_policy();path=tmp_path/'data/runtime/provider_cost/events.jsonl';path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({'provider':'anthropic','usage_start':NOW.isoformat(),'model':'fixture','calculated_cost_usd':None})+'\n')
+    path.write_text(json.dumps({'provider':'anthropic','usage_start':NOW.isoformat(),'model':'fixture','outcome':'possibly_billable_attempt','calculated_cost_usd':None})+'\n')
     status=snapshot(tmp_path,policy=p,now=NOW,configured=True)
     assert status['usage']['today']['usd'] is None
     assert status['models']['fixture']['usd'] is None
     assert status['ledger_coverage']=='INCOMPLETE'
+    assert status['last_success_at'] is None
+    assert status['usage']['today']['error_rate'] is None
 
 
 def test_disabled_provider_does_not_page_as_configured_first_failure(tmp_path):

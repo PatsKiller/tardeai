@@ -152,6 +152,14 @@ class FundingContext:
             reservation_id=str(self.reservation_id), path=state_root() / "data/runtime/provider_cost/events.jsonl")
         return bool(event)
 
+    def record_attempt(self, model: str, code: str) -> bool:
+        from .provider_cost.emit import emit_cost_event, OUTCOME_ATTEMPT
+        return bool(emit_cost_event(provider="anthropic", model=model, outcome=OUTCOME_ATTEMPT,
+            source_service="anthropic_transport", source_process=self.process_id,
+            process_id=self.process_id, reservation_id=str(self.reservation_id),
+            request_sent=True, possibly_billable=True, error_class=code,
+            path=state_root() / "data/runtime/provider_cost/events.jsonl"))
+
     def finish_anthropic(self, actual: Decimal | None) -> None:
         if actual is not None:
             self.credit_total, self.credit_unknown = actual, False
@@ -202,7 +210,7 @@ def transport() -> AnthropicTransport:
     allowed_models = {row["model_id"] for row in provider["models"].values() if row.get("enabled") is True}
     return AnthropicTransport(book=CreditBook(state_root(), load_policy()), allowed_models=allowed_models,
                               reserve_process=context.reserve_anthropic,
-                              record_usage=context.record_usage,
+                              record_usage=context.record_usage, record_attempt=context.record_attempt,
                               settle_process=context.finish_anthropic)
 
 

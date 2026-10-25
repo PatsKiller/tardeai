@@ -145,7 +145,7 @@ def adapter_fixture(tmp_path, responses, *, record=None):
         return True if record is None else record
     client = transport.AnthropicTransport(book=book, env={'ANTHROPIC_API_KEY': 'synthetic-only'},
         request=request, now=lambda: NOW, sleep=lambda _s: None,
-        record_usage=meter, reserve_process=lambda *a: holds.append(a), settle_process=settles.append)
+        record_usage=meter, record_attempt=lambda *a: True, reserve_process=lambda *a: holds.append(a), settle_process=settles.append)
     return client, book, calls, holds, settles, events
 
 
@@ -253,7 +253,7 @@ def test_explicit_async_batch_holds_until_readback_and_uses_discount(tmp_path):
         return 200,{'processing_status':'ended'},{}
     def meter(*a):events.append(a);return True
     adapter=transport.AnthropicTransport(book=book,env={'ANTHROPIC_API_KEY':'synthetic'},request=request,
-        now=lambda:NOW,reserve_process=lambda *a:holds.append(a),record_usage=meter,settle_process=settles.append)
+        now=lambda:NOW,reserve_process=lambda *a:holds.append(a),record_usage=meter,record_attempt=lambda *a:True,settle_process=settles.append)
     args=dict(client_request_id='fixture-batch',process_id='fixture-process',max_tokens=10,
               max_input_tokens=1000,process_cap=Decimal(1))
     with pytest.raises(transport.AnthropicError,match='ASYNC_CALLER_REQUIRED'):
@@ -325,4 +325,14 @@ def test_abort_or_invalid_http_decode_keeps_possibly_billable_hold(tmp_path,fail
     _,transport=modules();client,book,*_=adapter_fixture(tmp_path,[failure])
     expected=KeyboardInterrupt if isinstance(failure,KeyboardInterrupt) else transport.AnthropicError
     with pytest.raises(expected):invoke(client)
+    assert Decimal(book.snapshot(now=NOW)['reserved_usd'])>0
+
+
+def test_overloaded_then_success_records_the_ambiguous_attempt_separately(tmp_path):
+    client,book,*_=adapter_fixture(tmp_path,[(529,{'error':{'type':'overloaded_error'}},{}),response()])
+    observed=[]
+    def record(model,code):observed.append((model,code));return True
+    client.record_attempt=record
+    invoke(client)
+    assert observed==[('claude-haiku-5-5','OVERLOADED')]
     assert Decimal(book.snapshot(now=NOW)['reserved_usd'])>0

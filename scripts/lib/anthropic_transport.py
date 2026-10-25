@@ -118,13 +118,22 @@ class AnthropicTransport:
                  request: Callable = _http, now: Callable = lambda: datetime.now(timezone.utc),
                  sleep: Callable = time.sleep, monotonic: Callable = time.monotonic,
                  record_usage: Callable | None = None, reserve_process: Callable | None = None,
-                 settle_process: Callable | None = None, allowed_models: set[str] | None = None):
+                 settle_process: Callable | None = None, allowed_models: set[str] | None = None,
+                 record_attempt: Callable | None = None):
         self.book, self.policy = book, book.policy
         self.env = {"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")} if env is None else env
         self.request, self.now, self.sleep, self.monotonic = request, now, sleep, monotonic
         self.record_usage, self.reserve_process = record_usage, reserve_process
         self.settle_process = settle_process
         self.allowed_models = allowed_models
+        self.record_attempt = record_attempt
+
+    def _unknown_attempt(self, payload: dict | None, code: str) -> None:
+        model = (payload or {}).get("model")
+        if not model:
+            model = (((payload or {}).get("requests") or [{}])[0].get("params") or {}).get("model")
+        if self.record_attempt is None or self.record_attempt(str(model or "unknown"), code) is not True:
+            self.book.record_failure("accounting_unavailable", now=self.now())
 
     def _send(self, method: str, path: str, payload: dict | None, *, deadline: float) -> tuple[dict, bool]:
         key = str(self.env.get("ANTHROPIC_API_KEY") or "").strip()
@@ -141,19 +150,33 @@ class AnthropicTransport:
                 status, body, headers = self.request(method, path, payload, key=key, timeout=remaining)
             except AnthropicError as exc:
                 self.book.record_failure("timeout" if exc.code == "TIMEOUT" else "invalid_response", now=self.now())
+                if exc.possibly_billable:
+                    self._unknown_attempt(payload, exc.code)
+                    exc.attempt_recorded = True
                 raise
             except Exception as exc:
                 # A malformed/aborted provider response can follow billable work.
                 self.book.record_failure("invalid_response", now=self.now())
                 billable = method == "POST" and path in {"/v1/messages", "/v1/messages/batches"}
-                raise AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=billable) from exc
+                if billable:
+                    self._unknown_attempt(payload, "INVALID_RESPONSE")
+                failure = AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=billable)
+                failure.attempt_recorded = billable
+                raise failure from exc
             if not isinstance(body, dict):
-                raise AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=path == "/v1/messages")
+                billable = method == "POST" and path in {"/v1/messages", "/v1/messages/batches"}
+                if billable:
+                    self._unknown_attempt(payload, "INVALID_RESPONSE")
+                self.book.record_failure("invalid_response", now=self.now())
+                failure = AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=billable)
+                failure.attempt_recorded = billable
+                raise failure
             if 200 <= status < 300:
                 return body, ambiguous
             code = _failure(status, body)
             if path in {"/v1/messages", "/v1/messages/batches"} and method == "POST" and status >= 500:
                 ambiguous = True
+                self._unknown_attempt(payload, code)
             if code in {"BILLING_ERROR", "AUTH_FAILURE", "RATE_LIMITED", "OVERLOADED"}:
                 self.book.record_failure(code.lower(), now=self.now())
             if code in {"RATE_LIMITED", "OVERLOADED"} and number + 1 < attempts:
@@ -165,7 +188,9 @@ class AnthropicTransport:
                 if delay <= float(retry.get("max_delay_seconds", 2)) and delay < deadline - self.monotonic():
                     self.sleep(delay)
                     continue
-            raise AnthropicError(code, status=status, request_sent=True, possibly_billable=ambiguous)
+            failure = AnthropicError(code, status=status, request_sent=True, possibly_billable=ambiguous)
+            failure.attempt_recorded = ambiguous
+            raise failure
         raise AnthropicError("INVALID_RESPONSE")
 
     def _prices(self, model: str) -> dict[str, Any]:
@@ -209,7 +234,7 @@ class AnthropicTransport:
                  max_input_tokens: int | None = None, **_kwargs: Any) -> dict[str, Any]:
         if not self.env.get("ANTHROPIC_API_KEY"):
             raise AnthropicError("NOT_CONFIGURED")
-        if self.record_usage is None or self.reserve_process is None:
+        if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
         if tools:
             raise AnthropicError("TOOLS_UNSUPPORTED")
@@ -279,6 +304,8 @@ class AnthropicTransport:
         except BaseException as exc:
             actual = None if (result_received or getattr(exc, "possibly_billable", False)
                               or (request_started and not isinstance(exc, AnthropicError))) else Decimal(0)
+            if actual is None and not getattr(exc, "attempt_recorded", False):
+                self._unknown_attempt(payload, getattr(exc, "code", "INTERRUPTED"))
             self.book.settle(client_request_id, actual, now=self.now())
             if self.settle_process is not None:
                 self.settle_process(actual)
@@ -299,7 +326,7 @@ class AnthropicTransport:
             raise AnthropicError("ASYNC_CALLER_REQUIRED")
         if not self.env.get("ANTHROPIC_API_KEY"):
             raise AnthropicError("NOT_CONFIGURED")
-        if self.record_usage is None or self.reserve_process is None:
+        if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
         if credit_tier not in {"bulk", "standard"} or self.policy["models"].get(credit_tier) != model:
             raise AnthropicError("BATCH_TIER_UNSUPPORTED")
@@ -328,7 +355,9 @@ class AnthropicTransport:
                                   model=model,process_id=process_id,ambiguous=ambiguous)
             return {"batch_id":batch_id,"client_request_id":client_request_id,"status":"PENDING",
                     "provider":"anthropic","promotional_hold_usd":str(projected)}
-        except BaseException:
+        except BaseException as exc:
+            if sent and not getattr(exc, "attempt_recorded", False):
+                self._unknown_attempt(payload, getattr(exc, "code", "INTERRUPTED"))
             self.book.settle(client_request_id,None if sent else Decimal(0),now=self.now())
             if self.settle_process is not None:
                 self.settle_process(None if sent else Decimal(0))
@@ -339,7 +368,7 @@ class AnthropicTransport:
         """Poll/read an admitted batch. Pending/unknown results retain the entire hold."""
         if not re.fullmatch(r"msgbatch_[A-Za-z0-9_-]+",batch_id):
             raise AnthropicError("INVALID_BATCH_ID")
-        if self.record_usage is None or self.reserve_process is None:
+        if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
         with self.book._locked():
             rows=self.book._read()
