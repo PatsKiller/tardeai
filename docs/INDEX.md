@@ -1954,6 +1954,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) |
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
 | `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
+| `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
 | `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |
@@ -2108,6 +2109,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
 | `docs/ops/W3_SIGNALS_20261024.md` | W3: sector strength and triggered-only pullback proposals |
+| `docs/ops/W7_DESKS_REDESIGN_20261024.md` | W7 page redesign field trace |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
