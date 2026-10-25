@@ -136,6 +136,7 @@ def test_undated_stale_and_future_catalysts_never_become_current(at):
 
 def test_current_catalyst_preserves_publication_and_verification_claim_not_probability():
     f = facts(catalyst={"facts": [{"headline": "Acme opens a factory", "source": "catalyst_events", "feed": "fixture",
+                                  "catalyst_type": "product_launch",
                                   "published_at": AT, "url": "https://example.invalid/acme", "verified": True,
                                   "confidence": 1.1, "factual_verification_status": "UNKNOWN"}]})
     c = f["catalyst"]
@@ -335,7 +336,9 @@ def test_gated_fake_pg_and_all_record_consumers_read_same_guid_facts(tmp_path, m
         assert g["row_for"]("ACME")["company_facts"] == f
         mine = wc.build_curation(g, now=NOW)["my_watchlist"]["rows"]
         assert mine[0]["company_facts"] == f
-        assert mine[0]["company"] == f["company"]["value"]
+        # C1 quality: the card shows the common display name; the registered name is secondary.
+        assert mine[0]["company"] == f["company"]["display_name"] == "Acme Instruments"
+        assert mine[0]["company_legal_name"] == f["company"]["value"]
     finally:
         wp._CACHE.update(at=0, val=None)
 
@@ -396,7 +399,7 @@ def test_hermes_company_selection_reuses_identity_validator(headline, sources, n
     raw = {"catalyst_summary": headline, "sources": sources}
     result = cf.assemble("ACME", IDENT, data, now=NOW, catalyst={"facts": [{
         "headline": headline, "source": "hermes_momentum_catalysts", "observed_at": AT,
-        "identity_record": raw}]})
+        "catalyst_type": "product_launch", "identity_record": raw}]})
     c = result["catalyst"]
     assert (c.get("status") == "CURRENT") is accepted
     if accepted:

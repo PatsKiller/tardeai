@@ -8,14 +8,17 @@
     "status": "AVAILABLE",
     "missing_reason": null,
     "company": {
-      "value": "Fixture Precision Instruments Inc.",
-      "source": "finviz_enrichment",
+      "value": "FIXTURE PRECISION INSTRUMENTS INC",
+      "source": "schwab_instrument_evidence.description",
       "observed_at": "2026-10-23T13:00:00+00:00",
       "clock_kind": "cached_at",
       "missing_reason": null,
       "identity_binding": "confirmed_registry_symbol_at_batch",
       "source_identity": "symbol_keyed",
-      "producer_source": null
+      "producer_source": null,
+      "display_name": "Fixture Precision Instruments",
+      "legal_name": "FIXTURE PRECISION INSTRUMENTS INC",
+      "display_name_source": "finviz_enrichment.company"
     },
     "description": {
       "value": "Fixture Precision Instruments designs and manufactures analytical systems used by laboratories and industrial customers. Its products measure material composition, process performance and environmental conditions across regulated markets.",
@@ -54,16 +57,31 @@
       "published_at": "2026-10-23T11:30:00+00:00",
       "observed_at": null,
       "url": "https://example.invalid/acme-product",
-      "catalyst_type": null,
+      "catalyst_type": "product_launch",
       "verification_basis": null,
       "factual_verification_status": "UNKNOWN",
       "status": "CURRENT",
       "missing_reason": null,
       "source_verified_claim": false,
-      "independent_verification": "NOT_MEASURED"
+      "independent_verification": "NOT_MEASURED",
+      "date": "2026-10-23",
+      "date_kind": "published",
+      "source_label": "Fixture Wire",
+      "catalyst_class": "MATERIAL_EVENT",
+      "event_type": "product_launch"
     },
     "conflicts": [],
     "assembled_at": "2026-10-24T14:00:00+00:00",
-    "source_errors": []
+    "source_errors": [],
+    "recent_news": [
+      {
+        "headline": "Fixture Precision Instruments stock price prediction 2027",
+        "date": "2026-10-22",
+        "date_kind": "published",
+        "source_label": "Fixture SEO",
+        "url": null,
+        "not_catalyst_reason": "price_prediction"
+      }
+    ]
   }
 }

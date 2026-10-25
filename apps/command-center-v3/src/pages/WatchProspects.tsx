@@ -9,7 +9,7 @@
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
 import './WatchLayout.css'
-import { WatchCompanyFacts } from '../components/watch/WatchCompanyFacts'
+import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
 import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
@@ -144,7 +144,7 @@ export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCi
     <div data-testid="watch-detail" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.lg + 2 }}>{r.symbol}</span>
-        <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{r.company || ''}</span>
+        <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{companyDisplayName({ value: r.company ?? null, display_name: r.company_facts?.company?.display_name }) || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />

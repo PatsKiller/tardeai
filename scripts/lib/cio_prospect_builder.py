@@ -413,8 +413,12 @@ CATALYST_GAP_HOURS = 24.0      # a cited catalyst this much newer than the store
 CATALYST_FACTS_MAX = 6
 
 
-def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
-    """Typed catalysts per symbol through the registered ``catalyst_record`` projection (one bulk read-only query)."""
+def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]], *,
+                         per_symbol: int = 3) -> dict[str, dict[str, Any]]:
+    """Typed catalysts per symbol through the registered ``catalyst_record`` projection (one bulk read-only query).
+
+    ``per_symbol`` defaults to the prospect builder's 3; the C1 company-facts capture reads deeper so its quality
+    rules can pass over news to the newest material event in the window."""
     if db_query is None:
         return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
                                            "not_read (no read-only db_query injected)")}
@@ -423,7 +427,7 @@ def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[
             from scripts.lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk
         except ImportError:  # scripts/ on sys.path
             from lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk  # type: ignore
-        by = get_catalyst_records_bulk(db_query, days=CATALYST_WINDOW_DAYS) or {}
+        by = get_catalyst_records_bulk(db_query, days=CATALYST_WINDOW_DAYS, per_symbol=per_symbol) or {}
     except Exception as exc:  # noqa: BLE001 — reported, never invented
         return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
                                            f"error:{type(exc).__name__}")}
@@ -511,7 +515,7 @@ def _fact_at(f: dict[str, Any]) -> Optional[datetime]:
 
 
 def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[str, Any], *,
-                   now: datetime) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]], list[str]]:
+                   now: datetime, max_facts: int = CATALYST_FACTS_MAX) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]], list[str]]:
     """(catalyst_grade block, conflicts, gaps) for one security from every catalyst producer the builder reads.
 
     Sources: ``catalyst_events`` (the catalyst store, via its projection), the Trade AI scanner verdict's catalyst
@@ -610,7 +614,7 @@ def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[s
         gaps.append(f"catalyst_events holds no row for the catalyst trade_ai_scans cites "
                     f"({str(sc.get('headline'))[:80]!r}, {sc.get('published_at') or sc.get('observed_at')})")
     block = {"grade": None, "grade_status": "not_produced", "verdict": verdict, "freshest": facts[0],
-             "facts": facts[:CATALYST_FACTS_MAX], "sources": sources_seen, "coverage_gaps": gaps,
+             "facts": facts[:max_facts], "sources": sources_seen, "coverage_gaps": gaps,
              "window_days": CATALYST_WINDOW_DAYS, "store_status": (inputs.get("catalyst_events") or {}).get("status")}
     return block, conflicts, gaps
 
