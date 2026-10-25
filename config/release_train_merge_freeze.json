@@ -1,0 +1,15 @@
+{
+  "schema": "TrainMergeFreezeConfig@v1",
+  "as_of": "2026-10-25",
+  "starts_min_before_window": 30,
+  "ends": "train_terminal",
+  "applies_to": "all_non_train_merges_to_main",
+  "base_branch": "main",
+  "exempt_label": "freeze-exempt",
+  "request_grace_min": 15,
+  "ci_lead_min": 15,
+  "stale_after_min": 240,
+  "lookback_h": 24,
+  "train_pr_authors": [],
+  "_note": "Release Train v2 merge freeze (AGENTS.md section 25.3; docs/ops/RELEASE_TRAIN_MERGE_FREEZE.md). Read by scripts/lib/release_train_freeze.py. The window schedule is config/release_train_policy.json windows[] (days included); this file only says how the freeze is applied around it. starts_min_before_window mirrors the delegation's merge_freeze block; the host uses the larger of the two when the delegation is readable. request_grace_min must equal config/release_train_n8n.json grace_min: a window with no request by then was skipped (no catch-up), so its freeze ends. ci_lead_min: GitHub's scheduled sweep is best effort, so the CI status turns pending this many minutes before a freeze starts. stale_after_min only flags a train that is still non-terminal that long after its window; it stays frozen (resolve it with train-orphan-resolve / reconcile, or STOP). train_pr_authors: when non-empty, a train/<id> batch PR is exempt only when its author is listed (the GitHub App's bot login); empty = the release-train-refs ruleset is what keeps train/* to the App."
+}

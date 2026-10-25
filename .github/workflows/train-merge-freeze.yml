@@ -1,0 +1,48 @@
+name: train-merge-freeze
+
+# Release Train v2 merge freeze (AGENTS.md §25.3; docs/ops/RELEASE_TRAIN_MERGE_FREEZE.md).
+# Sets the `train-merge-freeze` commit status on open non-draft PRs into main: pending while a freeze is active
+# (or starts within ci_lead_min), success otherwise or when the PR is exempt (the train's own train/<id> batch PR,
+# or the operator label freeze-exempt). It blocks merges only once the operator adds `train-merge-freeze` to main's
+# required status checks (a GitHub settings act; the doc §6 has the one-line command).
+# A runner cannot read the host's train receipts: CI freezes from 30 min before each scheduled window until the
+# window opens, and while a train batch PR is open. The scheduled sweep re-evaluates every PR, because a status
+# set when a PR was pushed would otherwise stay green into the freeze. The code and policy evaluated are main's
+# (the PR head's own copy could vouch for itself).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, edited]
+  schedule:
+    - cron: "4,14,24,34,44,54 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  merge-freeze-evaluate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Evaluate the freeze and set train-merge-freeze statuses
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          python3 scripts/release_train_freeze.py ci --apply
+          --repo "$GITHUB_REPOSITORY" --event-name "$GITHUB_EVENT_NAME" --event-file "$GITHUB_EVENT_PATH"
+          --run-url "$RUN_URL"

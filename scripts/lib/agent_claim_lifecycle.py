@@ -42,6 +42,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
+#: merge_freeze_context.FREEZE_CONTEXT, inlined: the claim pre-commit gate runs this module from a minimal copied
+#: layout (tests/test_agent_claim_lifecycle_20261023.py), so it imports nothing new. Pinned equal by
+#: tests/test_release_train_merge_freeze_20261025.py. A timing gate, not a CI result: never part of ci_green.
+MERGE_FREEZE_CONTEXT = "train-merge-freeze"
+
 STAGES = ("claimed", "building", "pr_open", "ci_green", "merged", "released")
 ABANDONED = "abandoned"
 ALL_STAGES = STAGES + (ABANDONED,)
@@ -199,7 +204,7 @@ class GitHubReader:
         if isinstance(doc, dict):
             ctx = [str(c) for c in doc.get("contexts") or []]
             ctx += [str(c.get("context")) for c in doc.get("checks") or [] if isinstance(c, dict) and c.get("context")]
-            return sorted(set(ctx)), None
+            return sorted(set(ctx) - {MERGE_FREEZE_CONTEXT}), None
         return None, warn
 
     def check_runs(self, sha: str) -> tuple[list[dict] | None, str | None]:

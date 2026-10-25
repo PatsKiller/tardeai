@@ -54,6 +54,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+try:
+    from scripts.lib.merge_freeze_context import without_freeze_context
+except ImportError:  # pragma: no cover - scripts/ on sys.path instead of the repo root
+    from lib.merge_freeze_context import without_freeze_context  # type: ignore[no-redef]
 
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
@@ -566,7 +570,8 @@ def list_open_prs(gh: Gh) -> tuple[list[dict], str]:
 def required_contexts(gh: Gh, base: str = MAIN_BRANCH) -> tuple[list[str], str]:
     try:
         ctx = gh.api(f"repos/{gh.slug}/branches/{base}/protection/required_status_checks")
-        names = list((ctx or {}).get("contexts") or [])
+        # The merge-freeze status is a timing gate the train is exempt from, not a CI result (merge_freeze_context).
+        names = without_freeze_context((ctx or {}).get("contexts") or [])
         if names:
             return names, "branch_protection"
     except AuditError:

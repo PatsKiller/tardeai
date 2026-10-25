@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_merge_freeze_20261025",
+  "files": [
+    "tests/test_release_train_merge_freeze_20261025.py"
+  ],
+  "anchor": "RELEASE_TRAIN_MERGE_FREEZE_20261025",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_MERGE_FREEZE_20261025 — Release Train v2 merge freeze enforced (AGENTS.md section 25.3;",
+    "docs/ops/RELEASE_TRAIN_MERGE_FREEZE.md): scripts/lib/release_train_freeze.py computes it from the policy",
+    "schedule (DST-safe, weekday 12/18, weekend every 3 h) plus the train's receipts and live train states;",
+    "unreadable receipts freeze the 30-min pre-window only; STOP lifts all but a running train. Enforced by the",
+    "train-merge-freeze commit status (.github/workflows/train-merge-freeze.yml; exempt: the train/<id> batch PR,",
+    "label freeze-exempt), scripts/agent_merge_pr.sh (check-pr exit 3) and the Tier 2 merge (MERGE_FREEZE); the",
+    "readers of main's required checks drop the context; Releases & schedules shows it. Hermetic: tmp state, fake gh."
+  ]
+}

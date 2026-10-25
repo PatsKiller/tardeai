@@ -3,7 +3,7 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, queueStoreText, kpiDisplay, lastRunText, prList, sectionView, shadowLine, verifyLabel, windowTone, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, freezeChip, queueStoreText, kpiDisplay, lastRunText, prList, sectionView, shadowLine, verifyLabel, windowTone, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
@@ -51,7 +51,6 @@ assert.equal(windowTone('STOPPED'), 'danger'); assert.equal(windowTone('nonsense
 const row = (o: Partial<TimelineRow>): TimelineRow => ({ at: '2026-10-22T20:33:00Z', lane: 'l', lane_id: 'l', runner: 'cron', schedule: '', stage: 'LIVE', n8n_stage: null, fires_in_horizon: 1, cadence_label: null, paused_since: null, paused_note: null, last_run: null, ...o })
 assert.match(lastRunText(row({ stage: 'PAUSED', paused_since: '2026-10-14', paused_note: 'schwab' })), /paused since 2026-10-14 · schwab/)
 assert.match(lastRunText(row({ runner: 'n8n' })), /no ledger run today/)
-console.log('releasesSchedules: OK/STALE/UNAVAILABLE sections, KPI never-zero, PR/verify/stage labels passed')
 
 // Main-HEAD CI: state + age from the main-ci-watch receipt; tone never green unless SUCCESS/OK.
 assert.equal(ciLabel({ state: 'PENDING', reason: null, age_s: 720 }), 'PENDING · 12m ago')
@@ -70,3 +69,11 @@ assert.equal(shadowLine(shadowFull), 'shadow: NO_OP · DRY_RUN_COMPLETE · queue
 assert.equal(shadowLine({ ...shadowFull, queue_open: null, riding: null, queue_complete: false, candidate_sha: null }),
   'shadow: NO_OP · DRY_RUN_COMPLETE · queue ? open (INCOMPLETE) · ? riding')
 assert.equal(shadowLine({ ...shadowFull, has_report: false, reason: null, outcome: null, candidate_sha: null }), 'shadow: no receipt')
+
+// Merge freeze chip: frozen is danger; unknown is a warning, never "open"; open names the next freeze start in ET.
+assert.equal(freezeChip({ frozen: true, summary: 'Merge freeze: Sun 18:00 ET release window', reasons: [{ code: 'PRE_WINDOW' }], warnings: [], receipts: 'OK', next_freeze: null }).tone, 'danger')
+assert.equal(freezeChip(null).text, 'merge freeze UNKNOWN')
+assert.equal(freezeChip({ frozen: null, summary: 'x', reasons: [], warnings: [], receipts: null, next_freeze: null }).tone, 'warning')
+assert.equal(freezeChip({ frozen: false, summary: 'No merge freeze', reasons: [], warnings: [], receipts: 'OK',
+  next_freeze: { window_id: 'w', slot: '1800', starts_at: '2026-10-25T22:00:00Z', freeze_from: '2026-10-25T21:30:00Z', in_seconds: 60 } }).text, 'merge freeze from 17:30 ET')
+console.log('releasesSchedules: OK/STALE/UNAVAILABLE sections, KPI never-zero, PR/verify/stage labels, merge-freeze chip passed')

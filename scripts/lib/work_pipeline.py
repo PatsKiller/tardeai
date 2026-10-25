@@ -56,6 +56,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 try:
+    from scripts.lib.merge_freeze_context import without_freeze_context
+except ImportError:  # pragma: no cover - scripts/ on sys.path instead of the repo root
+    from lib.merge_freeze_context import without_freeze_context  # type: ignore[no-redef]
+try:
     from scripts.lib import agent_claim_lifecycle as LC
 except ImportError:  # scripts/ on sys.path (api_v2)
     from lib import agent_claim_lifecycle as LC  # type: ignore[no-redef]
@@ -340,7 +344,7 @@ class PrCensus:
         if isinstance(doc, dict):
             req = [str(c) for c in doc.get("contexts") or []]
             req += [str(c.get("context")) for c in doc.get("checks") or [] if isinstance(c, dict) and c.get("context")]
-            req = sorted(set(req)) or None
+            req = sorted(set(without_freeze_context(req))) or None  # freeze = timing gate, not CI
         self._required = (self.clock(), req)
         return req
 

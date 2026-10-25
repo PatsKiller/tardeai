@@ -11,7 +11,7 @@ import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
+  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freezeChip, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
   sectionView, shadowLine, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
@@ -89,6 +89,13 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
           </div>
         ))}
       </div>
+      {w?.merge_freeze ? <div data-testid="rs-merge-freeze" style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: TYPE.sm, color: toneVars(freezeChip(w.merge_freeze).tone).color, fontWeight: 700, overflowWrap: 'anywhere' }}>{w.merge_freeze.summary}</span>
+        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2], overflowWrap: 'anywhere' }}>
+          Only the release train merges to main from 30 min before a window until its train is terminal. Exempt: the train&apos;s batch PR, or the operator label {w.merge_freeze.exempt_label ?? 'freeze-exempt'}.
+        </span>
+        {(w.merge_freeze.warnings ?? []).map((x, i) => <span key={i} style={{ fontSize: TYPE.xs, color: toneVars('warning').color, overflowWrap: 'anywhere' }}>{x}</span>)}
+      </div> : null}
       {w ? <p style={muted}>{w.manual_path}</p> : null}
     </Section>
 
@@ -206,6 +213,7 @@ export default function ReleasesSchedules() {
   const kpiKeys = ['serving', 'next_release', 'next_window', 'n8n_runs', 'n8n_errors']
   const labels: Record<string, string> = { serving: 'Serving', next_release: 'Releasing next', next_window: 'Next train window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
+  const freeze = (s.windows.value as Windows | null)?.merge_freeze ?? null
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
@@ -218,6 +226,7 @@ export default function ReleasesSchedules() {
         <Chip tone="neutral">generated {etDateTime(api.data?.generated_at)}</Chip>
         {serving ? <Chip tone={serving.pins_agree ? 'neutral' : 'warning'} title={serving.release_name ?? ''}>pins {serving.pins_agree ? 'agree with CURRENT' : 'DISAGREE with CURRENT'}</Chip> : null}
         {api.data?.stop?.effective_stop ? <Chip tone="danger">release STOP {api.data.stop.state}</Chip> : null}
+        {freeze ? <span data-testid="rs-merge-freeze-chip"><Chip tone={freezeChip(freeze).tone} title={freeze.summary}>{freezeChip(freeze).text}</Chip></span> : null}
       </ChipRow>
     </div>
 

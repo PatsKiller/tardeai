@@ -12,7 +12,8 @@ Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedule
                  post_merge_ci.json, each only when it names the same SHA. GitHub is never called from the
                  request path.
   windows        the release-train windows (release_train_view.upcoming_windows) with the host gate's
-                 state and reason (release_train_window.readiness_view + decide).
+                 state and reason (release_train_window.readiness_view + decide), and the merge freeze
+                 (release_train_freeze.host_verdict: frozen or not, why, until when, the next freeze).
   queue          the release-train queue store and the PR-hygiene census (release_train_view.build_queue). When
                  the census is not OK, ``census.alert`` says so loudly: why, the lane's last ledger attempt
                  (any mode) and its next scheduled fire, so "0 queued" is never read as "nothing is waiting".
@@ -549,9 +550,29 @@ def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping
                                                             "has_report")} if cov.get("request_id") else None})
     value = {"windows": out, "armed": rd.get("armed"), "shadow_enabled": rd.get("shadow_enabled"),
              "delegation": rd.get("delegation"), "stop": stop, "policy_version": rd.get("policy_version"),
+             "merge_freeze": read_merge_freeze(now, rw_state_dir),
              "manual_path": "Until the train is armed, releases are manual: scripts/release_window.py 12:00 / 17:30 "
                             "ET windows under a release-write grant naming the SHA (AGENTS.md §25.1, §24.8)."}
     return field(value, rd.get("as_of") or _iso(now), "OK", src, None, now=now)
+
+
+MERGE_FREEZE_KEYS = ("frozen", "summary", "reasons", "next_freeze", "warnings", "receipts", "stop",
+                     "starts_min_before_window", "exempt_label", "status_context", "as_of")
+
+
+def read_merge_freeze(now: datetime, rw_state_dir: Path) -> dict[str, Any]:
+    """The Release Train merge freeze as the host sees it (scripts/lib/release_train_freeze.py, AGENTS.md §25.3):
+    frozen or not, why, until when, the next freeze. ``frozen`` is null (never false) when it cannot be computed."""
+    try:
+        try:
+            from lib import release_train_freeze as RTF
+        except ImportError:  # pragma: no cover
+            from scripts.lib import release_train_freeze as RTF  # type: ignore[no-redef]
+        v = RTF.host_verdict(now, state_dir=Path(rw_state_dir))
+    except Exception as exc:  # noqa: BLE001 - a view never raises
+        return {"frozen": None, "summary": f"merge freeze unavailable ({type(exc).__name__})", "reasons": [],
+                "next_freeze": None, "warnings": [], "receipts": None}
+    return {k: v.get(k) for k in MERGE_FREEZE_KEYS}
 
 
 def census_attempt(ledger: Optional[Path], registry: Optional[Path], now: datetime) -> dict[str, Any]:
@@ -1029,6 +1050,7 @@ def clear_cache() -> None:
 
 
 __all__ = ["SCHEMA", "ROUTE", "build", "handle", "clear_cache", "parse_crontab", "read_serving", "read_next_release",
-           "read_history", "read_release_errors", "read_windows", "read_queue", "read_ledger_today", "read_timeline",
+           "read_history", "read_release_errors", "read_windows", "read_merge_freeze", "read_queue",
+           "read_ledger_today", "read_timeline",
            "main_ci_from_receipt", "census_attempt", "census_alert",
            "kpis", "default_paths"]

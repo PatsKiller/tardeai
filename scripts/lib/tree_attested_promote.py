@@ -41,6 +41,10 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
+try:
+    from scripts.lib.merge_freeze_context import without_freeze_context
+except ImportError:  # pragma: no cover - scripts/ on sys.path instead of the repo root
+    from lib.merge_freeze_context import without_freeze_context  # type: ignore[no-redef]
 
 SCHEMA = "TreeAttestedPromote@v1"
 ATTESTATION_SCHEMA = "CiGateAttestation@v1"
@@ -108,7 +112,8 @@ def required_contexts(io: AttestIO, repo: str) -> list[str]:
     body = pages[0]
     names = set(body.get("contexts") or [])
     names |= {c.get("context") for c in body.get("checks") or [] if c.get("context")}
-    return sorted(names)
+    # The merge-freeze commit status is never a check run on the PR head (merge_freeze_context): not a promote input.
+    return sorted(without_freeze_context(names))
 
 
 def source_pr(io: AttestIO, repo: str, merge_sha: str) -> dict:

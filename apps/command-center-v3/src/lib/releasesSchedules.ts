@@ -32,7 +32,21 @@ export type TrainWindow = { window_id: string; local_time: string; starts_at: st
 export type LastShadow = { request_id: string | null; outcome: string | null; reason: string | null; queue_open: number | null
   queue_complete: boolean | null; riding: number | null; candidate_sha: string | null; train_id: string | null; has_report: boolean }
 export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
-  stop: { state?: string; effective_stop?: boolean } | null; policy_version: string | null; manual_path: string }
+  stop: { state?: string; effective_stop?: boolean } | null; policy_version: string | null; manual_path: string; merge_freeze?: MergeFreeze | null }
+// The Release Train merge freeze (scripts/lib/release_train_freeze.py, AGENTS.md §25.3): from 30 min before a window
+// until its train is terminal only the train merges to main. frozen null = could not be computed (never shown as open).
+export type MergeFreezeReason = { code: string; detail?: string | null; window_id?: string | null; starts_at?: string | null
+  freeze_from?: string | null; train_id?: string | null; stale?: boolean }
+export type MergeFreeze = { frozen: boolean | null; summary: string; reasons: MergeFreezeReason[]; warnings: string[]; receipts: string | null
+  next_freeze: { window_id: string; slot: string; starts_at: string; freeze_from: string; in_seconds: number } | null
+  exempt_label?: string; status_context?: string }
+
+export function freezeChip(f: MergeFreeze | null | undefined): { text: string; tone: Tone } {
+  if (!f || f.frozen == null) return { text: 'merge freeze UNKNOWN', tone: 'warning' }
+  if (f.frozen) return { text: 'MERGE FREEZE', tone: 'danger' }
+  if (f.next_freeze) return { text: `merge freeze from ${etTime(f.next_freeze.freeze_from)} ET`, tone: 'neutral' }
+  return { text: 'no merge freeze scheduled', tone: 'neutral' }
+}
 export type QueueRow = { pr_number?: number; title?: string | null; state?: string; class?: string | null; census_bucket?: string | null; [k: string]: unknown }
 export type OpenPr = { pr: number; title: string | null; bucket: string; why_not_riding: string; riding: boolean }
 export type Queue = { store: { freshness?: string; reason?: string | null; as_of?: string | null; total?: number | null; rows?: QueueRow[] | null }
