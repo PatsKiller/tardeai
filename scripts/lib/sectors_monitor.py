@@ -70,13 +70,15 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
                 "rs_60d_pct": signal.get("rs60"), "rs_series": [], "rs_n": None,
                 "rs_trend": signal.get("momentum", "missing")}
 
-    # v4 (E2): book overlay — actual sector weights from canonical holdings.json
+    # v4 (E2): book overlay — actual sector weights from canonical position store
     # resolved_sectors (the pipeline's fund LOOK-THROUGH decomposition, so SCHG/tech
     # concentration shows honestly). Read-only. Names aliased to the monitor's keys.
     _book: dict = {}
     _book_dollars: dict = {}
     try:
-        _h = _load_json(Path(state_dir) / "holdings.json") or {}
+        # The position store is read only through its owner (lib.portfolio_positions.load_store).
+        from lib.portfolio_positions import STORE_REL, load_store
+        _h = load_store(Path(state_dir) / STORE_REL[-1]) or {}
         _rs = _h.get("resolved_sectors") or []
         for r in _rs:
             name = canonical_sector(r.get("sector"))
