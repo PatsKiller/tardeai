@@ -1,0 +1,84 @@
+name: design-checks
+
+# Design workflow checks (operator approved 2026-10-25; AGENTS.md §28.13 proposed text in design/AGENTS_28_13.md;
+# design/README.md). Fixture data only — no live server, credential or broker is reachable from this workflow.
+#
+#   design-reference (BLOCKING): tokens.json renders tokens.css; design/ registry + status files + privacy scan;
+#     a PR touching UI under apps/command-center-v3/src cites `Design: <page>/vNNN` (APPROVED/IMPLEMENTING) or
+#     `Design: none`; every removed or hidden nav item / route / tab / panel is listed in the cited version's SPEC.
+#   design-fixture: builds the app (the build line keeps running the token, UI-standards and contrast gates), renders
+#     every registry page at 1440/412/390 on fixture data, then
+#       - phone layout rules (BLOCKING ratchet): fixed chrome <= 15% of viewport height, taps >= 44 px, no sideways
+#         scroll, no raw ISO timestamps, no empty bullets — a new violation fails, a fixed one must leave the baseline;
+#       - visual compare against the committed fixture baselines: REPORT-ONLY until 2026-11-01 (continue-on-error),
+#         then blocking. Baselines were rendered on the host with pinned fonts (e2e/design-checks/fonts.conf).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: design-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  design-reference:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: tokens.json renders tokens.css byte-identically
+        run: python3 scripts/gen_design_tokens.py --check
+      - name: design/ registry, versions, fingerprints and privacy scan
+        run: python3 scripts/check_design_registry.py
+      - name: Design reference line and removal guard
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/check_design_reference.py --base "$BASE_SHA"
+
+  design-fixture:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Pinned fixture fonts are present
+        run: test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf && test -f /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+      - run: npm run build
+      - name: Render every registry page on fixture data + phone layout rules (blocking ratchet)
+        run: node e2e/design-checks.fixture.mjs "$RUNNER_TEMP/design-checks"
+      - name: Visual compare against fixture baselines (report-only until 2026-11-01)
+        if: always()
+        continue-on-error: true
+        run: node e2e/design-checks.fixture.mjs "$RUNNER_TEMP/design-checks" --visual-verdict
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: design-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/design-checks/
+          if-no-files-found: warn
