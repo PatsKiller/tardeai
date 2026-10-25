@@ -18,6 +18,7 @@ from scripts.lib import operator_approvals as core
 
 PREFIX = "/api/v2/governance"
 ROOT = Path(__file__).resolve().parents[2]
+CANONICAL_REPOSITORY = Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
 
 
 @dataclass
@@ -33,9 +34,60 @@ class Ctx:
     can_read: Callable[[], bool] = field(default=lambda: False)
 
 
-def _git(root: Path, *args: str) -> str:
-    out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, timeout=5, check=True)
+def _raw_git(repository: Path, *args: str) -> str:
+    # Never let git search a release's parents for an unrelated .git directory.
+    if not (repository / ".git").exists():
+        raise core.Refused("IMMUTABLE_SOURCE_REPOSITORY_UNAVAILABLE", 503)
+    out = subprocess.run(["git", "-C", str(repository), *args], capture_output=True, timeout=5, check=True)
     return out.stdout.decode("utf-8")
+
+
+def source_revision(root: Path) -> str:
+    """Local worktree HEAD or this release's own stamps, never another CURRENT/env value."""
+    if (root / ".git").exists():
+        sha = _raw_git(root, "rev-parse", "HEAD").strip()
+    else:
+        from scripts.lib.runtime_identity import resolve_source_sha
+        sha = resolve_source_sha(env={}, project_root=root, current_release=root, allow_git=False)
+        stamps = []
+        for name in ("BUILD_SHA", "SOURCE_COMMIT", "GIT_SHA"):
+            path = root / name
+            if path.is_file() and path.stat().st_size <= 256:
+                value = path.read_text().strip()
+                if core.SHA.fullmatch(value):
+                    stamps.append(value)
+        if len(set(stamps)) > 1:
+            raise core.Refused("RELEASE_SOURCE_STAMPS_DISAGREE", 503)
+        if not core.SHA.fullmatch(sha):
+            meta_path = root / "apps/command-center-v3/dist/build-meta.json"
+            if meta_path.is_file() and meta_path.stat().st_size <= 16000:
+                meta = json.loads(meta_path.read_text())
+                candidates = [meta.get(key) for key in ("source_commit", "source_sha", "git_sha")]
+                full = [v for v in candidates if isinstance(v, str) and core.SHA.fullmatch(v)]
+                if len(set(full + stamps)) > 1:
+                    raise core.Refused("RELEASE_SOURCE_STAMPS_DISAGREE", 503)
+                sha = full[0] if full else sha
+    if not core.SHA.fullmatch(sha):
+        raise core.Refused("EXACT_RELEASE_SOURCE_REQUIRED", 503)
+    return sha
+
+
+def _git(root: Path, *args: str) -> str:
+    if args == ("rev-parse", "HEAD"):
+        return source_revision(root) + "\n"
+    repository = root if (root / ".git").exists() else CANONICAL_REPOSITORY
+    return _raw_git(repository, *args)
+
+
+def policy_source(root: Path) -> tuple[str, str]:
+    # Anchor history to the artifact's commit even when the canonical checkout has moved ahead.
+    sha = _git(root, "log", "-1", "--format=%H", source_revision(root), "--", "AGENTS.md").strip()
+    text = _git(root, "show", f"{sha}:AGENTS.md")
+    if not (root / ".git").exists():
+        deployed = root / "AGENTS.md"
+        if not deployed.is_file() or deployed.read_text() != text:
+            raise core.Refused("RELEASE_POLICY_CONTENT_MISMATCH", 503)
+    return sha, text
 
 
 def reader_annotations(pr: dict, doc: dict) -> dict:
@@ -65,9 +117,8 @@ def reader_annotations(pr: dict, doc: dict) -> dict:
 
 
 def git_policy(root: Path = ROOT) -> dict:
-    sha = _git(root, "log", "-1", "--format=%H", "--", "AGENTS.md").strip()
+    sha, text = policy_source(root)
     # Read from the commit, not a concurrently edited worktree file.
-    text = _git(root, "show", f"{sha}:AGENTS.md")
     policy = core.policy_projection(text, source_sha=sha)
     from scripts.lib.lane_last_receipt import runtime_dir
     from scripts.lib.approval_package import governance_dir

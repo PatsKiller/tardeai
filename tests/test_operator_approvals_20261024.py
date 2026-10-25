@@ -306,3 +306,61 @@ def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
     assert updated["document_sha"] != doc["document_sha"]
     notes["head_sha"] = "b" * 40
     assert api.reader_annotations({"body": "```approval-reader-notes\n" + json.dumps(notes) + "\n```"}, doc) == {}
+
+
+def _policy_repository(root):
+    import os
+    import subprocess
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+    env = {**os.environ, "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.test",
+           "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.test",
+           "GIT_AUTHOR_DATE": "2032-04-12T14:00:00Z", "GIT_COMMITTER_DATE": "2032-04-12T14:00:00Z"}
+    def write(text, parent=None):
+        def git(*args, data=None):
+            return subprocess.run(["git", "-C", str(root), *args], input=data, text=True, capture_output=True, check=True, env=env).stdout.strip()
+        blob = git("hash-object", "-w", "--stdin", data=text)
+        tree = git("mktree", data=f"100644 blob {blob}\tAGENTS.md\n")
+        args = ["commit-tree", tree, "-m", "fixture policy"] + (["-p", parent] if parent else [])
+        commit = git(*args)
+        git("update-ref", "refs/heads/main", commit)
+        return commit
+    return write
+
+
+def test_packed_release_binds_its_own_commit_without_git_or_env_override(tmp_path, monkeypatch):
+    repository = tmp_path / "canonical"
+    write = _policy_repository(repository)
+    old_text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass a denial.\n"
+    original = write(old_text)
+    newer = write(old_text.replace("20.1.0", "20.2.0"), original)
+    release = repository / "packed-release"; release.mkdir()
+    (release / "SOURCE_COMMIT").write_text(original)
+    (release / "BUILD_SHA").write_text(original)
+    (release / "AGENTS.md").write_text(old_text)
+    monkeypatch.setattr(api, "CANONICAL_REPOSITORY", repository)
+    monkeypatch.setenv("TRADEAI_SOURCE_SHA", "f" * 40)
+    assert not (release / ".git").exists()
+    assert api.source_revision(release) == original != newer
+    assert api._git(release, "rev-parse", "HEAD").strip() == original
+    assert api.policy_source(release) == (original, old_text)
+
+
+def test_packed_release_stamp_or_policy_disagreement_is_reported_not_repaired(tmp_path, monkeypatch):
+    repository = tmp_path / "canonical"
+    write = _policy_repository(repository)
+    text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass.\n"
+    commit = write(text)
+    release = tmp_path / "release"; release.mkdir()
+    (release / "SOURCE_COMMIT").write_text(commit)
+    (release / "BUILD_SHA").write_text("f" * 40)
+    (release / "AGENTS.md").write_text(text)
+    monkeypatch.setattr(api, "CANONICAL_REPOSITORY", repository)
+    with pytest.raises(c.Refused, match="RELEASE_SOURCE_STAMPS_DISAGREE"):
+        api.source_revision(release)
+    assert (release / "BUILD_SHA").read_text() == "f" * 40
+    (release / "BUILD_SHA").write_text(commit)
+    (release / "AGENTS.md").write_text("Altered artifact wording")
+    with pytest.raises(c.Refused, match="RELEASE_POLICY_CONTENT_MISMATCH"):
+        api.policy_source(release)
+    assert (release / "AGENTS.md").read_text() == "Altered artifact wording"
