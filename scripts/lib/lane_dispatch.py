@@ -947,6 +947,65 @@ def advisory_md_static_errors(row: Mapping[str, Any], entry: Optional[Mapping[st
     return out
 
 
+# §27.1 SHADOW read rows. Kept here, standard library only, with no import of n8n_broker_read_shadow /
+# n8n_broker_read_carveout: lane_dispatch is in every dispatched lane's static import closure. These rules mirror
+# n8n_broker_read_shadow.row_problem after its entry check; tests/test_f09_read_shadow_20261024.py holds both to the
+# same verdict for every admitted entry.
+BROKER_READ_MARKER = "broker_read_step"
+BROKER_READ_WRAPPER = "scripts/n8n_broker_read_shadow.py"
+
+
+def broker_read_lane_id(step_id: str) -> str:
+    return "f09-read-" + step_id.replace("_", "-")
+
+
+def broker_read_receipt_path(step_id: str) -> str:
+    return "data/runtime/n8n_read_shadow/" + broker_read_lane_id(step_id) + "_last.json"
+
+
+def broker_read_row_problem(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """None when a marked row is the exact SHADOW shape bound to its allowlist entry (marker and shape only)."""
+    if entry is None:
+        return "read_not_allowlisted"
+    step_id = entry.get(BROKER_READ_MARKER)
+    if not isinstance(step_id, str) or not step_id:
+        return "read_not_marked"
+    if entry.get("lane_id") != broker_read_lane_id(step_id):
+        return "read_lane_identity"
+    if entry.get("dry_run_arg") != [] or entry.get("live_arg") is not None:
+        return "read_shadow_only"
+    if row.get(BROKER_READ_MARKER) != step_id or row.get("lane_id") != entry.get("lane_id"):
+        return "read_row_identity"
+    sched, block = row.get("scheduler"), row.get("dispatch")
+    if not isinstance(sched, Mapping) or not isinstance(block, Mapping):
+        return "read_missing_schedule"
+    if (sched.get("kind"), sched.get("expression"), sched.get("stage")) != ("n8n", "dispatcher", "shadow"):
+        return "read_stage_not_shadow"
+    if set(sched) - {"kind", "expression", "stage", "cadence", "match", "wave"}:
+        return "read_extra_schedule_field"
+    if sched.get("match") != f"{BROKER_READ_WRAPPER} --step {step_id} --plan" or sched.get("wave") != "W5":
+        return "read_schedule_identity"
+    if block.get("mode") != "dry_run" or block.get("class") != "pipeline" or block.get("retry_policy") != "none":
+        return "read_dispatch_not_shadow"
+    if (
+        set(block) - {"mode", "cron", "tz", "wave", "class", "priority", "retry_policy"}
+        or block.get("wave") != "W5"
+        or block.get("tz") != "America/New_York"
+        or not isinstance(block.get("cron"), list)
+        or not block["cron"]
+        or sched.get("cadence") != block["cron"][0]
+    ):
+        return "read_extra_dispatch_field"
+    if row.get("state") != "ACTIVE":
+        return "read_state_not_active"
+    signal = {"kind": "json_key", "path": broker_read_receipt_path(step_id), "key": "finished_at"}
+    if row.get("output_signal") != signal:
+        return "read_signal_not_control_receipt"
+    if any(row.get(k) for k in ("command", "script", "exec_start", "service", "stay_on_cron", "watch")):
+        return "read_extra_execution_field"
+    return None
+
+
 def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
                       exceptions: Optional[Mapping[str, frozenset[str]]] = None,
                       cutover_policy: Optional[Mapping[str, Any]] = None) -> tuple[bool, str]:
@@ -981,6 +1040,12 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
         return False, f"bad_watch_block:{e.detail}"
     if watch.stay_behind:
         return False, "stay_behind"
+    if BROKER_READ_MARKER in row:
+        # Marker/shape only, in this module: importing the carve-out here would put every read-step script in the
+        # static import closure of every lane that imports lane_dispatch. Full entry admission (known step, exact
+        # audited argv, ACTIVE carve-out, clean audit) is n8n_run_executor.validate_entry, before any spawn.
+        problem = broker_read_row_problem(row, load_run_allowlist_entries().get(str(row.get("lane_id"))))
+        return (False, problem) if problem else (True, "eligible:broker_read_shadow_27_1")
     all_hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
     lift = exempt | (CUTOVER_SOFT_TOKENS if directive else frozenset())
     hits = [h for h in all_hits if h[0] not in lift]

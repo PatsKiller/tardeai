@@ -477,6 +477,15 @@ def parse_allowlist(raw: bytes) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _read_shadow():
+    """The §27.1 SHADOW read admission, importable as scripts.n8n_run_executor or with scripts/ on sys.path."""
+    try:
+        from scripts.lib import n8n_broker_read_shadow as read_shadow
+    except ImportError:
+        from lib import n8n_broker_read_shadow as read_shadow  # type: ignore
+    return read_shadow
+
+
 def validate_entry(entry: Mapping[str, Any]) -> str | None:
     """None when the entry is runnable; otherwise the first defect. Pure."""
     if not isinstance(entry.get("lane_id"), str) or not entry["lane_id"]:
@@ -484,6 +493,11 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
     cmd = entry.get("command")
     if not isinstance(cmd, list) or not cmd or not all(isinstance(t, str) and t for t in cmd):
         return "bad_command"
+    read_shadow = _read_shadow()
+    if read_shadow.handles(entry):
+        problem = read_shadow.entry_problem(entry)
+        if problem:
+            return problem
     if not isinstance(entry.get("lock"), str) or not entry["lock"].startswith("/"):
         return "bad_lock"
     if entry["lock"].endswith(DRY_RUN_LOCK_SUFFIX):
@@ -606,6 +620,14 @@ def build_argv(
     mode_arg = entry.get(f"{mode}_arg")
     if mode_arg is None:
         return None
+    read_shadow = _read_shadow()
+    if read_shadow.handles(entry):
+        plan = read_shadow.plan_argv(entry, mode)
+        if plan is None:
+            return None
+        # Keep the exact audited read argv in config. SHADOW executes only this offline
+        # plan, under the executor's existing disjoint dry-run lock and timeout.
+        entry = {**entry, "command": plan, "dry_run_arg": []}
     lock = lock_path_for(entry, mode)
     if entry.get("lock_kind", "safe_flock") == "flock":
         wrapper = ["flock", "-n", "-E", str(FLOCK_CONFLICT_EXIT), lock]
@@ -769,6 +791,10 @@ def _execute_once(
             return _finish(receipt, "RUN_REFUSED", reason="allowlist_unreadable", started=started)
     if entry is None:
         return _finish(receipt, "RUN_REFUSED", reason="lane_not_allowlisted", started=started)
+    if "broker_read_step" in entry:
+        receipt["broker_read_step"] = entry["broker_read_step"]
+        if mode == "live":
+            return _finish(receipt, "RUN_REFUSED", reason="broker_read_shadow_only", started=started)
     if mode not in RUN_MODES:
         return _finish(receipt, "RUN_REFUSED", reason="bad_mode", started=started)
     if is_process_key(run_id):
@@ -954,6 +980,12 @@ def _spawn(
     if result.returncode in TIMEOUT_EXITS:
         receipt["timed_out"] = True
         return _finish(receipt, "RUN_TIMEOUT", reason=f"timeout_exit_{result.returncode}", started=started)
+    if result.returncode == 0 and "broker_read_step" in entry:
+        read_shadow = _read_shadow()
+        receipt["state"] = "RUN_DONE"
+        problem = read_shadow.receipt_problem(receipt)
+        if problem:
+            return _finish(receipt, "RUN_FAILED", reason=problem, started=started)
     if result.returncode == 0:
         return _finish(receipt, "RUN_DONE", reason=None, started=started)
     return _finish(receipt, "RUN_FAILED", reason=f"exit_{result.returncode}", started=started)
@@ -1216,6 +1248,16 @@ def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: b
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(body, encoding="utf-8")
     os.replace(tmp, out)
+    if "broker_read_step" in receipt:
+        read_shadow = _read_shadow()
+        if read_shadow.final_receipt_problem(receipt) is None:
+            # Executor control evidence only: the wrapper writes no lane/business state.
+            # Failed or empty plans never advance this per-lane success timestamp.
+            shadow_last = state_root / read_shadow.receipt_path(receipt["broker_read_step"])
+            shadow_last.parent.mkdir(parents=True, exist_ok=True)
+            shadow_tmp = shadow_last.with_suffix(".json.tmp")
+            shadow_tmp.write_text(body, encoding="utf-8")
+            os.replace(shadow_tmp, shadow_last)
     if not write_last:  # executor v2: n8n_run_executor_last.json holds ExecutorStatus@v1 instead
         return out
     last = state_root / LAST_REL
