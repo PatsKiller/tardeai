@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import fixture from './fixtures/w3_sectors.json'
+import fixture from './fixtures/w3_sectors.json' with { type: 'json' }
 
 const SHOTS = process.env.W3_SIGNAL_SHOTS || path.join(os.homedir(), '.cache/rtc/w3-signal-shots')
 fs.mkdirSync(SHOTS, { recursive: true })
