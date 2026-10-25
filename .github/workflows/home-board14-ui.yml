@@ -1,0 +1,65 @@
+name: home-board14-ui
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/home-board14-ui.yml'
+      - 'apps/command-center-v3/src/components/DeskPage.tsx'
+      - 'apps/command-center-v3/src/components/homeDeskMount.tsx'
+      - 'apps/command-center-v3/src/components/HomeBoard14.tsx'
+      - 'apps/command-center-v3/src/pages/HomeHub.tsx'
+      - 'apps/command-center-v3/e2e/home-board14.spec.ts'
+      - 'apps/command-center-v3/e2e/home-protection-stops.spec.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: home-board14-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  home-board14-playwright:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Start preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/home-board14-preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/v3/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/home-board14-preview.log
+          exit 1
+      - name: Home Board 14 and protection fixture taps
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+          CI: 'true'
+        run: npx playwright test e2e/home-board14.spec.ts e2e/home-protection-stops.spec.ts --project=chromium --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-board14-playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/command-center-v3/test-results/
+            /tmp/home-board14-preview.log
+          if-no-files-found: warn

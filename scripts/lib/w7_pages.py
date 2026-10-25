@@ -118,7 +118,9 @@ def page_payload(root: Path | str, *, now: datetime | None = None,
                 truth = {**truth, "concentration_policy": {"classes": [], "as_of": None,
                          "source": "CIO concentration policy", "gap": {"reason":
                          "Canonical concentration policy could not be read (" + type(exc).__name__ + ")"}}}
-    return validate_payload(project_pages(truth, **(lookthrough_inputs if lookthrough_inputs is not None else load_lookthrough_inputs(root))))
+    payload = validate_payload(project_pages(truth, **(lookthrough_inputs if lookthrough_inputs is not None else load_lookthrough_inputs(root))))
+    from scripts.lib.home_board14 import apply_home_board
+    return apply_home_board(payload, root=root, now=now, db_query=db_query)
 
 
 def load_lookthrough_inputs(root: Path) -> dict:
@@ -152,7 +154,9 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     # Forward W1's values, including None, provenance, stop state and conflicts.
     result = {name: truth.get(name) or unavailable("CIO field unavailable")[name]
               for name in ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "sectors")}
-    result["do_now"] = {**result["do_now"], "items": (result["do_now"].get("items") or [])[:7]}
+    from scripts.lib.home_board14 import shape_do_now
+    ranked = shape_do_now(result["do_now"])
+    result["do_now"] = {**ranked, "items": (ranked.get("items") or [])[:7]}
     # Engine findings are a registered read projection. Legacy record diagnostics
     # are never reclassified into a page warning here.
     result["conflicts"] = truth.get("conflicts") or {

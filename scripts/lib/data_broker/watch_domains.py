@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
@@ -558,6 +560,8 @@ def authorize_review_artifact(raw: dict[str, Any]) -> tuple[bool, str | None]:
     if raw.get("fallback_used") is None:
         return False, "MISSING_FALLBACK_USED"
     rid = raw.get("provider_request_id")
+    if _consumption_link_cached(rid):
+        return True, None
     try:
         row = _db_query(
             """SELECT id, success FROM llm_consumption_log
@@ -569,7 +573,39 @@ def authorize_review_artifact(raw: dict[str, Any]) -> tuple[bool, str | None]:
             return False, "CONSUMPTION_REQUEST_ID_UNLINKED"
     except Exception:
         return False, "CONSUMPTION_LOOKUP_FAILED"
+    _remember_consumption_link(rid)
     return True, None
+
+
+# Perf 2026-10-25: llm_consumption_log has no provider_request_id index, so every lookup is a ~20-60 ms sequential
+# scan, and the cold Watch build made ~70 of them (1.6 s). A LINKED request id stays linked (the log is
+# append-only), so only positive answers are remembered — bounded and time-limited; an unlinked id is re-checked
+# every time, so a newly logged consumption is seen at once.
+_CONSUMPTION_LINK_TTL_S = 6 * 3600.0
+_CONSUMPTION_LINK_MAX = 4096
+_CONSUMPTION_LINKS: dict[str, float] = {}
+_CONSUMPTION_LINKS_LOCK = threading.Lock()
+
+
+def _consumption_link_cached(rid: Any) -> bool:
+    key = str(rid)
+    with _CONSUMPTION_LINKS_LOCK:
+        at = _CONSUMPTION_LINKS.get(key)
+        if at is None:
+            return False
+        if time.monotonic() - at > _CONSUMPTION_LINK_TTL_S:
+            _CONSUMPTION_LINKS.pop(key, None)
+            return False
+        return True
+
+
+def _remember_consumption_link(rid: Any) -> None:
+    key = str(rid)
+    with _CONSUMPTION_LINKS_LOCK:
+        _CONSUMPTION_LINKS.pop(key, None)
+        _CONSUMPTION_LINKS[key] = time.monotonic()
+        while len(_CONSUMPTION_LINKS) > _CONSUMPTION_LINK_MAX:
+            _CONSUMPTION_LINKS.pop(next(iter(_CONSUMPTION_LINKS)))
 
 
 def _disposition_from_candidate(raw: dict[str, Any] | None, *, agent: str) -> dict[str, Any]:

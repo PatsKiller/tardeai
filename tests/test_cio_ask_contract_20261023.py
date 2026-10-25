@@ -107,7 +107,7 @@ def test_mbi_guard_payload_strips_behavior_keys():
 
 
 def test_size_suggestion_gated_until_21(tmp_path: Path):
-    head = "# 0 · If you read nothing else\n\n| Version | Date | Status |\n|---|---|---|\n"
+    head = C.SIZE_SUGGESTION_POLICY_ANCHOR + "\n\n| Version | Date | Status |\n|---|---|---|\n"
     p = tmp_path / "AGENTS.md"
     p.write_text(head + "| 19.0.0 | 2026-10-22 | ACTIVE |\n| 21.0.0 | 2026-10-24 | PROPOSED |\n")
     assert C.size_suggestion_allowed(p) is False
@@ -138,8 +138,15 @@ def test_size_suggestion_omitted_and_flagged_while_gated():
 
 
 def test_repo_agents_md_does_not_allow_size_suggestion_today():
-    # AGENTS.md on this branch is 19.x — the gate must be closed.
+    # No AGENTS.md section ratifies size suggestions — the gate must be closed whatever the version number.
     assert C.size_suggestion_allowed() is False
+
+
+def test_version_row_alone_never_opens_size_gate(tmp_path: Path):
+    # 2026-10-25: 21.0.0 (hands-off delivery) is ACTIVE but does not authorize size suggestions.
+    p = tmp_path / "AGENTS.md"
+    p.write_text("# 0 · If you read nothing else\n\n| Version | Date | Status |\n|---|---|---|\n| 21.0.0 | 2026-10-25 | ACTIVE |\n")
+    assert C.size_suggestion_allowed(p) is False
 
 
 def test_parse_named_quantities():
