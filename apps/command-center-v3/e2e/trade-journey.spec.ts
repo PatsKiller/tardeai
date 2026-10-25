@@ -6,6 +6,9 @@ import { expect, test, type Page } from '@playwright/test'
 import { TRADE_JOURNEYS_FIXTURE as FIX } from '../src/fixtures/tradeJourneys.fixture'
 
 async function mockApi(page: Page, writes: string[]) {
+  const origin = new URL(process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173').origin
+  await page.routeWebSocket('**/*', ws => ws.close())
+  await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort())
   await page.route('**/api/**', async route => {
     const req = route.request()
     const url = new URL(req.url())
@@ -29,10 +32,13 @@ test('TradeInView opens on trade journeys: interim label, chips, origin badges, 
   const root = page.getByTestId('trade-journey')
   await expect(root).toBeVisible({ timeout: 60_000 })
   await expect(page.getByTestId('tj-interim')).toHaveText('interim — CIO prospect store not live')
-  for (const k of ['fills', 'holdings', 'stops', 'cio', 'reentry', 'links', 'source']) {
-    await expect(page.getByTestId(`tj-chip-${k}`)).toBeVisible()
+  const chips = (FIX as any).freshness_chips
+  if (chips) {
+    for (const chip of chips) await expect(page.getByTestId(`tj-chip-${chip.key}`)).toContainText(chip.value ?? chip.missing_reason ?? 'Sync evidence unavailable')
+  } else {
+    await expect(root).toContainText('Freshness receipt fields unavailable')
+    await expect(page.getByTestId('tj-chip-fills')).toHaveCount(0)
   }
-  await expect(page.getByTestId('tj-chip-stops')).toHaveAttribute('title', /stop_last_known/)
 
   const rows = page.getByTestId('tj-row')
   await expect(rows).toHaveCount(3)
@@ -45,7 +51,9 @@ test('TradeInView opens on trade journeys: interim label, chips, origin badges, 
 
   // ?symbol=NAVN selected the NAVN journey
   const detail = page.getByTestId('tj-detail')
-  await expect(detail).toContainText('NAVN · schwab_rollover_ira')
+  const navnFixture = FIX.journeys.find(j => j.symbol === 'NAVN') as any
+  await expect(detail).toContainText(`NAVN · ${navnFixture.account_label || 'Unlabelled account'}`)
+  await expect(detail).not.toContainText('NAVN · schwab_rollover_ira')
   await expect(page.getByTestId('tj-origin-card')).toContainText('Home #4 · conviction 86 · CIO BUY_READY 10-16')
   await expect(page.getByTestId('tj-origin-card')).toContainText('cio_opportunity_assessments: v26')
 
@@ -77,6 +85,8 @@ test('TradeInView opens on trade journeys: interim label, chips, origin badges, 
   await expect(re).toContainText('same record as Watch')
 
   // conflicts shown, never resolved
+  const sourceDisclosure = page.getByTestId('tj-conflicts').locator('summary')
+  if (await sourceDisclosure.count()) await sourceDisclosure.click()
   await expect(page.getByTestId('tj-conflicts')).toContainText('CIO still treats this as owned after the exit')
 
   // drawers

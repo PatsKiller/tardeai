@@ -1,0 +1,914 @@
+{
+  "boundary": "Presentation/navigation proof against the existing generated broker projection fixture. Three source rows; NOT the live57-row population, final A/C integration or runtime acceptance.",
+  "receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-receipts.json",
+  "receipt_sha256": "ce6359b0967f4734fbb242792712c3cf42989fd7a1b096d9bbb158d442a7505b",
+  "proof": {
+    "fixture": true,
+    "boundary": "Presentation/navigation fixture proof only; not final A/C integration or production acceptance",
+    "input": "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/fixtures/tradeJourneys.fixture.ts",
+    "input_sha256": "d44f524febfd32c4828e794d3cd0deae7426569dbf0864554e8c4cd1725df4ac",
+    "source": {
+      "head": "a320e7e81df97eb8dc4a318bac5d9118a98e5832",
+      "file_sha256": {
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/httpOutcome.ts": "08e2eccff818cfbfd31d2cc33e907df430f80fbd41979f5b6a3cfa8d85aabb85",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/hooks/useApi.ts": "56c09da5ec4d3bc41db7d13c0b1ab02c6f0caabb7d54eb1917ce06ef4e2d4e27",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/observationEnvelope.ts": "257881dd6a7d9fa1787accda75246dc7b7d3589fa1b1a1fcc998b9b5888cafc8",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/watchMarketFactsPresentation.ts": "f752c6c15fc06bfdac341cd5c1f356a43f626c9d7c701f6603c13dc728e63220",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/tradeJourneyModel.ts": "7da4197c6d197f8a7602ea2f414bb7b955b1391514cdd93f06a30aa5ac864e94",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/tradeInViewModel.ts": "0cfcb25980838fe5753e9dfa461254fcdac75524e64d1421b879ffee1a9ec181",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeInViewLayout.css": "0fad6deed132f0504d1bde762348abe88f49b4f23212debc39e166f84e70c503",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/holdingsTerminalTokens.ts": "1fa9eb0e1e34e42e6a438405e948dccafeed3696d9494674041e39e92110a3f7",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/reentry/ReEntryAlertArmModal.tsx": "a846cb072a40066b8b2a87d20c8dfe1da263ed69802dbd1584f750dfcaa5de2c",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/pages/TradeJourney.tsx": "8e8334adb2a52c00c1e3a98c01881f83bdd50b68cc293395852723d4e4aa88f2",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/styles/tokens.css": "90286378bab81e0e1b7a79cdbbfd2e7ccc8a62772c3e89ffe9e43690bb3ec25e",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/index.css": "66b67e709cf771c243104d6bbd79bf15dcfa3c9174d59203235e4c833d2134ed",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/fixtures/tradeJourneys.fixture.ts": "d44f524febfd32c4828e794d3cd0deae7426569dbf0864554e8c4cd1725df4ac",
+        "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/e2e/trade-journey-mobile.fixture.mjs": "d183358edf3c11823310445d4f891be5d512648d2c1220374a1d802d5a8e3c08"
+      }
+    },
+    "cases": [
+      {
+        "width": 1440,
+        "height": 1100,
+        "mode": "navigation",
+        "taps": [],
+        "geometry": [
+          {
+            "state": "detail",
+            "width": 1440,
+            "height": 1100,
+            "document": 1440
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Asrt%3A607228",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 1440,
+        "height": 1100,
+        "mode": "direct-link",
+        "taps": [],
+        "geometry": [
+          {
+            "state": "detail",
+            "width": 1440,
+            "height": 1100,
+            "document": 1440
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 1440,
+        "height": 1100,
+        "mode": "wrong-detail",
+        "taps": [],
+        "geometry": [
+          {
+            "state": "detail",
+            "width": 1440,
+            "height": 1100,
+            "document": 1440
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 412,
+        "height": 915,
+        "mode": "navigation",
+        "taps": [
+          {
+            "name": "Journey primary action",
+            "x": 36,
+            "y": 794.265625,
+            "width": 343,
+            "height": 44
+          },
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          },
+          {
+            "name": "Open filter",
+            "x": 183.625,
+            "y": 184,
+            "width": 67.25,
+            "height": 44
+          },
+          {
+            "name": "Filtered Journey",
+            "x": 36,
+            "y": 451.296875,
+            "width": 343,
+            "height": 44
+          },
+          {
+            "name": "Filtered Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "VJourney \u2192",
+                "width": 343,
+                "height": 44
+              },
+              {
+                "name": "Conflicts \u00b7 1 shown, not resolvedShow \u25be",
+                "width": 378,
+                "height": 44
+              },
+              {
+                "name": "Data gaps \u00b7 source coverage and missing reasonsShow \u25be",
+                "width": 378,
+                "height": 56
+              },
+              {
+                "name": "How this page works \u00b7 where each column comes fromShow \u25be",
+                "width": 378,
+                "height": 56
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02",
+            "/api/v3/data-broker/trade-journeys/open%3Aschwab_roth_ira%3AV"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 412,
+        "height": 915,
+        "mode": "direct-link",
+        "taps": [
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "NAVNJourney \u2192",
+                "width": 343,
+                "height": 44
+              },
+              {
+                "name": "BAHJourney \u2192",
+                "width": 343,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 412,
+        "height": 915,
+        "mode": "wrong-detail",
+        "taps": [
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "NAVNJourney \u2192",
+                "width": 343,
+                "height": 44
+              },
+              {
+                "name": "BAHJourney \u2192",
+                "width": 343,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 412,
+            "height": 915,
+            "document": 412
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "mode": "navigation",
+        "taps": [
+          {
+            "name": "Journey primary action",
+            "x": 36,
+            "y": 799.5625,
+            "width": 321,
+            "height": 44
+          },
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          },
+          {
+            "name": "Open filter",
+            "x": 183.625,
+            "y": 175,
+            "width": 67.25,
+            "height": 44
+          },
+          {
+            "name": "Filtered Journey",
+            "x": 36,
+            "y": 480.296875,
+            "width": 321,
+            "height": 44
+          },
+          {
+            "name": "Filtered Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "VJourney \u2192",
+                "width": 321,
+                "height": 44
+              },
+              {
+                "name": "Conflicts \u00b7 1 shown, not resolvedShow \u25be",
+                "width": 356,
+                "height": 44
+              },
+              {
+                "name": "Data gaps \u00b7 source coverage and missing reasonsShow \u25be",
+                "width": 356,
+                "height": 56
+              },
+              {
+                "name": "How this page works \u00b7 where each column comes fromShow \u25be",
+                "width": 356,
+                "height": 56
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02",
+            "/api/v3/data-broker/trade-journeys/open%3Aschwab_roth_ira%3AV"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "mode": "direct-link",
+        "taps": [
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "NAVNJourney \u2192",
+                "width": 321,
+                "height": 44
+              },
+              {
+                "name": "BAHJourney \u2192",
+                "width": 321,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "mode": "wrong-detail",
+        "taps": [
+          {
+            "name": "Detail Back",
+            "x": 17,
+            "y": 17,
+            "width": 52.6875,
+            "height": 44
+          }
+        ],
+        "geometry": [
+          {
+            "state": "detail",
+            "areas": [
+              {
+                "name": "Back",
+                "width": 52.6875,
+                "height": 44
+              },
+              {
+                "name": "Replay this trade",
+                "width": 118.125,
+                "height": 44
+              },
+              {
+                "name": "All BAH history",
+                "width": 109.28125,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "detail",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          },
+          {
+            "state": "back",
+            "areas": [
+              {
+                "name": "Classic journal \u2192",
+                "width": 93.375,
+                "height": 44
+              },
+              {
+                "name": "All \u2014",
+                "width": 51.921875,
+                "height": 44
+              },
+              {
+                "name": "Awaiting fill \u2014",
+                "width": 103.703125,
+                "height": 44
+              },
+              {
+                "name": "Open 1",
+                "width": 67.25,
+                "height": 44
+              },
+              {
+                "name": "Closed 2",
+                "width": 76.59375,
+                "height": 44
+              },
+              {
+                "name": "From internal 1",
+                "width": 113.265625,
+                "height": 44
+              },
+              {
+                "name": "Your picks 1",
+                "width": 97.046875,
+                "height": 44
+              },
+              {
+                "name": "NAVNJourney \u2192",
+                "width": 321,
+                "height": 44
+              },
+              {
+                "name": "BAHJourney \u2192",
+                "width": 321,
+                "height": 44
+              }
+            ]
+          },
+          {
+            "state": "back",
+            "width": 390,
+            "height": 844,
+            "document": 390
+          }
+        ],
+        "source_rows": 3,
+        "selected_trade": "rt:schwab_taxable|BAH|2026-10-02",
+        "traffic": {
+          "reads": [
+            "/api/v3/data-broker/trade-journeys",
+            "/api/v3/data-broker/trade-journeys/rt%3Aschwab_taxable%7CBAH%7C2026-10-02"
+          ],
+          "unexpected": [],
+          "external": [],
+          "mutations": [],
+          "errors": []
+        }
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-back-390.png",
+      "sha256": "fd4d191d84216c40d07e1849752856ed4e67a958dd955e64ed047a9e7bc53ff5"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-back-412.png",
+      "sha256": "42c02ddb8737eae5bd3a774c2e4a1cc92227099e2e804ecacb03f97262aa992c"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-1440.png",
+      "sha256": "3d5f4b6995193044ebeeaf8c4339482e9c933d57f5ba7db4a49100245dff25a5"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-390.png",
+      "sha256": "c700b77706317e967490c6125e9965163f20ed8581634d9130cd0308dc38c9da"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-412.png",
+      "sha256": "441b76f69b77442b7cba10f47b3e8bbbd83408da299241133afd541042494ec2"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-back-390.png",
+      "sha256": "a9216653c1792c6552a7848b36585ebfa60d85b31c5a0c6b6bd69dcf9e9b3519"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-back-412.png",
+      "sha256": "47426c4cc449c35ad340f7bb7ae00217fcca45594bc4ca426a891164f7772673"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-1440.png",
+      "sha256": "9319fdb02f9bae09883445f04f82f127bf53c96ec984c7674fbc2f4a915cc5ae"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-390.png",
+      "sha256": "c700b77706317e967490c6125e9965163f20ed8581634d9130cd0308dc38c9da"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-412.png",
+      "sha256": "441b76f69b77442b7cba10f47b3e8bbbd83408da299241133afd541042494ec2"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-back-390.png",
+      "sha256": "fd4d191d84216c40d07e1849752856ed4e67a958dd955e64ed047a9e7bc53ff5"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-back-412.png",
+      "sha256": "42c02ddb8737eae5bd3a774c2e4a1cc92227099e2e804ecacb03f97262aa992c"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-1440.png",
+      "sha256": "754dbfe0ef55fb6db2b04f6492bb867ee40fd32cdf23d5e043ffa093fdd0cb0c"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-390.png",
+      "sha256": "5969133d18ce662b7a8aa4e68ac7980dc68a483206ab49e03778d0d1916bfaae"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-412.png",
+      "sha256": "707f783a5379cf4369d0c0b377e4f33a55c5aa5784f007f693881c2b8e68b41e"
+    }
+  ]
+}
