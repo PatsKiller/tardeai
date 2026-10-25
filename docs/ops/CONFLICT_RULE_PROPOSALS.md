@@ -175,7 +175,7 @@ null, with `last_failure.reason` when present. Mobile: list → full-screen shee
 ## 6. Notification
 
 One grouped intent per pass for pending proposals not yet announced (`notified` events), through
-`scripts/lib/host_comms_intents.queue_intent` (producer `conflict_rule_proposals`, domain `data` (closed alert taxonomy), kind
+`scripts/lib/conflicts/host_intent.queue_host_intent` (same rows/dedupe/cap as host_comms_intents, without its broker-reaching import closure) (producer `conflict_rule_proposals`, domain `data` (closed alert taxonomy), kind
 `rule_proposals_pending`, DIGEST → P2 needs-action). Never one per row, never a send from the lane. Until the route row
 exists the attempt is recorded `notify_failed intent_unrouted` and retried next pass.
 

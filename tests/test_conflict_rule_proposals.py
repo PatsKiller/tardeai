@@ -445,3 +445,11 @@ def test_cli_deferral_mirrors_the_standard_tier_without_db_imports(monkeypatch):
     assert CLI._deferral("conflict_rule_proposal").defer is True
     monkeypatch.setattr(off, "is_scheduled_deepseek_window", lambda now=None: True)
     assert CLI._deferral("conflict_rule_proposal").defer is False
+
+
+def test_direct_host_intent_queue_refuses_without_route_or_ledger(tmp_path, monkeypatch):
+    from scripts.lib.conflicts import host_intent as H
+    with pytest.raises(H.HostIntentError) as exc:
+        H.queue_host_intent(producer="conflict_rule_proposals", domain="data", kind="rule_proposals_pending",
+                            subject="s", summary="x", execution_id="r1", node="n", ledger_path=tmp_path / "absent.sqlite")
+    assert exc.value.reason in {"intent_unrouted", "ledger_absent"}   # unrouted until the [shared-infra] route lands

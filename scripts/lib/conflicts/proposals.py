@@ -918,7 +918,10 @@ def notify_pending(root, *, now: datetime, run_id: str, config: Optional[dict] =
     summary = (f"{len(pending)} proposed conflict rule{'s' if len(pending) != 1 else ''} awaiting your approval "
                f"({len(fresh)} new): {titles}. Review: {notify['page_url']}")
     if queue is None:
-        from scripts.lib.host_comms_intents import queue_intent as queue
+        from .host_intent import queue_host_intent
+
+        def queue(**kw):
+            return queue_host_intent(ledger_path=None, **kw)
     try:
         receipt = queue(producer=notify["producer"], domain=notify["domain"], kind=notify["kind"],
                         subject=f"Conflict rules: {len(pending)} awaiting approval", summary=summary,
