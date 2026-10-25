@@ -1,0 +1,781 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "jobs",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Jobs & health: approved 2026-10-24 boards (Board 16 Jobs & health)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/jobs",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Jobs.dc.html",
+        "sha256": "2733416c951a0fdda7d6b02ef0a7202feaa09681e6e54f4658e3546e117609a0",
+        "bytes": 6530,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Jobs.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-all-1440.png",
+        "sha256": "77206a3d815fd9b4e1249233005bd5a9dffb29eecec0a9c4f5e040866832d983",
+        "bytes": 165505,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-all-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-all-390.png",
+        "sha256": "f855ab78f2a657aebcc7dde537a5a97e4860a29533299ff71a40a2dc5e5397ec",
+        "bytes": 181983,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-all-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-all-412.png",
+        "sha256": "bf7919226a6e102d5038e8ed769cb5ff3dedd960c905b203b5951904ef9b72c0",
+        "bytes": 183218,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-all-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-attention-1440.png",
+        "sha256": "43e32448fffd21e9adb0945a6e01b9ef17beed3cedb1b65e5804edb1f19472a7",
+        "bytes": 140454,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-attention-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-attention-390.png",
+        "sha256": "9c0b19d8bc9cc544dc858006e9a5bd523be2f44a5db22e6a44ea89a8d95e02cb",
+        "bytes": 153691,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-attention-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-attention-412.png",
+        "sha256": "f1dc7f9d663b29db54fc21d98e4867eb30c63b9f25f9702ffa075922a451953f",
+        "bytes": 154842,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-attention-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-canonical-1440.png",
+        "sha256": "e2bee744876f5fee1cce09006b92b7981f0eabc58777fc52751d078fffef9967",
+        "bytes": 110267,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-canonical-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-canonical-390.png",
+        "sha256": "610495e45f44e76b81d6de3234912e8f8ff4da5675fd932b43cdd87d1acbed4e",
+        "bytes": 114153,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-canonical-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-canonical-412.png",
+        "sha256": "7c9c99f2ed037f5efec7a017f07914d79730deaba9451d3ef5358b9f8c6b6ad7",
+        "bytes": 114899,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-canonical-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-canonical-1440.png",
+        "sha256": "2966f116bb9b7d049f7097a208aa231426902e25d9a56d8868f30b330b54179c",
+        "bytes": 169317,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-canonical-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-canonical-390.png",
+        "sha256": "8a9f74be3cf6cf3e27615aad0df5fda2442acdfad73f00ea01db688c2005b4b9",
+        "bytes": 128291,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-canonical-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-canonical-412.png",
+        "sha256": "72b61181f3aa7a188f3b238d91e7de26edcc96388f45879fd3b25ca3cdb847ac",
+        "bytes": 126467,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-canonical-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-detail-unavailable-1440.png",
+        "sha256": "ab95470580283c21fe9357a0ef8ff9f05246f19ca211f0ab191f8ed26f9cde56",
+        "bytes": 151903,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-detail-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-detail-unavailable-390.png",
+        "sha256": "684083ff708efd02da54300b4ba0a983f8558859ac029bf7e80d1ab8e67972f8",
+        "bytes": 114334,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-detail-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-detail-unavailable-412.png",
+        "sha256": "bc2becd92fccb39a828529930415745c94c70bd866bbaeedcf3e54bacbbd365e",
+        "bytes": 108168,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-detail-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-multi-1440.png",
+        "sha256": "eedc3a74ae21c2f7c2e22661d3185633428c0f63ca82980ac0211201ff86d629",
+        "bytes": 178396,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-multi-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-multi-390.png",
+        "sha256": "3c3ce5cbd58512505dfd1860e6189a4dd0f24495855114d5993219ba444211c0",
+        "bytes": 128524,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-multi-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-multi-412.png",
+        "sha256": "bc6431ab271b9dd8346f2bc5ff5cebfe5c682f142f4e3fb808021ee36e52f88a",
+        "bytes": 128956,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-multi-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-stale-1440.png",
+        "sha256": "28458fb59e884e15ffe29d6a9996c5560e8d508b434caa4021d6129fcc5cb3e6",
+        "bytes": 176843,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-stale-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-stale-390.png",
+        "sha256": "635e528f48049d4e6a72f57a697c04cb9e15f336916847f2dc414a512d548b69",
+        "bytes": 130131,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-stale-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-stale-412.png",
+        "sha256": "ea1c7c4e6520fa2a4bae982f8e2bc4ed7964590b901994d52251daa6e37f7476",
+        "bytes": 131436,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-stale-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-unavailable-1440.png",
+        "sha256": "e2bee744876f5fee1cce09006b92b7981f0eabc58777fc52751d078fffef9967",
+        "bytes": 110267,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-unavailable-390.png",
+        "sha256": "610495e45f44e76b81d6de3234912e8f8ff4da5675fd932b43cdd87d1acbed4e",
+        "bytes": 114153,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-detail-unavailable-412.png",
+        "sha256": "7c9c99f2ed037f5efec7a017f07914d79730deaba9451d3ef5358b9f8c6b6ad7",
+        "bytes": 114899,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-detail-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-gap-1440.png",
+        "sha256": "af84cbf59501c536c39fc44a39d787d910027cbc70d5c2fe33994d2c7ac44857",
+        "bytes": 106439,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-gap-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-gap-390.png",
+        "sha256": "89a102ffd6505689f9506fefb638b1eb961a21f5c1e3d9ca2a786751bff01e86",
+        "bytes": 111113,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-gap-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-gap-412.png",
+        "sha256": "26b6289e9c04d1a4e77327c0b84b669153b76889ef343cfcb6994ea8af99a554",
+        "bytes": 111684,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-gap-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-multi-1440.png",
+        "sha256": "e2bee744876f5fee1cce09006b92b7981f0eabc58777fc52751d078fffef9967",
+        "bytes": 110267,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-multi-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-multi-390.png",
+        "sha256": "610495e45f44e76b81d6de3234912e8f8ff4da5675fd932b43cdd87d1acbed4e",
+        "bytes": 114153,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-multi-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-multi-412.png",
+        "sha256": "7c9c99f2ed037f5efec7a017f07914d79730deaba9451d3ef5358b9f8c6b6ad7",
+        "bytes": 114899,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-multi-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-null-headline-1440.png",
+        "sha256": "be1718b2802d1a8f250f1da78a77c8858244057791495953b8d6bbcf162708eb",
+        "bytes": 102596,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-null-headline-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-null-headline-390.png",
+        "sha256": "da50c57d2eb0975bd781ae089dc67eb5638040df12acf6d15bf0166955602790",
+        "bytes": 107095,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-null-headline-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-null-headline-412.png",
+        "sha256": "bf80dd21c86c27db337bead6a12e61496daddcb3946e7a1e6001bfe20fe4a107",
+        "bytes": 107775,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-null-headline-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-stale-1440.png",
+        "sha256": "048e52d582ee693e78a5ecf5ce0dbad57ff38d1dd513f8ff2892587a454b9ea7",
+        "bytes": 117228,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-stale-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-stale-390.png",
+        "sha256": "c5d33159080c34ad10b912bb6da6fe06680571b23fd3db1e029191cdaa5cb367",
+        "bytes": 120806,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-stale-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-stale-412.png",
+        "sha256": "828b7a3a87d9c56d70b707f0d8a195b7884862d4df5cf2c1293c1344eb2a0d57",
+        "bytes": 121600,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-stale-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-unavailable-1440.png",
+        "sha256": "91be05cfe4db17f366536f3b5aed341ac84ff54d10b51229389a10707a746b9a",
+        "bytes": 108230,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-unavailable-390.png",
+        "sha256": "6438b91efd0b3d2243de1d322bdc1c0c11d414ccddf7d3fb89ceb663d0432ba3",
+        "bytes": 112611,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-dataerror-unavailable-412.png",
+        "sha256": "69e5a942226b865d3821c2640fc47e105ae929704fe895f3362be5e38428b01c",
+        "bytes": 113324,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-dataerror-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-detail-390.png",
+        "sha256": "8fcdb07b7963d0f80468df721d5204892a02810bd329c4c676da13f6289219a2",
+        "bytes": 169349,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-detail-412.png",
+        "sha256": "06cea8d915e735f5023f5d679f51e3eabe441557db56562eeaa148100db2860c",
+        "bytes": 161804,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-empty-1440.png",
+        "sha256": "611e1a1c54a196c948500fed592ba5b8a88da608f6d6c856aa8ad47c7ba22e07",
+        "bytes": 118532,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-empty-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-empty-390.png",
+        "sha256": "c875058eeda8f148fc6a1755c63b4407b05302600bda38aee1cb2c2082e14afd",
+        "bytes": 122608,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-empty-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-empty-412.png",
+        "sha256": "6d89908a2e3742c7a8eb500ce99a6e34551763024a1767fc9d6b4aeae89e2fe9",
+        "bytes": 123801,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-empty-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-native-dataerror-detail-1440.png",
+        "sha256": "6589bc11fdc608cb1d4c20428a9f5c46657563f304c2ff42bb7a47b7c1b14c45",
+        "bytes": 158522,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-native-dataerror-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-native-dataerror-detail-390.png",
+        "sha256": "c4d348883432de21f5897b6b8f8566de766542f48c7b1c21071e92c00100ce9f",
+        "bytes": 118858,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-native-dataerror-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-native-dataerror-detail-412.png",
+        "sha256": "1756e444209bbf3ec26c79ff0651094bc19262d7c7ca32c55caf6dc15ea6b3b0",
+        "bytes": 117321,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-native-dataerror-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-unavailable-1440.png",
+        "sha256": "0ffb792300be0e7132f844cf9c05a9bd92be4f4a0634f4798b1ff502257ec863",
+        "bytes": 114679,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-unavailable-390.png",
+        "sha256": "9cb2cdcf0e45775fc28c45667262e3c1884adf4222162c89c409828c16a61cc6",
+        "bytes": 118070,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-16-unavailable-412.png",
+        "sha256": "9e481e28cf33add44d19b145cea7f2f81e1e7ea0c37da70ec2598e134cb68c33",
+        "bytes": 120236,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-16-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-ops-jobs-1440.png",
+        "sha256": "9c96be895ebdea623fa8ccf65f63e6df846cb2f8fb7b606e37b81178da8ec484",
+        "bytes": 172643,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-jobs-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-ops-jobs-390.png",
+        "sha256": "1cadd0e2e547a768a66dc8916e4973e2622dff56bea0c91b6b5b4655ff2ffce2",
+        "bytes": 69926,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-jobs-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-ops-jobs-412.png",
+        "sha256": "d8a0569f863a7069a1cd042398d3aa0f2a03227b4fb4d8d58563ea8b4303d0bf",
+        "bytes": 77983,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-jobs-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-all-1440.png",
+        "sha256": "aaaab2ee5b8a7ce557c2f125dab811febd777b8cb343737229bcd21f1353270f",
+        "bytes": 95902,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-all-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-all-390.png",
+        "sha256": "bfbd2109c06335c5a20b221ea710be259193b554167a3c3abca9b0da6fc87bc0",
+        "bytes": 104545,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-all-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-all-412.png",
+        "sha256": "aa492d93576e332086586d3ae9217412fe9598bc39859b412411b05ed4880a10",
+        "bytes": 104647,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-all-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-attention-1440.png",
+        "sha256": "e852a765acc06908d9d034d0830e115886e05966fcab046bff3ee17b17be29bc",
+        "bytes": 73124,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-attention-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-attention-390.png",
+        "sha256": "3776b94bc03e9b397864aa880defbed3ad9e9110111dc37fa1bf59189fd7f9a9",
+        "bytes": 76121,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-attention-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-attention-412.png",
+        "sha256": "b7e9b6204b528c75b46118f4453684486526de0c229a550d55bd4cff468b187d",
+        "bytes": 76133,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-attention-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-canonical-1440.png",
+        "sha256": "4c0f13cd630f4ac212de5fea0eb6879f58b43a1b3ef0e7c54a11a29b60705b4a",
+        "bytes": 54188,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-canonical-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-canonical-390.png",
+        "sha256": "df2c96f0086f2a0eb1851b020e525ddb1a7dfcf233aa206257fcac043eea545d",
+        "bytes": 47633,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-canonical-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-canonical-412.png",
+        "sha256": "b5661da594deb62769922f0ffdeea27d67134cc627a6b79fb082ce8009149cf1",
+        "bytes": 48124,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-canonical-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-canonical-1440.png",
+        "sha256": "ca78c15271941f34887f7f6681c5b3ccf8c137f6b1dc58285696d5ccb10b3f02",
+        "bytes": 120365,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-canonical-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-canonical-390.png",
+        "sha256": "dc5a4213708588acb48f44bc183051587871fdbcb826e06a0d220211989983c1",
+        "bytes": 67491,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-canonical-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-canonical-412.png",
+        "sha256": "f4fcfff28b569eb85714a1ce2b82dc2d9f0de1d18139b0a687530b706cfc2158",
+        "bytes": 68518,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-canonical-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-detail-unavailable-1440.png",
+        "sha256": "4a9e899803cd6021dac35334769765522388fd8bd35c4b97d760583b79686bd4",
+        "bytes": 101617,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-detail-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-detail-unavailable-390.png",
+        "sha256": "c142d9d288de1a72ab9d53bb683ba92d48a35bf0d3c5b7fd0ccd3e3de33c0fb6",
+        "bytes": 52636,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-detail-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-detail-unavailable-412.png",
+        "sha256": "e22b45bc4fe2fe446c35b21df6f3b4fa2634a9f4c1c15f87261451ef18acb549",
+        "bytes": 51834,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-detail-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-multi-1440.png",
+        "sha256": "af34a8c052cab93c229362109c8ffd42e059a35327aca1d4d593df3a5a275e92",
+        "bytes": 129572,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-multi-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-multi-390.png",
+        "sha256": "427f187212306f6da9156a1294eb7484456cc604b3361bd62fc732eec214be3f",
+        "bytes": 76173,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-multi-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-multi-412.png",
+        "sha256": "223b406268590fbda0975f842d831ba29a199b870ec6dc9e9cd810dbe61a24d5",
+        "bytes": 77016,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-multi-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-stale-1440.png",
+        "sha256": "8b6fcb17999d51d5bd8074975967d758df251cf970f5ab4b9cc154bb3fbf5d5a",
+        "bytes": 127439,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-stale-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-stale-390.png",
+        "sha256": "1cc2f536527092bdfdd459962e8018d7108b268975432c73bef677637fafd1a4",
+        "bytes": 67923,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-stale-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-stale-412.png",
+        "sha256": "4dd355060b83e084e44d801c1daa3504384be53aa1c603130b84612d23da7319",
+        "bytes": 68444,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-stale-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-unavailable-1440.png",
+        "sha256": "4c0f13cd630f4ac212de5fea0eb6879f58b43a1b3ef0e7c54a11a29b60705b4a",
+        "bytes": 54188,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-unavailable-390.png",
+        "sha256": "df2c96f0086f2a0eb1851b020e525ddb1a7dfcf233aa206257fcac043eea545d",
+        "bytes": 47633,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-detail-unavailable-412.png",
+        "sha256": "b5661da594deb62769922f0ffdeea27d67134cc627a6b79fb082ce8009149cf1",
+        "bytes": 48124,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-detail-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-gap-1440.png",
+        "sha256": "90de125449a1e45735c4b50fb3ec227a82153997a09ee9c0c0643b25f5e0418d",
+        "bytes": 50343,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-gap-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-gap-390.png",
+        "sha256": "48d9c9cf7987864ca57fed33528edf3f4271757e01e8fbbde51f5467c5642353",
+        "bytes": 44699,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-gap-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-gap-412.png",
+        "sha256": "af441726f67884856dda68c0c85cd37242a919892b893c7d285d6b5a982103c4",
+        "bytes": 45055,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-gap-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-multi-1440.png",
+        "sha256": "4c0f13cd630f4ac212de5fea0eb6879f58b43a1b3ef0e7c54a11a29b60705b4a",
+        "bytes": 54188,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-multi-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-multi-390.png",
+        "sha256": "df2c96f0086f2a0eb1851b020e525ddb1a7dfcf233aa206257fcac043eea545d",
+        "bytes": 47633,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-multi-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-multi-412.png",
+        "sha256": "b5661da594deb62769922f0ffdeea27d67134cc627a6b79fb082ce8009149cf1",
+        "bytes": 48124,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-multi-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-null-headline-1440.png",
+        "sha256": "22e9b318120bf73cb157807b52c753dd9380ff825271f0adb089801dd5911634",
+        "bytes": 46348,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-null-headline-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-null-headline-390.png",
+        "sha256": "03b60a1b28c0affb59af03fecd131871ebac2d8c41bda2aec68e4157c36edec2",
+        "bytes": 40884,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-null-headline-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-null-headline-412.png",
+        "sha256": "c1e182c565d2ab8ca14df7be6aa9f41c34bb358021e8a7bad2b84912e21b86c6",
+        "bytes": 41389,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-null-headline-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-stale-1440.png",
+        "sha256": "39f8380974c05bf5d40516d489be1fb7c500c8faaf3c7706b4af2b2596a0c8c3",
+        "bytes": 61230,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-stale-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-stale-390.png",
+        "sha256": "b61e907be42fe003b27225b39d126af72cff32c0d78b7479a39710fbe3daeb71",
+        "bytes": 54093,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-stale-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-stale-412.png",
+        "sha256": "9790ee8f827c3411034a5d3f63161b46dd35838410938491265f20f3a16b12a9",
+        "bytes": 54593,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-stale-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-unavailable-1440.png",
+        "sha256": "1d0153f37c4fdbeb5387691daec77a890512c0132833277cab5cf242e6a75166",
+        "bytes": 52199,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-unavailable-390.png",
+        "sha256": "ec6ef8e712b3ef78f570a718aa744f4023f96c77275e3ba6851d2fe318caafcd",
+        "bytes": 46255,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-dataerror-unavailable-412.png",
+        "sha256": "d2509100a2963bee8f79cf2960d7d9ccfa52f6728285155295e2f79dd93181d5",
+        "bytes": 46729,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-dataerror-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-detail-390.png",
+        "sha256": "a2e41dba3c34ecf2f032c5efe8e8d479cbc5feecb0c5fbe94ccd97353354592a",
+        "bytes": 91063,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-detail-412.png",
+        "sha256": "adff9adfe5efdf4501eae31127a5f4f3050ba1b7aae6555e5b4704c378bf70b9",
+        "bytes": 85340,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-empty-1440.png",
+        "sha256": "27d3f9d5606b0456d43903c321f0f16fe40b1d741b2735571faceb4efd15af3d",
+        "bytes": 50832,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-empty-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-empty-390.png",
+        "sha256": "197a9f9132fa9640515421a14980d5096596e2a7b278e1fc2c8246a9c9fcb588",
+        "bytes": 45213,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-empty-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-empty-412.png",
+        "sha256": "e9b76d5bb506c0efd210798e89f68cbbb952c8909264ca54f5384019dcf0e1ff",
+        "bytes": 45637,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-empty-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-native-dataerror-detail-1440.png",
+        "sha256": "3662efffb0f76f53702fd35f068eeb1d628c8287587f690ff6066832a7dbc785",
+        "bytes": 107404,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-native-dataerror-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-native-dataerror-detail-390.png",
+        "sha256": "a0b41272d5128f109b55df295ac7c7ef5736941b0dbfda80c617c62dedfb940b",
+        "bytes": 53483,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-native-dataerror-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-native-dataerror-detail-412.png",
+        "sha256": "1582f3144c8e98962a7b95132e195fadd0b3680b4dd80aa7f24123bf8aafc6ae",
+        "bytes": 54105,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-native-dataerror-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-unavailable-1440.png",
+        "sha256": "f0df9c60501081193cc4a2de7eeceb69b531912fbf36eb4cff97115ff8837361",
+        "bytes": 46958,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-unavailable-390.png",
+        "sha256": "6ed314bc6471c2828614ede91035b92f215cfee0a1fac046430d297e79b45f53",
+        "bytes": 41086,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-16-unavailable-412.png",
+        "sha256": "63f7b848599516f3ce39bfd5f19b3c84706d92248268b0e4ea5d801010237826",
+        "bytes": 42382,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-16-unavailable-412.png"
+      }
+    ]
+  },
+  "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

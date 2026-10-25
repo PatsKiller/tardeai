@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "design_workflow_20261025",
+  "files": [
+    "tests/test_design_registry_20261025.py"
+  ],
+  "anchor": "DESIGN_WORKFLOW_20261025",
+  "comment": [
+    "ANCHOR: DESIGN_WORKFLOW_20261025 — Design workflow (operator approved 2026-10-25, AGENTS.md §28.13 proposed text in design/AGENTS_28_13.md): design/system/tokens.json is THE token source and scripts/gen_design_tokens.py renders apps/command-center-v3/src/styles/tokens.css byte-identically (--check fails on drift, refuses unknown placeholders, unused values and CSS injection); design/registry.json lists every nav page; every design/pages/<page>/versions/vNNN/status.json validates (states, operator approval, ledger citation except the 10-24 back-fill, private-asset relative paths + sha256, version fingerprint); v001 carries the operator's 10-24 approvals; committed design text passes the public-repo privacy scan (money, grouped amounts, account-number shapes; host-supplied tickers and account names). Hermetic."
+  ]
+}

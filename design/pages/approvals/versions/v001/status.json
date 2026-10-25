@@ -1,0 +1,130 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "approvals",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Approvals: approved 2026-10-24 boards (Board 19 Approvals Center, Board 20 Amendment reader)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/approvals",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Amendment.dc.html",
+        "sha256": "91a3239e13755c2843b0cca6118fffb2df8036f56b813bc8e174262d16df549d",
+        "bytes": 9288,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Amendment.dc.html"
+      },
+      {
+        "path": "v001/mockups/Approvals.dc.html",
+        "sha256": "f157094575742935945ff40237354ba16a7776c2e6c16eaf85b802aefb01f63b",
+        "bytes": 6777,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Approvals.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-19-waiting-1440.png",
+        "sha256": "390870ba0c7bec56ca491b6329c2ae400615e92b50fbccb41c2dbbe2fec890ad",
+        "bytes": 104876,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-19-waiting-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-19-waiting-390.png",
+        "sha256": "d3b795e51c0334ffbc0f909da0ebbbb425335f9f729ffd80bf9e49c3bf8d7dfb",
+        "bytes": 97365,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-19-waiting-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-19-waiting-412.png",
+        "sha256": "c36062ea723ecdf81a7e082d3cb9f8e4b2dae388373b98aab158ace5bfca54c0",
+        "bytes": 97905,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-19-waiting-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-decided-1440.png",
+        "sha256": "ebb2a5ac17cc223769d7a55cde25655486661e2b3816787d402bb0ea3b5cf391",
+        "bytes": 199411,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-decided-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-decided-390.png",
+        "sha256": "51de9e0eb1b431f47c2d36835aa482fca32022c3163dd0113f5ed393682eeb6d",
+        "bytes": 167014,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-decided-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-decided-412.png",
+        "sha256": "5143acdfef653c3fcbef75ac8370c85a060ede655c19861dc712773b6c3b820b",
+        "bytes": 130383,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-decided-412.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-read-1440.png",
+        "sha256": "063d584ea4956334b7054087671ff723fe95133c3449b7fa3cf592353db9ac2e",
+        "bytes": 203898,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-read-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-read-390.png",
+        "sha256": "a4fa7543155cf224ed74fd3aa13325db96a291152ae2c9d7ccfbbdffd4739fcc",
+        "bytes": 156630,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-read-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-20-read-412.png",
+        "sha256": "be6f364180747d14f79baacc465ccf0fe4e43dc0161b8dd7f9f43095a76a4417",
+        "bytes": 120142,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-20-read-412.png"
+      }
+    ]
+  },
+  "fingerprint": "cd4c9ffaa51a21a4e0bab7997490c8336285520aabe7d53cbca6f9c2cc8a8201",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

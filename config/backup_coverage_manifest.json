@@ -874,6 +874,7 @@
     "ps:tools",
     "ps:data/active_trader",
     "ps:data/governance",
+    "ps:data/design",
     "ps:data/options_intent",
     "ps:data/runtime"
    ]

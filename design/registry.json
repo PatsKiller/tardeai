@@ -1,0 +1,771 @@
+{
+  "schema": "DesignRegistry@v1",
+  "_about": "Every Command Center v3 page: route, approved / current / baseline version, owner. Read design/README.md first. Private assets (mockups, screenshots) live on the host under private_store and are referenced by sha256 only.",
+  "states": [
+    "DRAFT",
+    "PROPOSED",
+    "APPROVED",
+    "IMPLEMENTING",
+    "VERIFIED",
+    "CURRENT",
+    "SUPERSEDED",
+    "REJECTED",
+    "BASELINE"
+  ],
+  "private_store": "persistent-state/data/design",
+  "widths": [
+    1440,
+    412,
+    390
+  ],
+  "pages": [
+    {
+      "id": "shell",
+      "title": "App shell: nav rail, header strip, Ask bar, desk frame",
+      "route": null,
+      "group": "Shell",
+      "component": "apps/command-center-v3/src/components/NavRail.tsx, components/DeskPage.tsx, App.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "a61f50c3b54b9ac9ff6affcf8630873e5088ac21bda83bd05b000fd2ddc0cc4f"
+        }
+      ]
+    },
+    {
+      "id": "site",
+      "title": "Site fix package (cross-cutting)",
+      "route": null,
+      "group": "Shell",
+      "component": null,
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "4a183577156cd0d56c77fe6e436926565de018e952fcbd2e07707370146e41f5"
+        }
+      ]
+    },
+    {
+      "id": "home",
+      "title": "Home",
+      "route": "/",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/HomeHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "4da7d53edaf87df8c769f8be028b74fa335e50a0e7c225da66c2f3acadd2121c"
+        }
+      ]
+    },
+    {
+      "id": "portfolio",
+      "title": "Portfolio",
+      "route": "/portfolio",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "165879d32f0ef5fd542367569a675c1f3f5343e78355efa9fe9c27bc10a7001d"
+        }
+      ]
+    },
+    {
+      "id": "trading",
+      "title": "Trading",
+      "route": "/trading",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/TradingHub.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "watch",
+      "title": "Watch",
+      "route": "/watch",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/WatchHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "1aae0aae528607955e430c78e224f25d02d7ccfdeb9a058a125916650eb0e266"
+        }
+      ]
+    },
+    {
+      "id": "re-entry",
+      "title": "Re-Entry",
+      "route": "/portfolio/re-entry",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/desks/ReEntryDesk.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "af5900e548bff96ba844ce58517c810895875f73e591c80b6c79bcfeb0b9f9ff"
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "title": "Risk",
+      "route": "/risk",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/RiskHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "ea6d8f0614de6b60549310394622f314dbe99a68ed83be6b7281d827b80b7e7b"
+        }
+      ]
+    },
+    {
+      "id": "defense",
+      "title": "Defense",
+      "route": "/defense",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/desks/DefenseDesk.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "411bef5737cb9487bf6f62e2aabf8044402a2f475536e7a7f95e15c69a122d66"
+        }
+      ]
+    },
+    {
+      "id": "rotation",
+      "title": "Rotation",
+      "route": "/rotation",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/RotationIntelligence.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "9a0669d8126c98dd8833dff42561e66c10b84c9e7c8f4b0a83b46ff6e1fe80f0"
+        }
+      ]
+    },
+    {
+      "id": "active-trader",
+      "title": "Active Trader",
+      "route": "/active-trader",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/ActiveTraderHub.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "tradeinview",
+      "title": "TradeInView",
+      "route": "/journal",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/TradeInViewPage.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "6f1df1dd826978f6d3f6809e94eadce82d3d02a683301e42c44f111f098812ab"
+        }
+      ]
+    },
+    {
+      "id": "strategy",
+      "title": "Strategy",
+      "route": "/strategy",
+      "group": "Trade",
+      "component": "apps/command-center-v3/src/pages/desks/StrategyDesk.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "cfa4b65df5d189e800dcdd4a1c836abbf4d3908113726176b0c95bf4e0ea10f4"
+        }
+      ]
+    },
+    {
+      "id": "cio",
+      "title": "CIO Desk",
+      "route": "/cio",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/CioHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "4c472f291eb0f17a8c09a96bc41af368c8073f3d4b5eccded6c31b83dd8f6071"
+        }
+      ]
+    },
+    {
+      "id": "advisory",
+      "title": "Advisory Desk",
+      "route": "/advisory",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/AdvisoryDeskHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "ab0942e288306c598c8e94a1f0ce1874f1cfe3f772e348e9c51c6283cf7dd537"
+        }
+      ]
+    },
+    {
+      "id": "my-questions",
+      "title": "My questions",
+      "route": "/cio/questions",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/MyQuestions.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "14a7c802e55b94ff841bddb070d5d703d07bc1053a390dcff9a6a9c3f6b21037"
+        }
+      ]
+    },
+    {
+      "id": "research-intel",
+      "title": "Research Intel",
+      "route": "/research-intelligence",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "intelligence",
+      "title": "Intelligence",
+      "route": "/intelligence",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/IntelligenceHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "569a4b68ff845aa31b0ae86a6c17c87a4d793732806ee25d56a8639876ef7f5d"
+        }
+      ]
+    },
+    {
+      "id": "research-lineage",
+      "title": "Research lineage",
+      "route": "/closed-loop",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/ClosedLoopPanel.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "2304fcca5d4dac03674c10a7863d9c6e4eb40c0cc8cebf7b19202557fabbd832"
+        }
+      ]
+    },
+    {
+      "id": "hermes",
+      "title": "Hermes",
+      "route": "/hermes",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/HermesHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "37cebc1ca39538471ef22b8a1235da044f96c8419393cc81a2a1477ab675b01c"
+        }
+      ]
+    },
+    {
+      "id": "rec-intel",
+      "title": "Rec Intelligence",
+      "route": "/rec-intel",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "0c4bfb35139a12f6cebb107cb44a352e60a9ba9f8fad3bd1f2670e7027d4d317"
+        }
+      ]
+    },
+    {
+      "id": "reports",
+      "title": "Reports",
+      "route": "/reports",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/ReportsHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "d13099d8d9d71b4c866ba2287a1895fbd4b62aff5ba88aa71b659fef6c064fe3"
+        }
+      ]
+    },
+    {
+      "id": "communications",
+      "title": "Communications",
+      "route": "/communications",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/CommunicationsHub.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "health",
+      "title": "Health",
+      "route": "/health",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/HealthHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "jobs",
+      "title": "Jobs & health",
+      "route": "/ops/jobs",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/JobsPage.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "title": "Agents",
+      "route": "/agents",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/desks/AgentsDesk.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "497a0637b67107454c1fa61eb73fb3374d99d2abfa7c83ef3274710340e0edac"
+        }
+      ]
+    },
+    {
+      "id": "consumption",
+      "title": "LLM Spend",
+      "route": "/consumption",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/ConsumptionHub.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "coordination",
+      "title": "Coordination",
+      "route": "/coordination",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "broker-access",
+      "title": "Broker Access",
+      "route": "/system/broker-access",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/BrokerAccessPage.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "releases",
+      "title": "Releases & Schedules",
+      "route": "/system/releases",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/ReleasesSchedules.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "approvals",
+      "title": "Approvals",
+      "route": "/approvals",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/ApprovalsHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "cd4c9ffaa51a21a4e0bab7997490c8336285520aabe7d53cbca6f9c2cc8a8201"
+        }
+      ]
+    },
+    {
+      "id": "rulebook",
+      "title": "Rulebook",
+      "route": "/policy",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/PolicyHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "ed451576ea48cbf33ef66507e56b9a603b4383583d27f3f8122c86aa9d7183ea"
+        }
+      ]
+    },
+    {
+      "id": "conflict-rules",
+      "title": "Conflict rules",
+      "route": "/conflicts/rules",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/ConflictRules.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "ops-controls",
+      "title": "Ops Controls",
+      "route": "/system/ops-controls",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/OpsControls.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "title": "System",
+      "route": "/system",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/SystemHub.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "APPROVED",
+          "approved_at": "2026-10-24",
+          "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
+        }
+      ]
+    },
+    {
+      "id": "control-plane",
+      "title": "Control Plane (preview)",
+      "route": "/control-plane",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-system",
+      "title": "Control Plane · System (preview)",
+      "route": "/control-plane/system",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-agents",
+      "title": "Control Plane · Agent Office (preview)",
+      "route": "/control-plane/agents",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-workflows",
+      "title": "Control Plane · Workflow Trace (preview)",
+      "route": "/control-plane/workflows",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-research",
+      "title": "Control Plane · Research (preview)",
+      "route": "/control-plane/research",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-data",
+      "title": "Control Plane · Data (preview)",
+      "route": "/control-plane/data",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-identity",
+      "title": "Control Plane · Identity (preview)",
+      "route": "/control-plane/identity",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-notifications",
+      "title": "Control Plane · Notifications (preview)",
+      "route": "/control-plane/notifications",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-learning",
+      "title": "Control Plane · Learning (preview)",
+      "route": "/control-plane/learning",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-maturity",
+      "title": "Control Plane · Maturity (preview)",
+      "route": "/control-plane/maturity",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    },
+    {
+      "id": "control-plane-audit",
+      "title": "Control Plane · Audit (preview)",
+      "route": "/control-plane/audit",
+      "group": "Control Plane (preview)",
+      "component": "apps/command-center-v3/src/pages/control-plane/",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
+    }
+  ]
+}

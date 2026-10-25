@@ -1,0 +1,60 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "reports",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Reports: approved 2026-10-24 boards (Board 9 Reports)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/reports",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Reports.dc.html",
+        "sha256": "0bafb0f9e769f773def144ed7cb9c3056b0ed3addb3a47aa3e1b3aeca4b23ace",
+        "bytes": 5414,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Reports.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      }
+    ]
+  },
+  "fingerprint": "d13099d8d9d71b4c866ba2287a1895fbd4b62aff5ba88aa71b659fef6c064fe3",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "defense",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Defense: approved 2026-10-24 boards (Board 3 Defense)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/defense",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Defense.dc.html",
+        "sha256": "e2f0ebe25d3e4b5a252ef3ca7187b2d73efb28bb10e005d0d46e5d69b0a5daf4",
+        "bytes": 5580,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Defense.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/impl-3-book-detail-1440.png",
+        "sha256": "512e590ed383ce13dc8a05cbcbc3b78dd00995a93c1250e85250fb292be23930",
+        "bytes": 35120,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-book-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-book-detail-390.png",
+        "sha256": "4677e1202228a2b3a3b420c77f6c7166000f2b54ecf3d39eb2677fa440e2f5b1",
+        "bytes": 29282,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-book-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-book-detail-412.png",
+        "sha256": "195c58d4c393ff6f7a825d469bd4a78336bae2962e06bb50a6880d3378e958aa",
+        "bytes": 29782,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-book-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-hedges-gaps-1440.png",
+        "sha256": "844c54a7702197f01d6c95f4f6ef565749917289e3443e08ae4715201f18defa",
+        "bytes": 185081,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-hedges-gaps-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-hedges-gaps-390.png",
+        "sha256": "d2f0ce2e46fd1f103fb2fe6096ad88a56e728a95a6916f6f52b72585cdd0fb88",
+        "bytes": 203136,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-hedges-gaps-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-hedges-gaps-412.png",
+        "sha256": "e4f1c333299883549596ac80c8957754b42a1bdd73bb4899ab1c2c2f6b35b620",
+        "bytes": 203163,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-hedges-gaps-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-unavailable-1440.png",
+        "sha256": "473288a76484a6ba09a618872504c6112b0a5e3205bf3eb7dc0b9444b4a18490",
+        "bytes": 60628,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-unavailable-390.png",
+        "sha256": "b205458dea19aef1c580f07a63d5346ee095c472ecce345a271b9fddb345fa78",
+        "bytes": 52965,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-unavailable-412.png",
+        "sha256": "c7ba9230f2aa2cb380899529a3e9c201f6678780290e1d7be2bc6977d2f42d0c",
+        "bytes": 53114,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-unavailable-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-where-to-act-1440.png",
+        "sha256": "a70a7beec4362ca4c93a7373d3b234f954cc59b593981c6ae4568f9e7dc27cf9",
+        "bytes": 172736,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-where-to-act-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-where-to-act-390.png",
+        "sha256": "af683b71941902b0e90fbf3b95b7ad8be6808597fc6c2606879a758c1de62561",
+        "bytes": 191153,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-where-to-act-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-3-where-to-act-412.png",
+        "sha256": "bbe0115a5bd91d76025853f4a8b42f6f45ea8a3042a45133b69102fceb25670a",
+        "bytes": 190508,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-3-where-to-act-412.png"
+      }
+    ]
+  },
+  "fingerprint": "411bef5737cb9487bf6f62e2aabf8044402a2f475536e7a7f95e15c69a122d66",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

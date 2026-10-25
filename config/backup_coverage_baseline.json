@@ -38,6 +38,7 @@
   "ps:data": "PARTIAL: ps_container (seeded 2026-10-09)",
   "ps:data/active_trader": "NONE: ps_unbacked (seeded 2026-10-09)",
   "ps:data/governance": "NONE: ps_unbacked (seeded 2026-10-09)",
+  "ps:data/design": "NONE: ps_unbacked (design workflow private assets, 2026-10-25: mockups and live screenshots that show real holdings; must never go to the public repo, so git_remote is not a backup; the operator chooses a private off-box path)",
   "ps:data/hermes": "PARTIAL: ps_forked (seeded 2026-10-09)",
   "ps:data/options_intent": "NONE: ps_unbacked (seeded 2026-10-09)",
   "ps:data/research": "PARTIAL: ps_forked (seeded 2026-10-09)",

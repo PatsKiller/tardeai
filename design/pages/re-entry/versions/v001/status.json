@@ -1,0 +1,144 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "re-entry",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Re-Entry: approved 2026-10-24 boards (Board 1 Re-Entry)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/re-entry",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/ReEntry.dc.html",
+        "sha256": "a8935956a0c3872ce79a22c26f14508978094a5c32557f30ee4f931b2344e514",
+        "bytes": 5644,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/ReEntry.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/impl-1-exits-review-1440.png",
+        "sha256": "6fdcfa583c91880c7a3171b91f1a69b65c45812ff74eb1f13ba27ccdb6a0391a",
+        "bytes": 166389,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-exits-review-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-exits-review-390.png",
+        "sha256": "18bb02be41888292cc6ae2879919b14868c664d2c0f6f2da13e7d912c4777a8a",
+        "bytes": 183006,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-exits-review-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-exits-review-412.png",
+        "sha256": "359beb7af12b45975f9492e3454b49e6250701447e69a97e4ffcb6f58b669072",
+        "bytes": 181040,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-exits-review-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-packet-detail-1440.png",
+        "sha256": "4f4ec20883e6e7e2da1d924c931238efe3137e50e9f026375c0e2d7e9680eac0",
+        "bytes": 43381,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-packet-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-packet-detail-390.png",
+        "sha256": "9fab0dd9023cc8a219e3a0f7ba5249bc226e47558c3dd94d2b01965c052c2ef4",
+        "bytes": 37272,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-packet-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-packet-detail-412.png",
+        "sha256": "57af10b634e5301e8e537f097c53672fe853b3ddecb1213b93b2066252617e47",
+        "bytes": 37317,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-packet-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-ready-now-1440.png",
+        "sha256": "2150220039266cf5f6ca2376de0daa09d98051a416d349ca6222c46b52e95076",
+        "bytes": 196329,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-ready-now-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-ready-now-390.png",
+        "sha256": "3c782940dac20cab6123b5ab465379fe21f70cd810885349b0569340d34c534e",
+        "bytes": 211608,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-ready-now-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-ready-now-412.png",
+        "sha256": "c1b2983d2d37785160f72800d9e7376e249da963278e5db7aa8838cb1e5af9ff",
+        "bytes": 209783,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-ready-now-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-unavailable-1440.png",
+        "sha256": "2664bf150c8e8bd674bb5976b7e1c1615facd01633accd40049db28551714178",
+        "bytes": 59240,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-unavailable-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-unavailable-390.png",
+        "sha256": "2e202f8559ad4c59eff0e4647c127e812539452351a060b7cb5daeaa683169fd",
+        "bytes": 51791,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-unavailable-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-1-unavailable-412.png",
+        "sha256": "44fab70e69b3972ea08e54c5525d988a0a2b769f23b766e90615809b8bcd8c47",
+        "bytes": 51680,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-1-unavailable-412.png"
+      }
+    ]
+  },
+  "fingerprint": "af5900e548bff96ba844ce58517c810895875f73e591c80b6c79bcfeb0b9f9ff",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

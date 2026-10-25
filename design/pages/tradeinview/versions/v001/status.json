@@ -1,0 +1,389 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "tradeinview",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "TradeInView: approved 2026-10-24 boards (TradeInView redesign (Main / Journeys, Calendar, Replay, Holding history))",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approved all of your markups. Please make sure that they're implemented per your design.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/tradeinview-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/tradeinview",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Calendar.dc.html",
+        "sha256": "c28d1a7737651ca17ce27e3b35ead4f1cffeceebf5e27fa2d4a031350f52bf43",
+        "bytes": 9557,
+        "role": "mockups",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/Calendar.dc.html"
+      },
+      {
+        "path": "v001/mockups/History.dc.html",
+        "sha256": "2ba0dd42d269683fd33a4d0b419b78bdb3f4863b6249f523755826186ff9d2bf",
+        "bytes": 10934,
+        "role": "mockups",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/History.dc.html"
+      },
+      {
+        "path": "v001/mockups/Main.dc.html",
+        "sha256": "e563d7bf82ba5bc3337132dd357094de63749f12d860f6d345df97a9f7ebe752",
+        "bytes": 9888,
+        "role": "mockups",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/Main.dc.html"
+      },
+      {
+        "path": "v001/mockups/Replay.dc.html",
+        "sha256": "a9f9962c51e0522e42cb36ef89a12ede7ddd62b4d6ab4e8da3c200de13431015",
+        "bytes": 9458,
+        "role": "mockups",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/Replay.dc.html"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-day-drawer-1440.png",
+        "sha256": "3e0d13855341e8fa6c16d6d36f040a42922ecb5241a051f572779c2ab1e71e60",
+        "bytes": 87479,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-day-drawer-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-day-drawer-412.png",
+        "sha256": "767ff2b2926f1d6c203469f5fc439915d063010b7ab559cd03a5fded9f3c096c",
+        "bytes": 81207,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-day-drawer-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-empty-month-1440.png",
+        "sha256": "2ea3a3a325e0018924aad563a0791bf160233ea8b4f6d112d3bb21e1c55dc12e",
+        "bytes": 77709,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-empty-month-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-empty-month-412.png",
+        "sha256": "e90ef01ea74b0d5619d8dbcea42a25f11106689ae812890135cf99562a1f3b9b",
+        "bytes": 71470,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-empty-month-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-missing-source-1440.png",
+        "sha256": "b1e4d1576eee5838e4e4395489dd4cfada4c00e0d314da205b8c96647ead3d23",
+        "bytes": 104294,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-missing-source-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-missing-source-412.png",
+        "sha256": "a21644ea6a376b65ff16e79997cd55f1443bfac7895c1ec841cdb473eae702b3",
+        "bytes": 97916,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-missing-source-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-month-data-1440.png",
+        "sha256": "c9937414daef79ccfdd3bd1c95b1f929830e60e4371f6837575a5d470942c6a2",
+        "bytes": 77958,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-month-data-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-month-data-412.png",
+        "sha256": "37cbffa26271630309b962ed313294f7b59c9de2fa0203dfa65ec41ba3304395",
+        "bytes": 71717,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-month-data-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-query-identity-1440.png",
+        "sha256": "9cbd03333f905f964292a6004828d229cfa9a29e8d47610af6ba7fdb74f5272f",
+        "bytes": 33942,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-query-identity-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-calendar-query-identity-412.png",
+        "sha256": "98f7b7bb1960100cf49e737462317160363dd8b49eb9b31ecc3bf34eb91ae6ac",
+        "bytes": 29768,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-calendar-query-identity-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-direct-link-back-390.png",
+        "sha256": "fd4d191d84216c40d07e1849752856ed4e67a958dd955e64ed047a9e7bc53ff5",
+        "bytes": 75411,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-back-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-direct-link-back-412.png",
+        "sha256": "42c02ddb8737eae5bd3a774c2e4a1cc92227099e2e804ecacb03f97262aa992c",
+        "bytes": 80856,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-back-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-direct-link-detail-1440.png",
+        "sha256": "3d5f4b6995193044ebeeaf8c4339482e9c933d57f5ba7db4a49100245dff25a5",
+        "bytes": 211289,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-direct-link-detail-390.png",
+        "sha256": "c700b77706317e967490c6125e9965163f20ed8581634d9130cd0308dc38c9da",
+        "bytes": 67175,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-direct-link-detail-412.png",
+        "sha256": "441b76f69b77442b7cba10f47b3e8bbbd83408da299241133afd541042494ec2",
+        "bytes": 76903,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-direct-link-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-navigation-back-390.png",
+        "sha256": "a9216653c1792c6552a7848b36585ebfa60d85b31c5a0c6b6bd69dcf9e9b3519",
+        "bytes": 64576,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-back-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-navigation-back-412.png",
+        "sha256": "47426c4cc449c35ad340f7bb7ae00217fcca45594bc4ca426a891164f7772673",
+        "bytes": 65334,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-back-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-navigation-detail-1440.png",
+        "sha256": "9319fdb02f9bae09883445f04f82f127bf53c96ec984c7674fbc2f4a915cc5ae",
+        "bytes": 210270,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-navigation-detail-390.png",
+        "sha256": "c700b77706317e967490c6125e9965163f20ed8581634d9130cd0308dc38c9da",
+        "bytes": 67175,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-navigation-detail-412.png",
+        "sha256": "441b76f69b77442b7cba10f47b3e8bbbd83408da299241133afd541042494ec2",
+        "bytes": 76903,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-navigation-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-receipts.json",
+        "sha256": "ce6359b0967f4734fbb242792712c3cf42989fd7a1b096d9bbb158d442a7505b",
+        "bytes": 22799,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-receipts.json"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-wrong-detail-back-390.png",
+        "sha256": "fd4d191d84216c40d07e1849752856ed4e67a958dd955e64ed047a9e7bc53ff5",
+        "bytes": 75411,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-back-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-wrong-detail-back-412.png",
+        "sha256": "42c02ddb8737eae5bd3a774c2e4a1cc92227099e2e804ecacb03f97262aa992c",
+        "bytes": 80856,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-back-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-wrong-detail-detail-1440.png",
+        "sha256": "754dbfe0ef55fb6db2b04f6492bb867ee40fd32cdf23d5e043ffa093fdd0cb0c",
+        "bytes": 219212,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-wrong-detail-detail-390.png",
+        "sha256": "5969133d18ce662b7a8aa4e68ac7980dc68a483206ab49e03778d0d1916bfaae",
+        "bytes": 70385,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-journeys-mobile-wrong-detail-detail-412.png",
+        "sha256": "707f783a5379cf4369d0c0b377e4f33a55c5aa5784f007f693881c2b8e68b41e",
+        "bytes": 81061,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-journeys-mobile-wrong-detail-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-tradeinview-receipts.json",
+        "sha256": "3b480c3a66b2fc5a0581c37e0b767108d671adf517c721c77347a2fe5be8653b",
+        "bytes": 87877,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-tradeinview-receipts.json"
+      },
+      {
+        "path": "v001/evidence/impl-history-actual-sym-a-1440.png",
+        "sha256": "3e562bbce0b788dcf865de7132e6d8614d467be3d2c4612ae2ef8cbebc01444e",
+        "bytes": 496880,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-actual-[symbol]-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-actual-sym-a-412.png",
+        "sha256": "f113c54b1feaab5ee8644dccb568ceba4a3953b0aed9556e3e30b78a4618bfbe",
+        "bytes": 90185,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-actual-[symbol]-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-actual-sym-a-phone-detail-390.png",
+        "sha256": "f0121b986ee47d118f1b1cf3878ee08e2287af96d86932730c2ce7b9809c09ee",
+        "bytes": 74150,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-actual-[symbol]-phone-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-actual-sym-a-phone-detail-412.png",
+        "sha256": "3ff24c60c2f8e15230d34f3428e012dff6eee5041cff1c3646fb9c068265452a",
+        "bytes": 82861,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-actual-[symbol]-phone-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-basis-unknown-1440.png",
+        "sha256": "f2c1d12d2f7c04ddd65cb238fcfd62a97cfaeb9f02317c41fd904287bf99463f",
+        "bytes": 119791,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-basis-unknown-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-basis-unknown-412.png",
+        "sha256": "58d1e67bcc0c959b4e1a4b1e04aa2af2edd2cdd3bc8cef1ee7c84a7277432d34",
+        "bytes": 70289,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-basis-unknown-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-empty-1440.png",
+        "sha256": "8d42910f96996b904ab281b6dcf4959b26db30497d919cb3ee92dd434d034409",
+        "bytes": 53451,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-empty-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-empty-412.png",
+        "sha256": "aef8a5776fd63c192bbeb1b1505f727fa7ec72caf7f941b1285f47278d9c18ee",
+        "bytes": 45296,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-empty-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-phone-detail-390.png",
+        "sha256": "46ca37727361a89537d091c57edfac3c4214412213a85556639975f8b6844b21",
+        "bytes": 63334,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-phone-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-phone-detail-412.png",
+        "sha256": "f93249da6a20c27712018dd0a51d36cfedece33d737f748271f796d1c0802e16",
+        "bytes": 68714,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-phone-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-phone-names-390.png",
+        "sha256": "019edb5b9214d5f30fa4aa550b6ea2b053ae105a36f9c6f0e2eb13eecda51b74",
+        "bytes": 60862,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-phone-names-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-phone-names-412.png",
+        "sha256": "d94e093f449fb54f84ddc52b8b7758fd7edc88297c5d1fc3ccb567963b49473b",
+        "bytes": 61230,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-phone-names-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-schema-error-1440.png",
+        "sha256": "36871e338279757d0ff675995f73f0088d84eabfcd840ed6e93557532dbabc10",
+        "bytes": 25934,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-schema-error-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-history-schema-error-412.png",
+        "sha256": "5e878a5d6b2da30e190437c5b3f98ced7552fb4afafb1ed2329b9409f9daad9e",
+        "bytes": 21654,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/impl-history-schema-error-412.png"
+      },
+      {
+        "path": "v001/evidence/reference-calendar-1440.png",
+        "sha256": "35a67952f55446416267f9656a786ecbe93e270fe40a04be4a7d3e74062f6fa8",
+        "bytes": 121290,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/reference-calendar-1440.png"
+      },
+      {
+        "path": "v001/evidence/reference-main-1440.png",
+        "sha256": "99f344eb0f400fcd5c0312205da078dd943a5c88613c23d64f232c755afa7bcc",
+        "bytes": 187732,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/reference-main-1440.png"
+      },
+      {
+        "path": "v001/evidence/reference-replay-1440.png",
+        "sha256": "67a5597f877e653a5ec8b2224fd2e8c1dc36c061f82585d71623c80340bed80d",
+        "bytes": 97567,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/reference-replay-1440.png"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-tradeinview-redesign-20261024.md",
+        "sha256": "08b9b06c7fa063e292c0744a3444b541ef4cf27628f9bcb2f21c3e4481b969a4",
+        "bytes": 9772,
+        "role": "spec",
+        "source": "handoffs/tradeinview-redesign-20261024/SPEC.md"
+      }
+    ]
+  },
+  "fingerprint": "6f1df1dd826978f6d3f6809e94eadce82d3d02a683301e42c44f111f098812ab",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}
