@@ -2295,6 +2295,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/w8-writers-20261024/README.md` | W8 source packet |
 | `docs/ops/page-repair/INDEX.md` | Page repair index (Command Center v3) |
 | `docs/ops/page-repair/approvals.md` | Page repair — Approvals `/approvals` |
+| `docs/ops/page-repair/home.md` | Home page repair — Board 14 |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
