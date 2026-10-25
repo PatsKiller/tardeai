@@ -558,6 +558,7 @@ def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], cla
         who = f"session {session}" if session else "any session"
         raise Refused(f"no live claim on {branch} held by {who}")
     last: Optional[Refused] = None
+    errs: list[str] = []
     for r in rows:
         wl = Path(r["_path"]).with_name(f"{r.get('claim_id')}.worklog.md")
         try:
@@ -569,7 +570,8 @@ def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], cla
             try:
                 res = resolve_approval(ref, cfg, branch=branch, bind_branch=True)
             except Refused as exc:
-                last = exc
+                errs.append(str(exc))
+                last = Refused(" | ".join(errs[-3:]))
                 continue
             return {"source": "claim", "claim_id": str(r.get("claim_id")), "session": str(r.get("session") or ""),
                     **{f"approval_{k}": v for k, v in res.items()}, "approval_ref": res["ref"]}
