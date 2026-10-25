@@ -9,7 +9,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 import { agentModelLabel } from '../lib/agentModelLabel'
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props { onDrill: (ctx: DrillContext) => void; initialTab?: typeof TABS[number] }
 // Inbox hidden until v3 resolve is wired (was read-only pointer to v2).
 const TABS = ['Roster', 'Calibration', 'Workflow', 'Weekly Learning'] as const
 
@@ -155,9 +155,9 @@ function CalWindowCard({ w, symbolsByAgent, onDrill }: { w: any; symbolsByAgent:
   )
 }
 
-export default function AgentsHub({ onDrill }: Props) {
+export default function AgentsHub({ onDrill, initialTab }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<typeof TABS[number]>('Roster')
+  const [tab, setTab] = useState<typeof TABS[number]>(initialTab ?? 'Roster')
   const [showCalHistory, setShowCalHistory] = useState(false)
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
   const { data: calStatus } = useApi<any>('/api/v2/agent-calibration/status', 120_000)

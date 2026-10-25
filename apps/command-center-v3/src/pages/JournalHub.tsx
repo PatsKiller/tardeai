@@ -9,8 +9,6 @@ import type { DrillContext } from '../components/DetailDrawer'
 import TradeReplayChart from '../components/TradeReplayChart'
 import { buildReplayTrade } from '../lib/replayTrade'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
-import BacktestPanel from '../components/BacktestPanel'
-import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
 import SchwabJournal from '../components/SchwabJournal'
 import ExecutionCoachPanel from '../components/ExecutionCoachPanel'
 import DrawdownChart from '../components/risk/DrawdownChart'
@@ -1057,7 +1055,12 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Protection' && <ProtectionOutcomesPanel onDrill={onDrill} />}
 
       {/* ════════ BACKTESTING TAB (v2 port via shared v3 BacktestPanel) — driven by the shared account + time-range filters ════════ */}
-      {tab === 'Backtesting' && <><ExecutionHypothesesPanel /><BacktestPanel onDrill={onDrill} sharedAccount={acctFilter} sharedDateFrom={cutoff} /></>}
+      {/* Approved board 13 (desks redesign 2026-10-24): Strategy owns backtests and paper readiness; this tab links there. */}
+      {tab === 'Backtesting' && <section data-testid="journal-backtesting-moved" style={{ padding: 16, border: '1px solid var(--border-color)', borderRadius: 8 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Backtests moved to the Strategy desk</div>
+        <div style={{ color: 'var(--text2)', marginBottom: 8 }}>Backtest runs, execution hypotheses and paper-trade readiness now have one home.</div>
+        <a href="/v3/strategy?tab=backtests" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: 'var(--info-color)' }}>Open Strategy → Backtests</a>
+      </section>}
 
       {/* ════════ REAL ACCOUNTS (Schwab) — API-authoritative round-trips, separate from paper ════════ */}
       {tab === 'Real Accounts' && <SchwabJournal />}

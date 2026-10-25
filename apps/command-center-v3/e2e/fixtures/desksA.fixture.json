@@ -1,0 +1,2122 @@
+{
+ "clock": "2026-10-25T14:00:00+00:00",
+ "desk_sources": {
+  "observed_at": "2026-10-25T14:00:00+00:00",
+  "writers": [
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "advisory-lessons-reflect",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "agent-calibration-engine",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "cio-entry-state",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "cio-memory-shadow-measure",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "daily-incubator-refresh",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "defense-inverse-stoplights",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "defense-recommendations",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "feedback-loop-processor",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "hermes-analyst-coverage",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "incubator-proposal-promoter",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "industry-momentum-groups",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "market-regime-classifier",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "RETIRED"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "multi-tier-trade-reviewer-weekly",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "options-lifecycle-run",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "PAUSED"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "portfolio-ai-analyst",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "portfolio-repricer",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "pro-analyst-fetch",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "proposal-backtest-engine",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "run-watchlist-agent-jobs-offpeak",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "sector-momentum-engine",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "setup-quality-prior",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "sync-dividend-data",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "RETIRED"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-alex",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-atlas",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-concierge",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-hermes",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-morgan",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-pulse",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "tradeai-agent-runtime-steph",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "NONE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "watch-alerts-eval",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   },
+   {
+    "evidence_as_of": null,
+    "evidence_source": null,
+    "lane_id": "weekly-incubator-builder",
+    "last_success_at": null,
+    "reason": "Fixture: no execution receipt.",
+    "state": "ACTIVE"
+   }
+  ]
+ },
+ "projections": {
+  "agents": {
+   "as_of": "2026-10-25T14:00:00+00:00",
+   "decision_gap": null,
+   "decisions": [
+    {
+     "detail": "Open a run in the Run timeline for the recorded error.",
+     "id": "runs-model-error",
+     "title": "1 recent agent run recorded a model error"
+    }
+   ],
+   "desk": "agents",
+   "errors": [],
+   "financial_action": false,
+   "ok": true,
+   "read_only": true,
+   "sources": [
+    {
+     "as_of": null,
+     "gap": "Lane counts come from config/lane_registry.json; it carries no update time.",
+     "id": "summary",
+     "label": "Agent runtime lanes",
+     "lane_ids": []
+    },
+    {
+     "as_of": "2026-10-25T14:00:00+00:00",
+     "gap": null,
+     "id": "pipeline",
+     "label": "Pipeline \u00b7 112 jobs / 24 h",
+     "lane_ids": [
+      "run-watchlist-agent-jobs-offpeak"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T01:00:00+00:00",
+     "gap": null,
+     "id": "memory",
+     "label": "Memory \u00b7 1 records",
+     "lane_ids": [
+      "cio-memory-shadow-measure"
+     ]
+    },
+    {
+     "as_of": "2026-10-18T14:00:00+00:00",
+     "gap": null,
+     "id": "calibration",
+     "label": "Calibration \u00b7 weekly Sun 12:00",
+     "lane_ids": [
+      "agent-calibration-engine"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T13:30:00+00:00",
+     "gap": null,
+     "id": "timeline",
+     "label": "Run timeline",
+     "lane_ids": [
+      "tradeai-agent-runtime-alex",
+      "tradeai-agent-runtime-atlas",
+      "tradeai-agent-runtime-concierge",
+      "tradeai-agent-runtime-hermes",
+      "tradeai-agent-runtime-morgan",
+      "tradeai-agent-runtime-pulse",
+      "tradeai-agent-runtime-steph"
+     ]
+    },
+    {
+     "as_of": null,
+     "gap": "advisory_kb_lessons.jsonl is not on file.",
+     "id": "lessons",
+     "label": "Lessons",
+     "lane_ids": [
+      "advisory-lessons-reflect"
+     ]
+    },
+    {
+     "as_of": "2026-10-23T14:00:00+00:00",
+     "gap": null,
+     "id": "weekly",
+     "label": "Weekly learning",
+     "lane_ids": [
+      "multi-tier-trade-reviewer-weekly"
+     ]
+    }
+   ],
+   "tabs": {
+    "calibration": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "calibration",
+       "rows": [
+        {
+         "id": "cal-last",
+         "label": "Last run",
+         "tone": null,
+         "value": "2026-10-18 14:00 UTC"
+        },
+        {
+         "id": "cal-best",
+         "label": "Best calibrated (lowest Brier)",
+         "tone": null,
+         "value": "alex \u00b7 0.120"
+        },
+        {
+         "id": "cal-worst",
+         "label": "Worst calibrated (highest Brier)",
+         "tone": "warn",
+         "value": "alex \u00b7 0.120"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Brier score",
+            "value": "0.12"
+           },
+           {
+            "label": "Accuracy",
+            "value": "not on file"
+           },
+           {
+            "label": "Resolved",
+            "value": "40"
+           },
+           {
+            "label": "Low sample",
+            "value": "no"
+           },
+           {
+            "label": "Window recorded",
+            "value": "2026-10-18 14:00 UTC"
+           }
+          ],
+          "source": "agent_calibration_windows (agent_calibration_engine)",
+          "title": "alex \u00b7 calibration"
+         },
+         "id": "cal-alex",
+         "label": "alex",
+         "tone": null,
+         "value": "Brier 0.120"
+        }
+       ],
+       "span": 2,
+       "sub": "Sun 12:00 weekly",
+       "title": "Calibration"
+      }
+     ]
+    },
+    "learning": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": "advisory_kb_lessons.jsonl is not on file.",
+       "id": "learning",
+       "rows": [
+        {
+         "id": "ln-newest",
+         "label": "Newest lesson appended",
+         "tone": null,
+         "value": "not on file"
+        },
+        {
+         "id": "ln-weekly",
+         "label": "Trade reviews (30 days)",
+         "tone": null,
+         "value": "5"
+        },
+        {
+         "id": "ln-weekly-newest",
+         "label": "Newest trade review",
+         "tone": null,
+         "value": "2026-10-23 14:00 UTC"
+        },
+        {
+         "href": "/agents/classic",
+         "id": "ln-classic",
+         "label": "Lesson detail, applications and authority",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        }
+       ],
+       "span": 2,
+       "sub": "lessons + trade reviews (Evidence merged here)",
+       "title": "Learning"
+      }
+     ]
+    },
+    "legacy-analytics": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "legacy",
+       "rows": [
+        {
+         "id": "lg-workflow",
+         "label": "Workflow (jobs, handoffs, debates)",
+         "tone": "info",
+         "value": "Legacy analytics below"
+        },
+        {
+         "href": "/agents/classic",
+         "id": "lg-classic",
+         "label": "Classic Agents page",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        }
+       ],
+       "span": 1,
+       "sub": "roster \u00b7 calibration \u00b7 workflow \u00b7 weekly learning",
+       "title": "Legacy analytics"
+      }
+     ]
+    },
+    "memory": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": "aif_memory_admissions.jsonl is not on file.",
+       "id": "memory",
+       "rows": [
+        {
+         "id": "mem-records",
+         "label": "Records",
+         "tone": null,
+         "value": "1"
+        },
+        {
+         "id": "mem-active",
+         "label": "Active",
+         "tone": null,
+         "value": "1"
+        },
+        {
+         "id": "mem-today",
+         "label": "Admitted today",
+         "tone": null,
+         "value": "not on file"
+        },
+        {
+         "id": "mem-type-CASE_SUMMARY",
+         "label": "Active \u00b7 case summary",
+         "tone": null,
+         "value": "1"
+        }
+       ],
+       "span": 2,
+       "sub": "newest 2026-10-25 01:00 UTC",
+       "title": "Memory"
+      }
+     ]
+    },
+    "promotion-cases": {
+     "panels": [
+      {
+       "empty": "No cases on file.",
+       "gap": "cio_production_cases.jsonl is not on file.",
+       "id": "cases",
+       "rows": [],
+       "span": 2,
+       "sub": "newest production case events",
+       "title": "Cases"
+      },
+      {
+       "empty": null,
+       "gap": "maturity_promotions.json is not on file.",
+       "id": "promotions",
+       "rows": [
+        {
+         "id": "pr-snapshot",
+         "label": "Promotion snapshot",
+         "tone": "warn",
+         "value": "not on file"
+        }
+       ],
+       "span": 1,
+       "sub": null,
+       "title": "Promotion"
+      }
+     ]
+    },
+    "runtime": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "runtime",
+       "rows": [
+        {
+         "id": "rt-done",
+         "label": "Jobs completed (24 h)",
+         "tone": null,
+         "value": "107"
+        },
+        {
+         "id": "rt-failed",
+         "label": "Failed (24 h)",
+         "tone": "bad",
+         "value": "2"
+        },
+        {
+         "id": "rt-queued",
+         "label": "Queued (24 h)",
+         "tone": null,
+         "value": "3"
+        },
+        {
+         "id": "rt-catalog",
+         "label": "Agent runtime lanes",
+         "tone": null,
+         "value": "2 registered \u00b7 1 active"
+        }
+       ],
+       "span": 2,
+       "sub": "pipeline, last 24 h",
+       "title": "Runtime"
+      },
+      {
+       "empty": null,
+       "gap": "1 of the 2 newest runs recorded a model error.",
+       "id": "timeline",
+       "rows": [
+        {
+         "id": "run-total",
+         "label": "Runs on file",
+         "tone": null,
+         "value": "2"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Agent",
+            "value": "steph"
+           },
+           {
+            "label": "Job",
+            "value": "review"
+           },
+           {
+            "label": "Objective",
+            "value": "not on file"
+           },
+           {
+            "label": "Environment",
+            "value": "not on file"
+           },
+           {
+            "label": "Retrievals",
+            "value": "not on file"
+           },
+           {
+            "label": "Model error",
+            "value": "PROVIDER_BLOCKED: fixture"
+           },
+           {
+            "label": "Run time",
+            "value": "2026-10-25 13:30 UTC"
+           },
+           {
+            "label": "Authority",
+            "value": "not on file"
+           }
+          ],
+          "source": "data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl (agent_runtime_live_providers)",
+          "title": "steph run steph-bbb"
+         },
+         "id": "run-steph-bbb",
+         "label": "steph \u00b7 review",
+         "tone": "bad",
+         "value": "2026-10-25 13:30 UTC"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Agent",
+            "value": "alex"
+           },
+           {
+            "label": "Job",
+            "value": "wake_event_bus"
+           },
+           {
+            "label": "Objective",
+            "value": "not on file"
+           },
+           {
+            "label": "Environment",
+            "value": "not on file"
+           },
+           {
+            "label": "Retrievals",
+            "value": "not on file"
+           },
+           {
+            "label": "Model error",
+            "value": "none recorded"
+           },
+           {
+            "label": "Run time",
+            "value": "2026-10-25 13:00 UTC"
+           },
+           {
+            "label": "Authority",
+            "value": "not on file"
+           }
+          ],
+          "source": "data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl (agent_runtime_live_providers)",
+          "title": "alex run alex-aaa"
+         },
+         "id": "run-alex-aaa",
+         "label": "alex \u00b7 wake event bus",
+         "tone": null,
+         "value": "2026-10-25 13:00 UTC"
+        }
+       ],
+       "span": 1,
+       "sub": "newest runs from the producer journals",
+       "title": "Run timeline"
+      }
+     ]
+    }
+   }
+  },
+  "defense": {
+   "as_of": "2026-10-25T14:00:00+00:00",
+   "decision_gap": null,
+   "decisions": [
+    {
+     "detail": "The options lifecycle panel shows the last output of a paused writer. Restore the writer as an n8n lane, or retire the panel.",
+     "id": "writer-options",
+     "title": "Options lifecycle: writer options-lifecycle-run PAUSED"
+    },
+    {
+     "detail": "Cash alternatives yields are frozen at their last manual run. Schedule a writer as an n8n lane, or retire the panel.",
+     "id": "writer-cash",
+     "title": "Cash alternatives: no scheduled writer"
+    },
+    {
+     "detail": "Keep it as a log or retire it (board 3).",
+     "id": "review-console",
+     "title": "Review console last locked 2026-07-18T22:57"
+    }
+   ],
+   "desk": "defense",
+   "errors": [],
+   "financial_action": false,
+   "ok": true,
+   "read_only": true,
+   "sources": [
+    {
+     "as_of": "2026-10-25T11:00:00+00:00",
+     "gap": null,
+     "id": "posture",
+     "label": "Sector posture",
+     "lane_ids": [
+      "sector-momentum-engine"
+     ],
+     "max_age_hours": 26
+    },
+    {
+     "as_of": "2026-10-25T14:00:00+00:00",
+     "gap": null,
+     "id": "industries",
+     "label": "Industries \u00b7 144",
+     "lane_ids": [
+      "industry-momentum-groups"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T14:00:00+00:00",
+     "gap": null,
+     "id": "recommendations",
+     "label": "Recommendations \u00b7 3",
+     "lane_ids": [
+      "defense-recommendations"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T14:00:00+00:00",
+     "gap": null,
+     "id": "stoplights",
+     "label": "Inverse stoplights",
+     "lane_ids": [
+      "defense-inverse-stoplights"
+     ]
+    },
+    {
+     "as_of": "2026-10-14T19:40:03+00:00",
+     "gap": null,
+     "id": "options",
+     "label": "Options lifecycle",
+     "lane_ids": [
+      "options-lifecycle-run"
+     ]
+    },
+    {
+     "as_of": "2026-08-06T14:58:59+00:00",
+     "gap": null,
+     "id": "cash",
+     "label": "Cash alternatives",
+     "lane_ids": []
+    },
+    {
+     "as_of": null,
+     "gap": "Last lock 2026-07-18T22:57 (recorded without a time zone).",
+     "id": "review",
+     "label": "Review console",
+     "lane_ids": []
+    }
+   ],
+   "tabs": {
+    "hedges": {
+     "panels": [
+      {
+       "empty": "No inverse candidates on file.",
+       "gap": null,
+       "id": "stoplights",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "THESIS",
+            "value": "RED \u2014 no thesis"
+           },
+           {
+            "label": "EXIT",
+            "value": "GREEN \u2014 "
+           },
+           {
+            "label": "Max hold (sessions)",
+            "value": "not on file"
+           },
+           {
+            "label": "Path dependence",
+            "value": "not on file"
+           }
+          ],
+          "source": "data/runtime/inverse_stoplights_latest.json (defense_inverse_stoplights)",
+          "title": "SH \u00b7 stoplights"
+         },
+         "id": "il-SH",
+         "label": "SH (inverse SPY, -1x)",
+         "tone": "bad",
+         "value": "THESIS RED \u00b7 EXIT GREEN"
+        }
+       ],
+       "span": 1,
+       "sub": "stoplights 2026-10-25 14:00 UTC",
+       "title": "Inverse-ETF hedges"
+      },
+      {
+       "empty": "No short-side ideas in the latest run.",
+       "gap": null,
+       "id": "short",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Instruments",
+            "value": "PSQ (inverse ETF)"
+           },
+           {
+            "label": "Note",
+            "value": "not on file"
+           },
+           {
+            "label": "Mode",
+            "value": "SHADOW"
+           }
+          ],
+          "source": "data/runtime/defense_recommendations_latest.json groups.short_side",
+          "title": "HEDGE \u00b7 PSQ"
+         },
+         "id": "ss-0",
+         "label": "HEDGE \u00b7 PSQ",
+         "tone": null,
+         "value": "PSQ"
+        }
+       ],
+       "span": 1,
+       "sub": "SHADOW recommendations",
+       "title": "Short side"
+      },
+      {
+       "empty": null,
+       "gap": "The options lifecycle is not being refreshed: options-lifecycle-run is PAUSED. Last output 2026-10-14 19:40 UTC.",
+       "id": "options",
+       "rows": [
+        {
+         "id": "op-open",
+         "label": "Positions tracked",
+         "tone": null,
+         "value": "0"
+        },
+        {
+         "id": "op-act",
+         "label": "Needing action now",
+         "tone": null,
+         "value": "0"
+        },
+        {
+         "href": "/trading?tab=Options",
+         "id": "op-link",
+         "label": "Options lifecycle detail",
+         "tone": "info",
+         "value": "\u2192 Trading \u203a Options"
+        }
+       ],
+       "span": 1,
+       "sub": "lifecycle positions",
+       "title": "Options protection"
+      },
+      {
+       "empty": null,
+       "gap": "No job writes this file: it has no scheduled writer.",
+       "id": "cash",
+       "rows": [
+        {
+         "id": "ca-upd",
+         "label": "Last update",
+         "tone": "warn",
+         "value": "2026-08-06 14:58 UTC"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Category",
+            "value": "t-bill"
+           },
+           {
+            "label": "SEC yield",
+            "value": "4.31"
+           },
+           {
+            "label": "Dividend yield",
+            "value": "not on file"
+           },
+           {
+            "label": "Score",
+            "value": "not on file"
+           },
+           {
+            "label": "Thesis",
+            "value": "not on file"
+           }
+          ],
+          "source": "data/runtime/defense_cash_alternatives_latest.json top3",
+          "title": "SGOV \u00b7 "
+         },
+         "id": "ca-SGOV",
+         "label": "SGOV \u00b7 t-bill",
+         "tone": null,
+         "value": "4.31%"
+        }
+       ],
+       "span": 1,
+       "sub": "T-bills / money market yields",
+       "title": "Cash alternatives"
+      }
+     ]
+    },
+    "review-log": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "review",
+       "rows": [
+        {
+         "id": "rv-locked",
+         "label": "Criteria locked",
+         "tone": null,
+         "value": "yes"
+        },
+        {
+         "id": "rv-lock",
+         "label": "Last lock",
+         "tone": "warn",
+         "value": "2026-07-18T22:57"
+        },
+        {
+         "id": "rv-amend",
+         "label": "Amendments",
+         "tone": null,
+         "value": "0"
+        },
+        {
+         "id": "rv-dec",
+         "label": "Decisions recorded",
+         "tone": null,
+         "value": "2"
+        },
+        {
+         "href": "/defense/classic",
+         "id": "rv-open",
+         "label": "Review console (rate, lock, decide)",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        }
+       ],
+       "span": 2,
+       "sub": "config/promote_criteria.json",
+       "title": "Review log"
+      }
+     ]
+    },
+    "where-to-act": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "act",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Regime",
+            "value": "Fixture regime"
+           },
+           {
+            "label": "VIX",
+            "value": "not on file"
+           },
+           {
+            "label": "Confidence",
+            "value": "not on file"
+           },
+           {
+            "label": "As of",
+            "value": "2026-10-25 14:00 UTC"
+           }
+          ],
+          "source": "cio_truth.regime_for (market_regime_snapshots)",
+          "title": "Market regime (CIO record)"
+         },
+         "id": "act-regime",
+         "label": "Market regime (CIO)",
+         "tone": null,
+         "value": "Fixture regime"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Technology (XLK)",
+            "value": "LEADING \u2192 WEAKENING"
+           }
+          ],
+          "href": "/watch?tab=sectors",
+          "href_label": "Sector detail on Watch \u203a Sectors \u2192",
+          "source": "data/runtime/sector_momentum_latest.json transitions_today",
+          "title": "Sector transitions today"
+         },
+         "id": "act-trans",
+         "label": "Sector transitions today",
+         "tone": "warn",
+         "value": "1 sector"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "protect",
+            "value": "2"
+           },
+           {
+            "label": "short side",
+            "value": "1"
+           },
+           {
+            "label": "Mode",
+            "value": "SHADOW"
+           },
+           {
+            "label": "Generated",
+            "value": "2026-10-25 14:00 UTC"
+           }
+          ],
+          "source": "data/runtime/defense_recommendations_latest.json groups",
+          "title": "Defense recommendations"
+         },
+         "id": "act-recs",
+         "label": "Recommendations by group",
+         "tone": null,
+         "value": "protect 2 \u00b7 short side 1"
+        },
+        {
+         "href": "/defense/classic",
+         "id": "act-intents",
+         "label": "Open intents and execution",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        },
+        {
+         "href": "/watch?tab=sectors",
+         "id": "act-sectors",
+         "label": "Sector momentum & leaders",
+         "tone": "info",
+         "value": "\u2192 Watch \u203a Sectors"
+        }
+       ],
+       "span": 2,
+       "sub": "posture + transitions since yesterday",
+       "title": "Where to act"
+      },
+      {
+       "empty": null,
+       "gap": null,
+       "id": "act-owned",
+       "rows": [
+        {
+         "href": "/watch?tab=sectors",
+         "id": "own-sectors",
+         "label": "Sector momentum & leaders",
+         "tone": "info",
+         "value": "\u2192 Watch \u203a Sectors"
+        },
+        {
+         "href": "/reports",
+         "id": "own-reports",
+         "label": "Briefs and digests",
+         "tone": "info",
+         "value": "\u2192 Reports"
+        }
+       ],
+       "span": 1,
+       "sub": "board 13",
+       "title": "Owned elsewhere \u2014 linked, not repeated"
+      }
+     ]
+    },
+    "your-book": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": "Defensive score, beta and hedged share are not computed by any writer; rows are ordered by value.",
+       "id": "book",
+       "rows": [
+        {
+         "id": "bk-unprot",
+         "label": "Positions without an active broker stop",
+         "tone": "warn",
+         "value": "1"
+        },
+        {
+         "id": "bk-heat",
+         "label": "Unprotected value",
+         "tone": null,
+         "value": "$50,000"
+        },
+        {
+         "id": "bk-hedged",
+         "label": "Hedged share of book",
+         "tone": null,
+         "value": "not measured"
+        },
+        {
+         "id": "bk-exposed",
+         "label": "Most exposed (beta)",
+         "tone": null,
+         "value": "not measured"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Market value",
+            "value": "$50,000"
+           },
+           {
+            "label": "Stop state",
+            "value": "pending activation"
+           },
+           {
+            "label": "Stop source",
+            "value": "broker resting"
+           },
+           {
+            "label": "Stop price",
+            "value": "not on file"
+           },
+           {
+            "label": "Distance to stop",
+            "value": "not on file"
+           },
+           {
+            "label": "Defensive score",
+            "value": "not measured"
+           },
+           {
+            "label": "Beta",
+            "value": "not measured"
+           }
+          ],
+          "href": "/risk?tab=exposure",
+          "href_label": "Stop review on Risk \u2192",
+          "source": "cio_truth.resolve positions + stops (stop_last_known before stops.json)",
+          "title": "ALFA \u00b7 Fixture IRA"
+         },
+         "id": "bk-ALFA-fixture_ira",
+         "label": "ALFA \u00b7 Fixture IRA",
+         "tone": "warn",
+         "value": "$50,000 \u00b7 stop pending activation"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Market value",
+            "value": "$9,000"
+           },
+           {
+            "label": "Stop state",
+            "value": "active"
+           },
+           {
+            "label": "Stop source",
+            "value": "broker resting"
+           },
+           {
+            "label": "Stop price",
+            "value": "40"
+           },
+           {
+            "label": "Distance to stop",
+            "value": "not on file"
+           },
+           {
+            "label": "Defensive score",
+            "value": "not measured"
+           },
+           {
+            "label": "Beta",
+            "value": "not measured"
+           }
+          ],
+          "href": "/risk?tab=exposure",
+          "href_label": "Stop review on Risk \u2192",
+          "source": "cio_truth.resolve positions + stops (stop_last_known before stops.json)",
+          "title": "BETA \u00b7 Fixture taxable"
+         },
+         "id": "bk-BETA-fixture_tax",
+         "label": "BETA \u00b7 Fixture taxable",
+         "tone": "good",
+         "value": "$9,000 \u00b7 stop active"
+        }
+       ],
+       "span": 2,
+       "sub": "held names \u00b7 stops from the CIO record",
+       "title": "Your book"
+      }
+     ]
+    }
+   }
+  },
+  "reentry": {
+   "as_of": "2026-10-25T14:00:00+00:00",
+   "decision_gap": null,
+   "decisions": [
+    {
+     "detail": "The regime classifier writer is not running, so the regime clock is frozen. Restore the writer as an n8n lane, or retire the panel.",
+     "id": "writer-regime",
+     "title": "Market regime (CIO): writer market-regime-classifier RETIRED"
+    },
+    {
+     "detail": "They are hidden from Ready now and kept in history. Decide an expiry rule for the packet store.",
+     "id": "packet-expiry",
+     "title": "1 buy-ready packet older than 48 h"
+    }
+   ],
+   "desk": "reentry",
+   "errors": [],
+   "financial_action": false,
+   "ok": true,
+   "read_only": true,
+   "sources": [
+    {
+     "as_of": "2026-10-25T11:00:00+00:00",
+     "gap": "1 packet older than 48 h (hidden from Ready now, kept in history).",
+     "id": "packets",
+     "label": "Buy-ready packets \u00b7 2 current",
+     "lane_ids": [
+      "cio-entry-state"
+     ]
+    },
+    {
+     "as_of": "2026-10-23T22:00:00+00:00",
+     "gap": null,
+     "id": "regime",
+     "label": "Market regime (CIO)",
+     "lane_ids": [
+      "market-regime-classifier"
+     ],
+     "max_age_hours": 26
+    },
+    {
+     "as_of": "2026-10-25T13:40:00+00:00",
+     "gap": null,
+     "id": "holdings",
+     "label": "Holdings priced",
+     "lane_ids": [
+      "portfolio-repricer"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T12:00:00+00:00",
+     "gap": null,
+     "id": "resistance",
+     "label": "Resistance levels",
+     "lane_ids": [
+      "watch-alerts-eval"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T14:00:00+00:00",
+     "gap": null,
+     "id": "analyst",
+     "label": "Pro-analyst pills \u00b7 2",
+     "lane_ids": [
+      "hermes-analyst-coverage",
+      "pro-analyst-fetch"
+     ]
+    },
+    {
+     "as_of": null,
+     "gap": "dividend_calendar.json is not on file.",
+     "id": "dividends",
+     "label": "Dividends calendar",
+     "lane_ids": [
+      "portfolio-ai-analyst",
+      "sync-dividend-data"
+     ]
+    }
+   ],
+   "tabs": {
+    "analyst-evidence": {
+     "panels": [
+      {
+       "empty": "No analyst pill for a current packet or recent exit.",
+       "gap": "30-day revisions are not measured by the analyst read model.",
+       "id": "analyst",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Consensus target (mean)",
+            "value": "$15.25"
+           },
+           {
+            "label": "Upside to mean target",
+            "value": "not on file"
+           },
+           {
+            "label": "Recommendation",
+            "value": "not on file"
+           },
+           {
+            "label": "Analyst opinions",
+            "value": "9"
+           },
+           {
+            "label": "Street direction",
+            "value": "not on file"
+           },
+           {
+            "label": "Revisions, 30 days",
+            "value": "not measured"
+           }
+          ],
+          "source": "data/runtime/pro_analyst_pills_latest.json (build_pro_analyst_read_model)",
+          "title": "ALFA \u00b7 analyst evidence"
+         },
+         "id": "an-ALFA",
+         "label": "ALFA consensus target",
+         "tone": null,
+         "value": "$15.25"
+        }
+       ],
+       "span": 2,
+       "sub": "pro-analyst pills 2 \u00b7 2026-10-25 14:00 UTC",
+       "title": "Analyst evidence"
+      }
+     ]
+    },
+    "exits-review": {
+     "panels": [
+      {
+       "empty": "No sells in the last 30 days.",
+       "gap": null,
+       "id": "workbench",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Account",
+            "value": "fixture_ira"
+           },
+           {
+            "label": "Proceeds",
+            "value": "$12,500"
+           },
+           {
+            "label": "Your classification",
+            "value": "stopped out"
+           },
+           {
+            "label": "Your reason",
+            "value": "stop hit"
+           },
+           {
+            "label": "Redeploy event",
+            "value": "not matched"
+           },
+           {
+            "label": "Reclaim price vs now",
+            "value": "not measured"
+           }
+          ],
+          "source": "trade_transactions + deploy_events (redeploy_capital_book.build_history); ui_prefs portfolio.reentry.event-classifications.v1",
+          "title": "GAMA \u00b7 exit 2026-10-22"
+         },
+         "id": "exit-e1",
+         "label": "GAMA sold 2026-10-22",
+         "tone": null,
+         "value": "stopped out"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Account",
+            "value": "not on file"
+           },
+           {
+            "label": "Proceeds",
+            "value": "$800"
+           },
+           {
+            "label": "Your classification",
+            "value": "not classified"
+           },
+           {
+            "label": "Your reason",
+            "value": "not on file"
+           },
+           {
+            "label": "Redeploy event",
+            "value": "not matched"
+           },
+           {
+            "label": "Reclaim price vs now",
+            "value": "not measured"
+           }
+          ],
+          "source": "trade_transactions + deploy_events (redeploy_capital_book.build_history); ui_prefs portfolio.reentry.event-classifications.v1",
+          "title": "DELT \u00b7 exit 2026-10-15"
+         },
+         "id": "exit-e2",
+         "label": "DELT sold 2026-10-15",
+         "tone": "warn",
+         "value": "not classified"
+        }
+       ],
+       "span": 2,
+       "sub": "sells in the last 30 days",
+       "title": "Exit workbench"
+      },
+      {
+       "empty": null,
+       "gap": null,
+       "id": "classification-x",
+       "rows": [
+        {
+         "id": "cls-stopped",
+         "label": "Stopped out (saved by you)",
+         "tone": null,
+         "value": "1"
+        },
+        {
+         "id": "cls-saved",
+         "label": "Exits classified (saved by you)",
+         "tone": null,
+         "value": "2"
+        },
+        {
+         "id": "cls-res",
+         "label": "Sold names with no resistance level on file",
+         "tone": "warn",
+         "value": "2"
+        },
+        {
+         "href": "/portfolio/re-entry/classic",
+         "id": "cls-edit",
+         "label": "Classify or edit an exit",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        }
+       ],
+       "span": 1,
+       "sub": "why you exited",
+       "title": "Classification"
+      }
+     ]
+    },
+    "ready-now": {
+     "panels": [
+      {
+       "empty": "No current buy-ready or entry-near packet.",
+       "gap": "1 packet older than 48 h is hidden here and kept in history.",
+       "id": "ready",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Stage (packet)",
+            "value": "BUY_READY"
+           },
+           {
+            "label": "Entry zone",
+            "value": "$10.00\u2013$11.50"
+           },
+           {
+            "label": "Price at quote",
+            "value": "$10.40"
+           },
+           {
+            "label": "Planned stop",
+            "value": "$9.10"
+           },
+           {
+            "label": "Planned target",
+            "value": "$14.00"
+           },
+           {
+            "label": "Plan R:R",
+            "value": "2.6"
+           },
+           {
+            "label": "Catalyst",
+            "value": "not on file"
+           },
+           {
+            "label": "CIO stance (cio_truth)",
+            "value": "ADD \u00b7 conviction 71"
+           },
+           {
+            "label": "Packet saved",
+            "value": "2026-10-25 11:00 UTC"
+           }
+          ],
+          "href": "/watch?symbol=ALFA",
+          "href_label": "Set an alert on Watch \u2192",
+          "source": "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; stance via cio_truth.stances_for_symbols",
+          "title": "ALFA \u00b7 BUY_READY"
+         },
+         "id": "pkt-ALFA",
+         "label": "ALFA \u00b7 zone $10.00\u2013$11.50",
+         "tone": "good",
+         "value": "BUY_READY"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Stage (packet)",
+            "value": "ENTRY_NEAR"
+           },
+           {
+            "label": "Entry zone",
+            "value": "not on file"
+           },
+           {
+            "label": "Price at quote",
+            "value": "not on file"
+           },
+           {
+            "label": "Planned stop",
+            "value": "not on file"
+           },
+           {
+            "label": "Planned target",
+            "value": "not on file"
+           },
+           {
+            "label": "Plan R:R",
+            "value": "not on file"
+           },
+           {
+            "label": "Catalyst",
+            "value": "not on file"
+           },
+           {
+            "label": "CIO stance (cio_truth)",
+            "value": "CIO stance not on file"
+           },
+           {
+            "label": "Packet saved",
+            "value": "2026-10-25 09:00 UTC"
+           }
+          ],
+          "href": "/watch?symbol=BETA",
+          "href_label": "Set an alert on Watch \u2192",
+          "source": "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; stance via cio_truth.stances_for_symbols",
+          "title": "BETA \u00b7 ENTRY_NEAR"
+         },
+         "id": "pkt-BETA",
+         "label": "BETA \u00b7 zone not on file",
+         "tone": "info",
+         "value": "ENTRY_NEAR"
+        },
+        {
+         "href": "/watch",
+         "id": "pkt-alert",
+         "label": "Set an alert on any name",
+         "tone": "info",
+         "value": "\u2192 Watch alerts"
+        }
+       ],
+       "span": 2,
+       "sub": "BUY_READY / ENTRY_NEAR packets \u2014 the same ones Telegram sends",
+       "title": "Ready now"
+      },
+      {
+       "empty": null,
+       "gap": null,
+       "id": "classification",
+       "rows": [
+        {
+         "id": "cls-stopped",
+         "label": "Stopped out (saved by you)",
+         "tone": null,
+         "value": "1"
+        },
+        {
+         "id": "cls-saved",
+         "label": "Exits classified (saved by you)",
+         "tone": null,
+         "value": "2"
+        },
+        {
+         "id": "cls-res",
+         "label": "Sold names with no resistance level on file",
+         "tone": "warn",
+         "value": "2"
+        },
+        {
+         "href": "/portfolio/re-entry/classic",
+         "id": "cls-edit",
+         "label": "Classify or edit an exit",
+         "tone": "info",
+         "value": "Classic view \u2192"
+        }
+       ],
+       "span": 1,
+       "sub": "why you exited",
+       "title": "Classification"
+      },
+      {
+       "empty": null,
+       "gap": null,
+       "id": "owned",
+       "rows": [
+        {
+         "href": "/portfolio?tab=Look-through",
+         "id": "own-lt",
+         "label": "Look-through & sectors",
+         "tone": "info",
+         "value": "\u2192 Portfolio \u203a Look-through"
+        },
+        {
+         "href": "/rotation",
+         "id": "own-rot",
+         "label": "Rotation workspace",
+         "tone": "info",
+         "value": "\u2192 Rotation desk"
+        },
+        {
+         "href": "/watch",
+         "id": "own-alert",
+         "label": "Set alert",
+         "tone": "info",
+         "value": "\u2192 Watch alerts"
+        }
+       ],
+       "span": 1,
+       "sub": "board 13: one home per subject",
+       "title": "Owned elsewhere \u2014 linked, not repeated"
+      }
+     ]
+    },
+    "resistance-levels": {
+     "panels": [
+      {
+       "empty": "No resistance levels on file.",
+       "gap": null,
+       "id": "levels",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "State",
+            "value": "TESTING"
+           },
+           {
+            "label": "Resistance",
+            "value": "52.0"
+           },
+           {
+            "label": "Last close",
+            "value": "not on file"
+           },
+           {
+            "label": "Distance",
+            "value": "-1.2%"
+           },
+           {
+            "label": "Days held above",
+            "value": "not on file"
+           },
+           {
+            "label": "Tests",
+            "value": "not on file"
+           },
+           {
+            "label": "Method",
+            "value": "not on file"
+           },
+           {
+            "label": "As of",
+            "value": "not on file"
+           }
+          ],
+          "source": "ui_prefs portfolio.reentry.resistance.v1 (watch_alerts_eval \u2192 reentry_resistance.refresh_resistance_cache)",
+          "title": "GAMA \u00b7 resistance"
+         },
+         "id": "res-GAMA",
+         "label": "GAMA \u00b7 resistance $52.00",
+         "tone": "warn",
+         "value": "TESTING \u00b7 -1.2%"
+        }
+       ],
+       "span": 2,
+       "sub": "nearest first \u00b7 1 names cached",
+       "title": "Resistance & levels"
+      }
+     ]
+    }
+   }
+  },
+  "strategy": {
+   "as_of": "2026-10-25T14:00:00+00:00",
+   "decision_gap": null,
+   "decisions": [
+    {
+     "detail": "Paper-trade statistics are recomputed by the readiness page read itself; no lane writes them. Schedule a writer as an n8n lane, or retire the panel.",
+     "id": "writer-readiness",
+     "title": "Readiness: no scheduled writer"
+    }
+   ],
+   "desk": "strategy",
+   "errors": [],
+   "financial_action": false,
+   "ok": true,
+   "read_only": true,
+   "sources": [
+    {
+     "as_of": null,
+     "gap": "Latest snapshot dated 2026-10-22 (date only, no time recorded).",
+     "id": "snapshots",
+     "label": "Strategy snapshots",
+     "lane_ids": [
+      "feedback-loop-processor"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T08:00:00+00:00",
+     "gap": null,
+     "id": "incubator",
+     "label": "Incubator \u00b7 200 names \u00b7 10 promoted",
+     "lane_ids": [
+      "daily-incubator-refresh",
+      "weekly-incubator-builder",
+      "incubator-proposal-promoter"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T10:00:00+00:00",
+     "gap": null,
+     "id": "backtests",
+     "label": "Backtests \u00b7 100",
+     "lane_ids": [
+      "proposal-backtest-engine"
+     ]
+    },
+    {
+     "as_of": "2026-10-25T12:00:00+00:00",
+     "gap": null,
+     "id": "readiness",
+     "label": "Readiness \u00b7 157 of 2,000 closed trades",
+     "lane_ids": []
+    },
+    {
+     "as_of": null,
+     "gap": "Latest advisory dated 2026-10-24 (date only).",
+     "id": "setup",
+     "label": "Setup advisory \u00b7 800 rows",
+     "lane_ids": [
+      "setup-quality-prior"
+     ]
+    }
+   ],
+   "tabs": {
+    "backtests": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "backtests",
+       "rows": [
+        {
+         "id": "bt-count",
+         "label": "Backtest results on file",
+         "tone": null,
+         "value": "100"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Run type",
+            "value": "pit_simulated"
+           },
+           {
+            "label": "Simulated trades",
+            "value": "40"
+           },
+           {
+            "label": "Win rate",
+            "value": "55.0%"
+           },
+           {
+            "label": "Expectancy",
+            "value": "0.21"
+           },
+           {
+            "label": "Profit factor",
+            "value": "not on file"
+           },
+           {
+            "label": "Recorded",
+            "value": "2026-10-25 10:00 UTC"
+           }
+          ],
+          "source": "strategy_backtest_results",
+          "title": "fixture_breakout backtest"
+         },
+         "id": "bt-0",
+         "label": "fixture breakout \u00b7 pit_simulated \u00b7 40 trades",
+         "tone": null,
+         "value": "+0.21 R"
+        }
+       ],
+       "span": 2,
+       "sub": "Strategy owns backtests (board 13)",
+       "title": "Backtests"
+      }
+     ]
+    },
+    "desk": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": "No strategy changed state in 30 days. The transition writer (strategy-weekly-review, Sundays) records only changes it decides.",
+       "id": "desk",
+       "rows": [
+        {
+         "id": "st-count",
+         "label": "Promotions / pauses (30 days)",
+         "tone": null,
+         "value": "0"
+        }
+       ],
+       "span": 2,
+       "sub": "last 30 days",
+       "title": "Desk \u00b7 state changes"
+      }
+     ]
+    },
+    "incubator": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "incubator",
+       "rows": [
+        {
+         "id": "inc-cand",
+         "label": "Candidates",
+         "tone": null,
+         "value": "200"
+        },
+        {
+         "id": "inc-active",
+         "label": "Active",
+         "tone": null,
+         "value": "150"
+        },
+        {
+         "id": "inc-prom",
+         "label": "Promoted to a proposal",
+         "tone": null,
+         "value": "10"
+        },
+        {
+         "id": "inc-sched",
+         "label": "Promotion runs",
+         "tone": null,
+         "value": "hourly 07\u201317 weekdays (incubator-proposal-promoter)"
+        },
+        {
+         "id": "inc-setup",
+         "label": "Setup advisory rows",
+         "tone": null,
+         "value": "800"
+        }
+       ],
+       "span": 1,
+       "sub": "refresh 08:15 weekdays \u00b7 build Sun 19:00",
+       "title": "Incubator"
+      }
+     ]
+    },
+    "leaderboard": {
+     "panels": [
+      {
+       "empty": "No strategy has closed paper trades.",
+       "gap": null,
+       "id": "leaderboard",
+       "rows": [
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Closed paper trades",
+            "value": "12"
+           },
+           {
+            "label": "Wins",
+            "value": "7"
+           },
+           {
+            "label": "Win rate",
+            "value": "58.3%"
+           },
+           {
+            "label": "Total P/L",
+            "value": "+$412"
+           },
+           {
+            "label": "Average R (live)",
+            "value": "0.4"
+           },
+           {
+            "label": "Backtest expectancy (R)",
+            "value": "not on file"
+           },
+           {
+            "label": "Backtest sample",
+            "value": "not on file"
+           },
+           {
+            "label": "Latest snapshot",
+            "value": "2026-10-22"
+           },
+           {
+            "label": "Snapshot assessment",
+            "value": "not on file"
+           },
+           {
+            "label": "Confidence",
+            "value": "not on file"
+           },
+           {
+            "label": "Tilt multiplier",
+            "value": "not on file"
+           }
+          ],
+          "source": "paper_trades, strategy_backtest_results, strategy_performance_snapshots, strategy_tilt_multipliers (the leaderboard read)",
+          "title": "fixture breakout \u00b7 rank 1"
+         },
+         "id": "lb-fixture_breakout",
+         "label": "fixture breakout \u00b7 win 58.3% \u00b7 12 trades",
+         "tone": "good",
+         "value": "+$412"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Closed paper trades",
+            "value": "4"
+           },
+           {
+            "label": "Wins",
+            "value": "1"
+           },
+           {
+            "label": "Win rate",
+            "value": "25.0%"
+           },
+           {
+            "label": "Total P/L",
+            "value": "\u2212$90"
+           },
+           {
+            "label": "Average R (live)",
+            "value": "-0.3"
+           },
+           {
+            "label": "Backtest expectancy (R)",
+            "value": "not on file"
+           },
+           {
+            "label": "Backtest sample",
+            "value": "not on file"
+           },
+           {
+            "label": "Latest snapshot",
+            "value": "not on file"
+           },
+           {
+            "label": "Snapshot assessment",
+            "value": "not on file"
+           },
+           {
+            "label": "Confidence",
+            "value": "not on file"
+           },
+           {
+            "label": "Tilt multiplier",
+            "value": "not on file"
+           }
+          ],
+          "source": "paper_trades, strategy_backtest_results, strategy_performance_snapshots, strategy_tilt_multipliers (the leaderboard read)",
+          "title": "fixture fade \u00b7 rank 2"
+         },
+         "id": "lb-fixture_fade",
+         "label": "fixture fade \u00b7 win 25.0% \u00b7 4 trades",
+         "tone": "bad",
+         "value": "\u2212$90"
+        },
+        {
+         "id": "lb-sort",
+         "label": "Ranked by",
+         "tone": null,
+         "value": "live expectancy (avg R), then P/L, then win rate"
+        }
+       ],
+       "span": 2,
+       "sub": "2 strategies with closed paper trades",
+       "title": "Leaderboard"
+      },
+      {
+       "empty": null,
+       "gap": null,
+       "id": "readiness",
+       "rows": [
+        {
+         "id": "rd-phase",
+         "label": "Phase",
+         "tone": null,
+         "value": "P1 EARLY SIGNAL"
+        },
+        {
+         "id": "rd-closed",
+         "label": "Closed trades",
+         "tone": null,
+         "value": "157 / 2,000"
+        },
+        {
+         "id": "rd-wr",
+         "label": "Win rate (all closed)",
+         "tone": null,
+         "value": "51.2%"
+        },
+        {
+         "id": "rd-gate",
+         "label": "Next gate",
+         "tone": null,
+         "value": "2,000 closed trades (P4 strong paper evidence)"
+        }
+       ],
+       "span": 1,
+       "sub": "gate to live",
+       "title": "Paper-trade readiness"
+      }
+     ]
+    },
+    "plan-vs-performance": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": null,
+       "id": "pvp",
+       "rows": [
+        {
+         "id": "pv-planned",
+         "label": "Planned expectancy (last 100 closed)",
+         "tone": null,
+         "value": "not on file"
+        },
+        {
+         "id": "pv-real",
+         "label": "Realized expectancy (last 100 closed)",
+         "tone": null,
+         "value": "not on file"
+        },
+        {
+         "id": "pv-drift",
+         "label": "Biggest drift (realized \u2212 planned, \u22653 trades)",
+         "tone": null,
+         "value": "not on file"
+        }
+       ],
+       "span": 2,
+       "sub": null,
+       "title": "Plan vs performance"
+      }
+     ]
+    },
+    "planner": {
+     "panels": [
+      {
+       "empty": null,
+       "gap": "This desk is read-only; plan and approve run on the classic Planner.",
+       "id": "planner",
+       "rows": [
+        {
+         "href": "/strategy/classic?tab=Planner",
+         "id": "pl-open",
+         "label": "Strategy planner (what-if sizing, approvals)",
+         "tone": "info",
+         "value": "Classic planner \u2192"
+        }
+       ],
+       "span": 1,
+       "sub": "the planner submits plans, so it stays on the classic page",
+       "title": "Planner"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

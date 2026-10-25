@@ -1,7 +1,7 @@
 # Content ownership
 
 **Status:** REVIEW CANDIDATE · fixture verification, not release evidence
-**Updated:** 2026-10-24
+**Updated:** 2026-10-25
 
 Approved board 13, desks redesign of 2026-10-24. Each subject has one full
 view. Other pages show a short summary and a link to that view.
@@ -34,3 +34,20 @@ Allocation look-through panel. The browser fixture checks rendered ownership,
 including the link from Allocation to Look-through. Changes in other owners'
 files are verified with their handoffs; this table does not grant permission to
 edit their claimed paths.
+
+## Removals completed by desks A (boards 1–4), 2026-10-25
+
+Each removal below is assigned to another home by board 13 and is listed in the PR notes. Detail and proof are in
+`docs/ops/DESKS_A_REDESIGN_20261025.md`. `tests/test_desks_a_20261025.py::test_board13_duplicates_replaced_by_links`
+checks that each copy is gone and the link is present.
+
+- **TradeInView classic Backtesting tab:** now a link to Strategy › Backtests. The backtest panels render there.
+- **Rotation "Ask the Rotation Advisor" box:** now a link to My questions (asked through the Ask the CIO bar).
+- **New Re-Entry desk:** look-through and the rotation workspace are links only.
+- **New Defense desk:** sector momentum and leaders are a link to Watch › Sectors.
+
+The classic Re-Entry and Defense pages keep their copies until the operator accepts the new desks. Still open, because the
+home pages lack the content:
+- Intelligence Trade AI rows (board 5);
+- research topics (boards 5/9);
+- Hermes Discovery inbox (boards 7/9).

@@ -233,6 +233,22 @@
     {
       "url": "/v3/system/ops-controls",
       "path": "system/ops-controls"
+    },
+    {
+      "url": "/v3/agents/classic",
+      "path": "agents/classic"
+    },
+    {
+      "url": "/v3/defense/classic",
+      "path": "defense/classic"
+    },
+    {
+      "url": "/v3/portfolio/re-entry/classic",
+      "path": "portfolio/re-entry/classic"
+    },
+    {
+      "url": "/v3/strategy/classic",
+      "path": "strategy/classic"
     }
   ],
   "spa_routes": [
@@ -398,6 +414,18 @@
     },
     {
       "route": "/v3/system/ops-controls"
+    },
+    {
+      "route": "/v3/agents/classic"
+    },
+    {
+      "route": "/v3/defense/classic"
+    },
+    {
+      "route": "/v3/portfolio/re-entry/classic"
+    },
+    {
+      "route": "/v3/strategy/classic"
     }
   ],
   "apis": [
