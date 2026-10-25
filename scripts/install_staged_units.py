@@ -14,7 +14,19 @@ and no TTY acknowledgement. Per group, in this order:
   5. first run + verify: start the oneshot service once, read back is-active for each enabled unit and
      the group's receipt (fresh, expected schema/mode).
 
-Modes: plan (default; writes nothing), apply, rollback (disable --now + archive the installed copies).
+Every unit file is validated before anything is installed (validate_unit_text): a service runs exactly one
+ExecStart of the release venv (%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python) on a release
+scripts/<x>.py; no User=/Group=, no ExecStartPre/Post/Stop/Reload/Condition hooks; [Install] only
+WantedBy=timers.target/default.target; a timer's Unit= names a service of its group; source_dir is ops/systemd.
+
+A failed run (exit 1) sends ONE P1 through the host chokepoint (telegram_alert.send_telegram_outcome),
+deduplicated by failure fingerprint in the state file; needs-action and platform-health read the receipt.
+When the dry-run reports findings beyond the group's one-time acks, the receipt and output say
+"will page: ..." before the first live run.
+
+Modes: plan (default; writes nothing), apply, rollback (disable --now + archive the installed copies),
+retire --target <dir> (rollback only the groups this release's manifest has and the target's lacks; the deploy
+runs it on rollback before applying the target's manifest).
 An unchanged, already-active group is UNCHANGED and does nothing. The receipt is
 data/runtime/staged_units_install_latest.json under the state root. Exit 0 = every admitted group OK
 or UNCHANGED; 1 = some group failed (the deploy logs it, the release stays live); 2 = usage/manifest.
@@ -40,6 +52,13 @@ RECEIPT = "data/runtime/staged_units_install_latest.json"
 STATE = "data/runtime/staged_units_install_state.json"
 DEFAULT_MANIFEST = "config/staged_user_units.json"
 UNIT_SUFFIXES = (".service", ".timer", ".path")
+SOURCE_DIR = "ops/systemd"
+RELEASE_PYTHON = "%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python"
+RELEASE_SCRIPT_PREFIXES = ("scripts/", "%h/trade-ai-releases/portfolio-server/CURRENT/scripts/")
+FORBIDDEN_SERVICE_KEYS = ("User", "Group", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecStopPost",
+                          "ExecReload", "ExecCondition", "DynamicUser", "PAMName")
+ALLOWED_WANTED_BY = ("timers.target", "default.target")
+NOTIFY_PRODUCER = "install_staged_units"
 FIRST_RUN_TIMEOUT_S = 90
 RECEIPT_MAX_AGE_S = 180
 
@@ -74,6 +93,62 @@ def atomic_json(path: Path, value: dict) -> None:
     atomic_write(path, (json.dumps(value, indent=2, sort_keys=True) + "\n").encode())
 
 
+def parse_unit(text: str) -> list[tuple[str, str, str]]:
+    """(section, key, value) for every assignment; comments and blanks dropped. Continuations are refused."""
+    rows, section = [], ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            continue
+        if raw.rstrip().endswith("\\"):
+            rows.append((section, "__continuation__", line))
+            continue
+        key, sep, value = line.partition("=")
+        rows.append((section, key.strip() if sep else "__malformed__", value.strip()))
+    return rows
+
+
+def validate_unit_text(name: str, text: str, group_units: list[str]) -> list[str]:
+    """Refusals for one staged unit file (empty = installable). Reviewed shape only; anything else is refused."""
+    errs: list[str] = []
+    rows = parse_unit(text)
+    for section, key, value in rows:
+        if key in ("__continuation__", "__malformed__"):
+            errs.append(f"{name}: unparseable line {value[:60]!r}")
+        if section == "Install":
+            if key != "WantedBy":
+                errs.append(f"{name}: [Install] {key}= not allowed (only WantedBy)")
+            elif any(t not in ALLOWED_WANTED_BY for t in value.split()):
+                errs.append(f"{name}: WantedBy={value} (only {'/'.join(ALLOWED_WANTED_BY)})")
+    if name.endswith(".service"):
+        svc = [(k, v) for sec, k, v in rows if sec == "Service"]
+        for key, _ in svc:
+            if key in FORBIDDEN_SERVICE_KEYS:
+                errs.append(f"{name}: {key}= not allowed")
+        execs = [v for k, v in svc if k == "ExecStart"]
+        if len(execs) != 1:
+            errs.append(f"{name}: exactly one ExecStart= required, found {len(execs)}")
+        else:
+            argv = execs[0].split()
+            script = argv[1] if len(argv) > 1 else ""
+            if not argv or argv[0] != RELEASE_PYTHON:
+                errs.append(f"{name}: ExecStart must run {RELEASE_PYTHON}")
+            if not (script.startswith(RELEASE_SCRIPT_PREFIXES) and script.endswith(".py") and ".." not in script):
+                errs.append(f"{name}: ExecStart must run a release scripts/<x>.py")
+            if any(ch in execs[0] for ch in ";|&`$<>"):
+                errs.append(f"{name}: ExecStart must not contain shell syntax")
+    elif name.endswith(".timer"):
+        targets = [v for sec, k, v in rows if sec == "Timer" and k == "Unit"]
+        if len(targets) != 1 or targets[0] not in group_units:
+            errs.append(f"{name}: Timer Unit= must name one service of its group")
+    elif name.endswith(".path"):
+        errs.append(f"{name}: .path units are not admitted yet")
+    return errs
+
+
 def validate_manifest(doc: dict) -> list[str]:
     errs = []
     if doc.get("schema") != SCHEMA:
@@ -91,9 +166,8 @@ def validate_manifest(doc: dict) -> list[str]:
             errs.append(f"{gid}: enable must name units of the group")
         if g.get("first_run") and g["first_run"] not in units:
             errs.append(f"{gid}: first_run must name a unit of the group")
-        src = str(g.get("source_dir") or "")
-        if not src or src.startswith("/") or ".." in Path(src).parts:
-            errs.append(f"{gid}: source_dir must be release-relative")
+        if g.get("source_dir") != SOURCE_DIR:
+            errs.append(f"{gid}: source_dir must be {SOURCE_DIR}")
         adm = g.get("admission") or {}
         if not adm.get("config") or not isinstance(adm.get("require"), dict) or not adm["require"]:
             errs.append(f"{gid}: admission.config + admission.require are required")
@@ -162,6 +236,22 @@ def summarize_dry_run(doc: dict | None) -> dict | None:
     return out
 
 
+def will_page(doc: dict | None, group: dict) -> list[str]:
+    """Findings in the dry-run report that the first live run will page for (the group's one-time acks excluded)."""
+    if not isinstance(doc, dict):
+        return []
+    acked = set()
+    for step in group.get("once") or []:
+        argv = list(step.get("argv") or [])
+        if "--ack-refusal" in argv and argv.index("--ack-refusal") + 1 < len(argv):
+            acked.add(argv[argv.index("--ack-refusal") + 1])
+    out = [f"missed:{lane}" for lane in doc.get("missed_lane_ids") or []]
+    out += [f"refusal:{r.get('job_id')}:{r.get('key')}" for r in doc.get("refusals") or []
+            if isinstance(r, dict) and r.get("active", True) and r.get("key") not in acked]
+    out += [f"monitor:{m.get('id')}" for m in doc.get("monitor_incidents") or [] if isinstance(m, dict)]
+    return out
+
+
 def admitted(release: Path, group: dict) -> tuple[bool, str]:
     adm = group["admission"]
     try:
@@ -222,6 +312,13 @@ def apply_group(release: Path, unit_dir: Path, state_root: Path, group: dict, st
         out["status"] = "FAILED"
         out["reason"] = "a staged source unit is missing from the release"
         return out
+    unit_errs = [e for u in group["units"]
+                 for e in validate_unit_text(u, (release / group["source_dir"] / u).read_text(encoding="utf-8"),
+                                             group["units"])]
+    if unit_errs:
+        out["status"] = "REFUSED_UNIT"
+        out["reason"] = "; ".join(unit_errs)[:600]
+        return out
     changed = [r["unit"] for r in diff if r["change"] in ("NEW", "CHANGED")]
     inactive = [u for u in group.get("enable") or [] if not host.is_active(u)]
     pending_once = [s for s in group.get("once") or [] if s["id"] not in (state.get("once_done") or {})]
@@ -246,6 +343,7 @@ def apply_group(release: Path, unit_dir: Path, state_root: Path, group: dict, st
     if res["exit"] not in (dr.get("ok_exit") or [0]) or not expect_ok:
         out["status"] = "REFUSED_DRY_RUN"
         return out
+    out["will_page"] = will_page(doc, group)
 
     # 3. one-time steps: preview, then apply; remembered by id.
     done = state.setdefault("once_done", {})
@@ -338,9 +436,61 @@ def rollback_group(release: Path, unit_dir: Path, group: dict, host: Host, stamp
             "archive": str(archive) if moved else None}
 
 
+def retire_groups(release: Path, target: Path, manifest: dict, unit_dir: Path, host: Host, stamp: str) -> list[dict]:
+    """Roll back every group of this release's manifest that the target release's manifest does not carry."""
+    try:
+        keep = {g.get("id") for g in json.loads((target / DEFAULT_MANIFEST).read_text(encoding="utf-8"))["groups"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        keep = set()
+    return [rollback_group(release, unit_dir, g, host, stamp) for g in manifest["groups"] if g["id"] not in keep]
+
+
+def failure_fingerprint(results: list[dict]) -> str:
+    bad = sorted(f"{r['id']}:{r['status']}:{r.get('reason') or ''}" for r in results if r.get("status") not in GOOD)
+    return hashlib.sha256(json.dumps(bad).encode()).hexdigest()[:16]
+
+
+def telegram_p1(body: str) -> dict:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from telegram_alert import send_telegram_outcome
+
+    return send_telegram_outcome(body, priority="P1", dedupe_minutes=0, producer=NOTIFY_PRODUCER,
+                                 message_class="operator_alert")
+
+
+def notify_failure(receipt: dict, state: dict, sender) -> dict:
+    """One P1 per distinct failure (fingerprint in the state file); a recovery clears it. Delivery is receipted."""
+    fp = failure_fingerprint(receipt["groups"])
+    if receipt["ok"]:
+        state.pop("notified_failure", None)
+        return {"status": "NOT_REQUIRED", "delivered": False}
+    if (state.get("notified_failure") or {}).get("fingerprint") == fp:
+        return {"status": "DUPLICATE_SUPPRESSED", "delivered": False, "fingerprint": fp}
+    lines = [f"{r['id']}: {r['status']}" + (f" — {r.get('reason')}" if r.get("reason") else "")
+             for r in receipt["groups"] if r.get("status") not in GOOD]
+    body = ("STAGED UNIT INSTALL FAILED · action required\n" + "\n".join(lines)[:1500]
+            + f"\nRelease {receipt['release']}\nReceipt {RECEIPT}; the release itself stays live."
+            + "\nInspect: scripts/install_staged_units.py plan --release <CURRENT>")
+    try:
+        outcome = sender(body)
+    except Exception:  # noqa: BLE001 — a failed send is receipted, never raised
+        outcome = {"status": "FAILED", "delivered": False}
+    outcome = outcome if isinstance(outcome, dict) else {"status": "UNCONFIRMED", "delivered": False}
+    result = {k: outcome.get(k) for k in ("status", "accepted", "delivered")}
+    result["fingerprint"] = fp
+    if outcome.get("delivered") is True or outcome.get("accepted") is True:
+        state["notified_failure"] = {"fingerprint": fp, "at": iso(now_utc())}
+    return result
+
+
+GOOD = {"UNCHANGED", "INSTALLED", "PENDING_ADMISSION", "WOULD_INSTALL", "ROLLED_BACK", "NOTHING_INSTALLED"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("mode", nargs="?", default="plan", choices=("plan", "apply", "rollback"))
+    ap.add_argument("mode", nargs="?", default="plan", choices=("plan", "apply", "rollback", "retire"))
+    ap.add_argument("--target", type=Path, help="retire: the release being rolled back to")
+    ap.add_argument("--no-notify", action="store_true", help="never send the failure P1 (proofs)")
     ap.add_argument("--release", type=Path, required=True, help="the release dir whose manifest/units are installed")
     ap.add_argument("--manifest", default=DEFAULT_MANIFEST, help="release-relative manifest path")
     ap.add_argument("--unit-dir", type=Path, default=Path.home() / ".config/systemd/user")
@@ -367,17 +517,23 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError):
         state = {}
     results = []
-    for g in groups:
+    if args.mode == "retire":
+        if not args.target:
+            print(json.dumps({"ok": False, "reason": "retire needs --target"}))
+            return 2
+        results = retire_groups(release, args.target.resolve(), manifest, args.unit_dir, host, stamp)
+    for g in groups if args.mode != "retire" else []:
         if args.mode == "rollback":
             results.append(rollback_group(release, args.unit_dir, g, host, stamp))
         else:
             results.append(apply_group(release, args.unit_dir, args.state_root, g, state, host, stamp,
                                        plan=args.mode == "plan"))
-    good = {"UNCHANGED", "INSTALLED", "PENDING_ADMISSION", "WOULD_INSTALL", "ROLLED_BACK", "NOTHING_INSTALLED"}
     receipt = {"schema": "StagedUnitsInstall@v1", "mode": args.mode, "at": iso(now_utc()), "release": str(release),
-               "unit_dir": str(args.unit_dir), "ok": all(r["status"] in good for r in results),
+               "unit_dir": str(args.unit_dir), "ok": all(r["status"] in GOOD for r in results),
                "groups": results, "systemctl_calls": host.calls}
     if args.mode != "plan":
+        receipt["notification"] = (notify_failure(receipt, state, telegram_p1) if not args.no_notify
+                                   else {"status": "NOT_REQUESTED", "delivered": False})
         atomic_json(state_path, state)
         atomic_json(args.state_root / RECEIPT, receipt)
     else:
@@ -385,6 +541,10 @@ def main(argv: list[str] | None = None) -> int:
     for r in results:
         print(f"{r['id']}: {r['status']}" + (f" — {r.get('reason')}" if r.get("reason") else "")
               + (f" — {r['verify']['receipt']}" if r.get("verify") else ""))
+        if r.get("will_page"):
+            print(f"{r['id']}: will page: {', '.join(r['will_page'])[:600]}")
+    if receipt.get("notification", {}).get("status") not in (None, "NOT_REQUIRED", "NOT_REQUESTED"):
+        print(f"failure P1: {receipt['notification'].get('status')}")
     print("receipt → " + (str(args.state_root / RECEIPT) if args.mode != "plan" else "(plan: nothing written)"))
     return 0 if receipt["ok"] else 1
 

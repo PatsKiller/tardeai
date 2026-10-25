@@ -73,6 +73,7 @@
         "scripts/generate_integrity_manifest.py",
         "scripts/lib/release_venv.sh",
         "scripts/lib/ff_dev_tree.sh",
+        "scripts/install_staged_units.py",
         "migrations/*release_queue*"
       ]
     },
@@ -175,7 +176,9 @@
         "**/crontab*",
         "scripts/*crontab*",
         "config/lane_stay_on_cron_tokens.json",
-        "docs/implementation/n8n-*/workflows/**"
+        "docs/implementation/n8n-*/workflows/**",
+        "config/staged_user_units.json",
+        "ops/systemd/**"
       ]
     },
     {

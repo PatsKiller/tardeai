@@ -145,6 +145,8 @@ PROTECTED_SURFACES = (
     "scripts/generate_integrity_manifest.py",
     "scripts/lib/release_venv.sh",
     "scripts/lib/ff_dev_tree.sh",
+    # 2026-10-25 (#2134 review B2): the release installs staged host units with this tool; a train never changes it.
+    "scripts/install_staged_units.py",
 
     "config/release_train_policy.json",
     # Phase 7 window gates (2026-10-22): the 06:00 drain probe, its policy, and the measured-duration history.

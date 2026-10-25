@@ -802,36 +802,46 @@ PYWRAPPER
 
 # Staged user units (2026-10-25, operator: "turn on everything... It shouldn't need me to turn on anything").
 # A reviewed unit listed in the release's config/staged_user_units.json is installed by the release itself:
-# scripts/install_staged_units.py checks the group's admission config (enabled + REVIEWED), runs its --dry-run
-# first (AGENTS rule 7; a failed dry-run installs nothing), runs one-time steps (preview, then apply), ARCHIVES a
-# replaced copy (never deletes), daemon-reloads, enable --now, starts the first run and reads back is-active and
-# the unit's receipt. No TTY acknowledgement. Never fatal: the release is already live; a failed group is logged
-# FAIL and recorded in data/runtime/staged_units_install_latest.json. TRADEAI_STAGED_UNITS_MODE=apply (default)
-# | plan (writes nothing, loud) | off. On rollback to a release without the tool, the release being rolled away
-# disables + archives its own groups (their ExecStart would name scripts absent from the target).
+# scripts/install_staged_units.py validates each unit file, checks the group's admission config (enabled +
+# REVIEWED), runs its --dry-run first (AGENTS rule 7; a failed dry-run installs nothing), runs one-time steps
+# (preview, then apply), ARCHIVES a replaced copy (never deletes), daemon-reloads, enable --now, starts the first
+# run and reads back is-active and the unit's receipt. No TTY acknowledgement. Never fatal: the release is already
+# live; a failed group is logged FAIL, sends one deduplicated P1 (host chokepoint) and is recorded in
+# data/runtime/staged_units_install_latest.json (needs-action + platform-health read it).
+# TRADEAI_STAGED_UNITS_MODE=apply (default) | plan (writes nothing, loud) | off.
+# Rollback: the release being rolled AWAY retires its groups the target's manifest lacks (their ExecStart would
+# name scripts absent from the target), then the target's own manifest is applied.
+staged_units_run() {
+  local release="$1"; shift
+  local tool="${release}/scripts/install_staged_units.py" out rc=0
+  out="$(cd "$release" && "$VENV_PYTHON" "$tool" "$@" --release "$release" 2>&1)" || rc=$?
+  while IFS= read -r line; do log "  units: $line"; done <<<"$out"
+  if (( rc != 0 )); then
+    log "FAIL staged unit $1 rc=${rc} — see units: lines; receipt data/runtime/staged_units_install_latest.json"
+  fi
+  return 0
+}
+
 staged_units_step() {
   local action="$1" dir="$2" from="${3:-}"
-  local mode="${TRADEAI_STAGED_UNITS_MODE:-apply}"
-  local tool="${dir}/scripts/install_staged_units.py" verb="apply" release="$dir"
+  local mode="${TRADEAI_STAGED_UNITS_MODE:-apply}" verb="apply"
   if [[ "$mode" == "off" ]]; then
     log "WARN staged unit install OFF (TRADEAI_STAGED_UNITS_MODE=off) — admitted units NOT installed"
     return 0
   fi
-  if [[ ! -f "$tool" ]]; then
-    if [[ "$action" == "rollback" && -n "$from" && -f "${from}/scripts/install_staged_units.py" ]]; then
-      tool="${from}/scripts/install_staged_units.py"; verb="rollback"; release="$from"
+  [[ "$mode" == "plan" ]] && verb="plan"
+  if [[ "$action" == "rollback" && -n "$from" && -f "${from}/scripts/install_staged_units.py" ]]; then
+    if [[ "$verb" == "plan" ]]; then
+      log "staged units (plan): would retire groups of ${from} absent from ${dir}"
     else
-      log "staged units: ${tool} absent (pre-feature release) — nothing installed"
-      return 0
+      staged_units_run "$from" retire --target "$dir"
     fi
   fi
-  [[ "$mode" == "plan" && "$verb" == "apply" ]] && verb="plan"
-  local out rc=0
-  out="$(cd "$release" && "$VENV_PYTHON" "$tool" "$verb" --release "$release" 2>&1)" || rc=$?
-  while IFS= read -r line; do log "  units: $line"; done <<<"$out"
-  if (( rc != 0 )); then
-    log "FAIL staged unit ${verb} rc=${rc} — see units: lines; receipt data/runtime/staged_units_install_latest.json"
+  if [[ ! -f "${dir}/scripts/install_staged_units.py" ]]; then
+    log "staged units: ${dir}/scripts/install_staged_units.py absent (pre-feature release) — nothing installed"
+    return 0
   fi
+  staged_units_run "$dir" "$verb"
   return 0
 }
 
