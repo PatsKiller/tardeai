@@ -1,0 +1,2021 @@
+{
+ "fixture": "inputs.json",
+ "reviewed": "2026-10-25 by the conflict-producers-b session; category review in docs/ops/CONFLICT_GOLDEN_REPLAY_20261025.md",
+ "schema": "ConflictGoldenExpected@v1",
+ "subjects": {
+  "AAPL": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "ABLV": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "ABNB": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "ACM": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "ACN": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "ACRS": {
+   "run1": [],
+   "run2": []
+  },
+  "ADBE": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "ADTN": {
+   "run1": [],
+   "run2": []
+  },
+  "AGI": {
+   "run1": [],
+   "run2": []
+  },
+  "AHCO": {
+   "run1": [],
+   "run2": []
+  },
+  "ALLE": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "ALXO": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "AMANX": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "AMC": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "AMPX": {
+   "run1": [],
+   "run2": []
+  },
+  "AMSC": {
+   "run1": [],
+   "run2": []
+  },
+  "AMTM": {
+   "run1": [],
+   "run2": []
+  },
+  "ANET": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "AOS": {
+   "run1": [],
+   "run2": []
+  },
+  "APAM": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "ARCC": {
+   "run1": [],
+   "run2": []
+  },
+  "ARHS": {
+   "run1": [],
+   "run2": []
+  },
+  "ARKG": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "ARKQ": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "ARKX": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "ARR": {
+   "run1": [],
+   "run2": []
+  },
+  "ASST": {
+   "run1": [],
+   "run2": []
+  },
+  "ATAI": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ]
+  },
+  "ATEC": {
+   "run1": [],
+   "run2": []
+  },
+  "AUUD": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "AVAV": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "AVGO": {
+   "run1": [],
+   "run2": []
+  },
+  "AVUS": {
+   "run1": [],
+   "run2": []
+  },
+  "AVXC": {
+   "run1": [],
+   "run2": []
+  },
+  "AVXL": {
+   "run1": [],
+   "run2": []
+  },
+  "AWARD": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "AWAY": {
+   "run1": [],
+   "run2": []
+  },
+  "AWF": {
+   "run1": [],
+   "run2": []
+  },
+  "AWI": {
+   "run1": [],
+   "run2": []
+  },
+  "AWP": {
+   "run1": [],
+   "run2": []
+  },
+  "AWRE": {
+   "run1": [],
+   "run2": []
+  },
+  "AWX": {
+   "run1": [],
+   "run2": []
+  },
+  "AX": {
+   "run1": [],
+   "run2": []
+  },
+  "AXGN": {
+   "run1": [],
+   "run2": []
+  },
+  "AXIA": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "AXON": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "AXP": {
+   "run1": [],
+   "run2": []
+  },
+  "AXS": {
+   "run1": [],
+   "run2": []
+  },
+  "AXSM": {
+   "run1": [],
+   "run2": []
+  },
+  "AXTI": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "AXTL": {
+   "run1": [],
+   "run2": []
+  },
+  "AYA": {
+   "run1": [],
+   "run2": []
+  },
+  "AYTU": {
+   "run1": [],
+   "run2": []
+  },
+  "AZO": {
+   "run1": [],
+   "run2": []
+  },
+  "AZTR": {
+   "run1": [],
+   "run2": []
+  },
+  "AZUL": {
+   "run1": [],
+   "run2": []
+  },
+  "BABO": {
+   "run1": [],
+   "run2": []
+  },
+  "BABU": {
+   "run1": [],
+   "run2": []
+  },
+  "BABX": {
+   "run1": [],
+   "run2": []
+  },
+  "BACC": {
+   "run1": [],
+   "run2": []
+  },
+  "BACK": {
+   "run1": [],
+   "run2": []
+  },
+  "BAH": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R13",
+    "GATE:R3",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R13",
+    "GATE:R3",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "BAI": {
+   "run1": [],
+   "run2": []
+  },
+  "BAIG": {
+   "run1": [],
+   "run2": []
+  },
+  "BANC": {
+   "run1": [],
+   "run2": []
+  },
+  "BAP": {
+   "run1": [],
+   "run2": []
+  },
+  "BAR": {
+   "run1": [],
+   "run2": []
+  },
+  "BARK": {
+   "run1": [],
+   "run2": []
+  },
+  "BASED": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "BATRK": {
+   "run1": [],
+   "run2": []
+  },
+  "BAX": {
+   "run1": [],
+   "run2": []
+  },
+  "BAYA": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "BBAR": {
+   "run1": [],
+   "run2": []
+  },
+  "BBDC": {
+   "run1": [],
+   "run2": []
+  },
+  "BBEU": {
+   "run1": [],
+   "run2": []
+  },
+  "BBJP": {
+   "run1": [],
+   "run2": []
+  },
+  "BBLG": {
+   "run1": [],
+   "run2": []
+  },
+  "BBN": {
+   "run1": [],
+   "run2": []
+  },
+  "BBOT": {
+   "run1": [],
+   "run2": []
+  },
+  "BBUL": {
+   "run1": [],
+   "run2": []
+  },
+  "BBVA": {
+   "run1": [],
+   "run2": []
+  },
+  "BBYY": {
+   "run1": [],
+   "run2": []
+  },
+  "BCAB": {
+   "run1": [],
+   "run2": []
+  },
+  "BCC": {
+   "run1": [],
+   "run2": []
+  },
+  "BCCC": {
+   "run1": [],
+   "run2": []
+  },
+  "BCCQU": {
+   "run1": [],
+   "run2": []
+  },
+  "BCE": {
+   "run1": [],
+   "run2": []
+  },
+  "BDSX": {
+   "run1": [],
+   "run2": []
+  },
+  "BEPC": {
+   "run1": [],
+   "run2": []
+  },
+  "BETA": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "BJDX": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "BMY": {
+   "run1": [],
+   "run2": []
+  },
+  "BNAI": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "BND": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "BULL": {
+   "run1": [],
+   "run2": []
+  },
+  "BVN": {
+   "run1": [],
+   "run2": []
+  },
+  "BWXT": {
+   "run1": [],
+   "run2": []
+  },
+  "CACI": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "CAPS": {
+   "run1": [],
+   "run2": []
+  },
+  "CAST": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "CDW": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "CECO": {
+   "run1": [],
+   "run2": []
+  },
+  "CEG": {
+   "run1": [],
+   "run2": []
+  },
+  "CF": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "CIFR": {
+   "run1": [],
+   "run2": []
+  },
+  "COMP": {
+   "run1": [],
+   "run2": []
+  },
+  "CPNG": {
+   "run1": [],
+   "run2": []
+  },
+  "CRCT": {
+   "run1": [],
+   "run2": []
+  },
+  "CRM": {
+   "run1": [],
+   "run2": []
+  },
+  "CSCO": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "CSWC": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "CWEN": {
+   "run1": [],
+   "run2": []
+  },
+  "CXMT": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "DAIC": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "DBGI": {
+   "run1": [],
+   "run2": []
+  },
+  "DFSC": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "DHX": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "DIV": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "DIVI": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "DKNG": {
+   "run1": [],
+   "run2": []
+  },
+  "DLR": {
+   "run1": [],
+   "run2": []
+  },
+  "DNP": {
+   "run1": [],
+   "run2": []
+  },
+  "DRIV": {
+   "run1": [],
+   "run2": []
+  },
+  "DRS": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "DRTS": {
+   "run1": [],
+   "run2": []
+  },
+  "DT": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "DVA": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "DXCM": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "EKSO": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "EL": {
+   "run1": [],
+   "run2": []
+  },
+  "ELAB": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "ELVN": {
+   "run1": [],
+   "run2": []
+  },
+  "ERIC": {
+   "run1": [],
+   "run2": []
+  },
+  "ETN": {
+   "run1": [],
+   "run2": []
+  },
+  "ETON": {
+   "run1": [],
+   "run2": []
+  },
+  "EXPE": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "EXTR": {
+   "run1": [],
+   "run2": []
+  },
+  "FATN": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R3"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R3"
+   ]
+  },
+  "FCNTX": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "FCX": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "FDS": {
+   "run1": [],
+   "run2": []
+  },
+  "FFAI": {
+   "run1": [],
+   "run2": []
+  },
+  "FIX": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "FLYW": {
+   "run1": [],
+   "run2": []
+  },
+  "FOX": {
+   "run1": [],
+   "run2": []
+  },
+  "FOXA": {
+   "run1": [],
+   "run2": []
+  },
+  "FPS": {
+   "run1": [],
+   "run2": []
+  },
+  "FTH": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "FUSE": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "GBFH": {
+   "run1": [],
+   "run2": []
+  },
+  "GCTS": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "GD": {
+   "run1": [],
+   "run2": []
+  },
+  "GDDY": {
+   "run1": [],
+   "run2": []
+  },
+  "GERN": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "GEV": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "GFS": {
+   "run1": [],
+   "run2": []
+  },
+  "GLND": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "GLOO": {
+   "run1": [],
+   "run2": []
+  },
+  "GME": {
+   "run1": [],
+   "run2": []
+  },
+  "GOVX": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "GOW": {
+   "run1": [],
+   "run2": []
+  },
+  "GPC": {
+   "run1": [],
+   "run2": []
+  },
+  "GPN": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "GXAI": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "HAS": {
+   "run1": [],
+   "run2": []
+  },
+  "HD": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "HII": {
+   "run1": [],
+   "run2": []
+  },
+  "HNGE": {
+   "run1": [],
+   "run2": []
+  },
+  "HOOD": {
+   "run1": [],
+   "run2": []
+  },
+  "HPE": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "HPQ": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "HTGC": {
+   "run1": [],
+   "run2": []
+  },
+  "IBIO": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "IBM": {
+   "run1": [],
+   "run2": []
+  },
+  "IMTX": {
+   "run1": [],
+   "run2": []
+  },
+  "INSM": {
+   "run1": [],
+   "run2": []
+  },
+  "INTC": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "IPM": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "IRDM": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "ISRG": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "ITA": {
+   "run1": [],
+   "run2": []
+  },
+  "JAN": {
+   "run1": [],
+   "run2": []
+  },
+  "JBTM": {
+   "run1": [],
+   "run2": []
+  },
+  "JDZG": {
+   "run1": [],
+   "run2": []
+  },
+  "JELD": {
+   "run1": [],
+   "run2": []
+  },
+  "JEPI": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "JEPQ": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "JKHY": {
+   "run1": [],
+   "run2": []
+  },
+  "JTAI": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "KBR": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ]
+  },
+  "KGC": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "KMT": {
+   "run1": [],
+   "run2": []
+  },
+  "KRRO": {
+   "run1": [],
+   "run2": []
+  },
+  "KTOS": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "LBRT": {
+   "run1": [],
+   "run2": []
+  },
+  "LDOS": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "LGPS": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "LHX": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "LIFE": {
+   "run1": [],
+   "run2": []
+  },
+  "LMT": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ]
+  },
+  "LOW": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "LYB": {
+   "run1": [],
+   "run2": []
+  },
+  "MAIN": {
+   "run1": [],
+   "run2": []
+  },
+  "MB": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "MCBS": {
+   "run1": [],
+   "run2": []
+  },
+  "MCD": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "MDLN": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "MDT": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "META": {
+   "run1": [],
+   "run2": []
+  },
+  "METC": {
+   "run1": [],
+   "run2": []
+  },
+  "MOGU": {
+   "run1": [],
+   "run2": []
+  },
+  "MPWR": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "MRLN": {
+   "run1": [],
+   "run2": []
+  },
+  "MRNA": {
+   "run1": [],
+   "run2": []
+  },
+  "MRVL": {
+   "run1": [],
+   "run2": []
+  },
+  "MSFT": {
+   "run1": [],
+   "run2": []
+  },
+  "MSGM": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "MTRN": {
+   "run1": [],
+   "run2": []
+  },
+  "MU": {
+   "run1": [],
+   "run2": []
+  },
+  "NAVN": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "NEE": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "NFLX": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "NOC": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R13",
+    "GATE:R3",
+    "GATE:R7b",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R13",
+    "GATE:R3",
+    "GATE:R7b",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "NOW": {
+   "run1": [],
+   "run2": []
+  },
+  "NRG": {
+   "run1": [],
+   "run2": []
+  },
+  "NUAI": {
+   "run1": [],
+   "run2": []
+  },
+  "NUWE": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "NVDA": {
+   "run1": [
+    "GATE:R3"
+   ],
+   "run2": [
+    "GATE:R3"
+   ]
+  },
+  "NXT": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "NYT": {
+   "run1": [],
+   "run2": []
+  },
+  "OLOX": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "ORA": {
+   "run1": [],
+   "run2": []
+  },
+  "OUST": {
+   "run1": [],
+   "run2": []
+  },
+  "OXY": {
+   "run1": [],
+   "run2": []
+  },
+  "PEPG": {
+   "run1": [],
+   "run2": []
+  },
+  "PETS": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "PEW": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "PFE": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "PFLT": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "PFSI": {
+   "run1": [],
+   "run2": []
+  },
+  "PHIO": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "PL": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "PLTR": {
+   "run1": [],
+   "run2": []
+  },
+  "PNR": {
+   "run1": [],
+   "run2": []
+  },
+  "POWI": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "PPC": {
+   "run1": [],
+   "run2": []
+  },
+  "PRIM": {
+   "run1": [],
+   "run2": []
+  },
+  "PRSO": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "PSQ": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "PUR": {
+   "run1": [],
+   "run2": []
+  },
+  "PWR": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "QBTS": {
+   "run1": [],
+   "run2": []
+  },
+  "QCOM": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "QMLS": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "QURE": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "RARE": {
+   "run1": [],
+   "run2": []
+  },
+  "RBLX": {
+   "run1": [],
+   "run2": []
+  },
+  "RDDT": {
+   "run1": [],
+   "run2": []
+  },
+  "RGNT": {
+   "run1": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "RGTI": {
+   "run1": [],
+   "run2": []
+  },
+  "RKLB": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "RKT": {
+   "run1": [],
+   "run2": []
+  },
+  "RMBS": {
+   "run1": [],
+   "run2": []
+  },
+  "RMD": {
+   "run1": [],
+   "run2": []
+  },
+  "ROL": {
+   "run1": [],
+   "run2": []
+  },
+  "RTX": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "RYAM": {
+   "run1": [],
+   "run2": []
+  },
+  "S": {
+   "run1": [],
+   "run2": []
+  },
+  "SCHD": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SCHG": {
+   "run1": [
+    "AGREEMENT:R15",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "CONFLICT:U7",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SCHY": {
+   "run1": [],
+   "run2": []
+  },
+  "SCLX": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SEI": {
+   "run1": [],
+   "run2": []
+  },
+  "SGMT": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SHPH": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SIBN": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SKYD": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SLB": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SMCI": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SNDK": {
+   "run1": [],
+   "run2": []
+  },
+  "SOFI": {
+   "run1": [],
+   "run2": []
+  },
+  "SOPAQ": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SPAXX": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ]
+  },
+  "SPCX": {
+   "run1": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SRNE": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SSTI": {
+   "run1": [],
+   "run2": []
+  },
+  "SW": {
+   "run1": [],
+   "run2": []
+  },
+  "SWBI": {
+   "run1": [],
+   "run2": []
+  },
+  "SWK": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SWKS": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "TDG": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "TER": {
+   "run1": [],
+   "run2": []
+  },
+  "TRX": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "TSLA": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "TSM": {
+   "run1": [],
+   "run2": []
+  },
+  "TX": {
+   "run1": [],
+   "run2": []
+  },
+  "TXN": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "UBER": {
+   "run1": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "UPST": {
+   "run1": [],
+   "run2": []
+  },
+  "V": {
+   "run1": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "VCIT": {
+   "run1": [],
+   "run2": []
+  },
+  "VIVS": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "VJET": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "VRT": {
+   "run1": [],
+   "run2": []
+  },
+  "VTAK": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "WDAY": {
+   "run1": [],
+   "run2": []
+  },
+  "WH": {
+   "run1": [],
+   "run2": []
+  },
+  "WMT": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "WRD": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "XAR": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "XCUR": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "XLB": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "XLE": {
+   "run1": [],
+   "run2": []
+  },
+  "XLI": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "XLK": {
+   "run1": [],
+   "run2": []
+  },
+  "XLRE": {
+   "run1": [],
+   "run2": []
+  },
+  "XLV": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "XLY": {
+   "run1": [],
+   "run2": []
+  },
+  "XNDU": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "XRPN": {
+   "run1": [],
+   "run2": []
+  },
+  "YOU": {
+   "run1": [],
+   "run2": []
+  },
+  "ZETA": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "ZSL": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  }
+ },
+ "summary": {
+  "flagged_subjects_run1": 89,
+  "flagged_subjects_run2": 89,
+  "run1": {
+   "AGREEMENT": 61,
+   "DATA_ERROR": 42,
+   "GATE": 72,
+   "NEEDS_OPERATOR": 9,
+   "SUPERSEDED": 23
+  },
+  "run2": {
+   "AGREEMENT": 60,
+   "CONFLICT": 1,
+   "DATA_ERROR": 42,
+   "GATE": 72,
+   "NEEDS_OPERATOR": 9,
+   "SUPERSEDED": 23
+  },
+  "subjects": 323
+ }
+}
