@@ -3,13 +3,13 @@
 @@ -44,9 +44,10 @@
  class SpineAskMemory:
      """Default memory: research spine for securities, ask ledger for private entities."""
- 
+
 -    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None):
 +    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None, conflict_reader=None):
          self.spine_path = spine_path
          self.ledger = ledger
 +        self.conflict_reader = conflict_reader
- 
+
      # ── write ──────────────────────────────────────────────────────────────────────────────────────────────────────
      def append(self, *, entity: EntityRef, kind: str, summary: str, ref: str, extra: Optional[dict] = None) -> dict:
 @@ -108,7 +109,16 @@
@@ -27,13 +27,13 @@
 +                            "current_conflicts": [], "gap": {"reason": "conflict reader unavailable"}}]
 +        # Current state is not historical recall, and is never appended to memory.
 +        return current[:1] + items[:max(0, limit - len(current[:1]))]
- 
+
      def _recall_ledger(self, entity: EntityRef) -> list[dict]:
          key = entity.memory_key
 --- a/scripts/lib/cio_ask_core.py
 +++ b/scripts/lib/cio_ask_core.py
 @@ -279,12 +279,14 @@
- 
+
      cfg = load_config()
      store = AskEventStore()
 +    from scripts.lib.cio_conflicts import ask_context_rows

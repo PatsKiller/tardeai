@@ -35,7 +35,7 @@ def context_for(root, security_guid, *, now=None):
         return {"open_conflicts": [], "blocks_promotion": True,
                 "gap": {"reason": "conflict evaluation not yet produced"}, "owner": "the CIO"}
     try:
-        records = list_records(root, subject_kind="security", subject_id=security_guid, limit=200)["records"]
+        records = list_records(root, subject_kind="security", subject_id=security_guid, limit=200, active_only=True)["records"]
     except (OSError, ValueError):
         return {"open_conflicts": [], "blocks_promotion": True,
                 "gap": {"reason": "conflict evaluation unavailable or invalid"}, "owner": "the CIO"}

@@ -228,11 +228,12 @@ class ConflictLedger:
 
 
 def list_records(root, *, subject_kind=None, subject_id=None, state=None, kind=None, limit=100, offset=0,
-                 include_history=False):
+                 include_history=False, active_only=False):
     rows = list(ConflictLedger(root).records().values())
     rows = [r for r in rows if (not subject_kind or r["subject"]["kind"] == subject_kind)
             and (not subject_id or r["subject"]["id"] == subject_id)
-            and (not state or r["state"] == state) and (not kind or r.get("kind") == kind)]
+            and (not state or r["state"] == state) and (not kind or r.get("kind") == kind)
+            and (not active_only or r["state"] in ACTIVE)]
     rows.sort(key=lambda r: (r["updated_at"], r["key"]), reverse=True)
     selected = rows[offset:offset + min(max(limit, 1), 200)]
     if not include_history:

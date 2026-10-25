@@ -51,6 +51,9 @@ headline order, gaps and record conversion. Missing/corrupt ledgers remain gaps.
 as `row.conflict_section`; no per-row API requests or page classifiers are needed.
 `approval_rows` gives W11 version-hashed NEEDS_OPERATOR documents; audit
 dispositions are separate from actual conflict decisions.
+Active lifecycle filtering precedes pagination in approvals, shared sections and
+CIO context. Approval totals count active items; a bounded result explicitly
+reports a truncation gap. Governed links use `/watch` and encode the conflict key.
 
 ## Runner and CIO owner hooks
 

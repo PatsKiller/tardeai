@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from .ledger import ACTIVE, ConflictLedger, DECISION_SCHEMA, list_records
 
@@ -102,18 +102,17 @@ def approval_rows(root=None, *, limit=100):
         root = root or _root()
         if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
             return {"rows": [], "total": None, "gap": {"reason": "conflict ledger not yet produced"}}
-        collection = list_records(root, kind="NEEDS_OPERATOR", limit=min(max(limit, 1), 200))
+        collection = list_records(root, kind="NEEDS_OPERATOR", active_only=True, limit=min(max(limit, 1), 200))
         rows = []
         for record in collection["records"]:
-            if record["state"] not in ACTIVE:
-                continue
             text = json.dumps({k: record[k] for k in ("key", "subject", "kind", "rule", "summary", "clears_when",
                                                     "sides", "state", "revision")}, ensure_ascii=False, sort_keys=True)
             version = hashlib.sha256(text.encode()).hexdigest()
             rows.append({"id": record["key"], "title": record["summary"], "proposed_by": "conflict engine",
                          "created_at": record["opened_at"], "document": {"text": text, "version": version,
-                         "source_sha": version}, "governed_href": "/v3/watch?conflict=" + record["key"]})
-        return {"rows": rows, "total": collection["total"], "gap": None}
+                         "source_sha": version}, "governed_href": "/watch?conflict=" + quote(record["key"], safe="")})
+        gap = {"reason": "more operator conflicts available", "total": collection["total"]} if collection["total"] > len(rows) else None
+        return {"rows": rows, "total": collection["total"], "gap": gap}
     except (OSError, ValueError):
         return {"rows": [], "total": None, "gap": {"reason": "conflict ledger unavailable or invalid"}}
 
@@ -125,8 +124,8 @@ def records_section(root=None, *, subject_kind=None, subject_id=None, kind=None)
     if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
         return findings_section([], gap={"reason": "conflict ledger not yet produced"})
     try:
-        collection = list_records(root, subject_kind=subject_kind, subject_id=subject_id, kind=kind, limit=200)
-        records = [r for r in collection["records"] if r["state"] in ACTIVE]
+        collection = list_records(root, subject_kind=subject_kind, subject_id=subject_id, kind=kind, limit=200, active_only=True)
+        records = collection["records"]
         findings = [{**r, "schema": "ConflictFinding@v1", "history": r.get("history"),
                      "history_gap": "fetch conflict detail for lifecycle history"} for r in records]
         section = findings_section(findings, gap={"reason": "more conflict records available", "total": collection["total"]}

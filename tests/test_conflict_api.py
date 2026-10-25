@@ -58,3 +58,34 @@ def test_batch_sections_and_data_error_adapter_preserve_missing_gaps_and_server_
     section = data_error_section(tmp_path)
     assert section["findings"][0]["key"] == KEY and section["headline"]
     assert sections_for_guids(tmp_path, ["guid"])["guid"]["findings"][0]["key"] == KEY
+
+
+@pytest.mark.parametrize("terminal", ["CLEARED", "SUPERSEDED"])
+def test_active_projection_filters_before_paging_and_counts_only_active(tmp_path, monkeypatch, terminal):
+    from scripts.lib.conflicts.api import records_section
+    from scripts.lib.conflicts.cio import context_for
+    from scripts.lib.conflicts.ledger import ConflictLedger
+    st = ledger(tmp_path)
+    st.reconcile(SUBJECT, [conflict(kind="NEEDS_OPERATOR", never_auto=True)], at=NOW, apply=True)
+    active = st.records()[KEY]
+    # Newer terminal history must not crowd an older active item out of any bounded view.
+    records = {KEY: active, **{f"old:{i}": {**active, "key": f"old:{i}", "state": terminal,
+               "updated_at": (NOW + timedelta(minutes=1)).isoformat()} for i in range(201)}}
+    monkeypatch.setattr(ConflictLedger, "records", lambda self: records)
+    result = approval_rows(tmp_path, limit=1)
+    assert result["total"] == 1 and result["gap"] is None
+    assert result["rows"][0]["id"] == KEY
+    assert result["rows"][0]["governed_href"] == "/watch?conflict=" + quote(KEY, safe="")
+    section = records_section(tmp_path)
+    assert section["gap"] is None and [r["key"] for r in section["findings"]] == [KEY]
+    context = context_for(tmp_path, "guid", now=NOW)
+    assert context["blocks_promotion"] and [r["key"] for r in context["open_conflicts"]] == [KEY]
+
+
+def test_operator_queue_reports_real_active_truncation(tmp_path):
+    st = ledger(tmp_path)
+    st.reconcile(SUBJECT, [conflict(kind="NEEDS_OPERATOR", never_auto=True),
+        conflict(kind="NEEDS_OPERATOR", never_auto=True, key="security:guid:U7:other")], at=NOW, apply=True)
+    result = approval_rows(tmp_path, limit=1)
+    assert result["total"] == 2 and len(result["rows"]) == 1
+    assert result["gap"]["reason"] == "more operator conflicts available"
