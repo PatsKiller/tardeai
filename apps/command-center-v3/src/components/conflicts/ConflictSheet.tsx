@@ -50,7 +50,7 @@ export function ConflictFacts({finding}: {finding: ConflictFinding}) {
     <div><b>Why it needs attention:</b> {finding.summary}</div>
     <div><b>What clears it:</b> {finding.clears_when || 'The engine did not supply a clearing condition.'}</div>
     <div><b>Owner:</b> {finding.owner || 'Not supplied by the engine'}</div>
-    <div><b>Next run:</b> {finding.next_run ? conflictTime(finding.next_run) : 'Not supplied by the engine'}</div>
+    <div><b>Next run:</b> {finding.next_run ? Number.isFinite(Date.parse(finding.next_run)) ? conflictTime(finding.next_run) : finding.next_run : 'Not supplied by the engine'}</div>
     <div><b>Next step:</b> {finding.action ? finding.action.replace(/_/g, ' ') : 'Not supplied'}</div>
     {finding.action === 'notify_operator' && <Link className="mobile-detail-primary" to={`/approvals?conflict=${encodeURIComponent(finding.key)}`}>Open shared Approvals →</Link>}
   </section>
@@ -63,11 +63,11 @@ const eventLabels: Record<string, string> = {
 }
 
 /** Keyed reader prevents a retained result from a previous security appearing in this sheet. */
-function SelectedConflict({selectedKey, section, children}: {selectedKey: string; section: ConflictSection; children?: ActionSlot}) {
+function SelectedConflict({selectedKey, section, onSelect, children}: {selectedKey: string; section: ConflictSection; onSelect: (key: string) => void; children?: ActionSlot}) {
   const read = useApi<ConflictRecord | {data?: ConflictRecord}>(`/api/v3/conflicts/${encodeURIComponent(selectedKey)}`, 15_000)
   const raw = read.data && 'data' in read.data ? read.data.data : read.data as ConflictRecord | null
-  const record = raw?.schema === 'ConflictRecord@v1' && raw.key === selectedKey && Array.isArray(raw.sides)
-    && Array.isArray(raw.history) && raw.subject?.id ? raw : null
+  const record = raw?.schema === 'ConflictRecord@v1' && raw.key === selectedKey && typeof raw.summary === 'string' && Array.isArray(raw.sides)
+    && Array.isArray(raw.history) && raw.history.every(event => event.key === selectedKey) && raw.subject?.id ? raw : null
   const snapshot = section.findings.find(finding => finding.key === selectedKey)
   const finding = record ? {...record, schema: 'ConflictFinding@v1'} : snapshot
   const status = reviewPresentation(record)
@@ -92,6 +92,11 @@ function SelectedConflict({selectedKey, section, children}: {selectedKey: string
       </li>)}</ol> : <p>Event history was not supplied.</p>}
     </section>}
     <div style={{marginTop: 16}}>{typeof children === 'function' ? children(record, read.refetch) : children}</div>
+    {section.findings.length > 1 && <nav aria-label="Other recorded findings" style={{display: 'grid', gap: 8, marginTop: 16}}>
+      <h3>Recorded findings</h3>
+      {section.findings.map(item => <button type="button" key={item.key} aria-current={item.key === selectedKey ? 'true' : undefined}
+        onClick={() => onSelect(item.key)} style={{minHeight: 44, padding: 8, textAlign: 'left', color: TOKENS.text[0], background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md}}>{item.summary}</button>)}
+    </nav>}
   </>
 }
 
@@ -106,7 +111,7 @@ export default function ConflictSheet({title, section, mobile, onBack, children}
   useEffect(() => {
     if (!phone) panel.current?.querySelector<HTMLElement>('[data-detail-focus]')?.focus()
   }, [phone, route.key])
-  const body = route.key ? <SelectedConflict key={route.key} selectedKey={route.key} section={section}>{children}</SelectedConflict>
+  const body = route.key ? <SelectedConflict key={route.key} selectedKey={route.key} section={section} onSelect={route.open}>{children}</SelectedConflict>
     : <p role="status" data-testid="conflict-record-gap">No finding is selected.</p>
   if (phone) return <MobileDetailSheet title={title} onBack={back}>{body}</MobileDetailSheet>
   return createPortal(<aside ref={panel} role="dialog" aria-modal="false" aria-label={title} style={{position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 1100,

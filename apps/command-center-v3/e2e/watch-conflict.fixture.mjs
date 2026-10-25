@@ -9,15 +9,16 @@ import {chromium, expect} from '@playwright/test'
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const fixturePath = path.join(app, 'e2e/fixtures/conflictEngine.fixture.json')
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'))
+const safetyPath=path.join(app,'e2e/fixtures/conflictSafety.fixture.json'),safety=JSON.parse(fs.readFileSync(safetyPath,'utf8'))
 const output = process.argv[2]; assert(output, 'Explicit output directory required')
 const bundle = await build({metafile: true, stdin: {contents: `
 import React,{useState}from'react';import{createRoot}from'react-dom/client';import{BrowserRouter,useSearchParams,Link,Routes,Route}from'react-router-dom';
 import ConflictLine from './src/components/conflicts/ConflictLine';import ConflictSheet,{useConflictSheet}from './src/components/conflicts/ConflictSheet';
-import './src/styles/tokens.css';const specimen=${JSON.stringify(fixture.section)};
+import './src/styles/tokens.css';import './src/index.css';const specimen=${JSON.stringify(fixture.section)},safety=${JSON.stringify(safety.section)};
 function Fixture(){const selected=useConflictSheet();const[params,setParams]=useSearchParams();const mode=params.get('mode');
-const section=mode==='gap'?{findings:[],headline:null,gap:{reason:'engine output is unavailable'}}:mode==='clear'?{findings:[],headline:null,gap:null}:specimen;
+const section=mode==='safety'?safety:mode==='gap'?{findings:[],headline:null,gap:{reason:'engine output is unavailable'}}:mode==='clear'?{findings:[],headline:null,gap:null}:specimen;
 return <><h1>Shared conflict UI protocol fixture</h1><p>Schema sample only; final rulebook and Watch integration are separate.</p>
-<label>Fixture view <select aria-label="Fixture view" value={mode||'open'} onChange={e=>{const p=new URLSearchParams(params);p.set('mode',e.target.value);setParams(p)}}><option value="open">Open</option><option value="clear">Clear</option><option value="gap">Unavailable</option></select></label>
+<label>Fixture view <select aria-label="Fixture view" value={mode||'open'} onChange={e=>{const p=new URLSearchParams(params);p.set('mode',e.target.value);setParams(p)}}><option value="open">Open</option><option value="safety">Safety</option><option value="clear">Clear</option><option value="gap">Unavailable</option></select></label>
 <ConflictLine section={section} onOpen={selected.open}/>{selected.key&&<ConflictSheet title="Recorded finding" section={section} onBack={selected.close}>
 <Link style={{display:'flex',alignItems:'center',minHeight:44,width:'100%'}} to="/evidence">Open recorded evidence</Link></ConflictSheet>}</>}
 createRoot(document.getElementById('root')).render(<BrowserRouter><Routes><Route path="/" element={<Fixture/>}/><Route path="/evidence" element={<h1>Recorded evidence route</h1>}/></Routes></BrowserRouter>);
@@ -35,7 +36,7 @@ try {
     const traffic={external:[],mutations:[],unexpected:[],errors:[]}, selectedGets=[]
     let recordState='OPEN'
     const finding=fixture.section.findings[0]
-    const savedRecord=()=>({...finding,schema:'ConflictRecord@v1',state:recordState,subject:{kind:'security',id:'fixture-guid-schd',label:'SCHD'},opened_at:fixture.clock,updated_at:fixture.clock,revision:3,decision:recordState==='DECIDED'?{schema:'ConflictDecision@v1',actor_kind:'cio',actor:'CIO',chosen_side:'HOLD',reason:'Fixture decision with recorded evidence',evidence_refs:['fixture:evidence'],expires_at:'2026-10-25T23:00:00Z'}:null,history:[{schema:'ConflictEvent@v1',key:finding.key,event:'opened',at:fixture.clock},...(recordState==='OPEN'?[]:[{schema:'ConflictEvent@v1',key:finding.key,event:'review_queued',at:fixture.clock,request_id:'fixture-request'}])]})
+    const savedRecord=(item=finding)=>({...item,schema:'ConflictRecord@v1',state:item.key===finding.key?recordState:'OPEN',subject:{kind:'security',id:'fixture-guid-schd',label:'SCHD'},opened_at:fixture.clock,updated_at:fixture.clock,revision:3,decision:item.key===finding.key&&recordState==='DECIDED'?{schema:'ConflictDecision@v1',actor_kind:'cio',actor:'CIO',chosen_side:'HOLD',reason:'Fixture decision with recorded evidence',evidence_refs:['fixture:evidence'],expires_at:'2026-10-25T23:00:00Z'}:null,history:[{schema:'ConflictEvent@v1',key:item.key,event:'opened',at:fixture.clock},...(item.key!==finding.key||recordState==='OPEN'?[]:[{schema:'ConflictEvent@v1',key:finding.key,event:'review_queued',at:fixture.clock,request_id:'fixture-request'}])]})
     page.on('pageerror',e=>traffic.errors.push(String(e)))
     await page.clock.install({time:new Date(fixture.clock)})
     await page.route('**/*',route=>{
@@ -44,10 +45,11 @@ try {
       if(req.method()!=='GET'){traffic.mutations.push(req.method()+' '+url.pathname);return route.abort()}
       if(url.pathname.startsWith('/api/v3/conflicts/')){
         const key=decodeURIComponent(url.pathname.slice('/api/v3/conflicts/'.length));selectedGets.push(key)
-        return route.fulfill({status:key===finding.key?200:404,contentType:'application/json',body:JSON.stringify(key===finding.key?savedRecord():{error:'not found'})})
+        const item=[...fixture.section.findings,...safety.section.findings].find(f=>f.key===key)
+        return route.fulfill({status:item?200:404,contentType:'application/json',body:JSON.stringify(item?savedRecord(item):{error:'not found'})})
       }
       if(!req.isNavigationRequest()){traffic.unexpected.push(url.pathname);return route.abort()}
-      return route.fulfill({contentType:'text/html',body:`<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><style>${css}body{margin:0;padding:16px;background:var(--bg-0);color:var(--text-0);font:14px sans-serif}select{min-height:44px}</style></head><body><div id="root"></div><script>${js}</script></body></html>`})
+      return route.fulfill({contentType:'text/html',body:`<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><style>${css}body{margin:0;padding:16px;background:var(--bg-0);color:var(--text-0)}select{min-height:44px}</style></head><body><div id="root"></div><script>${js}</script></body></html>`})
     })
     const tap=async locator=>{const box=await locator.boundingBox();if(width<820){assert(box&&box.width>=44&&box.height>=44);await locator.tap()}else await locator.click()}
     const inView=async locator=>{await expect(locator).toBeVisible();const b=await locator.boundingBox();assert(b&&b.x>=-1&&b.y>=-1&&b.x+b.width<=width+1&&b.y+b.height<=height+1,JSON.stringify(b))}
@@ -58,7 +60,7 @@ try {
     const dialog=page.getByRole('dialog',{name:'Recorded finding'})
     await inView(dialog)
     await expect(dialog.getByTestId('conflict-record-state')).toHaveAttribute('data-state','OPEN')
-    await expect(dialog).toContainText('Schwab Roth IRA')
+    await expect(dialog).toContainText('Schwab Roth')
     await expect(dialog).not.toContainText('schwab_roth_ira')
     await inView(dialog.getByRole('button',{name:'← Back'}))
     assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Focus enters sheet')
@@ -77,6 +79,18 @@ try {
     await inView(page.getByRole('heading',{name:'Recorded evidence route'}))
     await page.goBack();await inView(page.getByRole('dialog',{name:'Recorded finding'}))
     await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.getByRole('combobox',{name:'Fixture view'}).selectOption('safety')
+    await expect(page.getByTestId('conflict-headline')).toHaveText(safety.section.headline)
+    await tap(page.getByTestId('conflict-line'))
+    await expect(dialog.getByTestId('conflict-facts')).toContainText('Blocked: hard safety')
+    await expect(dialog).toContainText('next registered producer run')
+    const other=dialog.getByRole('navigation',{name:'Other recorded findings'}).getByRole('button',{name:'Sources identify different securities',exact:true})
+    await other.scrollIntoViewIfNeeded();await tap(other)
+    await expect(dialog.getByTestId('conflict-facts')).toContainText('Sources identify different securities')
+    assert.equal(new URL(page.url()).searchParams.get('conflict'),safety.section.findings[1].key)
+    await expect(dialog.getByTestId('conflict-record-state')).toHaveAttribute('data-state','OPEN')
+    await page.goBack();await expect(dialog.getByTestId('conflict-facts')).toContainText('Blocked: hard safety')
+    await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.getByRole('combobox',{name:'Fixture view'}).selectOption('clear')
     await expect(page.getByTestId('conflict-line')).toHaveCount(0)
     await expect(page.getByTestId('conflict-gap')).toHaveCount(0)
@@ -86,11 +100,11 @@ try {
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No horizontal page scroll')
     await page.screenshot({path:path.join(output,`impl-conflict-shared-gap-${width}.png`),fullPage:width>=820,animations:'disabled'})
     assert.deepEqual(traffic,{external:[],mutations:[],unexpected:[],errors:[]})
-    assert(selectedGets.length>=4&&selectedGets.every(key=>key===finding.key),'Only the selected encoded key is read')
-    cases.push({width,height,tap:true,url_key:true,focus:true,back:true,primary_evidence_route:true,gap_not_zero:true,ledger_state_history_decision:true,selected_gets:selectedGets,traffic})
+    assert(selectedGets.length>=4&&selectedGets.every(key=>[finding.key,...safety.section.findings.map(f=>f.key)].includes(key)),'Only the selected encoded key is read')
+    cases.push({width,height,tap:true,url_key:true,focus:true,back:true,primary_evidence_route:true,gap_not_zero:true,ledger_state_history_decision:true,safety_source_order_selection:true,selected_gets:selectedGets,traffic})
     await context.close()
   }
 } finally {await browser.close()}
 for(const [file,digest]of Object.entries(source))assert.equal(sha(path.join(app,file)),digest)
-fs.writeFileSync(path.join(output,'conflict-ui-receipts.json'),JSON.stringify({scope:fixture.acceptance_scope||'Shared UI protocol only; not policy or Watch acceptance',fixture_sha256:sha(fixturePath),source_sha256:source,cases},null,2)+'\n')
+fs.writeFileSync(path.join(output,'conflict-ui-receipts.json'),JSON.stringify({scope:fixture.acceptance_scope||'Shared UI protocol only; not policy or Watch acceptance',fixture_sha256:sha(fixturePath),safety_fixture_sha256:sha(safetyPath),source_sha256:source,cases},null,2)+'\n')
 console.log('Shared conflict primitives: 1440/412/390 tap, viewport, focus, URL, Back, evidence and missing-engine gap passed; policy/Watch integration not claimed')
