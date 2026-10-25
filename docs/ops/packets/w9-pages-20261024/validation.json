@@ -124,5 +124,12 @@
       "sha256": "33c7ec8e9ac2c780c70a1553c2618ae0bf051dd0c34d218b3f5cb65b7c9a562e"
     }
   },
-  "publication": "Not independently ready on origin/main: W2 retained dependency source must be integrated first; no PUSH_NEEDED or runtime claim"
+  "publication": "Not independently ready on origin/main: W2 retained dependency source must be integrated first; no PUSH_NEEDED or runtime claim",
+  "type_only_followup": {
+    "source_head": "fdb3334ec685eb6f8b3cf7d3b8bdf0f741f83339",
+    "receipt": "nullable-stale-type.json",
+    "typecheck": "PASS",
+    "emitted_javascript": "byte-identical",
+    "browser_and_native_proof": "Earlier exact source proof retained; no runtime change"
+  }
 }
