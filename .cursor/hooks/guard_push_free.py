@@ -373,12 +373,18 @@ def check_budget(repo: Path, branch: str, cfg: dict[str, Any]) -> dict[str, int]
 # --------------------------------------------------------------------------- approval evidence
 
 
-def approval_ref(text: Optional[str]) -> Optional[str]:
+def approval_refs(text: Optional[str]) -> list[str]:
+    out = []
     for m in APPROVAL_RE.finditer(text or ""):
         ref = (m.group("ref") or "").strip().strip("`").strip()
         if ref:
-            return ref[:300]
-    return None
+            out.append(ref[:300])
+    return out[:20]
+
+
+def approval_ref(text: Optional[str]) -> Optional[str]:
+    refs = approval_refs(text)
+    return refs[0] if refs else None
 
 
 def resolve_approval(ref: Optional[str], cfg: dict[str, Any]) -> dict[str, str]:
@@ -476,21 +482,20 @@ def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], cla
         raise Refused(f"no live claim on {branch} held by {who}")
     last: Optional[Refused] = None
     for r in rows:
-        ref = approval_ref(str(r.get("note") or ""))
-        if not ref:
-            wl = Path(r["_path"]).with_name(f"{r.get('claim_id')}.worklog.md")
-            try:
-                ref = approval_ref(_plan_sections(wl.read_text(encoding="utf-8"))) if (
-                    wl.is_file() and not wl.is_symlink()) else None
-            except OSError:
-                ref = None
+        wl = Path(r["_path"]).with_name(f"{r.get('claim_id')}.worklog.md")
         try:
-            res = resolve_approval(ref, cfg)
-        except Refused as exc:
-            last = exc
-            continue
-        return {"source": "claim", "claim_id": str(r.get("claim_id")), "session": str(r.get("session") or ""),
-                **{f"approval_{k}": v for k, v in res.items()}, "approval_ref": res["ref"]}
+            plan = _plan_sections(wl.read_text(encoding="utf-8")) if wl.is_file() and not wl.is_symlink() else ""
+        except OSError:
+            plan = ""
+        refs = approval_refs(str(r.get("note") or "")) + approval_refs(plan)
+        for ref in refs or [None]:
+            try:
+                res = resolve_approval(ref, cfg)
+            except Refused as exc:
+                last = exc
+                continue
+            return {"source": "claim", "claim_id": str(r.get("claim_id")), "session": str(r.get("session") or ""),
+                    **{f"approval_{k}": v for k, v in res.items()}, "approval_ref": res["ref"]}
     raise last or Refused("no resolvable Operator-approval on the claim")
 
 

@@ -255,6 +255,11 @@ def test_fast_forward_second_push_and_worklog_plan(E):
     assert E.events()[-1]["ff"] == "fast-forward"
 
 
+def test_unresolvable_note_falls_back_to_resolvable_plan_line(E):
+    E.claim(note="Operator-approval: prose only", worklog=f"## Plan\n\n- [ ] Operator-approval: {OK_COMMENT}\n")
+    assert E.checker()["allow"]
+
+
 def test_operator_decision_ledger_ref(E):
     E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0001-demo",
                                        "actor": "PatsKiller", "item_id": "plan-1"}) + "\n")
