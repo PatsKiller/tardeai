@@ -105,6 +105,36 @@ def test_class_limits_are_canonical_metadata_and_missing_classification_is_not_r
     assert missing.get("lookthrough_company_limit_pct") is None
 
 
+def test_endpoint_composes_canonical_policy_once_without_overwriting_registered_section(tmp_path):
+    truth, look = inputs()
+    calls = []
+    policy = {"classes": [], "gap": {"reason": "Fixture evidence missing"}, "source": "fixture IPS"}
+    def composer(doc, **kwargs):
+        calls.append((doc, kwargs))
+        return {**doc, "concentration_policy": policy}
+    result = page_payload(tmp_path, now=NOW, resolver=lambda **kw: truth,
+                          concentration_resolver=composer, concentration_inputs={"evidence_by_guid": {}},
+                          lookthrough_inputs=look)
+    assert len(calls) == 1 and calls[0][1] == {"evidence_by_guid": {}}
+    assert result["concentration_policy"] == policy
+    assert "concentration_policy" not in truth
+    registered = {**truth, "concentration_policy": policy}
+    page_payload(tmp_path, now=NOW, resolver=lambda **kw: registered,
+                 concentration_resolver=composer, lookthrough_inputs=look)
+    assert len(calls) == 1
+
+
+def test_unavailable_policy_composer_keeps_current_portfolio_facts_visible(tmp_path):
+    truth, look = inputs()
+    def composer(*args, **kwargs):
+        raise OSError("fixture policy projection unavailable")
+    result = page_payload(tmp_path, now=NOW, resolver=lambda **kw: truth,
+                          concentration_resolver=composer, lookthrough_inputs=look)
+    assert result["concentration_policy"]["gap"]
+    assert result["portfolio"]["total_usd"] == 28000
+    assert result["lookthrough"]["looked_through_usd"] == 15000
+
+
 def test_company_classification_requires_bound_guid_and_source():
     truth, look = inputs()
     c = next(iter(truth["companies"]["by_guid"].values()))

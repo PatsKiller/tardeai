@@ -79,6 +79,7 @@ def unavailable(reason: str) -> dict:
 
 def page_payload(root: Path | str, *, now: datetime | None = None,
                  resolver: Callable | None = None, inputs: dict | None = None, db_query: Callable | None = None,
+                 concentration_resolver: Callable | None = None, concentration_inputs: dict | None = None,
                  lookthrough_inputs: dict | None = None) -> dict:
     """GET-only adapter. All state reads are cached artifacts, never providers.
 
@@ -100,6 +101,23 @@ def page_payload(root: Path | str, *, now: datetime | None = None,
             truth = resolver(root=root, now=now, inputs=inputs, db_query=db_query)
         except Exception as exc:
             truth = unavailable("The CIO shared record could not be read (" + type(exc).__name__ + ")")
+    if "concentration_policy" not in truth:
+        if concentration_resolver is None:
+            try:
+                from scripts.lib.ips_policy import apply_concentration
+                concentration_resolver = apply_concentration
+            except ImportError:
+                concentration_resolver = None
+        if concentration_resolver is not None:
+            try:
+                composed = concentration_resolver(truth, **(concentration_inputs or {}))
+                if not isinstance(composed, dict):
+                    raise ValueError("Canonical concentration projection is not an object")
+                truth = composed
+            except Exception as exc:
+                truth = {**truth, "concentration_policy": {"classes": [], "as_of": None,
+                         "source": "CIO concentration policy", "gap": {"reason":
+                         "Canonical concentration policy could not be read (" + type(exc).__name__ + ")"}}}
     return validate_payload(project_pages(truth, **(lookthrough_inputs if lookthrough_inputs is not None else load_lookthrough_inputs(root))))
 
 

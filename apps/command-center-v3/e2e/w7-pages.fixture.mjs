@@ -129,6 +129,7 @@ try {
     await expect(page.getByTestId('cio-cash-waterfall')).toBeInViewport()
     await expect(page.getByTestId('cio-cash-waterfall')).toContainText('$3,000')
     await expect(page.getByTestId('cio-cash-waterfall')).toContainText('Synthetic test policy')
+    await expect(page.getByTestId('cio-cash-waterfall')).toContainText('2026-10-24 (date only)')
     await expect(page.getByTestId('cio-cash-waterfall')).toContainText('88% of the applicable limit')
     await expect(page.getByTestId('cio-cash-waterfall')).not.toContainText('Concentration alert level')
     await shot('17', 'cash-policy')

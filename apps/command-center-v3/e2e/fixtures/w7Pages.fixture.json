@@ -236,7 +236,7 @@
       "near_limit_pct": null,
       "source": "fixture single IPS source",
       "source_label": "Synthetic test policy",
-      "as_of": "2026-10-24T22:00:00+00:00",
+      "as_of": "2026-10-24",
       "approval_ref": "fixture only",
       "gap": null
     },

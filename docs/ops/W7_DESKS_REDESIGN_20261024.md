@@ -84,11 +84,11 @@ classify funds, compare exposures to thresholds, generate R13 findings or
 rebalance anything. Account-filtered allocation percentages use that account's
 basis; policy limits apply to the whole portfolio, as the UI states.
 
-Local evidence at the source checkpoint: 51 affected tests passed with
-`psycopg2` hidden; the final W7 subset has 12 passing tests. Full `npm run build`,
+Local evidence at the source checkpoint: 53 affected tests passed with
+`psycopg2` hidden; the final W7 subset has 14 passing tests. Full `npm run build`,
 the four integrity ratchets, lane registry, CIO completeness and docs-index
-checks passed. A copied-tree check with W1 core source `c6e3a24c3` returned 27
-positions, 14 industry groups and a 225,774-byte response. It made no DB or
+checks passed. A copied-tree check with W1 core source `f74bea404` returned 27
+positions, 14 industry groups and a 240,881-byte response. It made no DB or
 provider calls and verified all copied/source hashes unchanged. Live status
 and broker observations were explicitly unavailable in that check.
 
@@ -100,4 +100,17 @@ a browser. Neither event is a passing UI result. W5 frame adoption, W2 route
 registration, W1's final dependency and the shared conflict components must be
 integrated and verified before this branch can request publication.
 
-W1 core `c6e3a24c3` now supplies separate position, valuation and quote clocks. The copied-tree receipt asserts that position time is the recorded position-build/data time and never substitutes the quote clock. The R13 policy follow-up remains a separate accepted-source dependency; this core-only receipt explicitly carries the missing class-policy gap.
+The final copied-state check composes frozen W1 core `f74bea404` and the pure
+policy helper/config from `7bff82fdc`. It checks documented legacy ET times
+against their recorded instants and verifies offset-ISO output with raw clock
+provenance. Date-only policy approval remains a date in the UI; W7 never
+invents midnight or guesses a timezone. The candidate IPS source and approval
+reference are checked directly against the frozen config.
+
+`apply_concentration` is W1's pure composition function. W7 calls it once only
+when the core document has no authoritative class-policy section. A failed
+policy read preserves portfolio facts and produces a policy gap. Complete fund
+evidence has no accepted production projection yet: all 23 assessed names in
+the copy check remain unclassified, with null caps and explicit gaps. The policy
+table displays approved values; this is not live classification or R13 gate
+acceptance. W7 does not treat a top-holdings sample as complete statistics.

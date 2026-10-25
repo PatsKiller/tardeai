@@ -10,7 +10,13 @@ export const text = (v: unknown, gap = 'Not available') => v == null ? gap : Str
 const localHref = (v: unknown) => typeof v === 'string' ? v.replace(/^\/v3(?=\/|$)/, '') || '/' : null
 export const when = (v: unknown) => {
   if (!v) return 'Time unavailable'
-  const d = new Date(String(v))
+  const raw = String(v)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const day = new Date(`${raw}T00:00:00Z`)
+    return Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== raw ? 'Time unavailable' : `${raw} (date only)`
+  }
+  if (!/T.*(?:Z|[+-]\d\d:\d\d)$/.test(raw)) return 'Time unavailable'
+  const d = new Date(raw)
   return Number.isNaN(d.getTime()) ? 'Time unavailable' : d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
 }
 export const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,290px),1fr))', gap: 12, alignItems: 'start' }
