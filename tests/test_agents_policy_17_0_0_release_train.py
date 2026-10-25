@@ -314,7 +314,10 @@ def test_section_25_9_quotes_the_clauses_verbatim_with_their_digests():
 def test_ai_work_policy_only_appends_section_28():
     i = AWP.find("---\n\n# 28. RELEASE TRAIN PUSHES")
     assert i > 0, "AI_WORK_POLICY.md §28 missing: the 17.0.0 AI_WORK_POLICY patch is not applied"
-    assert h(AWP[:i]) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
+    # AGENTS.md 20.4.0 (§28.13) adds two marked "Hands-off delivery (AGENTS.md 20.4.0 ..." paragraphs to §3 and §17;
+    # taken out, sections 1-27 are byte-identical to the 17.0.0 pin.
+    pre = re.sub(r"Hands-off delivery \(AGENTS\.md 20\.4\.0.*?\n\n", "", AWP[:i], flags=re.S)
+    assert h(pre) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
     s28 = _flat(AWP[i:])
     # while PROPOSED §28 is binding only once 17.0.0 is ACTIVE and the delegation is armed; the ratifying edit marks
     # 17.0.0 ACTIVE there and leaves the arming condition

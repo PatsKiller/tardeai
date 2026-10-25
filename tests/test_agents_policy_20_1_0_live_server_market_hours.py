@@ -70,8 +70,20 @@ def _s288(text: str = AGENTS) -> str:
     return m.group(0)
 
 
+def pre_20_4_0(text: str) -> str:
+    """20.4.0 adds only §28.13 and its row (PROPOSED: no header or banner change; AI_WORK_POLICY.md is not pinned here)."""
+    if "**20.4.0 is " in text:
+        b = text.index("**20.4.0 is ")
+        text = text[:b] + text[text.index("**20.3.0 is ", b):]
+    if "\n## 28.13 " in text:
+        s = text.index("\n## 28.13 ")
+        text = text[:s] + text[text.index("\n---\n\n# Version history", s):]
+    return re.sub(r"^\| 20\.4\.0 \|.*\n", "", text, count=1, flags=re.M)
+
+
 def pre_20_3_0(text: str) -> str:
     """20.3.0 adds only §28.12 and its row (PROPOSED: no header or banner change); a ratified 20.3.0 adds a banner."""
+    text = pre_20_4_0(text)
     if "**20.3.0 is " in text:
         b = text.index("**20.3.0 is ")
         text = text[:b] + text[text.index("**20.2.0 is ", b):]

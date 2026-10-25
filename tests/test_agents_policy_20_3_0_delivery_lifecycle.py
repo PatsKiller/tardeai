@@ -10,7 +10,10 @@ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 def _section() -> str:
     s = AGENTS.index("\n## 28.12 ")
-    return AGENTS[s : AGENTS.index("\n---\n\n# Version history", s)]
+    end = AGENTS.index("\n---\n\n# Version history", s)
+    if "\n## 28.13 " in AGENTS[s:end]:  # 20.4.0 (§28.13) follows §28.12
+        end = AGENTS.index("\n## 28.13 ", s)
+    return AGENTS[s:end]
 
 
 def test_one_row_proposed_or_ratified_with_token():
