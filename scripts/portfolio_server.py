@@ -359,7 +359,8 @@ def _reconstruct_personal_as_of(target_date: str) -> dict:
     Returns: {ok, data, as_of, fields_changed, fields_no_data} on success
              {ok: False, error: str} on failure
     """
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
         from db_adapter import USE_DB, get_personal_snapshot_at_date
     except Exception as e:
@@ -503,7 +504,8 @@ def _handle_personal_history(handler, field_name: str):
     }
 
     # Query Postgres for history
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
         from db_adapter import USE_DB, get_personal_field_history
     except Exception as e:
@@ -625,7 +627,8 @@ def _handle_personal_write(handler, raw_body: bytes):
 
         # Phase P1: Dual-write changes to personal_history table (non-blocking)
         try:
-            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from db_adapter import USE_DB, save_personal_history_entry
             if USE_DB:
                 for change in changes:
@@ -1896,7 +1899,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _v2_status, _v2_body = _v2_result
                     if path.startswith("/api/v2/hermes"):
                         try:
-                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                                sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
                             from lib.hermes_logging.request_logger import log_hermes_request
                             log_hermes_request(
                                 path,
@@ -2501,7 +2505,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _v2_status, _v2_body = _v2_result
                     if path.startswith("/api/v2/hermes"):
                         try:
-                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                                sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
                             from lib.hermes_logging.request_logger import log_hermes_request
                             log_hermes_request(
                                 path,
@@ -2653,7 +2658,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             try:
                 from lib.n8n_cc_wave_c import legacy_run_refuse
             except ImportError:
-                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from lib.n8n_cc_wave_c import legacy_run_refuse  # type: ignore
             status, result = legacy_run_refuse(path)
             if path == "/api/run-pipeline" and status >= 400:
