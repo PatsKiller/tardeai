@@ -16,7 +16,7 @@ const sourceSha = 'a'.repeat(40), documentSha = 'b'.repeat(64)
 const text = '# 28 · Operations\n\nEvery page names its source.\n\nChanges need an operator review.'
 const changes = ['Every page names its source.', 'Changes need an operator review.'].map((after, index) => ({
   id: `change_${index}`, section: '28 · Operations', before: '', after, after_offset: text.indexOf(after), kind: 'added',
-  plain: index ? 'You review changes before they take effect.' : 'Each page tells you where its facts came from.', reason: 'Synthetic fixture requirement.',
+  plain: index ? 'You review changes before they take effect.' : 'Each page tells you where its facts came from.', reason: 'Synthetic fixture requirement. '.repeat(24),
 }))
 const document = { text, base_text: '# 28 · Operations', source_sha: sourceSha, version: '20.2.0', document_sha: documentSha,
   source_verified: true, changes, sections: ['28 · Operations'], prechecks: { sensitive_sections: [], removed_blocks: 0, weakens_rules: 'NOT_ASSESSED', policy_tests: { state: 'UNKNOWN' } } }
@@ -92,7 +92,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await expect(approve).toBeDisabled()
     await tap(page.getByRole('button', { name: 'Start reading', exact: true }))
     for (const change of changes) {
-      await page.locator(`[data-change-id="${change.id}"]`).scrollIntoViewIfNeeded()
+      await page.locator(`[data-read-target="${change.id}"]`).scrollIntoViewIfNeeded()
       await page.clock.runFor(3400)
       await expect(page.locator(`[data-change-id="${change.id}"]`).getByRole('heading')).toContainText('Read')
     }

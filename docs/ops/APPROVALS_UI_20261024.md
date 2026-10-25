@@ -13,7 +13,7 @@ W11 changes neither shared file. Default exports take no props:
 |---|---|---|
 | 19 queue | URL filters, server paging, type/what/proposer/waiting, Read & decide, recent decisions, history, notification gap | `/api/v2/governance/approvals`; null clocks/counts remain unknown |
 | 20 reader | Whole route on a phone; Back; changes-only, actual inline whole-document highlights, side by side, changed-section TOC, search | One item’s exact document, diff offsets and SHA from the W11 API |
-| 20 reading | Explicit Start reading; full-card IntersectionObserver plus visibility checks; three-second server-attested enter/read sequence | Server review nonce, exact document SHA, per-change markers; changed document resets progress |
+| 20 reading | Explicit Start reading; full-wording IntersectionObserver plus visibility checks; three-second server-attested enter/read sequence | Server review nonce, exact document SHA, per-change markers; changed document resets progress |
 | 20 decision | Disabled Approve until all changes read; Request changes / Reject; visible result/error; selected wording comments | Operator-only API; recorded actor/version/time; existing control handoff for grants/activations/trades/conflicts |
 | 20 question | Ask the CIO with section text and both source/document hashes | Existing `/api/v2/cio/ask` only on operator action |
 | 21 rules | Whole committed rulebook, section paging, tap-accessible explanations, evidence statuses, positions and proposal feedback | `/api/v2/governance/policy`; missing explanations/evidence stay explicit |

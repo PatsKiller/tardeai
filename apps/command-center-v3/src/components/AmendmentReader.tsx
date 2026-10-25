@@ -37,13 +37,16 @@ function ChangeBlock({ change, review, sha, itemId, isRead, onRead, onFailure }:
       }).catch(error => callbacks.current.onFailure(error.message))
     }, { threshold: [0, .98, 1] })
     observer.observe(element.current)
-    const visibility = () => { if (document.hidden && visible) leave() }
+    const visibility = () => {
+      if (document.hidden && visible) leave()
+      else if (!document.hidden && !completed && element.current) { observer.unobserve(element.current); observer.observe(element.current) }
+    }
     document.addEventListener('visibilitychange', visibility)
     return () => { stopped = true; clearTimeout(timer); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); if (visible && !completed) leave() }
   }, [review, sha, change.id, itemId, isRead])
-  return <div ref={element} id={change.id} data-change-id={change.id} className={`change ${change.kind === 'removed' ? 'removed' : ''}`}>
-    <h3>{isRead ? '✓ Read' : change.kind === 'removed' ? 'Removed wording' : 'Added wording'} · {change.section}</h3>
-    <p className="rule-text">{change.after || change.before}</p>
+  return <div id={change.id} data-change-id={change.id} className={`change ${change.kind === 'removed' ? 'removed' : ''}`}>
+    <div ref={element} data-read-target={change.id}><h3>{isRead ? '✓ Read' : change.kind === 'removed' ? 'Removed wording' : 'Added wording'} · {change.section}</h3>
+      <p className="rule-text">{change.after || change.before}</p></div>
     <p className="muted">In plain words: {change.plain ?? 'The author has not supplied an explanation yet.'}</p>
     <p className="muted">Why: {change.reason ?? 'A reason has not been attached to this change.'}</p>
   </div>
@@ -130,7 +133,7 @@ export default function AmendmentReader({ id }: { id: string }) {
             if (selected) setSelection(selected.slice(0, 1500))
           }}>
             {!review && <button className="primary" disabled={busy} onClick={begin}>Start reading</button>}
-            <p className="muted">Each change is marked read after its complete card has stayed on screen for three seconds.</p>
+            <p className="muted">Each change is marked read after its complete wording has stayed on screen for three seconds.</p>
             {mode === 'changes' && blocks}
             {mode === 'whole' && <><h2>Whole document, highlighted</h2>{highlightedWhole()}</>}
             {mode === 'side' && <><div className="side-by-side"><section><h2>Before</h2><pre>{doc.base_text || 'No earlier wording was supplied.'}</pre></section><section><h2>Proposed</h2><pre>{doc.text}</pre></section></div><h2>Changes to read</h2>{blocks}</>}
@@ -149,7 +152,7 @@ export default function AmendmentReader({ id }: { id: string }) {
               {selection && <p role="status">Selected: {selection}<button onClick={() => setSelection('')}>Clear selection</button></p>}
             </section>
             <section className="panel reader-actions decision-actions" aria-label="Record your decision">
-              <div ref={result}>{error && <p role="alert" className="warning">{error}</p>}</div>
+              <div ref={result}>{error && <><p role="alert" className="warning">{error}</p><button onClick={refresh}>Reload document</button></>}</div>
               <label>Comment<textarea aria-label="Decision comment" value={comment} onChange={event => setComment(event.target.value)} /></label>
               {saved ? <div role="status" className="success"><strong>Decision recorded</strong><p>{saved.decision.replace(/_/g, ' ')} · {saved.actor}</p>
                 {saved.policy_token && <details><summary>Policy approval record</summary><code>{saved.policy_token}</code></details>}<Link className="primary" to="/approvals">Return to approvals</Link></div> : <>
