@@ -12,7 +12,7 @@ What it returns: one row per trade (open positions and round trips closed in the
   made. Never claims "your own trade" without a recorded link that says so;
 * **timeline** — origin recommendation → entry fill → each stop level change → conviction / stance changes while held
   → exit fill and its cause;
-* **exit cause** — stop-out, trailing-stop ratchet, target, manual, or "stop likely filled — not yet confirmed"
+* **exit cause** — stop-out, trailing-stop ratchet, target, manual, or "Awaiting fill" (mark under the stop, not yet confirmed)
   (deterministic rules over fills and observed stops; see ``classify_exit``);
 * **review** — facts first (entry, exit, high/low while held, giveback, stop raises, conviction then and now); model
   prose only when a stored advisory exists, labelled advisory with its model;
@@ -78,12 +78,13 @@ EXIT_LABEL = {
     "trailing_ratchet": "Trailing stop (ratchet)",
     "target": "Target reached",
     "manual": "Manual sell",
-    "stop_likely_filled": "Stop likely filled — not confirmed",
+    # Approved operator wording 2026-10-25: informational "Awaiting fill", never a warning. The kind keeps its name.
+    "stop_likely_filled": "Awaiting fill",
     "open": "Still open",
     "unknown": "Exit cause unknown",
 }
 EXIT_TONE = {"stop_out": "danger", "trailing_ratchet": "warning", "target": "success", "manual": "info",
-             "stop_likely_filled": "warning", "open": "neutral", "unknown": "neutral"}
+             "stop_likely_filled": "info", "open": "neutral", "unknown": "neutral"}
 #: An exit within this % of the last working stop is a stop fill (a stop-market fills at or a little below it).
 STOP_FILL_TOL_PCT = 0.6
 #: An exit within this % below the plan target counts as the target.
@@ -232,8 +233,8 @@ def classify_exit(*, closed: bool, entry_ref: Optional[float], exit_ref: Optiona
             return {"kind": "stop_likely_filled", "label": EXIT_LABEL["stop_likely_filled"], "confirmed": False,
                     "level_ref": last, "raises": raises,
                     "detail": (f"Latest mark {_money(mark_ref)}{' at ' + mark_at[:16].replace('T', ' ') if mark_at else ''} "
-                               f"is at or below the working stop {_money(last)}. The stop has likely filled; the "
-                               "position will close here once the broker fill is synced."),
+                               f"is at or below the working stop {_money(last)}. Awaiting fill: the position closes "
+                               "here once the broker fill is synced."),
                     "evidence": ["stop_last_known", "holdings_accounts mark"]}
         return {"kind": "open", "label": EXIT_LABEL["open"], "confirmed": True, "level_ref": last, "raises": raises,
                 "detail": f"Working stop {_money(last)}" if last is not None else "No stop on record",
@@ -610,7 +611,7 @@ def conflicts_for(*, closed: bool, exit_cause: dict[str, Any], holding: Optional
     """Disagreements between inputs about this trade — both values, both sources, both times. Never resolved here."""
     out: list[dict[str, Any]] = []
     if exit_cause.get("kind") == "stop_likely_filled" and holding:
-        out.append({"field": "position", "summary": "Holdings still show the position; the stop has likely filled",
+        out.append({"field": "position", "summary": "Holdings still show the position; awaiting fill (mark under the stop)",
                     "a": {"value": f"held {holding.get('fill_qty')} sh", "source": "holdings_accounts",
                           "at": holding.get("as_of")},
                     "b": {"value": f"stop {_money(exit_cause.get('level_ref'))} at/above mark", "source": "stop_last_known",
@@ -656,15 +657,17 @@ def build_journey(trade: dict[str, Any], *, link: Optional[dict[str, Any]] = Non
                           mark_ref=mark_ref, mark_at=trade.get("mark_at"))
     # P/L
     qty = _f(trade.get("fill_qty"))
-    pl_amt = _f(trade.get("pl_amount"))
-    if pl_amt is None and qty and entry_ref is not None:
+    basis_unknown = closed and (trade.get("basis_unknown") is True or trade.get("basis_status") == "basis_unknown")
+    pl_amt = None if basis_unknown else _f(trade.get("pl_amount"))
+    if not basis_unknown and pl_amt is None and qty and entry_ref is not None:
         end_ref = exit_ref if closed else mark_ref
         pl_amt = round((end_ref - entry_ref) * qty, 2) if end_ref is not None else None
-    pl_pct = _f(trade.get("pl_pct"))
-    if pl_pct is None:
+    pl_pct = None if basis_unknown else _f(trade.get("pl_pct"))
+    if not basis_unknown and pl_pct is None:
         pl_pct = _pct(entry_ref, exit_ref if closed else mark_ref)
     pl = {"amount": pl_amt, "pct": pl_pct, "basis": "realized" if closed else ("unrealized" if pl_amt is not None else "pending"),
-          "note": None if pl_amt is not None else "entry fill not in the ledger yet"}
+          "note": "basis unknown — opening buy is outside the ledger window" if basis_unknown else
+                  None if pl_amt is not None else "entry fill not in the ledger yet"}
     hold_days = None
     if entry_at:
         hold_days = round(((exit_at or now) - entry_at).total_seconds() / 86400, 1)
@@ -719,7 +722,7 @@ def build_journey(trade: dict[str, Any], *, link: Optional[dict[str, Any]] = Non
     ev.extend(judgment_changes(opp_history, entry_states, start=entry_at, end=exit_at or now))
     if closed:
         ev.append({"at": _iso(exit_at), "kind": "exit_fill", "label": f"Sold @ {_money(exit_ref)} · {cause['label']}",
-                   "detail": cause["detail"], "source": trade.get("exit_source") or ROUND_TRIPS,
+                   "detail": cause["detail"], "source": trade.get("exit_source"),
                    "cause": cause["kind"]})
     elif cause["kind"] == "stop_likely_filled":
         ev.append({"at": trade.get("mark_at"), "kind": "exit_fill", "label": cause["label"], "detail": cause["detail"],
@@ -979,6 +982,156 @@ def freshness_chips(*, now: datetime, trades_at: Optional[str], holdings_at: Opt
     ]
 
 
+def _redesign_inputs(now: datetime) -> dict[str, Any]:
+    """Stored observation/receipt clocks; never invoke the producer or host scheduler."""
+    from lib import portfolio_positions
+    from lib.data_broker import tradeinview_sources as src
+    out = {"ingest_receipt": src.bounded_json(_state_root() / "data/runtime/schwab_transaction_ingest_last.json"),
+           "stop_health_receipt": src.bounded_json(_state_root() / "data/runtime/stop_health_last.json"),
+           "registry": src.bounded_json(Path(__file__).resolve().parents[3] / "config/lane_registry.json")}
+    out["holdings_document"] = {}
+    try:
+        path = portfolio_positions.store_path()
+        before = path.stat()
+        if before.st_size > 32_000_000:
+            raise ValueError("holdings document exceeds read bound")
+        document = portfolio_positions.load_store(path)
+        after = path.stat()
+        if not isinstance(document.get("holdings"), list):
+            raise ValueError("holdings collection missing")
+        out["holdings_document"] = document
+        out["holdings_path"] = str(path)
+        if (before.st_mtime_ns, before.st_size) != (after.st_mtime_ns, after.st_size):
+            raise ValueError("holdings changed during read; write clock not bound to snapshot")
+        out["holdings_written_at"] = datetime.fromtimestamp(after.st_mtime, timezone.utc).isoformat()
+    except (OSError, ValueError) as exc:
+        out["holdings_written_at"] = None
+        out["holdings_missing_reason"] = str(exc) if isinstance(exc, ValueError) else "holdings file unavailable"
+    return out
+
+
+def _successful_receipt(entry: dict, now: datetime) -> tuple[Optional[str], Optional[str]]:
+    doc = entry.get("document") or {}
+    if entry.get("status") != "ok":
+        return None, "successful run receipt unavailable"
+    if doc.get("status") not in ("ok", "success", "completed", "RUN_DONE") or doc.get("exit_code") not in (None, 0):
+        return None, "receipt does not establish a successful run"
+    raw = doc.get("finished_at") or doc.get("completed_at")
+    # _ts also accepts date-only legacy facts; run success requires an instant.
+    from lib.data_broker.tradeinview_sources import instant
+    at = instant(raw)
+    if at is None or at > now:
+        return None, "successful receipt timestamp missing or in the future"
+    return at.isoformat(), None
+
+
+def _next_registered_sync(registry: dict, now: datetime) -> dict[str, Any]:
+    from lib.cron_schedule import DEFAULT_TZ, fires_between
+    candidates = []
+    for lane in registry.get("lanes") or []:
+        schedule = lane.get("scheduler") or {}
+        match = str(schedule.get("match") or lane.get("command_text") or "")
+        if lane.get("state") != "ACTIVE" or "scripts/schwab_transaction_ingest.py" not in match or "--apply" not in match:
+            continue
+        dispatch = (lane.get("n8n") or {}).get("dispatch") or lane.get("dispatch") or {}
+        expr = dispatch.get("cron") or schedule.get("expression")
+        zone = dispatch.get("timezone") or dispatch.get("tz") or schedule.get("timezone") or DEFAULT_TZ
+        if not isinstance(expr, str) or len(expr.split()) != 5:
+            continue
+        try:
+            fires = fires_between(expr, now, now + timedelta(days=14), tz=zone)
+        except (TypeError, ValueError):
+            continue
+        if fires:
+            candidates.append({"at": fires[0].at.isoformat(), "lane_id": lane.get("lane_id"),
+                               "expression": expr, "timezone": zone,
+                               "basis": "registered schedule intent; installed scheduler authority not independently observed"})
+    return min(candidates, key=lambda r: datetime.fromisoformat(r["at"])) if candidates else {
+        "at": None, "reason": "active registered ingest schedule not available"}
+
+
+def _add_redesign_fields(payload: dict, inputs: dict, now: datetime) -> dict:
+    """Add the redesigned contract while retaining original v1 fields for old callers."""
+    from lib.account_display import account_label, canonical_key
+    from lib.cio_market_aware_freshness import market_is_open
+    from lib.data_broker.tradeinview_sources import instant
+    trust = inputs.get("redesign_inputs") or {}
+    sync_at, sync_reason = _successful_receipt(trust.get("ingest_receipt") or {}, now)
+    stop_at, stop_reason = _successful_receipt(trust.get("stop_health_receipt") or {}, now)
+    held_at = trust.get("holdings_written_at")
+    held_clock = instant(held_at)
+    if held_clock is None or held_clock > now:
+        held_at = None
+    next_sync = _next_registered_sync((trust.get("registry") or {}).get("document") or {}, now)
+    chips = []
+    def add(key, label, at, reason=None, warn=False, value=None):
+        chips.append({"key": key, "label": label, "value": value or at or "Not measured",
+                      "at": at, "tone": "warning" if warn else "neutral" if at is None else "success",
+                      "missing_reason": reason, "tip": reason or "Recorded source clock; not page/cache generation time"})
+    add("last_closing_fill", "Last closing fill", inputs.get("trades_at"),
+        None if inputs.get("trades_at") else "no closing fill timestamp in loaded ledger")
+    add("ledger_sync", "Ledger synced", sync_at, sync_reason)
+    add("holdings_sync", "Holdings synced", held_at,
+        None if held_at else "holdings file-write clock unavailable")
+    add("stop_monitor", "Stop monitor", stop_at, stop_reason,
+        warn=bool(stop_at and market_is_open(now) and (now - datetime.fromisoformat(stop_at)).total_seconds() > 1800))
+    add("next_broker_sync", "Next registered broker sync", next_sync.get("at"), next_sync.get("reason"),
+        value=(next_sync.get("at") or "Not measured"))
+    for row in payload.get("journeys") or []:
+        acct = canonical_key(row.get("account"))
+        row["account_label"] = account_label(acct)
+        row["next_sync_at"] = next_sync.get("at")
+        reentry = row.get("re_entry") or {}
+        conditions = reentry.get("conditions")
+        if reentry.get("available") is True and isinstance(conditions, list):
+            reentry["condition_counts"] = {"met": sum(c.get("met") is True for c in conditions), "total": len(conditions)}
+        else:
+            reentry["condition_counts"] = {"met": None, "total": None, "missing_reason": "re-entry conditions unavailable"}
+        row["re_entry"] = reentry
+        stop = (row.get("stop_path") or [{}])[-1]
+        mark = row.get("mark") or {}
+        exit_ = row.get("exit") or {}
+        awaiting = row.get("exit_cause", {}).get("kind") == "stop_likely_filled"
+        if awaiting:
+            row["exit_cause"] = {**row["exit_cause"], "label": "Awaiting fill", "tone": "info",
+                "detail": f"mark under stop {_money(stop.get('level_ref'))} · fill sync "
+                          + (next_sync.get("at") or "time not measured")}
+            # The timeline exit row and the review "Status" row carry the same approved wording and info tone as
+            # the banner and the Awaiting-fill filter (one phrase on every surface; still unconfirmed).
+            awaiting_text = f"Awaiting fill — {row['exit_cause']['detail']}"
+            for ev in row.get("timeline") or []:
+                if ev.get("kind") == "exit_fill" and ev.get("unconfirmed"):
+                    ev.update(label=awaiting_text, tone="info")
+            for fact in (row.get("review") or {}).get("facts") or []:
+                if fact.get("key") == "cause":
+                    fact.update(value=awaiting_text, tone="info")
+        quantity_source = "holdings_accounts" if row.get("status") == "open" else (
+            (row.get("entry") or {}).get("source") or exit_.get("source"))
+        row["reconciliation_facts"] = [
+            {"key": "holdings", "label": "Holdings", "value": row.get("fill_qty"),
+             "source": quantity_source,
+             "at": held_at if row.get("status") == "open" else (row.get("entry") or {}).get("at"),
+             "missing_reason": "holdings write time unavailable" if row.get("status") == "open" and not held_at else
+                 "originating quantity source unavailable" if quantity_source is None else None},
+            {"key": "stop_mark", "label": "Stop vs mark", "value":
+                f"Stop {_money(stop.get('level_ref'))} · mark {_money(mark.get('price_ref'))}",
+             "source": "stop_last_known + recorded mark", "at": mark.get("at"),
+             "stop_at": stop.get("at"), "mark_at": mark.get("at"),
+             "missing_reason": "mark or observed stop unavailable" if mark.get("price_ref") is None or stop.get("level_ref") is None else None},
+            {"key": "fills", "label": "Fills ledger", "value":
+                "closing fill recorded" if exit_.get("at") and exit_.get("source") else
+                "closing timestamp recorded; origin unavailable" if exit_.get("at") else "no closing fill in loaded ledger",
+             "source": exit_.get("source"), "at": exit_.get("at"),
+             "missing_reason": "loaded window is not proof of an unobserved fill" if not exit_.get("at") else
+                 "originating fill source unavailable" if not exit_.get("source") else None},
+        ]
+    rows = payload.get("journeys") or []
+    payload["counts"].update(all=len(rows), awaiting_fill=sum(r.get("exit_cause", {}).get("kind") == "stop_likely_filled" for r in rows))
+    payload["freshness_chips"] = chips
+    payload["next_broker_sync"] = next_sync
+    return payload
+
+
 def build_trade_journeys(trades: list[dict[str, Any]], *, inputs: dict[str, Any], now: Optional[datetime] = None,
                          prospects: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
     """The TradeJourneys@v1 payload from gathered inputs (pure; the HTTP path gathers ``inputs``)."""
@@ -1159,7 +1312,8 @@ def _cio_prospects(symbols: list[str]) -> tuple[Optional[dict[str, dict[str, Any
 
 
 def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol: Optional[str] = None,
-           with_bars: bool = False, now: Optional[datetime] = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+           with_bars: bool = False, now: Optional[datetime] = None,
+           holdings_document: Optional[dict] = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """(trades, inputs) from today's sources. Read-only SELECTs and file reads; nothing is written."""
     now = now or datetime.now(timezone.utc)
     gaps: list[dict[str, Any]] = []
@@ -1167,26 +1321,44 @@ def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol
     sym_f = _up(symbol) if symbol else None
     trades: list[dict[str, Any]] = []
 
-    # closed round trips
-    rt = _q(db, """SELECT id, account, symbol, entry_time, exit_time, qty, entry_price, exit_price, net_pnl, pnl_pct,
-                          classification, dedupe_key
-                     FROM schwab_round_trips
-                    WHERE exit_time >= now() - (%s || ' days')::interval AND NOT coalesce(canary, false)
-                    ORDER BY exit_time DESC LIMIT 400""", (str(int(days)),), gaps, "schwab_round_trips")
-    reads.append("schwab_round_trips")
+    # The same closed-source projection feeds Journeys, Calendar and Replay.
+    # Read exact parent/copy identities before applying the requested window;
+    # filtering a derived copy first could hide its authoritative older parent.
+    from lib.data_broker import tradeinview_sources as src
+    collections = {}
+    for name in ("schwab_round_trips", "trade_closed"):
+        before = len(gaps)
+        rows = _q(db, src.SOURCE_SQL[name], (src.READ_ROWS + 1,), gaps, name)
+        collections[name] = {"status": "missing" if len(gaps) > before else "ok",
+                             "rows": rows[:src.READ_ROWS], "truncated": len(rows) > src.READ_ROWS}
+        reads.append(name)
+    normal, source_gaps = src.normalise_closed({"sources": collections})
+    gaps.extend({"input": g["source"], "detail": g["reason"], **g} for g in source_gaps)
     trades_at = None
-    for r in rt:
-        s = _up(r.get("symbol"))
+    cutoff = now - timedelta(days=days)
+    for trip in normal:
+        s = trip["symbol"]
         if sym_f and s != sym_f:
             continue
-        x = _ts(r.get("exit_time"))
-        trades_at = max(filter(None, [trades_at, _iso(x)]), default=None)
-        trades.append({"trade_id": f"rt:{r.get('dedupe_key') or r.get('id')}", "round_trip_key": r.get("dedupe_key"),
-                       "symbol": s, "account": r.get("account"), "status": "closed", "fill_qty": _f(r.get("qty")),
-                       "entry_at": _iso(_ts(r.get("entry_time"))), "exit_at": _iso(x), "entry_ref": _f(r.get("entry_price")),
-                       "exit_ref": _f(r.get("exit_price")), "pl_amount": _f(r.get("net_pnl")), "pl_pct": _f(r.get("pnl_pct")),
-                       "entry_source": "schwab_round_trips", "exit_source": "schwab_round_trips",
-                       "entry_detail": r.get("classification")})
+        x = src.instant(trip.get("exit_at"))
+        if x is not None:
+            in_window = cutoff <= x <= now
+        else:
+            d = trip.get("exit_date")
+            in_window = d is not None and src.day(cutoff) <= d <= src.day(now)
+        if not in_window:
+            continue
+        trades_at = max(filter(None, [trades_at, trip.get("exit_at")]), default=None)
+        ident = trip["trade_id"]
+        trades.append({"trade_id": ident, "round_trip_key": ident[3:] if ident.startswith("rt:") else None,
+            "symbol": s, "account": trip.get("account_id"), "status": "closed", "fill_qty": trip["shares"],
+            "entry_at": trip["entry_at"], "exit_at": trip["exit_at"],
+            "entry_ref": trip["entry_price"], "exit_ref": trip["exit_price"],
+            "entry_date": trip.get("entry_date"), "exit_date": trip.get("exit_date"),
+            "pl_amount": trip["realized_pl"], "pl_pct": trip["return_pct"],
+            "entry_source": trip["source"], "exit_source": trip["source"],
+            "entry_detail": trip.get("classification"), "basis_unknown": trip["basis_unknown"],
+            "provenance": trip["provenance"]})
 
     # open positions
     holdings_at = None
@@ -1195,7 +1367,7 @@ def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol
             from lib import portfolio_positions as pp
         except ImportError:  # pragma: no cover
             from scripts.lib import portfolio_positions as pp  # type: ignore
-        doc = pp.load_store()
+        doc = holdings_document if holdings_document is not None else pp.load_store()
         holdings_at = doc.get("as_of") or doc.get("data_as_of")
         reads.append("holdings_accounts (lib.portfolio_positions)")
         held_syms = sorted({_up(h.get("symbol")) for h in doc.get("holdings") or []
@@ -1373,11 +1545,17 @@ def list_trade_journeys(query: Optional[dict[str, Any]] = None) -> dict[str, Any
     hit = _CACHE.get(key)
     if hit and time.monotonic() - hit[0] < CACHE_S and str(q.get("fresh") or "") not in ("1", "true"):
         return hit[1]
+    now = datetime.now(timezone.utc)
+    trust = _redesign_inputs(now)
     db = _db_query()
-    trades, inputs = gather(db, days=days, symbol=sym)
+    trades, inputs = gather(db, days=days, symbol=sym, now=now,
+                           holdings_document=trust.get("holdings_document"))
     prospects, status = _cio_prospects(sorted({t["symbol"] for t in trades}))
     inputs["cio_prospect_status"] = status
-    out = build_trade_journeys(trades, inputs=inputs, prospects=prospects)
+    inputs["redesign_inputs"] = trust
+    if trust.get("holdings_missing_reason"):
+        inputs["gaps"].append({"input": "holdings snapshot", "detail": trust["holdings_missing_reason"]})
+    out = _add_redesign_fields(build_trade_journeys(trades, inputs=inputs, prospects=prospects, now=now), inputs, now)
     for r in out["journeys"]:
         r.pop("chart", None)
     _CACHE[key] = (time.monotonic(), out)
@@ -1395,8 +1573,11 @@ def detail_trade_journey(trade_id: str, query: Optional[dict[str, Any]] = None) 
         days = max(1, min(365, int(str(q.get("days") or DEFAULT_DAYS))))
     except ValueError:
         days = DEFAULT_DAYS
+    now = datetime.now(timezone.utc)
+    trust = _redesign_inputs(now)
     db = _db_query()
-    trades, inputs = gather(db, days=days, symbol=sym or _up(q.get("symbol")) or None, with_bars=False)
+    trades, inputs = gather(db, days=days, symbol=sym or _up(q.get("symbol")) or None, with_bars=False,
+                           now=now, holdings_document=trust.get("holdings_document"))
     mine = [t for t in trades if t.get("trade_id") == tid]
     if not mine:
         return {"ok": False, "error": "not_found", "trade_id": tid, "schema": SCHEMA}
@@ -1412,7 +1593,10 @@ def detail_trade_journey(trade_id: str, query: Optional[dict[str, Any]] = None) 
         inputs["reads"].append("ohlc_bars projection")
     prospects, status = _cio_prospects([s])
     inputs["cio_prospect_status"] = status
-    out = build_trade_journeys(mine, inputs=inputs, prospects=prospects)
+    inputs["redesign_inputs"] = trust
+    if trust.get("holdings_missing_reason"):
+        inputs["gaps"].append({"input": "holdings snapshot", "detail": trust["holdings_missing_reason"]})
+    out = _add_redesign_fields(build_trade_journeys(mine, inputs=inputs, prospects=prospects, now=now), inputs, now)
     j = out.pop("journeys")[0]
     out["journey"] = j
     return out

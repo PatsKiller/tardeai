@@ -1,0 +1,9 @@
+{
+  "status": "APPLIED_BY_COORDINATOR_BATCH28",
+  "source": "scripts/api_v2.py",
+  "source_sha256": "a7c8528b30257ad9fced3f6f6af64a380284f034777d749bc755b0e74c0bffa0",
+  "patch_sha256": "36367daee9b0445c529328fb8b2cffd9d95f26cb89386859e3efda52d8444d61",
+  "production_edit_by_A": false,
+  "reason": "W3 active ownership; exact two routing insertions supplied for normal owner integration. Stored-only guard must precede ohlc_charts import; both source packages required before UI rollout.",
+  "applied_by": "claude-coordinator batch-28 (release/batch-28-tradeinview-20261025); patch applied unmodified to source_sha256 base"
+}

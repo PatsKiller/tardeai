@@ -1,3 +1,4 @@
+import TradeCalendar from '../components/tradeinview/TradeCalendar'
 import { accountName } from '../lib/accountLabels'
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -55,7 +56,6 @@ const normalizeAcct = (a: string) => {
 const ACCT_LABEL: Record<string, string> = new Proxy({} as Record<string, string>, {
   get: (_t, k) => (typeof k === 'string' ? accountName(k) : undefined),
 })
-const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const PIE_COLORS = ['#60a5fa', '#22c55e', '#a855f7', '#06b6d4', '#f59e0b', '#ef4444']
 
 interface UT {
@@ -448,24 +448,6 @@ export default function JournalHub({ onDrill }: Props) {
       .map(([date, v]) => ({ date: date.slice(5), fullDate: date, ...v, pnl: Math.round(v.pnl * 100) / 100 }))
   }, [closed])
 
-  // ── Calendar months ──
-  const calendarData = useMemo(() => {
-    const byDate: Record<string, { pnl: number; trades: number; wins: number; losses: number }> = {}
-    for (const t of closed) {
-      if (!t.exitDate) continue
-      if (!byDate[t.exitDate]) byDate[t.exitDate] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
-      byDate[t.exitDate].pnl += t.pnl; byDate[t.exitDate].trades += 1
-      if (t.pnl > 0) byDate[t.exitDate].wins += 1; else if (t.pnl < 0) byDate[t.exitDate].losses += 1
-    }
-    const months: Record<string, Record<number, typeof byDate[string]>> = {}
-    for (const [date, data] of Object.entries(byDate)) {
-      const mk = date.slice(0, 7)
-      if (!months[mk]) months[mk] = {}
-      months[mk][parseInt(date.slice(8))] = data
-    }
-    return { months, maxPnl: Math.max(1, ...Object.values(byDate).map(d => Math.abs(d.pnl))) }
-  }, [closed])
-
   // ── Strategy breakdown ──
   const stratBreakdown = useMemo(() => {
     const m: Record<string, { trades: number; wins: number; pnl: number }> = {}
@@ -639,55 +621,8 @@ export default function JournalHub({ onDrill }: Props) {
             </div>
           </div>
 
-          {/* Calendar */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Calendar P&L</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{dailyPnl.length} trading days</span>
-            </div>
-            {Object.keys(calendarData.months).length === 0 ? (
-              <div style={{ color: 'var(--text3)', fontSize: 11, padding: 10, textAlign: 'center' }}>No closed trades in selected range</div>
-            ) : (
-              <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8 }}>
-              {Object.entries(calendarData.months).sort(([a], [b]) => a.localeCompare(b)).map(([mk, days]) => {
-                const [yr, mo] = mk.split('-').map(Number)
-                const dim = new Date(yr, mo, 0).getDate()
-                const sdow = new Date(yr, mo - 1, 1).getDay()
-                const ml = new Date(yr, mo - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-                const cells = []
-                for (let i = 0; i < sdow; i++) cells.push(<div key={`e${i}`} style={{ width: 26, height: 26 }} />)
-                for (let day = 1; day <= dim; day++) {
-                  const d = days[day]
-                  const isWe = new Date(yr, mo - 1, day).getDay() % 6 === 0
-                  let bg = 'var(--bg0)', color = 'var(--text3)'
-                  if (d) {
-                    const int = Math.min(1, Math.abs(d.pnl) / calendarData.maxPnl)
-                    const a = 0.2 + int * 0.6
-                    bg = d.pnl > 0 ? `rgba(34,197,94,${a})` : d.pnl < 0 ? `rgba(239,68,68,${a})` : 'rgba(148,163,184,0.3)'
-                    color = 'var(--text0)'
-                  }
-                  cells.push(
-                    <div key={day} onClick={d ? () => onDrill({ title: `${mk}-${String(day).padStart(2,'0')}`, subtitle: `${fmt$(d.pnl,2)} · ${d.trades} trades`, endpoint: 'derived', rows: closed.filter(t => t.exitDate === `${mk}-${String(day).padStart(2,'0')}`) }) : undefined}
-                      title={d ? `${mk}-${String(day).padStart(2,'0')}: ${fmt$(d.pnl,2)} (${d.trades}t, ${d.wins}W ${d.losses}L)` : `${day}`}
-                      style={{ width: 26, height: 26, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color, background: bg, opacity: isWe && !d ? 0.3 : 1, cursor: d ? 'pointer' : 'default', border: d ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>{day}</div>
-                  )
-                }
-                return (
-                  <div key={mk} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, color: 'var(--text2)', fontWeight: 600, marginBottom: 3 }}>{ml}</div>
-                    <div style={{ display: 'flex', gap: 2, marginBottom: 2 }}>{DOW.map((d, i) => <div key={i} style={{ width: 26, textAlign: 'center', fontSize: 7, color: 'var(--text3)' }}>{d}</div>)}</div>
-                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', maxWidth: 26 * 7 + 12 }}>{cells}</div>
-                  </div>
-                )
-              })}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 10, fontSize: 8, marginTop: 4, color: 'var(--text3)' }}>
-              <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#22c55e', marginRight: 3 }}/>profit</span>
-              <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#ef4444', marginRight: 3 }}/>loss</span>
-              <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--bg0)', marginRight: 3 }}/>no trades</span>
-            </div>
-          </div>
+          {/* One explicit-range, server-owned calendar shared with the TradeInView tab. */}
+          <TradeCalendar embedded />
 
           {/* Strategy + Monthly side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>

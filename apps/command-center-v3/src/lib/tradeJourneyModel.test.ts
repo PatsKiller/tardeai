@@ -43,14 +43,20 @@ eq('unknown origin badge', originBadge(v.origin), { text: 'ORIGIN ?', tone: 'neu
 eq('open trade exit text', exitText(v), 'open · stop $399.82')
 
 // filters
-eq('filter counts', filterCounts(P.journeys), { all: 3, attention: 1, open: 1, closed: 2, internal: 1, mine: 1 })
-eq('attention = NAVN (a conflict)', filterJourneys(P.journeys, 'attention').map(j => j.symbol), ['NAVN'])
+eq('filter counts', filterCounts(P.journeys), { all: 3, attention: 0, open: 1, closed: 2, internal: 1, mine: 1 })
+eq('a closed source conflict is not an awaiting fill', filterJourneys(P.journeys, 'attention').map(j => j.symbol), [])
+const waiting = { ...v, exit_cause: { ...v.exit_cause, kind: 'stop_likely_filled' as const } }
+eq('awaiting fill retains the unconfirmed machine kind', filterJourneys([waiting, navn], 'attention').map(j => j.trade_id), [waiting.trade_id])
+eq('awaiting fill copy/tone is informational', [exitText(waiting), EXIT_TONE[waiting.exit_cause.kind]], ['Awaiting fill', 'info'])
 ok('every filter has a tooltip', FILTERS.every(f => f.tip.length > 20))
 ok('every tooltip is a sentence', Object.values(TOOLTIPS).every(t => t.length > 40))
 
 // formatting
 eq('money', [money(13539.38, true), money(-5.5, true), money(null)], ['+$13,539', '−$5.50', '—'])
+eq('sub-cent prices remain nonzero and distinct', [px(0.0042),px(0.0043)], ['$0.0042','$0.0043'])
 eq('px/pct', [px(26), pct(-2.4), pct(null)], ['$26.00', '−2.4%', '—'])
+eq('date-only stays on its original date with no invented clock', etShort('2032-04-09'), '04-09 · date only')
+eq('a real UTC midnight keeps its distinct ET observation', etShort('2032-04-09T00:00:00Z'), '04-08 20:00')
 eq('ET short', etShort('2026-10-22T16:31:00+00:00'), '10-22 12:31')
 
 // drawers
