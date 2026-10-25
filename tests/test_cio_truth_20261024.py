@@ -306,3 +306,32 @@ def test_projection_does_not_redate_positions_with_quote_clock(holdings, tmp_pat
     assert risk["positions_as_of"] == holdings["positions_built_at"]
     assert header["pricing"]["canonical_total_value"] == header["portfolio_value"]
     assert header["today_pnl"]["total_change"] == header["today_change"]
+
+
+@pytest.mark.parametrize("date,offset", [("2026-10-23", "-04:00"), ("2026-12-23", "-05:00")])
+def test_documented_legacy_et_clocks_normalize_once_with_raw_provenance(holdings, tmp_path, date, offset):
+    holdings.update(positions_built_at=f"{date} 09:45:02 ET", generated_at=f"{date} 15:57:07 ET",
+                    last_repriced=f"{date} 15:57:07 ET")
+    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
+    p = doc["portfolio"]
+    assert p["positions_as_of"] == f"{date}T09:45:02{offset}"
+    assert p["valuation_as_of"] == p["quote_as_of"] == f"{date}T15:57:07{offset}"
+    assert p["clock_provenance"]["positions"]["raw"] == holdings["positions_built_at"]
+    assert p["clock_provenance"]["positions"]["source_field"] == "positions_built_at"
+    risk, header = truth.risk_payload(document=doc), truth.overview_payload({}, document=doc)
+    holding_payload = truth.holdings_payload({"last_repriced": "old unparseable clock"}, document=doc)
+    assert risk["positions_as_of"] == p["positions_as_of"]
+    assert header["pricing"]["last_repriced"] == p["quote_as_of"]
+    assert holding_payload["last_repriced"] == p["quote_as_of"]
+    assert holding_payload["clock_provenance"] == p["clock_provenance"]
+    for value in (risk["positions_as_of"], header["pricing"]["last_repriced"]):
+        assert datetime.fromisoformat(value).utcoffset() is not None
+
+
+@pytest.mark.parametrize("raw", ["2026-10-23 09:45:02", "2026-10-23", "unreadable", "2026-11-01 01:30:00 ET", "2026-03-08 02:30:00 ET"])
+def test_holdings_clocks_without_a_proven_offset_stay_gaps(holdings, raw):
+    holdings["positions_built_at"] = raw
+    p = truth.portfolio_for(holdings, now=NOW)
+    assert p["positions_as_of"] is None
+    assert p["clock_provenance"]["positions"]["gap"]
+    assert p["clock_provenance"]["positions"]["raw"] == raw
