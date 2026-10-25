@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "operator_approvals_20261024",
+  "files": [
+    "tests/test_operator_approvals_20261024.py"
+  ],
+  "comment": [
+    "W11 boards19-21 exact-document operator review authority and ledger safety."
+  ]
+}

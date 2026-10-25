@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "policy_enforcement_audit_20261024",
+  "files": [
+    "tests/test_policy_enforcement_audit_20261024.py"
+  ],
+  "comment": [
+    "W11 source-only audit, dry-run and governed proposal boundary."
+  ]
+}

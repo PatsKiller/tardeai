@@ -1027,6 +1027,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-ask-cio-readable.md` | Ask CIO canonical answers and completion |
 | `docs/designs/DSN-20261024-ask-tracking.md` | Canonical tracking truth |
 | `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
+| `docs/designs/DSN-20261024-approvals.md` | DSN-20261024-approvals.md |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
 | `docs/designs/DSN-20261024-f09-reads.md` | F09 read lanes at SHADOW |
@@ -1788,6 +1789,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
 | `docs/ops/ASK_CIO_READABLE_20261024.md` | Ask CIO: readable canonical answers and live completion |
 | `docs/ops/ASK_CIO_TRACKING_CANONICAL_20261024.md` | Ask-CIO tracking: canonical My Watchlist readback |
+| `docs/ops/APPROVALS_CENTER_20261024.md` | Approvals Center — boards 19–21, 2026-10-24 |
 | `docs/ops/ASK_THE_CIO.md` | Ask the CIO: open questions with persistent CIO memory (Phases 8–11) |
 | `docs/ops/ASK_THE_CIO_RESEARCH.md` | Ask the CIO — Phase 9: the research pipeline |
 | `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
@@ -2030,6 +2032,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) |
 | `docs/ops/PIPELINE_TIME_SETTINGS.md` | Pipeline time settings — measured, pinned, and why |
+| `docs/ops/POLICY_ENFORCEMENT_AUDIT_20261024.md` | Policy enforcement audit — source proposal, 2026-10-24 |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
 | `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) |
