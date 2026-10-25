@@ -1,6 +1,6 @@
 # Release train: the merge freeze, enforced
 
-Status: BUILT, 2026-10-25. Stacked on the arming PR #2099. The GitHub check reports from the first merge, but it
+Status: BUILT, 2026-10-25. Follows the arming PR #2099. The GitHub check reports from the first merge, but it
 blocks a merge only after the operator makes it a required check (§6).
 
 ## 1. The rule
