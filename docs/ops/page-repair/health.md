@@ -18,8 +18,12 @@ See also: `OpsDeskFrame` `page="health"` → lanes `health-agent`, `postgres-mai
 | Phone / tabs | Usable mobile | Hub chrome may clip (shared CioHub issue) | LAYOUT | CioHub | **#2126** if observed on phone |
 | Findings / degraded sections | Honest UNAVAILABLE | Sections render from health JSON | OK (code) | HealthHub | Flag empty-with-no-reason only after live probe |
 
+| RiskHealthStrip Unprotected | Count true no-broker-stop (none+planned) | Was `!has_stop` (lumped pending/filled/unknown) | BROKEN → fixed | `HealthHub.tsx` `isNoBrokerStop` | This PR; switch to `stopDisplay.stopCategory` after #2141 merges |
+
 ## This PR
 
-Docs only. Board-0 wrap already present. Live verification pending.
+- Board-0 OpsDeskFrame wrap already present (docs).
+- **Fix:** Unprotected strip uses none+planned only (inline mirror of #2141 taxonomy; `stopDisplay.ts` remains claimed by stop-desks).
+- Live verification pending release.
 
 Design: `health/v001` or `Design: none` until design workflow lands.
