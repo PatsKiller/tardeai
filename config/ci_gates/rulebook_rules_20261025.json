@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rulebook_rules_20261025",
+  "files": [
+    "tests/test_rulebook_rules_20261025.py"
+  ],
+  "comment": [
+    "Rulebook rule model: only numbered/bulleted rule items (prose only for list-less sections), grouped by section; preamble, fences, tables, banners and version history are not rules; ENFORCED/TESTED/VIOLATED are a gap until the enforcement audit binds this version. Synthetic fixtures only."
+  ]
+}
