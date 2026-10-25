@@ -66,6 +66,89 @@
         },
         "receipt_clock": "observed_at"
       }
+    },
+    {
+      "id": "self-heal-train-monitor",
+      "lane_id": "self-heal-train-monitor",
+      "why": "AGENTS.md 21.0.0 section 28.14 item 1: a host monitor independent of n8n watches main CI, train outcomes, the post-release tester and the nightly sweep, and writes the append-only fix log. Runs SHADOW (detect, log, propose; nothing executed or sent) until section 28.14 is ACTIVE. Units: PR #2131; code: PR #2129.",
+      "source_dir": "config/systemd/user",
+      "units": [
+        "tradeai-self-heal-train-monitor.service",
+        "tradeai-self-heal-train-monitor.timer"
+      ],
+      "enable": [
+        "tradeai-self-heal-train-monitor.timer"
+      ],
+      "admission": {
+        "config": "config/self_heal_units_admission.json",
+        "require": {
+          "enabled": true,
+          "review_status": "REVIEWED"
+        }
+      },
+      "dry_run": {
+        "argv": [
+          "scripts/self_heal_train_monitor.py",
+          "--dry-run"
+        ],
+        "ok_exit": [
+          0
+        ],
+        "expect": {
+          "schema": "SelfHealTrainMonitorTick@v1",
+          "mode": "dry_run"
+        }
+      },
+      "first_run": "tradeai-self-heal-train-monitor.service",
+      "verify": {
+        "active": [
+          "tradeai-self-heal-train-monitor.timer"
+        ],
+        "receipt": "data/runtime/self-heal-train-monitor_last.json",
+        "receipt_expect": {
+          "schema": "SelfHealTrainMonitorTick@v1",
+          "lane_id": "self-heal-train-monitor"
+        },
+        "receipt_clock": "ok_at"
+      }
+    },
+    {
+      "id": "self-heal-fixer",
+      "lane_id": "self-heal-fixer",
+      "why": "AGENTS.md 21.0.0 section 28.14 item 3: the Claude Code fixer turns every non-deterministic defect into an ordinary fix PR. Armed only by section 28.14 ACTIVE (no guard grant); until then each cycle is 'not armed' and runs no model. No first_run: a live cycle may take up to its 90-minute budget, longer than the installer's first-run wait; the timer's OnActiveSec starts it. Units: PR #2131; code: PR #2129.",
+      "source_dir": "config/systemd/user",
+      "units": [
+        "tradeai-self-heal-fixer.service",
+        "tradeai-self-heal-fixer.timer"
+      ],
+      "enable": [
+        "tradeai-self-heal-fixer.timer"
+      ],
+      "admission": {
+        "config": "config/self_heal_units_admission.json",
+        "require": {
+          "enabled": true,
+          "review_status": "REVIEWED"
+        }
+      },
+      "dry_run": {
+        "argv": [
+          "scripts/self_heal_fixer.py",
+          "--cycle",
+          "--dry-run"
+        ],
+        "ok_exit": [
+          0
+        ],
+        "expect": {
+          "mode": "dry_run"
+        }
+      },
+      "verify": {
+        "active": [
+          "tradeai-self-heal-fixer.timer"
+        ]
+      }
     }
   ]
 }
