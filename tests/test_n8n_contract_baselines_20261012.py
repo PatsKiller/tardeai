@@ -66,7 +66,14 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-22 calibration-shadow-harness n8n-native report shadow, DRAFT;
     # tests/test_calibration_shadow_harness_20261022.py) = 157.
     # WP-21 restores the unchanged owner-reviewed cio-prospect-shadow contract from #1953.
-    assert len(catalogue["contracts"]) == 158
+    # WP-33 carryforward: three desk monitors, inert quote refresh, Ask research, JSONL rotation.
+    # The Schwab read-lane contract belongs to its separate reviewed W12 package.
+    proof = json.loads((ROOT / "docs/ops/packets/stale-n8n-set-20261024/preservation.json").read_text())
+    spec = proof["collections"]["config/n8n_health_contracts.json"]
+    required = set(spec["base_object_sha256"]) | set(spec["added_ids"])
+    ids = [row["id"] for row in catalogue["contracts"]]
+    assert len(ids) == len(set(ids))
+    assert required <= set(ids)  # later reviewed additions do not invalidate this source cohort
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 
