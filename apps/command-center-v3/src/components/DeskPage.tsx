@@ -22,7 +22,10 @@ export type DeskWriter = {
   evidence_as_of: string | null
   reason: string | null
 }
-type SourceResponse = { ok: boolean; data?: { observed_at: string; writers: DeskWriter[] } }
+type SourcePayload = { observed_at: string; writers: DeskWriter[] }
+// useApi already unwraps the server's {ok, data} envelope; accept either shape so an
+// unwrapped body is never mistaken for a failed read.
+type SourceResponse = SourcePayload | { ok: boolean; data?: SourcePayload }
 
 /** Shared with pages that already conditionally render their panels. */
 export function useDeskTab(tabs: readonly DeskTab[], defaultTab = tabs[0]?.id ?? '', aliases: Record<string, string> = {}): [string, (id: string) => void] {
@@ -82,7 +85,9 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
   const laneIds = [...new Set(sources.flatMap(source => source.laneIds ?? []))].sort()
   const { data, loading, error, stale, refetch } = useApi<SourceResponse>(`/api/v2/desk-sources?lanes=${encodeURIComponent(laneIds.join(','))}`, 60_000, { enabled: laneIds.length > 0 })
-  const writerRows = Array.isArray(data?.data?.writers) ? data.data.writers : []
+  const payload: SourcePayload | undefined = data && 'writers' in data ? data : (data as { data?: SourcePayload } | null)?.data
+  const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
+  const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
   const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: BB.text1 }}>
     <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
@@ -95,7 +100,7 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
     </nav>}
     <section aria-label="Source clocks" style={panel}>
       <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>
-      {(error || stale || (data && data.ok !== true)) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
+      {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
         <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
       </DeskGap>}
       {sources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}

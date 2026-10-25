@@ -77,7 +77,8 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await expect(rail.getByText('back', { exact: true })).toHaveCount(11)
     if (width <= 820) { const link = rail.getByRole('link', { name: 'Reports', exact: true }); const box = await inViewport(link); expect(box.height).toBeGreaterThanOrEqual(44) }
     await page.screenshot({ path: shot('rail'), fullPage: true })
-    if (width <= 820) await activate(page.getByRole('button', { name: 'Close navigation', exact: true }))
+    // The phone sheet has its own ✕ and the bar toggle also reads "Close navigation" while open; tap the sheet's.
+    if (width <= 820) await activate(rail.getByRole('button', { name: 'Close navigation', exact: true }))
     const primary = page.getByRole('link', { name: 'Review the cash-alternatives gap', exact: true })
     const primaryBox = await inViewport(primary); expect(primaryBox.height).toBeGreaterThanOrEqual(44)
     await activate(primary)
