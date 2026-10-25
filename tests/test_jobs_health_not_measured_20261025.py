@@ -47,7 +47,8 @@ def test_fully_measured_report_has_a_real_zero():
 def test_collection_gap_also_makes_missed_unmeasured():
     summary = build([lane("job-c")], runs=[run("job-c", NOW)], gaps=["run ledger unavailable"])["summary"]
     assert summary["missed_measured"] is False
-    assert "run ledger unavailable" in summary["gap_reasons"]["missed"]
+    # 2026-10-25 (batch 37): plain language, never the raw evidence code
+    assert "the n8n run ledger could not be read" in summary["gap_reasons"]["missed"]
 
 
 def test_missed_floor_is_kept_when_some_jobs_unmeasured():
