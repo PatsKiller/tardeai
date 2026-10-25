@@ -1,0 +1,54 @@
+[
+  {
+    "name": "schema:ConflictEvent@v1",
+    "kind": "schema",
+    "classification": "SURFACE",
+    "reason": "Append-only state transitions carry both sides and per-change CIO memory lineage; operator history is shown by selected conflict detail.",
+    "owner_hint": "scripts/lib/conflicts/ledger.py",
+    "record_edge": {
+      "route": "/api/v3/conflicts/{key}",
+      "path": [
+        "history"
+      ],
+      "reader": "lib/conflicts/ledger.py::ConflictLedger.records",
+      "writer": "lib/conflicts/ledger.py::ConflictLedger._append",
+      "store": "conflict_events.jsonl"
+    },
+    "integration_status": "PROPOSED; actual route/consumer edges unverified until W2/W9 source is accepted"
+  },
+  {
+    "name": "schema:ConflictRecord@v1",
+    "kind": "schema",
+    "classification": "SURFACE",
+    "reason": "Current conflict states, source sides, owner and clear condition are consumed by shared ConflictLine/Sheet and Jobs DATA_ERROR sections.",
+    "owner_hint": "scripts/lib/conflicts/ledger.py",
+    "record_edge": {
+      "route": "/api/v3/conflicts",
+      "path": [
+        "records"
+      ],
+      "reader": "lib/conflicts/ledger.py::list_records",
+      "writer": "lib/conflicts/ledger.py::ConflictLedger._append",
+      "store": "conflict_events.jsonl"
+    },
+    "integration_status": "PROPOSED; actual route/consumer edges unverified until W2/W9 source is accepted"
+  },
+  {
+    "name": "schema:ConflictDecision@v1",
+    "kind": "schema",
+    "classification": "SURFACE",
+    "reason": "Authenticated version-bound decisions preserve actor, reason, expiry and evidence without silently clearing source disagreements.",
+    "owner_hint": "scripts/lib/conflicts/ledger.py",
+    "record_edge": {
+      "route": "/api/v3/conflicts",
+      "path": [
+        "records",
+        "decision"
+      ],
+      "reader": "lib/conflicts/ledger.py::list_records",
+      "writer": "lib/conflicts/ledger.py::ConflictLedger._append",
+      "store": "conflict_events.jsonl"
+    },
+    "integration_status": "PROPOSED; actual route/consumer edges unverified until W2/W9 source is accepted"
+  }
+]
