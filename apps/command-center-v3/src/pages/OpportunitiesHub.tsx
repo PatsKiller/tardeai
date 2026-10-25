@@ -232,7 +232,8 @@ export default function OpportunitiesHub() {
         {items.find(a => a.symbol === expanded) ? (() => { const row = items.find(a => a.symbol === expanded)!; return <>
           <h2 tabIndex={-1} data-detail-focus>{row.symbol}</h2>
           <p>{heldAccountNames(row).join(', ') || soldByName(row) || 'Account not supplied'}</p>
-          {recordDetails(row)}
+          {/* Same record-detail contract as the desktop expanded row. */}
+          <div data-opportunity-detail={row.symbol}>{recordDetails(row)}</div>
         </> })() : <p>This record is not in the current page of results.</p>}
       </MobileDetailSheet>}
     </div>
