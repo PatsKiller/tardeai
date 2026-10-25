@@ -38721,6 +38721,7 @@ def _trade_chart(query=None):
         # including when its identity/interval is invalid or bars are missing.
         if "stored_only" in q or "trade_id" in q:
             import api_v3_trade_journey as _tj
+
             return _tj.get_replay(q)
         import ohlc_charts
 
@@ -54911,8 +54912,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "GET" and base_path in ("/api/v3/data-broker/trade-calendar", "/api/v3/data-broker/holding-history"):
         try:
             import api_v3_trade_journey as _tj
-            payload = (_tj.get_calendar(query or {}) if base_path.endswith("/trade-calendar")
-                       else _tj.get_history(query or {}))
+
+            payload = (
+                _tj.get_calendar(query or {}) if base_path.endswith("/trade-calendar") else _tj.get_history(query or {})
+            )
             return (200 if payload.get("ok") else 400), payload
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}

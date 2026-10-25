@@ -121,12 +121,12 @@ def test_committed_browser_fixture_is_current_builder_output():
 
 
 def test_fixture_covers_every_browser_state_and_validates_against_the_projection_schema():
-    from jsonschema import Draft202012Validator
-    validator = Draft202012Validator(json.loads(SCHEMA.read_text()))
+    sys.path.insert(0, str(ROOT))
+    from tests.helpers.tradeinview_schema import validate as schema_validate
     doc = compose()
     payloads = [*doc["journeys"].values(), *doc["calendar"].values(), *doc["replay"].values()]
     for payload in payloads:
-        validator.validate(payload)
+        schema_validate(payload)  # stdlib Draft 2020-12 subset; also jsonschema (must agree) where installed
         assert payload["provider_calls"] == payload["writes"] == 0
     kinds = {(j["status"], j["exit_cause"]["kind"]) for j in doc["journeys"]["fresh"]["journeys"]}
     assert {("open", "stop_likely_filled"), ("open", "open"), ("closed", "unknown")} <= kinds

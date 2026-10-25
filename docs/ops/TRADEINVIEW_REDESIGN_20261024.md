@@ -106,6 +106,9 @@ and navigation labels originate in the projection contract, not a market feed.
 | Journey state | J `status` | closed-trip presence vs stored positive holdings | Journey projection; never order state |
 | Awaiting fill label | J `exit_cause.label`, `tone` | retained `stop_likely_filled` kind | Display rename to Awaiting fill / info; unconfirmed |
 | Awaiting reason | J `exit_cause.detail` | recorded mark vs observed stop; registered next sync | Existing exit classifier plus schedule projection |
+| Awaiting timeline row | J `timeline[kind=exit_fill, unconfirmed].label`, `tone` | same retained kind + `exit_cause.detail` | "Awaiting fill — mark under stop $X · fill sync <time>", info tone (batch 28 wording; never "likely filled") |
+| Awaiting Status row | J `review.facts[key=cause].value`, `tone` | same text as the timeline row | Same approved wording, info tone; still unconfirmed |
+| Compare with a win partner | Replay `journeys[*]` with `status=closed` and `pl.amount > 0` | SRT `net_pnl` (realized) | UI filter only; open unrealized gains never count; none → "No closed winning trip yet" (no fallback) |
 | Journey total | J `counts.all` | resulting loaded journeys | Server count; loaded window, not inventory total |
 | Awaiting filter count | J `counts.awaiting_fill` | retained exit kind | Server count |
 | Open/closed counts | J `counts.open`, `counts.closed` | normalized loaded trip status | Existing server counts |
@@ -247,7 +250,10 @@ Python 3.14.4 with jsonschema 4.19.2 performs the full Draft 2020-12 proof under
 the psycopg2-hidden barrier. The dependency is pinned in the test-only
 `requirements-ci-tradeinview.txt`; four existing CI test jobs install it. Draft
 and ready guards, old test commands and production requirements are preserved.
-Earlier checkpoints and final frozen receipts are recorded separately; scoped
+Batch-28 CI note: required runners that do not install that file now validate every
+payload with the stdlib Draft 2020-12 subset validator `tests/helpers/tradeinview_schema.py`
+(every schema keyword implemented and pinned; jsonschema, where installed, must agree), so
+no schema evidence is skipped. Earlier checkpoints and final frozen receipts are recorded separately; scoped
 passes are never called whole-project CI.
 
 Pending: W3 central routing integration; final B paging/actual-fixture and C

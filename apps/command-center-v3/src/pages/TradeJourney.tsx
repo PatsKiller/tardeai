@@ -200,7 +200,7 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
               <span style={{ ...numStyle, color: TOKENS.text[2] }} title={e.at ? undefined : 'Time not recorded — the order is known, the time is not'}>{e.at ? etShort(e.at) : 'time n/r'}</span>
               <span style={{ color: t.color, fontWeight: 700 }}>{TIMELINE_LABEL[e.kind]}</span>
               <span style={{ color: TOKENS.text[1], lineHeight: 1.35 }}>
-                {e.label}{e.unconfirmed && <span style={{ color: TOKENS.warning }}> · unconfirmed</span>}
+                {e.label}{e.unconfirmed && <span style={{ color: TOKENS.info }}> · unconfirmed</span>}
                 {e.kind === 'exit_fill' && e.detail && <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm }}>{e.detail}</span>}
               </span>
             </div>

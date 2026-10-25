@@ -2,7 +2,7 @@ const assert = {
   equal(actual: unknown, expected: unknown) { if (actual !== expected) throw new Error(`${String(actual)} != ${String(expected)}`) },
   match(actual: string, expected: RegExp) { if (!expected.test(actual)) throw new Error(`${actual} does not match ${expected}`) },
 }
-import { TRADE_TABS, calendarPayload, coverageReason, replayPayload, replayPriceFormat, responseReason, etMonth, monthLabel, monthShift, serverMoney, serverNumber, storedReplayPath, tabParams, tradeLink, tradeTab } from './tradeInViewModel.ts'
+import { NO_CLOSED_WIN, TRADE_TABS, calendarPayload, closedWinPartners, isClosedWin, coverageReason, replayPayload, replayPriceFormat, responseReason, etMonth, monthLabel, monthShift, serverMoney, serverNumber, storedReplayPath, tabParams, tradeLink, tradeTab } from './tradeInViewModel.ts'
 assert.equal(tradeTab(new URLSearchParams()), 'journeys')
 for (const [tab] of TRADE_TABS) assert.equal(tradeTab(new URLSearchParams({ tab }), true), tab)
 assert.equal(tradeTab(new URLSearchParams('view=classic')), 'classic')
@@ -60,3 +60,15 @@ assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'',names:'h
 assert.equal(calendarPayload(scopedCalendar,{month:'2032-05',account:'',names:'held_watch'}),null)
 assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'fixture-account',names:'held_watch'}),null)
 assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'',names:'held'}),null)
+
+// Compare with a win: closed + realized P/L > 0 only; an open unrealized gain never counts, no fallback.
+assert.equal(isClosedWin({ status: 'closed', pnl: 15 }), true)
+assert.equal(isClosedWin({ status: 'open', pnl: 120 }), false)
+assert.equal(isClosedWin({ status: 'closed', pnl: 0 }), false)
+assert.equal(isClosedWin({ status: 'closed', pnl: null }), false)
+assert.equal(isClosedWin({ status: 'closed', pnl: -3 }), false)
+const winPool = [{ trade_id: 'open:A', status: 'open', pnl: 50 }, { trade_id: 'rt:1', status: 'closed', pnl: 9 }, { trade_id: 'rt:2', status: 'closed', pnl: -4 }]
+assert.equal(closedWinPartners(winPool).map(t => t.trade_id).join(','), 'rt:1')
+assert.equal(closedWinPartners(winPool, 'rt:1').length, 0)
+assert.equal(closedWinPartners([{ trade_id: 'open:A', status: 'open', pnl: 50 }]).length, 0)
+assert.equal(NO_CLOSED_WIN, 'No closed winning trip yet')

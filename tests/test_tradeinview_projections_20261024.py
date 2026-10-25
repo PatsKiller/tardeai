@@ -6,6 +6,7 @@ COVERS = ["scripts/api_v3_trade_journey.py", "scripts/lib/data_broker/trade_jour
           "scripts/lib/data_broker/catalog.py", "config/schemas/tradeinview_projection_v1.schema.json"]
 """
 from __future__ import annotations
+import json
 
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -448,9 +449,9 @@ def test_history_discloses_mapping_sync_and_taxlot_disagreements_without_repair(
 
 def schema_check(payload):
     import json
-    from jsonschema import Draft202012Validator
-    path=Path(__file__).resolve().parents[1]/'config/schemas/tradeinview_projection_v1.schema.json'
-    Draft202012Validator(json.loads(path.read_text())).validate(payload)
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+    from tests.helpers.tradeinview_schema import validate
+    validate(payload)  # stdlib Draft 2020-12 subset on every runner; jsonschema too (must agree) where installed
     json.dumps(payload,allow_nan=False)
 
 
@@ -524,6 +525,15 @@ def test_journey_redesign_separates_success_sync_observation_and_schedule_clocks
     assert out['journeys'][0]['exit_cause']['label']=='Awaiting fill'
     assert out['journeys'][0]['exit_cause']['tone']=='info'
     assert out['journeys'][0]['exit_cause']['confirmed'] is False
+    # Timeline exit row and review "Status" row carry the same approved wording + info tone (no "likely filled").
+    j0=out['journeys'][0]
+    ev=[e for e in j0['timeline'] if e['kind']=='exit_fill' and e.get('unconfirmed')]
+    assert len(ev)==1 and ev[0]['label']=='Awaiting fill — mark under stop $40.00 · fill sync time not measured'
+    assert ev[0]['tone']=='info' and ev[0]['cause']=='stop_likely_filled'
+    status=[f for f in j0['review']['facts'] if f['key']=='cause']
+    assert status and status[0]['label']=='Status' and status[0]['tone']=='info'
+    assert status[0]['value']==ev[0]['label']
+    assert 'likely filled' not in json.dumps(j0).lower()
     assert out['journeys'][0]['re_entry']['condition_counts']['total'] is None
 
 
@@ -657,3 +667,22 @@ def test_central_api_routes_reach_stored_projections_and_never_the_legacy_provid
     assert wrapped['data']['kind']=='candles' and wrapped['data']['provider_calls']==0
     status,missing=api_v2.handle('/api/v2/trade-chart',method='GET',body=None,query={'stored_only':['1']})
     assert status==200 and missing['data']['ok'] is False
+
+
+def test_stdlib_schema_validator_covers_every_keyword_and_rejects_defects():
+    """CI runners without jsonschema still validate: the helper implements every keyword the schema uses."""
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+    from tests.helpers import tradeinview_schema as ts
+    assert ts.unsupported_keywords()==set()
+    assert ts.unsupported_keywords({'properties':{'a':{'type':'string','format':'date-time'}}})=={'format'}
+    schema={'type':'object','required':['n','s'],'additionalProperties':False,'properties':{
+        'n':{'type':['number','null'],'exclusiveMinimum':0},'s':{'oneOf':[{'const':'a'},{'const':'b'}]},
+        'm':{'type':'string','pattern':'^\\d{4}-\\d{2}$'}}}
+    assert ts.schema_errors({'n':1,'s':'a'},schema)==[]
+    assert ts.schema_errors({'n':0,'s':'a'},schema)
+    assert ts.schema_errors({'n':1,'s':'c'},schema)
+    assert ts.schema_errors({'n':1,'s':'a','x':1},schema)
+    assert ts.schema_errors({'n':1,'s':'a','m':'2026-1'},schema)
+    assert ts.schema_errors({'s':'a'},schema)
+    with pytest.raises(AssertionError):
+        ts.validate({'schema':'not-a-projection'})

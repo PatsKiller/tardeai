@@ -22,11 +22,12 @@ import sys
 import types
 
 import pytest
-from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import api_v3_trade_journey as api
+sys.path.insert(0, str(ROOT))
+from tests.helpers.tradeinview_schema import validate as schema_validate  # noqa: E402
 from lib.data_broker import trade_calendar as cal
 from lib.data_broker import holding_history as hist
 from lib.data_broker import trade_journey as tj
@@ -67,8 +68,7 @@ def pinned(copy_bundle, monkeypatch):
 
 
 def verify_export(name, payload, bundle):
-    schema = json.loads((ROOT / "config/schemas/tradeinview_projection_v1.schema.json").read_text())
-    Draft202012Validator(schema).validate(payload)
+    schema_validate(payload)  # stdlib Draft 2020-12 subset; also jsonschema (must agree) where installed
     encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
     assert payload["provider_calls"] == payload["writes"] == 0 and payload["read_only"] is True
     target = os.environ.get("TRADEINVIEW_EXPORT_DIR")

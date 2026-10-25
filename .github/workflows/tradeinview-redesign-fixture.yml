@@ -53,6 +53,8 @@ jobs:
         run: node --experimental-strip-types e2e/trade-journey-mobile.fixture.mjs "$RUNNER_TEMP/tradeinview-proof/journey-mobile"
       - name: Integrated phone History sheet to stored Replay and Back, all requests intercepted
         run: npx playwright test e2e/tradeinview-history-integration.spec.ts --project=chromium --workers=1 --reporter=line
+      - name: Batch-28 gaps phone taps (Awaiting fill wording, closed-win compare) at 412 and 390
+        run: npx playwright test e2e/tradeinview-gaps-b28.spec.ts --project=chromium --workers=1 --reporter=line
       - name: Existing actual-App Journey and legacy navigation regression on static assets
         env:
           TIV_FIXTURE_ENV: ${{ runner.temp }}/tradeinview-empty-env

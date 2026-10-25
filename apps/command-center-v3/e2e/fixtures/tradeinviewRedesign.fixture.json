@@ -4300,8 +4300,8 @@
         "key": "cause",
         "label": "Status",
         "source": "fills + stops",
-        "tone": "warning",
-        "value": "Stop likely filled — not confirmed"
+        "tone": "info",
+        "value": "Awaiting fill — mark under stop $40.00 · fill sync time not measured"
        }
       ],
       "metrics": {
@@ -4355,10 +4355,11 @@
       {
        "at": "2026-11-04T16:59:00Z",
        "cause": "stop_likely_filled",
-       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. The stop has likely filled; the position will close here once the broker fill is synced.",
+       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. Awaiting fill: the position closes here once the broker fill is synced.",
        "kind": "exit_fill",
-       "label": "Stop likely filled — not confirmed",
+       "label": "Awaiting fill — mark under stop $40.00 · fill sync time not measured",
        "source": "stop_last_known + mark",
+       "tone": "info",
        "unconfirmed": true
       }
      ],
@@ -5252,8 +5253,8 @@
         "key": "cause",
         "label": "Status",
         "source": "fills + stops",
-        "tone": "warning",
-        "value": "Stop likely filled — not confirmed"
+        "tone": "info",
+        "value": "Awaiting fill — mark under stop $40.00 · fill sync time not measured"
        }
       ],
       "metrics": {
@@ -5307,10 +5308,11 @@
       {
        "at": "2026-11-04T16:59:00Z",
        "cause": "stop_likely_filled",
-       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. The stop has likely filled; the position will close here once the broker fill is synced.",
+       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. Awaiting fill: the position closes here once the broker fill is synced.",
        "kind": "exit_fill",
-       "label": "Stop likely filled — not confirmed",
+       "label": "Awaiting fill — mark under stop $40.00 · fill sync time not measured",
        "source": "stop_last_known + mark",
+       "tone": "info",
        "unconfirmed": true
       }
      ],

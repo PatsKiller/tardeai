@@ -135,3 +135,13 @@ export function replayPriceFormat(values: (number | null | undefined)[]): { type
   }
   return { type: 'price', precision, minMove: 10 ** -precision }
 }
+
+/** "Compare with a win" partners: CLOSED trips with a server-realized P/L above zero only. An open position's
+ * unrealized gain is never a win, and there is no fallback to one when no closed winner exists. */
+export const NO_CLOSED_WIN = 'No closed winning trip yet'
+export function isClosedWin(t: { status?: string | null; pnl?: number | null } | null | undefined): boolean {
+  return !!t && t.status === 'closed' && typeof t.pnl === 'number' && Number.isFinite(t.pnl) && t.pnl > 0
+}
+export function closedWinPartners<T extends { trade_id?: string | null; status?: string | null; pnl?: number | null }>(trades: T[], excludeId?: string | null): T[] {
+  return trades.filter(t => isClosedWin(t) && t.trade_id !== excludeId)
+}

@@ -192,8 +192,8 @@ export const TOOLTIPS = {
     + 'the entry fill is not in the transaction ledger yet.',
   exit: 'Why the trade ended, from fills and observed stops: a fill at (or just below) the working stop is a stop-out; a '
     + 'trailing ratchet when the stop had been raised and sat at or above your entry; at the plan target is a target; '
-    + 'anything else is a manual sell. "Stop likely filled" = the latest mark is at or below the working stop, but no '
-    + 'fill is synced yet.',
+    + 'anything else is a manual sell. "Awaiting fill" = the latest mark is at or below the working stop, but no '
+    + 'closing fill is synced yet (informational, unconfirmed).',
   conviction: 'CIO conviction 0–100 from the opportunity book: at your entry → now.',
   timeline: 'Every recorded event for this trade in time order (New York time): the origin, the entry fill, each stop level '
     + 'the scan observed, CIO conviction / stance / rank changes while you held it, and the exit.',

@@ -12,7 +12,7 @@ What it returns: one row per trade (open positions and round trips closed in the
   made. Never claims "your own trade" without a recorded link that says so;
 * **timeline** — origin recommendation → entry fill → each stop level change → conviction / stance changes while held
   → exit fill and its cause;
-* **exit cause** — stop-out, trailing-stop ratchet, target, manual, or "stop likely filled — not yet confirmed"
+* **exit cause** — stop-out, trailing-stop ratchet, target, manual, or "Awaiting fill" (mark under the stop, not yet confirmed)
   (deterministic rules over fills and observed stops; see ``classify_exit``);
 * **review** — facts first (entry, exit, high/low while held, giveback, stop raises, conviction then and now); model
   prose only when a stored advisory exists, labelled advisory with its model;
@@ -78,12 +78,13 @@ EXIT_LABEL = {
     "trailing_ratchet": "Trailing stop (ratchet)",
     "target": "Target reached",
     "manual": "Manual sell",
-    "stop_likely_filled": "Stop likely filled — not confirmed",
+    # Approved operator wording 2026-10-25: informational "Awaiting fill", never a warning. The kind keeps its name.
+    "stop_likely_filled": "Awaiting fill",
     "open": "Still open",
     "unknown": "Exit cause unknown",
 }
 EXIT_TONE = {"stop_out": "danger", "trailing_ratchet": "warning", "target": "success", "manual": "info",
-             "stop_likely_filled": "warning", "open": "neutral", "unknown": "neutral"}
+             "stop_likely_filled": "info", "open": "neutral", "unknown": "neutral"}
 #: An exit within this % of the last working stop is a stop fill (a stop-market fills at or a little below it).
 STOP_FILL_TOL_PCT = 0.6
 #: An exit within this % below the plan target counts as the target.
@@ -232,8 +233,8 @@ def classify_exit(*, closed: bool, entry_ref: Optional[float], exit_ref: Optiona
             return {"kind": "stop_likely_filled", "label": EXIT_LABEL["stop_likely_filled"], "confirmed": False,
                     "level_ref": last, "raises": raises,
                     "detail": (f"Latest mark {_money(mark_ref)}{' at ' + mark_at[:16].replace('T', ' ') if mark_at else ''} "
-                               f"is at or below the working stop {_money(last)}. The stop has likely filled; the "
-                               "position will close here once the broker fill is synced."),
+                               f"is at or below the working stop {_money(last)}. Awaiting fill: the position closes "
+                               "here once the broker fill is synced."),
                     "evidence": ["stop_last_known", "holdings_accounts mark"]}
         return {"kind": "open", "label": EXIT_LABEL["open"], "confirmed": True, "level_ref": last, "raises": raises,
                 "detail": f"Working stop {_money(last)}" if last is not None else "No stop on record",
@@ -610,7 +611,7 @@ def conflicts_for(*, closed: bool, exit_cause: dict[str, Any], holding: Optional
     """Disagreements between inputs about this trade — both values, both sources, both times. Never resolved here."""
     out: list[dict[str, Any]] = []
     if exit_cause.get("kind") == "stop_likely_filled" and holding:
-        out.append({"field": "position", "summary": "Holdings still show the position; the stop has likely filled",
+        out.append({"field": "position", "summary": "Holdings still show the position; awaiting fill (mark under the stop)",
                     "a": {"value": f"held {holding.get('fill_qty')} sh", "source": "holdings_accounts",
                           "at": holding.get("as_of")},
                     "b": {"value": f"stop {_money(exit_cause.get('level_ref'))} at/above mark", "source": "stop_last_known",
@@ -1095,6 +1096,15 @@ def _add_redesign_fields(payload: dict, inputs: dict, now: datetime) -> dict:
             row["exit_cause"] = {**row["exit_cause"], "label": "Awaiting fill", "tone": "info",
                 "detail": f"mark under stop {_money(stop.get('level_ref'))} · fill sync "
                           + (next_sync.get("at") or "time not measured")}
+            # The timeline exit row and the review "Status" row carry the same approved wording and info tone as
+            # the banner and the Awaiting-fill filter (one phrase on every surface; still unconfirmed).
+            awaiting_text = f"Awaiting fill — {row['exit_cause']['detail']}"
+            for ev in row.get("timeline") or []:
+                if ev.get("kind") == "exit_fill" and ev.get("unconfirmed"):
+                    ev.update(label=awaiting_text, tone="info")
+            for fact in (row.get("review") or {}).get("facts") or []:
+                if fact.get("key") == "cause":
+                    fact.update(value=awaiting_text, tone="info")
         quantity_source = "holdings_accounts" if row.get("status") == "open" else (
             (row.get("entry") or {}).get("source") or exit_.get("source"))
         row["reconciliation_facts"] = [
