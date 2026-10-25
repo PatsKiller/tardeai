@@ -1,3 +1,5 @@
+import W7Conflicts from '../components/W7Conflicts'
+import DeskPage from '../components/DeskPage'
 import type { DrillContext } from '../components/DetailDrawer'
 import { W7HomePanels, W7Load, useW7Pages } from '../components/W7PagePanels'
 import { TOKENS } from '../lib/designTokens'
@@ -7,9 +9,14 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 /** Approved board14: actions, protection and CIO market view. Metrics live in the header. */
 export default function HomeHub(_props: Props) {
   const { data, loading, error } = useW7Pages()
-  return <main data-testid="home-hub" style={{ padding: 20, color: TOKENS.text[0] }}>
-    <h1 style={{ fontSize: 24, margin: '0 0 8px' }}>Home</h1>
-    <p style={{ color: TOKENS.text[2], marginBottom: 20 }}>What needs you today — straight from the CIO.</p>
+  return <DeskPage title="Home" purpose="What needs you today — straight from the CIO." sources={[
+    { id: 'cio', label: 'CIO record', asOf: data?.do_now?.as_of, laneIds: ['cio-decision-engine'], gap: data?.do_now?.gap?.reason },
+    { id: 'holdings', label: 'Holdings', asOf: data?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: data?.portfolio?.gap?.reason },
+    { id: 'stops', label: 'Stops', asOf: data?.stops?.as_of, laneIds: ['unified-stop-supervisor', 'stop-health-check'], gap: data?.stops?.gap?.reason },
+  ]} decisionGap="Review the CIO-ranked actions below.">
+    <div data-testid="home-hub">
+    {data && <W7Conflicts section={data.conflicts} title="CIO findings" />}
     {data ? <W7HomePanels data={data} /> : <W7Load loading={loading} error={error} />}
-  </main>
+    </div>
+  </DeskPage>
 }

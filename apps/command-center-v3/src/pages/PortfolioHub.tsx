@@ -258,14 +258,16 @@ export default function PortfolioHub({ onDrill }: Props) {
   const needDividends = tab === 'Dividends'
   const needForecast = tab === 'Forecast'
   const needTax = tab === 'Tax'
+  // These panels render holdings or account choices; other tabs use their own projection.
+  const needHoldingsData = needHoldingsDesk || needAllocation || needDividends || needReturns
 
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000, { enabled: needAllocation || needHoldingsDesk })
-  const { data: holdings, loading: holdingsLoading, error: holdingsError, stale: holdingsStale } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
+  const { data: holdings, loading: holdingsLoading, error: holdingsError, stale: holdingsStale } = useApi<any>('/api/v2/portfolio/holdings', 60_000, { enabled: needHoldingsData })
   const { data: shareDriftRaw, refetch: refetchShareDrift } = useApi<any>('/api/v2/holdings/share-drift', 60_000, { enabled: needHoldingsDesk })
   const shareDriftItems: ShareDriftItem[] = (shareDriftRaw?.items || shareDriftRaw?.data?.items || []) as ShareDriftItem[]
   const [shareDriftModal, setShareDriftModal] = useState<ShareDriftItem | null>(null)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000, { enabled: needHoldingsDesk })
-  const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
+  const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000, { enabled: needHoldingsDesk })
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000, { enabled: needHoldingsDesk })
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000, { enabled: needHoldingsDesk })
   // Closed-session resistance, same cache the Re-Entry desk reads, so the level shown
@@ -279,7 +281,6 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000, { enabled: needReturns })
   const { data: riskData } = useApi<any>('/api/v2/risk', 120_000, { enabled: needReturns })
   const { data: forecast, loading: forecastLoading, error: forecastError } = useApi<any>('/api/v2/forecast', 300_000, { enabled: needForecast })
-  const { data: lookthrough, loading: lookthroughLoading } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000, { enabled: needLookthrough })
   const { data: rotation, error: rotationError } = useApi<any>('/api/v2/rotation/summary', 300_000, { enabled: needHoldingsDesk })
   const rotationPublication = useRotationAvailability(rotation, rotationError)
   const reportMap = useAnalystReportMap()
@@ -469,14 +470,14 @@ export default function PortfolioHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Portfolio</div>
           <div style={hubSubtitle(terminalUi)}>
-            {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
-            {!needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
+            {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : !needHoldingsData ? 'Select Holdings for position totals and stop coverage' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
+            {needHoldingsData && !needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
               {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
               {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}
               {holdingsStale && <span style={{ color: '#f59e0b' }}> · refreshing</span>}
             </>}
           </div>
-          {priceStamp && (
+          {needHoldingsData && priceStamp && (
             <div
               title={holdings?.pricing?.note ?? 'Live price overlay per account: Schwab broker sync; Fidelity Finviz/market_quotes'}
               onClick={() => onDrill({ title: 'Pricing sources', subtitle: priceStamp, endpoint: '/api/v2/portfolio/holdings',

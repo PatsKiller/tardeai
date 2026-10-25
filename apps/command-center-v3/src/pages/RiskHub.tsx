@@ -1,3 +1,5 @@
+import W7Conflicts from '../components/W7Conflicts'
+import DeskPage from '../components/DeskPage'
 import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -23,18 +25,19 @@ export default function RiskHub({ onDrill }: Props) {
     const row = data.positions.rows.find((p: any) => p.symbol === symbol.toUpperCase())
     if (row) { focused.current = true; const next = new URLSearchParams(params); next.set('detail', `position:${row.account_id || row.account}:${row.symbol}`); setParams(next, { replace: true }) }
   }, [symbol, data, params, setParams])
-  return <main data-testid="risk-hub" data-active-tab={tab} style={{ padding: 20, color: TOKENS.text[0] }}>
+  return <DeskPage title="Risk" purpose="What could you lose if stops fill — and what has no active protection?" tabs={TABS.map(label => ({ id: label.toLowerCase(), label }))} defaultTab="exposure" sources={[
+    { id: 'positions', label: 'Positions', asOf: data?.positions?.as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: data?.positions?.gap?.reason },
+    { id: 'stops', label: 'Stops', asOf: data?.stops?.as_of, laneIds: ['unified-stop-supervisor', 'stop-health-check'], gap: data?.stops?.gap?.reason },
+  ]} decisionGap="Review pending protection and concentration below.">
+    <div data-testid="risk-hub" data-active-tab={tab}>
     <W7RiskStyles />
-    <h1 style={{ fontSize: 24, margin: '0 0 8px' }}>Risk</h1>
-    <p style={{ color: TOKENS.text[2] }}>What could you lose if stops fill — and what has no active protection?</p>
-    <nav role="tablist" aria-label="Risk sections" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '16px 0' }}>
-      {TABS.map(t => <button key={t} role="tab" aria-selected={tab === t} onClick={() => { const next = new URLSearchParams(params); next.set('tab', t.toLowerCase()); setParams(next) }} style={{ padding: '9px 14px', color: tab === t ? TOKENS.text[0] : TOKENS.text[2], background: TOKENS.bg[1], border: `1px solid ${tab === t ? TOKENS.primary : TOKENS.border}`, borderRadius: 6, cursor: 'pointer' }}>{t}</button>)}
-    </nav>
+    {data && <W7Conflicts section={data.conflicts} title="CIO findings" />}
     {!data && <W7Load loading={loading} error={error} />}
     {data && tab === 'Exposure' && <W7RiskExposure data={data} onDrill={onDrill} />}
     {data && tab === 'Concentration' && <W7RiskConcentration data={data} />}
     {tab === 'Correlation' && <W7RiskCorrelation data={correlation} error={correlationError} />}
     {data && tab === 'Regime' && <W7RiskRegime data={data} />}
     {tab === 'Recovery' && <W7RiskRecovery data={recovery} error={recoveryError} />}
-  </main>
+    </div>
+  </DeskPage>
 }

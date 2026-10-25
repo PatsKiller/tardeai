@@ -1,3 +1,4 @@
+import DeskPage from './DeskPage'
 import { Link } from 'react-router-dom'
 import { useW7Pages, W7Gap, W7Load, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, pct, usd, when } from './W7PagePanels'
 import { TOKENS } from '../lib/designTokens'
@@ -69,7 +70,10 @@ export function W7LookthroughView({ data, account, selectAccount }: { data: any,
 
 export default function W7Lookthrough({ account, selectAccount }: { account: string | null, selectAccount: (v: string | null) => void }) {
   const { data, loading, error } = useW7Pages()
-  return data ? <W7LookthroughView data={data} account={account} selectAccount={selectAccount} /> : <W7Load loading={loading} error={error} />
+  return <DeskPage title="Look-through" purpose="What you own inside funds — by sector, industry, theme and stock." sources={[
+    { id: 'holdings', label: 'Holdings', asOf: data?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: data?.portfolio?.gap?.reason },
+    { id: 'weights', label: 'Fund holdings', laneIds: ['portfolio-lookthrough-themes'], gap: 'Fund weights retain their original publication evidence.' },
+  ]} decisionGap="Review dollar-sized coverage and target gaps below.">{data ? <W7LookthroughView data={data} account={account} selectAccount={selectAccount} /> : <W7Load loading={loading} error={error} />}</DeskPage>
 }
 
 export function W7Allocation({ account, selectAccount }: { account: string | null, selectAccount: (v: string | null) => void }) {
