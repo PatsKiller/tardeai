@@ -56,7 +56,10 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     title: 'Releases & Schedules',
     purpose: 'What is released, what is scheduled to run, and whether scheduled jobs actually ran.',
     sources: [
-      { id: 'train', label: 'Release train', laneIds: ['release-train-claim'] },
+      // Host request timers for the policy's live windows (config/release_train_policy.json); each writes a LaneRunReceipt.
+      { id: 'train', label: 'Release train', laneIds: ['release-train-request-timer-1200', 'release-train-request-timer-1800',
+        'release-train-request-timer-0600', 'release-train-request-timer-0900', 'release-train-request-timer-1500',
+        'release-train-request-timer-2100', 'release-train-request-timer-0000', 'release-train-request-timer-0300'] },
       { id: 'n8n', label: 'n8n dispatch', laneIds: ['n8n-pilot-dispatch'] },
     ],
   },

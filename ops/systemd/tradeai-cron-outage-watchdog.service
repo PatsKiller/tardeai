@@ -7,4 +7,5 @@ WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cron_outage_watchdog.py --run --send-alerts
 TimeoutStartSec=45
-# SOURCE ONLY: operator reviews coverage and installs; never safe_flock/notifier/n8n.
+# Installed by the release (scripts/install_staged_units.py via config/staged_user_units.json, dry-run first);
+# never safe_flock/notifier/n8n: the alert path must not depend on what it watches.
