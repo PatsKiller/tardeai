@@ -24,14 +24,21 @@ KEY = R.LIVE_LANES_ENV
 PAUSED = R.PAUSED_ENV
 
 
-def _agents(active: bool) -> str:
+def _agents(active: bool, version: str = "21.0.0") -> str:
+    # Ratified as 21.0.0 (PR #2128, renumbered from "20.4.0"): no | 20.4.0 | row exists; the current row decides.
     status = "ACTIVE" if active else "PROPOSED"
     return (
-        "# AGENTS.md\n\n```\nPolicy-Version:      20.4.0\nStatus:              " + status + "\n"
+        "# AGENTS.md\n\n```\nPolicy-Version:      " + version + "\nStatus:              " + status + "\n"
         "Effective-Date:      " + ("2026-10-25" if active else "PENDING") + "\n```\n\n"
-        "| 20.4.0 | 2026-10-25 | " + status + " | MINOR | hands-off | x |\n"
+        "| " + version + " | 2026-10-25 | " + status + " | MAJOR | hands-off | x |\n"
         "| 20.2.0 | 2026-10-24 | ACTIVE | MINOR | prior | x |\n"
     )
+
+
+def test_gate_keys_on_the_current_version_row():
+    assert HOP.policy_state_from_text(_agents(True))["active"] is True
+    assert HOP.policy_state_from_text(_agents(False))["active"] is False
+    assert HOP.policy_state_from_text(_agents(True, version="20.3.0"))["active"] is False
 
 
 def _root(tmp_path: Path, *, active: bool, render: bool = True) -> Path:
