@@ -115,12 +115,14 @@ try{
   await expect(page.getByTestId('watch-row')).toHaveCount(104)
   await inView(row.getByRole('button',{name:'Resolve conflict',exact:true}))
   await tap(row.getByRole('button',{name:'Resolve conflict',exact:true}))
-  state='DECIDED';await page.clock.runFor(15_000)
-  await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Decision recorded · awaiting engine re-evaluation')
+  // A selected-record read already in flight when the fixture state flips still answers the old state; advance
+  // the fake clock one poll interval at a time until the next read lands (slower CI runners hit this race).
+  state='DECIDED'
+  await expect(async()=>{await page.clock.runFor(15_000);await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Decision recorded · awaiting engine re-evaluation',{timeout:2_000})}).toPass({timeout:30_000})
   await expect(dialog.getByTestId('watch-ask-cio')).toHaveCount(0)
   await expect(row.getByTestId('conflict-headline')).toHaveText(specimen.section.headline)
-  state='CLEARED';await page.clock.runFor(120_000)
-  await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Cleared by the engine')
+  state='CLEARED'
+  await expect(async()=>{await page.clock.runFor(120_000);await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Cleared by the engine',{timeout:2_000})}).toPass({timeout:30_000})
   await tap(dialog.getByRole('button',{name:'← Back'}))
   await expect(row.getByTestId('conflict-line')).toHaveCount(0)
   await expect(row.getByRole('button',{name:'Resolve conflict',exact:true})).toHaveCount(0)
