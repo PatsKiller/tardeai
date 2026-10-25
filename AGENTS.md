@@ -7249,148 +7249,229 @@ verification and failure paging). It removes nothing and does not touch §0, §2
   forward with a new PR through this same path; nobody reverts by hand or pushes `main`. *Cause (§20): operator
   2026-10-25, "Any failures I need to be emailed, notified, and texted."*
 
-## 28.13 Design lifecycle — one home, versioned pages, recorded approval (20.4.0, PROPOSED)
+## 28.13 Design lifecycle — one home, versioned pages, recorded approval (21.0.0, PROPOSED)
 
-**Status: PROPOSED (MINOR).** Drafted 2026-10-25 from the Design Workflow proposal the operator approved, verbatim: "I
-approve the design workflow. Develop and ship it. Also, make sure that it's referenced in the agents.md". Part of
-20.4.0, ratified with §28.14 and §28.15 by one token (§20 `APPROVE_AGENTS_POLICY_20_4_0 <pr> <head_sha>`); until then the 20.3.0
-text governs. It adds obligations only and extends §28.9's change control; it does not touch §0, §2 or role authority.
+**Status: PROPOSED.** The operator approved the Design Workflow on 2026-10-25, verbatim: "I approve the design workflow.
+Develop and ship it. Also, make sure that it's referenced in the agents.md". This section is ratified with §28.14 and
+§28.15 by one token (§20 `APPROVE_AGENTS_POLICY_21_0_0 <pr> <head_sha>`). It adds the restrictions below and removes
+none. Details: `design/README.md`.
 
-- **1 One home.** `design/` is the single home of every page's design: the repo holds text, specs, tokens
-  (`design/system/tokens.json`, generated `tokens.css`), `design/registry.json` and file fingerprints. Private mockups
-  and live screenshots live in `~/trade-ai-releases/persistent-state/data/design`, never in the repo, because the repo
-  is public; real financial data is never committed (§2A). *Cause (§20): the 2026-10-24 board, TradeInView and Watch
-  approvals lived only in handoff folders no check or agent read.*
-- **2 Every page is versioned.** `v000` is each page and tab as built 2026-10-26 (logged in, read-only, 1440/412/390);
-  `v001` is the operator's 2026-10-24 approvals back-filled from his recorded words, marked "recorded in handoff,
-  back-filled"; later changes are `v002`, `v003` and so on. An approved version is immutable. *Cause (§20): no page had
-  a recorded current version, so nothing showed that Board 19's "Decided recently" panel was never built.*
-- **3 Lifecycle.** DRAFT (any agent, under `design/proposals/`) → PROPOSED (mockups at 1440, 412 and 390 from the real
-  tokens; the SPEC lists every removal, hide or move) → APPROVED (the operator only: one tap in Approvals → Designs,
-  recorded as a signed decision with who, when, version and fingerprint; prose in a handoff never counts) → IMPLEMENTING
-  (the PR cites `Design: <page>/vNNN`, or `Design: none` for a fix with no visible change) → VERIFIED (live screenshots
-  match after release) → CURRENT; the old version becomes SUPERSEDED, a declined one REJECTED. An agent never adjusts an
-  approved design; if it is wrong, the agent stops and proposes a new version. *Cause (§20): 2026-10-24 approvals were
-  only in prose and Decision history showed 0.*
-- **4 Phone and desktop rules.** Phone (≤820 px, built for 412 and 390): one column; the whole page scrolls; fixed
-  chrome at most 15% of viewport height; list → full-screen sheet with ← Back; taps at least 44 px; no sideways page
-  scroll; readable ET times; hiding behind a tap is a hide that needs approval. Desktop (≥1280 px, built for 1440): the
-  same data and actions, laid out wider. Both use tokens only. *Cause (§20): the phone metric strip and Ask bar stayed
-  fixed and pages scrolled under them; the operator works from a phone.*
-- **5 Checks.** On every PR: the design-reference check (UI changes cite an APPROVED version or `Design: none`), the
-  removal guard (§28.9), a fixture visual compare against the page's baseline at 1440/412/390 and the phone layout rules.
-  After every release and nightly: live drift against CURRENT, logged-in pages included, through a read-only agent reader
-  that can never approve or change anything; failures page as §28.12 step 10. *Cause (§20): TradeInView hid Calendar and
-  Replay without approval; logged-in pages (Rulebook, Approvals) were never checked, so "Rulebook unavailable" went
-  unseen.*
+- **1 One home per page design, every page versioned.** Every Command Center page is in `design/registry.json` with
+  its approved, current and baseline version. `design/pages/<page>/versions/vNNN/` holds `SPEC.md` (what changes, what
+  stays, and every removal, hide or move) and `status.json` (state, approval, fingerprints). `v000` is each page and
+  tab as built on 2026-10-26, captured logged in and read-only at 1440, 412 and 390. `v001` is the operator's
+  2026-10-24 approvals, back-filled. Later changes are `v002` onward. Lifecycle: DRAFT → PROPOSED → APPROVED →
+  IMPLEMENTING → VERIFIED → CURRENT, or SUPERSEDED / REJECTED. An approved version is immutable: a change is a new
+  version. *Cause (§20): the 10-24 approvals of the 22 desk boards, TradeInView and the Watch row existed only in
+  handoff prose. Approvals showed 0 decisions, and nothing recorded a page's approved version.*
+- **2 Only the operator approves a design, and only in the ledger.** A version becomes APPROVED or REJECTED only
+  through the operator's one-tap decision in Approvals → Designs. The decision is recorded as a signed decision in the
+  operator decisions ledger, with the authenticated identity, the time, the version and its fingerprint. Prose in a
+  handoff, chat or PR never counts; v001, back-filled from the 10-24 handoffs, is the one exception. Agents may propose
+  and read; a decision request from an agent is refused. *Cause (§20): the same 10-24 approvals; a decision recorded
+  only in prose cannot be checked.*
+- **3 Build only the approved version, and cite it.** A PR that changes UI under `apps/command-center-v3/src` carries
+  `Design: <page>/vNNN` (APPROVED or IMPLEMENTING), or `Design: none` if it changes no visible layout. The build
+  contains only what that version shows. An agent never adjusts an approved design; if the design proves wrong, the
+  agent stops and proposes a new version. VERIFIED and CURRENT are set automatically after release. *Cause (§20): Board
+  19's "Decided recently" panel was approved 10-24 and never built, and nothing could tell.*
+- **4 No unlisted removal or hide.** If a nav item, route, tab, panel or widget disappears, or moves behind a tap, the
+  cited version's SPEC must list it; otherwise the removal guard fails the PR. This makes §28.9 change control
+  mechanical. *Cause (§20): TradeInView hid Calendar and Replay on 10-24 without an approved mockup.*
+- **5 Phone first, measured; desktop the same.**
+  - Phone (≤820 px, built for 412 and 390): one column, and the whole page scrolls. Fixed or sticky chrome together
+    takes at most 15% of viewport height. A list opens a full-screen sheet with ← Back. Tap targets are at least
+    44 × 44 px. No sideways page scroll. Times are readable ET, never raw ISO timestamps. No empty bullets.
+  - Desktop (≥1280 px, built for 1440): the same data and actions, laid out wider.
+  - Both use tokens only.
+  - These rules are checked on fixtures in every UI PR, by a visual compare against the page's baseline at
+    1440/412/390, and on the live site after each release.
 
-## 28.14 Self-heal monitor and fixer — the train is watched and small errors are fixed by ordinary PRs (20.4.0, PROPOSED)
+  *Cause (§20): the phone metric strip and Ask bar stayed fixed and pages scrolled under them, and no check measured
+  it.*
+- **6 Logged-in pages are checked too.** The post-release and nightly live drift checks include pages that need
+  sign-in. They use the read-only agent reader identity, which can never approve or change anything, and run under
+  §28.8: never 04:00–16:15 ET Mon–Fri, one page at a time, with portfolio-server memory checked first. *Cause (§20):
+  no agent ever opened Rulebook or Approvals, so "Rulebook unavailable" went unseen.*
+- **7 Design assets that show real data never enter the public repo.** `PatsKiller/tardeai` is public.
+  - Mockups, live screenshots, handoff specs and evidence images stay in the private store
+    (`~/trade-ai-releases/persistent-state/data/design/pages/<page>/`). `status.json` references them by relative path
+    and sha256 only.
+  - Committed SPEC text carries no portfolio values, holdings, positions, account names or numbers, P/L, or real
+    tickers tied to the operator's holdings.
+  - Only fixture-data baselines that pass the privacy scan may be committed.
 
-**Status: PROPOSED (MINOR).** Drafted 2026-10-25 at the operator's request, verbatim: "Arm the fixer and also a logger
-that tracks what was fixed, but this train should be no different than submitting in [to GitHub]. Somebody needs to
-monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md." Part of
-20.4.0, ratified with §28.13 and §28.15 by one token (§20 `APPROVE_AGENTS_POLICY_20_4_0 <pr> <head_sha>`). **Arming is
-this section becoming ACTIVE; no separate guard grant.** Until then the monitor runs shadow only: it detects and logs,
-and remediates and opens nothing. For the train it takes the place of the never-ratified 13.0.0 fixer proposal
-(`docs/ops/self_heal_claude_fixer.md` §9). The fixer gains no merge, release or broker authority, and §0, §2 and role
-authority do not change.
+  *Cause (§20): the repository is public (§2A); real financial data is never committed.*
 
-- **1 A monitor independent of n8n.** A host timer (not n8n, so a broken n8n cannot silence it) watches main CI after
-  every merge, train outcomes, the post-release tester and the nightly sweep (§28.12 steps 9–10). *Cause (§20): §28.9
-  "a monitor never depends on the thing it monitors"; operator 2026-10-25, "Somebody needs to monitor it."*
-- **2 Known small errors get deterministic remediations only.** These are: one rerun of a CI job that failed on an
-  infrastructure flake (never a test failure); regenerating a canonical generated file with its own generator; the
-  disk-packet re-pin; and the documented stale-lock reconcile. Each runs once per incident, and a second failure goes
-  to item 3. *Cause (§20): 2026-10-25 the recurring small errors were exactly these, and each waited on a person.*
+## 28.14 Self-heal monitor and fixer — the train is watched and small errors are fixed by ordinary PRs (21.0.0, PROPOSED)
+
+**Status: PROPOSED.** Drafted 2026-10-25 at the operator's request, verbatim: "Arm the fixer and also a logger that
+tracks what was fixed, but this train should be no different than submitting in [to GitHub]. Somebody needs to
+monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md." It is
+ratified with §28.13 and §28.15 by one token. **Arming is this section becoming ACTIVE; there is no separate guard
+grant.** Until then the monitor runs in shadow only: it detects and logs, and it remediates nothing and opens nothing.
+For the train, this section takes the place of the never-ratified 13.0.0 fixer proposal
+(`docs/ops/self_heal_claude_fixer.md` §9). The fixer gains no merge, release or broker authority.
+
+- **1 A monitor independent of n8n.** A host timer, not n8n, so that a broken n8n cannot silence it. It watches main CI
+  after every merge, train outcomes, the post-release tester and the nightly sweep (§28.12 steps 9–10). *Cause (§20):
+  §28.9, "a monitor never depends on the thing it monitors"; operator 2026-10-25, "Somebody needs to monitor it."*
+- **2 Known small errors get deterministic remediations only.** There are four:
+  - one rerun of a CI job that failed on an infrastructure flake, never on a test failure;
+  - regenerating a canonical generated file with its own generator;
+  - the disk-packet re-pin;
+  - the documented stale-lock reconcile.
+
+  Each runs once per incident. A second failure goes to item 3. *Cause (§20): the recurring small errors of 2026-10-25
+  were exactly these, and each one waited on a person.*
 - **3 Every other fix is an ordinary PR.** The self-heal Claude Code fixer (`scripts/self_heal_fixer.py`) works in an
-  isolated worktree under its budget and diff guard. It never deletes, skips or weakens a test, and its prompt quotes
-  AGENTS.md §0. It opens a normal fix PR that passes CI and rides the train like any other (§28.12). The fixer never
-  merges, releases or deploys. *Cause (§20): operator, "this train should be no different than submitting"; 2026-10-16,
-  "connect into Claude Code to fix it in iterations".*
-- **4 Refused scopes go to a person.** Broker, Active Trader and MBI code; guard, policy, hooks and AGENTS.md;
-  the train's own code; and credentials or `.env`. A failure in one of these raises an alert and a coordinator task
-  on the claim board, and gets no fix attempt. *Cause (§20): §0 rules 1–2, §25.2 (no candidate modifies its own
-  verifier), §24.7.*
-- **5 Every action is logged.** Each detection, remediation, fix PR and outcome is recorded in an append-only fix log
-  (never rewritten, archived not deleted), shown on System → Releases & schedules → Fixes. *Cause (§20): operator,
-  "a logger that tracks what was fixed".*
-- **6 Escalation.** After the configured maximum attempts per incident, or on any refused scope, the operator gets a
+  isolated worktree, within its budget and diff guard. It never deletes, skips or weakens a test, and its prompt quotes
+  AGENTS.md §0. It opens a normal fix PR, which passes CI and rides the train like any other PR (§28.12, §28.15). The
+  fixer never merges, releases or deploys. *Cause (§20): operator, "this train should be no different than
+  submitting"; 2026-10-16, "connect into Claude Code to fix it in iterations".*
+- **4 Refused scopes go to a person.** These are refused: broker, Active Trader and MBI code; guard, policy, hooks and
+  AGENTS.md; the train's own code; and credentials or `.env`. A failure in one of them raises an alert and a
+  coordinator task on the claim board, and gets no fix attempt. *Cause (§20): §0 rules 1–2; §25.2 (no candidate
+  modifies its own verifier); §24.7.*
+- **5 Every action is logged.** Each detection, remediation, fix PR and outcome is recorded in an append-only fix log.
+  The log is never rewritten, only archived, never deleted. It is shown on System → Releases & schedules → Fixes.
+  *Cause (§20): operator, "a logger that tracks what was fixed".*
+- **6 Escalation.** After the configured maximum attempts for an incident, or on any refused scope, the operator gets a
   P1 by the §28.12 step 10 path, once per incident. *Cause (§20): operator, "Any failures I need to be emailed,
   notified, and texted" (§28.12).*
 
-## 28.15 Hands-off delivery — an approved scope ships without the operator (20.4.0, PROPOSED)
+## 28.15 Hands-off delivery — an approved scope ships without the operator (21.0.0, PROPOSED)
 
-**Status: PROPOSED (MINOR).** Drafted 2026-10-25 at the operator's request, verbatim: "I need you to take care of all
+**Status: PROPOSED (MAJOR).** Drafted 2026-10-25 at the operator's request, verbatim: "I need you to take care of all
 six of those items now. They should be fully done, fully automatic, no input by me, for the train systems unless
-there's an issue. Do 20.4"; earlier the same day: "I don't need hands-on for anything to push or to merge. The agent
-knows to do that automatically once I approve a scope or a plan or ask for something to be executed", and of the server
-`.env`: "is just configurations. All the secrets are in Bitwarden … this should have just been a toggle on the control
-ops." Binding once the operator ratifies (§20 token `APPROVE_AGENTS_POLICY_20_4_0 <pr> <head_sha>`); until then the
-20.3.0 text governs and nothing below authorizes anything. **Class.** Numbered 20.4.0 (MINOR) at the operator's
-instruction. Items 1–3 and 5 widen push, train, lane and configuration reach and §17 is read differently in two places
-(item 3, item 6), so by the version policy's weakest-guarantee rule this could be read MAJOR; the token is the explicit
-operator approval §20 requires either way, and if the operator reads it as MAJOR it becomes 21.0.0 and nothing else
-changes. The §0 text, §2, §2A, the broker and secret rails, §23.14 and the four adapters do not change; where §17 or
-§24.7 reads differently this section governs, as stated in items 3, 5 and 6. Causes of 2026-10-25: the per-branch push
-budget blocked four approved PRs; a release grant expired before its release ran; merged lanes stayed dry until the host
-relay live list was edited by hand; setup packets stopped on interactive TTY ACKs for routine schedule changes; enabling
-SMS waited on the operator to edit `.env` by hand.
+there's an issue. Do 20.4". Earlier the same day: "I don't need hands-on for anything to push or to merge. The agent
+knows to do that automatically once I approve a scope or a plan or ask for something to be executed". And of the
+server `.env`: "is just configurations. All the secrets are in Bitwarden … this should have just been a toggle on the
+control ops." It is binding once the operator ratifies (§20 token `APPROVE_AGENTS_POLICY_21_0_0 <pr> <head_sha>`).
+Until then the 20.3.0 text governs, and nothing below authorizes anything.
 
-- **1 Push budget 5; coordinator override on approved scope.** The per-branch budget (`AI_WORK_POLICY.md` §3, §17) is 5
-  authorized pushes, not 2. Only the coordinator session (the session that keeps the day's coordinator worklog, §28.3,
-  identified by its `AGENT_CLAIM_SESSION`) may push past it with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`, and only for a PR
-  linked to an operator-approved scope: a claim-board plan carrying an operator approval reference, or a PR body line
-  `Operator-approval: <the operator's words or a reference to them>` (an approval relayed between agents never counts,
-  §28.4). Each override is logged with that reference (`TRADEAI_REMOTE_PUSH_OVERRIDE_REF` in the push-budget ledger, and
-  `agent_claim.py note` in the coordinator worklog). Force-push stays forbidden; renaming or re-creating a branch to reset
-  a budget is still routing around a denial (§0 rule 3). The hook change (`scripts/lib/tradeai_push_budget.py`) ships
-  after ratification by item 6's guard path; until it is merged the hook enforces 2. *Cause (§20): 2026-10-25, the
-  budget of 2 blocked four operator-approved PRs and each waited for an operator override.*
-- **2 The train ships shared infrastructure as a solo train.** A PR the train classifies `needs_operator` only by the
-  `scheduler_live_list` rule (lane registry, run allowlist, `config/n8n_*.json`, systemd, cron) or the seed categories
-  `schedule`, `n8n_executor_relay_gateway`, `telegram_routing` (communications) and `deploy_and_release` becomes
-  eligible as a **solo train**: exactly one such PR per window and no other member, with the `[shared-infra]` title, the
-  `shared-infra-review` check `success` on the head, a `Real-layout proof:` line (§28.9) and an adversarial review
-  receipt (a reviewer other than the author, recorded in the PR or the coordinator worklog). The train's verify then
-  adds `scripts/check_allowlist_consistency.py`, `scripts/check_lane_registry.py` and a clean
-  `scripts/cron_outage_watchdog.py` pass to §28.12 step 9; any failure rolls back and pages P1 (§28.12 step 10). Never
-  on a solo train: the train's own code (`train_self`, blocked), guard, hook and CI enforcement (`guard_ci_enforcement`),
-  policy text and adapters (`agents_policy`), broker and Active Trader (`broker_active_trader`, held), auth and secrets,
-  and migrations. The class enters the delegation record by one operator scope change (item 6). *Cause (§20): §28.9 —
-  shared infrastructure ships alone; 2026-10-25 every shared-infra PR waited for a per-PR operator release.*
-- **3 Which lanes run live is declared in the repo.** A lane is live when its `config/lane_registry.json` row is at
-  `scheduler.stage` `canary` or `cutover` with `dispatch.mode` `live` and its `config/n8n_run_allowlist.json` entry has
-  a `live_arg`; at deploy the relay derives its live list from those rows (`scripts/render_n8n_relay_env.py`), never
-  from a `never` lane (§23.14). The host live-lanes setting (`TRADEAI_N8N_RELAY_LIVE_LANES`) becomes an override only:
-  removing a lane takes effect at once; adding one there stays the operator's §17 act; when the derivation fails the
-  last good list is kept, never widened. Activating a lane is a reviewed registry PR released by the train (item 2), as
-  §23.11 already makes re-staging a dispatcher row. §17's "changing the n8n relay live list" reads as changing the host
-  override. *Cause (§20): 2026-10-25, merged and released lanes stayed dry until the host relay live list was edited by
-  hand.*
-- **4 No TTY ACK for routine setup.** A new packet never needs an interactive TTY acknowledgement for a routine
-  schedule or configuration change; it ships as train-released configuration with a verify step. A TTY ACK remains only
-  for an operator-only act (§17: arming or revoking the delegation, clearing STOP, the Schwab mode and locks, grants,
-  passkeys). *Cause (§20): 2026-10-25 setup packets stopped on TTY ACKs for schedule changes the operator had approved.*
-- **5 Configuration is not a secret.** The server `.env` holds configuration only; secrets live in Bitwarden
-  (operator, 2026-10-25). An agent may change a named configuration key with a tool that writes that key alone, backs
-  the file up first (timestamped, mode kept) and prints only that key; it never prints, copies or reads out another
-  value, and a key on `config/secret_registry.yaml` or named like a token, secret, password or credential is refused.
-  An operator-facing switch belongs on Ops Controls (`/v3/system/ops-controls`) with an audited change log, not in a
-  file edit. Secrets are unchanged: never read, copied or printed (§24.7 governs them; this item narrows §24.7 for
-  named configuration keys only, once that tool is on main). *Cause (§20): 2026-10-25, enabling SMS waited on the
-  operator to edit `.env` by hand; operator, "this should have just been a toggle on the control ops."*
-- **6 What still reaches the operator, by design (§17).** (a) Ratifying `AGENTS.md` or `AI_WORK_POLICY.md`: one tap on
-  the Command Center Rulebook page, "Approve version X", with the operator's passkey identity (§27.3), recorded exactly
-  as the PR-comment token `APPROVE_AGENTS_POLICY_<x> <pr> <head_sha>` for the head SHA shown (a stale SHA is refused);
-  until that button is on main and verified, the PR comment is the path, and 20.4.0 itself is ratified that way. (b) Broker and
-  MBI rails: never change (§0 rules 1–2, §28.6). (c) Train-self and guard, hook or CI-enforcement changes: not the solo
-  train (a candidate may not modify the verifier that qualifies it, `train_self`); the coordinator merges and releases
-  each alone on the manual path after an adversarial review receipt, under a `release-write` grant naming that PR (§24.8
-  unchanged; no standing grant, because a grant that names no PR released PRs it did not name on 2026-09-25); the grant
-  is the one tap, and §25.1 reads accordingly for that PR alone. (d) One scope change to the delegation record to admit item 2's class (§17). Everything else ships
-  with no operator input unless a failure alert fires (§28.12 step 10). *Cause (§20): operator 2026-10-25, "fully done,
-  fully automatic, no input by me … unless there's an issue"; a release grant expired 2026-10-25 before its release
-  ran.*
+**Class: MAJOR, so 21.0.0, not 20.4.0.** The operator asked for "20.4", but the version policy decides the class, and
+it is clear here: this section widens what the release train may carry (§17, "expanding the train's scope"), ends
+per-act operator decisions §17 lists (new cron or systemd entries, n8n activation, the relay live list), and admits
+guard and train-self work into the standing delegation (§25.2). The version policy names "widening §17" as MAJOR. Precedent: 20.0.0 was approved as "19.1.0" and numbered by the
+policy. The header stays 20.3.0 ACTIVE while this is PROPOSED (the 20.2.0/20.3.0 convention); the ratifying edit sets
+it to 21.0.0. The §0 text, §2, §2A, the broker and secret rails, §23.14 and the four adapters do not change. Where
+§17, §24.7, §24.8 or §25 read differently, this section governs, as each item states.
+
+**Causes, 2026-10-25:** the per-branch push budget blocked four approved PRs; a release grant expired before its
+release ran; merged lanes stayed dry until the host relay live list was edited by hand; setup packets stopped on
+interactive TTY ACKs for routine schedule changes; enabling SMS waited on the operator to edit `.env` by hand.
+
+- **1 Push budget 5, with a coordinator override on approved scope.** The per-branch budget (`AI_WORK_POLICY.md` §3,
+  §17) is 5 authorized pushes, not 2.
+  - Only the coordinator session may push past it, with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`. That is the session that
+    keeps the day's coordinator worklog (§28.3), identified by its `AGENT_CLAIM_SESSION`.
+  - It may do so only for a PR linked to an operator-approved scope: a claim-board plan carrying an operator approval
+    reference, or a PR body line `Operator-approval: <the operator's words or a reference to them>`. An approval
+    relayed between agents never counts (§28.4).
+  - Each override is logged with that reference: `TRADEAI_REMOTE_PUSH_OVERRIDE_REF` in the push-budget ledger, and
+    `agent_claim.py note` in the coordinator worklog.
+  - Force-push stays forbidden. Renaming or re-creating a branch to reset a budget is still routing around a denial
+    (§0 rule 3).
+  - The hook change (`scripts/lib/tradeai_push_budget.py`) ships after ratification by item 3's two-review path. Until
+    it is merged, the hook enforces 2.
+
+  *Cause (§20): on 2026-10-25 the budget of 2 blocked four operator-approved PRs, and each waited for an operator
+  override.*
+- **2 Solo trains with one adversarial review.** A PR the train classifies `needs_operator` becomes eligible as a
+  **solo train**: exactly one PR in the window, with no other member. This covers scheduler, registry, allowlist,
+  systemd and cron; communications; deploy-adjacent code; the portfolio-server API; oversized PRs; deletions; auth
+  code; and migrations.
+  - **Conditions:** an `Adversarial-review: MERGE` receipt from an agent other than the author, with its reference; a
+    `Real-layout proof:` line (§28.9); and every required check `success` on the head, plus `shared-infra-review` for
+    `[shared-infra]` paths.
+  - **Deletions** must archive with a tripwire (§0 rule 6).
+  - **Migrations** must be expand-only and reversible, proven by a dry run on a scratch database. A destructive DDL is
+    a deletion.
+  - **Auth** code is eligible. A secret value, credential file, `.env` or `config/secret_registry.yaml` change never
+    is.
+  - **Verify:** the train's verify adds `scripts/check_allowlist_consistency.py`, `scripts/check_lane_registry.py` and
+    a clean `scripts/cron_outage_watchdog.py` pass to §28.12 step 9. A failure rolls back, latches STOP and pages P1.
+  - **Never on any train:** broker, Active Trader and MBI (`broker_active_trader`, always held), and secrets.
+  - **§17:** for the cron, systemd, n8n-activation, dispatcher-row and data-source items, the merged, reviewed solo
+    train is the decision, and its release capability comes from the standing delegation (§25.2) in place of the
+    per-act grant.
+
+  *Cause (§20): §28.9, shared infrastructure ships alone; on 2026-10-25 every such PR waited for a per-PR operator
+  release.*
+- **3 Train-self, guard, hook and CI enforcement: a solo train with two reviews and a veto window.** A `train_self` or
+  `guard_ci_enforcement` PR rides a solo train only under all of these conditions:
+  - two `Adversarial-review: MERGE` receipts from two different reviewer agents, each with its reference;
+  - the `shared-infra-review` check `success`;
+  - a `Real-layout proof:` line;
+  - post-release verification that includes a train dry run of the next window.
+
+  **Veto window.** The operator is notified at merge time, and the release runs at the first window at least 3 h
+  later. An operator STOP, or a veto on Ops → Controls, cancels it. Rollback on verify failure, the STOP latch and P1
+  apply as usual. The release capability comes from the standing delegation's `solo` class, not from a guard grant
+  (§24.8 reads accordingly for solo trains).
+
+  **No weakening.** A diff that removes or loosens a §0, §2 or §17 enforcement is refused by the classifier and goes
+  to the operator. That means a guard check, a never-list or forbidden-class entry, a hook refusal, or an assertion
+  of a pinned policy test. Each reviewer receipt attests "does not weaken §0/§2/§17 enforcement". A candidate is
+  qualified by the verifier of the release it replaces, never by its own.
+
+  *Cause (§20): operator 2026-10-25, "fully done, fully automatic, no input by me … unless there's an issue"; a
+  release grant expired on 2026-10-25 before its release ran.*
+- **4 Which lanes run live is declared in the repo.** A lane is live when:
+  - its `config/lane_registry.json` row is at `scheduler.stage` `canary` or `cutover`, with `dispatch.mode` `live`;
+  - and its `config/n8n_run_allowlist.json` entry has a `live_arg`.
+
+  At deploy, the relay derives its live list from those rows (`scripts/render_n8n_relay_env.py`), never from a `never`
+  lane (§23.14). The host setting `TRADEAI_N8N_RELAY_LIVE_LANES` becomes an override only:
+  - removing a lane there takes effect at once;
+  - adding a lane there stays the operator's §17 act;
+  - when the derivation fails, the last good list is kept, never widened.
+
+  Activating a lane is a reviewed registry PR on a solo train (item 2). §17's "changing the n8n relay live list" now
+  reads as changing the host override. *Cause (§20): on 2026-10-25, merged and released lanes stayed dry until the host
+  relay live list was edited by hand.*
+- **5 No TTY ACK for routine setup.** A new packet never needs an interactive TTY acknowledgement for a routine
+  schedule or configuration change. It ships as train-released configuration with a verify step. *Cause (§20): on
+  2026-10-25, setup packets stopped on TTY ACKs for schedule changes the operator had approved.*
+- **6 Configuration is not a secret.** The server `.env` holds configuration only; secrets live in Bitwarden (operator,
+  2026-10-25).
+  - An agent may change a named configuration key with a tool that writes that key alone, backs the file up first
+    (timestamped, mode kept) and prints only that key.
+  - It never prints, copies or reads out another value.
+  - A key on `config/secret_registry.yaml`, or named like a token, secret, password or credential, is refused.
+  - An operator-facing switch belongs on Ops Controls (`/v3/system/ops-controls`) with an audited change log, not in a
+    file edit.
+  - Secrets themselves are unchanged: never read, copied or printed. This item narrows §24.7 for named configuration
+    keys only, once that tool is on main.
+
+  *Cause (§20): on 2026-10-25, enabling SMS waited on the operator to edit `.env` by hand. Operator: "this should have
+  just been a toggle on the control ops."*
+- **7 The `solo` class enters the delegation once, at ratification.** The train's own config
+  (`config/release_train_policy.json`) defines what qualifies as solo (items 2 and 3). The delegation names only the
+  class `solo` once, in `permitted_classes`. `solo` passes `release_delegation.forbidden_class` because the train
+  policy, not the class name, carries the conditions; §25.2's ban on classes "naming guard or policy work" reads
+  accordingly for `solo`.
+  - Adding `solo` changes the delegation digest, so the operator accepts it once (`change-scope`, passkey on Ops →
+    Controls, §25.2) at the same moment as ratifying this version. The coordinator relays both together.
+  - Later changes to what qualifies are reviewed train-policy PRs under item 3, not delegation edits.
+
+  *Cause (§20): §25.2, a record takes effect only when the operator accepts its digest; that should happen once, not
+  per class.*
+- **8 The complete list of what reaches the operator (§17):**
+  - (a) Ratifying `AGENTS.md` or `AI_WORK_POLICY.md`: one tap on the Command Center Rulebook page, "Approve version
+    X", with the operator's passkey identity (§27.3). It is recorded exactly as the PR-comment token
+    `APPROVE_AGENTS_POLICY_<x> <pr> <head_sha>` for the head SHA shown; a stale SHA is refused. The same moment carries
+    item 7's one-time `solo` acceptance. Until that button is on main and verified, the PR comment is the path, and
+    21.0.0 itself is ratified that way. A ratified policy PR then rides a solo train.
+  - (b) Broker and MBI: never delegable (§0 rules 1–2, §28.6, the Schwab mode, locks and kill switches).
+  - (c) Credentials and secrets (§24.7).
+  - (d) Design approvals (§28.13).
+  - (e) Alerts and escalations: a P1, a refused weakening (item 3), a self-heal escalation (§28.14), or clearing a STOP
+    latch after a rollback.
+
+  Everything else ships with no operator input. Spending money (funding a model or data plan) is not delegated by this
+  section. *Cause (§20): operator 2026-10-25, "fully done, fully automatic, no input by me … unless there's an issue".*
 
 ---
 
@@ -7398,7 +7479,7 @@ SMS waited on the operator to edit `.env` by hand.
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 20.4.0 | 2026-10-25 | PROPOSED | MINOR | §28.13 "Design lifecycle" (operator 2026-10-25, "I approve the design workflow"): `design/` the single home (repo text/specs/tokens/registry/fingerprints; private mockups and screenshots in persistent-state, repo public), every page versioned (v000 as built 2026-10-26, v001 the 10-24 approvals back-filled), DRAFT → PROPOSED → APPROVED (operator only, one tap in Approvals → Designs, signed decision; prose never counts) → IMPLEMENTING (`Design: <page>/vNNN` or `Design: none`) → VERIFIED → CURRENT, approved versions immutable, phone ≤820 (412/390) and desktop ≥1280 (1440) rules, design-reference/removal/visual/phone checks per PR and live drift after release and nightly; §28.14 "Self-heal monitor and fixer" (operator 2026-10-25, "Arm the fixer and also a logger"): host-timer monitor independent of n8n over main CI, train outcomes, post-release tester and nightly sweep; deterministic remediations for known small errors (one infra-flake rerun, generated-file regeneration, disk-packet re-pin, stale-lock reconcile); every other fix an ordinary PR by the self-heal Claude Code fixer through CI and the train, never merging or deploying; refused scopes (broker/AT/MBI, guard/policy/hooks/AGENTS, train-self, credentials) alert + coordinator task; append-only fix log on Releases & schedules → Fixes; P1 after max attempts; armed by this section being ACTIVE, shadow-only before; and §28.15 "Hands-off delivery — an approved scope ships without the operator" added (operator 2026-10-25, "Do 20.4"): (1) per-branch push budget 5, coordinator-only `TRADEAI_REMOTE_PUSH_OVERRIDE` on a PR linked to an operator-approved scope, logged with the reference, force-push still forbidden; (2) solo shared-infra trains — one `[shared-infra]` scheduler/registry/allowlist/systemd/comms/deploy-adjacent PR per window, alone, with `shared-infra-review`, real-layout proof and an adversarial review receipt, allowlist/registry/watchdog checks in the train verify, rollback + P1 on failure; train-self, guard/policy, broker/Active Trader, auth/secrets and migrations excluded; (3) the relay live list derived from the lane registry at deploy, the host setting an override only; (4) no TTY ACK for routine setup; (5) `.env` is configuration, named keys changeable with backup, operator switches on Ops Controls, secrets unchanged; (6) what still reaches the operator: ratification (one Command Center tap recorded as the token), broker/MBI rails, train-self and guard changes (manual path, `release-write` grant naming the PR), one delegation scope change. Causes: 10-24 approvals only in prose (Decision history 0), Board 19 unbuilt, TradeInView hides, phone chrome scroll, logged-in pages unchecked; 2026-10-25 push-budget blocks ×4, grant expiry, relay live list, TTY packets, SMS `.env`. Numbered MINOR at the operator's instruction; could be read MAJOR (then 21.0.0). | Awaiting the operator's `APPROVE_AGENTS_POLICY_20_4_0 <pr_number> <head_sha>` (PENDING). |
+| 21.0.0 | 2026-10-25 | PROPOSED | MAJOR | Three sections, one token. §28.13 "Design lifecycle" (operator 2026-10-25, "I approve the design workflow"): `design/` the single home, every page versioned (v000 as built 2026-10-26, v001 the 10-24 approvals back-filled), DRAFT → PROPOSED → APPROVED (operator only, one tap in Approvals → Designs, signed ledger decision; prose never counts) → IMPLEMENTING (`Design: <page>/vNNN` or `Design: none`) → VERIFIED → CURRENT, approved versions immutable, removal guard, phone ≤820 (412/390) and desktop ≥1280 (1440) rules, logged-in live drift via a read-only reader, no real data in the public repo. §28.14 "Self-heal monitor and fixer" (operator 2026-10-25, "Arm the fixer and also a logger"): host-timer monitor independent of n8n; four deterministic remediations once per incident; every other fix an ordinary self-heal fixer PR through CI and the train, never merging or deploying; refused scopes alert + coordinator task; append-only fix log on Releases & schedules → Fixes; P1 after max attempts; armed by ACTIVE status, shadow before. §28.15 "Hands-off delivery" (operator 2026-10-25, "Do 20.4"; numbered MAJOR by the version policy because it widens §17 and the §25.2 delegation): push budget 5 with a coordinator-only override on operator-approved scope; solo trains for every `needs_operator` class with one adversarial review and real-layout proof; train-self and guard/CI solo trains with two reviews, a ≥3 h veto window and a next-window dry run, no weakening of §0/§2/§17 enforcement; live lanes derived from the lane registry (host list an override); no TTY ACK for routine setup; `.env` configuration keys changeable, secrets unchanged; the `solo` delegation class accepted once at ratification; the complete operator list (ratification, broker/MBI, credentials/secrets, design approvals, alerts/escalations). Broker/Active Trader/MBI always held; secrets never. | Awaiting the operator's `APPROVE_AGENTS_POLICY_21_0_0 <pr_number> <head_sha>` (PENDING) and, at the same moment, acceptance of the delegation digest adding `solo` (§28.15 item 7). |
 | 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 20.2.0 | 2026-10-24 | ACTIVE | MINOR | §28.9 + §28.10 + §28.11 (transition for work in action) added: conflicts resolved only by the conflict engine under the operator-approved rulebook (agreement/superseded never flag, gates not conflicts, owner decides with a reason, CIO always informed, safety never automatic); no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **RATIFIED** by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |

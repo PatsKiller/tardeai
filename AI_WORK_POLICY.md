@@ -109,8 +109,8 @@ hook change takes effect only when merged, which happens only after
 AGENTS.md 4.1.0 is ratified. Renaming or re-creating a branch under `n8nmat/` to
 gain budget is routing around a denial (AGENTS.md §0 rail 3) and is forbidden.
 
-Hands-off delivery (AGENTS.md 20.4.0 §28.15 item 1; PROPOSED, binding only
-once 20.4.0 is ACTIVE and the hook change in `scripts/lib/tradeai_push_budget.py`
+Hands-off delivery (AGENTS.md 21.0.0 §28.15 item 1; PROPOSED, binding only
+once 21.0.0 is ACTIVE and the hook change in `scripts/lib/tradeai_push_budget.py`
 is merged; until then the budget above is 2): the per-branch budget is 5
 authorized pushes. Past 5, only the coordinator session (the session keeping
 the day's coordinator worklog, AGENTS.md §28.3, by its AGENT_CLAIM_SESSION) may
@@ -525,7 +525,7 @@ two-push rule above applies to those branches too. The block message prints the
 effective budget. Renaming a branch to gain budget is routing around a denial
 (AGENTS.md §0 rail 3).
 
-Hands-off delivery (AGENTS.md 20.4.0 §28.15; binding only once ACTIVE and
+Hands-off delivery (AGENTS.md 21.0.0 §28.15; binding only once ACTIVE and
 the hook change is merged; see section 3): the hook allows pushes 1 through 5 on
 every branch, and the override below is the coordinator session's alone, on a PR
 linked to an operator-approved scope, logged with its approval reference.
@@ -718,10 +718,12 @@ authorized push per tranche, and a PR as their last remote act. An agent
 never pushes `main` or any `train/*` ref, never merges, and never sets
 `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` on the release service's behalf.
 
-One exception, binding only once AGENTS.md 20.4.0 (§28.15 item 6) is ACTIVE:
-a train-self, guard, hook or CI-enforcement PR, which the train never carries,
-is merged and released alone by the coordinator on the manual path after an
-adversarial review receipt, under a `release-write` grant naming that PR.
+Binding only once AGENTS.md 21.0.0 (§28.15 items 2, 3 and 7) is ACTIVE: the
+train also carries solo trains, one PR alone in a window, under the standing
+delegation's `solo` class. Train-self, guard, hook and CI-enforcement PRs ride
+one only with two adversarial reviews and a veto window of at least 3 h, and
+never when they weaken §0, §2 or §17 enforcement. Agents still never merge,
+push `main` or `train/*`, or release.
 
 A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
 next mutation boundary. Clearing it, resuming, widening the train's scope and
