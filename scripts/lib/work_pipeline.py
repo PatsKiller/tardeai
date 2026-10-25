@@ -116,6 +116,38 @@ DEFAULT_STALE_HOURS = 2.0
 BATCH_BRANCH_RE = re.compile(r"^release/batch-\d+")
 HOLD_RE = re.compile(r"\b(DRAFT|PROPOSED|DO[- ]NOT[- ]MERGE|HOLD)\b", re.I)
 OPERATOR_PREFIX_RE = re.compile(r"^\s*OPERATOR\s*:\s*", re.I)
+# work-package structure (operator 2026-10-23): the board row lists which sections exist; their text is served by
+# GET /api/v2/coordination/task?id=<task_id> (task_detail) so the 30 s view stays small
+WP_SECTIONS = ("problem", "definition_of_done", "agent_prompt", "operator_commands", "proof", "proof_evidence", "notes")
+
+
+def _is_operator_task(task: Mapping[str, Any] | None) -> bool:
+    """An operator to-do: ``owner_kind`` OPERATOR (work packages) or the legacy ``OPERATOR: …`` title."""
+    return bool(task) and (
+        task.get("owner_kind") == "OPERATOR" or bool(OPERATOR_PREFIX_RE.match(str(task.get("title") or "")))
+    )
+
+
+def wp_block(task: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The work-package labels of a task row (None for a task without any): id, stage, owner kind, status,
+    which structure sections it has, and what it still waits for (for the "Next up" preset)."""
+    if not task or not (task.get("wp_id") or task.get("sections")):
+        return None
+    return {
+        "wp_id": task.get("wp_id"),
+        "stage": task.get("stage"),
+        "owner_kind": task.get("owner_kind"),
+        "owner_label": task.get("owner_label"),
+        "wp_status": task.get("wp_status"),
+        "status_note": task.get("wp_status_note"),
+        "sections": [k for k in (task.get("sections") or []) if k in WP_SECTIONS],
+        "depends_on": list(task.get("depends_on") or []),
+        "blocked_by": list(task.get("blocked_by") or []),
+        "related_tasks": list(task.get("related_tasks") or []),
+        "status": task.get("status"),
+    }
+
+
 _TS_RE = re.compile(r"`(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)`")
 _PR_REF_RE = re.compile(r"#(\d{2,6})\b")
 _OK_CONCLUSIONS = ("SUCCESS", "SKIPPED", "NEUTRAL")
@@ -511,7 +543,7 @@ def _cells(stage: str, rag: str, label: str, evidence: Mapping[str, str], times:
 
 
 def _who(claims: list[Mapping[str, Any]], task: Mapping[str, Any] | None, pr: Mapping[str, Any] | None) -> dict:
-    if task and OPERATOR_PREFIX_RE.match(str(task.get("title") or "")) and not claims:
+    if task and _is_operator_task(task) and not claims:
         return {"kind": "operator", "label": "OPERATOR", "vendor": "operator", "agent": None, "session": None}
     if claims:
         c = claims[0]
@@ -743,7 +775,7 @@ def derive(
     elif task:
         stage, rag, label = "queued", "amber", "not started"
         deps = list(task.get("blocked_by") or [])
-        is_op = bool(OPERATOR_PREFIX_RE.match(str(task.get("title") or "")))
+        is_op = _is_operator_task(task)
         if deps:
             rag, label = "red", "blocked"
             blocker = "waits for " + ", ".join(deps)
@@ -904,11 +936,7 @@ def item_actions(
     acts: list[str] = ["note"]
     if item.get("stage") in ("merged", "released", "verified"):
         return {"available": acts, "stale_claims": []}
-    if (
-        task
-        and re.match(r"^\s*OPERATOR\s*:", str(task.get("title") or ""), re.I)
-        and task.get("status") in ("free", "taken")
-    ):
+    if task and _is_operator_task(task) and task.get("status") in ("free", "taken"):
         acts.append("task_done")
     if task:
         acts.append("set_priority")
@@ -1124,7 +1152,10 @@ def build_items(
                     "batch": d["batch"],
                     "kind": (task or {}).get("kind"),
                     "priority": (task or {}).get("priority"),
+                    "wp_id": (task or {}).get("wp_id"),
+                    "stage": (task or {}).get("stage"),
                 },
+                "wp": wp_block(task),
                 "where": {
                     "branch": (pr or {}).get("branch") or (lead or {}).get("branch"),
                     "worktree": (lead or {}).get("worktree"),
@@ -1226,6 +1257,7 @@ class WorkPipeline:
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
             "tasks": (view.get("task_board") or {}).get("tasks") or [],
+            "wp_stages": _wp_stages(self.claims_dir or view.get("claims_dir")),
             "awaiting": [*awaiting, *packages],
             "stale_hours": view.get("stale_after_hours") or DEFAULT_STALE_HOURS,
             "lifecycle": view.get("lifecycle"),
@@ -1289,11 +1321,114 @@ class WorkPipeline:
             },
             "stale_hours": float(src.get("stale_hours") or DEFAULT_STALE_HOURS),
             "refresh_s": self.ttl,
+            "wp_stages": src.get("wp_stages") or [],
         }
 
     def view(self, *, background: bool = True) -> dict[str, Any]:
         self.census.kick(background=background)
         return self.cached.get()
+
+
+MAX_STAGE_DESCRIPTION_CHARS = 4000
+
+
+def _wp_stages(claims_dir: Any) -> list[dict[str, Any]]:
+    """Stage intros imported from the handoff (``<claims_dir>/tasks/wp_stages.json``), capped. Never raises."""
+    try:
+        try:
+            from scripts.lib import agent_claim_board as B
+            from scripts.lib import agent_task_board as TB
+        except ImportError:
+            from lib import agent_claim_board as B  # type: ignore[no-redef]
+            from lib import agent_task_board as TB  # type: ignore[no-redef]
+        rows = TB.TaskBoard(B.ClaimBoard(claims_dir)).stages().get("stages") or []
+        return [
+            {**r, "description": (r.get("description") or "")[:MAX_STAGE_DESCRIPTION_CHARS] or None}
+            for r in rows[: TB.MAX_STAGES]
+        ]
+    except Exception:  # noqa: BLE001 - stage intros are additive
+        return []
+
+
+def task_detail(task_id: str, claims_dir: Path | None = None) -> dict[str, Any]:
+    """One task's structure sections for the Work pipeline drawer, plus the B0-prefixed prompt ("Copy prompt").
+    Reads one task file and the cached playbook; bounded by the task board's own caps."""
+    try:
+        from scripts.lib import agent_claim_board as B
+        from scripts.lib import agent_task_board as TB
+        from scripts.lib import handoff_playbook as HP
+    except ImportError:
+        from lib import agent_claim_board as B  # type: ignore[no-redef]
+        from lib import agent_task_board as TB  # type: ignore[no-redef]
+        from lib import handoff_playbook as HP  # type: ignore[no-redef]
+    if not TB.valid_task_id(task_id or ""):
+        raise TB.TaskError("bad task id")
+    tb = TB.TaskBoard(B.ClaimBoard(claims_dir))
+    t = tb.detail(task_id, history_cap=20)
+    pb = HP.load_playbook()
+    keep = (
+        "task_id", "title", "status", "priority", "kind", "wp_id", "stage", "owner_kind", "owner_label", "wp_status",
+        "wp_status_note", "depends_on", "related_tasks", "done_at", "evidence", "summary", "history", "history_len",
+        "source_ref", *WP_SECTIONS,
+    )  # fmt: skip
+    return {
+        "schema": "WorkTaskDetail@v1",
+        **{k: t.get(k) for k in keep},
+        "full_prompt": HP.full_prompt(t.get("agent_prompt"), pb.get("b0_preamble")),
+        "preamble": {"source": pb.get("path"), "sha256": pb.get("sha256"), "present": bool(pb.get("b0_preamble"))},
+    }
+
+
+MAX_EXPORT_BYTES = 2 * 1024 * 1024
+_EXPORT: Any = None
+_EXPORT_LOCK = threading.Lock()
+
+
+def build_handoff_export(claims_dir: Path | None = None) -> dict[str, Any]:
+    """The full markdown handoff regenerated from the board + the playbook (the "Export handoff" button)."""
+    try:
+        from scripts.lib import agent_claim_board as B
+        from scripts.lib import agent_task_board as TB
+        from scripts.lib import handoff_playbook as HP
+    except ImportError:
+        from lib import agent_claim_board as B  # type: ignore[no-redef]
+        from lib import agent_task_board as TB  # type: ignore[no-redef]
+        from lib import handoff_playbook as HP  # type: ignore[no-redef]
+    tb = TB.TaskBoard(B.ClaimBoard(claims_dir))
+    pb = HP.load_playbook()
+    pb_path = HP.ROOT / HP.PLAYBOOK_REL
+    tasks = tb.read_all()
+    text = HP.export_handoff(
+        tasks,
+        tb.stages(),
+        pb,
+        as_of=tb.now_iso(),
+        playbook_text=pb_path.read_text(encoding="utf-8") if pb.get("ok") else None,
+    )
+    raw = text.encode("utf-8")
+    truncated = len(raw) > MAX_EXPORT_BYTES
+    return {
+        "schema": "HandoffExport@v1",
+        "as_of": tb.now_iso(),
+        "work_packages": sum(1 for t in tasks if t.get("wp_id")),
+        "bytes": len(raw),
+        "truncated": truncated,
+        "filename": "HANDOFF_ORDERED_WORK_" + tb.now_iso()[:10].replace("-", "") + ".md",
+        "markdown": raw[:MAX_EXPORT_BYTES].decode("utf-8", errors="ignore") if truncated else text,
+    }
+
+
+def handoff_export() -> dict[str, Any]:
+    """Served export: single-flight, rebuilt at most once per ``REFRESH_S``."""
+    global _EXPORT
+    with _EXPORT_LOCK:
+        if _EXPORT is None:
+            try:
+                from scripts.lib.design_registry import _Cached
+            except ImportError:
+                from lib.design_registry import _Cached  # type: ignore[no-redef]
+            _EXPORT = _Cached(build_handoff_export, REFRESH_S)
+    return _EXPORT.get()
 
 
 def tier2_context(cfg_path: Path | None = None) -> dict[str, Any]:
