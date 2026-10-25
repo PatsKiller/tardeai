@@ -1,0 +1,123 @@
+{
+  "provenance": {
+    "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
+    "sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+    "selection": "exact fields only; no synthetic GUID assigned",
+    "capture_time_status": "NOT_RECORDED",
+    "source_as_of": "2026-10-23T20:30:11.972482+00:00"
+  },
+  "items": {
+    "FATN": {
+      "symbol": "FATN",
+      "as_of": "2026-10-23T20:30:10.683808+00:00",
+      "conviction": 76.5,
+      "stance": "RE_ENTER",
+      "position_status": "recently_sold"
+    },
+    "ANET": {
+      "symbol": "ANET",
+      "as_of": "2026-10-23T20:30:10.608532+00:00",
+      "conviction": 73.9,
+      "stance": "RE_ENTER",
+      "position_status": "recently_sold"
+    },
+    "SMCI": {
+      "symbol": "SMCI",
+      "as_of": "2026-10-23T20:30:10.752686+00:00",
+      "conviction": 71.7,
+      "stance": "RE_ENTER",
+      "position_status": "recently_sold"
+    },
+    "DXCM": {
+      "symbol": "DXCM",
+      "as_of": "2026-10-23T20:30:10.677303+00:00",
+      "conviction": 69.1,
+      "stance": "WATCH",
+      "position_status": "recently_sold"
+    },
+    "QCOM": {
+      "symbol": "QCOM",
+      "as_of": "2026-10-23T20:30:10.742319+00:00",
+      "conviction": 73.3,
+      "stance": "RE_ENTER",
+      "position_status": "recently_sold"
+    },
+    "BAH": {
+      "symbol": "BAH",
+      "as_of": "2026-10-23T20:30:10.624660+00:00",
+      "conviction": 72.9,
+      "stance": "ADD",
+      "position_status": "owned"
+    },
+    "LDOS": {
+      "symbol": "LDOS",
+      "as_of": "2026-10-23T20:30:10.715554+00:00",
+      "conviction": 77.3,
+      "stance": "ADD",
+      "position_status": "owned"
+    },
+    "SPCX": {
+      "symbol": "SPCX",
+      "as_of": "2026-10-23T20:30:10.754965+00:00",
+      "conviction": 73.3,
+      "stance": "ADD",
+      "position_status": "owned"
+    },
+    "AXTI": {
+      "symbol": "AXTI",
+      "as_of": "2026-10-23T20:30:10.623134+00:00",
+      "conviction": 61.3,
+      "stance": "WATCH",
+      "position_status": "recently_sold"
+    },
+    "AXON": {
+      "symbol": "AXON",
+      "as_of": "2026-10-23T20:30:10.622696+00:00",
+      "conviction": 75.1,
+      "stance": "WATCH",
+      "position_status": "not_owned"
+    },
+    "PSQ": {
+      "symbol": "PSQ",
+      "as_of": "2026-10-23T20:30:10.740971+00:00",
+      "conviction": 52.2,
+      "stance": "WATCH",
+      "position_status": "watchlist"
+    },
+    "GEV": {
+      "symbol": "GEV",
+      "as_of": "2026-10-23T20:30:10.692159+00:00",
+      "conviction": 66.4,
+      "stance": "WATCH",
+      "position_status": "watchlist"
+    },
+    "MDLN": {
+      "symbol": "MDLN",
+      "as_of": "2026-10-23T20:30:10.721401+00:00",
+      "conviction": 74.2,
+      "stance": "WATCH",
+      "position_status": "not_owned"
+    },
+    "ISRG": {
+      "symbol": "ISRG",
+      "as_of": "2026-10-23T20:30:10.708789+00:00",
+      "conviction": 64.9,
+      "stance": "WATCH",
+      "position_status": "not_owned"
+    },
+    "DT": {
+      "symbol": "DT",
+      "as_of": "2026-10-23T20:30:10.676359+00:00",
+      "conviction": 77.6,
+      "stance": "RE_ENTER",
+      "position_status": "recently_sold"
+    },
+    "SCHD": {
+      "symbol": "SCHD",
+      "as_of": "2026-10-23T20:30:10.748957+00:00",
+      "conviction": 61.1,
+      "stance": "TRIM",
+      "position_status": "owned"
+    }
+  }
+}

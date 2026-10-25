@@ -41,7 +41,8 @@ try {
       const expected=f.tabs[tab]
       await expect.poll(()=>expected.every(endpoint=>traffic.reads.slice(since).includes(endpoint))).toBe(true)
       await page.waitForLoadState('networkidle')
-      const allowed=[f.header,...expected], started=traffic.reads.slice(since)
+      // Board 0 frame (batch 27): the page's writer clocks are read alongside the shared header, on every tab.
+      const allowed=[f.header,f.frame,...expected], started=traffic.reads.slice(since)
       assert(started.every(endpoint=>allowed.includes(endpoint)),JSON.stringify({tab,started,allowed}))
       const pollStart=traffic.reads.length
       await page.clock.runFor(180_100)

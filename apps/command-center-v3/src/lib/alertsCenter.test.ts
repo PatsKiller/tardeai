@@ -8,6 +8,7 @@ import {
   rowsFromBuyReadyPackets,
   rowsFromCommunicationsEvents,
   rowsFromTradeAiSummary,
+  rowsFromOpsIncidents,
 } from './alertsCenter.ts'
 
 let failed = 0
@@ -77,5 +78,9 @@ eq('search ADV finds entry', filterAlerts(all, { query: 'ADV' }).some(r => r.kin
 eq('empty query + Entry lists packets', filterAlerts(all, { query: '', kind: 'entry' }).length, 2)
 eq('search ALERT does not elevate chrome dossier', filterAlerts(all, { query: 'ALERT' }).every(r => r.dossierHref !== '/v3/watch/intelligence/ALERT'), true)
 
+const ops = rowsFromOpsIncidents({ as_of: '2026-10-23T16:20:00Z', incidents: [{id: 'monitor', title: 'Independent monitor unavailable', message: 'No operational receipt', severity: 'warning'}] })
+eq('ops source works without notifier or communications', ops.length, 1)
+eq('ops incident links to jobs', ops[0].href, '/v3/ops/jobs')
+eq('ops filter is independent', filterAlerts([...all, ...ops], {kind: 'ops'}).length, 1)
 if (failed) throw new Error(`alertsCenter: ${failed} failed`)
 console.log('[alertsCenter] ok')

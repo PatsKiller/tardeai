@@ -1,0 +1,9 @@
+{
+  "status": "proposed map; file existence is not enforcement proof",
+  "rules": [
+    {"anchor": "Claim, log, hand off.", "plain": "Each worker reserves its files and leaves enough notes for someone else to continue.", "tests": ["tests/test_agents_policy_20_0_0_agent_operations.py"], "ci_gates": [], "runtime_files": ["scripts/agent_claim.py"]},
+    {"anchor": "A checkpoint is", "plain": "Save progress with a local commit; a remote push needs separate authorization.", "tests": [], "ci_gates": [], "runtime_files": [".githooks/pre-push"]},
+    {"anchor": "Dry-run before any live run", "plain": "Preview a consequential change before applying it.", "tests": [], "ci_gates": [], "runtime_files": []},
+    {"anchor": "Operator-only decisions: propose and stop.", "plain": "Agents prepare proposals. You make the decisions reserved for the operator.", "tests": ["tests/test_operator_approvals_20261024.py"], "ci_gates": ["config/ci_gates/operator_approvals_20261024.json"], "runtime_files": ["scripts/lib/operator_approvals_api.py"]}
+  ]
+}

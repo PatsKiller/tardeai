@@ -6,21 +6,24 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import JobsHealth from '../components/JobsHealth'
+import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, lastRunText, prList, RELEASES_SCHEDULES_PATH,
+  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
   sectionView, shadowLine, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const cell: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm }
-const TABS = [['train', 'Release train'], ['n8n', 'n8n & schedules']] as const
+const TABS = [['train', 'Release train'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
 type TabKey = (typeof TABS)[number][0]
 
 function useNow(ms: number): number {
@@ -137,11 +140,10 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 }
 
 function TimelineTable({ rows, label, empty }: { rows: TimelineRow[]; label: string; empty: string }) {
-  return <Table label={label} heads={['Time (ET)', 'Lane', 'Runner', 'Stage', 'Last run / note']} empty={empty}
+  return <Table label={label} heads={['Time (ET)', 'Lane', 'Runner', 'Stage']} empty={empty}
     rows={rows.map(r => [<span style={mono}>{r.cadence_label ? `${r.cadence_label} · from ${etTime(r.at)}` : etTime(r.at)}</span>,
       <span title={r.schedule}>{r.lane}</span>, r.runner,
-      <span title={r.n8n_stage ? `registry scheduler.stage ${r.n8n_stage}` : ''}><Pill tone={stageTone(r.stage)}>{r.stage}</Pill></span>,
-      <span style={{ color: TOKENS.text[2] }}>{lastRunText(r)}</span>])} />
+      <span title={r.n8n_stage ? `registry scheduler.stage ${r.n8n_stage}` : ''}><Pill tone={stageTone(r.stage)}>{r.stage}</Pill></span>])} />
 }
 
 function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
@@ -193,9 +195,9 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
-  const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000)
   const [params, setParams] = useSearchParams()
-  const tab: TabKey = params.get('tab') === 'n8n' ? 'n8n' : 'train'
+  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'train'
+  const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
   const keys: SectionKey[] = ['serving', 'next_release', 'windows', 'queue', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
@@ -205,7 +207,8 @@ export default function ReleasesSchedules() {
   const labels: Record<string, string> = { serving: 'Serving', next_release: 'Releasing next', next_window: 'Next train window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
-  return <div data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
+<div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
       <p style={muted}>What is queued, for when · what actually shipped · what failed. Release train and n8n in one place. Read-only; nothing here releases, stops or schedules.</p>
@@ -232,9 +235,10 @@ export default function ReleasesSchedules() {
 
     <nav role="tablist" aria-label="Releases and schedules sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 10 }}>
       {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`rs-tab-${k}`} onClick={() => select(k)}
-        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 36,
+        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
-    {tab === 'train' ? <TrainTab s={s} /> : <N8nTab s={s} />}
+    {tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
+  </OpsDeskFrame>
 }

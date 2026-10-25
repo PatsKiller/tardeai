@@ -1,0 +1,12 @@
+{
+  "id": "conflict_ledger",
+  "description": "Conflict lifecycle JSONL, delivery acknowledgments, observation history and comparison reports",
+  "covers": [
+    "ps:data/conflicts"
+  ],
+  "mechanism": "NONE",
+  "coverage": "NONE",
+  "gap": "New source-only store; actual backup admission and restore drill are not measured. Owner must add data/conflicts to a real persistent-state backup source before runtime acceptance.",
+  "retention_days": 400,
+  "restore": "Restore conflict_events.jsonl and conflict_delivery_receipts.jsonl together; rebuild records from events; preserve pending outbox on retry."
+}

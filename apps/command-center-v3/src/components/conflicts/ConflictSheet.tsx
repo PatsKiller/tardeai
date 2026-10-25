@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { MobileDetailSheet, useMobilePageDetail } from '../MobileDetailSheet'
 import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import { accountName } from '../../lib/accountLabels'
-import { conflictSource, conflictTime, conflictValue, reviewPresentation } from '../../lib/watchConflictPresentation'
+import { conflictRule, conflictSource, conflictTime, conflictValue, reviewPresentation } from '../../lib/watchConflictPresentation'
 import { useApi } from '../../hooks/useApi'
 
 /** Finding.as_dict() from the shared engine. Unknown fields stay absent, never inferred. */
@@ -48,6 +48,7 @@ export function ConflictFacts({finding}: {finding: ConflictFinding}) {
       {side.account && <div>{accountName(side.account)}</div>}
     </div>)}
     <div><b>Why it needs attention:</b> {finding.summary}</div>
+    <div data-testid="conflict-rule"><b>Rule that decides it:</b> {conflictRule(finding.rule)}</div>
     <div><b>What clears it:</b> {finding.clears_when || 'The engine did not supply a clearing condition.'}</div>
     <div><b>Owner:</b> {finding.owner || 'Not supplied by the engine'}</div>
     <div><b>Next run:</b> {finding.next_run ? Number.isFinite(Date.parse(finding.next_run)) ? conflictTime(finding.next_run) : finding.next_run : 'Not supplied by the engine'}</div>
@@ -78,6 +79,9 @@ function SelectedConflict({selectedKey, section, onSelect, children}: {selectedK
       {snapshot && ' Showing the last supplied engine finding; its review state is unknown.'}</p>}
     {record && <section aria-label="Saved review history" style={{display: 'grid', gap: 12, marginTop: 16}}>
       <strong role="status" data-testid="conflict-record-state" data-state={record.state}>{status.label}</strong>
+      {record.state === 'CLEARED' && <p role="status" data-testid="conflict-resolved" style={{margin: 0, color: TOKENS.success}}>
+        Resolved{record.decision ? ` — ${record.decision.actor_kind === 'cio' ? 'the CIO' : record.decision.actor || record.decision.actor_kind} chose ${conflictValue(record.decision.chosen_side)}` : ''}; the engine re-checked every side and no longer flags it.
+      </p>}
       <div>Updated {conflictTime(record.updated_at)}</div>
       {read.stale || read.error ? <p role="status">Saved review status is out of date{read.error ? `: ${read.error}` : '; refresh pending'}. The last recorded state is shown.</p> : null}
       {record.decision && <section aria-label="Recorded decision">

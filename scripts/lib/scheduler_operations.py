@@ -33,6 +33,9 @@ RECEIPT_KEYS = (
     "mode",
     "state",
     "reason",
+    "stderr_tail",
+    "stage_clamp",
+    "output_verdict",
     "exit_code",
     "duration_s",
     "lock_skipped",
@@ -420,6 +423,14 @@ def receipt_proves_run(run: dict[str, Any], now: datetime) -> bool:
     )
 
 
+def successful_execution(run: dict[str, Any], now: datetime) -> bool:
+    """Execution evidence; full business recovery remains recovery_validator.validate."""
+    from scripts.lib import recovery_validator as RV
+    return (run.get("state") == "RUN_DONE" and type(run.get("exit_code")) is int and run["exit_code"] == 0
+            and receipt_proves_run(run, now) and RV.effective_mode(run) == "live"
+            and RV.output_verdict(run) not in RV.OUTPUT_FAILED)
+
+
 def _metrics(runs: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
     recent = [
         r
@@ -703,6 +714,10 @@ def build_projection(
                 run_proven=receipt_proves_run(last, now),
                 code_sha=(receipt or {}).get("code_sha"),
             )
+            from scripts.lib.n8n_dlq_disposition import cause
+            row["last_result_cause"] = cause(receipt, last.get("reason")) if last.get("state") in ("RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED") else None
+            successes = [r for r in live_runs if successful_execution(r, now)]
+            row["last_success_at"] = successes[-1].get("finished_at") if successes else None
             if (receipt or {}).get("code_root"):
                 row.update(code_root=receipt["code_root"], code_root_evidence="OBSERVED_DB")
         row["timeline"] = [
@@ -738,7 +753,7 @@ def build_projection(
         row["output_at"] = iso(at) if isinstance(at, datetime) else None
         cadence_s = float(lane.get("expected_cadence_hours") or 0) * 3600
         row["freshness_sla_s"] = cadence_s * 2 if cadence_s else None
-        finished = timestamp(row["last_completed"])
+        finished = timestamp(row.get("last_success_at"))
         run_age = (now - finished).total_seconds() if finished and finished <= now else None
         row["run_age"] = run_age
         row["run_freshness"] = (

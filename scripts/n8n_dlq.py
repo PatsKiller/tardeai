@@ -49,6 +49,7 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     dead_letter_rearmable,
 )
 from scripts.lib.n8n_pilot_observations import state_root  # noqa: E402
+from scripts.lib import n8n_dlq_disposition as disposition  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "DeadLetterRelease@v1"
@@ -72,6 +73,17 @@ def _parser() -> argparse.ArgumentParser:
     rel.add_argument("--by", default=None, help="who releases (default: $USER)")
     rel.add_argument("--dry-run", action="store_true")
     rel.add_argument("--receipts", default=None, help="DeadLetterRelease@v1 jsonl path override")
+    ack = sub.add_parser("acknowledge", help="record a superseded dead letter; never re-arm or release a breaker")
+    target = ack.add_mutually_exclusive_group(required=True)
+    target.add_argument("--slot-key", default=None)
+    target.add_argument("--lane", default=None)
+    ack.add_argument("--superseded-by", required=True, help="later successful run id, same lane and effective mode")
+    ack.add_argument("--note", required=True)
+    ack.add_argument("--by", required=True, choices=("operator", "coordinator"), help="host operator/coordinator attestation; no web or scheduled entrypoint")
+    action = ack.add_mutually_exclusive_group()
+    action.add_argument("--dry-run", action="store_true", help="preview only (default)")
+    action.add_argument("--apply", action="store_true", help="operator/coordinator only: append the audit disposition")
+    ack.add_argument("--receipts", default=None, help="existing DLQ audit jsonl path override")
     return ap
 
 
@@ -158,6 +170,48 @@ def _cmd_release(store: LedgerRunStore, args: argparse.Namespace, ledger_path: P
     return EXIT_OK
 
 
+def _cmd_acknowledge(store: LedgerRunStore, args: argparse.Namespace, ledger_path: Path) -> int:
+    """Append only; opening the ledger read-only makes any retry/re-arm impossible."""
+    import fcntl
+
+    now = datetime.now(timezone.utc)
+    run = store.get(args.superseded_by)
+    row = store.get_dead_letter(args.slot_key) if args.slot_key else None
+    candidates = ([row] if row and not row.get("released_at") else []) if args.slot_key else store.list_dead_letters(args.lane)
+    if not candidates:
+        print(json.dumps({"error": "not_found"}), file=sys.stderr)
+        return EXIT_NOT_FOUND
+    targets, refused = [], []
+    for dead in candidates:
+        ok, why = disposition.recovery(dead, run, now=now)
+        (targets if ok else refused).append(dead if ok else {"slot_key": dead["slot_key"], "reason": why})
+    # All-or-nothing: a later failure on the lane is never accidentally included.
+    if refused:
+        print(json.dumps({"error": "acknowledgement_refused", "refused": refused}), file=sys.stderr)
+        return EXIT_REFUSED
+    receipt = {"schema": disposition.ACK_SCHEMA, "phase": "intent", "at": now.isoformat(),
+               "disposition": "superseded", "rearm": False, "by": args.by, "note": args.note,
+               "dry_run": not args.apply, "ledger": str(ledger_path), "superseded_by": args.superseded_by,
+               "success_finished_at": (run or {}).get("finished_at"),
+               "acknowledged": [{k: dead.get(k) for k in ("slot_key", "lane_id", "mode", "dead_at", "last_run_id")} for dead in targets]}
+    if not args.apply:
+        print(json.dumps(receipt, indent=1, sort_keys=True))
+        return EXIT_OK
+    out = Path(args.receipts) if args.receipts else state_root() / disposition.RECEIPTS_REL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("a+", encoding="utf-8") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        prior = disposition.acknowledgements(out)
+        receipt["acknowledged"] = [dead for dead in receipt["acknowledged"] if not disposition.is_acknowledged(dead, prior)]
+        if receipt["acknowledged"]:
+            for phase in ("intent", "committed"):
+                stream.write(json.dumps({**receipt, "phase": phase}, sort_keys=True) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+    print(json.dumps({**receipt, "phase": "committed", "receipt_path": str(out)}, indent=1, sort_keys=True))
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
@@ -175,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"dead_letters": [], "open_breakers": [], "schema_not_migrated": True}))
                 return EXIT_OK
             return _cmd_list(LedgerRunStore(ro), args)
+        if args.cmd == "acknowledge" and migrated:
+            return _cmd_acknowledge(LedgerRunStore(ro), args, ledger_path)
     finally:
         ro.close()
     if not migrated:  # nothing can be dead-lettered in a ledger without the table; do not migrate it here

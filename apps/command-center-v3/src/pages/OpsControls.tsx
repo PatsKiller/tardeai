@@ -7,6 +7,9 @@
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
+import { useSearchParams } from 'react-router-dom'
+import JobsHealth from '../components/JobsHealth'
+import './OpsEvidencePages.css'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, SHADOW, toneVars, type Tone } from '../lib/designTokens'
@@ -25,6 +28,7 @@ import {
   failuresBadge, GLOSSARY, healthView, lastRunView, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
   readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -315,6 +319,7 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
+    <JobsHealth />
     <Panel title="Release train & kill switch">
       <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
@@ -377,7 +382,7 @@ function JobsSchedules({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const pauseKind = kindFor(d, 'crontab.pause')
 
-  return <Panel title="Jobs & schedules" right={jobs?.state === 'OK' ? <span style={muted}>as of {et(jobs.as_of)}</span> : null}>
+  return <Panel title="Schedule controls" right={jobs?.state === 'OK' ? <span style={muted}>as of {et(jobs.as_of)}</span> : null}>
     <SectionGate sec={jobs}>
       <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-jobs-explainer">
         One row per <b>cron job</b> declared in the lane registry (<span style={mono}>config/lane_registry.json</span>), matched to the
@@ -925,7 +930,14 @@ function PasskeysPanel({ d, run }: { d: OpsControlsState | null; run: Run }) {
 export default function OpsControlsPage() {
   const api = useApi<OpsControlsState>(opsApi.statePath, 15_000)
   const d = api.data
-  const [tab, setTab] = useState<TabKey>('jobs')
+  const [params, setParams] = useSearchParams()
+  const rawTab = params.get('tab')
+  const tab: TabKey = ['jobs', 'n8n', 'flags', 'data', 'grants', 'audit'].includes(rawTab || '') ? rawTab as TabKey : 'jobs'
+  const setTab = (nextTab: TabKey) => {
+    const next = new URLSearchParams(params)
+    next.set('tab', nextTab)
+    setParams(next)
+  }
   const [flow, setFlow] = useState<FlowStart | null>(null)
 
   const startFlow = (f: FlowStart) => setFlow(f)
@@ -938,7 +950,7 @@ export default function OpsControlsPage() {
 
   const inert = !!d && d.policy?.state !== 'ACTIVE'
   const TABS: Array<[TabKey, string, string]> = [
-    ['jobs', 'Jobs & schedules', count(d?.jobs, d?.jobs?.rows?.length)],
+    ['jobs', 'Jobs', count(d?.jobs, d?.jobs?.rows?.length)],
     ['n8n', 'n8n lanes', count(d?.n8n, d?.n8n?.rows?.length)],
     ['flags', 'Flags & thresholds', count(d?.settings, d?.settings?.rows?.length)],
     ['data', 'Data approvals', count(d?.data_approvals, d?.data_approvals?.rows?.length)],
@@ -947,7 +959,8 @@ export default function OpsControlsPage() {
   ]
   const policyTone: Tone = d?.policy?.state === 'ACTIVE' ? 'success' : 'danger'
 
-  return <section data-testid="ops-controls" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="controls" asOf={{ applier: d?.applier?.heartbeat_at }}>
+<section className="ops-evidence-page" data-testid="ops-controls" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Ops · Controls</h1>
       <p style={muted}>Change how the system runs without touching files. Every change: validate → preview (dry run) → confirm → applied with backup → audited.</p>
@@ -977,7 +990,7 @@ export default function OpsControlsPage() {
     {d && d.factors?.hmac_key === 'missing' ? <Banner tone="warning" title="HMAC key missing">Approvals cannot be signed, so the applier would refuse them.</Banner> : null}
     {d ? <SudoBanner sw={d.sudo_window} onChanged={api.refetch} /> : null}
 
-    <div role="tablist" aria-label="Controls sections" style={{ display: 'flex', gap: 6, overflowX: 'auto', minWidth: 0, paddingBottom: 2 }}>
+    <div role="tablist" aria-label="Controls sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', minWidth: 0, paddingBottom: 2 }}>
       {TABS.map(([k, text, n]) => {
         const sel = tab === k
         return <button key={k} type="button" role="tab" aria-selected={sel} onClick={() => setTab(k)}
@@ -998,4 +1011,5 @@ export default function OpsControlsPage() {
 
     {flow ? <FlowModal flow={flow} state={d} onClose={close} /> : null}
   </section>
+  </OpsDeskFrame>
 }

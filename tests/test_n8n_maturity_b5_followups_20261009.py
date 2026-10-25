@@ -284,7 +284,13 @@ def test_fanin_p2_per_dead_letter_and_per_open_breaker_then_closes_on_release(tm
     _dead(store, "d:lane-a:live:20261009T1300")
     store.open_breaker("lane-a", 3, NOW.timestamp() - 300)
     found = fanin._dlq_findings(tmp_path, NOW)
-    assert _dlq(found) == ["breaker:lane-a", "dlq:d:lane-a:live:20261009T1200", "dlq:d:lane-a:live:20261009T1300"]
+    # W4 incident-flood addendum (board 16): same-lane, same-day, same-cause dead letters arrive as ONE burst finding
+    # that still names every slot; a lone dead letter keeps its own item (below, after one is released).
+    items = _dlq(found)
+    assert items[0] == "breaker:lane-a" and len(items) == 2 and items[1].startswith("dlq:burst:")
+    burst = next(f for f in found if f["item"].startswith("dlq:burst:"))
+    assert burst["count"] == 2 and burst["recovered"] is False
+    assert burst["slot_keys"] == ["d:lane-a:live:20261009T1200", "d:lane-a:live:20261009T1300"]
     assert {f["severity"] for f in found} == {"P2"}
     ev = fanin.build_event(found[0], day="2026-10-09", now=NOW, sha="abc")
     assert ev["artifact_ref"].endswith(fanin.LEDGER_REL)

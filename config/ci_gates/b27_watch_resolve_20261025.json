@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "b27_watch_resolve_20261025",
+  "files": [
+    "tests/test_b27_watch_resolve_e2e_20261025.py"
+  ],
+  "anchor": "B27_WATCH_RESOLVE_20261025",
+  "comment": [
+    "ANCHOR: B27_WATCH_RESOLVE_20261025 — Watch Resolve conflict end to end on fixtures: engine shadow run, Watch section, api_v2 conflict route, CIO review decision, engine clear; agents refused; gap fallback kept (AGENTS.md 28.10/28.11)."
+  ]
+}

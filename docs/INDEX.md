@@ -1024,6 +1024,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
 | `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
+| `docs/designs/DSN-20261024-approvals.md` | DSN-20261024-approvals.md |
 | `docs/designs/DSN-20261024-ask-cio-readable.md` | Ask CIO canonical answers and completion |
 | `docs/designs/DSN-20261024-ask-tracking.md` | Canonical tracking truth |
 | `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
@@ -1787,6 +1788,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
+| `docs/ops/APPROVALS_CENTER_20261024.md` | Approvals Center — boards 19–21, 2026-10-24 |
+| `docs/ops/APPROVALS_UI_20261024.md` | Approvals UI — boards 19–21, 2026-10-24 |
 | `docs/ops/ASK_CIO_READABLE_20261024.md` | Ask CIO: readable canonical answers and live completion |
 | `docs/ops/ASK_CIO_TRACKING_CANONICAL_20261024.md` | Ask-CIO tracking: canonical My Watchlist readback |
 | `docs/ops/ASK_THE_CIO.md` | Ask the CIO: open questions with persistent CIO memory (Phases 8–11) |
@@ -1796,6 +1799,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) |
+| `docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md` | Batch 27: ops pages on the desk frame, Jobs tab everywhere, Watch Resolve end to end |
 | `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md` | Bitemporal Memory Substrate v2 — deploy receipt |
 | `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment |
@@ -1957,6 +1961,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) |
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
 | `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
+| `docs/ops/CONFLICT_ENGINE.md` | Conflict engine (W10 PR 1) |
+| `docs/ops/CONFLICT_LEDGER.md` | Conflict ledger, operator API and CIO integration |
 | `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
@@ -2030,6 +2036,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) |
 | `docs/ops/PIPELINE_TIME_SETTINGS.md` | Pipeline time settings — measured, pinned, and why |
+| `docs/ops/POLICY_ENFORCEMENT_AUDIT_20261024.md` | Policy enforcement audit — source proposal, 2026-10-24 |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
 | `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) |
@@ -2116,6 +2123,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/W3_SIGNALS_20261024.md` | W3: sector strength and triggered-only pullback proposals |
+| `docs/ops/W4_HEALTH_PAGE_20261024.md` | Health page: one finding population and verified repair evidence |
+| `docs/ops/W4_JOBS_DATA_ERRORS_20261024.md` | Jobs DATA_ERROR consumer: canonical conflict section |
+| `docs/ops/W4_JOBS_HEALTH_20261024.md` | Jobs and health: execution evidence and incident recovery |
+| `docs/ops/W4_LLM_BROKER_PAGES_20261024.md` | LLM Spend and Broker Access page preparation |
+| `docs/ops/W4_RELEASES_CONTROLS_PAGES_20261024.md` | Releases and Ops Controls: shared Jobs body preparation |
+| `docs/ops/W4_SYSTEM_PAGE_20261024.md` | System page: shared Jobs and semantic token preparation |
 | `docs/ops/W7_DESKS_REDESIGN_20261024.md` | W7 page redesign field trace |
 | `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
 | `docs/ops/W8_WRITERS_20261024.md` | W8 writer restoration: source bindings and pending admission |

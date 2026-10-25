@@ -279,16 +279,17 @@ def could_not_do(root: Path) -> dict[str, Any]:
 # ── assembly ───────────────────────────────────────────────────────────────
 
 def build_brief(*, window_hours: float = DEFAULT_WINDOW_HOURS,
-                root: Path | str | None = None) -> dict[str, Any]:
+                root: Path | str | None = None, now: datetime | None = None) -> dict[str, Any]:
     r = Path(root) if root else _state_root()
     cio = r / "data" / "cio"
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     since = now - timedelta(hours=window_hours)
 
     reqs = _read_jsonl(cio / "hermes_research_requests.jsonl")
     records = _read_jsonl(cio / "cio_instrument_records.jsonl")
     lessons = _read_jsonl(cio / "lesson_candidates.jsonl")
 
+    from scripts.lib.conflicts.cio import digest
     return {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -303,6 +304,7 @@ def build_brief(*, window_hours: float = DEFAULT_WINDOW_HOURS,
         "learned": learned(lessons, since),
         "acted_on_memory": acted_on_memory(r),
         "could_not_do": could_not_do(r),
+        "conflicts": digest(r, now=now),
     }
 
 
@@ -384,6 +386,25 @@ def render_telegram(brief: dict[str, Any]) -> str:
             lines.append(f"  • {len(CN['blocked_purposes'])} run purpose(s) blocked")
         lines.append("")
 
+    conflicts = brief.get("conflicts") or {}
+    if conflicts.get("gap"):
+        lines.append("*Conflicts* — evaluation unavailable: " + str(conflicts["gap"].get("reason")))
+    elif conflicts:
+        decided = conflicts.get("decided") or []
+        waiting = conflicts.get("waiting_on_operator") or []
+        lines.append(f"*Conflicts* — {len(decided)} recorded decisions · {len(waiting)} waiting on you")
+        for record in decided[:4]:
+            decision = record["decision"]
+            who = "I recorded" if decision.get("actor_kind") == "cio" else "You recorded"
+            lines.append(f"  • {who} {record['subject']['label']}: {decision.get('chosen_side')} — "
+                         + str(decision.get("reason") or "reason unavailable")[:180])
+        grouped = {}
+        for record in waiting:
+            grouped.setdefault(record.get("rule") or "unknown", []).append(record)
+        for rule, records in sorted(grouped.items()):
+            labels = ", ".join(r["subject"]["label"] for r in records[:4])
+            lines.append(f"  • {len(records)} waiting on you ({rule}): {labels}")
+    lines.append("")
     lines.append("_All counts deterministic (class D). Prose is template (class T)._")
     lines.append("_No judgment was exercised in this brief. Advisory only — no orders placed._")
     return "\n".join(lines)

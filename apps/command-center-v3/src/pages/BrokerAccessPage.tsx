@@ -10,6 +10,10 @@ import { Chip, ChipRow } from '../components/primitives'
 import ATMControlPanel from '../components/ATMControlPanel'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, type Tone } from '../lib/designTokens'
+import { accountName } from '../lib/accountLabels'
+import './OpsEvidencePages.css'
+import { observedTime } from '../lib/w9PageModel'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 type State = 'OK' | 'STALE' | 'DEGRADED' | 'PAUSED' | 'NEEDS_REAUTH'
 type Step = { name?: string; rc?: number | null; signals?: string[] }
@@ -46,11 +50,7 @@ const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin:
 const code: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm, color: TOKENS.text[0], background: TOKENS.bg[2], border: `1px solid ${TOKENS.borderSubtle}`, borderRadius: RADIUS.sm, padding: '4px 8px', overflowX: 'auto', whiteSpace: 'pre', flex: 1, minWidth: 0 }
 const btn: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[1], background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, padding: '3px 10px', cursor: 'pointer' }
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))
-const et = (v: unknown) => {
-  const t = Date.parse(String(v ?? ''))
-  if (!Number.isFinite(t)) return s(v)
-  return new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET'
-}
+const et = observedTime
 
 function StateChip({ state }: { state?: State }) {
   if (!state) return <Chip tone="warning">Unknown</Chip>
@@ -75,11 +75,11 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function Table({ label, heads, rows }: { label: string; heads: string[]; rows: Array<Array<ReactNode>> }) {
   return <div style={{ overflowX: 'auto' }}>
-    <table aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <table className="ops-evidence-table" aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead><tr>{heads.map(h => <th key={h} style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
       <tbody>
-        {rows.map((r, i) => <tr key={i} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>{r.map((c, j) => <td key={j} style={cell}>{c ?? '—'}</td>)}</tr>)}
-        {!rows.length ? <tr><td colSpan={heads.length} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
+        {rows.map((r, i) => <tr key={i} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>{r.map((c, j) => <td key={j} data-label={heads[j]} style={cell}>{c ?? '—'}</td>)}</tr>)}
+        {!rows.length ? <tr><td data-empty colSpan={heads.length} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
       </tbody>
     </table>
   </div>
@@ -87,7 +87,7 @@ function Table({ label, heads, rows }: { label: string; heads: string[]; rows: A
 
 function StepSummary({ step }: { step?: Step | null }) {
   if (!step) return <span style={{ color: TOKENS.text[3] }}>not in log</span>
-  return <span>rc={s(step.rc)}{step.signals?.length ? ` · ${step.signals.join(', ')}` : ''}</span>
+  return <span>{step.rc == null ? 'Result not recorded' : step.rc === 0 ? 'Completed' : `Failed (exit ${step.rc})`}{step.signals?.length ? ` · ${step.signals.join(', ').replace(/_/g, ' ')}` : ''}</span>
 }
 
 function ReloginBlock({ r }: { r?: Relogin }) {
@@ -111,18 +111,21 @@ export default function BrokerAccessPage() {
   const auto = d?.schwab_tokens?.auto_reauth || {}
   const log = d?.operator_sync_log
   const cmd = d?.sync_command
+  const stop = d?.stop_health
+  const openAlerts = stop?.alerts_db === 'unavailable' ? null : stop?.open_alert_count
   // /system/broker-access#automation-controls — the old Trading → ATM Controls links land on the section.
   useEffect(() => {
     if (window.location.hash === '#automation-controls') document.getElementById('automation-controls')?.scrollIntoView?.({ block: 'start' })
   }, [!!d]) // eslint-disable-line react-hooks/exhaustive-deps
-  return <section data-testid="broker-access" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="broker" asOf={{ positions: d?.as_of, stops: d?.as_of }}>
+<section className="ops-evidence-page" data-testid="broker-access" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Broker Access & Sync</h1>
       <p style={muted}>Access mode, trading lock, Schwab login state, sync freshness per broker and stop health are read-only, from receipts, logs and token metadata; no broker is called from this page. The Automation controls section at the bottom (moved from Trading → ATM Controls) writes per-account automation policy through the admin guard.</p>
       <ChipRow>
         {api.error ? <Chip tone="warning">UNAVAILABLE</Chip> : api.loading && !d ? <Chip tone="neutral">Loading</Chip> : <StateChip state={d?.overall} />}
         <Chip tone={d?.access?.paused ? 'info' : 'neutral'}>Schwab mode {s(d?.access?.mode)}</Chip>
-        <Chip tone={lock?.locked === false ? 'warning' : 'neutral'}>{lock?.locked === false ? 'Trading UNLOCKED' : 'Trading locked'}</Chip>
+        <Chip tone={lock?.locked === false ? 'warning' : 'neutral'}>{lock?.locked == null ? 'Trading lock unknown' : lock.locked === false ? 'Trading unlocked' : 'Trading locked'}</Chip>
         <Chip tone="neutral">Observed {et(d?.as_of)}</Chip>
       </ChipRow>
       {api.error ? <p role="alert" style={muted}>Broker access read model unavailable. Nothing here is reported as healthy.</p> : null}
@@ -131,22 +134,22 @@ export default function BrokerAccessPage() {
     <Panel title="Access">
       <Table label="Access mode and trading lock" heads={['Control', 'State', 'Detail']} rows={[
         ['Schwab access mode', s(d?.access?.mode), `${s(d?.access?.reason)} · since ${et(d?.access?.since)}${d?.access?.error ? ` · ${d.access.error}` : ''}`],
-        ['Trading lock', lock?.locked === false ? 'UNLOCKED' : 'LOCKED', s(lock?.reason)],
-        ['Lock refusals today', s(lock?.refusals_today ?? 0), lock?.last_refusal ? `last ${et(lock.last_refusal.at)} · ${s(lock.last_refusal.broker)} ${s(lock.last_refusal.action)} · ${s(lock.last_refusal.caller)}` : '—'],
+        ['Trading lock', lock?.locked == null ? 'Unknown' : lock.locked === false ? 'Unlocked' : 'Locked', s(lock?.reason)],
+        ['Lock refusals today', s(lock?.refusals_today), lock?.last_refusal ? `last ${et(lock.last_refusal.at)} · ${s(lock.last_refusal.broker)} ${s(lock.last_refusal.action)}` : '—'],
       ]} />
     </Panel>
 
     <Panel title="Schwab login (token state)">
       {d?.schwab_tokens?.db === 'unavailable' ? <p role="alert" style={muted}>Token store unreadable. Token state is unknown, not assumed healthy.</p> : null}
       <Table label="Schwab token state per account" heads={['Account', 'State', 'Days left', 'True expiry', 'Last login', 'Last error', 'Reason']}
-        rows={(d?.schwab_tokens?.accounts || []).map(t => [t.account_key, <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
+        rows={(d?.schwab_tokens?.accounts || []).map(t => [accountName(t.account_key), <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
           t.last_error || (t.last_failed_event ? `${s(t.last_failed_event.event)} ${s(t.last_failed_event.status)} ${et(t.last_failed_event.at)}` : '—'), t.reason])} />
       <p style={muted}>Auto-reauth: {s(auto.mode)}; proactive on day {s(auto.reauth_at_days)} ({s(auto.proactive_due_at ? et(auto.proactive_due_at) : null)}), hours {Array.isArray(auto.allowed_hours_local) ? (auto.allowed_hours_local as number[]).join('–') : '—'} local, due now {auto.due_now ? 'yes' : 'no'}. Last attempt {et(auto.last_attempt_at)}: {s(auto.last_result)} {auto.last_error ? `(${String(auto.last_error)})` : ''}</p>
     </Panel>
 
     <Panel title="How to re-login">
       {d?.relogin?.warning ? <p role="alert" style={{ ...muted, color: TOKENS.warning }}>{d.relogin.warning}</p> : null}
-      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))' }}>
         <ReloginBlock r={d?.relogin?.telegram} />
         <ReloginBlock r={d?.relogin?.command_center} />
       </div>
@@ -154,14 +157,17 @@ export default function BrokerAccessPage() {
 
     <Panel title="Sync freshness by broker">
       <Table label="Broker sync freshness" heads={['Source', 'State', 'Last success', 'Operator log step', 'Reason']}
-        rows={(d?.brokers || []).map(b => [b.label, <span><StateChip state={b.state} />{(b.flags || []).filter(f => f !== b.state).map(f => <Chip key={f} tone={STATE_TONE[f as State] || 'warning'} style={{ marginLeft: 4 }}>{STATE_LABEL[f as State] || f}</Chip>)}</span>,
-          et(b.last_success_at), <StepSummary step={b.operator_log_step} />, <span>{b.reason}{b.note ? <span style={{ display: 'block', color: TOKENS.text[2] }}>{b.note}</span> : null}</span>])} />
+        rows={(d?.brokers || []).map(b => {
+          const state = b.state
+          return [b.label, <span><StateChip state={state} />{(b.flags || []).filter(f => f !== state && f !== 'OK').map(f => <Chip key={f} tone={STATE_TONE[f as State] || 'warning'} style={{ marginLeft: 4 }}>{STATE_LABEL[f as State] || f.replace(/_/g, ' ')}</Chip>)}</span>,
+            et(b.last_success_at), <StepSummary step={b.operator_log_step} />, <span>{b.reason}{b.note ? <span style={{ display: 'block', color: TOKENS.text[2] }}>{b.note}</span> : null}</span>]
+        })} />
     </Panel>
 
     <Panel title="Stop health">
-      <ChipRow><StateChip state={d?.stop_health?.state} /><Chip tone="neutral">check {et(d?.stop_health?.finished_at)}</Chip>
-        <Chip tone={(d?.stop_health?.open_alert_count || 0) > 0 ? 'warning' : 'neutral'}>open stop alerts {d?.stop_health?.alerts_db === 'unavailable' ? 'unknown' : d?.stop_health?.open_alert_count ?? 0}</Chip></ChipRow>
-      <p style={muted}>{s(d?.stop_health?.reason)}</p>
+      <ChipRow><Chip tone="neutral">{stop?.state === 'OK' ? 'Latest check completed' : 'Latest check: '}{stop?.state !== 'OK' ? STATE_LABEL[stop?.state as State] || 'Unknown' : ''}</Chip><Chip tone="neutral">check {et(stop?.finished_at)}</Chip>
+        <Chip tone={openAlerts != null && openAlerts > 0 ? 'warning' : 'neutral'}>Open stop alerts {openAlerts ?? 'unknown'}</Chip></ChipRow>
+      <p style={muted}>{stop?.state === 'OK' ? (openAlerts != null && openAlerts > 0 ? 'Open alerts need review. The latest check does not resolve earlier alerts.' : 'Latest stop check completed. Open alerts are reported above.') : s(stop?.reason)}</p>
       <Table label="Open stop alerts" heads={['At', 'Symbol', 'Severity', 'Message']}
         rows={(d?.stop_health?.open_alerts || []).map(a => [et(a.at), s(a.symbol), s(a.severity), s(a.message)])} />
     </Panel>
@@ -194,4 +200,5 @@ export default function BrokerAccessPage() {
       </ChipRow>
     </Panel>
   </section>
+  </OpsDeskFrame>
 }

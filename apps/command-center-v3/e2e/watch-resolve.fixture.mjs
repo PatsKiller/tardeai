@@ -35,8 +35,8 @@ try{
    next_action:i||state==='CLEARED'?{kind:'none',label:'No action',reason:'Recorded fixture'}:{kind:'resolve_conflict',label:'Resolve conflict',reason:'Review the recorded disagreement'},
    price:27,price_as_of:clock,rsi:null,held:true,position_state:'held',held_accounts:['schwab_roth_ira'],held_account_labels:['Schwab Roth'],surfaces:[],evidence_at:clock,expires_at:null,stale:false,mine:true,starred:true,membership:[]}))
   const record=()=>({...finding,schema:'ConflictRecord@v1',key:wrongKey?'wrong-security-key':finding.key,state,subject:{kind:'security',id:'fixture-guid-schd',label:'SCHD'},opened_at:clock,updated_at:clock,revision:3,
-   decision:state==='DECIDED'?{schema:'ConflictDecision@v1',actor_kind:'cio',actor:'CIO',chosen_side:'HOLD',reason:'Fixture reviewed evidence; decision recorded',evidence_refs:['fixture:evidence'],expires_at:'2026-10-25T23:00:00Z'}:null,
-   history:[{schema:'ConflictEvent@v1',key:finding.key,event:'opened',at:clock},...(state==='OPEN'?[]:[{schema:'ConflictEvent@v1',key:finding.key,event:'review_queued',request_id:'fixture-request',at:clock}])]})
+   decision:state==='DECIDED'||state==='CLEARED'?{schema:'ConflictDecision@v1',actor_kind:'cio',actor:'CIO',chosen_side:'HOLD',reason:'Fixture reviewed evidence; decision recorded',evidence_refs:['fixture:evidence'],expires_at:'2026-10-25T23:00:00Z'}:null,
+   history:[{schema:'ConflictEvent@v1',key:finding.key,event:'opened',at:clock},...(state==='OPEN'?[]:[{schema:'ConflictEvent@v1',key:finding.key,event:'review_queued',request_id:'fixture-request',at:clock}]),...(state==='DECIDED'||state==='CLEARED'?[{schema:'ConflictEvent@v1',key:finding.key,event:'decided',at:clock}]:[]),...(state==='CLEARED'?[{schema:'ConflictEvent@v1',key:finding.key,event:'cleared',at:clock}]:[])]})
   page.on('pageerror',e=>traffic.errors.push(String(e)))
   await page.clock.install({time:new Date(clock)})
   await page.routeWebSocket('**/*',ws=>{traffic.external.push(ws.url());ws.close()})
@@ -100,6 +100,9 @@ try{
   await expect(dialog).toContainText('Schwab Roth');await expect(dialog).not.toContainText('schwab_roth_ira')
   await expect(dialog.getByTestId('conflict-side')).toHaveCount(finding.sides.length)
   await expect(dialog.getByTestId('conflict-record-state')).toHaveAttribute('data-state','OPEN')
+  // The rule that decides it is named in plain words before any action (operator: "a note on what the actual issue is").
+  await dialog.getByTestId('conflict-rule').scrollIntoViewIfNeeded();await inView(dialog.getByTestId('conflict-rule'));await expect(dialog.getByTestId('conflict-rule')).toContainText(finding.rule+' · ')
+  await expect(dialog.getByTestId('conflict-resolved')).toHaveCount(0)
   await page.screenshot({path:path.join(output,`impl-watch-${surface}-conflict-open-${width}.png`),fullPage:false,animations:'disabled'})
   const ask=dialog.getByRole('button',{name:'Ask the CIO to review',exact:true})
   await tap(ask)
@@ -123,6 +126,9 @@ try{
   await expect(row.getByTestId('conflict-headline')).toHaveText(specimen.section.headline)
   state='CLEARED'
   await expect(async()=>{await page.clock.runFor(120_000);await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Cleared by the engine',{timeout:2_000})}).toPass({timeout:30_000})
+  await dialog.getByTestId('conflict-resolved').scrollIntoViewIfNeeded();await inView(dialog.getByTestId('conflict-resolved'));await expect(dialog.getByTestId('conflict-resolved')).toContainText('the CIO chose HOLD')
+  await expect(dialog).toContainText('Fixture reviewed evidence; decision recorded');await expect(dialog).toContainText('Cleared by the engine')
+  await page.screenshot({path:path.join(output,`impl-watch-${surface}-resolved-${width}.png`),fullPage:false,animations:'disabled'})
   await tap(dialog.getByRole('button',{name:'← Back'}))
   await expect(row.getByTestId('conflict-line')).toHaveCount(0)
   await expect(row.getByRole('button',{name:'Resolve conflict',exact:true})).toHaveCount(0)
@@ -152,7 +158,7 @@ try{
   await noHorizontal()
   assert.deepEqual({external:traffic.external,unexpected:traffic.unexpected,mutations:traffic.mutations,errors:traffic.errors},{external:[],unexpected:[],mutations:[],errors:[]})
   assert.equal(traffic.posts.length,1)
-  cases.push({surface,width,height,legacy_104_rows:true,resolve_tap_visible:true,focused_disagreement:true,real_pages:true,filter_taps:true,phone_record_selection:true,queue_post_mock_only:true,ledger_history:true,decided_not_cleared:true,engine_clear_only:true,evidence_route_back:true,actual_next_offset:17,missing_engine_gap:true,selected_key_guard:true,traffic})
+  cases.push({surface,width,height,legacy_104_rows:true,resolve_tap_visible:true,focused_disagreement:true,real_pages:true,filter_taps:true,phone_record_selection:true,queue_post_mock_only:true,ledger_history:true,decided_not_cleared:true,engine_clear_only:true,rule_named:true,resolved_state_visible:true,evidence_route_back:true,actual_next_offset:17,missing_engine_gap:true,selected_key_guard:true,traffic})
   await context.close()
  }
 }finally{await browser.close()}

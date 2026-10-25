@@ -249,6 +249,18 @@
     {
       "url": "/v3/strategy/classic",
       "path": "strategy/classic"
+    },
+    {
+      "url": "/v3/ops/jobs",
+      "path": "ops/jobs"
+    },
+    {
+      "url": "/v3/approvals",
+      "path": "approvals"
+    },
+    {
+      "url": "/v3/policy",
+      "path": "policy"
     }
   ],
   "spa_routes": [
@@ -426,6 +438,15 @@
     },
     {
       "route": "/v3/strategy/classic"
+    },
+    {
+      "route": "/v3/ops/jobs"
+    },
+    {
+      "route": "/v3/approvals"
+    },
+    {
+      "route": "/v3/policy"
     }
   ],
   "apis": [

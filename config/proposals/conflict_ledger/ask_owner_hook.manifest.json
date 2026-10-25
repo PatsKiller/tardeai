@@ -1,0 +1,15 @@
+{
+  "base_head": "87a6d1d0fbf168a804792782f4eb4d97edc6cefd",
+  "status": "PROPOSED_OWNER_APPLY_ONLY_AFTER_PUBLIC_FROZEN_W10_DEPENDENCY",
+  "files": {
+    "scripts/lib/cio_ask_memory.py": {
+      "base_sha256": "48ad0da12a9843fe5ae7a695b203e1d23e87cfb3802342063aef75c496ff9db2",
+      "patched_sha256": "891818b9afe9f4fa4adb964524c1be69ce02c192f5aca1080cb1c539b51c80b8"
+    },
+    "scripts/lib/cio_ask_core.py": {
+      "base_sha256": "ec4d810948504e0744768e966c5dac5d93d937e54be9cedffc74b53753abf286",
+      "patched_sha256": "db1aba4b9bb6dfa9ffa5761a1ceca5069bd2e5292712794b44d09aa513c18c48"
+    }
+  },
+  "test": "tests/test_conflict_ask_hook.py; owner Ask affected/pending-provider-spy regression suite"
+}

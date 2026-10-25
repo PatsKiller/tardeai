@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any,Optional
 from zoneinfo import ZoneInfo
 from scripts.lib import recovery_validator as RV
+from scripts.lib.n8n_dlq_disposition import cause
 
 ET=ZoneInfo('America/New_York')
 SCHEMA='N8nToday@v2'
@@ -111,14 +112,16 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
     lane_states=collections.defaultdict(collections.Counter)  # per live lane: state -> n (needs-action, 2026-10-21)
     matching=[];invalid=0;read_bytes=0
     source={'status':'UNAVAILABLE','complete':False,'candidate_files':None,'read_files':0,'invalid_files':0,
-            'max_files':MAX_RUN_FILES,'max_bytes':MAX_RUN_BYTES,'time_basis':'semantic slot date in America/New_York'}
+            'max_files':MAX_RUN_FILES,'max_bytes':MAX_RUN_BYTES,'time_basis':'semantic slot date or workflow execution date in America/New_York'}
     try:
         names=os.listdir(root/RUNS_REL)
         for name in names:
             if not name.endswith('.json'):continue
             rid=name[:-5];match=RV.SEMANTIC_KEY_RE.fullmatch(rid)
-            namespaces[rid.split(':',1)[0] if ':' in rid else 'undated/other']+=1
-            if match:
+            namespaces['n8n-wf' if rid.startswith('n8n-wf-') else rid.split(':',1)[0] if ':' in rid else 'undated/other']+=1
+            if rid.startswith('n8n-wf-'):
+                matching.append((name,None,None,None,'n8n-wf'))
+            elif match:
                 ns,lane,requested,slot=match.groups()
                 if requested=='live' and (lane not in first_live or slot<first_live[lane]):first_live[lane]=slot
                 if slot.startswith(frag):matching.append((name,lane,requested,slot,ns))
@@ -129,11 +132,20 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
         if budget[0]>=MAX_RUN_BYTES:break
         try:
             doc,size=_json(root/RUNS_REL/name,budget)
-            if doc.get('lane_id') not in (None,lane) or doc.get('run_id') not in (None,name[:-5]):raise ValueError('identity mismatch')
+            if doc.get('run_id') not in (None,name[:-5]):raise ValueError('identity mismatch')
+            if ns!='n8n-wf' and doc.get('lane_id') not in (None,lane):raise ValueError('identity mismatch')
             finished=_parse(doc.get('finished_at'))
             if finished and finished>now:raise ValueError('future receipt')
+            if ns=='n8n-wf':
+                observed=finished or _parse(doc.get('started_at')) or _parse(doc.get('requested_at'))
+                if observed is None:raise ValueError('workflow receipt timestamp missing')
+                source['read_files']+=1
+                if not since<=observed<=now:continue
+                lane=doc.get('lane_id');requested=doc.get('requested_mode') or doc.get('mode')
+                if not lane:raise ValueError('workflow lane missing')
+                slot=observed.astimezone(ET).strftime('%Y%m%dT%H%M')
         except (OSError,ValueError,UnicodeError):invalid+=1;continue
-        source['read_files']+=1
+        if ns!='n8n-wf':source['read_files']+=1
         try:mode=RV.effective_mode({'mode':requested,'receipt':doc}) or 'unknown'
         except (TypeError,ValueError):mode='unknown'
         state=str(doc.get('state') or 'UNKNOWN');by_mode[mode][state]+=1;lanes.add(lane)
@@ -141,7 +153,8 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
         if state=='RUN_SKIPPED_LOCK':skips[(lane,mode)]+=1
         elif state in ('RUN_FAILED','RUN_REFUSED','RUN_TIMEOUT') or state.endswith('FAILED'):
             failures.append({'lane':lane,'mode':mode,'requested_mode':requested,'slot':slot,'state':state,'reason':doc.get('reason'),
-                'exit_code':doc.get('exit_code'),'finished_at':doc.get('finished_at'),'run_id':doc.get('run_id') or name[:-5],
+                'exit_code':doc.get('exit_code'),'cause':cause(doc),'stderr_tail':doc.get('stderr_tail'),
+                'finished_at':doc.get('finished_at'),'run_id':doc.get('run_id') or name[:-5],
                 'attempt':doc.get('attempt'),'served_sha':doc.get('code_sha'),'owner':doc.get('owner'),'workflow_id':doc.get('workflow_id'),
                 'execution_id':doc.get('execution_id'),'evidence':str(RUNS_REL/name)})
     if source['status']!='UNAVAILABLE':
@@ -201,11 +214,11 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
         'cutovers_today':cutovers,'cutovers_total':len(cutovers) if cut_meta['complete'] else None,
         'first_live_observed_today':[{'lane':lane,'slot':slot,'source':'first_retained_live_slot_name'} for lane,slot in sorted(first_live.items()) if slot.startswith(frag)],
         'coverage':{'window':{'since':since.isoformat(),'through':now.isoformat(),'timezone':'America/New_York'},'sources':sources,
-                    'run_namespaces':{'included':['d','e','g','p'],'observed_file_counts':dict(namespaces),
-                                      'excluded':'undated n8n-wf-* and other names; relay requests are a separate admission count'},
+                    'run_namespaces':{'included':['d','e','g','p','n8n-wf'],'observed_file_counts':dict(namespaces),
+                                      'excluded':'other names and workflow receipts without an aware execution timestamp'},
                     'qualification':'Receipt/state observations only; no claim of all effects, delivery, acknowledgement, business recovery or continuous uptime'},
         'sources':[str(RUNS_REL),str(RELAY_REL),str(DIAG_REL),str(CUTOVER_REL)],
-        'note':'Runs use semantic slot date in ET, including d/e/g/p namespaces and retry keys. Requested and effective modes are separate. Recovery actions are requests, not proven heals; first live observation is not cutover proof.'}
+        'note':'Runs use semantic slot date in ET for d/e/g/p and execution date for n8n-wf receipts. Requested and effective modes are separate. Recovery actions are requests, not proven heals; first live observation is not cutover proof.'}
 
 
 def get_n8n_today(state_root:Optional[Path]=None,now:Optional[datetime]=None,*,ttl_s=CACHE_TTL_S):
