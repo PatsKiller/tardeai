@@ -9,6 +9,7 @@ Activation and an executable live path require a separate operator §17 action.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,11 @@ def main(argv=None) -> int:
         print("REFUSED: unknown_or_inactive_read_lane", file=sys.stderr)
         return 65
     lane = shadow.lane_id(step.id)
+    binding = {
+        "run_id": os.environ.get("TRADEAI_RUN_ID", ""),
+        "attempt": os.environ.get("TRADEAI_RUN_ATTEMPT", "1"),
+        "code_sha": os.environ.get("TRADEAI_CODE_SHA", ""),
+    }
     print(f"DRY-RUN {lane}: offline plan; no broker call")
     print(
         json.dumps(
@@ -41,6 +47,7 @@ def main(argv=None) -> int:
                 "command": ["$PY", step.script, *step.apply_argv],
                 "stage": "shadow",
                 "execution_available": False,
+                **binding,
             },
             sort_keys=True,
         )
@@ -48,7 +55,10 @@ def main(argv=None) -> int:
     lane_output.emit(
         lane,
         "dry_run",
-        lane_output.output_block(produced=0, attempted=0, empty_reason=shadow.EMPTY_REASON, unit="read_steps"),
+        {
+            **lane_output.output_block(produced=0, attempted=0, empty_reason=shadow.EMPTY_REASON, unit="read_steps"),
+            **binding,
+        },
     )
     return 0
 

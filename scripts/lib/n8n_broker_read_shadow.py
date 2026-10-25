@@ -124,6 +124,10 @@ def receipt_problem(receipt: Mapping[str, Any]) -> str | None:
         or receipt.get("state") != "RUN_DONE"
     ):
         return "read_plan_receipt_identity"
+    if type(receipt.get("exit_code")) is not int or receipt["exit_code"] != 0:
+        return "read_plan_receipt_exit"
+    if not isinstance(receipt.get("run_id"), str) or not receipt["run_id"]:
+        return "read_plan_receipt_run_id"
     try:
         lines = str(receipt.get("stdout_tail") or "").splitlines()
         plan = json.loads(lines[1]) if len(lines) == 2 else {}
@@ -146,9 +150,18 @@ def receipt_problem(receipt: Mapping[str, Any]) -> str | None:
         return "read_plan_evidence_command"
     if plan.get("execution_available") is not False:
         return "read_plan_execution_available"
+    binding = {
+        "run_id": receipt["run_id"],
+        "attempt": str(receipt.get("attempt", 1)),
+        "code_sha": str(receipt.get("code_sha") or ""),
+    }
+    if any(plan.get(k) != v for k, v in binding.items()):
+        return "read_plan_run_binding"
     if len(outputs) != 1 or not isinstance(outputs[0], dict):
         return "read_plan_output_missing"
     output = outputs[0]
+    if any(output.get(k) != v for k, v in binding.items()):
+        return "read_plan_output_run_binding"
     if any(
         output.get(k) != v
         for k, v in {

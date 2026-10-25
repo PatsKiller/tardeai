@@ -30,6 +30,14 @@ from tests.support import f09_onboarding as harness  # noqa: E402
 PACKETS = sorted((ROOT / "config/proposals/f09_read_lanes").glob("*.json"))
 
 
+def captured_plan():
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv(executor.RUN_ID_ENV, "fixture")
+        patch.setenv(executor.RUN_ATTEMPT_ENV, "1")
+        patch.setenv(executor.CODE_SHA_ENV, "")
+        return harness.run_py_dry(shadow.WRAPPER, ["--step", "schwab_positions", "--plan"])
+
+
 def entry_for(step):
     return {
         "lane_id": shadow.lane_id(step.id),
@@ -188,7 +196,7 @@ def test_operator_hold_still_wins_and_unmarked_broker_lane_stays_refused(monkeyp
 def test_executor_capture_and_live_refusal_have_no_underlying_read(tmp_path):
     entry = entry_for(carve.READ_LANES[0])
     seen = []
-    code, out, err, calls, _ = harness.run_py_dry(shadow.WRAPPER, ["--step", "schwab_positions", "--plan"])
+    code, out, err, calls, _ = captured_plan()
 
     def runner(argv, **kwargs):
         seen.append(argv)
@@ -253,15 +261,30 @@ def test_positions_apply_and_freshness_are_distinct_closed_lanes():
 
 
 @pytest.mark.parametrize(
-    "field,value", [("stdout_tail", ""), ("stderr_tail", ""), ("mode", "live"), ("lane_id", "other-lane")]
+    "field,value",
+    [
+        ("stdout_tail", ""),
+        ("stderr_tail", ""),
+        ("mode", "live"),
+        ("lane_id", "other-lane"),
+        ("exit_code", False),
+        ("exit_code", 3),
+        ("run_id", "another-run"),
+        ("attempt", 2),
+        ("code_sha", "a" * 40),
+    ],
 )
 def test_empty_or_mismatched_evidence_is_not_a_success(field, value):
-    code, out, err, calls, _ = harness.run_py_dry(shadow.WRAPPER, ["--step", "schwab_positions", "--plan"])
+    code, out, err, calls, _ = captured_plan()
     receipt = {
         "lane_id": shadow.lane_id("schwab_positions"),
         "broker_read_step": "schwab_positions",
         "mode": "dry_run",
         "state": "RUN_DONE",
+        "exit_code": 0,
+        "run_id": "fixture",
+        "attempt": 1,
+        "code_sha": None,
         "stdout_tail": out,
         "stderr_tail": err,
     }
