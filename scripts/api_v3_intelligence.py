@@ -26,7 +26,19 @@ AUTHORITY = {
 
 def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any]]:
     p = (path or "").strip("/")
-    if p in ("", "closed-loop", "dashboard", "authority"):
+    if p in ("backlog", "completed", "research-lineage", "throughput", "authority"):
+        try:
+            from lib.desks_b import research_authority, research_lineage
+        except ImportError:
+            from scripts.lib.desks_b import research_authority, research_lineage
+        if p == "authority":
+            return 200, research_authority()
+        view = {"completed": "completed", "research-lineage": "lineage"}.get(p, "backlog")
+        payload = research_lineage({**(query or {}), "view": view})
+        if p == "throughput":
+            payload = {k: v for k, v in payload.items() if k not in {"items", "total", "has_more"}}
+        return 200, payload
+    if p in ("", "closed-loop", "dashboard"):
         payload = {**AUTHORITY, **L.summary()}
         try:
             from lib.cio_product_reassessment import latest_reassessments

@@ -1,0 +1,94 @@
+{
+  "as_of": "2026-10-24T22:54:22.311005+00:00",
+  "source": "Read-only byte copies of the two production CIO stores; no DB/network/jobs or writer constructors",
+  "sources": {
+    "hermes_challenge_queue.jsonl": {
+      "bytes": 1254356,
+      "sha256": "6983d350b7ec84a3214e16ec255a5cba8cc8c2a028b96e0b9d7611d5636b4ad6"
+    },
+    "intelligence_lineages.json": {
+      "bytes": 9421071,
+      "sha256": "b7bb93446247f46b0f13b3315b1561bdb1d0b5b50d05df09389917e819ac39a3"
+    }
+  },
+  "views": {
+    "backlog": {
+      "ok": true,
+      "total": 186,
+      "page": 1,
+      "per_page": 50,
+      "snapshot_as_of": "2026-10-24T22:54:17.624558+00:00",
+      "backlog": {
+        "pending": 186,
+        "oldest_age_hours": 1730.81,
+        "median_age_hours": 1339.11,
+        "p95_age_hours": 1622.79,
+        "by_reason": {
+          "No reviewer has claimed this challenge.": 186
+        }
+      },
+      "throughput": {
+        "window_start": "2026-10-17T22:54:22.311005+00:00",
+        "window_end": "2026-10-24T22:54:22.311005+00:00",
+        "opened": 37,
+        "closed": 33,
+        "net_change": 4
+      },
+      "gaps": [],
+      "payload_bytes": 33432,
+      "returned_rows": 50
+    },
+    "lineage": {
+      "ok": true,
+      "total": 258,
+      "page": 1,
+      "per_page": 50,
+      "snapshot_as_of": "2026-10-24T22:54:17.624558+00:00",
+      "backlog": {
+        "pending": 186,
+        "oldest_age_hours": 1730.81,
+        "median_age_hours": 1339.11,
+        "p95_age_hours": 1622.79,
+        "by_reason": {
+          "No reviewer has claimed this challenge.": 186
+        }
+      },
+      "throughput": {
+        "window_start": "2026-10-17T22:54:22.311005+00:00",
+        "window_end": "2026-10-24T22:54:22.311005+00:00",
+        "opened": 37,
+        "closed": 33,
+        "net_change": 4
+      },
+      "gaps": [],
+      "payload_bytes": 19070,
+      "returned_rows": 50
+    },
+    "completed": {
+      "ok": true,
+      "total": 495,
+      "page": 1,
+      "per_page": 50,
+      "snapshot_as_of": "2026-10-24T22:54:17.624558+00:00",
+      "backlog": {
+        "pending": 186,
+        "oldest_age_hours": 1730.81,
+        "median_age_hours": 1339.11,
+        "p95_age_hours": 1622.79,
+        "by_reason": {
+          "No reviewer has claimed this challenge.": 186
+        }
+      },
+      "throughput": {
+        "window_start": "2026-10-17T22:54:22.311005+00:00",
+        "window_end": "2026-10-24T22:54:22.311005+00:00",
+        "opened": 37,
+        "closed": 33,
+        "net_change": 4
+      },
+      "gaps": [],
+      "payload_bytes": 33539,
+      "returned_rows": 50
+    }
+  }
+}

@@ -1952,6 +1952,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET |
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
+| `docs/ops/DESKS_B_REDESIGN_20261024.md` | Desks B: approved boards 5–11 |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |

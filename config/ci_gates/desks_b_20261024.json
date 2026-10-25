@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "desks_b_20261024",
+  "files": [
+    "tests/test_desks_b_20261024.py"
+  ],
+  "comment": [
+    "W6 board 6: paged read-only research lineage, evidence gaps, authority and expiry OFF."
+  ]
+}
