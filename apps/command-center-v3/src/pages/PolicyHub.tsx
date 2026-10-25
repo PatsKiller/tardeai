@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeskPage, { DeskGap } from '../components/DeskPage'
+import PolicyVersions from '../components/PolicyVersions'
 import { GOVERNANCE, askAboutRule, governanceRequest, useGovernance, type Policy } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 
@@ -44,6 +45,7 @@ export default function PolicyHub() {
     decisionGap="Questions go to the CIO. Disagreements propose a change for review.">
     {error && <DeskGap title="Rulebook unavailable" reason={error}><button onClick={refresh}>Try again</button></DeskGap>}
     {notice && !selected && <p ref={noticeElement} role="status" className="panel">{notice}</p>}
+    <PolicyVersions />
     {!data && !error && <p role="status">Loading rules…</p>}
     {data && <>
       <div className="counts">{Object.entries(data.counts).map(([name, count]) => <div key={name} className="panel"><span>{name}</span><strong>{count}</strong></div>)}</div>

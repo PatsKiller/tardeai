@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "policy_versions_cc_20261025",
+  "files": [
+    "tests/test_policy_versions_cc_20261025.py"
+  ],
+  "comment": [
+    "Command Center /v3/policy: AGENTS.md version status, pending PROPOSED PRs with exact token, operator-only Approve version X, coordinator relay."
+  ]
+}

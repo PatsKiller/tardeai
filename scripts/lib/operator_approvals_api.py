@@ -16,6 +16,7 @@ from typing import Callable
 from urllib.parse import quote, unquote
 
 from scripts.lib import operator_approvals as core
+from scripts.lib import policy_ratification as ratify
 
 PREFIX = "/api/v2/governance"
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,8 @@ class Ctx:
     policy: Callable[[], dict]
     clock: Callable[[], datetime] = core.utc_now
     can_read: Callable[[], bool] = field(default=lambda: False)
+    # (commit, AGENTS.md text) of the served policy; None -> policy_source(ROOT).
+    policy_text: Callable[[], tuple[str, str]] | None = None
 
 
 def _raw_git(repository: Path, *args: str) -> str:
@@ -463,6 +466,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["rules"], data["total_rules"], data["section_total"], data["offset"] = selected[offset:offset+40], len(all_rules), len(selected), offset
                 data["positions"] = [r for r in ctx.ledger.rows() if r.get("event") == "RULE_FEEDBACK"][-100:]
                 return 200, {"ok": True, "data": data}
+            if sub == "/policy/versions":
+                return 200, {"ok": True, "data": policy_versions(ctx, actor)}
             if sub.startswith("/approvals/"):
                 # The reader encodes ids ("policy:42" -> "policy%3A42"); the server does not decode paths.
                 ident = unquote(sub[len("/approvals/"):])
@@ -480,6 +485,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
         if sub == "/policy/feedback":
             result = ctx.ledger.feedback(actor, ctx.policy, body)
             return 200, {"ok": True, "data": result}
+        if sub == "/policy/versions/approve":
+            return 200, {"ok": True, "data": approve_version(ctx, actor, body)}
         parts = sub.strip("/").split("/")
         if len(parts) != 3 or parts[0] != "approvals":
             raise core.Refused("NOT_FOUND", 404)
@@ -521,3 +528,129 @@ def _current(ctx: Ctx, ident: str):
             raise core.Refused("DUPLICATE_APPROVAL_ID", 503)
         raise core.Refused("ITEM_UNAVAILABLE", 404)
     return current
+
+
+# --------------------------------------------------------------------------- AGENTS.md versions (/v3/policy)
+
+RELAY_MESSAGE = ("Recorded in your decision ledger. The Command Center has no GitHub write path, so the coordinator "
+                 "relays this exact token to PR #{pr} (scripts/relay_policy_approvals.py --apply).")
+APPROVE_COMMENT = "Approved version {version} from the Rulebook (/policy)."
+
+
+def _policy_prs(ctx: Ctx) -> tuple[list[dict], list[dict]]:
+    load = ctx.sources.get("policy_prs")
+    if load is None:
+        return [], [{"source": "policy_prs", "reason": "POLICY_PR_SOURCE_NOT_CONFIGURED"}]
+    try:
+        batch = load()
+    except Exception as exc:  # a failed source is a gap, never "no pending versions"
+        return [], [{"source": "policy_prs", "reason": exc.code if isinstance(exc, core.Refused) else type(exc).__name__}]
+    gaps = []
+    if isinstance(batch, dict):
+        if batch.get("gap"):
+            gaps.append({"source": "policy_prs", "reason": str(batch["gap"])[:160]})
+        batch = batch.get("rows") or []
+    return [r for r in batch if r.get("kind") == "POLICY"], gaps
+
+
+def _review_progress(rows: list[dict], actor: str | None, it: dict, now: datetime) -> dict | None:
+    if not actor:
+        return None
+    sha = it["document"]["document_sha"]
+    start = None
+    for r in rows:
+        if (r.get("event") == "READ_STARTED" and r.get("actor") == actor and r.get("item_id") == it["id"]
+                and r.get("document_sha") == sha):
+            start = r
+    total = len(it["document"]["changes"])
+    if not start:
+        return {"started": False, "read": 0, "total": total, "expired": False}
+    read = {r.get("change_id") for r in rows if r.get("review_id") == start["review_id"] and r.get("phase") == "read"}
+    expired = now - datetime.fromisoformat(start["at"]) > core.REVIEW_TTL
+    return {"started": True, "read": len(read & {c["id"] for c in it["document"]["changes"]}), "total": total,
+            "expired": expired}
+
+
+def policy_versions(ctx: Ctx, actor: str | None) -> dict:
+    """Current served version + every open PR whose AGENTS.md head is a PROPOSED version, with its exact token."""
+    sha, text = (ctx.policy_text or (lambda: policy_source(ROOT)))()
+    current = ratify.current_status(text, sha)
+    items, gaps = _policy_prs(ctx)
+    rows, now = ctx.ledger.rows(), ctx.clock()
+    pending = []
+    for it in items:
+        doc = it["document"]
+        state = ratify.proposed_status(doc["text"])
+        if (state["status"] or "").upper() != "PROPOSED":
+            continue
+        token = ratify.token_for(doc["version"], it.get("pr"), doc["source_sha"])
+        decided = [r for r in rows if r.get("event") == "DECIDED" and r.get("item_id") == it["id"]]
+        bound = [r for r in decided if r.get("source_sha") == doc["source_sha"]
+                 and r.get("document_sha") == doc["document_sha"]]
+        last = bound[-1] if bound else None
+        decision = None
+        if last:
+            decision = {k: last.get(k) for k in ("decision", "actor", "at", "policy_token", "request_id")}
+            if last.get("decision") == "APPROVE" and last.get("policy_token"):
+                decision["effect"] = ratify.RELAY_EFFECT
+                decision["relay"] = RELAY_MESSAGE.format(pr=it["pr"])
+        pending.append({
+            "id": it["id"], "pr": it["pr"], "title": it["title"], "proposed_by": it.get("proposed_by"),
+            "created_at": it.get("created_at"), "version": doc["version"], "status": state["status"],
+            "row_status": state["row_status"], "classification": state["classification"],
+            "awaits_token": state["awaits_token"], "head_sha": doc["source_sha"], "document_sha": doc["document_sha"],
+            "changes": len(doc["changes"]), "sensitive_sections": doc["prechecks"]["sensitive_sections"],
+            "token": token, "decision": decision,
+            "earlier_head_decisions": len(decided) - len(bound),
+            "review": _review_progress(rows, actor, it, now),
+            "can_approve": bool(actor) and bool(token) and not (last and last.get("decision") == "APPROVE"),
+        })
+    pending.sort(key=lambda r: (r["pr"]))
+    return {"current": current, "pending": pending, "pending_count": None if gaps else len(pending),
+            "known_pending_count": len(pending), "complete": not gaps, "gaps": gaps, "as_of": core.iso(now),
+            "operator": bool(actor), "github_write_path": None,
+            "approval_rule": "Approve records the same decision as the Approvals Center reader, after every change "
+                             "in the exact PR head has been read."}
+
+
+def approve_version(ctx: Ctx, actor: str, body: dict) -> dict:
+    """"Approve version X": the same DecisionLedger.decide row as the reader, bound to version + PR + exact head.
+
+    The read-every-change rule is not relaxed: it reuses the operator's own reading session for this exact
+    document (started in the reader); without one -> CHANGES_UNREAD and nothing is written."""
+    pr = body.get("pr")
+    if type(pr) is not int or pr < 1:
+        raise core.Refused("PR_REQUIRED", 400)
+    head, version, typed = body.get("head_sha"), body.get("version"), body.get("token")
+    request = body.get("request_id")
+    if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+        raise core.Refused("REQUEST_ID_REQUIRED", 400)
+    current = _current(ctx, f"policy:{pr}")
+    it = current()
+    doc = it["document"]
+    if doc["source_sha"] != head or doc["version"] != version:
+        raise core.Refused("DOCUMENT_CHANGED")
+    expected = ratify.token_for(version, pr, head)
+    if not expected or typed != expected:
+        raise core.Refused("TOKEN_MISMATCH")
+    if (ratify.proposed_status(doc["text"])["status"] or "").upper() != "PROPOSED":
+        raise core.Refused("NOT_PROPOSED")
+    rows = ctx.ledger.rows()
+    for r in rows:  # idempotent retry of the same request
+        if r.get("event") == "DECIDED" and r.get("request_id") == request:
+            if (r.get("actor"), r.get("item_id"), r.get("policy_token")) == (actor, it["id"], expected):
+                return {"decision": r, "effect": ratify.RELAY_EFFECT, "relay": RELAY_MESSAGE.format(pr=pr)}
+            raise core.Refused("IDEMPOTENCY_CONFLICT")
+    review = None
+    for r in rows:
+        if (r.get("event") == "READ_STARTED" and r.get("actor") == actor and r.get("item_id") == it["id"]
+                and r.get("document_sha") == doc["document_sha"]):
+            review = r["review_id"]
+    if not review:
+        raise core.Refused("CHANGES_UNREAD")
+    row = ctx.ledger.decide(actor, current, {"decision": "APPROVE", "review_id": review,
+                                             "document_sha": doc["document_sha"], "request_id": request,
+                                             "comment": APPROVE_COMMENT.format(version=version)})
+    if row.get("policy_token") != expected:  # decide derives the token itself; they must agree
+        raise core.Refused("TOKEN_MISMATCH", 503)
+    return {"decision": row, "effect": ratify.RELAY_EFFECT, "relay": RELAY_MESSAGE.format(pr=pr)}

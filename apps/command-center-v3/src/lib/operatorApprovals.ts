@@ -7,6 +7,9 @@ export type ApprovalItem = { id: string; title: string; kind: string; proposed_b
 export type Decision = { actor: string; item_id: string; decision: string; document_sha: string; at: string; policy_token?: string; comment?: string }
 export type ApprovalQueue = { items: ApprovalItem[]; pending_count: number | null; known_pending_count: number; complete: boolean; gaps: { source: string; reason: string }[]; as_of: string; recent: Decision[]; filtered_count: number; offset: number }
 export type Rule = { id: string; section: string; text: string; plain: string | null; status: string; reason: string | null; evidence: Record<string, unknown> }
+export type PolicyVersionDecision = { decision: string; actor: string; at: string; policy_token?: string | null; effect?: string; relay?: string }
+export type PendingPolicyVersion = { id: string; pr: number; title: string; proposed_by: string | null; created_at: string | null; version: string; status: string; row_status: string | null; classification: string | null; awaits_token: boolean; head_sha: string; document_sha: string; changes: number; sensitive_sections: string[]; token: string | null; decision: PolicyVersionDecision | null; earlier_head_decisions: number; review: { started: boolean; read: number; total: number; expired: boolean } | null; can_approve: boolean }
+export type PolicyVersions = { current: { version: string | null; status: string | null; effective_date: string | null; supersedes: string | null; row_status: string | null; source_sha: string; consistent: boolean; errors: string[] }; pending: PendingPolicyVersion[]; pending_count: number | null; known_pending_count: number; complete: boolean; gaps: { source: string; reason: string }[]; as_of: string; operator: boolean; github_write_path: string | null; approval_rule: string }
 export type Policy = { source_sha: string; document_sha: string; sections: string[]; rules: Rule[]; counts: Record<string, number>; total_rules: number; section_total: number; offset: number; positions: { position: string; rule_id: string }[]; audit: { state: string; last_audit: string | null; scope?: string; mapped_count?: number; unmapped_count?: number; reviewer_called?: boolean; findings?: { title: string; detail: string }[] } }
 
 const messages: Record<string, string> = {
@@ -18,6 +21,9 @@ const messages: Record<string, string> = {
   POLICY_BINDING_REQUIRED: 'The exact policy PR and commit must be verified before approval.',
   CSRF_REFUSED: 'This request could not be verified. Reload the page and try again.',
   AGENT_CALLER_REFUSED: 'Only your authenticated operator session can record a decision.',
+  TOKEN_MISMATCH: 'The approval token does not match this exact PR head. Reload and try again.',
+  NOT_PROPOSED: 'This PR no longer proposes a new version.',
+  ALREADY_DECIDED: 'A decision is already recorded for this exact version.',
 }
 
 /** Decision/question request ids. crypto.randomUUID exists only in secure contexts; getRandomValues works everywhere
