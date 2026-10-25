@@ -66,11 +66,24 @@ export default function AmendmentReader({ id }: { id: string }) {
   const [selection, setSelection] = useState('')
   const title = useRef<HTMLHeadingElement>(null)
   const result = useRef<HTMLDivElement>(null)
+  const article = useRef<HTMLElement>(null)
   const navigate = useNavigate()
   const doc = item?.document
   useEffect(() => { setReview(''); setRead(new Set()); setSaved(null); setError('') }, [doc?.document_sha])
   useEffect(() => { title.current?.focus() }, [item?.id])
   useEffect(() => { if (saved || error) result.current?.scrollIntoView({ block: 'nearest' }) }, [saved, error])
+  useEffect(() => {
+    const captureSelection = () => {
+      const selected = window.getSelection()
+      if (selected?.anchorNode && selected.focusNode && article.current?.contains(selected.anchorNode) && article.current.contains(selected.focusNode)) {
+        const wording = selected.toString().trim()
+        if (wording) setSelection(wording.slice(0, 1500))
+      }
+    }
+    // selectionchange also covers a phone's long-press selection, which need not emit mouseup.
+    document.addEventListener('selectionchange', captureSelection)
+    return () => document.removeEventListener('selectionchange', captureSelection)
+  }, [id])
   const onRead = useCallback((key: string) => setRead(previous => new Set([...previous, key])), [])
   const record = async (decision: string) => {
     if (!doc || busy) return
@@ -128,10 +141,7 @@ export default function AmendmentReader({ id }: { id: string }) {
         </div>
         <div className="reader-grid">
           <nav className="panel toc" aria-label="Document sections">{[...new Set(doc.changes.map(c => c.section))].map(section => <a href={`#${doc.changes.find(c => c.section === section)!.id}`} key={section}>● {section}</a>)}</nav>
-          <article className="panel" aria-label="Document wording" onMouseUp={() => {
-            const selected = window.getSelection()?.toString().trim() ?? ''
-            if (selected) setSelection(selected.slice(0, 1500))
-          }}>
+          <article ref={article} className="panel" aria-label="Document wording">
             {!review && <button className="primary" disabled={busy} onClick={begin}>Start reading</button>}
             <p className="muted">Each change is marked read after its complete wording has stayed on screen for three seconds.</p>
             {mode === 'changes' && blocks}
