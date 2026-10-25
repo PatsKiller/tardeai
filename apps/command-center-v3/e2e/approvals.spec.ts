@@ -18,11 +18,11 @@ const changes = ['Every page names its source.', 'Changes need an operator revie
   id: `change_${index}`, section: '28 · Operations', before: '', after, after_offset: text.indexOf(after), kind: 'added',
   plain: index ? 'You review changes before they take effect.' : 'Each page tells you where its facts came from.', reason: 'Synthetic fixture requirement. '.repeat(24),
 }))
-const document = { text, base_text: '# 28 · Operations', source_sha: sourceSha, version: '20.2.0', document_sha: documentSha,
+const fixtureDocument = { text, base_text: '# 28 · Operations', source_sha: sourceSha, version: '20.2.0', document_sha: documentSha,
   source_verified: true, changes, sections: ['28 · Operations'], prechecks: { sensitive_sections: [], removed_blocks: 0, weakens_rules: 'NOT_ASSESSED', policy_tests: { state: 'UNKNOWN' } } }
 const items = [
-  { id: 'policy:42', title: 'Policy review fixture', kind: 'POLICY', proposed_by: 'Fixture author', created_at: '2032-04-12T13:00:00Z', source: 'fixture', document, pr: 42, decision_mode: 'RECORD', governed_href: null },
-  { id: 'activation:7', title: 'Activation review fixture', kind: 'ACTIVATE', proposed_by: 'Fixture author', created_at: null, source: 'fixture', document, decision_mode: 'GOVERNED_PATH', governed_href: '/system/ops-controls' },
+  { id: 'policy:42', title: 'Policy review fixture', kind: 'POLICY', proposed_by: 'Fixture author', created_at: '2032-04-12T13:00:00Z', source: 'fixture', document: fixtureDocument, pr: 42, decision_mode: 'RECORD', governed_href: null },
+  { id: 'activation:7', title: 'Activation review fixture', kind: 'ACTIVATE', proposed_by: 'Fixture author', created_at: null, source: 'fixture', document: fixtureDocument, decision_mode: 'GOVERNED_PATH', governed_href: '/system/ops-controls' },
 ]
 test.use({ hasTouch: true })
 test.setTimeout(90_000)
