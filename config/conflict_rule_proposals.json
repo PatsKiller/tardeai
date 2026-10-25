@@ -1,0 +1,30 @@
+{
+  "schema": "ConflictRuleProposalsConfig@v1",
+  "_why": "Operator 2026-10-25 (verbatim): \"if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page.\" Caps, route and link for scripts/lib/conflicts/proposals.py; docs/ops/CONFLICT_RULE_PROPOSALS.md.",
+  "process_id": "conflict_rule_proposal",
+  "caller": "n8n_model_job",
+  "task_type": "conflict_rule_proposal",
+  "route_profile": "n8n_oauth_first",
+  "caps": {
+    "max_proposals_per_run": 3,
+    "daily_proposal_cap": 10,
+    "max_attempts_per_signature_per_day": 2,
+    "min_seconds_between_calls": 20,
+    "per_call_cost_ceiling_usd": 0.05,
+    "daily_cost_cap_usd": 0.25,
+    "max_prompt_bytes": 48000,
+    "max_output_tokens": 2048,
+    "max_examples_per_pattern": 5,
+    "reject_cooldown_days": 14,
+    "observation_refresh_hours": 24
+  },
+  "notify": {
+    "producer": "conflict_rule_proposals",
+    "domain": "conflicts",
+    "kind": "rule_proposals_pending",
+    "page_url": "https://ms01-openclaw.tail163d14.ts.net/v3/conflicts/rules"
+  },
+  "matrix_rel": "data/coordination/handoffs/conflict-resolution-20261024/EXCEPTIONS_MATRIX.md",
+  "decision_writes_enabled": false,
+  "decision_writes_note": "Operator activation flips this (with the proposed data_source_authority row conflict_rule_proposals). Until then POST .../decision answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED after identity, CSRF and validation."
+}
