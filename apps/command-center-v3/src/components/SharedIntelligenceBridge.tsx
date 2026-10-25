@@ -65,7 +65,12 @@ export default function SharedIntelligenceBridge() {
   const mandatePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0, show)
   const eventPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0, show)
   const dispositionPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(DISPOSITION_KEY)}`, 0, show)
-  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}`, 120_000, show)
+  // Only the exit-list symbols' slice of the shared context (perf 2026-10-25): the full blob is ~9.4 MB (~380 KB
+  // gzipped) and this banner reads `symbols[SYM]` for the exit rows plus the top-level generated_at — the server
+  // cuts value.symbols to the requested keys and returns every other key unchanged.
+  const exitSymbols = useMemo(() => [...new Set(((prefValue(exitPref.data)?.rows ?? []) as ExitEvidenceRow[])
+    .map(row => String(row.symbol || '').toUpperCase()).filter(Boolean))].sort().join(','), [exitPref.data])
+  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}&symbols=${encodeURIComponent(exitSymbols)}`, 120_000, show && !!exitSymbols)
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
 
