@@ -20,8 +20,9 @@
   .ask-thread-content > * + * { margin-top: 12px; }
   .ask-answer-footer { flex: 0 0 auto; }
   .ask-answer-footer button, .ask-follow-up button[type="submit"] { width: 100%; min-height: 44px; }
-  .ask-questions button, .ask-questions input:not([type="checkbox"]), .ask-questions textarea, .ask-questions label, .ask-questions [data-testid="my-questions-list"] a, .ask-answer-sheet button, .ask-readable-sources summary, .ask-readable-sources a { min-height: 44px; min-width: 44px; box-sizing: border-box; }
+  .ask-questions button, .ask-questions input:not([type="checkbox"]), .ask-questions textarea, .ask-questions label, .ask-questions [data-testid="my-questions-list"] a, .ask-questions [data-testid="my-questions-groups"] a, .ask-questions select, .ask-answer-sheet button, .ask-readable-sources summary, .ask-readable-sources a { min-height: 44px; min-width: 44px; box-sizing: border-box; }
   .ask-readable-sources summary { display: flex; align-items: center; }
+  .ask-questions [data-testid="my-questions-groups"] a { align-items: center; }
   .ask-readable-sources a { display: inline-flex; align-items: center; }
   .ask-questions { width: 100%; }
   .ask-questions > section { max-width: 100% !important; box-sizing: border-box; }

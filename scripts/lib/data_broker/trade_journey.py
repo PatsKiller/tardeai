@@ -1025,6 +1025,47 @@ def _successful_receipt(entry: dict, now: datetime) -> tuple[Optional[str], Opti
     return at.isoformat(), None
 
 
+#: The transactions store the protected ingest already writes (data_source_authority.json domain "transactions";
+#: scripts/schwab_transaction_ingest.py replaces its window with fresh rows, import_source='schwab_api', on every
+#: applied run that returned rows). Read-only; the ingest is never invoked or modified.
+LEDGER_STORE = "trade_transactions"
+LEDGER_STORE_SOURCE = "trade_transactions newest schwab_api row write (created_at)"
+#: ``::timestamptz`` makes a timestamp-without-zone column read in the session zone it was written in (a no-op
+#: for timestamptz); the instant is then rendered explicitly in UTC, so no zone is ever assumed in Python.
+LEDGER_STORE_SQL = """SELECT to_char(max(created_at)::timestamptz AT TIME ZONE 'UTC',
+                                     'YYYY-MM-DD"T"HH24:MI:SS"+00:00"') AS written_at,
+                             max(trade_date)::text AS newest_trade_date, count(*) AS rows
+                        FROM trade_transactions WHERE import_source = 'schwab_api'"""
+
+
+def _ledger_store_clock(db: Optional[Callable[..., Any]]) -> dict[str, Any]:
+    """Newest write clock of the Schwab transaction ledger store, or why it is unavailable (never a guess)."""
+    if db is None:
+        return {"written_at": None, "reason": "transaction ledger store unavailable (no database reader)"}
+    gaps: list = []
+    rows = _q(db, LEDGER_STORE_SQL, None, gaps, LEDGER_STORE)
+    if gaps:
+        return {"written_at": None, "reason": f"transaction ledger store unreadable: {gaps[0]['why']}"}
+    row = rows[0] if rows else {}
+    if not row or not row.get("rows"):
+        return {"written_at": None, "reason": "transaction ledger store has no schwab_api rows"}
+    newest = row.get("newest_trade_date")
+    return {"written_at": _iso(_ts(row.get("written_at"))), "newest_trade_date": str(newest) if newest else None,
+            "rows": int(row.get("rows") or 0), "source": LEDGER_STORE_SOURCE}
+
+
+def _ledger_stale_hours() -> Optional[float]:
+    """The registered freshness bound of the transactions domain (config/data_source_authority.json)."""
+    try:
+        doc = json.loads((Path(__file__).resolve().parents[3] / "config/data_source_authority.json").read_text())
+    except (OSError, ValueError):
+        return None
+    for row in [*(doc.get("domains") or []), *(doc.get("proposed_domains") or [])]:
+        if isinstance(row, dict) and (row.get("store") or {}).get("table") == LEDGER_STORE:
+            return _f(row.get("stale_after_hours"))
+    return None
+
+
 def _next_registered_sync(registry: dict, now: datetime) -> dict[str, Any]:
     from lib.cron_schedule import DEFAULT_TZ, fires_between
     candidates = []
@@ -1070,7 +1111,31 @@ def _add_redesign_fields(payload: dict, inputs: dict, now: datetime) -> dict:
                       "missing_reason": reason, "tip": reason or "Recorded source clock; not page/cache generation time"})
     add("last_closing_fill", "Last closing fill", inputs.get("trades_at"),
         None if inputs.get("trades_at") else "no closing fill timestamp in loaded ledger")
-    add("ledger_sync", "Ledger synced", sync_at, sync_reason)
+    if sync_at is None:
+        # No run receipt is written by the protected ingest. Fall back, read-only, to the clock of the store it
+        # does write: the newest schwab_api row write in trade_transactions. Labelled with that source; it is a
+        # ledger write time, not a run receipt (a run that returned no rows does not move it).
+        store = trust.get("ledger_store") or {}
+        at = store.get("written_at")
+        clock = instant(at)
+        if clock is not None and clock <= now:
+            bound = _ledger_stale_hours()
+            stale = bool(bound and market_is_open(now) and (now - clock).total_seconds() > bound * 3600)
+            add("ledger_sync", "Ledger synced", clock.isoformat(), None, warn=stale)
+            chips[-1].update(source=store.get("source") or LEDGER_STORE_SOURCE, source_label="ledger row write",
+                             tip=("Newest Schwab transaction row written to trade_transactions (created_at). "
+                                  "Store write clock, not an ingest run receipt; a run that returned no rows "
+                                  "does not move it."
+                                  + (f" Stale: older than the registered {bound:g} h bound during market hours."
+                                     if stale else "")))
+        else:
+            reason = store.get("reason") or sync_reason
+            if at is not None:
+                reason = "transaction ledger store clock missing or in the future"
+            add("ledger_sync", "Ledger synced", None, reason)
+    else:
+        add("ledger_sync", "Ledger synced", sync_at, sync_reason)
+        chips[-1].update(source="data/runtime/schwab_transaction_ingest_last.json", source_label="run receipt")
     add("holdings_sync", "Holdings synced", held_at,
         None if held_at else "holdings file-write clock unavailable")
     add("stop_monitor", "Stop monitor", stop_at, stop_reason,
@@ -1548,6 +1613,7 @@ def list_trade_journeys(query: Optional[dict[str, Any]] = None) -> dict[str, Any
     now = datetime.now(timezone.utc)
     trust = _redesign_inputs(now)
     db = _db_query()
+    trust["ledger_store"] = _ledger_store_clock(db)
     trades, inputs = gather(db, days=days, symbol=sym, now=now,
                            holdings_document=trust.get("holdings_document"))
     prospects, status = _cio_prospects(sorted({t["symbol"] for t in trades}))
@@ -1576,6 +1642,7 @@ def detail_trade_journey(trade_id: str, query: Optional[dict[str, Any]] = None) 
     now = datetime.now(timezone.utc)
     trust = _redesign_inputs(now)
     db = _db_query()
+    trust["ledger_store"] = _ledger_store_clock(db)
     trades, inputs = gather(db, days=days, symbol=sym or _up(q.get("symbol")) or None, with_bars=False,
                            now=now, holdings_document=trust.get("holdings_document"))
     mine = [t for t in trades if t.get("trade_id") == tid]

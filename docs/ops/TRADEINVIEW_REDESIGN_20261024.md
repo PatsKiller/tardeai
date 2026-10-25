@@ -123,7 +123,7 @@ and navigation labels originate in the projection contract, not a market feed.
 | Re-entry levels/action | J `re_entry` | `data/runtime/reentry_decision_desk_latest.json` row | Existing `reentry_decision_desk` producer |
 | Origin / conviction / stance | J `origin`, `conviction_now`, `stance_now`, `rank_now`, `stage` | CIO prospect; recorded opportunity history/entry/link sources | Existing Journey/CIO projection, with interim label |
 | Last closing fill chip | J `freshness_chips[key=last_closing_fill].at` | max loaded true `exit_time` | Closed-trip writer; explicitly not sync time |
-| Ledger synced chip | J `freshness_chips[key=ledger_sync].at` | runtime ingest receipt `finished_at`/`completed_at` plus success status | `schwab_transaction_ingest_last.json`; missing in captured COPY |
+| Ledger synced chip | J `freshness_chips[key=ledger_sync].at`, `source`, `source_label` | 1st: runtime ingest receipt `finished_at`/`completed_at` + success status (`run receipt`); 2nd (no receipt — none is written today): `trade_transactions` `max(created_at)` where `import_source='schwab_api'` (`ledger row write`) | `schwab_transaction_ingest.py --apply` replaces its window with fresh rows (read-only here; ingest unmodified). Store clock, not a run receipt. "Not measured" only when the store is unreadable/has no schwab_api rows; warning past the registered `stale_after_hours` of the transactions domain during RTH |
 | Holdings synced chip | J `freshness_chips[key=holdings_sync].at` | actual holdings file `st_mtime` bound before/after its read | Holdings canonical writer; never date interpreted as 16:00 |
 | Stop monitor chip | J `freshness_chips[key=stop_monitor].at` | `stop_health_last.json` successful `finished_at` | `stop_health_check`/supervisor receipt; no producer execution |
 | Stop warning tone | same `.tone` | successful receipt age plus existing market-session service | Warning after 30 minutes during RTH only |
@@ -261,3 +261,31 @@ shell integration; required exact-PR checks; operator publication/release; and
 an authorized served readback. The snapshots, receipts and source package do
 not assert deployment, n8n admission, scheduler changes, broker repair or live
 order/fill confirmation. See [the proof packet](packets/tradeinview-redesign-20261024/README.md).
+
+## My questions grouping (Screen 5) — field lineage
+
+Notation: `A` = `GET /api/v2/cio/asks?group_by=…&q=&channel=` (`data.grouped`, built by
+`scripts/lib/cio_ask_groups.py`); `T` = `GET /api/v2/cio/asks/<thread_id>`; store = the ask ledger
+`cio_ask_events.jsonl` (`scripts/lib/cio_ask_store.py`, writer `cio_ask_core.finish_turn` / `record_answer`).
+
+| UI element | API / JSON field | Store / column or key | Writer or calculation |
+| --- | --- | --- | --- |
+| Group by buttons (and which exist) | A `grouped.group_bys[*].id`, `.available`, `.reason` | constant set; Theme availability = thesis catalog has ≥1 thesis with tickers | `cio_ask_groups.load_themes` (`config/thesis.json`); unavailable → button omitted + reason shown |
+| Search / channel | A `grouped.q`, `grouped.channel` | request echo | Server filter over question text + entity symbol/name; channel = `ask.asked.channel` |
+| Security group key / label | A `groups[*].key` (`security:<guid>`), `label`, `symbol`, `security_guid` | `ask.entity_resolved.entity.security_guid`, `.symbol` | Resolution at ask time (registry GUID); private entity → `entity:<entity_guid>`; none → "No security resolved" |
+| Security sub-line | A `groups[*].sub` | C1 `company_facts.company/sector/industry.value` for the GUID | `cio_company_facts` on the CIO InstrumentRecord; missing → omitted, never inferred |
+| Sector group | A `groups[*].label` (group_by=sector) | C1 `company_facts.sector.value` | Missing → "Unclassified" |
+| Theme group | A `groups[*].label` (group_by=theme) | `config/thesis.json` `<thesis>.description` / `.tickers` | Name in no thesis → "No theme" |
+| Date group | A `groups[*].key` (group_by=date) | `ask.asked.asked_at` | ET calendar day (zone-aware instant only; naive → "Date not recorded") |
+| Counts | A `groups[*].counts.questions`, `.threads`, `.names` | questions in group; distinct `thread_id`; distinct entity symbols | Server counts; re-answer turns are not questions |
+| CIO memory — last answer | A `groups[*].memory.last_answer_at` | newest `ask.answer_version.answer.produced_at` in the group | Server max; none → "no answer recorded yet" |
+| CIO memory — stance / conviction | A `groups[*].memory.stance`, `.conviction`, `.stance_as_of`, `.stance_source` | CIO prospect record (`cio_prospect` projection) when its store is live | Not live → `stance_missing_reason` ("CIO prospect store not live (…)"); security groups only |
+| Question row | A `groups[*].questions[*].question`, `channel`, `depth`, `asked_at` | `ask.asked` + newest `ask.answer_version` | Ledger fold (`AskEventStore.threads`) |
+| Manual regroup | POST `/api/v2/cio/asks/<thread_id>/regroup` → `ask.group_override` {ask_id, group_by, group_key|null} | ask ledger event (append-only) | Newest override per (ask_id, group_by) wins; `null` = Ungrouped; history never edited |
+| Related from CIO memory | T `related_from_memory[<ask_id>][*]` (`ask_id`, `question`, `asked_at`, `thread_id`, `missing_reason`) | `ask.answer_version.answer.recall[*].items[*].ref` persisted at answer time | Only refs the answer actually recalled; unresolvable ref → `missing_reason`; no fresh similarity search |
+| Tracking chips / follow-up | T `thread.entities[*].tracking`, POST `/api/v2/cio/ask` | existing ledger events | Unchanged (Phase 8) |
+
+Proof: `tests/test_cio_ask_groups_20261025.py` (synthetic ledger), builder-generated browser fixture
+`apps/command-center-v3/e2e/fixtures/myQuestionsGroups.fixture.json`, phone taps at 412/390 and screenshots of every
+grouping + empty state in `e2e/my-questions-groups.spec.ts` (wired into `ask-cio-readable-fixture`). No real-tree
+receipt for `group_by` was taken: the host ask ledger is production state and this branch reads only fixtures.

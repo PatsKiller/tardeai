@@ -146,8 +146,11 @@ CC  POST /api/v2/cio/ask ─┐                                  ┌─ Telegram
 - **Asks ledger.** File `data/cio/cio_ask_events.jsonl` (`CioAskEvent@v1`).
   - Append-only, fcntl-locked, fsync'd. Idempotent through a deterministic `event_id`.
   - Event kinds: `ask.asked`, `ask.entity_resolved`, `ask.answer_version`, `ask.tracking_changed`,
-    `ask.reanswer_triggered`, `ask.reanswer_skipped`, `ask.channel_link`, `ask.cost`.
-  - "My questions" reads its thread projection (`AskEventStore.threads()`).
+    `ask.reanswer_triggered`, `ask.reanswer_skipped`, `ask.channel_link`, `ask.cost`, `ask.group_override`
+    (operator manual regroup on "My questions"; newest per ask + grouping wins, history never edited).
+  - "My questions" reads its thread projection (`AskEventStore.threads()`); grouping
+    (`?group_by=security|sector|theme|date|none`) is `scripts/lib/cio_ask_groups.py` — lineage in
+    `docs/ops/TRADEINVIEW_REDESIGN_20261024.md` "My questions grouping".
   - It is a **projection, not a silo**: every security-level event also lands in CIO memory.
   - Data-dictionary row `cio_asks` is **PROPOSED** (`config/data_source_authority.json` `proposed_domains`) and awaits
     the operator's grant (§7A, §26.6). The default host store refuses all appends before that granted-domain
