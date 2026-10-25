@@ -15,7 +15,9 @@ ET = ZoneInfo("America/New_York")
 _RTH_CURRENT_MAX = 90          # 15m quote cadence + slack
 _PREMARKET_CURRENT_MAX = 120
 _AFTERHOURS_CURRENT_MAX = 240  # through evening session
-_WEEKEND_HOLD_MAX = 60 * 48    # Fri print held over weekend
+# While the market is closed, a regular-session print this close to the bell is the closing
+# price for display (15 min quote cadence + slack); anything earlier predates the close.
+_CLOSE_PRINT_GRACE_MIN = 30
 
 
 def _as_aware(dt: datetime | str | None) -> datetime | None:
@@ -58,10 +60,16 @@ def derive_freshness(
     *,
     now: datetime | None = None,
     future_slop_minutes: int = 5,
+    hold_last_close: bool = False,
 ) -> tuple[str, str | None]:
     """Return (freshness_state, market_session).
 
     A timestamp alone does not prove CURRENT — age + session matter.
+
+    ``hold_last_close=True`` (the Watch quote cells, via compose_quote_artifact): while the market
+    is closed, a print from the last session's close is the latest price that can exist and reads
+    AFTER_HOURS_CURRENT, not STALE (scripts/lib/session_freshness.py). Callers that apply their own
+    closed-market hold (decision_integrity's LAST_SESSION_HELD) keep the default.
     """
     dt = _as_aware(observed_at)
     if not dt:
@@ -75,26 +83,33 @@ def derive_freshness(
 
     session = market_session_for(dt)
     age_min = max(0.0, (ref - dt).total_seconds() / 60.0)
+    state = _wall_clock_state(session, age_min)
+    if hold_last_close and state == "STALE" and _latest_possible_print(dt, ref):
+        # Market closed now and this print is from the last session's close (within the RTH
+        # cadence grace, _CLOSE_PRINT_GRACE_MIN): it is the latest price that can exist, not a stale one. A print that
+        # predates that close (e.g. Friday 09:15 on a Sunday) stays STALE.
+        return "AFTER_HOURS_CURRENT", session or "closed"
+    return state, session
+
+
+def _latest_possible_print(dt: datetime, ref: datetime) -> bool:
+    from .session_freshness import evaluate
+    verdict = evaluate(dt, ref, max_age_h=_RTH_CURRENT_MAX / 60.0, grace_minutes=_CLOSE_PRINT_GRACE_MIN)
+    return verdict["state"] == "latest_close"
+
+
+def _wall_clock_state(session: str | None, age_min: float) -> str:
+    """The per-session wall-clock rule (unchanged): CURRENT / *_CURRENT / STALE."""
 
     if session == "regular":
-        if age_min <= _RTH_CURRENT_MAX:
-            return "CURRENT", session
-        return "STALE", session
+        return "CURRENT" if age_min <= _RTH_CURRENT_MAX else "STALE"
     if session == "premarket":
-        if age_min <= _PREMARKET_CURRENT_MAX:
-            return "PREMARKET_CURRENT", session
-        return "STALE", session
+        return "PREMARKET_CURRENT" if age_min <= _PREMARKET_CURRENT_MAX else "STALE"
     if session == "afterhours":
-        if age_min <= _AFTERHOURS_CURRENT_MAX:
-            return "AFTER_HOURS_CURRENT", session
-        return "STALE", session
-    # closed / weekend: Friday RTH or AH print held
-    if age_min <= _WEEKEND_HOLD_MAX:
-        # Label by observation session if afterhours/regular
-        if market_session_for(dt) in ("regular", "afterhours"):
-            return "AFTER_HOURS_CURRENT", session or "closed"
-        return "STALE", session or "closed"
-    return "STALE", session or "closed"
+        return "AFTER_HOURS_CURRENT" if age_min <= _AFTERHOURS_CURRENT_MAX else "STALE"
+    # A print observed while closed (weekend / overnight) is not a session print; the
+    # market-session check in derive_freshness decides whether it is the latest possible.
+    return "STALE"
 
 
 def _unavailable(
@@ -168,7 +183,7 @@ def compose_quote_artifact(
         last = float(mq_price)
         # Same-record: change_pct from market_quotes only when mq wins.
         chg = float(mq_day_change_pct) if mq_day_change_pct is not None else None
-        fresh, session = derive_freshness(asof, now=now)
+        fresh, session = derive_freshness(asof, now=now, hold_last_close=True)
         if fresh == "DATA_UNAVAILABLE":
             return empty
         return {
@@ -198,7 +213,7 @@ def compose_quote_artifact(
         asof = wi_ts
         last = float(wi_price)
         chg = float(wi_change_pct) if wi_change_pct is not None else None
-        fresh, session = derive_freshness(asof, now=now)
+        fresh, session = derive_freshness(asof, now=now, hold_last_close=True)
         if fresh == "DATA_UNAVAILABLE":
             return empty
         return {
