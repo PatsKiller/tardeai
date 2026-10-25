@@ -20,7 +20,7 @@
   },
   "notify": {
     "producer": "conflict_rule_proposals",
-    "domain": "conflicts",
+    "domain": "data",
     "kind": "rule_proposals_pending",
     "page_url": "https://ms01-openclaw.tail163d14.ts.net/v3/conflicts/rules"
   },

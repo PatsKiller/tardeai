@@ -374,7 +374,7 @@ def test_one_grouped_notification_for_new_pending_proposals(tmp_path):
     sent = []
     result = P.notify_pending(tmp_path, now=NOW, run_id="r1", queue=lambda **kw: sent.append(kw) or {"intent_id": "i1"})
     assert result["queued"] and len(sent) == 1 and len(result["proposal_ids"]) == 2
-    assert sent[0]["kind"] == "rule_proposals_pending" and sent[0]["producer"] == "conflict_rule_proposals"
+    assert sent[0]["domain"] == "data" and sent[0]["kind"] == "rule_proposals_pending" and sent[0]["producer"] == "conflict_rule_proposals"
     assert "2 proposed conflict rules awaiting your approval" in sent[0]["summary"]
     assert P.load_config()["notify"]["page_url"] in sent[0]["summary"]
     assert P.notify_pending(tmp_path, now=NOW, run_id="r2", queue=lambda **kw: sent.append(kw))["reason"] == "nothing_new"
@@ -427,3 +427,9 @@ def test_list_shape_for_the_page(tmp_path):
 def test_api_v2_routes_proposals_before_the_conflict_key_catch_all():
     text = (ROOT / "scripts/api_v2.py").read_text()
     assert text.index('"/api/v3/conflicts/proposals"') < text.index('base_path.rstrip("/") == "/api/v3/conflicts" or')
+
+
+def test_notify_route_fits_the_closed_host_intent_taxonomy():
+    from scripts.lib.n8n_fabric_store import DOMAINS, KIND_RE, PRODUCER_RE
+    notify = P.load_config()["notify"]
+    assert notify["domain"] in DOMAINS and KIND_RE.fullmatch(notify["kind"]) and PRODUCER_RE.fullmatch(notify["producer"])

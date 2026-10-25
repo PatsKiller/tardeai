@@ -175,7 +175,7 @@ null, with `last_failure.reason` when present. Mobile: list → full-screen shee
 ## 6. Notification
 
 One grouped intent per pass for pending proposals not yet announced (`notified` events), through
-`scripts/lib/host_comms_intents.queue_intent` (producer `conflict_rule_proposals`, domain `conflicts`, kind
+`scripts/lib/host_comms_intents.queue_intent` (producer `conflict_rule_proposals`, domain `data` (closed alert taxonomy), kind
 `rule_proposals_pending`, DIGEST → P2 needs-action). Never one per row, never a send from the lane. Until the route row
 exists the attempt is recorded `notify_failed intent_unrouted` and retried next pass.
 
@@ -191,7 +191,7 @@ API answers 503; the resolver applies no amendment and reports `amendments_gap`)
 ## 8. Not in this PR (separate `[shared-infra]` PR)
 
 `config/lane_registry.json` + `config/n8n_run_allowlist.json` lane `conflict-rule-proposals`,
-`config/host_comms_intent_routes.json` route (`conflicts`, `rule_proposals_pending`), and the governed process
+`config/host_comms_intent_routes.json` route (`data`, `rule_proposals_pending`), and the governed process
 registration (`config/llm_process_registry.json`, `config/llm_routing_policy.json`,
 `scripts/lib/governed_process_routes.py` `CALLER_TASK_PROCESS_MAP["n8n_model_job"]["conflict_rule_proposal"]`). The first
 three files are sha-pinned by `docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json`
