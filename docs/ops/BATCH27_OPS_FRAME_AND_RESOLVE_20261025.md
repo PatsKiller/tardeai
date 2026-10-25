@@ -1,5 +1,7 @@
 # Batch 27: ops pages on the desk frame, Jobs tab everywhere, Watch Resolve end to end
 
+Status: SOURCE — fixture-proven; runtime acceptance, lane admission and live flips are separate operator steps.
+
 Date: 2026-10-25. Branch: `release/batch-27-ops-conflicts-20261025`. Boards: 0 (frame), 16 (Jobs & health),
 19–21 (Approvals, Amendment, Rulebook); `watch-resolve-conflict-fix.md`; W4 ops-pages directive. AGENTS.md 28.9–28.11.
 
