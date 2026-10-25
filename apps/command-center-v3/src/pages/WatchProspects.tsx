@@ -18,7 +18,7 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
-import { rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
+import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
@@ -81,7 +81,7 @@ function LegacyConflictFlags({ r }: { r: ProspectRow }) {
   const flags = legacyConflicts(r)
   if (!flags.length) return null
   const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
-  return <div data-testid="watch-legacy-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+  return <div data-testid="watch-detail-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
     <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>
     {flags.map((c, i) => <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
       <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
@@ -156,6 +156,11 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
     ? `Formerly held${lr.last_sell_at ? ` · sold ${String(lr.last_sell_at).slice(5, 10).replace('-', '/')}` : ''} ·` : ''
   const accounts = names.length ? names : ownership ? ['Unlabelled account'] : []
   const section = conflictSection(r)
+  // §28.11 transition: while the engine section is a gap, the card keeps the existing blocking reason
+  // (Trade AI gate or Watch flag) and rail; engine findings replace them once W10 supplies a section.
+  const transitional = !section.headline && !!section.gap
+  const reasons = transitional ? blockingReasons(lr) : []
+  const warning = toneVars('warning')
   const stanceToneName = ['ADD', 'RE_ENTER', 'RE-ENTER'].includes(String(r.stance || '').toUpperCase()) ? 'info' : toneFromVerdict(r.stance)
   const stance = toneVars(stanceToneName)
   const score = r.conviction != null && Number.isFinite(r.conviction) ? r.conviction : null
@@ -167,11 +172,16 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
   const ownershipNode = ownership ? <>{ownership} <span data-testid="watch-row-account-names" role="group" aria-label={lr.position_state === 'held' ? 'Held accounts' : 'Last sell account'}>
     {accounts.map((name, i) => <AccountChip key={`${accountKeys[i]}-${i}`} account={accountKeys[i]} label={name} compact />)}</span></> : null
   const phoneOwnership = ownership ? <span className="watch-mobile-facts" data-testid="watch-phone-ownership"><span><b>{lr.position_state === 'held' ? 'Held in' : 'Sold in'}</b> {accounts.join(', ')}</span></span> : null
-  return <WatchRecordCard symbol={r.symbol} selected={selected} lane={r.lane} rail={section.headline ? 'attention' : 'neutral'}
+  return <WatchRecordCard symbol={r.symbol} selected={selected} lane={r.lane} rail={section.headline ? 'attention' : transitional ? cardRail(lr) : 'neutral'}
     company={<WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="company" ticker={ticker} ownership={ownershipNode} />}
     setup={<>
       <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
+      {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
+        border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+        <span>Not actionable: {reasons[0]}</span>
+      </div>}
       <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
