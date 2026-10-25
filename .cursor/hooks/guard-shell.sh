@@ -81,6 +81,37 @@ if ledger_is_corrupt; then
   emit deny "BLOCKED — APPROVAL_LEDGER_CORRUPT ($(ledger_state)). Guarded command refused." \
             "The approval ledger is corrupt. The operator must recover it; do not treat this as authorized."
 fi
+# AGENTS.md 21.0.0 §28.15 item 8 (a): a fast-forward push of an approved plan's feature branch, within the push
+# budget, needs no git-push grant. guard_push_free.py proves every condition (fail closed); every other part of the
+# command must classify unguarded on its own. Anything refused falls through to the grant path below, unchanged.
+GRANT_FREE_REASON=""
+if [[ "$tier" == "git-push" ]]; then
+  STAGE=grantfree
+  hook_cwd=$(printf '%s' "$input" | jq -r '.cwd // (.workspace_roots // [])[0] // empty' 2>/dev/null)
+  if grant_free_push_check "$cmd" "$hook_cwd"; then
+    _gf_ok=1
+    while IFS= read -r _seg; do
+      [[ -z "$_seg" ]] && continue
+      _st=$(classify_cmd "$_seg")
+      if [[ "$_st" != "none" ]]; then
+        _gf_ok=0; GRANT_FREE_REASON="another part of the command is guarded ($_st): $_seg"; break
+      fi
+    done < <(printf '%s' "$GRANT_FREE_JSON" | jq -r '.other_segments[]?' 2>/dev/null)
+    if [[ "$_gf_ok" -eq 1 ]]; then
+      grant_free_push_record "$cmd"
+      _b=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.branch')
+      _h=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.head[0:12]')
+      _r=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.approval_ref')
+      _hint=""
+      [[ "$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.env_authorized')" == "true" ]] || \
+        _hint=" The pre-push hook still needs TRADEAI_REMOTE_PUSH_AUTHORIZED=1 on the push (or use bin/agent-push)."
+      emit allow "GRANT-FREE PUSH [git-push] $_b @ $_h under approved plan: $_r (AGENTS.md §28.15 item 8)" \
+        "Fast-forward push of your approved feature branch, recorded in the guard log. Never force, never main/release/train.$_hint"
+    fi
+  fi
+  STAGE=grant
+fi
+
 grant_consume "$tier"
 _gc=$?
 if [[ "$_gc" -eq 2 ]]; then
@@ -108,4 +139,4 @@ WHAT THIS SCOPE COVERS:
 TO ALLOW IT, in a terminal on ms01:
   bin/guard grant $tier --for 30m --uses 10 --reason \"...\"
 then ask the agent to retry. Auto-expires; revoke: bin/guard revoke $tier" \
-"Blocked for want of a grant in scope '$tier'. Tell the operator exactly what you intend to change, why, and how to reverse it, then wait. Do not rephrase the command to fall into a different scope."
+"Blocked for want of a grant in scope '$tier'.${GRANT_FREE_REASON:+ Grant-free push (AGENTS.md §28.15 item 8) refused: $GRANT_FREE_REASON.} Tell the operator exactly what you intend to change, why, and how to reverse it, then wait. Do not rephrase the command to fall into a different scope."

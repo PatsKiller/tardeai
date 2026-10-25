@@ -15,7 +15,7 @@ tier_scope() {
     git-push)      echo "git push, force-push, reset --hard, rebase, filter-branch — operations touching the remote or rewriting history." ;;
     maintree)      echo "ALLOW_MAINTREE_GIT bypass: git operations in the PRIMARY tree, which is LIVE (api_v2.py + reports_portal.py hot-reload) and shared with Claude/Codex sessions." ;;
     service)       echo "systemctl/service start, stop, restart, reload on tradeai-continuous, tradeai-portfolio-server, Hermes, or OpenClaw." ;;
-    deps)          echo "pip/npm/apt install, remove, upgrade — changes the runtime environment." ;;
+    deps)          echo "pip/npm/apt install, remove, upgrade, npm ci, lockfile edits — changes the runtime environment. Running npm run / npx playwright test / pytest / ruff / tsc / builds is never deps (AGENTS.md §28.15 item 8)." ;;
     sudo)          echo "Any command run as root." ;;
     state-write)   echo "Writes to data/portfolios/state/ — live holdings, risk_management, personal_situation." ;;
     execution-ops) echo "Per-incident operation of a broker-execution user unit (tradeai-active-trader-*), naming the unit in the reason: status/journal, code-root drop-in to portfolio-server/CURRENT, daemon-reload, restart; markets CLOSED, preflight, rollback by restoring the archived drop-in; max 6h. Never code, credentials, live/paper flags, orders or stops (AGENTS.md 5.0.0 §24.10)." ;;
@@ -54,7 +54,8 @@ classify_cmd() {
   [[ "$cmd" =~ scripts/ops/broker_read_sync(_child)?\.(sh|py) ]] && \
     ! [[ "$cmd" =~ broker_read_sync\.(sh|py)[[:space:]]+--plan([[:space:]]*$) ]] && { echo broker-read; return; }
   [[ "$cmd" =~ (^|[[:space:];&|])crontab([[:space:]]|$) ]] && { echo cron; return; }
-  [[ "$cmd" =~ git[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
+  # git global options (-C dir, -c k=v, --git-dir=.., --no-pager) may sit between "git" and the verb.
+  [[ "$cmd" =~ git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
   [[ "$cmd" =~ (psql|psycopg2|sqlalchemy|pg_restore) ]] && [[ "$U" =~ (INSERT|UPDATE|DELETE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE) ]] && { echo db-write; return; }
   [[ "$cmd" =~ (openclaw|clawhub) ]] && { echo openclaw; return; }
   [[ "$cmd" =~ api\.telegram\.org ]] && { echo telegram; return; }
@@ -83,7 +84,14 @@ classify_cmd() {
     [[ "$cmd" =~ [[:space:]](start|stop|restart|reload|kill|mask|unmask|enable|disable|daemon-reload)([[:space:]]|$) ]] && \
     { echo service; return; }
   [[ "$cmd" =~ (^|[[:space:];&|])service[[:space:]]+[^[:space:]]+[[:space:]]+(start|stop|restart|reload) ]] && { echo service; return; }
+  # deps = changing what is installed (AGENTS.md 21.0.0 §28.15 item 8 (b)): pip/npm/apt install, uninstall, upgrade,
+  # npm ci / i / add / update / audit fix, playwright browser installs, lockfile writes. Running an existing toolchain
+  # (npm run, npm test, npx playwright test, pytest, ruff, tsc, vite build, node) is never deps.
   [[ "$cmd" =~ (pip|pip3|npm|apt|apt-get)[[:space:]]+(install|uninstall|remove|upgrade) ]] && { echo deps; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])(npm|pnpm|yarn)([[:space:]]+(--prefix|-C|--workspace|-w|--dir|--cwd)[[:space:]]+[^[:space:]]+|[[:space:]]+--?[^[:space:]]+)*[[:space:]]+(i|ci|install|in|ins|inst|add|isntall|uninstall|un|unlink|rm|r|remove|update|up|upgrade|dedupe|prune|link|audit[[:space:]]+fix)([[:space:]]|$|[;&|]) ]] && { echo deps; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])(uv|poetry|pipx)[[:space:]]+(add|remove|sync|lock|install|uninstall|upgrade|update) ]] && { echo deps; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])playwright[[:space:]]+install([[:space:]]|$|-deps) ]] && { echo deps; return; }
+  [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|truncate|sed[[:space:]]+-i)[^|]*(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|uv\.lock|Pipfile\.lock) ]] && { echo deps; return; }
   [[ "$cmd" =~ (trade-ai-releases|trade-ai-deployments) ]] && [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i) ]] && { echo release-write; return; }
   [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i).*data/portfolios/state ]] && { echo state-write; return; }
   [[ "$cmd" =~ rm[[:space:]]+-[a-zA-Z]*[rf] ]] && { echo destructive; return; }
@@ -105,6 +113,7 @@ classify_path() {
     */.openclaw/*) echo openclaw; return ;;
     */.config/systemd/user/tradeai-active-trader-*) [[ "$tool" == "Delete" ]] && { echo file-delete; return; }; echo execution-ops; return ;;
     */.cursor/hooks/*|*/.cursor/*.json) echo guard-config; return ;;
+    */package-lock.json|*/npm-shrinkwrap.json|*/yarn.lock|*/pnpm-lock.yaml|*/poetry.lock|*/uv.lock|*/Pipfile.lock) echo deps; return ;;
   esac
   [[ "$tool" == "Delete" ]] && { echo file-delete; return; }
   echo none
@@ -166,4 +175,33 @@ grant_expires() {
 audit_line() {
   # Serialized append via the canonical writer. $1 is a JSON object string.
   _ledger audit --payload "$1" >/dev/null 2>&1 || true
+}
+
+# AGENTS.md 21.0.0 §28.15 item 8 (a). rc 0 = the push is grant-free (GRANT_FREE_JSON holds the proof, including the
+# non-push segments the caller must classify); rc 1 = refused (GRANT_FREE_REASON says why). Fail closed: a missing
+# python3, a timeout or unparseable output is a refusal. The checker never consumes a grant or writes the ledger.
+_PUSH_FREE_PY="$_GUARD_HOOKS/guard_push_free.py"
+grant_free_push_check() {
+  local out rc=0
+  GRANT_FREE_JSON='{}'; GRANT_FREE_REASON=""
+  [[ -f "$_PUSH_FREE_PY" ]] || { GRANT_FREE_REASON="guard_push_free.py is not installed beside the hook"; return 1; }
+  local _cwd=()
+  [[ -n "${2:-}" ]] && _cwd=(--cwd "$2")
+  out=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-7}" python3 -I "$_PUSH_FREE_PY" check --command "$1" "${_cwd[@]}" 2>/dev/null) || rc=$?
+  out=$(printf '%s\n' "$out" | awk 'BEGIN{s="{}"} /^[[:space:]]*\{/{s=$0} END{print s}')
+  GRANT_FREE_JSON="$out"
+  if [[ "$rc" -eq 0 ]] && [[ "$(printf '%s' "$out" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
+    return 0
+  fi
+  GRANT_FREE_REASON=$(printf '%s' "$out" | jq -r '.reason // empty' 2>/dev/null)
+  [[ -n "$GRANT_FREE_REASON" ]] || GRANT_FREE_REASON="checker failed (rc=$rc)"
+  return 1
+}
+
+# One guard-log line per grant-free push: branch, head, approval ref, plan source. $1 = the command.
+grant_free_push_record() {
+  audit_line "$(printf '%s' "$GRANT_FREE_JSON" | jq -c --arg ts "$(date -Is)" --arg c "$1" \
+    '{ts:$ts, event:"grant-free-push", tier:"git-push", command:$c, branch:.branch, head:.head,
+      remote_head:.remote_head, ff:.ff, approval_ref:.approval_ref, plan:.plan, budget:.budget,
+      policy:.policy, repo:.repo, rule:"AGENTS.md 21.0.0 §28.15 item 8 (a)"}')"
 }

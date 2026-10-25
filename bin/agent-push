@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Push when the operator has granted git-push in the Cursor approval ledger.
+# Push when the operator has granted git-push in the Cursor approval ledger, or -- AGENTS.md 21.0.0 §28.15 item 8 --
+# when the push is a fast-forward of an approved plan's feature branch within the push budget (no grant needed).
 #
 #   bin/guard grant git-push --for 30m --uses 10 --reason "overnight run"
 #   bin/agent-push -u origin HEAD
@@ -13,7 +14,19 @@ ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")
 source "$ROOT/.cursor/hooks/guard-lib.sh"
 
 if ! grant_active git-push; then
+  # AGENTS.md 21.0.0 §28.15 item 8 (a): an approved plan's feature branch, fast-forward, within the budget, needs no
+  # grant. The same checker as the Cursor shell guard; the push is recorded in the guard log.
+  GRANT_FREE_JSON='{}'
+  _out=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-7}" python3 -I "$ROOT/.cursor/hooks/guard_push_free.py" check-args --cwd "$PWD" -- "$@" 2>/dev/null) || true
+  GRANT_FREE_JSON=$(printf '%s\n' "$_out" | awk 'BEGIN{s="{}"} /^[[:space:]]*\{/{s=$0} END{print s}')
+  if [[ "$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
+    grant_free_push_record "bin/agent-push $*"
+    echo "Grant-free push (AGENTS.md §28.15 item 8): $(printf '%s' "$GRANT_FREE_JSON" | jq -r '"\(.branch) @ \(.head[0:12]) under \(.approval_ref)"')" >&2
+    export TRADEAI_REMOTE_PUSH_AUTHORIZED=1
+    exec git push "$@"
+  fi
   echo "No active git-push grant." >&2
+  echo "Grant-free push refused: $(printf '%s' "$GRANT_FREE_JSON" | jq -r '.reason // "checker failed"' 2>/dev/null)" >&2
   echo "Operator: bin/guard grant git-push --for 30m --uses 10 --reason \"...\"" >&2
   echo "Then ask the agent to retry git push." >&2
   exit 1

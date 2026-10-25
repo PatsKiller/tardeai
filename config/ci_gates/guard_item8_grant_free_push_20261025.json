@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "guard_item8_grant_free_push_20261025",
+  "files": [
+    "tests/test_guard_item8_grant_free_push_20261025.py"
+  ],
+  "comment": [
+    "AGENTS.md 21.0.0 §28.15 item 8 (ratified 2026-10-25, PR #2128). (a) The Cursor shell guard and bin/agent-push let",
+    "a git push run without a git-push grant only when remote main's AGENTS.md is 21.0.0+ ACTIVE, the push is one",
+    "fast-forward ref to a feature branch on origin (never main/master/release/train, never force/delete/mirror),",
+    "a live claim with an Operator-approval line or a coordinator handoff file covers the branch, and the push budget",
+    "has room; each is logged as grant-free-push. (b) npm run / npx playwright test / pytest / ruff / tsc / vite build",
+    "/ node are never deps; installs, npm ci and lockfile edits are."
+  ]
+}
