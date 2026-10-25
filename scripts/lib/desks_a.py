@@ -14,12 +14,8 @@ their stores directly instead of calling them. Field trace:
 """
 from __future__ import annotations
 
-import heapq
 import json
 import math
-import os
-import threading
-from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -814,47 +810,48 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | N
 # (path, mtime_ns, size), bounded, so an unchanged run file is never re-read.
 _LISTING_MAX_DIRS = 64
 _TAIL_CACHE_MAX = 4096
-_LISTING: dict[str, tuple[int, int, int, dict[str, float]]] = {}
-_TAILS: "OrderedDict[tuple[str, int, int], tuple[list[dict], str | None]]" = OrderedDict()
-_CACHE_LOCK = threading.Lock()
+# Plain dicts (this module keeps its stdlib-only import set, see tests/test_desks_a_20261025.py): each read or
+# write is one dict operation, so concurrent requests at worst redo a listing; insertion order gives LRU eviction.
+_LISTING: dict[str, tuple[int, int, int, dict[str, float], list[tuple[float, str]]]] = {}
+_TAILS: dict[tuple[str, int, int], tuple[list[dict], str | None]] = {}
 
 
-def _agent_dir_listing(agent_dir: Path) -> tuple[int, int, dict[str, float]] | None:
-    """(entries in the directory, .jsonl names, {jsonl name: mtime}) — refreshed only when the directory mtime
-    changes."""
+def _agent_dir_listing(agent_dir: Path) -> tuple[int, int, dict[str, float], list[tuple[float, str]]] | None:
+    """(entries in the directory, .jsonl names, {jsonl name: mtime}, newest MAX_ROWS*3 (mtime, name)) — refreshed
+    only when the directory mtime changes."""
     try:
         dir_sig = agent_dir.stat().st_mtime_ns
     except OSError:
         return None
     key = str(agent_dir)
-    with _CACHE_LOCK:
-        hit = _LISTING.get(key)
+    hit = _LISTING.get(key)
     if hit is not None and hit[0] == dir_sig:
-        return hit[1], hit[2], hit[3]
+        return hit[1], hit[2], hit[3], hit[4]
     try:
-        names = os.listdir(agent_dir)
+        entries = list(agent_dir.iterdir())
     except OSError:
         return None
     old = hit[3] if hit is not None else {}
     mtimes: dict[str, float] = {}
     n_jsonl = 0
-    for name in names:
-        if Path(name).suffix != ".jsonl":
+    for f in entries:
+        if f.suffix != ".jsonl":
             continue
         n_jsonl += 1
+        name = f.name
         if name in old:
             mtimes[name] = old[name]
             continue
         try:
-            st = os.stat(os.path.join(key, name))
+            mtimes[name] = f.stat().st_mtime
         except OSError:
             continue
-        mtimes[name] = st.st_mtime
-    with _CACHE_LOCK:
-        _LISTING[key] = (dir_sig, len(names), n_jsonl, mtimes)
-        while len(_LISTING) > _LISTING_MAX_DIRS:
-            _LISTING.pop(next(iter(_LISTING)))
-    return len(names), n_jsonl, mtimes
+    top = sorted(((mt, name) for name, mt in mtimes.items()), reverse=True)[: MAX_ROWS * 3]
+    _LISTING.pop(key, None)
+    _LISTING[key] = (dir_sig, len(entries), n_jsonl, mtimes, top)
+    while len(_LISTING) > _LISTING_MAX_DIRS:
+        _LISTING.pop(next(iter(_LISTING)), None)
+    return len(entries), n_jsonl, mtimes, top
 
 
 def _cached_journal_listing(root: Path, now: datetime | None):
@@ -875,7 +872,7 @@ def _cached_journal_listing(root: Path, now: datetime | None):
         got = _agent_dir_listing(agent_dir)
         if got is None:
             return None
-        n_entries, n_jsonl, mtimes = got
+        n_entries, n_jsonl, mtimes, top = got
         scanned += n_entries
         if scanned > JOURNAL_SCAN_LIMIT:
             return None
@@ -884,9 +881,9 @@ def _cached_journal_listing(root: Path, now: datetime | None):
         for name, mt in mtimes.items():
             if mt >= cutoff:
                 keep.append((mt, d, name))
-        newest.extend(heapq.nlargest(MAX_ROWS * 3, ((mt, d, name) for name, mt in mtimes.items())))
+        newest.extend((mt, d, name) for mt, name in top)
     chosen = {(d, n): mt for mt, d, n in keep}
-    for mt, d, n in heapq.nlargest(MAX_ROWS * 3, newest):
+    for mt, d, n in sorted(newest, reverse=True)[: MAX_ROWS * 3]:
         chosen[(d, n)] = mt
     entries = [(mt, Path(d) / n) for (d, n), mt in chosen.items()]
     return entries, by_agent, scanned
@@ -895,21 +892,17 @@ def _cached_journal_listing(root: Path, now: datetime | None):
 def _tail_records_cached(path: Path, limit: int = 64 * 1024) -> tuple[list[dict], str | None]:
     """``_tail_records`` cached per (path, mtime_ns, size). Callers treat the rows as read-only."""
     try:
-        st = os.stat(path)
+        st = Path(path).stat()
     except OSError:
         return _tail_records(path, limit)
     key = (str(path), st.st_mtime_ns, st.st_size)
-    with _CACHE_LOCK:
-        hit = _TAILS.get(key)
-        if hit is not None:
-            _TAILS.move_to_end(key)
-            return hit
-    out = _tail_records(path, limit)
-    with _CACHE_LOCK:
-        _TAILS[key] = out
-        while len(_TAILS) > _TAIL_CACHE_MAX:
-            _TAILS.popitem(last=False)
-    return out
+    hit = _TAILS.pop(key, None)
+    if hit is None:
+        hit = _tail_records(path, limit)
+    _TAILS[key] = hit  # (re)inserted last = most recently used
+    while len(_TAILS) > _TAIL_CACHE_MAX:
+        _TAILS.pop(next(iter(_TAILS)), None)
+    return hit
 
 
 def _scan_journal_listing(root: Path):

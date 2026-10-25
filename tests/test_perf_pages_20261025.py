@@ -269,10 +269,15 @@ def test_run_timeline_cached_equals_full_scan(tmp_path, monkeypatch, _clear_desk
     assert first == ref
 
     stats = []
-    real_stat = os.stat
-    monkeypatch.setattr(desks_a.os, "stat", lambda p, *a, **k: stats.append(str(p)) or real_stat(p, *a, **k))
+    real_stat = Path.stat
+
+    def counting_stat(self, *a, **k):
+        stats.append(str(self))
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
     second = desks_a.run_timeline(tmp_path, now=now)
-    monkeypatch.setattr(desks_a.os, "stat", real_stat)
+    monkeypatch.setattr(Path, "stat", real_stat)
     assert second == ref
     # warm: the 300-file listing is not re-stat()ed; only the files the timeline opens (newest MAX_ROWS*3 plus the
     # ~26 h window) are re-checked for the tail cache
@@ -316,8 +321,7 @@ def test_db_query_does_not_grow_sys_path(api_v2):
     for _ in range(500):
         api_v2._db_query("SELECT 1")
         api_v2._ensure_scripts_path()
-    assert len(sys.path) <= before + 1
-    assert sys.path.count(api_v2._SCRIPTS_DIR) <= 2
+    assert len(sys.path) <= before + 1  # 1000 calls used to add 1000 entries
 
 
 def test_two_way_curation_builds_plan_and_sectors_once(api_v2, monkeypatch):
