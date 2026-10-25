@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 /**
  * Primary Watch Intelligence workspace.
  * Consumes ONLY the Data Broker projection — no page-side record selection.
@@ -6,6 +7,7 @@
 import { SymbolLink, useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
@@ -268,8 +270,11 @@ export default function WatchIntelligenceUnified() {
   const brokerMeta = body?.data_broker || catalogBody?.watch_intelligence || {}
   const quality = body?.data_quality || { status: body?.data_quality_status }
 
-  const [selected, setSelected] = useState<string | null>(null)
-  const sel = cards.find(c => c.symbol === selected) || cards[0]
+  const phone = useMobilePageDetail()
+  const [desktopSelected, setDesktopSelected] = useState<string | null>(null)
+  const selected = phone.mobile ? phone.id : desktopSelected
+  const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setDesktopSelected(symbol) }
+  const sel = cards.find(c => c.symbol === selected) || (phone.mobile ? undefined : cards[0])
   // WAIT cards say "SET CONDITION ALERT"; this wires that instruction to the same POST /api/v2/watch/alerts flow the
   // Re-Entry pages use (2026-10-22 audit: the instruction had no button).
   const [alertFor, setAlertFor] = useState<Card | null>(null)
@@ -324,8 +329,41 @@ export default function WatchIntelligenceUnified() {
   }
   const decisionInitial = Object.fromEntries(decisionQs)
 
+  const inspector = sel ? (
+              <>
+                <div style={{ padding: 14, borderBottom: `1px solid ${BB.border}` }}>
+                  <div tabIndex={-1} data-detail-focus style={{ fontSize: TYPE.xl, fontWeight: 950 }}>{sel.symbol}</div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{sel.company}</div>
+                  <div style={{ marginTop: 8, fontSize: TYPE.md, fontWeight: 800 }} data-wi-synopsis>
+                    {sel.operator_meaning}
+                  </div>
+                  <div
+                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
+                    data-wi-synopsis-provenance
+                    data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
+                  >
+                    {WI_SYNOPSIS_PROVENANCE.surfaceNote}
+                  </div>
+                </div>
+                <div style={{ padding: 12 }}>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, marginBottom: 6 }}>WHAT THE COMPANY DOES</div>
+                  <div style={{ fontSize: TYPE.sm, color: BB.text1 }} data-company-summary>{sel.company_summary || '—'}</div>
+                </div>
+                <div style={{ padding: 12, borderTop: `1px solid ${BB.border}`, display: 'grid', gap: 6 }}>
+                  <ReviewBox title="CIO" rev={sel.cio_review} />
+                  <ReviewBox title="Maria" rev={sel.maria_review} />
+                </div>
+                <div style={{ padding: 12 }}>
+                  <Link to={`/watch/intelligence/${sel.symbol}`} onClick={() => { if (phone.mobile) window.scrollTo(0, 0) }} style={linkBtn}>OPEN FULL SYMBOL INTELLIGENCE</Link>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: 14, color: BB.text3, fontSize: TYPE.sm }}>Select a card</div>
+            )
+
   return (
     <div
+      className="w9-page"
       data-watch-intelligence-primary
       data-provider-calls={String(body?.provider_calls ?? 0)}
       data-broker-snapshot={body?.snapshot_id || ''}
@@ -365,7 +403,7 @@ export default function WatchIntelligenceUnified() {
             Analyst ratings and Trade AI signals from recorded research
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }} data-broker-composes>
-            Sources: quotes, company profiles, analyst ratings, decisions, reviews, and watchlist membership
+            Sources: {(brokerMeta.composes || body?.data_broker?.composes || []).map((name: string) => name.replace(/_/g, ' ')).join(' · ') || 'Details not supplied'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -388,7 +426,7 @@ export default function WatchIntelligenceUnified() {
       <WatchDecisionFilterModal open={decisionOpen} initial={decisionInitial} board={body?.decision_board} onApply={applyDecision} onClose={() => setDecisionOpen(false)} />
 
       {/* 2. Counts */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', gap: 8, marginBottom: 10 }}>
+      <div className="w9-classic-counts" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', gap: 8, marginBottom: 10 }}>
         <Sum n={summary.street_strong_buy} label="Strong Buy" scope={scopeOf(countScopes, 'street_strong_buy', summary.scope)} color={BB.green} />
         <Sum n={summary.street_buy} label="Buy" scope={scopeOf(countScopes, 'street_buy', summary.scope)} color={BB.text0} />
         <Sum n={summary.trade_ai_wait} label="Wait" scope={scopeOf(countScopes, 'trade_ai_wait', summary.scope)} color={BB.amber} />
@@ -586,7 +624,7 @@ export default function WatchIntelligenceUnified() {
       )}
 
       {/* 6. Cards + inspector */}
-      <div style={{ display: 'grid', gridTemplateColumns: layout === 'table' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
+      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
         {layout === 'table' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12 }}>
             <thead>
@@ -612,7 +650,7 @@ export default function WatchIntelligenceUnified() {
             </tbody>
           </table>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
+          <div className="w9-classic-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
             {cards.map(c => {
               const active = sel?.symbol === c.symbol
               return (
@@ -621,6 +659,7 @@ export default function WatchIntelligenceUnified() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setSelected(c.symbol)}
+                  onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelected(c.symbol) } }}
                   data-intelligence-card
                   data-symbol={c.symbol}
                   data-street-rating={c.street_rating}
@@ -754,42 +793,14 @@ export default function WatchIntelligenceUnified() {
           </div>
         )}
 
-        {layout !== 'table' && (
-          <aside style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, position: 'sticky', top: 12 }} data-intelligence-inspector>
-            {sel ? (
-              <>
-                <div style={{ padding: 14, borderBottom: `1px solid ${BB.border}` }}>
-                  <div style={{ fontSize: TYPE.xl, fontWeight: 950 }}>{sel.symbol}</div>
-                  <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{sel.company}</div>
-                  <div style={{ marginTop: 8, fontSize: TYPE.md, fontWeight: 800 }} data-wi-synopsis>
-                    {sel.operator_meaning}
-                  </div>
-                  <div
-                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
-                    data-wi-synopsis-provenance
-                    data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
-                  >
-                    {WI_SYNOPSIS_PROVENANCE.surfaceNote}
-                  </div>
-                </div>
-                <div style={{ padding: 12 }}>
-                  <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, marginBottom: 6 }}>WHAT THE COMPANY DOES</div>
-                  <div style={{ fontSize: TYPE.sm, color: BB.text1 }} data-company-summary>{sel.company_summary || '—'}</div>
-                </div>
-                <div style={{ padding: 12, borderTop: `1px solid ${BB.border}`, display: 'grid', gap: 6 }}>
-                  <ReviewBox title="CIO" rev={sel.cio_review} />
-                  <ReviewBox title="Maria" rev={sel.maria_review} />
-                </div>
-                <div style={{ padding: 12 }}>
-                  <Link to={`/watch/intelligence/${sel.symbol}`} style={linkBtn}>OPEN FULL SYMBOL INTELLIGENCE</Link>
-                </div>
-              </>
-            ) : (
-              <div style={{ padding: 14, color: BB.text3, fontSize: TYPE.sm }}>Select a card</div>
-            )}
+        {layout !== 'table' && !phone.mobile && (
+          <aside className="w9-classic-inspector" style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, position: 'sticky', top: 12 }} data-intelligence-inspector>
+            {inspector}
           </aside>
         )}
       </div>
+
+      {phone.mobile && selected && <MobileDetailSheet title={`${selected} research`} onBack={phone.close}>{inspector}</MobileDetailSheet>}
 
       {alertMsg && <div style={{ color: BB.green, fontSize: TYPE.sm, marginTop: 8 }} data-alert-armed>{alertMsg}</div>}
       {alertFor && (

@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 // Trade AI = Opportunities page (Gate 3 Main.dc.html, 2026-10-22); Shared Momentum is its collapsed drawer.
 import TradeAiOpportunities from '../components/tradeai/TradeAiOpportunities'
@@ -225,7 +226,7 @@ function TradingHubDesk({ onDrill }: Props) {
   }
 
   return (
-    <div>
+    <div className="w9-page">
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Trading</div>
@@ -958,7 +959,7 @@ function TradingHubDesk({ onDrill }: Props) {
           focusProposalId={urlProposal ? Number(urlProposal) : undefined}
         />
       )}
-      {tab === 'Proposals' && section === 'path-a' && <ManualTosDesk focusSymbol={deepLink.symbol || undefined} />}
+      {tab === 'Proposals' && section === 'path-a' && <div className="w9-entry-desk"><ManualTosDesk focusSymbol={deepLink.symbol || undefined} /></div>}
       {tab === 'Broker Orders' && (
         <div className={terminalUi ? 'cc-panel' : undefined} data-testid="broker-orders-desk-note" style={{ marginBottom: 10, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: 11, color: 'var(--text2)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span>Broker Orders desk — opened from an approval link. Every live order still needs its per-order 2FA.</span>

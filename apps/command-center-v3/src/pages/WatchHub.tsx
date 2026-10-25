@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 import { useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -71,7 +72,7 @@ export default function WatchHub({ onDrill }: Props) {
   }
 
   return (
-    <div data-watch-hub-primary>
+    <div data-watch-hub-primary className="w9-page">
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ ...hubTitle(), margin: 0 }}>

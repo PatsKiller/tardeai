@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 /**
  * Research Intelligence v2.7 — stage trades, cross-theme, concentration banner.
  */
@@ -1644,7 +1645,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
   return (
     // v3.1 (E3): tabular numerals desk-wide — numbers align in columns
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280, fontVariantNumeric: 'tabular-nums' }}>
+    <div className="w9-page" style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280, fontVariantNumeric: 'tabular-nums' }}>
       {/* Masthead */}
       <header style={{
         borderRadius: 12,
@@ -2085,14 +2086,12 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       )}
 
       {/* Main layout: feed + rail */}
-      <div style={{
+      <div className="ri-desk-grid w9-research-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) 280px',
         gap: 18,
         alignItems: 'start',
-      }}
-        className="ri-desk-grid"
-      >
+      }}>
         <main style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
           {loading && !data ? (
             <div style={{ padding: 56, textAlign: 'center', color: C.soft, fontSize: 13 }}>
