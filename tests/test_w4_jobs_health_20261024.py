@@ -5,7 +5,7 @@ import json
 import pytest
 
 from scripts.lib import jobs_health as J
-from scripts.lib import scheduler_operations as SO, releases_schedules_view as RS
+from scripts.lib import scheduler_operations as SO
 from scripts.lib.data_broker import n8n_today as NT
 
 NOW = datetime(2026, 10, 23, 16, 20, tzinfo=timezone.utc)
@@ -108,9 +108,9 @@ def test_n8n_today_counts_workflow_namespace_by_execution_date(tmp_path):
     assert len(result["failures"]) == 2 and result["failures"][0]["cause"] == "lock wrapper refused release path"
 
 
-def test_stderr_preserved_on_releases_and_scheduler_projection(tmp_path):
-    receipt = {"reason": "exit_1", "stderr_tail": "Permission denied for wrapper"}
-    assert RS._receipt_bits(json.dumps(receipt))["reason"] == receipt["stderr_tail"]
+def test_stderr_preserved_on_scheduler_projection(tmp_path):
+    # The Releases & Schedules half of this check moved with scripts/lib/releases_schedules_view.py to its own
+    # [shared-infra] branch (work/b27-releases-schedules-shared-infra-20261025, tests/test_b27_releases_schedules_cause_20261025.py).
     assert "stderr_tail" in SO.RECEIPT_KEYS and "stage_clamp" in SO.RECEIPT_KEYS
 
 
@@ -156,17 +156,6 @@ def test_platform_job_execution_cannot_be_green_while_jobs_failed(tmp_path):
     report["summary"]["failed"] = 0
     item, = PH.probe_job_execution(deps)
     assert item["status"] == "UNKNOWN"  # no operational independent monitor receipt
-
-
-def test_release_failures_survive_a_later_successful_receipt(tmp_path):
-    deploy, windows = tmp_path / "deploy", tmp_path / "windows"
-    deploy.mkdir()
-    (deploy / "deploy_receipt.json").write_text(json.dumps({"at": NOW.isoformat(), "mode": "promote", "ok": True}))
-    attempts = [{"at": (NOW-timedelta(minutes=i+1)).isoformat(), "mode": "promote", "ok": False,
-                 "extra": "wrapper refusal"} for i in range(5)]
-    (deploy / "deploy_receipt_history.jsonl").write_text(''.join(json.dumps(a)+'\n' for a in attempts))
-    rows = RS.read_release_errors(deploy, windows, NOW)["value"]["rows"]
-    assert len(rows) == 5 and all(r["detail"] == "wrapper refusal" for r in rows)
 
 
 def test_jobs_due_today_includes_future_fires_without_claiming_they_ran():

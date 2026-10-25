@@ -1,6 +1,6 @@
 // Coordination — what is waiting, in progress, written, consumed or refused in the n8n
 // coordination ledger (GET /api/v2/coordination/events). Read-only. 2026-10-07 roadmap Phase 1.
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
 import ReleaseTrainTab from './ReleaseTrainTab'
@@ -16,8 +16,6 @@ import { projectCoordination, type CoordinationPayload, type CoordinationRow } f
 import { projectOutbox, type OutboxPayload } from '../lib/outboxProjection'
 import { projectApprovalBoard, type ApprovalBoardPayload } from '../lib/approvalBoard'
 import { projectMigrationBoard, type MigrationBoardPayload, type MigrationRow } from '../lib/migrationBoard'
-import OpsDeskFrame from '../components/OpsDeskFrame'
-import JobsHealth from '../components/JobsHealth'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14,
@@ -63,7 +61,9 @@ function getter(row: CoordinationRow, key: string): unknown {
   }
 }
 
-export default function CoordinationPage() {
+/** The board 0 frame and the shared Jobs & health view are supplied by the route (App.tsx), like HealthHub's
+ *  jobsHealth slot, so this page module stays free of the shared sheet/frame dependencies its readers import. */
+export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNode } = {}) {
   const { data, loading, error, transport, stale } = useApi<CoordinationPayload>(projectionReadPath('events'), 30_000)
   const runsApi = useApi<{ schema?: string; status?: string; as_of?: string; items?: Array<Record<string, unknown>>; count?: number | null; total_count?: number | null; coverage?: { scope?: string; since?: string | null; through?: string | null; items_truncated?: boolean }; note?: string }>(
     projectionReadPath('runs'),
@@ -110,7 +110,7 @@ export default function CoordinationPage() {
     if (t !== 'pipeline') for (const k of ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'q', 'finished']) next.delete(k)
     setSearchParams(next, { replace: true })
   }
-  return <OpsDeskFrame page="coordination" asOf={{ n8n: runsApi.data?.as_of }}>
+  return <>
 
     <div data-testid="coordination-page" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
       <nav style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} aria-label="Coordination sections" role="tablist">
@@ -120,7 +120,7 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? <JobsHealth /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
+      {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
               release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
@@ -447,5 +447,5 @@ export default function CoordinationPage() {
       </div>
       </>)}
     </div>
-  </OpsDeskFrame>
+  </>
 }
