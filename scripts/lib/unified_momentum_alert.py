@@ -118,6 +118,9 @@ class UnifiedAlertEvent:
     evidence: Optional[dict] = None
     veto_reasons: list = field(default_factory=list)
     readiness: Optional[dict] = None
+    # MomentumEvidenceBlock@v1 (scripts/lib/momentum_setup_evidence.evidence_block): the shared
+    # "driven by / ready / missing" lines. None renders nothing (callers before 2026-10-23 are unchanged).
+    evidence_block: Optional[dict] = None
 
     @property
     def day(self) -> str:
@@ -213,6 +216,9 @@ def render(event: UnifiedAlertEvent, *, root: Optional[dict] = None) -> str:
     cat = _clean(event.catalyst_title)
     origin = _clean(event.catalyst_origin, 40)
     verdict = ((readiness or {}).get("catalyst") or {}).get("status")
+    if verdict is None and event.evidence_block and cat:
+        # A live-fact block alone carries no primary-publication proof for a headline.
+        verdict = "UNVERIFIED_HEADLINE"
     # A headline is THE catalyst only when it is source-verified (operator 2026-10-23, SAIQ): otherwise it is
     # printed labelled, so this line can never read as a verified catalyst the readiness line says is missing.
     tag = "UNVERIFIED headline — " if cat and verdict in ("UNVERIFIED_HEADLINE", "HERMES_FOUND") else ""
@@ -243,7 +249,16 @@ def render(event: UnifiedAlertEvent, *, root: Optional[dict] = None) -> str:
     det = _clean(event.detail, 200)
     if det:
         lines.append(det)
-    lines.extend(mse.format_readiness(readiness))
+    if event.evidence_block and readiness is None:
+        lines.extend(mse.format_evidence_block(event.evidence_block).splitlines())
+    else:
+        lines.extend(mse.format_readiness(readiness))
+        if event.evidence_block:
+            # The primary source/catalyst/veto verdict remains authoritative. Additional closed-candle
+            # facts are observations, not a second readiness approval.
+            facts = mse.format_evidence_block(event.evidence_block).splitlines()
+            lines.extend((facts[0].replace("Driven by:", "Live drivers:", 1),
+                          facts[1].replace("Ready:", "Live facts:", 1), facts[2]))
     lines.append(ADVISORY_LINE)
     return "\n".join(lines)
 
@@ -385,10 +400,15 @@ def _root(thread: list[dict], mode: str) -> Optional[dict]:
 
 def emit(event: UnifiedAlertEvent, *, mode: Optional[str] = None, ledger: Optional[Ledger] = None,
          send: Optional[SendFn] = None, config_path: Optional[Path] = None,
-         legacy_alert: Optional[str] = None) -> dict:
+         legacy_alert: Optional[str] = None, max_per_hour: Optional[int] = None,
+         priority: Optional[str] = None) -> dict:
     """Build (and in live mode send) one lifecycle message. Returns the ledger row, or a dict with ``action``.
 
     ``legacy_alert`` names the alert the caller sent the old way (shadow), so the ledger shows both side by side.
+    ``max_per_hour`` (2026-10-23, premarket 1-minute threading): a hard cap on emitted messages per thread in the
+    trailing hour; the next state change beyond it is recorded ``CAPPED_PER_HOUR`` (ledger row, never sent, does
+    not count as emitted). ``priority`` overrides the state's P1/P2 class (the premarket window starts 06:00, inside
+    the 22:00-07:00 quiet hold, and the operator asked for alerts from 06:00).
     """
     mode = mode or resolve_mode(config_path)
     if mode not in MODES:
@@ -409,7 +429,12 @@ def emit(event: UnifiedAlertEvent, *, mode: Optional[str] = None, ledger: Option
             return {"action": "DEDUPED_SAME_STATE", "mode": mode, "thread_key": key, "state": event.state}
         root = _root(thread, mode)
         text = render(event, root=root)
-        priority = "P1" if event.state in P1_STATES else "P2"
+        priority = priority if priority in ("P1", "P2") else ("P1" if event.state in P1_STATES else "P2")
+        capped = False
+        if max_per_hour is not None:
+            hour = [r for r in thread if r.get("action") in EMITTED_ACTIONS
+                    and float(event.ts_epoch) - 3600.0 < float(r.get("ts_epoch") or 0) <= float(event.ts_epoch)]
+            capped = len(hour) >= int(max_per_hour)
         row: dict[str, Any] = {
             "schema": SCHEMA, "day": event.day, "thread_key": key, "symbol": event.symbol.upper(),
             "event_key": event.event_key, "state": event.state,
@@ -423,7 +448,11 @@ def emit(event: UnifiedAlertEvent, *, mode: Optional[str] = None, ledger: Option
         }
         row["row_id"] = hashlib.sha256(f"{key}|{mode}|{event.state}|{event.ts_epoch}|{event.origin_ref}"
                                        .encode("utf-8")).hexdigest()[:16]
-        if mode == "shadow":
+        if capped:
+            row["action"] = "CAPPED_PER_HOUR"
+            row["max_per_hour"] = int(max_per_hour or 0)
+            row["is_root"] = False
+        elif mode == "shadow":
             row["action"] = "SHADOW_LOGGED"
             row["would_reply_to"] = (root or {}).get("row_id")
         else:

@@ -1,0 +1,49 @@
+{
+  "schema": "PremarketUniqueSourcePrep@v1",
+  "status": "PARTIAL_SOURCE_PREP_ONLY_COMMON_CLAIM_BLOCKED",
+  "as_of": "2026-10-24T14:41:27.571811+00:00",
+  "main_sha": "ca39056af0b67491310a7267d75e2a0c882bc7d0",
+  "original_head": "d23a2440a2b9eb71bb7b70adeedd78af0e02b09c",
+  "original_head_merged": false,
+  "local_git_merge_started": false,
+  "registry_unchanged_sha256": "af07aa36963900b6c0b701d7f3342d19a6fa8acb7c533b37dc634104e1c263ff",
+  "source_sha256": {
+    "config/ci_gates/premarket_1min_threaded_20261023.json": "3989667b6883120772e3f2307b4a14647848d827e2ed971456e9f9c06983cf9c",
+    "config/ci_gates/premarket_stale_merge_20261024.json": "d6d52e6caef54441d2154c2d2ab51b7d0c92d5476e3ebf64029d442f3224c252",
+    "config/data_source_authority.json": "4df8f1806ad36d362cbe23fa83b7a38a86eba0457537b2072ef48d3969dbd0d0",
+    "config/scalp_signal_engine.yaml": "00d7a14d730236d454ecd73624bc9f6c0c950404cfb0d7255964d4ccdffe393a",
+    "scripts/active_trader/momentum_alerts_api.py": "7aa55e8b8768f52483c5c9aad0524ff37b995677377cd1d4537336303b36be7b",
+    "scripts/active_trader/premarket_watch.py": "74323d3daca2004d5305cfba654d189174abf2cffc2be3fb1fbdc572c75121fc",
+    "scripts/hermes_momentum_catalyst_researcher.py": "73de5da7937a795f63cdfb4412c1e42e8f95294cbd2d5cda5f60222ffc12922f",
+    "scripts/lib/data_broker/scalp_list.py": "279fbf8b8fdf5c40cb0855d991e73b0e70d00acd327fd6026b90e0b3fd3d41b9",
+    "scripts/lib/momentum_setup_evidence.py": "3173e5322593b7add633a38fdddbf8144a8de6dcc62e5976baf6719934405373",
+    "scripts/lib/scalp_focus.py": "99224724f953ec43b0f747980ee3dfb482f85286366b81d0aa319914e7e7a70e",
+    "scripts/lib/unified_momentum_alert.py": "8ec5ff41541f60a17325269920523b1fff0e3a6bf96a3a2cd5438401106abf6f",
+    "scripts/premarket_cadence_compare.py": "0ec039fcca6e2743a5027462fbbe045c315928a39f14db3440c27d9a378861fe",
+    "tests/test_at_premarket_watch_20261005.py": "14ab42d0b40a858faa8900d3c5b7b89f84507596cfaa65c0dda5c62e74a37fee",
+    "tests/test_premarket_1min_threaded_20261023.py": "f03286b065a288989dadfaf1d3a543c2db1365b820e8ca3f2a5985247ab6676b",
+    "tests/test_premarket_stale_merge_20261024.py": "cdad446f6eb36a2e933165f0b538919ec6cfe2f70cc4852d3d23e8f99611afcc"
+  },
+  "focused_tests": {
+    "passed": 235,
+    "deselected": 1,
+    "deferred_test": "test_registry_rows_carry_the_pending_packet",
+    "psycopg2_hidden": true
+  },
+  "guard_tests": {
+    "passed": 57,
+    "psycopg2_hidden": true
+  },
+  "static_authority": {
+    "findings": 0,
+    "proposed_domain_warnings": 27,
+    "local_receipt_sha256": "acdc054ac5e1fd565719d0109d85ad7f8640ff53149515d72ef11593ce5d0274"
+  },
+  "host_path_new_violations": 0,
+  "coverage_new_unlisted": 0,
+  "runtime_or_provider_access": false,
+  "artifacts": {
+    "unique-source-235.xml": "967a113b21cfcc790c4670289c3df7ddb0b848dd6dde0705cbee9a7a0e63baf5",
+    "unique-source-guards-57.xml": "416f5f5dd004ea6881e7f291e269e3c66ad1d130c2b4f637eb5d27bc8b2058c2"
+  }
+}
