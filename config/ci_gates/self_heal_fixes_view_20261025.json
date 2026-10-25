@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_fixes_view_20261025",
+  "files": [
+    "tests/test_self_heal_fixes_view_20261025.py"
+  ],
+  "anchor": "SELF_HEAL_FIXES_VIEW_20261025",
+  "comment": [
+    "ANCHOR: SELF_HEAL_FIXES_VIEW_20261025 — operator 2026-10-25 'a logger that tracks what was fixed': fix-log read model for Ops -> Releases & schedules -> Fixes and the 17:00 digest's daily self-heal line."
+  ]
+}

@@ -366,8 +366,71 @@ def collect_other(since_hours: int = 6) -> dict[str, Any]:
     except Exception:
         out = {"rows": [], "watermark": None}
     if isinstance(out, dict):
-        out = {**out, "lane_health": collect_lane_health()}
+        out = {**out, "lane_health": collect_lane_health(), "self_heal": collect_self_heal()}
     return out
+
+
+#: Self-heal fix log (2026-10-25, operator: "a logger that tracks what was fixed"): one daily line in the 17:00
+#: digest, read from the append-only log scripts/self_heal_train_monitor.py writes (SelfHealFixLog@v1).
+SELF_HEAL_FIX_LOG_REL = "data/self_heal/fix_log.jsonl"
+SELF_HEAL_DIGEST_SLOT = "17"
+SELF_HEAL_TAIL_LINES = 5000
+_SELF_HEAL_OPEN = ("remediating", "fix-PR-open", "fixer-queued", "fixed-released-pending")
+
+
+def collect_self_heal(state_root: Optional[Path] = None, now: Optional[datetime] = None) -> Optional[dict[str, Any]]:
+    """Today's (ET) self-heal tallies from the fix log, or None when the log does not exist (lane not installed)."""
+    import os
+
+    root = Path(state_root or os.environ.get("TRADEAI_STATE_ROOT")
+                or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    try:
+        lines = (root / SELF_HEAL_FIX_LOG_REL).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone(_et()).date()
+    latest: dict[str, dict] = {}
+    touched: set[str] = set()
+    events: Counter = Counter()
+    for line in lines[-SELF_HEAL_TAIL_LINES:]:
+        try:
+            r = json.loads(line)
+            at = datetime.fromisoformat(str(r.get("at")).replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if not isinstance(r, dict) or r.get("schema") != "SelfHealFixLog@v1" or not r.get("fix_id"):
+            continue
+        latest[r["fix_id"]] = r
+        if at.tzinfo is not None and at.astimezone(_et()).date() == today:
+            touched.add(r["fix_id"])
+            events[str(r.get("outcome"))] += 1 if r.get("event") != "detected" else 0
+            events["detected"] += 1 if r.get("event") == "detected" else 0
+    rows = [latest[f] for f in touched]
+    cost = sum(float(r.get("model_cost_usd") or 0) for r in rows)
+    return {
+        "detected": events["detected"],
+        "fixed": sum(1 for r in rows if r.get("outcome") in ("fixed-released", "fixed-no-release")),
+        "open": sum(1 for r in latest.values() if r.get("outcome") in _SELF_HEAL_OPEN),
+        "escalated": sum(1 for r in rows if r.get("outcome") == "escalated"),
+        "gave_up": sum(1 for r in rows if r.get("outcome") == "gave-up"),
+        "proposed": sum(1 for r in rows if r.get("outcome") == "shadow-proposed"),
+        "cost_usd": round(cost, 2),
+    }
+
+
+def self_heal_line(summary: Optional[dict[str, Any]]) -> Optional[str]:
+    """The one daily digest line, or None when there is nothing to say (no log, or a quiet day with nothing open)."""
+    if not summary or not any(summary.get(k) for k in ("detected", "fixed", "open", "escalated", "gave_up", "proposed")):
+        return None
+    parts = [f"{summary['fixed']} fixed", f"{summary['open']} open"]
+    if summary.get("escalated") or summary.get("gave_up"):
+        parts.append(f"{summary['escalated'] + summary['gave_up']} escalated")
+    if summary.get("proposed"):
+        parts.append(f"{summary['proposed']} proposed (shadow)")
+    parts.append(f"${summary.get('cost_usd', 0):.2f} model")
+    return ("━━━━━━━━━━━━━━━━━━\n🩺 <b>SELF-HEAL TODAY</b> · " + " · ".join(parts) + " · "
+            + link("Fixes", f"{cc_base()}/v3/system/releases?tab=fixes"))
 
 
 #: n8n self-healing (2026-10-16, follow-up to #1819): P2 lane-failure escalations ride the digest, never their own
@@ -562,6 +625,9 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         if len(health) > LANE_HEALTH_MAX_ROWS:
             lines.append(f"<i>+{len(health) - LANE_HEALTH_MAX_ROWS} more in {esc(DIAGNOSER_RECEIPT_REL)}</i>")
         blocks.append("━━━━━━━━━━━━━━━━━━\n🛠 <b>LANE HEALTH (P2)</b> · " + str(len(health)) + "\n" + "\n".join(lines))
+    heal = self_heal_line(other.get("self_heal")) if str(slot) == SELF_HEAL_DIGEST_SLOT else None
+    if heal:
+        blocks.append(heal)
     rows = other.get("rows") or []
     if rows:
         kinds = Counter((r[2] or "other") for r in rows)
