@@ -16,7 +16,11 @@ const TABS = ['Leaderboard', 'Analytics', 'Planner', 'Desk', 'Incubator', 'Plan 
 
 export default function StrategyHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<typeof TABS[number]>('Leaderboard')
+  // The new Strategy desk's Planner tab links here with ?tab=Planner; honour it on first render.
+  const [tab, setTab] = useState<typeof TABS[number]>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab')?.toLowerCase()
+    return TABS.find(t => t.toLowerCase() === requested) ?? 'Leaderboard'
+  })
   const { data: leaderboard } = useApi<any>('/api/v2/strategy-leaderboard', 60_000)
   const { data: intel } = useApi<any>('/api/v2/strategy-intelligence', 120_000)
   const { data: configs } = useApi<any>('/api/v2/strategy-configs', 120_000)
@@ -429,8 +433,8 @@ function StrategyLeaderboard({ data, onDrill, onTab }: any) {
               <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }} title={sn?.recommendation || sn?.assessment || undefined}>{humanizeIdentifier(sn?.recommendation || sn?.assessment) || '—'}</td>
               <td style={{ ...td, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                 <span style={{ display: 'flex', gap: 5 }}>
-                  <a href="/v3/journal" onClick={(e) => { e.preventDefault(); try { sessionStorage.setItem('journal_tab', 'Backtesting') } catch { /* */ } window.location.href = '/v3/journal' }}
-                    style={{ ...actBtn, textDecoration: 'none', display: 'inline-block' }} title={`Open TradeInView → Backtesting for ${r.strategy_id}`}>Backtest →</a>
+                  <a href="/v3/strategy?tab=backtests"
+                    style={{ ...actBtn, textDecoration: 'none', display: 'inline-block' }} title={`Open Strategy → Backtests (board 13: Strategy owns backtests) for ${r.strategy_id}`}>Backtest →</a>
                   <button style={actBtn} onClick={() => onTab?.('Plan vs Perf')} title="Open Plan vs Performance">Plan →</button>
                 </span>
               </td>

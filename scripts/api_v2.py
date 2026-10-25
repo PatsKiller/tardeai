@@ -46540,6 +46540,41 @@ def _w7_cio_pages():
     return page_payload(STATE_DIR.parents[2], db_query=_db_query)
 
 
+_DESKS_A_CACHE: dict = {}
+
+
+def _desks_a_payload(desk: str):
+    """GET /api/v2/desks/<reentry|strategy|defense|agents> — boards 1-4 (docs/ops/DESKS_A_REDESIGN_20261025.md).
+
+    Read-only: stores are read directly (several legacy GETs on these pages write or fetch), CIO
+    stance/regime/holdings/stops come from cio_truth, and only pure-SELECT legacy readers are reused.
+    Cached 60 s in-process so a desk poll never repeats the CIO resolve."""
+    import time as _t
+
+    from scripts.lib import desks_a
+
+    if desk not in desks_a.DESKS:
+        raise ValueError(f"unknown desk {desk!r}")
+    hit = _DESKS_A_CACHE.get(desk)
+    if hit and _t.time() - hit[0] < 60:
+        return hit[1]
+    root = STATE_DIR.parents[2]
+    kwargs: dict = {"root": root, "db_query": _db_query}
+    if desk in ("reentry", "defense"):
+        kwargs["truth"] = _cio_truth_readers().resolve(root, db_query=_db_query)
+    if desk == "reentry":
+        packets = _buy_ready_packets_index()
+        kwargs["packets"] = packets
+        symbols = [r.get("symbol") for r in (packets or {}).get("rows") or [] if r.get("symbol")]
+        kwargs["stances"] = _cio_truth_readers().stances_for_symbols(symbols, root=root, db_query=_db_query)
+        kwargs["exits"] = _redeploy_history({"days": "365"})
+    if desk == "strategy":
+        kwargs["leaderboard"] = _strategy_leaderboard()
+    payload = _json_clean(desks_a.build(desk, **kwargs))
+    _DESKS_A_CACHE[desk] = (_t.time(), payload)
+    return payload
+
+
 def _portfolio_lookthrough():
     """Stock-level look-through + theme exposure + advisories (cached by portfolio_lookthrough_themes.py;
     refreshed on a schedule). Fast — no yfinance in the request path."""
@@ -55345,6 +55380,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": _symbol_timeline(symbol)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    # Restored desks A (approved boards 1-4): read-only display projections.
+    if base_path.startswith("/api/v2/desks/"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            return 200, {"ok": True, "data": _desks_a_payload(base_path[len("/api/v2/desks/") :].strip("/"))}
+        except ValueError as e:
+            return 404, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
 
     # Desk source clocks: registry intent and captured successful-run evidence only.
     if base_path == "/api/v2/desk-sources":
