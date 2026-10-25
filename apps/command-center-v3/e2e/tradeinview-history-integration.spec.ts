@@ -79,3 +79,17 @@ test.describe('phone: History name → full-screen sheet → Replay this trip �
     })
   }
 })
+test('stale recharts measurement text never lingers as stray page text across tabs', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 })
+  const forbidden = await serve(page)
+  await page.goto(origin + '/v3/journal?tab=history')
+  await expect(page.getByTestId('history-name').first()).toBeVisible()
+  // Recharts leaves its last measured tick label in a body-level span (e.g. a Journal chart axis value).
+  await page.evaluate(() => { const s = document.createElement('span'); s.id = 'recharts_measurement_span'; s.textContent = '$-18000'; document.body.appendChild(s) })
+  await page.getByRole('tab', { name: 'Journeys' }).click()
+  await page.getByRole('tab', { name: 'Holding history' }).click()
+  await expect(page.getByTestId('history-name').first()).toBeVisible()
+  await expect(page.locator('#recharts_measurement_span')).toHaveCount(0)
+  expect(await page.evaluate(() => document.body.innerText)).not.toContain('$-18000')
+  expect(forbidden).toEqual([])
+})

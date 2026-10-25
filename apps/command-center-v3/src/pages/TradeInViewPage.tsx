@@ -1,5 +1,5 @@
 /** Bookmarkable TradeInView sections. Backend owns business facts; legacy journal links remain supported. */
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
 import JournalHub from './JournalHub'
@@ -19,6 +19,9 @@ export default function TradeInViewPage({ onDrill }: { onDrill: (ctx: DrillConte
   const tab = tradeTab(params, handoff)
   const api = useApi<any>(API_LIST, 60_000, { enabled: tab === 'journeys' || tab === 'replay' })
   const payload = unwrap(api.data)
+  // Recharts measures tick labels in a hidden body-level span and never removes it, so the last
+  // measured tick (e.g. a Journal chart axis value) lingered as stray page text on other tabs.
+  useEffect(() => { document.getElementById('recharts_measurement_span')?.remove() }, [tab])
   const choose = (next: typeof tab) => { setHandoff(false); setParams(tabParams(params, next), { replace: true }) }
   // History → Replay is a push so browser/phone Back returns to the selected name.
   const replayTrip = (tradeId: string) => { setHandoff(false); const next = tabParams(params, 'replay'); next.set('trade', tradeId); next.delete('interval'); setParams(next) }

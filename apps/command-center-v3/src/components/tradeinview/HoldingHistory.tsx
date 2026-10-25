@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
-import { HISTORY_SORTS, dateText, decodeHistory, finite, gapText, historyUrl, missingReason, money, namedGaps, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom,
+import { HISTORY_SORTS, accountCountText, dateText, decodeHistory, finite, gapText, heldText, historyUrl, missingReason, money, namedGaps, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom, tripCountText,
   type Gap, type HistoryDetail, type HistorySymbol, type HistoryTrip, type HoldingHistoryPayload } from '../../lib/holdingHistoryModel'
 import './HoldingHistory.css'
 
@@ -44,31 +44,46 @@ function MobileDetail({ symbol, onBack, children }: { symbol: string; onBack: ()
   </div>, document.body)
 }
 const colorFor = (value: unknown) => finite(value) && value !== 0 ? (value > 0 ? TOKENS.success : TOKENS.danger) : TOKENS.text[0]
+/** Collapsed rows are not mounted, so a closed disclosure never exposes empty list bullets to page-text readers. */
+function Disclosure({ summary, children }: { summary: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{summary}</summary>{open && children}</details>
+}
 function Gaps({ gaps, heading = 'Data gaps, shown not hidden' }: { gaps: Gap[]; heading?: string }) {
   if (!gaps.length) return null
+  const list = <ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul>
   return <aside className="hh-gaps" data-testid="history-gaps" aria-label={heading} style={{ background: toneVars('warning').bg, borderColor: toneVars('warning').border, color: toneVars('warning').color }}>
-    <strong>{heading}</strong>{gaps.length > 6 ? <details><summary>{gaps.length} source findings · view all</summary><ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul></details> : <ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul>}
+    <strong>{heading}</strong>{gaps.length > 6 ? <Disclosure summary={`${gaps.length} source findings · view all`}>{list}</Disclosure> : list}
   </aside>
 }
 function Name({ row, selected, onSelect }: { row: HistorySymbol; selected: boolean; onSelect: () => void }) {
   return <button type="button" className="hh-name" data-testid="history-name" data-symbol={row.symbol} aria-pressed={selected} onClick={onSelect}>
-    <span className="hh-name-heading"><b>{row.symbol}</b><span title={row.company_missing_reason || undefined}>{row.company_name || 'Company name unavailable'}</span></span>
-    {!row.company_name && <small>{reasonText(row.company_missing_reason)}</small>}
-    <span className="hh-muted">{numberText(row.round_trip_count, 0)} round trips · {numberText(row.account_count, 0)} accounts</span>
-    {(row.round_trip_count == null || row.account_count == null) && <small>{row.gaps.length ? row.gaps.map(gapText).join(' · ') : 'Count coverage unavailable'}</small>}
+    <span className="hh-name-heading"><b>{row.symbol}</b><span title={row.company_name_source ? `Name from ${row.company_name_source}` : row.company_missing_reason || undefined}>{row.company_name || row.identifier_label || 'Company name unavailable'}</span></span>
+    {row.company_name && row.identifier_label && <small>{row.identifier_label}</small>}
+    {!row.company_name && !row.identifier_label && <small>{reasonText(row.company_missing_reason)}</small>}
+    <span className="hh-muted">{tripCountText(row)} · {accountCountText(row.account_count)}</span>
+    {(row.round_trip_count == null || row.account_count == null) && !row.gaps.length && <small>Count coverage unavailable</small>}
     <span className="hh-name-flags">{row.held_now === true ? 'Held now' : row.held_now === false ? 'Not held now' : 'Current holding state unavailable'}{row.basis_unknown ? ' · Basis unknown' : ''}</span>
-    {row.held_now && row.accounts.map((a, i) => <small key={a.account_id || i}>{a.account_label || 'Account name unavailable'}: {numberText(a.held_quantity)} sh{a.held_quantity == null ? ' · quantity unavailable' : ''}</small>)}
+    {row.held_now && row.accounts.map((a, i) => <small key={a.account_id || i}>{a.account_label || 'Account name unavailable'}: {heldText(a)}</small>)}
+    {!!row.gaps.length && <span className="hh-gap-chip" data-testid="history-gap-chip" style={{ background: toneVars('warning').bg, borderColor: toneVars('warning').border, color: toneVars('warning').color }}>{row.gaps.length} data gap{row.gaps.length === 1 ? '' : 's'}</span>}
   </button>
 }
 function Stats({ detail }: { detail: HistoryDetail }) {
   const s = detail.stats
+  const knownWin = s.win_rate_pct == null && finite(s.known_win_rate_pct)
+  const knownBest = (s.best_trip_pct == null || s.worst_trip_pct == null) && finite(s.known_best_trip_pct) && finite(s.known_worst_trip_pct)
+  const knownHold = s.avg_hold_days == null && finite(s.known_median_hold_days)
+  const excluded = finite(s.excluded_basis_unknown_count) && s.excluded_basis_unknown_count > 0 ? ` · ${numberText(s.excluded_basis_unknown_count, 0)} basis unknown excluded` : ''
+  const known = (n: unknown, what: string) => `Known: ${numberText(n, 0)} ${what}${excluded}`
   const cards = [
     { key: 'times_held', label: 'Times held', value: numberText(s.times_held, 0), sub: s.times_held == null && finite(s.known_holding_stretches) ? `Known stretches ${numberText(s.known_holding_stretches, 0)}` : 'Separate holding stretches', missing: s.times_held == null },
     { key: 'round_trip_count', label: 'Round trips', value: numberText(s.round_trip_count, 0), sub: 'In the selected history range', missing: s.round_trip_count == null },
-    { key: 'win_rate_pct', label: 'Win rate', value: percent(s.win_rate_pct), sub: 'By round trip', missing: s.win_rate_pct == null },
+    { key: 'win_rate_pct', label: 'Win rate', value: percent(knownWin ? s.known_win_rate_pct : s.win_rate_pct), sub: knownWin ? known(s.known_priced_trip_count, 'priced trips') : 'By round trip', missing: s.win_rate_pct == null && !knownWin },
     { key: 'realized_pl', label: 'Realized total', value: money(s.realized_pl), sub: s.realized_pl == null && finite(s.known_realized_pl) ? `Known subtotal ${money(s.known_realized_pl)}` : 'All accounts · selected range', missing: s.realized_pl == null, color: colorFor(s.realized_pl) },
-    { key: 'avg_hold_days', label: 'Avg hold', value: finite(s.avg_hold_days) ? `${numberText(s.avg_hold_days)} d` : '—', sub: `Median ${finite(s.median_hold_days) ? `${numberText(s.median_hold_days)} d` : 'unavailable'}`, missing: s.avg_hold_days == null || s.median_hold_days == null },
-    { key: 'best_trip_pct', label: 'Best / worst', value: `${percent(s.best_trip_pct)} / ${percent(s.worst_trip_pct)}`, sub: 'Per trip', missing: s.best_trip_pct == null || s.worst_trip_pct == null },
+    knownHold
+      ? { key: 'avg_hold_days', label: 'Median hold', value: `${numberText(s.known_median_hold_days)} d`, sub: `Known: ${numberText(s.known_timed_trip_count, 0)} trips with entry and exit timestamps`, missing: false }
+      : { key: 'avg_hold_days', label: 'Avg hold', value: finite(s.avg_hold_days) ? `${numberText(s.avg_hold_days)} d` : '—', sub: `Median ${finite(s.median_hold_days) ? `${numberText(s.median_hold_days)} d` : 'unavailable'}`, missing: s.avg_hold_days == null || s.median_hold_days == null },
+    { key: 'best_trip_pct', label: 'Best / worst', value: knownBest ? `${percent(s.known_best_trip_pct)} / ${percent(s.known_worst_trip_pct)}` : `${percent(s.best_trip_pct)} / ${percent(s.worst_trip_pct)}`, sub: knownBest ? known(s.known_return_trip_count, 'trips with a return') : 'Per trip', missing: (s.best_trip_pct == null || s.worst_trip_pct == null) && !knownBest },
   ]
   return <div className="hh-stats" aria-label="Server history statistics">{cards.map(c => <div className="hh-stat" key={c.key} data-testid={`history-stat-${c.key}`}>
     <span className="hh-muted">{c.label}</span><strong style={{ color: c.color || TOKENS.text[0] }}>{c.value}</strong><small>{c.sub}</small>
@@ -104,7 +119,7 @@ function Trip({ trip: t, onReplay, accountOptions }: { trip: HistoryTrip; onRepl
     <div role="cell" data-label="Days"><b>{numberText(t.hold_days)}</b><small>{t.hold_days_basis ? reasonText(t.hold_days_basis) : 'Hold-day basis unavailable'}</small></div>
     <div role="cell" data-label="Result"><b style={{ color: colorFor(t.realized_pl) }}>{money(t.realized_pl)}</b><small>{percent(t.return_pct)}</small>{(t.basis_unknown || t.realized_pl == null) && <small className="hh-gap-reason">{t.basis_unknown ? 'Basis unknown' : 'Result unavailable'} · {reasonText(t.basis_reason)}</small>}</div>
     <div role="cell" data-label="Source"><span className="hh-muted">{t.source || 'Source unavailable'}</span>
-      <details><summary>Provenance</summary>{provenance.length ? <ul>{provenance.map((p, i) => <li key={i}>{p}</li>)}</ul> : <small>No additional provenance on file</small>}</details>
+      <Disclosure summary="Provenance">{provenance.length ? <ul>{provenance.map((p, i) => <li key={i}>{p}</li>)}</ul> : <small>No additional provenance on file</small>}</Disclosure>
       {!!t.gaps?.length && <small className="hh-gap-reason">{namedGaps(t.gaps, accountOptions).map(gapText).join(' · ')}</small>}
       {t.trade_id ? <button type="button" className="hh-replay" data-testid="history-replay" data-trade-id={t.trade_id} onClick={() => onReplay(t.trade_id!)} aria-label={`Replay ${t.symbol || ''} trade`}>Replay this trip →</button> : <small>Replay unavailable: trade ID missing</small>}
     </div>
@@ -132,10 +147,12 @@ function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay, phone
       {!data.ok && <p role="status" className="hh-transport-warning">Stored history coverage is incomplete. See the source gaps below.</p>}
       {mismatch && <p role="alert">Selected history unavailable: the server detail does not match {selectedSymbol}.</p>}
       {!detail && !mismatch && <div className="hh-panel"><p>{selectedSymbol ? `No stored detail for ${selectedSymbol}.` : 'Choose a name to see its account history.'}</p></div>}
-      {detail && <><div className="hh-panel"><header className="hh-detail-heading"><h2><span>{detail.symbol}</span> · {detail.company_name || 'Company name unavailable'}</h2>
-        <p>{selected?.held_now === true ? 'Held now' : selected?.held_now === false ? 'Not held now' : 'Current holding state unavailable'} · {numberText(selected?.account_count, 0)} accounts</p>
+      {detail && <><div className="hh-panel"><header className="hh-detail-heading"><h2><span>{detail.symbol}</span> · {detail.company_name || detail.identifier_label || 'Company name unavailable'}</h2>
+        <p>{selected?.held_now === true ? 'Held now' : selected?.held_now === false ? 'Not held now' : 'Current holding state unavailable'} · {accountCountText(selected?.account_count)}</p>
         {selected?.account_count == null && <small>Account count not supplied in the symbol summary</small>}
-        {!detail.company_name && <small>{reasonText(detail.company_missing_reason)}</small>}</header>
+        {detail.company_name && detail.identifier_label && <small>{detail.identifier_label}</small>}
+        {detail.company_name_source && detail.company_name_source !== 'CIO memory' && <small>Name from {detail.company_name_source}</small>}
+        {!detail.company_name && !detail.identifier_label && <small>{reasonText(detail.company_missing_reason)}</small>}</header>
         <Gaps gaps={namedGaps(detail.gaps, data.account_options)} heading={`${detail.symbol} source gaps`} /><Stats detail={detail} /><Timelines data={data} detail={detail} /></div>
         <section className="hh-trips hh-panel" aria-label="Every recorded trip">
           {!detail.trips.length && <p className="hh-empty">No trip rows returned for this name. {missingReason(detail.stats.coverage)}</p>}
