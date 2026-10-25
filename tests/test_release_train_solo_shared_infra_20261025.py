@@ -134,6 +134,20 @@ def test_shared_infra_paths_are_allowed(path):
     assert SOLO.path_findings([path], CFG, is_protected=T.is_protected) == []
 
 
+def test_an_added_ci_gate_for_the_prs_own_test_is_exempt_but_a_modified_one_is_denied():
+    paths = ["config/lane_registry.json", "config/ci_gates/x_20261025.json", "tests/test_x.py"]
+    reasons = [{"rule": "guard_ci_enforcement", "class": "needs_operator", "path": "config/ci_gates/x_20261025.json"},
+               {"rule": "scheduler_live_list", "class": "needs_operator", "path": "config/lane_registry.json"}]
+    added = ev(paths=paths, reasons=reasons, statuses={"config/ci_gates/x_20261025.json": "A"})
+    assert added["eligible"], added["why"]
+    modified = ev(paths=paths, reasons=reasons, statuses={"config/ci_gates/x_20261025.json": "M"})
+    assert not modified["eligible"]
+    assert "DENY_GLOB:config/ci_gates/x_20261025.json" in modified["why"]
+    assert "DENY_REASON:guard_ci_enforcement" in modified["why"]
+    other = ev(paths=["config/lane_registry.json", ".githooks/pre-push"], statuses={".githooks/pre-push": "A"})
+    assert not other["eligible"]  # only additive_globs are exempt
+
+
 # ── precedence ────────────────────────────────────────────────────────────────────────────────────────
 
 

@@ -100,6 +100,10 @@
     "sql/**",
     "**/*.sql"
   ],
+  "additive_globs": [
+    "config/ci_gates/*.json"
+  ],
+  "additive_note": "A file ADDED (git status A) that matches additive_globs is exempt from deny_globs / deny_policy_rules / deny_reason_rules: a new CI-gate registration for the PR's own new test cannot weaken an existing gate. Modifying or deleting one stays denied.",
   "deny_policy_rules": [
     "train_self",
     "broker_active_trader",

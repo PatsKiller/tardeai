@@ -116,16 +116,28 @@ def reason_rules(reasons: Iterable[Any]) -> list[str]:
     return [x for x in out if x]
 
 
+def additive_exempt(paths: Sequence[str], statuses: Optional[Mapping[str, str]], cfg: Mapping[str, Any]) -> set[str]:
+    """Paths ADDED (status ``A``) that match ``additive_globs`` -- a new CI-gate registration for the PR's own new
+    test. Adding one cannot weaken an existing gate; modifying or deleting one stays denied."""
+    globs = cfg.get("additive_globs") or ()
+    return {p for p in paths if (statuses or {}).get(p) == "A" and _match(p, globs)}
+
+
 def path_findings(paths: Sequence[str], cfg: Mapping[str, Any], *, policy: Optional[Mapping[str, Any]] = None,
-                  is_protected: Callable[[str], bool] = lambda _p: False) -> list[str]:
-    """Why these paths cannot ride solo ([] = they can). Deny wins; a path outside the allow list refuses."""
+                  is_protected: Callable[[str], bool] = lambda _p: False,
+                  statuses: Optional[Mapping[str, str]] = None) -> list[str]:
+    """Why these paths cannot ride solo ([] = they can). Deny wins (except an added ``additive_globs`` file); a
+    path outside the allow list refuses."""
     out: list[str] = []
+    exempt = additive_exempt(paths, statuses, cfg)
     if not paths:
         return ["NO_CHANGED_PATHS"]
     deny_rules = set(cfg.get("deny_policy_rules") or ())
     rule_globs = [(r.get("id"), r.get("globs") or ()) for r in ((policy or {}).get("rules") or ())
                   if r.get("id") in deny_rules]
     for p in paths:
+        if p in exempt:
+            continue
         if is_protected(p):
             out.append(f"DENY_PROTECTED_SURFACE:{p}")
         elif _match(p, cfg.get("deny_globs") or ()):
@@ -179,7 +191,8 @@ def evaluate(*, pr: int, head_sha: str, title: str, risk: str, reasons: Iterable
              pr_text: Optional[Mapping[str, Any]], runs: Iterable[Mapping[str, Any]],
              claim_rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], policy_state: Mapping[str, Any],
              train_policy: Optional[Mapping[str, Any]] = None,
-             is_protected: Callable[[str], bool] = lambda _p: False) -> dict:
+             is_protected: Callable[[str], bool] = lambda _p: False,
+             statuses: Optional[Mapping[str, str]] = None) -> dict:
     """Pure: may this PR ride as the only member of a train? ``{"eligible", "why", "receipt", ...}``."""
     why: list[str] = []
     if not policy_state.get("active"):
@@ -204,9 +217,16 @@ def evaluate(*, pr: int, head_sha: str, title: str, risk: str, reasons: Iterable
     receipt, rwhy = find_receipt(text.get("comments") or (), head_sha, claim_rows)
     if receipt is None:
         why.append(rwhy)
-    why.extend(path_findings(list(paths), cfg, policy=train_policy, is_protected=is_protected))
+    why.extend(path_findings(list(paths), cfg, policy=train_policy, is_protected=is_protected, statuses=statuses))
+    exempt = additive_exempt(list(paths), statuses, cfg)
+
+    def about_exempt(r: Any) -> bool:
+        if isinstance(r, Mapping):
+            return str(r.get("path") or "") in exempt and r.get("rule") != "deletion"
+        return any(str(r).endswith(":" + p) for p in exempt)
+
     deny = set(cfg.get("deny_reason_rules") or ())
-    bad = sorted({r for r in reason_rules(reasons) if r in deny})
+    bad = sorted({r for r in reason_rules([x for x in reasons or () if not about_exempt(x)]) if r in deny})
     why.extend(f"DENY_REASON:{r}" for r in bad)
     return {"pr": pr, "head_sha": head_sha, "eligible": not why, "why": why, "receipt": receipt,
             "real_layout_proof": proof, "paths": len(paths)}

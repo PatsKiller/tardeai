@@ -2468,7 +2468,9 @@ class TrainController:
             v = SOLO.evaluate(pr=e.pr, head_sha=e.head_sha, title=e.title, risk="needs_operator", reasons=full,
                               paths=[str(p.get("path")) for p in (change or {}).get("paths") or []],
                               pr_text=self.solo_pr_text(e.pr), runs=runs, claim_rows=rows, cfg=cfg,
-                              policy_state=state, train_policy=train_policy, is_protected=is_protected)
+                              policy_state=state, train_policy=train_policy, is_protected=is_protected,
+                              statuses={str(p.get("path")): str(p.get("status") or "")[:1]
+                                        for p in (change or {}).get("paths") or []})
             verdicts.append({k: v.get(k) for k in ("pr", "eligible", "why", "receipt")})
             self._event("classified", "classified", {"risk_class": "needs_operator", "head_sha": e.head_sha,
                                                      "reasons": ["solo:" + ("eligible" if v["eligible"] else
