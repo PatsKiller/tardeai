@@ -50,6 +50,10 @@ try:  # Command Center auth policy (config/cc_auth.yaml) — also owns the liste
     from lib import cc_auth as _cc_auth  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import cc_auth as _cc_auth  # noqa: E402
+try:  # return freed heap to the OS when the server goes idle (lib/malloc_relief.py, 2026-10-25)
+    from lib import malloc_relief as _malloc_relief  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import malloc_relief as _malloc_relief  # noqa: E402
 # Historical port is the fallback only when cc_auth.yaml failed to load (cc_auth then fails closed).
 PORT = _cc_auth.load_config().service_port or 7777
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
@@ -2862,7 +2866,17 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "48")))
     _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
+    def shutdown_request(self, request):
+        # Every served request ends here (ThreadingMixIn.process_request_thread's finally). 2026-10-25
+        # (portfolio-server memory): the thread finishing the last in-flight request returns freed heap
+        # to the OS (lib/malloc_relief.py, rate-limited). Paired with note_request_start below.
+        try:
+            super().shutdown_request(request)
+        finally:
+            _malloc_relief.note_request_end()
+
     def process_request_thread(self, request, client_address):
+        _malloc_relief.note_request_start()  # ended in shutdown_request, or on the server_busy 503 path
         # Bound hung client I/O so dead Tailscale peers release slots
         try:
             request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
@@ -2900,6 +2914,7 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
                     request.close()
                 except Exception:
                     pass
+                _malloc_relief.note_request_end()
                 return
             _t0 = time.monotonic()
             try:

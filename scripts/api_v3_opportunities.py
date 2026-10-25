@@ -55,19 +55,108 @@ def review_state(sym: str) -> dict[str, Any]:
         return {"open": False, "error": type(e).__name__}
 
 
-def request_review(symbol: str, body: dict | None = None) -> tuple[int, dict[str, Any]]:
-    """POST …/review-request — queue a CIO symbol-thesis review; an already-open request is not duplicated."""
+def request_state(sym: str) -> dict[str, Any] | None:
+    """ReviewRequestState@v1 (queue + acquisition outcome) for one symbol; None when unreadable."""
+    try:
+        return _priority().review_states([sym]).get(sym)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _conflict_root():
+    from scripts.lib.conflicts.api import _root
+
+    return _root()
+
+
+def _link_conflict(sym: str, key: str, *, request_id: str, root=None, now=None, ledger=None,
+                   memory_writer=None) -> dict[str, Any]:
+    """Record review_queued on the conflict ledger for a request filed with a conflict key.
+
+    Guarded: a missing ledger, an unknown key or an unproven identity is a no-op with a named reason; the
+    queue request stands either way. Completion (complete_review) stays with the CIO publication path.
+    """
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    try:
+        from scripts.lib.conflicts.ledger import ConflictLedger
+        from scripts.lib.conflicts.review import record_review_queued
+    except ImportError as e:  # pragma: no cover
+        return {"recorded": False, "reason": f"conflict ledger module unavailable ({type(e).__name__})"}
+    try:
+        root = Path(root) if root is not None else _conflict_root()
+    except Exception as e:  # noqa: BLE001
+        return {"recorded": False, "reason": f"conflict ledger root unavailable ({type(e).__name__})"}
+    if ledger is None and not (root / "data/conflicts/conflict_events.jsonl").is_file():
+        return {"recorded": False, "reason": "conflict ledger not yet produced; the queue request stands"}
+    if ledger is None:
+        if memory_writer is None:
+            try:
+                from scripts.lib.conflicts.cio import memory_writer as _mw
+
+                memory_writer = _mw(root)
+            except ImportError:
+                memory_writer = None
+        ledger = ConflictLedger(root, memory_writer=memory_writer)
+    stp = _priority()
+
+    def readback(rid):
+        rows = [r for r in stp._rows(stp._root(None).joinpath(*stp.RELPATH)) if r.get("request_id") == rid]
+        return rows[-1] if rows else None
+
+    try:
+        event = record_review_queued(ledger, key, request_id=request_id, queue_readback=readback,
+                                     at=now or datetime.now(timezone.utc), apply=True)
+    except KeyError:
+        return {"recorded": False, "reason": "conflict key not found in the ledger"}
+    except ValueError as e:
+        return {"recorded": False, "reason": str(e)}
+    except RuntimeError as e:  # the event is durable; only an outbox sink is pending
+        return {"recorded": True, "reason": f"recorded; delivery pending ({e})"}
+    return {"recorded": True, "event_id": (event or {}).get("event_id")}
+
+
+def _identity(sym: str, key: str | None) -> dict[str, Any]:
+    """Registry identity for a conflict-linked request; never guessed from the conflict record itself."""
+    if not key:
+        return {}
+    try:
+        from scripts.lib.identity_carriage import resolve_security_identity
+
+        env = resolve_security_identity(sym)
+    except Exception:  # noqa: BLE001
+        return {"identity_status": "UNRESOLVED"}
+    return {"security_guid": env.get("security_guid"), "identity_status": env.get("identity_status") or "UNRESOLVED"}
+
+
+def request_review(symbol: str, body: dict | None = None, *, identity=None, link=None) -> tuple[int, dict[str, Any]]:
+    """POST …/review-request — queue a CIO symbol-thesis review; an already-open request is not duplicated.
+
+    ``conflict_key`` (optional) links the request to a conflict-ledger finding: the request carries a request_id and
+    the registry identity, and review_queued is recorded on the ledger when it exists (see _link_conflict).
+    The response always carries ``review_state`` (queued / blocked with the acquisition reason / answered …).
+    """
+    import uuid
+
     sym = (symbol or "").upper().strip()
     if not sym or not sym.replace(".", "").isalnum() or len(sym) > 10:
         return 400, {"ok": False, "error": "bad_symbol"}
+    key = str((body or {}).get("conflict_key") or "").strip()[:300] or None
     state = review_state(sym)
-    if state.get("open"):
-        return 200, {"ok": True, "already_open": True, "symbol": sym, "review": state}
+    current = request_state(sym)
+    if state.get("open") and not (key and (current or {}).get("conflict_key") != key):
+        return 200, {"ok": True, "already_open": True, "symbol": sym, "review": state, "review_state": current}
     note = str((body or {}).get("note") or "").strip()[:240]
+    request_id = "rr_" + uuid.uuid4().hex[:20]
+    extra = {"request_id": request_id, "conflict_key": key, **(identity or _identity)(sym, key)}
     _priority().request(sym, reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
-                        source=REVIEW_SOURCE)
-    return 200, {"ok": True, "already_open": False, "symbol": sym, "review": review_state(sym),
-                 "authority": "READ_ONLY_ADVISORY"}
+                        source=REVIEW_SOURCE, extra=extra)
+    out = {"ok": True, "already_open": bool(state.get("open")), "symbol": sym, "request_id": request_id,
+           "review": review_state(sym), "review_state": request_state(sym), "authority": "READ_ONLY_ADVISORY"}
+    if key:
+        out["conflict_ledger"] = (link or _link_conflict)(sym, key, request_id=request_id)
+    return 200, out
 
 
 def watch_state(sym: str) -> dict[str, Any]:

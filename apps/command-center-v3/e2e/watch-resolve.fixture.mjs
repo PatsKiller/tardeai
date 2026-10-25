@@ -91,7 +91,7 @@ try{
   await expect(row.getByTestId('conflict-headline')).toHaveText(specimen.section.headline)
   await expect(page.locator('body')).not.toContainText('LEGACY RAW CONFLICT MUST NOT BECOME A FLAG')
   await noHorizontal()
-  await tap(row.getByRole('button',{name:'Resolve conflict',exact:true}))
+  await tap(row.getByRole('button',{name:'Ask the CIO to review',exact:true}))
   const dialog=page.getByRole('dialog',{name:'SCHD · recorded conflict'})
   await inView(dialog);await inView(dialog.getByRole('button',{name:'← Back'}))
   await inView(dialog.getByRole('heading',{name:'What disagrees',exact:true}))
@@ -116,8 +116,8 @@ try{
   await page.goBack();await inView(page.getByRole('dialog',{name:'SCHD · recorded conflict'}))
   await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByTestId('watch-row')).toHaveCount(104)
-  await inView(row.getByRole('button',{name:'Resolve conflict',exact:true}))
-  await tap(row.getByRole('button',{name:'Resolve conflict',exact:true}))
+  await inView(row.getByRole('button',{name:'Ask the CIO to review',exact:true}))
+  await tap(row.getByRole('button',{name:'Ask the CIO to review',exact:true}))
   // A selected-record read already in flight when the fixture state flips still answers the old state; advance
   // the fake clock one poll interval at a time until the next read lands (slower CI runners hit this race).
   state='DECIDED'
@@ -131,7 +131,7 @@ try{
   await page.screenshot({path:path.join(output,`impl-watch-${surface}-resolved-${width}.png`),fullPage:false,animations:'disabled'})
   await tap(dialog.getByRole('button',{name:'← Back'}))
   await expect(row.getByTestId('conflict-line')).toHaveCount(0)
-  await expect(row.getByRole('button',{name:'Resolve conflict',exact:true})).toHaveCount(0)
+  await expect(row.getByRole('button',{name:'Ask the CIO to review',exact:true})).toHaveCount(0)
   assert.equal(new URL(page.url()).searchParams.get('source'),'fixture')
   if(width<820){
    await tap(row.locator('[title="Open the SCHD record"]'))

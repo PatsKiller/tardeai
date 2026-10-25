@@ -758,3 +758,71 @@ def test_ledger_chip_warns_past_the_registered_bound_in_market_hours(monkeypatch
     old=(NOW-__import__('datetime').timedelta(hours=bound+1)).isoformat()
     assert _ledger_payload({'written_at':old,'rows':1})['tone']=='warning'
     assert _ledger_payload({'written_at':NOW.isoformat(),'rows':1})['tone']=='success'
+
+
+def test_history_known_trip_stats_exclude_basis_unknown_and_say_so():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [
+        roundtrip(), roundtrip(id=902, dedupe_key="loss", exit_price=40, net_pnl=-13.75, pnl_pct=-3.03),
+        roundtrip(id=903, dedupe_key="nobasis", entry_price=None, net_pnl=None, pnl_pct=None, basis_status="UNKNOWN")]
+    stats = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)["detail"]["stats"]
+    assert stats["win_rate_pct"] is None and stats["best_trip_pct"] is None, "complete-coverage fields stay null"
+    assert stats["known_win_rate_pct"] == 50.0
+    assert stats["known_best_trip_pct"] == pytest.approx((43.75 / 41.25 - 1) * 100)
+    assert stats["known_worst_trip_pct"] == -3.03
+    assert stats["excluded_basis_unknown_count"] == 1 and stats["known_priced_trip_count"] == 2
+    assert stats["known_median_hold_days"] is not None and stats["known_timed_trip_count"] >= 2
+
+
+def test_history_account_absent_from_observed_broker_positions_is_not_held_there():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(), roundtrip(
+        id=902, dedupe_key="ira", account="schwab_rollover_ira")]
+    data["files"]["holdings"]["document"]["holdings"] = [
+        {"symbol": "TSTA", "account": "schwab_roth", "shares": 7, "provider_observed_at": "2026-11-02T16:00:00Z"},
+        {"symbol": "OTHR", "account": "schwab_rollover_ira", "shares": 1, "broker_position_as_of": "2026-11-02"},
+        {"symbol": "CASH", "account": "schwab_rollover_ira", "shares": 500, "is_cash": True,
+         "broker_position_as_of": "2026-11-02"}]
+    data["sources"]["trade_transactions"]["rows"] = [
+        {"symbol": "CASH", "account": "schwab_rollover_ira"}, {"symbol": "CASH", "account": "schwab_roth"}]
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    accts = {a["account_id"]: a for a in out["symbols"][[s["symbol"] for s in out["symbols"]].index("TSTA")]["accounts"]}
+    assert accts["schwab_roth_ira"]["held_quantity"] == 7
+    assert accts["schwab_rollover_ira"]["held_quantity"] == 0
+    assert accts["schwab_rollover_ira"]["quantity_basis"].startswith("absent from")
+    cash = {a["account_id"]: a for a in next(s for s in out["symbols"] if s["symbol"] == "CASH")["accounts"]}
+    assert cash["schwab_rollover_ira"]["held_quantity"] is None, "a stored cash row is never read as zero"
+
+
+def test_history_names_fall_back_to_stored_names_and_label_cusips():
+    data = history_snapshot()
+    rows = [roundtrip(symbol=s, id=n, dedupe_key=f"k{n}") for n, s in enumerate(
+        ["JBLU", "JBLU", "824430300", "824430300", "44984F807", "44984F807", "ZZZZ", "ZZZZ"])]
+    data["sources"]["schwab_round_trips"]["rows"] = rows
+    data["company_names"] = {"names": {"JBLU": {"name": "JETBLUE AIRWAYS CORP", "source": "SEC company tickers"},
+                                       "SHFS": {"name": "SHF Holdings, Inc.", "source": "SEC company tickers"}},
+                             "cusip_tickers": {"824430300": "SHFS"}}
+    by = {s["symbol"]: s for s in hist.build_history(data, {}, now=NOW)["symbols"]}
+    assert by["JBLU"]["company_name"] == "JETBLUE AIRWAYS CORP" and by["JBLU"]["company_missing_reason"] is None
+    assert by["824430300"]["identifier_label"] == "CUSIP 824430300 · SHFS"
+    assert by["824430300"]["company_name"] == "SHF Holdings, Inc."
+    assert by["44984F807"]["identifier_label"] == "CUSIP 44984F807" and by["44984F807"]["company_missing_reason"] is None
+    assert by["ZZZZ"]["company_name"] is None and "not recorded" in by["ZZZZ"]["company_missing_reason"]
+    assert src.cusip_like("44984F807") and not src.cusip_like("SCHD") and not src.cusip_like("44984F808")
+
+
+def test_name_fallbacks_read_stored_files_only(tmp_path):
+    runtime = tmp_path / "data/runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "sec_company_tickers.json").write_text(json.dumps({"0": {"ticker": "NERV", "title": "Minerva Neurosciences, Inc."}}))
+    (runtime / "schwab_instrument_evidence.json").write_text(json.dumps({"instruments": {
+        "FJSCX": {"description": "FIDELITY JAPAN SMALLER COMPANIES"},
+        "SHFS": {"description": "SHF HLDGS INC A", "identifiers": {"cusip": "824430300"}}}}))
+    before = sorted(p.name for p in runtime.iterdir())
+    out = src.name_fallbacks({"NERV", "FJSCX", "SCHD", "824430300"}, tmp_path,
+                             {"holdings": [{"symbol": "SCHD", "name": "SCHWAB US DIVIDEND EQUITY ETF"}]})
+    assert out["names"]["NERV"]["source"] == "SEC company tickers"
+    assert out["names"]["FJSCX"]["name"] == "FIDELITY JAPAN SMALLER COMPANIES"
+    assert out["names"]["SCHD"]["source"] == "holdings broker position name"
+    assert out["cusip_tickers"] == {"824430300": "SHFS"}
+    assert sorted(p.name for p in runtime.iterdir()) == before

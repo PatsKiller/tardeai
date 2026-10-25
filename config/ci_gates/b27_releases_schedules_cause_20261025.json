@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "b27_releases_schedules_cause_20261025",
+  "files": [
+    "tests/test_b27_releases_schedules_cause_20261025.py"
+  ],
+  "anchor": "B27_RELEASES_SCHEDULES_CAUSE_20261025",
+  "comment": [
+    "ANCHOR: B27_RELEASES_SCHEDULES_CAUSE_20261025 — [shared-infra] Releases & Schedules: stderr cause instead of exit_1 and failed deploy attempts that survive a later successful receipt (AGENTS.md 28.9)."
+  ]
+}
