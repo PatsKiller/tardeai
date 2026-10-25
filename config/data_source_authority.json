@@ -5267,6 +5267,7 @@
       "projection": "scripts.lib.conflicts.proposals.collection",
       "readers": [
         "Conflict rules page",
+        "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
         "GET /api/v3/conflicts/proposals",
         "conflict-resolver (effective rulebook)"
       ],
