@@ -14,7 +14,7 @@ def section(**changes):
     return {"findings": [{"key": "fixture:later", "kind": "DATA_ERROR", "summary": "Canonical data needs repair",
                            "clears_when": "The authoritative producer repairs its input", "owner": "fixture owner"},
                           {"key": "fixture:first", "kind": "DATA_ERROR", "summary": "Canonical priority is retained"}],
-            "headline": {"key": "fixture:later", "summary": "Backend-selected headline"},
+            "headline": "Backend-selected headline",
             "gap": None, "source": "fixture canonical engine", "as_of": NOW.isoformat(), "stale": False,
             "future_field": {"must": "remain unchanged"}, **changes}
 
