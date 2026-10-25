@@ -1,0 +1,21 @@
+# PROPOSAL ONLY until the operator installs it. Replaces the never-installed cron line of lane self-heal-fixer
+# (registry PAUSED, "40 9-18 * * 1-5") so the fixer also runs on weekends, when the release train is busiest.
+# The fixer stays DISARMED until a guard git-push grant whose reason names self-heal-fixer is active, and opens PRs
+# only once AGENTS.md section 28.14 (or 24.11) is ACTIVE at origin/main. It never merges or deploys.
+
+[Unit]
+Description=Trade AI self-heal Claude Code fixer (one fix job per cycle; budget reserved up front)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TMPDIR=%h/.cache/tradeai-self-heal
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/tradeai-self-heal
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/self_heal_fixer.py --cycle --apply
+Nice=10
+TimeoutStartSec=10800
+
+[Install]
+WantedBy=default.target

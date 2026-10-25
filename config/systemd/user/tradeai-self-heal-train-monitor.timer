@@ -1,0 +1,14 @@
+# PROPOSAL ONLY until the operator installs it. Every 5 minutes, every day (weekends are the heaviest release days).
+
+[Unit]
+Description=Trade AI self-heal train monitor every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-self-heal-train-monitor.service
+
+[Install]
+WantedBy=timers.target

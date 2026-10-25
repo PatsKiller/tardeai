@@ -1,0 +1,14 @@
+# PROPOSAL ONLY until the operator installs it. 20 minutes after the previous cycle ends, every day.
+
+[Unit]
+Description=Trade AI self-heal fixer cycle
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=20min
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-self-heal-fixer.service
+
+[Install]
+WantedBy=timers.target

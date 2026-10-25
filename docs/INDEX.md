@@ -2295,6 +2295,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/tradeinview-redesign-20261024/README.md` | WP-22 TradeInView A source packet |
 | `docs/ops/packets/w8-writers-20261024/README.md` | W8 source packet |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
+| `docs/ops/proposals/self-heal-train-monitor-lane-20261025/README.md` | Self-heal train monitor: lane registration proposal (2026-10-25) |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/ARCHITECTURE_AND_DATA_FLOW.md` | Architecture and data flow — indicator JSON and ready-three |
