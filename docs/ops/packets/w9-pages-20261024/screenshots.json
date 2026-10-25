@@ -28,7 +28,7 @@
     },
     {
       "name": "impl-w9-watch-full-universe-412.png",
-      "sha256": "d1780863150d83216c43874c4316d5d75197d58cd6795dfd7fcdf3a16c8cd074"
+      "sha256": "8ad506fd9b398db2df6a1ec75a8f4479e232693e34ae350ed75bcf2d2adc65b8"
     },
     {
       "name": "impl-w9-trading-manual-entry-412.png",
@@ -44,15 +44,15 @@
     },
     {
       "name": "impl-w9-research-detail-412.png",
-      "sha256": "703de3d46c59d209f59bff7f5ce89ed3cd94c1e8511620be8d7adaa49593006a"
+      "sha256": "08a05e365c6b419f8919b3a43f1a700937bfbec1981c7a7d2c77c25c2bb96bf7"
     },
     {
       "name": "impl-w9-trading-proposals-1440.png",
-      "sha256": "ef29b407044fd43b03f11169985d9cd2d2dbbb59759171389fed96bff7e00777"
+      "sha256": "d265ff3af835e7489456ccfd331439ca883952b9cbf71a57bb844dba684da279"
     },
     {
       "name": "impl-w9-trading-manual-entry-1440.png",
-      "sha256": "49dfdddd31bed854fc6503e58dba541af8f64119e06f97597b52755068c15412"
+      "sha256": "af6434caa777ffe61c5056dd39486a68d42fafef8a7edad17f3ba2344e2e6b4d"
     },
     {
       "name": "impl-w9-research-same-page-link-1440.png",
@@ -72,7 +72,7 @@
     },
     {
       "name": "impl-w9-watch-full-universe-390.png",
-      "sha256": "1daabbbb469f45b0e079f4c4b9d7565fc0f95c6f2f8483566c684bcf9438766b"
+      "sha256": "b3dfe8df3660bcff8edd07be461a6f93a623f019ac0a5709c609153a3c42c2cc"
     },
     {
       "name": "impl-w9-watch-full-universe-1440.png",
@@ -84,7 +84,7 @@
     },
     {
       "name": "impl-w9-trading-manual-entry-390.png",
-      "sha256": "525c4bb383f184825615943bb65a1c8930eee1d898855e29300f50a4715d56f4"
+      "sha256": "2e2eb4f04c1119a988b11731d123c650ab8cbe5179ee5a5f52ec0388709a2dc9"
     },
     {
       "name": "impl-w9-trading-proposals-390.png",
@@ -96,7 +96,7 @@
     },
     {
       "name": "impl-w9-research-detail-390.png",
-      "sha256": "7bbb4105c275a691a185d3e02cf6cb642ecdb7bb9bf2fe7b45527ee12f25172b"
+      "sha256": "27f3d43d20bcd690604a83d5d1191a7e47b2c2b02f20c76cf02f9944edf21490"
     },
     {
       "name": "impl-conflict-shared-open-412.png",
@@ -152,7 +152,7 @@
     },
     {
       "name": "impl-watch-prospects-conflict-open-390.png",
-      "sha256": "2142d0587c0015a56d7515b967f17e334b4824d2fa971d5c39795d530a43f854"
+      "sha256": "d6d8cc22e4f559b0b4905cb2483daa3602d895e7b8072a0408e7c488d64d456d"
     },
     {
       "name": "impl-watch-prospects-review-queued-1440.png",
@@ -160,7 +160,7 @@
     },
     {
       "name": "impl-watch-prospects-review-queued-390.png",
-      "sha256": "6db17ce5d615d1aee324db8d57dee327a1a8b3907ca17759b8d78f17eea701da"
+      "sha256": "04ab9dad92f3b9eac4771ac02d85ce94dc4ceaa1e1974d230022e0bbc7c85e3f"
     },
     {
       "name": "impl-watch-mine-review-queued-412.png",
@@ -168,7 +168,7 @@
     },
     {
       "name": "impl-watch-prospects-review-queued-412.png",
-      "sha256": "8e3b8608617f9f12fd84ed5cd51caf971e9ce761aea1b19377ac871fca122cb5"
+      "sha256": "749fd3fa47f56bebbb2bfc19163f3746fee36fb678017a9077b70ff7cd9b7933"
     }
   ]
 }

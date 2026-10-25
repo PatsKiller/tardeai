@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-25T00:01:12.319828+00:00",
+  "as_of": "2026-10-25T00:13:48.181240+00:00",
   "affected_hidden_psycopg2": {
     "passed": 64,
     "failed": 20,
@@ -40,10 +40,11 @@
   },
   "native_build": {
     "shared_f40_source_plus_ordinary_working": "PASS",
-    "watch_combined_a201_dependency": "FAIL: retained W2 ListPager/CSS token violations; model test type error; W2 notified"
+    "watch_combined_a201_dependency": "Initial failure retained for diagnosis; superseded by exact6d84 corrected dependency verification",
+    "watch_combined_6d84_dependency": "PASS: full npm run build token/UI/contrast/model/TypeScript/Vite"
   },
   "scope": "Fixture/source only, no runtime acceptance, no provider/broker calls or publication",
-  "frontend_source_head": "4be918add4613da684c2f7016bcc16a5749f5131",
+  "frontend_source_head": "10c6aca9773e28418625dcd5d9b55838c9989d4e",
   "browser_cases": {
     "ordinary": 3,
     "shared_conflict": 3,
@@ -61,7 +62,7 @@
   },
   "dependencies": {
     "W2_pages": "Normal two-file release a20167e5, retained paging preserved",
-    "W2_retained": "Corrected frozen ListPager/model/CSS package pending; no W9 retained-path edits",
+    "W2_retained": "Exact committed6d84c466b3bb114b7e936b0f84df47ff0ec1c1ac four-dependency blobs pass native+9pagecases in private combination; retained W2 paths never edited by W9",
     "W10": "Runtime accepted engine+ledger/API required",
     "C3_root": "Actual persisted queue readback/receipt \u2192 ledger review_queued hook pending"
   },
@@ -109,6 +110,19 @@
     "watch-combined-tsc.log": {
       "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/watch-combined-tsc.log",
       "sha256": "93e163bad439a04c659ed866426ebae44cbf156bfb4eeb0f6177c260295b4742"
+    },
+    "watch-combined-build-v2.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-10c6aca97-W2-6d84c466b/watch-combined-build-v2.log",
+      "sha256": "a4c8d816ee1c951e4dce36f4c7178c11d7e01532e6c30e5ff8a44a9d0343061b"
+    },
+    "watch-resolve-proof-v2.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-10c6aca97-W2-6d84c466b/watch-resolve-proof-v2.log",
+      "sha256": "68f317cbfb0d10b4ff3ddd687aeb3763c2b7ebb95581e0835c3a204868604b59"
+    },
+    "browser-mobile-proof-v2.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-10c6aca97-W2-6d84c466b/browser-mobile-proof-v2.log",
+      "sha256": "33c7ec8e9ac2c780c70a1553c2618ae0bf051dd0c34d218b3f5cb65b7c9a562e"
     }
-  }
+  },
+  "publication": "Not independently ready on origin/main: W2 retained dependency source must be integrated first; no PUSH_NEEDED or runtime claim"
 }

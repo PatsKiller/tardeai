@@ -1,8 +1,8 @@
 # W9 page fixes and shared phone details — 2026-10-24
 
 Status: DRAFT
-as_of: 2026-10-25T00:01:44.551324+00:00
-Measured at: frontend source 4be918add4613da684c2f7016bcc16a5749f5131; exact browser input hashes and accepted W2 dependency hashes in the packet; runtime not measured
+as_of: 2026-10-25T00:13:48.181448+00:00
+Measured at: exact W9 frontend 10c6aca9773e28418625dcd5d9b55838c9989d4e plus four W2 dependency blobs at 6d84c466b3bb114b7e936b0f84df47ff0ec1c1ac; runtime not measured
 
 Design task: `DSN-20261024-w9-nonops-pages-P2-T1`. Worker only; no publication, merge, deployment, broker call, or scheduled-job change.
 
@@ -51,6 +51,8 @@ The hidden-psycopg2 affected suite has 64 passes and 20 failures. A clean `origi
 
 W10's exact synthetic final-matrix R11 and T0/T1 sections replace the older reference sample, with source head and rulebook SHA recorded in each fixture. The shared fixture proves engine order/other-finding selection and state/history/decision display. Six actual My Watchlist/Prospects cases at 1440×1000, 412×915 and 390×844 prove 104-row Resolve, focused visible details, ≥44px taps, mocked request plus durable queued history, DECIDED distinct from CLEARED, evidence/Back, actual next offset 17 rather than requested limit 25, missing-engine gaps and a mismatched-key guard. Traffic receipts show zero external, unexpected or unapproved mutation requests.
 
-The exact frozen W2 dependency package initially fails the native token guard in ListPager and WatchRecordCard.css and type checking in its model test; W2 has the findings for correction. Shared source native build passed independently before the page dependency integration. No combined native pass is claimed until W2's corrected frozen source is verified.
+The initial frozen W2 dependency package failed the native token guard in ListPager/WatchRecordCard.css and type checking in its model test. W2 corrected its retained files in committed source `6d84c466b3bb114b7e936b0f84df47ff0ec1c1ac`. The exact private combination of W9 `10c6aca9773e28418625dcd5d9b55838c9989d4e` plus those four W2 dependency blobs now passes the full native build and refreshed nine actual-page browser cases. No retained W2 worktree path was edited. `combined-source.json` and browser input hashes identify every accepted blob.
+
+The standalone branch still requires W2's retained dependency source to be integrated before publication. No PUSH_NEEDED is emitted for a base that lacks ListPager. The coordinator has exact minimal source packages and the dependency order.
 
 This is not acceptance of the 31-flag golden replay, a working review producer, a live conflict resolver lane or a deployed Watch Resolve fix. C3/root must bind actual persisted queue receipts to ledger progress; W10 owns durable resolution, and the applicable operator gates remain. No endpoint was implemented here, so this change does not claim a new real-tree endpoint acceptance test.
