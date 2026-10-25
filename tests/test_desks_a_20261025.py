@@ -209,7 +209,7 @@ def test_defense_book_comes_from_cio_truth_and_unmeasured_fields_say_so(tmp_path
     assert row(act, "act-trans")["value"] == "1 sector"
     assert row(act, "act-sectors")["href"] == "/watch?tab=sectors"
     opts = panel(out, "hedges", "options")
-    assert "options-lifecycle-run is PAUSED" in opts["gap"] and "2026-10-14" in opts["gap"]
+    assert "options-lifecycle-run is PAUSED" in opts["gap"] and "Wed Oct 14 15:40 ET" in opts["gap"]
     cash = panel(out, "hedges", "cash")
     assert cash["gap"] == "No job writes this file: it has no scheduled writer."
     assert row(cash, "ca-SGOV")["value"] == "4.31%"
@@ -228,7 +228,7 @@ def test_projection_code_never_imports_execution_or_side_effecting_helpers():
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     imported |= {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-    assert imported <= {"__future__", "json", "math", "datetime", "pathlib", "typing"}, imported
+    assert imported <= {"__future__", "json", "math", "datetime", "pathlib", "typing", "zoneinfo"}, imported
     for forbidden in ("defense_execution", "place_order", "subprocess", "ensure_tables", "atomic_write_json_soft",
                       "compute_statistics", "ensure_analyst_batch", "write_text", "write_bytes", "unlink", "mkdir", "commit"):
         assert forbidden not in names, forbidden
@@ -269,7 +269,7 @@ def test_agents_run_timeline_reads_producer_journals_by_record_time(tmp_path):
     assert row(cal, "cal-best")["value"] == "alex · 0.120" and row(cal, "cal-worst")["value"] == "morgan · 0.310"
     mem = panel(out, "memory", "memory")
     assert row(mem, "mem-records")["value"] == "2" and row(mem, "mem-active")["value"] == "1" and row(mem, "mem-today")["value"] == "1"
-    assert row(panel(out, "learning", "learning"), "ln-newest")["value"] == "2026-10-09 22:36 UTC"
+    assert row(panel(out, "learning", "learning"), "ln-newest")["value"] == "Fri Oct 9 18:36 ET"
     assert "embedding" not in labels(out)
     assert all(s.startswith("SELECT") for s in db.seen)
 

@@ -35,6 +35,7 @@ module orders rows by lane, then conviction, then the existing decision priority
 """
 from __future__ import annotations
 
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Optional
@@ -786,7 +787,23 @@ def _curator_projection() -> dict[str, Any]:
         return {}
 
 
+_GATHER_LOCK = threading.Lock()
+
+
 def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Single-flight front of ``_gather_build`` (perf + memory 2026-10-25): Watch curation, universe, prospects and
+    intelligence all compose through here; on a cold cache they used to each run the ~10 s, ~100 MB build side by
+    side. Now one builds and the others wait for its result (same 60 s cache, same payload)."""
+    fresh = str((query or {}).get("fresh") or "") in ("1", "true")
+    if not fresh and _CACHE["val"] is not None and time.monotonic() - _CACHE["at"] < CACHE_S:
+        return _CACHE["val"]
+    with _GATHER_LOCK:
+        if not fresh and _CACHE["val"] is not None and time.monotonic() - _CACHE["at"] < CACHE_S:
+            return _CACHE["val"]
+        return _gather_build(query, db_query=db_query, now=now)
+
+
+def _gather_build(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None) -> dict[str, Any]:
     """The ONE composition behind every Watch list (cached 60 s): Prospects lanes, My Watchlist and System Suggests
     read the same rows, so a symbol shows the same conviction, stance and stage on all three (operator 2026-10-23,
     "they don't even align"). Returns {payload (WatchProspects@v1), rows {SYM: row}, row_for(sym), opps, proj_meta,
