@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_writer_restoration_20261024",
+  "files": [
+    "tests/test_n8n_writer_restoration_20261024.py"
+  ],
+  "anchor": "N8N_WRITER_RESTORATION_20261024",
+  "comment": [
+    "ANCHOR: N8N_WRITER_RESTORATION_20261024 — W8 source ownership, receipt identities, actual parent schedules, no duplicate leaf restoration, skipped/failed/dry/future evidence rejection and missed-run watchdog adapter; pinned fixtures only."
+  ]
+}

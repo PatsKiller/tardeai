@@ -1,0 +1,34 @@
+{
+  "host_paths": {
+    "returncode": 0,
+    "log": "final-host_paths.log"
+  },
+  "coverage": {
+    "returncode": 0,
+    "log": "final-coverage.log"
+  },
+  "environment": {
+    "returncode": 0,
+    "log": "final-environment.log"
+  },
+  "dark_contracts": {
+    "returncode": 0,
+    "log": "final-dark_contracts.log"
+  },
+  "registry": {
+    "returncode": 0,
+    "log": "final-registry.log"
+  },
+  "health": {
+    "returncode": 0,
+    "log": "final-health.log"
+  },
+  "contract_manifest": {
+    "returncode": 0,
+    "log": "final-contract_manifest.log"
+  },
+  "ruff": {
+    "returncode": 0,
+    "log": "final-ruff.log"
+  }
+}

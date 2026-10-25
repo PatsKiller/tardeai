@@ -1,0 +1,305 @@
+{
+  "schema": "N8nWriterRestoration@v1",
+  "scope": "W8",
+  "activation": "OPERATOR_ONLY",
+  "specs": [
+    "handoffs/site-audit-20261024/SPEC.md#principle-2",
+    "handoffs/desks-redesign-20261024/SPEC.md#decisions-recorded"
+  ],
+  "note": "Source-only restoration requirements. This file is not an executor allowlist, registry, scheduler, health approval, or activation. Absorbed writers retain one schedule owner; never resurrect duplicate leaf schedules.",
+  "writers": [
+    {
+      "key": "risk-management-refresh",
+      "label": "Risk management snapshot",
+      "lane_id": "risk-management-refresh",
+      "source": "scripts/portfolio_orchestrator.py",
+      "artifact": "data/portfolios/state/risk_management.json",
+      "requested_cron": [
+        "30,45 9 * * 1-5",
+        "*/15 10-15 * * 1-5",
+        "0,10 16 * * 1-5"
+      ],
+      "schedule_basis": "Approved site SPEC Principle 2: every 15 minutes in session plus 16:10 ET",
+      "blocked_by": [
+        "standalone_cached_input_writer_required",
+        "risk_writer_owner_handoff_required"
+      ],
+      "receipt": null
+    },
+    {
+      "key": "market-regime-classifier",
+      "label": "Market regime",
+      "lane_id": "market-regime-classifier",
+      "source": "scripts/market_regime_classifier.py",
+      "artifact": "market_regime_snapshots",
+      "receipt": "data/runtime/market-regime-classifier_last.json",
+      "pipeline": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "market_regime_classifier",
+        "lane_id": "premarket-data-pipeline"
+      },
+      "blocked_by": [
+        "bounded_env_audit_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "sync-dividend-data",
+      "label": "Dividends",
+      "lane_id": "sync-dividend-data",
+      "source": "scripts/sync_dividend_data.py",
+      "artifact": "ticker_dividend_data",
+      "receipt": "data/runtime/sync-dividend-data_last.json",
+      "pipeline": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "sync_dividend_data",
+        "lane_id": "premarket-data-pipeline"
+      },
+      "blocked_by": [
+        "bounded_env_and_provider_owner_audit_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "refresh-symbol-cards",
+      "label": "Symbol cards",
+      "lane_id": "refresh-symbol-cards",
+      "source": "scripts/refresh_symbol_cards.py",
+      "artifact": "data/runtime/symbol_cards_latest.json",
+      "receipt": "data/runtime/refresh_symbol_cards_last.json",
+      "receipt_lane_id": "refresh_symbol_cards",
+      "pipeline": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "refresh_symbol_cards",
+        "lane_id": "premarket-data-pipeline"
+      },
+      "blocked_by": [
+        "live_server_materialization_dependency",
+        "honest_profiles_subprocess_exit_required",
+        "bounded_env_audit_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "recommendation-intelligence-engine",
+      "label": "Recommendation attribution",
+      "lane_id": "recommendation-intelligence-engine",
+      "source": "scripts/recommendation_intelligence_engine.py",
+      "artifact": "data/runtime/rec_source_quality_latest.json",
+      "receipt": null,
+      "pipeline": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "recommendation_intelligence_engine",
+        "lane_id": "premarket-data-pipeline"
+      },
+      "blocked_by": [
+        "write_free_dry_run_and_success_receipt_required",
+        "bounded_env_audit_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "generate-dual-opinion-advisory",
+      "label": "Dual opinion",
+      "lane_id": "generate-dual-opinion-advisory",
+      "source": "scripts/generate_dual_opinion_advisory.py",
+      "artifact": "CLI --json-out (no registered durable destination)",
+      "receipt": null,
+      "blocked_by": [
+        "standalone_lane_contract_required",
+        "bounded_env_audit_required",
+        "schedule_owner_decision_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "advisory-opinion-session",
+      "label": "Advisory opinion session",
+      "lane_id": "advisory-opinion-session",
+      "source": "scripts/lib/advisory/advisory_opinion_engine.py",
+      "artifact": "data/runtime/advisory_opinion_cache.json",
+      "receipt": null,
+      "blocked_by": [
+        "standalone_lane_contract_required",
+        "governed_model_and_memory_owner_handoff_required",
+        "schedule_owner_decision_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "portfolio-correlation",
+      "label": "Portfolio correlation",
+      "lane_id": "portfolio-correlation",
+      "source": "scripts/portfolio_correlation.py",
+      "artifact": "data/portfolios/state/correlation.json",
+      "receipt": null,
+      "blocked_by": [
+        "standalone_cached_input_writer_required",
+        "provider_owner_routing_required",
+        "schedule_owner_decision_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "defense-cash-alternatives",
+      "label": "Cash alternatives",
+      "lane_id": "defense-cash-alternatives",
+      "source": "scripts/defense_cash_alternatives.py",
+      "artifact": "data/runtime/defense_cash_alternatives_latest.json",
+      "receipt": null,
+      "blocked_by": [
+        "write_free_dry_run_and_success_receipt_required",
+        "provider_owner_routing_required",
+        "schedule_owner_decision_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "morning-brief-0730",
+      "label": "Morning brief",
+      "lane_id": "morning-brief-0730",
+      "source": "scripts/send_morning_brief.py",
+      "artifact": "logs/morning_brief.log",
+      "receipt": null,
+      "blocked_by": [
+        "notification_intent_handoff_required",
+        "offline_dry_run_and_success_receipt_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "portfolio-ai-analyst",
+      "label": "Portfolio briefs",
+      "lane_id": "portfolio-ai-analyst",
+      "source": "scripts/portfolio_orchestrator.py",
+      "artifact": "reports/portfolio_brief_*.docx",
+      "receipt": null,
+      "blocked_by": [
+        "standalone_report_writer_required",
+        "execution_and_sender_closure_excluded",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "eod-open-trade-alert",
+      "label": "End of day trades",
+      "lane_id": "eod-open-trade-alert",
+      "source": "scripts/eod_open_trade_alert.py",
+      "artifact": "logs/eod_alert.log",
+      "receipt": null,
+      "blocked_by": [
+        "notification_intent_handoff_required",
+        "success_receipt_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "hermes-score-alerts",
+      "label": "Hermes alerts",
+      "lane_id": "hermes-score-alerts",
+      "source": "scripts/hermes_score_alerts.py",
+      "artifact": "alert_events",
+      "receipt": null,
+      "blocked_by": [
+        "notification_intent_handoff_required",
+        "success_receipt_required",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "cio-decision-engine",
+      "label": "CIO decisions",
+      "lane_id": "cio-decision-engine",
+      "source": "scripts/cio_decision_engine.py",
+      "artifact": "logs/cio_decision_engine.log",
+      "receipt": null,
+      "blocked_by": [
+        "cio_truth_owner_handoff_required",
+        "pause_requires_operator_activation",
+        "health_owner_review_required"
+      ]
+    },
+    {
+      "key": "options-lifecycle-run",
+      "label": "Options lifecycle",
+      "lane_id": "options-lifecycle-run",
+      "source": "scripts/options_lifecycle_run.py",
+      "artifact": "data/runtime/options_lifecycle_latest.json",
+      "receipt": null,
+      "execution_boundary": true,
+      "blocked_by": [
+        "execution_engineering_and_operator_resume_required"
+      ]
+    },
+    {
+      "key": "options-lifecycle-digest",
+      "label": "Options lifecycle digest",
+      "lane_id": "options-lifecycle-digest",
+      "source": "scripts/options_lifecycle_digest.py",
+      "artifact": "logs/options_lifecycle.log",
+      "receipt": null,
+      "execution_boundary": true,
+      "blocked_by": [
+        "execution_engineering_and_operator_resume_required"
+      ]
+    },
+    {
+      "key": "defense-execution",
+      "label": "Defense execution",
+      "lane_id": "defense-execution",
+      "source": "scripts/defense_execution.py",
+      "artifact": "logs/defense_fills.log",
+      "receipt": null,
+      "execution_boundary": true,
+      "blocked_by": [
+        "execution_engineering_and_operator_resume_required"
+      ]
+    },
+    {
+      "key": "sector-momentum-engine",
+      "lane_id": "sector-momentum-engine",
+      "label": "Sector momentum",
+      "source": "scripts/sector_momentum_engine.py",
+      "artifact": "data/runtime/sector_momentum_latest.json",
+      "receipt": null,
+      "request": "W3 handoff 2026-10-24: retain existing lane, include in n8n/watchdog scope; no duplicate writer",
+      "blocked_by": [
+        "success_receipt_required",
+        "health_owner_review_required",
+        "bounded_dependency_audit_required"
+      ]
+    },
+    {
+      "key": "run-pullback-macd-screener",
+      "lane_id": "run-pullback-macd-screener",
+      "label": "Pullback and MACD scan",
+      "source": "linux_launchers/run_pullback_macd_screener.sh",
+      "artifact": "logs/pullback_macd_screener.log",
+      "receipt": null,
+      "request": "W3 handoff 2026-10-24: retain existing lane, include in n8n/watchdog scope; no duplicate writer",
+      "blocked_by": [
+        "success_receipt_required",
+        "health_owner_review_required",
+        "bounded_dependency_audit_required"
+      ]
+    },
+    {
+      "key": "run-pullback-macd-monitor",
+      "lane_id": "run-pullback-macd-monitor",
+      "label": "Pullback and MACD monitor",
+      "source": "linux_launchers/run_pullback_macd_monitor.sh",
+      "artifact": "logs/pullback_macd_monitor.log",
+      "receipt": null,
+      "request": "W3 handoff 2026-10-24: retain existing lane, include in n8n/watchdog scope; no duplicate writer",
+      "blocked_by": [
+        "success_receipt_required",
+        "health_owner_review_required",
+        "bounded_dependency_audit_required"
+      ]
+    }
+  ]
+}
