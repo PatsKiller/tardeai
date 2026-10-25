@@ -55,6 +55,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/system/releases', label: 'Releases & Schedules' },
       { to: '/approvals', label: 'Approvals' },
       { to: '/policy', label: 'Rulebook' },
+      { to: '/conflicts/rules', label: 'Conflict rules' },
       { to: '/system/ops-controls', label: 'Ops Controls' },
       { to: '/system', label: 'System', exact: true },
     ],
