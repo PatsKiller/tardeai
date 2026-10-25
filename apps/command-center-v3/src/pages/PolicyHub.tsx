@@ -50,7 +50,7 @@ export default function PolicyHub() {
       <p className="muted">Written-only means no verified evidence is attached to this exact version. A test name alone does not prove enforcement.</p>
       <div className="policy-grid">
         <nav className="panel stack" aria-label="Rulebook sections"><label>Section<select aria-label="Rulebook section" value={section} onChange={event => chooseSection(event.target.value)} style={{ width: '100%' }}><option value="">All sections</option>{data.sections.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-          <details><summary>Document version</summary><code>{data.source_sha}</code></details><Link className="primary" to="/approvals">Open approvals</Link></nav>
+          <details><summary>Document version</summary><code>{data.source_sha}</code></details><Link className="primary" to="/approvals">Open approvals</Link><Link className="primary" to="/conflicts/rules">Conflict rules →</Link></nav>
         <article aria-label="Policy rules">{data.rules.map(rule => <section key={rule.id} className="rule panel">
           <h2 style={{ fontSize: 14 }}>{rule.section}</h2><p className="rule-text">{rule.text}</p>
           <details><summary>ⓘ In plain words</summary><p>{rule.plain ?? 'A plain-language explanation has not been reviewed for this rule yet.'}</p></details>
