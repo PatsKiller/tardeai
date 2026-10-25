@@ -14,8 +14,12 @@ their stores directly instead of calling them. Field trace:
 """
 from __future__ import annotations
 
+import heapq
 import json
 import math
+import os
+import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -781,6 +785,135 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | N
     if not root.is_dir():
         return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
                 "gap": "The agent run journals are not on file."}
+    cached = _cached_journal_listing(root, now)
+    if cached is not None:
+        entries, by_agent, scanned = cached
+    else:
+        entries, by_agent, scanned = _scan_journal_listing(root)
+    if isinstance(entries, str):
+        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None, "gap": entries}
+    entries.sort(key=lambda e: e[0], reverse=True)
+    runs = []
+    for _mtime, f in entries[: limit * 3]:
+        rows, _gap = _tail_records_cached(f)
+        row = rows[-1] if rows else None
+        if row and _time(row.get("ts")):
+            runs.append(row)
+    runs.sort(key=lambda r: _time(r.get("ts")), reverse=True)
+    return {"runs": runs[:limit], "count": sum(by_agent.values()), "by_agent": by_agent,
+            "newest": runs[0].get("ts") if runs else None, "window": _run_window(entries, now),
+            "gap": "Journal scan stopped at the listing limit; counts are partial." if scanned > JOURNAL_SCAN_LIMIT else None}
+
+
+# ── journal listing / tail caches (perf + memory 2026-10-25) ───────────────────────────────────────────────────
+# The run journals are one write-once JSONL per run (~91k files, ~500 B each). Every cold Agents desk build listed
+# and stat()ed all of them and built ~91k Path objects (~1.5-2 s, the bulk of a ~150 MB per-request peak). Now each
+# agent directory's {name: mtime} is kept and refreshed only when the directory itself changes (a new run file
+# changes the directory mtime; only the new names are stat()ed), and only the files the timeline actually opens
+# (newest ``MAX_ROWS * 3`` plus the 24 h window candidates) become Paths. Parsed tails are cached per
+# (path, mtime_ns, size), bounded, so an unchanged run file is never re-read.
+_LISTING_MAX_DIRS = 64
+_TAIL_CACHE_MAX = 4096
+_LISTING: dict[str, tuple[int, int, int, dict[str, float]]] = {}
+_TAILS: "OrderedDict[tuple[str, int, int], tuple[list[dict], str | None]]" = OrderedDict()
+_CACHE_LOCK = threading.Lock()
+
+
+def _agent_dir_listing(agent_dir: Path) -> tuple[int, int, dict[str, float]] | None:
+    """(entries in the directory, .jsonl names, {jsonl name: mtime}) — refreshed only when the directory mtime
+    changes."""
+    try:
+        dir_sig = agent_dir.stat().st_mtime_ns
+    except OSError:
+        return None
+    key = str(agent_dir)
+    with _CACHE_LOCK:
+        hit = _LISTING.get(key)
+    if hit is not None and hit[0] == dir_sig:
+        return hit[1], hit[2], hit[3]
+    try:
+        names = os.listdir(agent_dir)
+    except OSError:
+        return None
+    old = hit[3] if hit is not None else {}
+    mtimes: dict[str, float] = {}
+    n_jsonl = 0
+    for name in names:
+        if Path(name).suffix != ".jsonl":
+            continue
+        n_jsonl += 1
+        if name in old:
+            mtimes[name] = old[name]
+            continue
+        try:
+            st = os.stat(os.path.join(key, name))
+        except OSError:
+            continue
+        mtimes[name] = st.st_mtime
+    with _CACHE_LOCK:
+        _LISTING[key] = (dir_sig, len(names), n_jsonl, mtimes)
+        while len(_LISTING) > _LISTING_MAX_DIRS:
+            _LISTING.pop(next(iter(_LISTING)))
+    return len(names), n_jsonl, mtimes
+
+
+def _cached_journal_listing(root: Path, now: datetime | None):
+    """(entries, by_agent, scanned) like ``_scan_journal_listing`` but from the per-directory cache, with
+    ``entries`` holding only the files ``run_timeline`` / ``_run_window`` can use. None = use the full scan
+    (listing limit reached or a directory unreadable), so partial-scan behaviour is unchanged."""
+    try:
+        agent_dirs = [d for d in sorted(root.iterdir()) if d.is_dir()]
+    except OSError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=RUN_WINDOW_HOURS) - timedelta(hours=2)).timestamp()
+    by_agent: dict[str, int] = {}
+    scanned = 0
+    keep: list[tuple[float, str, str]] = []
+    newest: list[tuple[float, str, str]] = []
+    for agent_dir in agent_dirs:
+        got = _agent_dir_listing(agent_dir)
+        if got is None:
+            return None
+        n_entries, n_jsonl, mtimes = got
+        scanned += n_entries
+        if scanned > JOURNAL_SCAN_LIMIT:
+            return None
+        by_agent[agent_dir.name] = n_jsonl
+        d = str(agent_dir)
+        for name, mt in mtimes.items():
+            if mt >= cutoff:
+                keep.append((mt, d, name))
+        newest.extend(heapq.nlargest(MAX_ROWS * 3, ((mt, d, name) for name, mt in mtimes.items())))
+    chosen = {(d, n): mt for mt, d, n in keep}
+    for mt, d, n in heapq.nlargest(MAX_ROWS * 3, newest):
+        chosen[(d, n)] = mt
+    entries = [(mt, Path(d) / n) for (d, n), mt in chosen.items()]
+    return entries, by_agent, scanned
+
+
+def _tail_records_cached(path: Path, limit: int = 64 * 1024) -> tuple[list[dict], str | None]:
+    """``_tail_records`` cached per (path, mtime_ns, size). Callers treat the rows as read-only."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return _tail_records(path, limit)
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    with _CACHE_LOCK:
+        hit = _TAILS.get(key)
+        if hit is not None:
+            _TAILS.move_to_end(key)
+            return hit
+    out = _tail_records(path, limit)
+    with _CACHE_LOCK:
+        _TAILS[key] = out
+        while len(_TAILS) > _TAIL_CACHE_MAX:
+            _TAILS.popitem(last=False)
+    return out
+
+
+def _scan_journal_listing(root: Path):
+    """The original full listing: (entries, by_agent, scanned), or (gap text, {}, 0) when unreadable."""
     entries, by_agent, scanned = [], {}, 0
     try:
         for agent_dir in sorted(root.iterdir()):
@@ -799,19 +932,8 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | N
                         continue
             by_agent[agent_dir.name] = n
     except OSError as exc:
-        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
-                "gap": f"The agent run journals could not be listed ({type(exc).__name__})."}
-    entries.sort(key=lambda e: e[0], reverse=True)
-    runs = []
-    for _mtime, f in entries[: limit * 3]:
-        rows, _gap = _tail_records(f, 64 * 1024)
-        row = rows[-1] if rows else None
-        if row and _time(row.get("ts")):
-            runs.append(row)
-    runs.sort(key=lambda r: _time(r.get("ts")), reverse=True)
-    return {"runs": runs[:limit], "count": sum(by_agent.values()), "by_agent": by_agent,
-            "newest": runs[0].get("ts") if runs else None, "window": _run_window(entries, now),
-            "gap": "Journal scan stopped at the listing limit; counts are partial." if scanned > JOURNAL_SCAN_LIMIT else None}
+        return f"The agent run journals could not be listed ({type(exc).__name__}).", {}, 0
+    return entries, by_agent, scanned
 
 
 def _run_window(entries: list[tuple[float, Path]], now: datetime | None) -> dict:
@@ -826,7 +948,7 @@ def _run_window(entries: list[tuple[float, Path]], now: datetime | None) -> dict
     candidates = [f for mtime, f in entries if mtime >= cutoff]
     agents: dict[str, dict[str, int]] = {}
     for f in candidates[:RUN_WINDOW_OPEN_LIMIT]:
-        rows, _gap = _tail_records(f, 64 * 1024)
+        rows, _gap = _tail_records_cached(f)
         for r in rows:
             at = _time(r.get("ts"))
             if not at or not (start < at <= now):
