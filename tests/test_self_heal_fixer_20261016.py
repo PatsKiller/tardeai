@@ -385,11 +385,12 @@ def test_failing_set_and_no_progress():
 
 
 def test_arming_needs_named_grant_and_daily_cap():
-    assert not F.arming_verdict(None, cfg=CFG, jobs_today=0)["armed"]
-    assert not F.arming_verdict({"reason": "PR #1830 sha abc1234"}, cfg=CFG, jobs_today=0)["armed"]
-    ok = F.arming_verdict({"reason": "self-heal-fixer 2026-10-17", "grant_id": "f" * 32}, cfg=CFG, jobs_today=0)
+    g = _cfg(arming={"arm_on": "guard_grant"})  # the original rule; production arms on section 28.14
+    assert not F.arming_verdict(None, cfg=g, jobs_today=0)["armed"]
+    assert not F.arming_verdict({"reason": "PR #1830 sha abc1234"}, cfg=g, jobs_today=0)["armed"]
+    ok = F.arming_verdict({"reason": "self-heal-fixer 2026-10-17", "grant_id": "f" * 32}, cfg=g, jobs_today=0)
     assert ok["armed"]
-    capped = F.arming_verdict({"reason": "self-heal-fixer"}, cfg=CFG, jobs_today=CFG["arming"]["daily_job_cap"])
+    capped = F.arming_verdict({"reason": "self-heal-fixer"}, cfg=g, jobs_today=g["arming"]["daily_job_cap"])
     assert not capped["armed"] and "cap" in capped["why"]
 
 
@@ -633,6 +634,9 @@ def sandbox(tmp_path):
             "ci_timeout_s": 120,
         },
         lifecycle={"release_current_sha_file": str(tmp_path / "GIT_SHA")},
+        # the attempt loop is exercised under the original grant rule; production arms on section 28.14
+        # (tests/test_self_heal_train_monitor_20261025.py covers arm_on=policy_section end to end)
+        arming={"arm_on": "guard_grant"},
     )
     cfg_path = tmp_path / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))

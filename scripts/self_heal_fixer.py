@@ -920,6 +920,11 @@ def attempt_job(
         (evidence_dir / "pr_body.md").write_text(body, encoding="utf-8")
         if may_push:
             pr = a.push_and_pr(body, commit)
+            if pr.get("ok") or pr.get("pushed"):
+                try:
+                    log_push(state_root(environ), job, now=now(), branch=a.branch, commit=commit, pr=pr)
+                except OSError as exc:  # the push happened; a log write failure is recorded, never hidden
+                    job["fix_log_error"] = f"{type(exc).__name__}: {exc}"[:200]
             if pr.get("ok"):
                 F.transition(
                     job,
@@ -1254,6 +1259,47 @@ def incidents_from(args, cfg: dict, root: Path) -> tuple[list[dict], Optional[di
     return found + [inc for inc in train if inc.get("defect_id") not in known], diag
 
 
+def kill_switch(cfg: dict, root: Path) -> Optional[str]:
+    """The first kill-switch file that exists (arming.kill_switch_rels, relative to the state root), else None."""
+    for rel in (cfg.get("arming") or {}).get("kill_switch_rels") or []:
+        if (root / rel).exists():
+            return rel
+    return None
+
+
+def log_push(root: Path, job: dict, *, now: datetime, branch: str, commit: str, pr: Optional[dict]) -> None:
+    """Section 28.14 item 5: every push the fixer makes is one row of the append-only fix log. A train-monitor job
+    keeps the monitor's fix id (``fx-<signature>``); a diagnoser-lane job gets ``fx-<job_id>``."""
+    lane = str(job.get("lane") or "")
+    train = lane.startswith(TI.LANE_PREFIX)
+    rec = {
+        "fix_id": TI.fix_id(str(job.get("signature"))) if train else f"fx-{job.get('job_id')}",
+        "detected_at": job.get("created_at"),
+        "source": lane[len(TI.LANE_PREFIX) :] if train else "lane",
+        "kind": "fixer_push",
+        "signature": job.get("signature"),
+        "title": f"self-heal fix for {lane}",
+        "evidence_refs": [f"self_heal_fixer:{job.get('job_id')}"],
+        "remediation_kind": "claude_code",
+        "attempts": len(job.get("iterations") or []),
+        "model_cost_usd": job.get("cost_usd"),
+        "pr_number": (pr or {}).get("pr_number"),
+        "pr_head": commit,
+        "outcome": "fix-PR-open" if (pr or {}).get("ok") else "remediating",
+    }
+    row = TI.log_row(
+        rec,
+        event="fixer_push",
+        now=now,
+        mode="live",
+        detail=f"pushed {commit[:12]} to {branch}" + (f"; PR {pr.get('pr_url')}" if (pr or {}).get("pr_url") else ""),
+    )
+    path = root / TRAIN_FIX_LOG_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:  # append-only; never rewritten
+        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+
+
 def train_incidents(cfg: dict, root: Path) -> list[dict]:
     """Incidents from data/self_heal/fixer_defects.jsonl (the train monitor's hand-off store), oldest first."""
     path = root / str(cfg["intake"].get("train_defects_rel") or TRAIN_DEFECTS_REL)
@@ -1470,8 +1516,9 @@ def _cycle(
         ledger_jobs = C.day_usage(claims_db, day)["jobs"] if apply else 0
         return max(F.jobs_started_today(work, now()), ledger_jobs)
 
-    arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
     policy = F.policy_verdict(agents, cfg)
+    kill = kill_switch(cfg, root)
+    arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today(), policy=policy, disabled=kill)
     backend, backend_why = F.select_backend(cfg)
     out.update(
         arming=arming,
@@ -1687,7 +1734,7 @@ def _cycle(
         if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED) and not job.get("escalated_at"):
             out["escalations"].append(escalation_for(job, now()))
             job["escalated_at"] = now().isoformat()
-        arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
+        arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today(), policy=policy, disabled=kill)
     for job in work.get("jobs", {}).values():
         if job.get("state") in (F.FIX_READY_LOCAL, F.FIX_PR_OPENED, F.FIX_DEPLOYED, F.OUTPUT_RECOVERED):
             moved = advance(job, cfg=cfg, now=t, diag_state=diag, root=root, gh=gh, repo=repo)

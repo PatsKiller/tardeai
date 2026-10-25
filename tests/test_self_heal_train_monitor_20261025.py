@@ -33,7 +33,11 @@ CFG = TI.load_config(ROOT / "config" / "self_heal_train_monitor.json")
 NOW = datetime(2026, 10, 25, 20, 0, tzinfo=timezone.utc)
 
 
-def agents(version="20.4.0", status="ACTIVE", heading="## 28.14 Self-heal monitor and fixer (20.4.0, ACTIVE)"):
+def agents(
+    version="21.0.0",
+    status="ACTIVE",
+    heading="## 28.14 Self-heal monitor and fixer — the train is watched and small errors are fixed by ordinary PRs (21.0.0, ACTIVE)",
+):
     return (
         f"# AGENTS\n\n```\nPolicy-Version:      {version}\nStatus:              {status}\n"
         f"Effective-Date:      2026-10-26\n```\n\n{heading}\n"
@@ -136,22 +140,25 @@ def log_rows(tmp_path):
     return TI.read_fix_log(tmp_path / CFG["state"]["fix_log_rel"])
 
 
-# ---------------------------------------------------------------- policy gate (rule 7: shadow until 20.4.0)
+# ---------------------------------------------------------------- policy gate (rule 7: shadow until 21.0.0 28.14)
+
+H = "## 28.14 Self-heal monitor and fixer — the train is watched and small errors are fixed by ordinary PRs"
 
 
 @pytest.mark.parametrize(
     "text,live",
     [
-        (agents("20.2.0", heading=""), False),
-        (agents("20.4.0", "PROPOSED", "## 28.14 Self-heal monitor and fixer (20.4.0, PROPOSED)"), False),
-        (agents("20.4.0", "ACTIVE", ""), False),
-        (agents("20.4.0", "ACTIVE", "## 28.14 Self-heal monitor and fixer (20.4.0, PROPOSED)"), False),
-        (agents("20.4.0"), True),
-        (agents("21.0.0", "ACTIVE", "## 28.14 Self-heal monitor and fixer (20.4.0, ACTIVE)"), True),
+        (agents("20.3.0", heading=""), False),  # main today
+        (agents("20.3.0", "ACTIVE", f"{H} (21.0.0, PROPOSED)"), False),  # PR #2128 as drafted
+        (agents("21.0.0", "PROPOSED", f"{H} (21.0.0, PROPOSED)"), False),
+        (agents("21.0.0", "ACTIVE", ""), False),
+        (agents("21.0.0", "ACTIVE", f"{H} (21.0.0, PROPOSED)"), False),
+        (agents("21.0.0"), True),  # the ratifying edit
+        (agents("22.1.0", "ACTIVE", f"{H} (21.0.0, ACTIVE)"), True),
         ("no control block", False),
     ],
 )
-def test_policy_gate_is_shadow_until_20_4_0_active_with_28_14(text, live):
+def test_policy_gate_is_shadow_until_21_0_0_active_with_28_14(text, live):
     assert TI.policy_gate(text, CFG)["live"] is live
 
 
@@ -613,8 +620,8 @@ def test_fixer_push_gate_accepts_section_28_14_only_when_active():
     from lib import self_heal_fixer as F
 
     fcfg = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
-    assert F.policy_verdict("## 28.14 Self-heal monitor and fixer (20.4.0, ACTIVE)\n", fcfg)["push_allowed"]
-    assert not F.policy_verdict("## 28.14 Self-heal monitor and fixer (20.4.0, PROPOSED)\n", fcfg)["push_allowed"]
+    assert F.policy_verdict(f"{H} (21.0.0, ACTIVE)\n", fcfg)["push_allowed"]
+    assert not F.policy_verdict(f"{H} (21.0.0, PROPOSED)\n", fcfg)["push_allowed"]
     assert not F.policy_verdict("## 24.11 Read-only broker sync (14.0.0, ACTIVE)\n", fcfg)["push_allowed"]
 
 
@@ -642,3 +649,79 @@ def test_escalation_reaches_the_telegram_chokepoint_as_p1(tmp_path, monkeypatch)
     text, kw = seen[0]
     assert kw["priority"] == "P1" and kw["producer"] == "self_heal_train_monitor" and kw["dedupe_minutes"] == 0
     assert "refused scope" in text and "/v3/system/releases?tab=fixes" in text
+
+
+# ---------------------------------------------------------------- 21.0.0 section 28.14: arming IS the section
+
+
+def _fixer_cfg():
+    return json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
+
+
+def test_fixer_arms_on_section_28_14_alone_never_on_a_grant():
+    from lib import self_heal_fixer as F
+
+    fcfg = _fixer_cfg()
+    assert fcfg["arming"]["arm_on"] == "policy_section"
+    active = F.policy_verdict("## 28.14 Self-heal monitor and fixer — x (21.0.0, ACTIVE)\n", fcfg)
+    proposed = F.policy_verdict("## 28.14 Self-heal monitor and fixer — x (21.0.0, PROPOSED)\n", fcfg)
+    assert F.arming_verdict(None, cfg=fcfg, jobs_today=0, policy=active)["armed"]  # no grant needed
+    grant = {"reason": "self-heal-fixer", "grant_id": "a" * 32}
+    assert not F.arming_verdict(grant, cfg=fcfg, jobs_today=0, policy=proposed)["armed"]  # a grant never arms
+    capped = F.arming_verdict(None, cfg=fcfg, jobs_today=fcfg["arming"]["daily_job_cap"], policy=active)
+    assert not capped["armed"] and "cap" in capped["why"]
+    killed = F.arming_verdict(None, cfg=fcfg, jobs_today=0, policy=active, disabled="data/self_heal/FIXER_DISABLED")
+    assert not killed["armed"] and "kill switch" in killed["why"]
+
+
+def test_fixer_kill_switch_files(tmp_path):
+    import self_heal_fixer as SHF
+
+    fcfg = _fixer_cfg()
+    assert SHF.kill_switch(fcfg, tmp_path) is None
+    (tmp_path / "data/self_heal").mkdir(parents=True)
+    (tmp_path / "data/self_heal/MONITOR_DISABLED").write_text("x")
+    assert SHF.kill_switch(fcfg, tmp_path) == "data/self_heal/MONITOR_DISABLED"
+
+
+from tests import test_self_heal_fixer_20261016 as B  # noqa: E402
+
+sandbox = B.sandbox  # the base suite's hermetic origin/repo/stub-CLI fixture
+
+
+def test_fixer_section_28_14_end_to_end_pushes_without_a_grant_and_logs_the_push(sandbox, monkeypatch):
+    """Armed by section 28.14 ACTIVE at origin/main only: no grant, one pushed branch, one PR, one fix-log row."""
+    from lib import self_heal_fixer as F
+
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    cfg = json.loads(sandbox["cfg"].read_text())
+    cfg["arming"]["arm_on"] = "policy_section"
+    sandbox["cfg"].write_text(json.dumps(cfg))
+    p = sandbox["repo"] / "AGENTS.md"
+    p.write_text(p.read_text() + "\n## 28.14 Self-heal monitor and fixer — the train is watched (21.0.0, ACTIVE)\n")
+    B._sh("git", "-C", str(sandbox["repo"]), "commit", "-qam", "28.14 active")
+    B._sh("git", "-C", str(sandbox["repo"]), "push", "-q", "origin", "main")
+    job, _ = B._run_cycle(sandbox, "fix", grant=None)
+    assert job["state"] == F.FIX_PR_OPENED and job["pr_number"] == 4242
+    rows = TI.read_fix_log(sandbox["state"] / "data/self_heal/fix_log.jsonl")
+    assert [r["event"] for r in rows] == ["fixer_push"]
+    assert rows[0]["pr_number"] == 4242 and rows[0]["pr_head"] == job["head_sha"]
+    assert rows[0]["outcome"] == "fix-PR-open" and rows[0]["source"] == "lane"
+
+
+def test_fixer_section_28_14_proposed_runs_no_model(sandbox, monkeypatch):
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    cfg = json.loads(sandbox["cfg"].read_text())
+    cfg["arming"]["arm_on"] = "policy_section"
+    sandbox["cfg"].write_text(json.dumps(cfg))
+    job, calls = B._run_cycle(sandbox, "fix", grant="self-heal-fixer test")  # a grant alone never arms
+    assert job["state"] == "fix_requested" and calls == []
+
+
+def test_fixer_worktree_root_is_short_on_disk_and_fits_af_unix():
+    fcfg = _fixer_cfg()
+    wt = fcfg["repo"]["worktree_root"]
+    assert not wt.startswith("/tmp") and wt.startswith("/home/")
+    # the egress bridge socket: <worktree_root>/<job_id>-eg/s, job_id = shf-<10 hex>-<n>
+    sock = f"{wt}/shf-{'f' * 10}-{999}-eg/s"
+    assert len(sock.encode()) < 100, sock  # AF_UNIX sun_path is 108 bytes including the NUL

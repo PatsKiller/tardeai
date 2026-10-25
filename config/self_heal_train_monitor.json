@@ -1,10 +1,10 @@
 {
   "schema": "SelfHealTrainMonitorConfig@v1",
-  "version": "2026-10-25.1",
+  "version": "2026-10-25.2",
   "_why": "Operator 2026-10-25 (verbatim, voice-typed): \"Arm the fixer and also a logger that tracks what was fixed, but this train should be no different than submitting in [to GitHub]. Somebody needs to monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md.\" Read by scripts/lib/self_heal_train_intake.py and scripts/self_heal_train_monitor.py only. Design + binding text: docs/ops/SELF_HEAL_TRAIN_FIXER.md (AGENTS.md section 28.14 draft). Changed only by reviewed PR.",
   "arming": {
-    "_why": "Live operation (deterministic remediations, fixer hand-off, coordinator tasks, sends) needs AGENTS.md at origin/main to carry Policy-Version >= min_policy_version with Status ACTIVE AND the section heading below with ACTIVE on the same line. Anything less = SHADOW: detect, log (fix_log rows with outcome shadow-proposed), propose; nothing is executed, launched or sent. The model's output never arms anything.",
-    "min_policy_version": "20.4.0",
+    "_why": "Live operation (deterministic remediations, fixer hand-off, coordinator tasks, sends) needs AGENTS.md at origin/main to carry Policy-Version >= min_policy_version with Status ACTIVE AND the section heading below with ACTIVE on the same line (AGENTS.md 21.0.0 section 28.14, PR #2128: \"Arming is this section becoming ACTIVE; there is no separate guard grant.\"). Anything less = SHADOW: detect, log (fix_log rows with outcome shadow-proposed), propose; nothing is executed, launched or sent. The kill switch file stops all action. The model's output never arms anything.",
+    "min_policy_version": "21.0.0",
     "required_status": "ACTIVE",
     "section_heading_marker": "## 28.14 Self-heal monitor and fixer",
     "kill_switch_rel": "data/self_heal/MONITOR_DISABLED"

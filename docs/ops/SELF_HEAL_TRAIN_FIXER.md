@@ -1,82 +1,35 @@
 # Self-heal train monitor and fixer
 
-Status: BUILT, SHADOW. It turns LIVE only when AGENTS.md 20.4.0 is ACTIVE and carries section 28.14 (below) marked ACTIVE.
+Status: BUILT, SHADOW. It turns LIVE only when AGENTS.md 21.0.0 is ACTIVE with §28.14 marked ACTIVE on its heading
+line. That amendment is PR #2128, and arming is that section becoming ACTIVE. No guard grant is needed and no
+operator step is involved.
 Owner: platform. Code: `scripts/self_heal_train_monitor.py`, `scripts/lib/self_heal_train_intake.py`,
-`scripts/self_heal_fixer.py` (the existing Claude Code fixer). Config: `config/self_heal_train_monitor.json`.
+`scripts/self_heal_fixer.py` (the existing Claude Code fixer). Config: `config/self_heal_train_monitor.json`,
+`config/self_heal_fixer.json`.
 
 Operator, 2026-10-25 (verbatim, voice-typed): "Arm the fixer and also a logger that tracks what was fixed, but this
 train should be no different than submitting in [to GitHub]. Somebody needs to monitor it, if there's little errors
 they need to correct it as long as they're adhering to our agents.md."
 
-## 1. Proposed AGENTS.md text: section 28.14
+## 1. The binding text: AGENTS.md 21.0.0 §28.14 (PR #2128)
 
-This text goes into the 20.4.0 amendment (branch `docs/agents-20-4-0-hands-off-20261025`). The code reads the
-heading line exactly. It must begin with `## 28.14 Self-heal monitor and fixer` and carry `ACTIVE` on the same line.
+The rule is §28.14 in AGENTS.md. This document does not restate it. It maps each item of the section to the code
+that enforces it.
 
-```markdown
-## 28.14 Self-heal monitor and fixer (20.4.0, ACTIVE; extends §0 rules 3, 4, 7, §17, §24.5)
+| §28.14 item | Where it is enforced |
+|---|---|
+| Arming is this section ACTIVE; no separate guard grant; shadow until then | Monitor: `self_heal_train_intake.policy_gate` needs Policy-Version >= 21.0.0, ACTIVE, and a heading starting `## 28.14 Self-heal monitor and fixer` with ACTIVE on it. Fixer: `config/self_heal_fixer.json` `arming.arm_on: policy_section`, so `arming_verdict` arms on `policy_verdict` alone (the 24.11 or 28.14 heading ACTIVE at origin/main). A grant never arms. Kill switches: `data/self_heal/MONITOR_DISABLED` stops both lanes; `data/self_heal/FIXER_DISABLED` stops the fixer. |
+| 1 A host monitor independent of n8n | `config/systemd/user/tradeai-self-heal-train-monitor.{service,timer}`, every 5 min. It is installed by the release's staged-units step (`config/staged_user_units.json`, PR #2134). Missed runs are caught by the cron outage watchdog through the lane row's heartbeat `ok_at`. |
+| 2 Four deterministic remediations, each once per incident | `config/self_heal_train_monitor.json` `deterministic[]`:<br>- the infrastructure-flake CI rerun;<br>- regenerating a canonical generated file with its own generator (`ci_gates_canonical`, `docs_index_regen`);<br>- the disk-packet re-pin;<br>- the stale-train reconcile.<br>`rules_done` makes each rule run once per episode. A second failure goes to the fixer. |
+| 3 Every other fix is an ordinary PR | The fixer pushes ONE branch with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` (never the override) and opens ONE `self-heal-fix` PR. It never merges, releases or deploys. Each push is one `fixer_push` row in the fix log. |
+| 4 Refused scopes go to a person | `refused_scopes`: `broker_active_trader`, `guard_policy`, `train_self`, `credentials`, plus `self_heal_self`, which is stricter than the section. A refused failure gets a P1 and a coordinator task, and no fix attempt. |
+| 5 Every action is logged; the log is append-only | `data/self_heal/fix_log.jsonl` (SelfHealFixLog@v1). Both lanes only append to it. It is shown on Releases & schedules → Fixes (PR #2133). |
+| 6 Escalation P1 once per incident | After `max_attempts_per_signature` (2) or on a refused scope, the monitor sends P1 through `telegram_alert.send_telegram` and marks it `paged_at`, so it is sent once. When `scripts/delivery_failure_alerts.py` (PR #2106, the §28.12 step 10 path) is on the release, the email and SMS channels come from it. |
 
-**What it is.** The host lane `self-heal-train-monitor` (systemd user timer, every 5 minutes, independent of n8n)
-reads main CI of main HEAD, release-train outcomes and window receipts, the post-release tester and the nightly sweep.
-It turns each failure into one fix per failure signature. The lane `self-heal-fixer` is the existing headless Claude
-Code fixer. Under this section both may open pull requests from a scheduled job. This is the exception to §24.5 for
-these two lanes only.
-
-**Fix PRs are ordinary PRs.** A fix is a branch and a pull request. It runs normal CI and is classified by the release
-train like any other PR. Neither lane merges, deploys, promotes, rolls back, re-runs a train window, edits
-crontab/systemd, writes the production DB or calls a broker. The train merges a fix PR only when it is eligible. A
-fix PR that is not eligible goes to the coordinator queue (`scripts/agent_claim.py task add --kind fix`).
-
-**Order of remediation.** The monitor tries a deterministic remediation first. These run without a model and come
-from the reviewed list in `config/self_heal_train_monitor.json` `deterministic[]`:
-- re-run a CI job once for a known infrastructure flake;
-- regenerate the canonical `config/ci_gates` JSON;
-- regenerate `docs/INDEX.md`;
-- re-pin the disk-standing packet when only pinned config bytes changed;
-- `release_window.py train-reconcile` for a stale train (dry run first; `--live` only when nothing is AMBIGUOUS).
-
-Anything else goes to the Claude Code fixer. The fixer works in an isolated worktree and sandbox, with a reserved
-budget, the diff guard and protected paths. It never deletes, skips or weakens a test, and section 0 is quoted in its
-prompt.
-
-**Refused scopes.** Broker, Active Trader and MBI code; guard and policy (AGENTS.md, AI_WORK_POLICY.md, the adapters,
-hooks, `bin/`, `.github/`); the train's own files; the self-heal lanes' own code and config; credentials and auth.
-The monitor never fixes a failure in these scopes. It sends a P1 alert and opens a coordinator task. Train outcomes
-caused by the release machinery (MERGED_NOT_LIVE, ROLLED_BACK, ROLLBACK_FAILED, stalls) are coordinator work, never a
-model fix.
-
-**Budgets and limits** are read from config and are never widened by model output:
-- per fixer job, reserved before launch: 4 iterations, 90 minutes, USD 12;
-- per ET day: 3 fixer jobs and USD 24;
-- 1 job per cycle;
-- per monitor day: 3 fixer hand-offs, 8 deterministic actions, 4 CI re-runs, 10 coordinator tasks, 12 P1 alerts;
-- per signature: 2 attempts and a 12 h cooldown after a failed model attempt;
-- each deterministic rule runs at most once per episode;
-- the fixer's diff is at most 8 files and 600 changed lines.
-
-**Logging.** Every change of a fix is one row in the append-only `data/self_heal/fix_log.jsonl` (SelfHealFixLog@v1).
-A row records:
-- `detected_at`, `source`, failure signature, evidence refs;
-- remediation kind, attempts, model cost;
-- PR number and head;
-- outcome: one of `fixed-released`, `fixed-no-release`, `fix-PR-open`, `escalated`, `gave-up`, `cleared`, or
-  `shadow-proposed`;
-- released SHA and `verified_at`.
-
-A fix is `fixed-released` only when its merge commit is in the served release AND the failure signature is no longer
-observed after that release. A merged fix is not a heal. The Command Center shows the log (Ops → Releases &
-schedules → Fixes). The digest carries one daily line, and each fix released gets one short note.
-
-**Escalation.** These are P1 at once through the existing failure-alert path (the Telegram chokepoint): a refused
-scope, attempts exhausted (`gave-up`), an ambiguous reconcile, or a release-machinery outcome rated P1. Each also opens
-one coordinator task. An escalation is sent once per fix, never repeated per tick.
-
-**Arming and shadow.** Until this section is ACTIVE the monitor runs in SHADOW (§0 rule 7, the dry-run phase). It
-detects and logs `shadow-proposed` rows, and it executes, launches and sends nothing. The fixer additionally needs its
-operator guard grant (`git-push`, reason naming `self-heal-fixer`). The kill switch
-`<state>/data/self_heal/MONITOR_DISABLED` stops all action. A missed monitor run is caught by the cron outage
-watchdog.
-```
+Budgets are read from config and never widened by model output. Per fixer job, reserved before launch: 4 iterations,
+90 minutes, USD 12. Per ET day: 3 jobs and USD 24; 1 job per cycle; diff at most 8 files and 600 lines. Per monitor
+day: 3 hand-offs, 8 deterministic actions, 4 CI reruns, 10 coordinator tasks, 12 P1 alerts. Per signature: 2 attempts,
+and a 12 h cooldown after a failed model attempt.
 
 ## 2. How a failure flows
 
@@ -122,10 +75,13 @@ attempt budget.
 
 ```
 python3 scripts/self_heal_train_monitor.py            # dry run: prints decisions, writes nothing
-python3 scripts/self_heal_train_monitor.py --apply    # a tick (shadow until 28.14 ACTIVE)
+python3 scripts/self_heal_train_monitor.py --apply    # a tick (shadow until 21.0.0 §28.14 ACTIVE)
 python3 scripts/self_heal_train_monitor.py --status   # projected fix log + last heartbeat
 ```
 
 Writes: `data/self_heal/fix_log.jsonl` (append-only), `data/self_heal/train_monitor_state.json`,
 `data/self_heal/fixer_defects.jsonl` (live only) and `data/runtime/self-heal-train-monitor_last.json` (the
 heartbeat, `ok` + `ok_at`, measured by the cron outage watchdog). Paths are relative to `TRADEAI_STATE_ROOT`.
+
+The fixer's worktrees live under `/home/johnclaw/.shw`. That path is on disk, never `/tmp`, and it is short: the
+egress bridge binds a unix socket at `<worktree_root>/<job_id>-eg/s`, and AF_UNIX paths cap at 107 bytes.

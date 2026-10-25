@@ -11,6 +11,12 @@
   },
   "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
   "arming": {
+    "arm_on": "policy_section",
+    "_arm_on_why": "2026-10-25, AGENTS.md 21.0.0 section 28.14 (PR #2128): \"Arming is this section becoming ACTIVE; there is no separate guard grant.\" policy_section = armed iff the policy_gate heading (24.11 or 28.14) is ACTIVE at origin/main, no kill_switch_rels file exists under the state root, and the day is under daily_job_cap / daily_cost_cap_usd. The fixer then pushes its ONE fix branch with TRADEAI_REMOTE_PUSH_AUTHORIZED=1 (never the override) and logs the push to data/self_heal/fix_log.jsonl. guard_grant = the original rule below (kept for the hermetic attempt-loop suites).",
+    "kill_switch_rels": [
+      "data/self_heal/FIXER_DISABLED",
+      "data/self_heal/MONITOR_DISABLED"
+    ],
     "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything. Budget (architect review 2026-10-16, finding 3): every attempt durably RESERVES its whole budget (iteration.max_iterations, max_cost_usd, max_minutes) in the claims db before the backend is launched; daily_job_cap and daily_cost_cap_usd are checked against reservations, so a crash can never let the day overspend and an interrupted attempt is counted exactly once.",
     "grant_tier": "git-push",
     "grant_reason_token": "self-heal-fixer",
@@ -55,14 +61,15 @@
     "additional_heading_markers": [
       "## 28.14 Self-heal monitor and fixer"
     ],
-    "_additional_why": "2026-10-25: AGENTS.md 20.4.0 section 28.14 (docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
+    "_additional_why": "2026-10-25: AGENTS.md 21.0.0 section 28.14 (PR #2128; docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
     "required_status_word": "ACTIVE"
   },
   "repo": {
     "repo_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
     "remote": "origin",
     "base_branch": "main",
-    "worktree_root": "/tmp/tradeai_self_heal_worktrees",
+    "worktree_root": "/home/johnclaw/.shw",
+    "_worktree_root_why": "2026-10-25: on disk, never /tmp (the 10-25 /tmp ENOSPC incident), and SHORT: the egress bridge binds a unix socket at <worktree_root>/<job_id>-eg/s and AF_UNIX paths cap at 107 bytes (tests/test_self_heal_train_monitor_20261025.py pins the budget).",
     "branch_prefix": "self-heal-fix/",
     "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
     "pr_label": "self-heal-fix",

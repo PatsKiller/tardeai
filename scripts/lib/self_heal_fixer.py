@@ -1162,8 +1162,35 @@ def no_progress(history: list[Mapping[str, Any]], repeat: int) -> bool:
 
 
 # ---------------------------------------------------------------- gates
-def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any], jobs_today: int) -> dict:
+def arming_verdict(
+    grant: Optional[Mapping[str, Any]],
+    *,
+    cfg: Mapping[str, Any],
+    jobs_today: int,
+    policy: Optional[Mapping[str, Any]] = None,
+    disabled: Optional[str] = None,
+) -> dict:
+    """Is a live attempt allowed now?
+
+    ``arm_on: policy_section`` (2026-10-25, AGENTS.md 21.0.0 section 28.14: "Arming is this section becoming ACTIVE;
+    there is no separate guard grant"): armed iff the amendment heading is ACTIVE at the job's base (``policy``, from
+    policy_verdict), no kill switch file exists (``disabled``) and the day is under its cap. The grant is ignored.
+    ``arm_on: guard_grant`` is the original 2026-10-16 rule (an active grant naming grant_reason_token), kept for the
+    hermetic suites that exercise the attempt loop without the amendment."""
     a = cfg["arming"]
+    if disabled:
+        return {"armed": False, "why": f"kill switch present: {disabled}"}
+    if a.get("arm_on", "guard_grant") == "policy_section":
+        if not (policy or {}).get("push_allowed"):
+            return {"armed": False, "why": f"AGENTS.md section 28.14 not ACTIVE: {(policy or {}).get('why')}"}
+        if jobs_today >= int(a["daily_job_cap"]):
+            return {"armed": False, "why": f"daily job cap reached ({jobs_today}/{a['daily_job_cap']})"}
+        return {
+            "armed": True,
+            "why": "AGENTS.md section 28.14 ACTIVE; under the daily cap (no guard grant required)",
+            "jobs_today": jobs_today,
+            "daily_job_cap": int(a["daily_job_cap"]),
+        }
     if not isinstance(grant, dict):
         return {"armed": False, "why": f"no active {a['grant_tier']} guard grant"}
     reason = str(grant.get("reason") or "")
@@ -1184,7 +1211,7 @@ def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any]
 def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
     """Push/PR allowed only when AGENTS.md (at the job's base) carries the ACTIVE amendment heading."""
     pg = cfg["policy_gate"]
-    # Either amendment authorizes the push/PR: the original 24.11 draft, or AGENTS.md 20.4.0 section 28.14
+    # Either amendment authorizes the push/PR: the original 24.11 draft, or AGENTS.md 21.0.0 section 28.14
     # "Self-heal monitor and fixer" (2026-10-25). Each needs the status word on its own heading line.
     markers = [pg["amendment_heading_marker"], *(pg.get("additional_heading_markers") or [])]
     for line in (agents_text or "").splitlines():

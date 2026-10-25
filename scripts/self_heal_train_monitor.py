@@ -11,7 +11,7 @@ One tick (host systemd timer every 5 min, independent of n8n: the monitor must n
            and nightly sweep receipts, the fixer's state (scripts/self_heal_fixer.py) and this lane's own state
   2. decide one remediation per failure signature (scripts/lib/self_heal_train_intake.py): deterministic first (no
            model), refused scope -> P1 + coordinator task, train machinery -> coordinator, else the Claude Code fixer
-  3. act   ONLY when LIVE (AGENTS.md >= 20.4.0 ACTIVE with section 28.14 ACTIVE at origin/main):
+  3. act   ONLY when LIVE (AGENTS.md >= 21.0.0 ACTIVE with section 28.14 ACTIVE at origin/main):
              rerun failed CI jobs once (known infra flake) | regenerate + open ONE fix PR (ci_gates canonical bytes,
              docs/INDEX.md, disk packet pins) | train-reconcile (dry run first; live only when nothing is AMBIGUOUS) |
              hand the defect to the fixer (data/self_heal/fixer_defects.jsonl, N8nCodeDefect@v1) |
