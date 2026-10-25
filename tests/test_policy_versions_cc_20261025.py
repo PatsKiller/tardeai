@@ -265,3 +265,47 @@ def test_relay_corrupt_ledger_fails_closed(tmp_path, capsys):
     bad.write_text('{"event": "DECIDED"}\n')
     assert relay.main(["--ledger", str(bad)], run=FakeGh()) == 2
     assert json.loads(capsys.readouterr().out)["error"] == "LEDGER_CORRUPT"
+
+
+def _fake_cc_auth(monkeypatch, tmp_path, *, principal, agent_reader):
+    import sys
+    import types
+
+    import scripts.lib as pkg
+    from scripts.lib import approval_package
+    fake = types.ModuleType("cc_auth_fake")
+    fake.load_config = lambda: types.SimpleNamespace(allowed_logins=frozenset({"operator@example.test"}))
+    fake.current_principal = lambda: principal
+    fake.current_request_context = lambda: {"listener": "loopback"}
+    fake.command_csrf_check = lambda cfg, m, p: (True, "")
+    if agent_reader is not None:
+        fake.is_agent_reader = lambda: agent_reader
+    monkeypatch.setitem(sys.modules, "scripts.lib.cc_auth", fake)
+    monkeypatch.setattr(pkg, "cc_auth", fake, raising=False)
+    monkeypatch.setattr(approval_package, "governance_dir", lambda: tmp_path)
+    return api.default_ctx()
+
+
+@pytest.mark.parametrize("principal,agent_reader,readable", [
+    ("agent-reader:claude", True, True), ("agent-reader:claude", False, False),
+    ("anonymous", None, False),  # cc_auth without is_agent_reader (before #2122): no change
+    ("service-token", None, True)])
+def test_default_ctx_agent_reader_may_read_only(monkeypatch, tmp_path, principal, agent_reader, readable):
+    ctx = _fake_cc_auth(monkeypatch, tmp_path, principal=principal, agent_reader=agent_reader)
+    assert ctx.can_read() is readable
+    assert api._operator(ctx) is None  # never the operator, so every POST (approve included) is refused
+    status, data = api.handle(api.PREFIX + "/policy/versions/approve", "POST", approve_body(), ctx=ctx)
+    assert (status, data["error"]) == (403, "AGENT_CALLER_REFUSED")
+
+
+def test_committed_at_is_the_policy_commit_clock_or_unknown():
+    root = api.ROOT
+    if not (root / ".git").exists():
+        pytest.skip("needs a git checkout")
+    sha = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%H", "--", "AGENTS.md"],
+                         capture_output=True, text=True).stdout.strip()
+    if not sha:
+        pytest.skip("shallow checkout without AGENTS.md history")
+    value = api._committed_at(root, sha)
+    assert value and datetime.fromisoformat(value).tzinfo is not None
+    assert api._committed_at(root, "f" * 40) is None

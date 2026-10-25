@@ -14,7 +14,7 @@ const ORIGIN = 'http://policy-versions-fixture.test'
 const at = '2032-04-12T13:00:00Z'
 const HEAD = 'b'.repeat(40)
 const TOKEN = `APPROVE_AGENTS_POLICY_20_4_0 2120 ${HEAD}`
-const policy = { source_sha: 'a'.repeat(40), document_sha: 'd'.repeat(64), sections: ['28 · Operations'], counts: { ENFORCED: 0, TESTED: 0, 'WRITTEN-only': 1, VIOLATED: 0 },
+const policy = { source_sha: 'a'.repeat(40), committed_at: '2032-04-11T20:20:00-04:00', document_sha: 'd'.repeat(64), sections: ['28 · Operations'], counts: { ENFORCED: 0, TESTED: 0, 'WRITTEN-only': 1, VIOLATED: 0 },
   rules: [{ id: 'rule_1', section: '28 · Operations', text: 'Read every change.', plain: null, status: 'WRITTEN-only', reason: null, evidence: {} }],
   total_rules: 1, section_total: 1, offset: 0, positions: [], audit: { state: 'NOT_MEASURED', last_audit: null } }
 const pendingRow = (read: number, decision: unknown = null) => ({ id: 'policy:2120', pr: 2120, title: 'AGENTS.md 20.4.0 PROPOSED — hands-off delivery for the train systems', proposed_by: 'PatsKiller',
@@ -45,6 +45,12 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
       if (request.method() !== 'GET') { forbidden.push(request.method() + ' ' + url.pathname); return route.fulfill({ status: 403, json: { ok: false, error: 'fixture: no writes' } }) }
       if (url.pathname === '/api/v2/governance/policy/versions') return route.fulfill({ json: { ok: true, data: versions(state.read, state.decision) } })
       if (url.pathname === '/api/v2/governance/policy') return route.fulfill({ json: { ok: true, data: policy } })
+      if (url.pathname === '/api/v2/desk-sources') {
+        expect(url.searchParams.get('lanes')).toBe('policy-enforcement-audit,release-train-claim')
+        return route.fulfill({ json: { ok: true, data: { observed_at: at, writers: [
+          { lane_id: 'release-train-claim', state: 'ACTIVE', last_success_at: at, evidence_source: 'missed-run monitor', evidence_as_of: at, reason: null },
+          { lane_id: 'policy-enforcement-audit', state: 'NONE', last_success_at: null, evidence_source: null, evidence_as_of: null, reason: 'No scheduled writer is registered for this source.' }] } } })
+      }
       return route.fulfill({ status: 404, json: { ok: false, error: 'fixture: not mocked' } })
     })
     const tap = async (target: Locator) => {
@@ -58,6 +64,12 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
 
     // Unread: the approve button is shown but disabled, and the reader link is the way forward.
     await page.goto(ORIGIN + '/policy')
+    // Source clocks name the writer: the release train deploys the committed policy; the audit lane is shown honestly.
+    const clocks = page.getByRole('region', { name: 'Source clocks' })
+    await expect(clocks).toContainText('Committed policy')
+    await expect(clocks).toContainText('Writer ACTIVE')
+    await expect(clocks).toContainText('Enforcement audit')
+    await expect(clocks).not.toContainText('Writer not identified')
     const panel = page.getByTestId('policy-versions')
     await expect(panel.getByTestId('policy-version-current')).toContainText('20.3.0')
     await expect(panel.getByTestId('policy-version-current')).toContainText('ACTIVE')

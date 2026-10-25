@@ -120,10 +120,20 @@ def reader_annotations(pr: dict, doc: dict) -> dict:
         return {}
 
 
+def _committed_at(root: Path, sha: str) -> str | None:
+    """Commit time of the served AGENTS.md (the Rulebook's source clock); unknown stays None."""
+    try:
+        value = _git(root, "show", "-s", "--format=%cI", sha).strip()
+        return value if re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)", value) else None
+    except (subprocess.SubprocessError, OSError, core.Refused, UnicodeDecodeError):
+        return None
+
+
 def git_policy(root: Path = ROOT) -> dict:
     sha, text = policy_source(root)
     # Read from the commit, not a concurrently edited worktree file.
     policy = core.policy_projection(text, source_sha=sha)
+    policy["committed_at"] = _committed_at(root, sha)
     from scripts.lib.lane_last_receipt import runtime_dir
     from scripts.lib.approval_package import governance_dir
     report_path = runtime_dir() / "policy_enforcement_audit_last_report.json"
@@ -138,6 +148,7 @@ def git_policy(root: Path = ROOT) -> dict:
             and report.get("code_sha") == _git(root, "rev-parse", "HEAD").strip()):
         measured = report.get("mechanical") or {}
         policy = core.policy_projection(text, source_sha=sha, enforcement=measured.get("proofs") or {})
+        policy["committed_at"] = _committed_at(root, sha)
         policy["audit"] = {"state": "PARTIAL", "last_audit": report.get("as_of"), "scope": report.get("review_scope"),
                            "mapped_count": measured.get("mapped_count"), "unmapped_count": measured.get("unmapped_count"),
                            "reviewer_called": report.get("reviewer_called"), "gaps": report.get("evidence_gaps") or [],
@@ -381,7 +392,10 @@ def default_ctx() -> Ctx:
                csrf=lambda m, p: cc_auth.command_csrf_check(cfg, m, p), allowed_logins=cfg.allowed_logins,
                sources=sources, ledger=ledger,
                policy=git_policy,
-               can_read=lambda: cc_auth.current_principal() == "service-token")
+               # Reads only: a read-only agent reader (cc_auth.is_agent_reader, loopback GET/HEAD) may read; every POST
+               # still requires _operator (tailnet + serve_proxy + allowed login). getattr: no hard dependency on it.
+               can_read=lambda: (cc_auth.current_principal() == "service-token"
+                                 or bool(getattr(cc_auth, "is_agent_reader", lambda: False)())))
 
 
 def _operator(ctx: Ctx) -> str | None:
