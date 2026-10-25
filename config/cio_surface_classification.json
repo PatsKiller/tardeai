@@ -1278,6 +1278,13 @@
           "Watch My Watchlist": "pages/WatchMyList.tsx"
         }
       }
+    },
+    {
+      "name": "schema:AskSettlementReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Internal bridge readback proving an Ask the CIO model call was settled in the LLM consumption ledger at its actual provider cost (cio_governed_model_bridge._ask_settlement_receipt). The operator sees the spend through LLM Spend (the ledger itself) and the Ask thread's ask.cost event; this receipt is engineering proof of settlement, not CIO reasoning, evidence or a decision.",
+      "owner_hint": "scripts/lib/cio_governed_model_bridge.py::_ask_settlement_receipt"
     }
   ]
 }

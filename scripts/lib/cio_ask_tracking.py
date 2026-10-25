@@ -2,9 +2,10 @@
 
 On answer, each entity the question named is tracked through the EXISTING write paths:
 
-1. **My Watchlist** (operator-owned): ``data/portfolios/state/watchlist.json`` — the same file and entry shape that
-   ``POST /api/watchlist/write`` (portfolio_server) writes; the thesis is the question. An entry the operator already
-   had is never overwritten: the ask is appended to ``ask_threads`` and the operator's thesis stays.
+1. **My Watchlist** (operator-owned): the existing canonical ``post_mine_decision(add)`` command writes
+   ``operator_starred_symbols`` and ``watchlist_events``. Success requires the same
+   ``watch_domains.membership_operator`` readback used by Watch. No parallel file is written.
+   A legacy explicit file adapter remains for backward compatibility and never verifies canonical membership.
 2. **CIO record** (``InstrumentRecordStore``, the one writer of the prospect's record, §26.1): created when absent;
    cognition moves ``next_research_question`` to the question and records the operator turn. Stage, conviction and
    stance stay with the CIO prospect builder — an ask never invents a conviction.
@@ -13,8 +14,8 @@ On answer, each entity the question named is tracked through the EXISTING write 
    name for a private entity. Operator-created (the operator asked), ``ttl_days`` from config; the writer's
    ``reuse`` rule folds it into an existing directive for the same subject.
 
-Untrack reverses only what the ask added: removes a watchlist entry the ask created (no other tracked thread still
-holding it), archives a directive the ask created, and records the change. Nothing is deleted (§0 rule 6).
+Untrack stops the question. Canonical operator membership is retained until an explicit operator removal: an ask
+cannot prove that a shared star is held by no other thread. The existing directive/history handling is separate.
 
 A private entity never gets a ticker: no watchlist row (the watchlist is symbol-keyed), a trend directive on its name.
 No step sizes, orders, stops or weights (MBI_BEHAVIOR=0).
@@ -25,7 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -58,7 +59,7 @@ def question_keywords(question: str, entity: EntityRef, *, limit: int = 8) -> li
 
 
 class WatchlistFile:
-    """The operator watchlist file, exactly as /api/watchlist/write writes it."""
+    """Legacy explicit adapter, NOT canonical My Watchlist. Default Tracker never uses it."""
 
     def __init__(self, path: Optional[Path] = None):
         root = Path(os.environ.get("TRADEAI_ROOT") or Path(__file__).resolve().parents[2])
@@ -87,7 +88,7 @@ class WatchlistFile:
                 cur["ask_threads"] = threads
                 wl[sym] = cur
                 self._save(wl)
-            return {"symbol": sym, "action": "tagged_existing", "created_by_ask": bool(cur.get("added_by_ask"))}
+            return {"symbol": sym, "action": "tagged_existing", "created_by_ask": bool(cur.get("added_by_ask")), "membership_verified": False, "membership_source": "legacy_watchlist_file"}
         wl[sym] = {
             "thesis": thesis[:500],
             "target_intent": "ask_the_cio",
@@ -98,7 +99,7 @@ class WatchlistFile:
             "ask_threads": [thread_id],
         }
         self._save(wl)
-        return {"symbol": sym, "action": "added", "created_by_ask": True}
+        return {"symbol": sym, "action": "added", "created_by_ask": True, "membership_verified": False, "membership_source": "legacy_watchlist_file"}
 
     def release(self, symbol: str, *, thread_id: str) -> dict[str, Any]:
         wl = self._load()
@@ -115,6 +116,107 @@ class WatchlistFile:
         wl[sym] = cur
         self._save(wl)
         return {"symbol": sym, "action": "untagged", "kept": "operator entry or another tracked question holds it"}
+
+
+class MyWatchlistBackend:
+    """Existing Watch command + its canonical membership reader, never another writer.
+
+    Constructors are inert. Tests inject both DB callables; production uses the
+    existing DB adapter lazily. An accepted command alone cannot prove visibility.
+    """
+
+    def __init__(self, *, db_execute=None, db_query=None, identity_lookup=None, command=None, root=None, now=None):
+        self.db_execute = db_execute
+        self.db_query = db_query
+        self.identity_lookup = identity_lookup
+        self.command = command
+        self.now = now or (lambda: datetime.now(timezone.utc).isoformat())
+        self.root = Path(root) if root else Path(os.environ.get("TRADEAI_ROOT") or Path(__file__).resolve().parents[2])
+
+    def _receipt(self, symbol, action, *, verified=False, reason=None, **fields):
+        return {"symbol": symbol, "action": action, "membership_verified": verified,
+                "membership_source": "watch_domains.membership_operator", "canonical_source": "operator_membership_union",
+                "membership_verified_at": self.now() if verified else None,
+                "identity_binding": "CONFIRMED_REGISTRY_SYMBOL_AT_READBACK" if verified and fields.get("security_guid") else None,
+                "reason": reason, **fields}
+
+    def _query(self):
+        return self.db_query or _default_db_target()
+
+    def _membership(self, query):
+        from scripts.lib.data_broker.watch_domains import membership_operator
+        doc = membership_operator(query)
+        # A failed removal-source read is not proof the UI will show the name.
+        complete = bool(doc.get("sources")) and all(v.get("status") == "ok" for v in doc["sources"].values())
+        return doc, complete
+
+    def add_entity(self, entity: EntityRef, *, thesis: str, thread_id: str) -> dict[str, Any]:
+        from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity
+        sym = str(entity.symbol or "").strip().upper()
+        if entity.kind != "security" or entity.resolution != "CONFIRMED" or not is_registry_guid(entity.security_guid):
+            return self._receipt(sym, "skipped", reason="confirmed_security_guid_required")
+        lookup = self.identity_lookup or (lambda s: resolve_security_identity(s, root=self.root))
+        try:
+            ident = lookup(sym)
+        except Exception as exc:
+            return self._receipt(sym, "failed", reason="security_identity_unavailable", error_type=type(exc).__name__)
+        try:
+            if ident.get("identity_status") != "CONFIRMED" or ident.get("security_guid") != entity.security_guid:
+                return self._receipt(sym, "rejected", reason="resolved_security_guid_mismatch")
+            query = self._query()
+            before, complete = self._membership(query)
+            if not complete:
+                return self._receipt(sym, "failed", reason="canonical_membership_read_unavailable")
+            if sym in before["names"]:
+                try:
+                    current = lookup(sym)
+                except Exception:
+                    current = {}
+                if current.get("identity_status") != "CONFIRMED" or current.get("security_guid") != entity.security_guid:
+                    return self._receipt(sym, "rejected", reason="security_identity_changed_before_readback", write_attempted=False)
+                return self._receipt(sym, "already_present", verified=True, security_guid=entity.security_guid,
+                                     created_by_ask=False, write_attempted=False,
+                                     membership_reasons=[r.get("kind") for r in before["names"][sym].get("reasons", [])])
+            if self.command is None:
+                from scripts.api_v3_watch_commands import post_mine_decision
+                command = post_mine_decision
+            else:
+                command = self.command
+            execute = self.db_execute or (lambda sql, params=None: query(sql, params, fetch="none"))
+            accepted = command({"symbol": sym, "action": "add", "note": f"Ask thread {thread_id}: {thesis}"[:300], "surface": "ask_the_cio"},
+                               db_execute=execute, db_query=query)
+            if not accepted.get("ok"):
+                return self._receipt(sym, "failed", reason="canonical_watch_command_failed_or_partial", write_attempted=True)
+            after, complete = self._membership(query)
+            if not complete or sym not in after["names"]:
+                return self._receipt(sym, "failed", reason="canonical_membership_readback_unproven",
+                                     write_attempted=True, command_accepted=True)
+            try:
+                current = lookup(sym)
+            except Exception:
+                current = {}
+            if current.get("identity_status") != "CONFIRMED" or current.get("security_guid") != entity.security_guid:
+                return self._receipt(sym, "failed", reason="security_identity_changed_before_readback", write_attempted=True, command_accepted=True)
+            return self._receipt(sym, "added", verified=True, security_guid=entity.security_guid,
+                                 created_by_ask=True, write_attempted=True, command_accepted=True,
+                                 event_type=accepted.get("event_type"), accepted_at=accepted.get("accepted_at"),
+                                 write_source="operator_starred_symbols/watchlist_events",
+                                 membership_reasons=[r.get("kind") for r in after["names"][sym].get("reasons", [])])
+        except Exception as exc:
+            # Never echo DB connection strings, query values or private records.
+            return self._receipt(sym, "failed", reason="canonical_watch_tracking_unavailable", error_type=type(exc).__name__)
+
+    def release(self, symbol: str, *, thread_id: str) -> dict[str, Any]:
+        sym = str(symbol or "").strip().upper()
+        try:
+            doc, complete = self._membership(self._query())
+            visible = complete and sym in doc["names"]
+        except Exception:
+            visible = False
+        # Canonical stars/directives can be shared across asks and operator
+        # intent; the thread receipt is not removal authority over that union.
+        return self._receipt(sym, "kept", verified=visible,
+                             reason="question_untracked_operator_membership_requires_explicit_remove", write_attempted=False)
 
 
 class CioRecordBackend:
@@ -231,20 +333,35 @@ class Tracker:
     """Runs the three tracking steps; each step degrades on its own and says so in the receipt."""
 
     def __init__(self, *, watchlist=None, record=None, directives=None, enabled_steps: Optional[dict] = None):
-        self.watchlist = watchlist or WatchlistFile()
+        self.watchlist = watchlist or MyWatchlistBackend()
         self.record = record or CioRecordBackend()
         self.directives = directives or DirectiveBackend()
         self.steps = {"watchlist": True, "cio_record": True, "directive": True, **(enabled_steps or {})}
 
     def track(self, entity: EntityRef, *, question: str, ask_id: str, thread_id: str, channel: str) -> dict:
         actions: dict[str, Any] = {}
+        from scripts.lib.identity_carriage import is_registry_guid
+        if entity.kind == "security" and (entity.resolution != "CONFIRMED" or not is_registry_guid(entity.security_guid)):
+            return {step: {"action": "skipped", "reason": "confirmed_security_guid_required", "membership_verified": False}
+                    for step, enabled in self.steps.items() if enabled}
         if self.steps["watchlist"]:
             if entity.kind == "security" and entity.symbol:
                 actions["watchlist"] = _safe(
-                    lambda: self.watchlist.add(entity.symbol, thesis=question, thread_id=thread_id)
+                    lambda: (self.watchlist.add_entity(entity, thesis=question, thread_id=thread_id)
+                             if hasattr(self.watchlist, "add_entity") else
+                             self.watchlist.add(entity.symbol, thesis=question, thread_id=thread_id))
                 )
             else:
                 actions["watchlist"] = {"action": "skipped", "reason": "no listed security (never invent a ticker)"}
+        if (actions.get("watchlist") or {}).get("reason") in {
+            "confirmed_security_guid_required", "resolved_security_guid_mismatch", "security_identity_unavailable",
+            "security_identity_changed_before_readback",
+        }:
+            # The directive's operator ticker also contributes to MyWatchlist.
+            # A genuine identity refusal cannot be bypassed by a later target.
+            for step in ("cio_record", "directive"):
+                if self.steps[step]: actions[step] = {"action": "skipped", "reason": "security_identity_unproven"}
+            return actions
         if self.steps["cio_record"]:
             if entity.kind == "security" and entity.security_guid:
                 actions["cio_record"] = _safe(
@@ -282,4 +399,4 @@ def _safe(fn: Callable[[], dict]) -> dict:
         return {"action": "failed", "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
 
-__all__ = ["Tracker", "WatchlistFile", "CioRecordBackend", "DirectiveBackend", "question_keywords"]
+__all__ = ["Tracker", "MyWatchlistBackend", "WatchlistFile", "CioRecordBackend", "DirectiveBackend", "question_keywords"]

@@ -40,12 +40,22 @@ def generate_cloud(
     lanes: Iterable[str] = DEFAULT_LANES,
     max_tokens: int = 2048,
     response_json: bool = False,
+    manual_trigger: bool = False,
 ) -> tuple[str, str]:
     """Return ``(text, lane)`` from the first available governed cloud lane (or the governed bridge, see above)."""
+    from .governed_process_routes import OPERATOR_INTENT_PROCESS_IDS
+
+    if process_id in OPERATOR_INTENT_PROCESS_IDS and manual_trigger is not True:
+        raise RuntimeError(
+            f"CLOUD_GENERATION_FAILED_CLOSED: {process_id}: MANUAL_TRIGGER_REQUIRED"
+        )
     if via_bridge():
         from lib.llm_bridge_route import text_via_bridge
 
-        text = text_via_bridge(process_id, prompt, timeout_s=float(timeout), max_tokens=max_tokens)
+        text = text_via_bridge(
+            process_id, prompt, timeout_s=float(timeout), max_tokens=max_tokens,
+            **({"manual_trigger": True} if manual_trigger is True else {}),
+        )
         if text is None or not str(text).strip():
             raise RuntimeError(
                 f"CLOUD_GENERATION_FAILED_CLOSED: {process_id}: BRIDGE_ROUTE_REFUSED: governed bridge returned no text"
@@ -71,6 +81,7 @@ def generate_cloud(
                 task_summary=task_summary,
                 max_tokens=max_tokens,
                 response_json=response_json,
+                manual_trigger=manual_trigger is True,
             )
             if text and str(text).strip():
                 return str(text).strip(), lane_name

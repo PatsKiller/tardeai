@@ -1,0 +1,630 @@
+"""Ask-CIO registration through real bridge/cap logic, fake transports and ledger.
+
+COVERS = ["config/llm_process_registry.json", "config/llm_routing_policy.json",
+          "scripts/lib/cio_governed_model_bridge.py", "scripts/lib/governed_process_routes.py",
+          "scripts/sync_cio_process_caps.py", "scripts/lib/n8n_model_job.py",
+          "scripts/lib/governed_cloud_generation.py", "scripts/lib/llm_bridge_route.py"]
+"""
+from __future__ import annotations
+
+import io
+import json
+import sys
+import types
+import urllib.request
+from contextlib import contextmanager
+from decimal import Decimal
+from unittest.mock import MagicMock
+
+import pytest
+
+from tests.test_bridge_oauth_llm_step_20261014 import (
+    FakeDeepSeek, FakeResp, Proxy, REGISTRY, ROOT, bridge, hermetic, ok_body, wire,
+)
+from lib import llm_consumption as lc
+from scripts.lib import governed_process_routes as routes
+from scripts import sync_cio_process_caps as sync
+
+PID = "cio_ask_deep_research"
+DEPTH = "cio_ask_deep_research_depth"
+ANSWER = '{"summary":"No sourced merger evidence."}'
+
+
+@contextmanager
+def ledger(monkeypatch, *, projected=0.02, process_spent=0.0, global_spent=0.0):
+    """Inject only persistence/pricing boundaries; execute the real cap checker."""
+    calls = {"reserve": MagicMock(return_value=4242), "settle": MagicMock(), "log": MagicMock()}
+    # The additive Ask readback must never open a real database in old fixtures.
+    conn = MagicMock()
+    conn.cursor.return_value.fetchone.return_value = None
+    monkeypatch.setattr(lc, "_conn", lambda: conn)
+
+    def config(pid):
+        row = dict(REGISTRY.get(pid) or {})
+        return dict(row, process_id=pid, registered=bool(row), mode=row.get("default_mode"))
+
+    monkeypatch.setattr(lc, "get_process_config", config)
+    monkeypatch.setattr(lc, "ledger_paid_usd_today", lambda pid, **kw: global_spent if pid is None else process_spent)
+    monkeypatch.setattr(lc, "reserve_projected_cost", calls["reserve"])
+    monkeypatch.setattr(lc, "settle_reservation", calls["settle"])
+    monkeypatch.setattr(lc, "log_call", calls["log"])
+    monkeypatch.setattr(lc, "calibrated_projected_usd", lambda *a, **kw: {"projected_usd": projected, "basis": "fixture"})
+    monkeypatch.setattr("lib.llm_model_registry.estimate_usd_cost", lambda *a, **kw: {"estimated_cost_usd": .0005})
+    monkeypatch.setattr("lib.consumption_run_manual.projected_max_cost_usd", lambda **kw: projected)
+    monkeypatch.setattr("scripts.lib.llm_lane_reservation.load_lane_floors", lambda: {})
+    monkeypatch.setenv("LLM_GLOBAL_DAILY_USD_CAP", "2.0")
+    monkeypatch.setattr(bridge, "GLOBAL_DAILY_USD_CAP", "2.0")
+    yield calls
+
+
+def call(**kw):
+    return bridge.execute_governed_call(
+        [{"role": "user", "content": "Public sourced evidence only."}],
+        process_id=PID, response_format={"type": "json_object"},
+        request_id="ask-fixture-answer-v1", max_tokens=512, **kw,
+    )
+
+
+def transports(monkeypatch, grok_status=200, chat_status=200):
+    grok = Proxy("grok", FakeResp(grok_status, ok_body(ANSWER, "grok-fixture")))
+    chat = Proxy("chatgpt", FakeResp(chat_status, ok_body(ANSWER, "chatgpt-fixture")))
+    ds = FakeDeepSeek(ANSWER)
+    wire(monkeypatch, grok, chat, ds)
+    return grok, chat, ds
+
+
+def test_registration_is_narrow_manual_and_both_maps_share_one_process():
+    row = REGISTRY[PID]
+    assert row["default_mode"] == "manual"
+    assert row["daily_cost_cap_usd"] == 5.0 and row["daily_soft_cap"] == 30
+    assert row["deepseek_allowed_policies"] == ["FAST", "PRO_THINK"]
+    assert set(row["allowed_lanes"]) == {"grok", "chatgpt", "fast", "deepseek-flash", "pro_think"}
+    assert row["tools_allowed"] is False and row["advisory_only"] is True
+    assert sync.CAPS[PID] == (5.0, 30)
+    for task in (PID, DEPTH):
+        assert bridge.resolve_caller("advisory_desk", task_type=task) == PID
+        assert routes.CALLER_TASK_PROCESS_MAP["advisory_desk"][task] == PID
+    assert routes.route_for_process(PID) == ("advisory_desk", PID)
+    policy = json.loads((ROOT / "config/llm_routing_policy.json").read_text())["policies"]["default"]["processes"][PID]
+    assert policy["route_profile"] == "n8n_oauth_first"
+    assert [policy[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["grok", "chatgpt", "deepseek"]
+    assert [policy[k]["policy"] for k in ("primary", "secondary", "fallback")] == ["FAST"] * 3
+    assert policy["reasoning_lane"] == {"provider": "deepseek", "policy": "PRO_THINK"}
+    assert policy["cost_ceiling_usd"] == 0.5
+
+
+@pytest.mark.parametrize("grok_status,chat_status,provider", [(200, 200, "grok"), (500, 200, "chatgpt"), (500, 500, "deepseek")])
+def test_registered_process_walks_existing_route_with_real_cap_check(monkeypatch, grok_status, chat_status, provider):
+    grok, chat, ds = transports(monkeypatch, grok_status, chat_status)
+    with ledger(monkeypatch) as seen:
+        out = call()
+    assert "error" not in out, out.get("error")
+    meta = out["_tradeai"]
+    assert meta["process_id"] == PID and meta["provider"] == provider
+    assert meta["governance_pass"] is True and meta["reservation_id"] == 4242
+    assert meta["reasoning_tier"] == "standard"
+    assert len(grok.calls) == 1
+    assert len(chat.calls) == (provider != "grok")
+    assert len(ds.calls) == (provider == "deepseek")
+    assert seen["reserve"].call_args.args[0] == PID
+    assert seen["settle"].call_count == 1
+
+
+def test_server_depth_uses_declared_reasoning_lane_and_same_bucket(monkeypatch):
+    grok, chat, ds = transports(monkeypatch)
+    with ledger(monkeypatch) as seen:
+        out = call(**bridge.caller_reasoning_options("advisory_desk", DEPTH))
+    assert "error" not in out, out.get("error")
+    assert out["_tradeai"]["provider"] == "deepseek"
+    assert out["_tradeai"]["reasoning_tier"] == "high"
+    assert out["_tradeai"]["routing_decision"]["requested_policy"] == "PRO_THINK"
+    assert len(ds.calls) == 1 and grok.calls == [] and chat.calls == []
+    assert seen["reserve"].call_args.args[0] == PID
+
+
+@pytest.mark.parametrize("params,scope", [({"process_spent": 4.99}, "process"), ({"global_spent": 1.99}, "global")])
+def test_process_and_unchanged_global_cap_refuse_before_any_provider(monkeypatch, params, scope):
+    grok, chat, ds = transports(monkeypatch)
+    with ledger(monkeypatch, **params) as seen:
+        decision = lc.check_cost_cap(PID, projected_usd=0.02, global_cap=2.0)
+        out = call()
+    assert decision["allow"] is False and decision["scope"] == scope
+    assert out["error"]["code"] == "COST_CAP_EXCEEDED"
+    assert seen["reserve"].call_count == 0
+    assert grok.calls == [] and chat.calls == [] and ds.calls == []
+
+
+@pytest.mark.parametrize("projected,budget", [(0.51, None), (0.02, {"cost_ceiling_usd": 0.01})])
+def test_per_call_ceiling_and_narrower_question_remainder_refuse_before_reservation(monkeypatch, projected, budget):
+    grok, chat, ds = transports(monkeypatch)
+    with ledger(monkeypatch, projected=projected) as seen:
+        out = call(budget=budget)
+    assert out["error"]["code"] == "COST_CEILING_EXCEEDED"
+    assert seen["reserve"].call_count == 0
+    assert grok.calls == [] and chat.calls == [] and ds.calls == []
+
+
+def test_manual_intent_and_request_counter_remain_separate_from_dollar_caps(monkeypatch):
+    with ledger(monkeypatch):
+        assert lc.should_call(PID, "grok")["reason"] == "manual_mode"
+        assert lc.should_call(PID, "grok", manual_trigger=True)["allow"] is True
+        assert lc.should_call(PID, "pro", manual_trigger=True)["reason"] == "POLICY_NOT_ALLOWED"
+        assert lc.should_call("unregistered-ask-fixture", "grok", manual_trigger=True)["reason"] == "PROCESS_NOT_REGISTERED"
+        monkeypatch.setattr(lc, "calls_today", lambda pid: 30)
+        assert lc.over_daily_cap(PID) is True
+        monkeypatch.setattr(lc, "calls_today", lambda pid: 29)
+        assert lc.over_daily_cap(PID) is False
+
+
+def test_unknown_process_and_forbidden_tools_never_reach_reservation(monkeypatch):
+    grok, chat, ds = transports(monkeypatch)
+    with ledger(monkeypatch) as seen:
+        unknown = bridge.execute_governed_call(
+            [{"role": "user", "content": "Public fact"}], process_id="unregistered-ask-fixture",
+        )
+        tools = call(tools=[{"type": "function", "function": {"name": "external_tool"}}])
+    assert unknown["error"]["code"] == "PROCESS_NOT_REGISTERED"
+    assert tools["error"]["code"] == "TOOL_NOT_ALLOWED"
+    assert seen["reserve"].call_count == 0
+    assert grok.calls == [] and chat.calls == [] and ds.calls == []
+
+
+def test_counter_refusal_at_reservation_stays_typed_and_spends_nothing(monkeypatch):
+    grok, chat, ds = transports(monkeypatch)
+    with ledger(monkeypatch) as seen:
+        seen["reserve"].side_effect = RuntimeError("COST_CAP_EXCEEDED: request count reached")
+        out = call(**bridge.caller_reasoning_options("advisory_desk", DEPTH))
+    assert out["error"]["code"] == "COST_CAP_EXCEEDED" and out["error"]["status"] == 429
+    assert seen["reserve"].call_args.args[0] == PID
+    assert seen["settle"].call_count == 0
+    assert grok.calls == [] and chat.calls == [] and ds.calls == []
+
+
+def test_cap_sync_dry_run_never_imports_database(monkeypatch, capsys):
+    sentinel = types.ModuleType("db_adapter")
+    sentinel._execute = lambda *a, **kw: pytest.fail("dry run reached DB")
+    monkeypatch.setitem(sys.modules, "db_adapter", sentinel)
+    assert sync.main(["--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert f"would upsert {PID}: cost=5.0 soft=30" in output
+    assert "Ask-CIO new-row mode=manual; existing-row mode unchanged" in output
+
+
+def test_cap_sync_new_process_is_manual_without_changing_conflict_mode(monkeypatch):
+    writes = []
+    fake = types.ModuleType("db_adapter")
+
+    def execute(sql, params=None, **kw):
+        writes.append((sql, params, kw))
+        return []
+
+    fake._execute = execute
+    monkeypatch.setitem(sys.modules, "db_adapter", fake)
+    assert sync.main([]) == 0  # Only this injected object receives SQL; no driver exists in this fixture.
+    inserts = [(sql, params) for sql, params, kw in writes if sql.lstrip().startswith("INSERT")]
+    row = next((sql, params) for sql, params in inserts if params[0] == PID)
+    assert row[1][3:6] == ("manual", 30, 5.0)
+    assert "mode =" not in row[0].split("ON CONFLICT", 1)[1]
+    assert all(params[3] == "automated" for _, params in inserts if params[0] != PID)
+    assert writes[-1][1] == (list(sync.CAPS),) and writes[-1][2] == {"fetch": "all"}
+
+
+def test_selected_sync_touches_only_ask_and_reads_back_only_ask(monkeypatch):
+    writes = []
+    fake = types.ModuleType("db_adapter")
+    fake._execute = lambda sql, params=None, **kw: writes.append((sql, params, kw)) or []
+    monkeypatch.setitem(sys.modules, "db_adapter", fake)
+    assert sync.main(["--process-id", PID]) == 0
+    assert len(writes) == 2
+    assert writes[0][0].lstrip().startswith("INSERT")
+    assert writes[0][1][0] == PID and writes[0][1][3:6] == ("manual", 30, 5.0)
+    assert writes[1][0].lstrip().startswith("SELECT")
+    assert writes[1][1] == ([PID],) and writes[1][2] == {"fetch": "all"}
+
+
+def test_selected_dry_run_is_one_row_and_no_db(monkeypatch, capsys):
+    fake = types.ModuleType("db_adapter")
+    fake._execute = lambda *a, **kw: pytest.fail("selected dry run reached DB")
+    monkeypatch.setitem(sys.modules, "db_adapter", fake)
+    assert sync.main(["--dry-run", "--process-id", PID]) == 0
+    out = capsys.readouterr().out
+    assert out.count("would upsert") == 1 and f"would upsert {PID}" in out
+    assert "mode=manual" in out
+
+
+def test_unknown_selected_process_refuses_before_db(monkeypatch):
+    fake = types.ModuleType("db_adapter")
+    fake._execute = lambda *a, **kw: pytest.fail("unknown process reached DB")
+    monkeypatch.setitem(sys.modules, "db_adapter", fake)
+    with pytest.raises(SystemExit) as err:
+        sync.main(["--process-id", "unregistered-ask-fixture"])
+    assert err.value.code == 2
+
+
+def handler_request(monkeypatch, task, body, *, manual_header="1"):
+    """Real HTTP handler parsing with in-memory streams, no socket/auth/DB/store."""
+    ring = types.ModuleType("memory_ring2")
+    ring.check = lambda *a, **kw: None
+    ring.research_class = lambda *a: False
+    ring.MemoryContextRequired = type("MemoryContextRequired", (Exception,), {})
+    monkeypatch.setitem(sys.modules, "memory_ring2", ring)
+    seen = []
+    monkeypatch.setattr(bridge, "execute_governed_call", lambda messages, **kw: seen.append(kw) or {"choices": []})
+    handler = object.__new__(bridge.GovernedBridgeHandler)
+    raw = json.dumps(body).encode()
+    handler.path = "/v1/chat/completions"
+    handler.headers = {bridge.AUTH_HEADER: "advisory_desk", "X-TradeAI-Task-Type": task, "Content-Length": str(len(raw))}
+    if manual_header is not None:
+        handler.headers[bridge.MANUAL_TRIGGER_HEADER] = manual_header
+    handler.rfile = io.BytesIO(raw)
+    handler._caller_auth_admits = lambda *a: True
+    responses = []
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+    handler._send_error = lambda status, code, detail: responses.append((status, {"error": code}))
+    handler.do_POST()
+    return seen, responses
+
+
+@pytest.mark.parametrize("task,tier", [(PID, None), (DEPTH, "high")])
+def test_only_server_mapped_task_controls_depth_not_client_overrides(monkeypatch, task, tier):
+    seen, responses = handler_request(monkeypatch, task, {
+        "messages": [{"role": "user", "content": "Public fact"}], "request_id": "ask-http-fixture",
+        "model": "arbitrary-client-model", "provider": "arbitrary-client-provider",
+        "policy": "PRO", "reasoning_tier": "high" if tier is None else "standard",
+    })
+    assert responses[0][0] == 200 and len(seen) == 1
+    assert seen[0]["process_id"] == PID and seen[0].get("reasoning_tier") == tier
+    assert "model" not in seen[0] and "provider" not in seen[0] and "policy" not in seen[0]
+
+
+def test_client_process_injection_is_rejected_and_unrelated_task_has_no_depth(monkeypatch):
+    seen, responses = handler_request(monkeypatch, DEPTH, {
+        "messages": [{"role": "user", "content": "Public fact"}], "process_id": "another-process",
+    })
+    assert responses == [(403, {"error": "PROCESS_ID_REJECTED"})] and seen == []
+    assert bridge.caller_reasoning_options("advisory_desk", "operator_reply") == {}
+    assert bridge.caller_reasoning_options("maria", DEPTH) == {}
+
+
+def test_existing_client_helper_emits_only_server_task_and_stable_identity(monkeypatch):
+    from lib.n8n_model_job import bridge_governed_call
+    captured = []
+    payload = {"_tradeai": {"governance_pass": True, "process_id": PID, "provider": "deepseek", "reservation_id": 4242}}
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_open(req, **kw):
+        captured.append(req)
+        return Response(json.dumps(payload).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    out = bridge_governed_call(
+        [{"role": "user", "content": "Public fact"}], process_id=PID, caller="advisory_desk",
+        task_type=DEPTH, request_id="ask-answer-fixture", max_tokens=1500, timeout_s=1,
+        context_id="ctx_0123456789abcdef", manual_trigger=True,
+    )
+    assert out == payload
+    req = captured[0]
+    headers = {k.lower(): v for k, v in req.header_items()}
+    assert headers["x-tradeai-task-type"] == DEPTH and headers["x-tradeai-agent"] == "advisory_desk"
+    assert headers["x-tradeai-context-id"] == "ctx_0123456789abcdef"
+    assert headers["x-tradeai-manual-trigger"] == "1"
+    body = json.loads(req.data)
+    assert body["request_id"] == "ask-answer-fixture" and body["model"] == "tradeai_governed"
+    assert not {"process_id", "reasoning_tier", "provider", "context_id"} & body.keys()
+
+
+@pytest.mark.parametrize("context", [None, {"context_id": "ctx_fedcba9876543210"}])
+def test_helper_inherits_existing_context_or_keeps_it_missing(monkeypatch, context):
+    from lib import intelligence_client as ic
+    from lib.n8n_model_job import bridge_governed_call
+
+    captured = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_open(req, **kw):
+        captured.append(req)
+        return Response(b'{}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    token = ic._CURRENT_CTX.set(context)
+    try:
+        bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, manual_trigger=True)
+    finally:
+        ic._CURRENT_CTX.reset(token)
+    headers = {k.lower(): v for k, v in captured[0].header_items()}
+    if context is None:
+        assert "x-tradeai-context-id" not in headers
+    else:
+        assert headers["x-tradeai-context-id"] == context["context_id"]
+
+
+@pytest.mark.parametrize("context", ["", "ctx_safe\r\nX-Forged: yes", "x" * 257, {"context_id": "bad"}])
+def test_unsafe_context_never_reaches_transport(monkeypatch, context):
+    from lib.n8n_model_job import bridge_governed_call
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unsafe context reached transport"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID,
+                               context_id=context, manual_trigger=True)
+    assert out["error"]["code"] == "MEMORY_CONTEXT_INVALID"
+    assert out["governance_pass"] is False
+
+
+def test_failed_context_reader_does_not_forge_id_or_hide_refusal(monkeypatch):
+    # n8n_model_job reads the context from the stdlib-only lib.intelligence_context (lane capability guard).
+    from lib import intelligence_context as ictx
+    from lib.n8n_model_job import bridge_governed_call
+
+    def failed():
+        raise RuntimeError("sensitive internal detail")
+
+    monkeypatch.setattr(ictx, "current_context_id", failed)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unavailable context reached transport"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, manual_trigger=True)
+    assert out["error"]["code"] == "MEMORY_CONTEXT_UNAVAILABLE"
+    assert out["governance_pass"] is False and "sensitive" not in json.dumps(out)
+
+
+@pytest.mark.parametrize("manual", [False, None, "true", 1])
+def test_ask_helper_defaults_and_non_boolean_intent_spend_and_send_nothing(monkeypatch, manual):
+    from lib.n8n_model_job import bridge_governed_call
+    from lib import intelligence_client as ic
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("automatic Ask reached transport"))
+    monkeypatch.setattr(ic, "current_context_id", lambda: pytest.fail("refused Ask read context"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=DEPTH,
+                               manual_trigger=manual)
+    assert out["error"]["code"] == "MANUAL_TRIGGER_REQUIRED"
+    assert out["cost_estimate"] == 0.0 and out["governance_pass"] is False
+
+
+@pytest.mark.parametrize("marker", [None, "true", "0"])
+def test_server_does_not_infer_operator_intent_from_body_or_task(monkeypatch, marker):
+    seen, responses = handler_request(monkeypatch, DEPTH, {
+        "messages": [{"role": "user", "content": "Public fact"}],
+        "manual_trigger": True, "origin": "cc_ask", "operator_initiated": True,
+    }, manual_header=marker)
+    assert responses == [(403, {"error": "MANUAL_TRIGGER_REQUIRED"})] and seen == []
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_no_bridge_env_production_generation_reaches_real_should_call(monkeypatch, manual):
+    """Real helper→llm_lane→gate_and_generate→should_call; only other rails/I/O injected."""
+    import llm_lane
+    import requests
+    from lib import oauth_lane_status
+    from scripts.lib.governed_cloud_generation import generate_cloud
+
+    monkeypatch.delenv("TRADEAI_LLM_VIA_BRIDGE", raising=False)
+    def available(lane):
+        assert manual, "automatic Ask must stop before readiness probes"
+        return True
+
+    monkeypatch.setattr(llm_lane, "available", available)
+    monkeypatch.setattr(oauth_lane_status, "lane_available", lambda lane: True)
+    ring = types.ModuleType("memory_ring2")
+    ring.check = lambda *a, **kw: {"decision": "ALLOW"}
+    ring.research_class = lambda *a: True
+    monkeypatch.setitem(sys.modules, "memory_ring2", ring)
+    posts = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": ANSWER}}]}
+
+    monkeypatch.setattr(requests, "post", lambda *a, **kw: posts.append((a, kw)) or Response())
+    observed = []
+    original = lc.should_call
+
+    def real_decision(process, lane, **kw):
+        result = original(process, lane, **kw)
+        observed.append((process, kw.get("manual_trigger"), result))
+        return result
+
+    monkeypatch.setattr(lc, "should_call", real_decision)
+    with ledger(monkeypatch) as seen:
+        args = dict(process_id=PID, task_summary="operator Ask fixture", lanes=("grok",))
+        if manual:
+            assert generate_cloud("Public fact", manual_trigger=True, **args) == (ANSWER, "grok")
+        else:
+            assert original(PID, "grok", manual_trigger=False)["reason"] == "manual_mode"
+            with pytest.raises(RuntimeError, match="MANUAL_TRIGGER_REQUIRED"):
+                generate_cloud("Public fact", **args)
+        assert seen["reserve"].call_count == 0  # Legacy OAuth path is free; bridge counters are separately proven.
+        assert seen["log"].call_count == int(manual)
+    assert len(posts) == int(manual)
+    if manual:
+        assert observed[0][:2] == (PID, True) and observed[0][2]["allow"] is True
+    else:
+        assert observed == []  # The stronger host intent gate precedes even should_call/readiness.
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_cloud_helper_bridge_path_preserves_explicit_intent_without_fallback(monkeypatch, manual):
+    from scripts.lib.governed_cloud_generation import generate_cloud
+    from lib import intelligence_client as ic
+
+    monkeypatch.setenv("TRADEAI_LLM_VIA_BRIDGE", "1")
+    monkeypatch.delenv("TRADEAI_LLM_PROCESS_ID", raising=False)
+    monkeypatch.delenv("TRADEAI_LLM_PROCESS_IDS", raising=False)
+    monkeypatch.setattr(ic, "current_context_id", lambda: "ctx_0123456789abcdef")
+    seen = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_open(req, **kw):
+        seen.append(req)
+        return Response(json.dumps({"choices": [{"message": {"content": ANSWER}}],
+                                    "_tradeai": {"process_id": PID, "governance_pass": True,
+                                                 "reservation_id": 4242}}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    if manual:
+        assert generate_cloud("Public fact", process_id=PID, task_summary="Ask fixture",
+                              manual_trigger=True) == (ANSWER, "bridge")
+        assert {k.lower(): v for k, v in seen[0].header_items()}["x-tradeai-manual-trigger"] == "1"
+    else:
+        with pytest.raises(RuntimeError, match="MANUAL_TRIGGER_REQUIRED"):
+            generate_cloud("Public fact", process_id=PID, task_summary="automatic fixture")
+        assert seen == []
+
+
+@contextmanager
+def settlement_reader(monkeypatch, row=None, *, error=None):
+    conn, cursor = MagicMock(), MagicMock()
+    conn.cursor.return_value = cursor
+    cursor.fetchone.return_value = row
+    cursor.execute.side_effect = error
+    monkeypatch.setattr(lc, "_conn", lambda: conn)
+    yield conn, cursor
+    conn.commit.assert_not_called()
+    conn.rollback.assert_not_called()
+    conn.close.assert_not_called()
+    if cursor.execute.called:
+        sql, params = cursor.execute.call_args.args
+        assert sql.startswith("SELECT ") and "FOR UPDATE" not in sql
+        assert params == (4242,)
+        cursor.close.assert_called_once()
+
+
+def settlement_receipt(**kw):
+    return bridge._ask_settlement_receipt(
+        lc, reservation_id=4242, process_id=PID, request_id="ask-fixture-answer-v1",
+        provider_actual_usd=kw.pop("provider_actual_usd", 0.0005),
+        mock=kw.pop("mock", False), **kw,
+    )
+
+
+@pytest.mark.parametrize("actual,measured", [
+    (Decimal("0.000500"), 0.000500), (Decimal("0.000501"), 0.0005006), (Decimal("0.000000"), 0.0),
+])
+def test_settlement_readback_matches_real_row_and_storage_precision(monkeypatch, actual, measured):
+    row = (4242, PID, "ask-fixture-answer-v1", "settled", actual)
+    with settlement_reader(monkeypatch, row) as (_, cursor):
+        receipt = settlement_receipt(provider_actual_usd=measured)
+    assert receipt["status"] == "VERIFIED_SETTLED"
+    assert receipt["reason"] == "MATCHED_RESERVATION_READBACK"
+    assert receipt["actual_usd"] == float(actual)
+    assert receipt["provider_actual_usd"] == measured
+    assert receipt["readback"] == {
+        "reservation_id": 4242, "process_id": PID, "request_id": "ask-fixture-answer-v1",
+        "status": "settled", "actual_usd": float(actual),
+    }
+    assert "metadata_json->>'request_id'" in cursor.execute.call_args.args[0]
+
+
+@pytest.mark.parametrize("row,reason", [
+    (None, "RESERVATION_NOT_FOUND"),
+    ((4243, PID, "ask-fixture-answer-v1", "settled", Decimal(".0005")), "RESERVATION_IDENTITY_MISMATCH"),
+    ((4242, "different-process", "ask-fixture-answer-v1", "settled", Decimal(".0005")), "RESERVATION_IDENTITY_MISMATCH"),
+    ((4242, PID, "different-request", "settled", Decimal(".0005")), "RESERVATION_IDENTITY_MISMATCH"),
+    ((4242, PID, "ask-fixture-answer-v1", "reserved", Decimal(".0005")), "RESERVATION_NOT_SETTLED"),
+    ((4242, PID, "ask-fixture-answer-v1", "released", Decimal(".0005")), "RESERVATION_NOT_SETTLED"),
+    ((4242, PID, "ask-fixture-answer-v1", "settled", Decimal(".02")), "SETTLED_AMOUNT_MISMATCH"),
+    ((4242, PID, "ask-fixture-answer-v1", "settled", None), "SETTLED_AMOUNT_MISMATCH"),
+    ((4242, PID, "ask-fixture-answer-v1", "settled", Decimal("NaN")), "SETTLED_AMOUNT_MISMATCH"),
+])
+def test_settlement_readback_missing_mismatch_or_unsettled_never_claims_charge(monkeypatch, row, reason):
+    with settlement_reader(monkeypatch, row):
+        receipt = settlement_receipt()
+    assert receipt["status"] == "UNVERIFIED" and receipt["reason"] == reason
+    assert receipt["actual_usd"] is None
+
+
+def test_settlement_readback_db_failure_is_nonthrowing_and_sanitized(monkeypatch):
+    with settlement_reader(monkeypatch, error=RuntimeError("private-fixture-diagnostic")):
+        receipt = settlement_receipt()
+    assert receipt["status"] == "UNVERIFIED"
+    assert receipt["reason"] == "SETTLEMENT_READBACK_UNAVAILABLE"
+    assert receipt["actual_usd"] is None
+    assert "private-fixture" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("amount,mock,status,reason", [
+    (None, False, "NOT_MEASURED", "PROVIDER_ACTUAL_NOT_MEASURED"),
+    (0.0005, True, "UNVERIFIED", "MOCK_RESPONSE"),
+    (True, False, "UNVERIFIED", "PROVIDER_ACTUAL_INVALID"),
+    (-0.001, False, "UNVERIFIED", "PROVIDER_ACTUAL_INVALID"),
+    (float("nan"), False, "UNVERIFIED", "PROVIDER_ACTUAL_INVALID"),
+    (float("inf"), False, "UNVERIFIED", "PROVIDER_ACTUAL_INVALID"),
+])
+def test_unknown_mock_invalid_provider_cost_does_not_read_or_substitute_projection(monkeypatch, amount, mock, status, reason):
+    row = (4242, PID, "ask-fixture-answer-v1", "settled", Decimal(".02"))
+    with settlement_reader(monkeypatch, row) as (conn, _):
+        receipt = settlement_receipt(provider_actual_usd=amount, mock=mock)
+    conn.cursor.assert_not_called()
+    assert receipt["status"] == status and receipt["reason"] == reason
+    assert receipt["actual_usd"] is None and receipt["readback"] is None
+
+
+def test_paid_bridge_readback_occurs_after_settle_and_is_added_to_ask_only(monkeypatch):
+    transports(monkeypatch, grok_status=500, chat_status=500)
+    row = (4242, PID, "ask-fixture-answer-v1", "settled", Decimal(".0005"))
+    with ledger(monkeypatch) as seen, settlement_reader(monkeypatch, row) as (_, cursor):
+        cursor.execute.side_effect = lambda *_: seen["settle"].assert_called_once()
+        out = call()
+    assert "error" not in out, out
+    receipt = out["_tradeai"]["settlement_receipt"]
+    assert receipt["status"] == "VERIFIED_SETTLED" and receipt["actual_usd"] == .0005
+    assert receipt["reservation_id"] == out["_tradeai"]["reservation_id"]
+    assert receipt["request_id"] == out["_tradeai"]["request_id"]
+
+
+def test_swallowed_settle_failure_does_not_become_verified_bridge_cost(monkeypatch):
+    transports(monkeypatch, grok_status=500, chat_status=500)
+    with ledger(monkeypatch) as seen:
+        # Legacy settle returns None both after persistence and after a swallowed
+        # DB failure. Missing persisted row must remain explicitly unverified.
+        seen["settle"].return_value = None
+        out = call()
+    assert seen["settle"].return_value is None
+    assert out["_tradeai"]["cost_estimate"] == .0005
+    assert out["_tradeai"]["settlement_receipt"]["status"] == "UNVERIFIED"
+    assert out["_tradeai"]["settlement_receipt"]["actual_usd"] is None
+
+
+def test_oauth_bridge_keeps_unknown_actual_even_after_legacy_settlement(monkeypatch):
+    transports(monkeypatch)
+    with ledger(monkeypatch) as seen:
+        out = call()
+    assert seen["settle"].called and out["_tradeai"]["cost_estimate"] is None
+    assert out["_tradeai"]["settlement_receipt"]["status"] == "NOT_MEASURED"
+    assert out["_tradeai"]["settlement_receipt"]["actual_usd"] is None
+
+
+def test_other_process_does_not_add_ask_receipt_or_run_readback(monkeypatch):
+    from tests.test_bridge_oauth_llm_step_20261014 import DIAG, VALID
+    valid = json.dumps(VALID)
+    wire(monkeypatch, Proxy("grok", FakeResp(200, ok_body(valid, "grok-fixture"))),
+         Proxy("chatgpt", FakeResp(200, ok_body(valid, "chatgpt-fixture"))), FakeDeepSeek(valid))
+    reader = MagicMock(side_effect=AssertionError("Ask-only readback used for other process"))
+    monkeypatch.setattr(bridge, "_ask_settlement_receipt", reader)
+    with ledger(monkeypatch):
+        out = bridge.execute_governed_call(
+            [{"role": "user", "content": "Public sourced evidence only."}],
+            process_id=DIAG, response_format={"type": "json_object"}, request_id="other-fixture", max_tokens=512,
+        )
+    assert "error" not in out, out
+    assert "settlement_receipt" not in out["_tradeai"]
+    reader.assert_not_called()

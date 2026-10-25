@@ -8,9 +8,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FONT, RADIUS, SHADOW, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import { ASK_PATHS, TOOLTIPS, isAskShortcut, statusLabel, statusTone, trackedChips, unwrap, validateQuestion } from '../lib/askCioModel'
-import type { AskStatus, TrackedRow } from '../lib/askCioModel'
+import type { AnswerVersion, TrackedRow } from '../lib/askCioModel'
 import { useApi } from '../hooks/useApi'
 import { askCio, askErrorText, type AskResult } from '../lib/askCioApi'
+import AskCioAnswer from './AskCioAnswer'
+import { ASK_UPDATED_EVENT, answerForAsk, askUpdate, keepNewestAnswer, matchingThread, newerHeaderAnswer, publishAskUpdate, readableAnswerForAsk, statusForAsk, threadVersionKey } from '../lib/askCioPresentation'
+import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
+import './AskCio.css'
 
 export default function AskCioBar() {
   const [q, setQ] = useState('')
@@ -19,6 +23,9 @@ export default function AskCioBar() {
   const [err, setErr] = useState<string | null>(null)
   const [res, setRes] = useState<AskResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const close = () => { setRes(null); setErr(null) }
+  const phone = useAskPhoneSheet(Boolean(res || err), sheetRef, close)
   const [listening, setListening] = useState(false)
   const recRef = useRef<any>(null)
   // Voice-to-text: the browser's own speech recognition (Chrome, Edge, Android, iOS Safari). Hidden where unsupported.
@@ -79,10 +86,9 @@ export default function AskCioBar() {
     }
   }
 
-  const status = (res?.thread?.status ?? 'quick') as AskStatus
   return (
     <div data-testid="ask-cio-bar" style={{ position: 'relative', padding: '6px 16px', borderBottom: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1] }}>
-      <form onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 1100 }} title={TOOLTIPS.bar}>
+      <form className="ask-form" onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', maxWidth: 1100 }} title={TOOLTIPS.bar}>
         <span style={{ ...chipStyle('ai'), flex: '0 0 auto' }}>Ask the CIO</span>
         <input
           ref={inputRef}
@@ -92,7 +98,7 @@ export default function AskCioBar() {
           onChange={e => setQ(e.target.value)}
           placeholder="e.g. 100 or 1,000 TSLA given the SpaceX merger talk?  (⌘K)"
           disabled={busy}
-          style={{ flex: 1, minWidth: 0, fontSize: TYPE.base, padding: '6px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], fontFamily: FONT.sans }}
+          style={{ flex: '1 1 240px', minWidth: 0, fontSize: TYPE.base, padding: '6px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], fontFamily: FONT.sans }}
         />
         {SpeechRec && (
           <button type="button" data-testid="ask-cio-mic" onClick={toggleMic} disabled={busy}
@@ -124,27 +130,58 @@ export default function AskCioBar() {
         <Link to="/cio/questions" title={TOOLTIPS.myQuestions} data-testid="ask-cio-my-questions" style={{ fontSize: TYPE.sm, color: TOKENS.info, whiteSpace: 'nowrap' }}>My questions</Link>
       </form>
       {(res || err) && (
-        <div data-testid="ask-cio-answer" role="dialog" aria-label="CIO answer"
-          style={{ position: 'absolute', zIndex: 40, left: 16, right: 16, top: '100%', maxWidth: 1100, maxHeight: '60vh', overflowY: 'auto', marginTop: 4, padding: 12, borderRadius: RADIUS.lg, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], boxShadow: SHADOW[3] }}>
-          {err && <div data-testid="ask-cio-error" style={{ color: TOKENS.danger, fontSize: TYPE.base }}>{err}</div>}
+        <div className="ask-answer-sheet" ref={sheetRef} tabIndex={-1} data-phone-sheet={phone} data-testid="ask-cio-answer" role="dialog" aria-label="CIO answer" aria-modal={phone || undefined}
+          style={{ position: 'absolute', zIndex: 40, left: 16, right: 16, top: '100%', maxWidth: 1100, maxHeight: '60vh', overflowY: 'auto', marginTop: 4, padding: 12, borderRadius: phone ? 0 : RADIUS.lg, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], boxShadow: SHADOW[3] }}>
+          {err && <><button type="button" onClick={close}>Back</button><div data-testid="ask-cio-error" style={{ color: TOKENS.danger, fontSize: TYPE.base }}>{err}</div></>}
           {res && (
             <>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={chipStyle(statusTone(status))}>{statusLabel(status)}</span>
-                <button type="button" data-testid="ask-cio-open-thread" onClick={() => { const t = res.thread_id; setRes(null); nav(`/cio/questions/${t}`) }}
-                  style={{ fontSize: TYPE.sm, color: TOKENS.info, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-                  Open thread →
-                </button>
-                <button type="button" aria-label="Close" onClick={() => setRes(null)}
-                  style={{ marginLeft: 'auto', fontSize: TYPE.sm, color: TOKENS.text[2], background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                  Close (Esc)
-                </button>
-              </div>
-              <pre data-testid="ask-cio-answer-text" style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: FONT.sans, fontSize: TYPE.base, color: TOKENS.text[0], lineHeight: 1.5 }}>{res.answer_text}</pre>
+              <LiveAnswer key={`${res.thread_id}:${res.ask_id}`} result={res} phone={phone} onClose={close}
+                onOpen={() => { const t = res.thread_id; close(); nav(`/cio/questions/${t}`, { state: { askReturn: true } }) }} />
             </>
           )}
         </div>
       )}
     </div>
   )
+}
+
+function LiveAnswer({ result, phone, onClose, onOpen }: { result: AskResult; phone: boolean; onClose: () => void; onOpen: () => void }) {
+  const [pending, setPending] = useState(result.thread?.status === 'deep_pending')
+  const api = useApi<unknown>(ASK_PATHS.thread(result.thread_id), pending ? 5_000 : 30_000)
+  const live = matchingThread(api.data, result.thread_id)
+  const [retained, setRetained] = useState<AnswerVersion | null>(null)
+  const candidate = newerHeaderAnswer(result, live)
+  const newer = keepNewestAnswer(retained, candidate)
+  const initial = matchingThread({ thread: result.thread }, result.thread_id)
+  const baseline = readableAnswerForAsk(initial, result.ask_id)
+  const liveVersion = answerForAsk(live, result.ask_id)
+  const regressed = Boolean(newer && liveVersion && liveVersion.version < newer.version)
+  const keepStatus = newer && (!liveVersion || liveVersion.version < newer.version)
+  const status = keepStatus ? newer!.status : statusForAsk(live ?? initial, result.ask_id)
+  const previous = useRef(initial ? threadVersionKey(initial) : 'none')
+  useEffect(() => { setPending(status === 'deep_pending') }, [status])
+  useEffect(() => { if (candidate) setRetained(previous => keepNewestAnswer(previous, candidate)) }, [candidate])
+  useEffect(() => {
+    if (!live || regressed) return
+    const key = threadVersionKey(live)
+    if (previous.current !== key) publishAskUpdate({ threadId: result.thread_id, source: 'header' })
+    previous.current = key
+  }, [live, regressed, result.thread_id])
+  useEffect(() => {
+    const refresh = (event: Event) => { const change = askUpdate(event); if (change?.threadId === result.thread_id && change.source !== 'header') api.refetch() }
+    window.addEventListener(ASK_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
+  }, [result.thread_id, api.refetch])
+  return <>
+    <div className="ask-answer-toolbar"><span style={chipStyle(statusTone(status))}>{statusLabel(status)}</span><button type="button" data-testid="ask-cio-close" aria-label="Close" onClick={onClose}
+      style={{ marginLeft: 'auto', padding: '6px 12px', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], color: TOKENS.text[0] }}>{phone ? 'Back' : 'Close (Esc)'}</button></div>
+    <div className="ask-answer-scroll">
+    <AskCioAnswer text={newer?.summary ?? result.answer_text} sources={newer?.sources ?? baseline?.sources} testId="ask-cio-answer-text" />
+    {Boolean(api.data) && !live && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>The update could not be matched to this question — showing its saved answer.</div>}
+    {regressed && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>The latest response contains an older version — keeping the newer saved answer.</div>}
+    {api.stale && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>Answer refresh unavailable — showing the last saved answer. {newer?.produced_at || baseline?.produced_at || ''}</div>}
+    </div>
+    <div className="ask-answer-footer"><button type="button" data-testid="ask-cio-open-thread" onClick={onOpen}
+      style={{ fontSize: TYPE.base, padding: '8px 12px', color: TOKENS.info, background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, cursor: 'pointer' }}>Open thread →</button></div>
+  </>
 }
