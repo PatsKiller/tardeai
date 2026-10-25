@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-10-24T22:59:45.251281+00:00",
+  "method": "read-only JSON fields copied; no source operation executed",
+  "sources": [
+    {
+      "path": "data/runtime/market-regime-classifier_last.json",
+      "source_sha256": "1ff0ae282f6bc56c31b1ae3c53d0338880ecaeba7c61ac6c3c1c2a3496819c59",
+      "copy_sha256": "3da8e3504de2b131581173ffe5437445e05c4dc516862a4e2cf9428def61a5bb"
+    },
+    {
+      "path": "data/runtime/sync-dividend-data_last.json",
+      "source_sha256": "527651368533450739f96a50bf336f1cc8d4f17c59170a2ad69ab43b4931d337",
+      "copy_sha256": "798430eb57d8d8b1b8eda69badb43f45076b6e0df16e50bd9a59b91fe42befc6"
+    },
+    {
+      "path": "data/runtime/refresh_symbol_cards_last.json",
+      "source_sha256": "4fd48245cbcbd6154ea9755c4fe305d42847469b6284f15cecb5d240e52fd93c",
+      "copy_sha256": "b4d949ef0031414a926784b0d4ee7907500e87bc7e2f3a3e0ddf8d0e021285a7"
+    },
+    {
+      "path": "data/runtime/pipeline_premarket_premarket_last.json",
+      "source_sha256": "913344184166b7d6f9fab77e44ce1c5ff42274f55d0a730ad6b812be52fc346f",
+      "copy_sha256": "cc4e55db772d0bba7b8d463d8cdbed2a048269d740c95d6fd4567c0092379ec2"
+    }
+  ]
+}
