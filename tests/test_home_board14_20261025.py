@@ -7,6 +7,7 @@ from scripts.lib.home_board14 import (
     HOLDINGS_SYNC_EXPR,
     VIX_GAP_REASON,
     apply_home_board,
+    cap_do_now,
     holdings_market_note,
     jobs_clock,
     questions_new_count,
@@ -195,3 +196,41 @@ def test_regime_history_read_is_the_only_query_and_a_failure_stays_a_gap(tmp_pat
     assert payload["regime"]["label"] == "fixture-risk"
     assert payload["regime"]["vix"] == 1
     assert payload["regime"]["since_gap"] == "Regime start is not in the fetched history"
+
+
+def _protect(n):
+    return {"id": f"protection:acct_{n}:SYM{n:03d}", "category": "protect", "title": f"SYM{n:03d} · Acct {n}",
+            "why": "Stop awaiting activation", "evidence": {"stop_state": "pending_activation"}}
+
+
+def test_do_now_cap_keeps_every_row_and_counts_the_hidden_ones():
+    rows = [_protect(n) for n in range(1, 10)]
+    capped = cap_do_now({"items": rows[:7], "all_items": rows, "total": 9})
+    assert len(capped["items"]) == 7
+    assert len(capped["all_items"]) == 9
+    assert capped["total"] == 9 and capped["hidden_count"] == 2 and capped["limit"] == 7
+
+
+def test_do_now_cap_always_shows_the_waiting_approvals_row():
+    rows = [_protect(n) for n in range(1, 9)]
+    approvals = {"id": "approvals:pending", "category": "decide", "title": "3 approvals waiting",
+                 "why": "Review the typed approval queues"}
+    capped = cap_do_now({"items": rows[:7], "all_items": rows + [approvals]})
+    ids = [item["id"] for item in capped["items"]]
+    assert len(ids) == 7 and ids[-1] == "approvals:pending"
+    assert capped["items"][-1]["kind"] == "REVIEW"
+    assert capped["hidden_count"] == 2
+    assert [item["id"] for item in capped["all_items"]][-1] == "approvals:pending"
+
+
+def test_do_now_cap_without_overflow_hides_nothing():
+    capped = cap_do_now({"items": [_protect(1)]})
+    assert capped["hidden_count"] == 0 and capped["total"] == 1 and capped["all_items"] == capped["items"]
+
+
+def test_project_pages_forwards_the_full_ranked_list():
+    rows = [_protect(n) for n in range(1, 11)]
+    pages = project_pages({"do_now": {"items": rows[:7], "all_items": rows, "total": 10}})
+    assert len(pages["do_now"]["items"]) == 7
+    assert pages["do_now"]["hidden_count"] == 3
+    assert len(pages["do_now"]["all_items"]) == 10
