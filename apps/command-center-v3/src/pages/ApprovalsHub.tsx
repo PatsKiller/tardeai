@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import DeskPage, { DeskGap, useDeskTab } from '../components/DeskPage'
 import AmendmentReader from '../components/AmendmentReader'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
+import DesignApprovals from '../components/approvals/DesignApprovals'
+import DecidedRecently from '../components/approvals/DecidedRecently'
 import '../styles/operatorApprovals.css'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
@@ -39,6 +41,7 @@ function Queue() {
           <details><summary>Exact version and comment</summary><code>{record.document_sha}</code><p>{record.comment}</p></details>
         </article>) : <p>No recorded decisions were returned.</p>}</section> : <div className="columns">
           <section className="panel" aria-label="Waiting approvals">
+            {active === 'DESIGN' && <DesignApprovals />}
             {data.items.filter(item => active === 'waiting' || item.kind === active).map(item => <article className="queue-row" key={item.id}>
               <span className="badge">{isRuleProposal(item) ? 'AI rule proposal' : KIND_LABEL[item.kind] ?? item.kind}</span><div><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p></div>
               <span>{item.proposed_by ?? 'Proposer not recorded'}</span><span className="muted">{waitingSince(item.created_at)}</span>
@@ -53,8 +56,7 @@ function Queue() {
               <button disabled={offset + 50 >= data.filtered_count} onClick={() => setOffset(offset + 50)}>Next</button></div>
           </section>
           <aside className="stack"><section className="panel"><h2>How a decision is recorded</h2><p>Your authenticated tailnet identity, the exact version you read, and the time are recorded together. Agents can propose and read; they cannot decide.</p></section>
-            <section className="panel"><h2>Decided recently</h2>{data.recent.slice(0, 5).map((record, i) => <p key={i}>{record.decision.replace(/_/g, ' ')} · {new Date(record.at).toLocaleDateString()}</p>)}
-              <Link className="primary" to="/approvals?tab=history">Full decision history</Link></section>
+            <DecidedRecently recent={data.recent} labels={KIND_LABEL} />
             <section className="panel"><h2>Notify me</h2><p className="muted">Approval notification delivery and its schedule have not been verified yet.</p></section>
             <section className="panel"><h2>Rulebook</h2><p>Read the rules, ask questions, and propose changes.</p><Link className="primary" to="/policy">Open Rulebook</Link></section>
             <section className="panel"><h2>Conflict rules</h2><p>How disagreements between sources are decided, and AI-proposed rules waiting for you.</p><Link className="primary" to="/conflicts/rules">How conflicts are decided →</Link></section>

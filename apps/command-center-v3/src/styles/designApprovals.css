@@ -1,0 +1,31 @@
+/* Approvals → Designs (design workflow, AGENTS.md §28.13 proposed). Tokens only. */
+.design-approvals { display: flex; flex-direction: column; gap: 12px; }
+.design-approvals .design-card { border: 1px solid var(--border-color); background: var(--bg-1); border-radius: var(--radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-wrap: anywhere; }
+.design-approvals .design-card h3 { margin: 0; font-size: 14px; color: var(--text-0); }
+.design-approvals .design-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--text-2); }
+.design-approvals .design-thumbs { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; align-items: start; }
+.design-approvals .design-thumb { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; background: var(--bg-2); }
+.design-approvals .design-thumb img { width: 100%; height: auto; max-height: 480px; object-fit: contain; display: block; border-radius: var(--radius-sm); }
+.design-approvals .design-thumb span { font-size: 12px; color: var(--text-2); }
+.design-approvals .design-removals { margin: 0; padding-left: 18px; font-size: 14px; color: var(--text-1); }
+.design-approvals .design-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.design-approvals .design-actions button { flex: 1 1 160px; font-weight: 600; }
+.design-approvals .design-approve { color: var(--success-color); border-color: var(--success-border); background: var(--success-bg); }
+.design-approvals .design-reject { color: var(--danger-color); border-color: var(--danger-border); background: var(--danger-bg); }
+.design-approvals .design-status { font-size: 14px; color: var(--text-1); }
+.design-approvals .design-status.error { color: var(--danger-color); }
+.design-approvals details summary { min-height: 44px; display: flex; align-items: center; }
+.design-approvals pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; max-height: 50vh; overflow-y: auto; }
+.design-decided { display: flex; flex-direction: column; gap: 0; }
+.design-decided .design-decided-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border-subtle); font-size: 14px; align-items: baseline; }
+.design-decided .design-decided-row small { display: block; color: var(--text-3); font-size: 12px; }
+.design-decided .outcome-success { color: var(--success-color); }
+.design-decided .outcome-danger { color: var(--danger-color); }
+.design-decided .outcome-warning { color: var(--warning-color); }
+@media (max-width: 820px) {
+  .design-approvals .design-thumbs { grid-template-columns: 1fr; }
+  .design-approvals .design-thumb img { max-height: 60vh; }
+  .design-approvals .design-actions button { flex: 1 1 100%; }
+}
+.design-approvals .design-heading { font-size: 14px; margin: 0; }
+.design-approvals .design-subheading { font-size: 14px; margin: 0 0 6px; }

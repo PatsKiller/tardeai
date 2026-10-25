@@ -55478,6 +55478,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # Approvals → Designs (design workflow, AGENTS.md §28.13 proposed): reads for the authenticated reader; one-tap
+    # design decisions only from the operator tailnet identity with same-origin CSRF (scripts/lib/design_decisions_api.py).
+    if base_path.rstrip("/") == "/api/v2/design" or base_path.startswith("/api/v2/design/"):
+        try:
+            from scripts.lib import design_decisions_api as _dda
+
+            _dda_out = _dda.handle(base_path, method, body, query)
+            if _dda_out is not None:
+                return _dda_out
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # Unified scheduler intent/observations/host receipts. Additive read-only route.
     if base_path == "/api/v2/scheduler-operations":
         if method != "GET":
