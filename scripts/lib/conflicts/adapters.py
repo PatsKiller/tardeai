@@ -200,6 +200,6 @@ def findings_section(findings, *, gap=None):
 def concentration_inputs(rows):
     """W1 limits plus W7 numeric exposures; classification remains in the profile."""
     return [Input(row.get("source") or "canonical look-through", {k: row.get(k) for k in
-                  ("exposure_pct", "limit_pct", "near_pct", "gap", "instrument_class", "limit_key", "approval_ref")},
+                  ("exposure_pct", "limit_pct", "near_limit_pct", "near_pct", "gap", "instrument_class", "limit_key", "approval_ref")},
                   timestamp(row.get("as_of")), role="policy", subject_id=row.get("security_guid"),
                   account=row.get("account"), detail=row.get("label")) for row in rows]

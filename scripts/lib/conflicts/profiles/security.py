@@ -179,7 +179,7 @@ class SecurityStanceProfile:
                 if value == "UNKNOWN" and positive:
                     finding("GATE", "R13", "Unknown: " + (item.detail or "look-through exposure"),
                             "the canonical exposure and fund coverage are complete", [item], owner="positions owner", suffix=item.source)
-                near = policy.get("near_pct")
+                near = policy.get("near_limit_pct", policy.get("near_pct"))
                 if known and isinstance(near, (int, float)) and near <= weight <= limit:
                     finding("AGREEMENT", "R13", "Near policy limit: " + (item.detail or item.source),
                             "exposure falls below the canonical near-limit threshold", [item], owner="positions owner", suffix=item.source)
@@ -206,10 +206,13 @@ class SecurityStanceProfile:
                                             for v in (weight, limit)) or limit <= 0:
                 finding("GATE", "R13", "Unknown: IPS headroom", "the canonical aggregate supplies the current position weight",
                         [canonical], owner="positions owner")
-            elif weight >= limit:
+            elif policy.get("status") == "breach" or weight > limit:
                 finding("NEEDS_OPERATOR", "R13", f"Blocked: IPS {policy.get('instrument_class', 'position')} limit {limit:g}%",
                         "the position satisfies the canonical IPS headroom rule", [canonical], owner="operator",
                         action="notify_operator", never=True)
+            elif policy.get("status") == "near_limit" or isinstance(policy.get("near_limit_pct"), (int, float)) and weight >= policy["near_limit_pct"]:
+                finding("AGREEMENT", "R13", "Near IPS concentration limit", "exposure falls below the canonical near-limit threshold",
+                        [canonical], owner="positions owner")
         candidates = []
         fresh_sides = []
         for item in inputs:
