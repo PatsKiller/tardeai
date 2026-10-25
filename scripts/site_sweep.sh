@@ -38,8 +38,22 @@ if [ ! -d "${APP}/node_modules/@playwright/test" ]; then
   exit 5
 fi
 
+# Read-only agent identity (config/cc_auth.yaml agent_reader): header name + token FILE path only; the token value is
+# read by site-sweep.ts and only sent with same-origin GET/HEAD. SWEEP_READER=0 sweeps unauthenticated.
+READER_HEADER=""; READER_FILE=""
+if [ "${SWEEP_READER:-1}" != "0" ]; then
+  mapfile -t rs < <(python3 "${HERE}/lib/cc_auth.py" --reader-settings 2>/dev/null || true)
+  if [ "${#rs[@]}" -ge 4 ] && [ "${rs[3]}" = "enabled" ] && [ -f "${rs[1]}" ]; then
+    READER_HEADER="${rs[0]}"; READER_FILE="${rs[1]}"
+    echo "site_sweep: authenticated as read-only agent reader (${READER_HEADER})"
+  else
+    echo "site_sweep: agent reader not available (disabled or token not minted) — sweeping unauthenticated" >&2
+  fi
+fi
+
 echo "site_sweep: ${BASE} → ${OUT}"
 cd "${APP}"
+SWEEP_READER_HEADER="${READER_HEADER}" SWEEP_READER_TOKEN_FILE="${READER_FILE}" \
 SWEEP_BASE_URL="${BASE}" SWEEP_OUT_DIR="${OUT}" \
   node --experimental-strip-types --no-warnings e2e-live/site-sweep.ts 2>&1 | tee "${OUT}/sweep.log"
 rc="${PIPESTATUS[0]}"

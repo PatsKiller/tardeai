@@ -19,6 +19,10 @@
  *   SWEEP_ROUTES     optional comma list of route substrings to restrict the sweep
  *   SWEEP_VIEWPORTS  optional comma list of viewport names (m412,m390,d1440)
  *   SWEEP_NO_ROUTER_ONLY=1  skip routes that exist only in the router source (not on the nav rail)
+ *   SWEEP_READER_HEADER / SWEEP_READER_TOKEN_FILE  read-only agent identity (config/cc_auth.yaml agent_reader;
+ *                    scripts/site_sweep.sh fills both). The header is added ONLY to GET/HEAD requests to SWEEP_BASE_URL,
+ *                    never to other hosts and never to a write (writes are aborted before that). The server refuses
+ *                    any non-GET that presents it, so authenticated pages are swept and decisions stay impossible.
  */
 import { chromium, type Page, type BrowserContext, type Request } from '@playwright/test'
 import fs from 'node:fs'
@@ -32,6 +36,19 @@ const SHOTS = path.join(OUT, 'shots')
 const ROUTE_FILTER = (process.env.SWEEP_ROUTES || '').split(',').map((s: string) => s.trim()).filter(Boolean)
 const VP_FILTER = (process.env.SWEEP_VIEWPORTS || '').split(',').map((s: string) => s.trim()).filter(Boolean)
 const SKIP_ROUTER_ONLY = process.env.SWEEP_NO_ROUTER_ONLY === '1'
+const READER_HEADER = (process.env.SWEEP_READER_HEADER || '').trim()
+const READER_TOKEN = (() => {
+  const file = (process.env.SWEEP_READER_TOKEN_FILE || '').trim()
+  if (!READER_HEADER || !file) return ''
+  try { return fs.readFileSync(file, 'utf8').trim() } catch { return '' }
+})()
+const BASE_ORIGIN = new URL(BASE).origin
+/** Same-origin GET/HEAD get the read-only reader header; every other method is aborted; other hosts never see it. */
+function readerHeaders(req: Request): Record<string, string> | null {
+  const m = req.method()
+  if (!READER_TOKEN || (m !== 'GET' && m !== 'HEAD') || new URL(req.url()).origin !== BASE_ORIGIN) return null
+  return { ...req.headers(), [READER_HEADER.toLowerCase()]: READER_TOKEN }
+}
 const APP_SRC = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'App.tsx')
 
 const VIEWPORTS: Array<{ name: string; width: number; height: number; mobile: boolean }> = [
@@ -435,7 +452,9 @@ async function sweepRoute(ctx: BrowserContext, route: string, vp: typeof VIEWPOR
     const m = req.method()
     if (!['GET', 'HEAD', 'OPTIONS'].includes(m)) { writes.push({ tab: currentTab, by: lastClick.label, req: `${m} ${req.url().replace(BASE, '')}` }); return r.abort('blockedbyclient') }
     if (SIDE_EFFECT_URL.test(req.url())) { sideEffects.push(req.url().replace(BASE, '')); return r.abort('blockedbyclient') }
-    return r.continue()
+    // Read-only agent identity: same-origin GET/HEAD only (the token never leaves the swept origin).
+    const headers = readerHeaders(req)
+    return headers ? r.continue({ headers }) : r.continue()
   })
   const url = BASE + route
   const t0 = Date.now()
@@ -624,12 +643,18 @@ async function main() {
   const ctx = await browser.newContext({ deviceScaleFactor: 1, serviceWorkers: 'block' })
   ctx.on('page', async p => { if (await p.opener()) p.close().catch(() => {}) }) // popups/target=_blank never stay open
   const probe = await ctx.newPage()
+  await probe.route('**/*', async r => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(r.request().method())) return r.abort('blockedbyclient')
+    const headers = readerHeaders(r.request())
+    return headers ? r.continue({ headers }) : r.continue()
+  })
   await probe.setViewportSize({ width: 1440, height: 900 })
   const nav = await navRoutes(probe)
   await probe.close()
   const routes: Array<{ route: string; source: string }> = nav.map(r => ({ route: r, source: 'nav' }))
   if (!SKIP_ROUTER_ONLY) for (const r of routerRoutes()) if (!routes.some(x => x.route === r)) routes.push({ route: r, source: 'router-only' })
   const todo = routes.filter(r => !SKIP_ROUTES.some(re => re.test(r.route)) && (!ROUTE_FILTER.length || ROUTE_FILTER.some((f: string) => r.route.includes(f))))
+  console.log(READER_TOKEN ? `[sweep] authenticated as read-only agent reader (${READER_HEADER})` : '[sweep] unauthenticated (no agent reader token): authenticated pages may show refusals')
   console.log(`[sweep] ${todo.length} routes (${nav.length} nav) × ${VIEWPORTS.length} viewports → ${OUT}`)
   const onSig = () => { aborted = aborted || 'interrupted'; writeReport(todo); process.exit(130) }
   process.on('SIGINT', onSig); process.on('SIGTERM', onSig)
