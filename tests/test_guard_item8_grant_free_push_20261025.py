@@ -31,8 +31,10 @@ GH = "https://github.com/PatsKiller/tardeai"
 OK_COMMENT = f"{GH}/pull/2148#issuecomment-111"          # operator, on the PR whose head is BRANCH
 OTHER_COMMENT = f"{GH}/pull/2148#issuecomment-222"       # not the operator
 RATIFY_COMMENT = f"{GH}/pull/2128#issuecomment-444"      # operator's APPROVE_AGENTS_POLICY_ ratification
-NAMES_COMMENT = f"{GH}/pull/7#issuecomment-555"          # operator, other PR, body names BRANCH
-UNBOUND_COMMENT = f"{GH}/pull/7#issuecomment-666"        # operator, other PR, does not name BRANCH
+NAMES_COMMENT = f"{GH}/pull/7#issuecomment-555"          # operator, other PR, body names BRANCH but no token
+UNBOUND_COMMENT = f"{GH}/pull/7#issuecomment-666"        # operator, other PR, no token
+TOKEN_COMMENT = f"{GH}/pull/7#issuecomment-777"          # operator, other PR, "APPROVE_PUSH <BRANCH>" line
+MIXED_COMMENT = f"{GH}/pull/2148#issuecomment-888"       # token + an APPROVE_AGENTS_POLICY_ token in the body
 
 CLOSURE_STUBS = ("scripts/check_no_secrets.py", "scripts/lib/tradeai_push_budget.py", "scripts/lib/guard_push_auth.py",
                  "scripts/lib/__init__.py", ".cursor/hooks/guard_ledger.py")
@@ -49,20 +51,32 @@ cat >> "$d/prepush-ran"
 [ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-}" = "1" ] || exit 1
 """
 
-FAKE_GH = """#!/bin/sh
-U=https://github.com/PatsKiller/tardeai
-case "$2" in
-  */comments/111) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/2148#issuecomment-111\\",\\"body\\":\\"go ahead\\"}" ;;
-  */comments/222) echo "{\\"user\\":{\\"login\\":\\"someone-else\\"},\\"html_url\\":\\"$U/pull/2148#issuecomment-222\\",\\"body\\":\\"ok\\"}" ;;
-  */comments/333) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/9#issuecomment-333\\",\\"body\\":\\"ok\\"}" ;;
-  */comments/444) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/2128#issuecomment-444\\",\\"body\\":\\"APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b\\"}" ;;
-  */comments/555) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/7#issuecomment-555\\",\\"body\\":\\"approve feat/item8-demo-20261025 too\\"}" ;;
-  */comments/666) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/7#issuecomment-666\\",\\"body\\":\\"approved\\"}" ;;
-  */pulls/2148) echo '{"head":{"ref":"feat/item8-demo-20261025"}}' ;;
-  */pulls/2128) echo '{"head":{"ref":"docs/agents-20-4-0-hands-off-20261025"}}' ;;
-  */pulls/7) echo '{"head":{"ref":"feat/other-20261025"}}' ;;
-  *) exit 1 ;;
-esac
+_U = "https://github.com/PatsKiller/tardeai"
+_TOK = "APPROVE_PUSH feat/item8-demo-20261025"
+GH_DOCS = {
+    "comments/111": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/2148#issuecomment-111",
+                     "body": f"looks good\n{_TOK}"},
+    "comments/222": {"user": {"login": "someone-else"}, "html_url": f"{_U}/pull/2148#issuecomment-222", "body": _TOK},
+    "comments/333": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/9#issuecomment-333", "body": _TOK},
+    "comments/444": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/2128#issuecomment-444",
+                     "body": "APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b"},
+    "comments/555": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/7#issuecomment-555",
+                     "body": "approve feat/item8-demo-20261025 too"},
+    "comments/666": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/7#issuecomment-666", "body": "approved"},
+    "comments/777": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/7#issuecomment-777", "body": _TOK},
+    "comments/888": {"user": {"login": "PatsKiller"}, "html_url": f"{_U}/pull/2148#issuecomment-888",
+                     "body": f"{_TOK}\nAPPROVE_AGENTS_POLICY_21_0_0 2128 f8a"},
+    "pulls/2148": {"head": {"ref": "feat/item8-demo-20261025"}},
+    "pulls/2128": {"head": {"ref": "docs/agents-20-4-0-hands-off-20261025"}},
+    "pulls/7": {"head": {"ref": "feat/other-20261025"}},
+}
+FAKE_GH = "#!/usr/bin/python3 -I\nimport json, sys\nDOCS = " + repr(GH_DOCS) + """
+path = sys.argv[2] if len(sys.argv) > 2 else ""
+for k, v in DOCS.items():
+    if path.endswith("/" + k):
+        print(json.dumps(v))
+        sys.exit(0)
+sys.exit(1)
 """
 
 
@@ -525,26 +539,30 @@ def test_f2_operator_decision_ledger_not_accepted(E):
     _refused(E, E.checker(), "does not resolve")
 
 
-@pytest.mark.parametrize("ref,ok", [(NAMES_COMMENT, True), (UNBOUND_COMMENT, False), (RATIFY_COMMENT, False)])
-def test_f1_claim_comment_must_bind_to_branch(E, ref, ok):
+@pytest.mark.parametrize("ref,ok,bound", [
+    (OK_COMMENT, True, "approve-push-token+pr-head"), (TOKEN_COMMENT, True, "approve-push-token"),
+    (NAMES_COMMENT, False, ""), (UNBOUND_COMMENT, False, ""), (RATIFY_COMMENT, False, ""), (MIXED_COMMENT, False, ""),
+])
+def test_f1_g2_g3_claim_comment_needs_approve_push_token(E, ref, ok, bound):
     E.claim(note=f"Operator-approval: {ref}")
     out = E.checker()
     assert out["allow"] is ok, out
     if ok:
-        assert E.events()[-1]["plan"]["approval_bound"] == "comment-names-branch"
+        assert E.events()[-1]["plan"]["approval_bound"] == bound
     else:
-        assert ("not bound" in out["reason"]) or ("ratifies a policy" in out["reason"]), out
+        assert ("APPROVE_PUSH" in out["reason"]) or ("policy ratification" in out["reason"]), out
 
 
-@pytest.mark.parametrize("ref,ok", [(UNBOUND_COMMENT, True), (RATIFY_COMMENT, False), (OTHER_COMMENT, False)])
+@pytest.mark.parametrize("ref,ok", [(TOKEN_COMMENT, True), (UNBOUND_COMMENT, False), (RATIFY_COMMENT, False),
+                                    (OTHER_COMMENT, False), (MIXED_COMMENT, False)])
 def test_f1_handoff_binds_by_assignment_but_never_a_ratification(E, ref, ok):
     E.coordinator()
     (E.handoffs / "T.md").write_text(
         f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {ref}\n")
     out = E.checker(session=None)
     assert out["allow"] is ok, out
-    if ref == RATIFY_COMMENT:
-        assert "ratifies a policy" in out["reason"]
+    if ref in (RATIFY_COMMENT, MIXED_COMMENT):
+        assert "policy ratification" in out["reason"]
 
 
 def test_f1_done_coordinator_claim_does_not_assign(E):
@@ -553,7 +571,7 @@ def test_f1_done_coordinator_claim_does_not_assign(E):
     doc["status"] = "done"
     (E.claims / f"{COORD_ID}.json").write_text(json.dumps(doc))
     (E.handoffs / "T.md").write_text(
-        f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {UNBOUND_COMMENT}\n")
+        f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {TOKEN_COMMENT}\n")
     _refused(E, E.checker(session=None), "COORDINATOR")
 
 
@@ -577,6 +595,43 @@ def test_f3_prepush_closure_and_stdlib_shadowing_refused(E, rel, content, commit
         E.git("add", "-A")
         E.git("commit", "-qm", f"touch {rel}")
     _refused(E, E.checker(), rel)
+
+
+def test_s1_pushed_branch_must_be_checked_out_head(E):
+    E.claim()
+    E.git("checkout", "-q", "-b", "feat/elsewhere-20261025")
+    _refused(E, E.checker(), "checked-out HEAD")
+    E.git("checkout", "-q", "--detach", BRANCH)
+    _refused(E, E.checker(), "checked-out HEAD")
+
+
+def test_s1_dirty_tracked_files_refused_untracked_ok(E):
+    E.claim()
+    (E.repo / "f.txt").write_text("uncommitted\n")
+    _refused(E, E.checker(), "uncommitted changes")
+    E.git("checkout", "--", "f.txt")
+    (E.repo / "notes-untracked.txt").write_text("scratch\n")
+    assert E.checker()["allow"]
+
+
+def test_s1_staged_change_refused(E):
+    E.claim()
+    (E.repo / "f.txt").write_text("staged\n")
+    E.git("add", "f.txt")
+    _refused(E, E.checker(), "uncommitted changes")
+
+
+@pytest.mark.parametrize("hours,ok", [(5, True), (23, True), (25, False), (200, False)])
+def test_stale_coordinator_claim_capped_at_24h(E, hours, ok):
+    from datetime import timedelta
+    E.coordinator()
+    doc = json.loads((E.claims / f"{COORD_ID}.json").read_text())
+    hb = (datetime.now(timezone.utc) - timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    doc["heartbeat_at"] = doc["started_at"] = hb
+    (E.claims / f"{COORD_ID}.json").write_text(json.dumps(doc))
+    (E.handoffs / "T.md").write_text(
+        f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {TOKEN_COMMENT}\n")
+    assert E.checker(session=None)["allow"] is ok
 
 
 def test_n5_config_beside_module_is_ignored(E, tmp_path):
@@ -651,6 +706,46 @@ def test_handoff_too_deep_or_symlink_or_group_writable_refused(E, tmp_path):
                                  "sed -i s/a/b/ /r/.cursor/hooks/guard-shell.sh", "chmod 777 .cursor/hooks/guard-lib.sh"])
 def test_n5_shell_writes_to_the_guard_are_guard_config(cmd):
     assert _classify(cmd) == "guard-config"
+
+
+@pytest.mark.parametrize("cmd", [
+    "gh pr comment 2175 --body go", "gh pr comment 2175 -b 'APPROVE_PUSH feat/x-1'", "gh issue comment 5 --body x",
+    "gh pr review 2175 --approve", "gh pr review 2175 --comment -b ok",
+    "gh api repos/PatsKiller/tardeai/issues/2175/comments -f body=x",
+    "gh api -X PATCH repos/PatsKiller/tardeai/issues/comments/1 -F body=@x.md",
+    "gh api --method POST repos/o/r/pulls/1/reviews --input r.json",
+    "gh api repos/o/r/issues/comments/1 --raw-field body=x", "gh api graphql -f query='mutation{addComment}'",
+    "cd /x && gh pr comment 1 --body-file b.md",
+])
+def test_g1_github_comment_and_review_writes_need_a_grant(cmd):
+    assert _classify(cmd) == "gh-write", cmd
+
+
+@pytest.mark.parametrize("cmd", ["gh pr view 2175 --json body", "gh api repos/o/r/issues/comments/1",
+                                 "gh api repos/o/r/pulls/1 --jq .head.ref", "gh pr checks 2175", "gh run list"])
+def test_g1_github_reads_stay_unguarded(cmd):
+    assert _classify(cmd) == "none", cmd
+
+
+def test_g1_gh_write_is_a_grantable_tier():
+    assert "gh-write" in (ROOT / "bin" / "guard").read_text().split("ALL_TIERS=", 1)[1].split("\n", 1)[0]
+
+
+def test_g6_test_config_refused_in_installed_tree(E):
+    sys.path.insert(0, str(E.tree / ".cursor" / "hooks"))
+    import importlib
+
+    gpf = importlib.import_module("guard_push_free")
+    gpf.installed_hooks_dir = lambda: gpf.HOOKS_DIR  # as if ~/.cursor/hooks.json named this tree
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = gpf.main(["check", "--repo", str(E.repo), "--branch", BRANCH, "--test-config", str(E.cfg_path)])
+    assert rc == 1 and "refused in the installed guard tree" in buf.getvalue()
+    sys.modules.pop("guard_push_free", None)
+    sys.path.remove(str(E.tree / ".cursor" / "hooks"))
 
 
 def test_handoff_writes_are_guarded():

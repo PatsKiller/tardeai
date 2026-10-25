@@ -30,6 +30,7 @@ tier_scope() {
     frozen-v2)     echo "Edits under command-center-v2 / v2 paths. v2 is frozen; v3 is canonical." ;;
     guard-config)  echo "Edits to .cursor/hooks/* or .cursor/*.json — the guardrails themselves." ;;
     file-delete)   echo "Deleting files." ;;
+    gh-write)      echo "GitHub comment/review writes (gh pr|issue comment, gh pr review, gh api writes to comments/reviews/issues/pulls/graphql). gh is logged in as the operator, so these read as operator approvals (AGENTS.md §28.15 item 8)." ;;
     *)             echo "Unknown tier: $1" ;;
   esac
 }
@@ -58,6 +59,15 @@ classify_cmd() {
   # grant-free form "bin/agent-push <branch>" (identical wrapper + trusted checker), everything else needs a grant.
   [[ "$cmd" =~ (^|[^[:alnum:]_.-])agent-push([^[:alnum:]_.-]|$) ]] && { echo git-push; return; }
   [[ "$cmd" =~ guard_push_free ]] && { echo git-push; return; }
+  # gh on this host is logged in as the operator, so an agent-written comment or review would read as an operator
+  # approval (AGENTS.md §28.15 item 8 evidence). Comment/review writes need a gh-write grant.
+  local _ghc='(^|[^[:alnum:]_.-])gh[[:space:]]+(pr|issue)[[:space:]]+(comment|review)([[:space:]]|$)'
+  local _gha='(^|[^[:alnum:]_.-])gh[[:space:]]+api[[:space:]]'
+  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
+  [[ "$cmd" =~ $_ghc ]] && { echo gh-write; return; }
+  if [[ "$cmd" =~ $_gha ]] && [[ "$cmd" =~ $_ghw ]] && [[ "$cmd" =~ (comments|reviews|issues|pulls|graphql) ]]; then
+    echo gh-write; return
+  fi
   # Shell writes to the guard itself (hooks, hooks.json) are guard-config, like Write-tool edits (classify_path).
   [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|truncate|install|ln|chmod|sed[[:space:]]+-i)[^|]*\.cursor/(hooks|hooks\.json) ]] && { echo guard-config; return; }
   # Exporting, declaring or unsetting GIT_* / TRADEAI_* changes what a later push does (GIT_CONFIG_*, GIT_DIR,

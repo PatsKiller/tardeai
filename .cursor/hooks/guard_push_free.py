@@ -44,9 +44,12 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
         ``Assigned-by: <session>`` (a claim on ``coordination/COORDINATOR`` held by that session) and
         ``Operator-approval: <ref>``;
     and in both cases ``<ref>`` RESOLVES to a GitHub comment on the canonical repo whose author is the operator
-    login (``gh api``) and which is not a policy ratification (``APPROVE_AGENTS_POLICY_...``). On the claim path the
-    comment must also be bound to the branch: on the PR whose head is the branch, or naming the branch. The
-    coordinator claim must be live or stale (not done). Decision-ledger rows are not accepted until they are signed.
+    login (``gh api``), which carries no ``APPROVE_AGENTS_POLICY_`` token and has the line ``APPROVE_PUSH <branch>``.
+    Agent-side ``gh`` comment/review writes are guarded by the shell guard (tier ``gh-write``) because ``gh`` on the
+    host is logged in as the operator; the durable fix is a separate agent GitHub identity or passkey-signed
+    approvals (follow-up). The
+    coordinator claim must be live or stale (not done) with a heartbeat in the last 24 h. The pushed branch must be the
+    checked-out HEAD with no modified tracked files (the pre-push secrets scan reads the worktree). Decision-ledger rows are not accepted until they are signed.
 
     The pusher's session (``AGENT_CLAIM_SESSION``) is self-declared and therefore ADVISORY: it only selects which
     claim is consulted. It cannot widen anything -- the push can only fast-forward that claim's own feature branch,
@@ -93,6 +96,8 @@ FORBIDDEN_ENV = re.compile(r"^(GIT_|TRADEAI_|GUARD_|PYTHON|LD_)|^(BASH_ENV|ENV|C
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 COORDINATOR_PATH = "coordination/COORDINATOR"
 STALE_HOURS = 2.0
+#: A stale COORDINATOR claim still assigns work for a day (the coordinator's worklog spans the day), not longer.
+COORDINATOR_MAX_AGE_HOURS = 24.0
 
 APPROVAL_RE = re.compile(r"^[ \t>*-]*(?:\[[ xX]\][ \t]*)?Operator-approval:[ \t]*(?P<ref>\S[^\n]*?)[ \t]*$",
                          re.MULTILINE)
@@ -145,6 +150,19 @@ def load_config() -> dict[str, Any]:
     cfg["approvals_dir"] = Path(cfg["approvals_dir"] or home / ".cursor" / "approvals")
     cfg["audit_log"] = Path(cfg["audit_log"] or home / "logs" / "cursor-agent-audit.jsonl")
     return cfg
+
+
+def installed_hooks_dir() -> Optional[Path]:
+    """The hooks dir ~/.cursor/hooks.json (passwd home) runs guard-shell.sh from, if any."""
+    try:
+        doc = json.loads((passwd_home() / ".cursor" / "hooks.json").read_text(encoding="utf-8"))
+        for h in doc["hooks"]["beforeShellExecution"]:
+            c = str(h.get("command") or "")
+            if os.path.isabs(c) and c.endswith("/guard-shell.sh"):
+                return Path(c).resolve().parent
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return None
 
 
 def refuse_dirty_env(environ: Optional[dict[str, str]] = None) -> None:
@@ -444,17 +462,12 @@ def _gh_api(cfg: dict[str, Any], path: str) -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
-def _names_branch(text: str, branch: str) -> bool:
-    return re.search(r"(?<![A-Za-z0-9._/-])" + re.escape(branch) + r"(?![A-Za-z0-9_/-]|\.[A-Za-z0-9_])",
-                     text or "") is not None
-
-
 def resolve_approval(ref: Optional[str], cfg: dict[str, Any], *, branch: str, bind_branch: bool) -> dict[str, str]:
     """``ref`` must be a GitHub comment by the operator on the canonical repo; anything else is refused.
 
-    A policy ratification comment (body ``APPROVE_AGENTS_POLICY_...``) never approves a push. With ``bind_branch``
-    (the claim path) the comment must be on the PR whose head branch is ``branch``, or its body must name ``branch``;
-    the handoff path is bound by the coordinator's ``Assigned-branch`` line instead.
+    A comment carrying ``APPROVE_AGENTS_POLICY_`` anywhere never approves a push. The body must contain the line
+    ``APPROVE_PUSH <branch>`` (G2), which binds the approval to the branch on both paths; ``bind_branch`` only
+    records whether the comment is also on the PR whose head is the branch.
 
     Not accepted (follow-up): operator-decision ledger rows. They are unsigned today, so any same-uid write could
     forge one; they become acceptable when rows carry the operator's passkey identity."""
@@ -476,21 +489,16 @@ def resolve_approval(ref: Optional[str], cfg: dict[str, Any], *, branch: str, bi
             raise Refused(f"approval comment {m.group('id')} is not authored by the operator (got {login or 'none'})")
         if not html.endswith(f"/{m.group('num')}#issuecomment-{m.group('id')}"):
             raise Refused(f"approval comment {m.group('id')} does not belong to #{m.group('num')}")
-        if body.lstrip().startswith("APPROVE_AGENTS_POLICY_"):
-            raise Refused(f"comment {m.group('id')} ratifies a policy; it does not approve a push")
-        bound = "assignment"
-        if bind_branch:
-            head = ""
-            if "/pull/" in ref:
-                pr = _gh_api(cfg, f"repos/{m.group('owner')}/{m.group('repo')}/pulls/{m.group('num')}")
-                head = str(((pr.get("head") or {}).get("ref")) or "")
-            if head == branch:
-                bound = "pr-head"
-            elif _names_branch(body, branch):
-                bound = "comment-names-branch"
-            else:
-                raise Refused(f"approval comment {m.group('id')} is not bound to {branch}: #{m.group('num')} head is "
-                              f"{head or 'unknown'} and the comment does not name the branch")
+        if "APPROVE_AGENTS_POLICY_" in body:
+            raise Refused(f"comment {m.group('id')} carries a policy ratification token; it does not approve a push")
+        # G2: an explicit, branch-specific token on its own line. It binds the approval to this branch on both paths.
+        if not re.search(r"^[ \t]*APPROVE_PUSH[ \t]+" + re.escape(branch) + r"[ \t]*$", body, re.MULTILINE):
+            raise Refused(f"approval comment {m.group('id')} has no line 'APPROVE_PUSH {branch}'")
+        bound = "approve-push-token"
+        if bind_branch and "/pull/" in ref:
+            pr = _gh_api(cfg, f"repos/{m.group('owner')}/{m.group('repo')}/pulls/{m.group('num')}")
+            if str(((pr.get("head") or {}).get("ref")) or "") == branch:
+                bound = "approve-push-token+pr-head"
         return {"kind": "github_comment", "ref": ref, "author": login, "comment_id": m.group("id"), "bound": bound}
     raise Refused(f"Operator-approval {ref!r} does not resolve: it must be the URL of a GitHub comment by the operator "
                   f"on the canonical repository")
@@ -525,6 +533,7 @@ def read_claims(claims_dir: Path) -> list[dict[str, Any]]:
     for d in docs:
         if d.get("status") == "active":
             hb = _parse_ts(d.get("heartbeat_at") or d.get("started_at"))
+            d["_age_h"] = (now - hb).total_seconds() / 3600 if hb is not None else 1e9
             live = hb is not None and (now - hb).total_seconds() <= STALE_HOURS * 3600
             d["_state"] = "live" if live and str(d["claim_id"]) not in taken else "stale"
         else:
@@ -578,6 +587,7 @@ def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict]) -> di
     if not root.is_dir():
         raise Refused("no handoffs directory")
     coordinators = {str(r.get("session") or "") for r in claims if r["_state"] in ("live", "stale")
+                    and r.get("_age_h", 1e9) <= COORDINATOR_MAX_AGE_HOURS
                     and COORDINATOR_PATH in [str(p).strip().strip("/") for p in (r.get("paths") or [])]}
     coordinators.discard("")
     uid = os.getuid()
@@ -717,6 +727,16 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     local_sha = _out(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}")
     if not local_sha or not SHA_RE.match(local_sha):
         raise Refused(f"no local branch {branch}")
+    # The pre-push secrets scan reads the WORKTREE, so the pushed branch must be the checked-out HEAD with no
+    # modified tracked files; otherwise the scan would vouch for different content than the commit pushed.
+    if _out(repo, "symbolic-ref", "--quiet", "HEAD") != f"refs/heads/{branch}":
+        raise Refused(f"{branch} is not the checked-out HEAD of {repo}; check it out before pushing")
+    dirty = _out(repo, "status", "--porcelain", "--untracked-files=no")
+    if dirty is None:
+        raise Refused("git status failed")
+    if dirty:
+        names = (_out(repo, "diff", "--name-only", "HEAD") or "").splitlines()[:5]
+        raise Refused(f"the worktree has uncommitted changes to tracked files ({', '.join(names)}); commit or stash")
     canonical = str(cfg["canonical_url"])
     check_remote_config(repo, canonical)
     pins = push_pins(repo, canonical, cfg)
@@ -807,6 +827,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--cwd", default="")
     a = ap.parse_args(argv)
     TEST_CONFIG = Path(a.test_config) if a.test_config else None
+    if TEST_CONFIG is not None and installed_hooks_dir() == HOOKS_DIR:
+        print(json.dumps({"schema": SCHEMA, "allow": False,
+                          "reason": "--test-config is refused in the installed guard tree (~/.cursor/hooks.json)"}))
+        return 1
     if a.mode == "verify-chain":
         try:
             out = verify_chain(load_config())
