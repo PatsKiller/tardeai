@@ -12,17 +12,17 @@ import { TABS, TOP_N, ageLabel, money, severityTone, visibleItems, type DoNowIte
 // money at risk first, then severity. "Nothing to do" only when every source answered (lib/homeDoNow.ts).
 
 function itemTip(it: DoNowItem): string {
-  return [
+  return readableTimesInText([
     it.why,
     it.accounts.length ? `Accounts: ${it.accounts.map(a => a.label).join(", ")}` : null,
     it.money != null ? `Money at risk: ${money(it.money)} (${it.moneyBasis ?? 'basis not stated'})` : 'No money at risk on this item',
     `Sources: ${it.sources.join(', ') || 'unknown'}`,
     it.since ? `Since ${it.since}` : null,
-  ].filter(Boolean).join('\n')
+  ].filter(Boolean).join('\n'))
 }
 
 function sourcesTip(m: DoNowModel): string {
-  return m.sources.map(s => `${s.name}: ${s.status}${s.stale ? ' · STALE' : ''} · ${s.basis ?? 'no clock'} ${s.asOf ?? ''}${s.ageS != null ? ` (${ageLabel(s.ageS)} old)` : ''}${s.error ? ` · ${s.error}` : ''}`).join('\n')
+  return readableTimesInText(m.sources.map(s => `${s.name}: ${s.status}${s.stale ? ' · STALE' : ''} · ${s.basis ?? 'no clock'} ${s.asOf ?? ''}${s.ageS != null ? ` (${ageLabel(s.ageS)} old)` : ''}${s.error ? ` · ${s.error}` : ''}`).join('\n'))
 }
 
 export default function DoNowQueue({ model }: { model: DoNowModel }) {
@@ -64,14 +64,14 @@ export default function DoNowQueue({ model }: { model: DoNowModel }) {
       {m.state === 'LOADING' && <div style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.text[3] }}>Checking every source…</div>}
       {m.state === 'UNAVAILABLE' && (
         <div role="alert" data-testid="do-now-unavailable" style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.warning }}>
-          Do-now UNAVAILABLE{m.reason ? ` · ${m.reason}` : ''} — this is not an all-clear.
+          Do-now UNAVAILABLE{m.reason ? ` · ${readableTimesInText(m.reason)}` : ''} — this is not an all-clear.
         </div>
       )}
       {m.state === 'CLEAR' && (
         <div data-testid="do-now-clear" style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.success }}>Nothing to do — every source answered.</div>
       )}
       {m.state === 'STALE' && (
-        <div data-testid="do-now-stale" style={{ padding: '8px 14px 0', fontSize: TYPE.sm, color: TOKENS.warning }}>STALE{m.reason ? ` (${m.reason})` : ''} — the queue below may be out of date.</div>
+        <div data-testid="do-now-stale" style={{ padding: '8px 14px 0', fontSize: TYPE.sm, color: TOKENS.warning }}>STALE{m.reason ? ` (${readableTimesInText(m.reason)})` : ''} — the queue below may be out of date.</div>
       )}
       {m.unavailableSources.length > 0 && m.state === 'ITEMS' && <p role="status" style={{ margin: '8px 14px', color: TOKENS.warning, fontSize: TYPE.sm }}>Source gaps: {m.unavailableSources.join(', ')}. This is not an all-clear.</p>}
       {shown.length === 0 && (m.state === 'ITEMS' || m.state === 'STALE') && (

@@ -171,18 +171,20 @@ export function visibleItems(m: DoNowModel, tab: Tab, showAll: boolean, topN = T
 /** Home-only adapter: retain the pre-Board-14 queue, but protection comes from the same categorized CIO
  * positions as Risk, and the approval total comes from the same overview field as MetricStrip. A missing
  * current source is a gap, never permission to revive the old risk-snapshot stop claims. No writes. */
-export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: any, sourceError?: unknown): DoNowModel {
+export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: any, sourceError?: unknown,
+  retained: { positionsStale?: boolean; approvalsStale?: boolean } = {}): DoNowModel {
   const isStop = (i: DoNowItem) => /^(?:stop:|stops:|protection:)/.test(i.id)
     || i.sources.some(s => s === 'risk' || s.includes('desk_truth')) && i.category === 'protect'
   const isApproval = (i: DoNowItem) => i.id.startsWith('approvals:') || i.sources.some(s => s.includes('approvals'))
   const items = model.items.filter(i => !isStop(i) && !isApproval(i))
   const rows: any[] | null = Array.isArray(pages?.positions?.rows) ? pages.positions.rows : null
   const stops = pages?.stops
+  const positionsStale = !!stops?.stale || !!retained.positionsStale
   const answered = rows !== null && !sourceError && !pages?.positions?.gap
   const missing = [...model.unavailableSources]
   const sources = [...model.sources, { name: 'cio_positions', status: answered ? 'OK' : 'UNAVAILABLE',
     asOf: str(stops?.last_broker_read_at ?? stops?.as_of), basis: 'CIO positions · same categories as Risk', ageS: null,
-    stale: !!stops?.stale, error: answered ? null : 'Current stop categories unavailable' }]
+    stale: positionsStale, error: answered ? null : 'Current stop categories unavailable' }]
   if (!answered) missing.push('cio_positions')
   if (answered) for (const row of rows!) {
     const sym = str(row.symbol)
@@ -201,7 +203,7 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const approvals = num(overview?.pending_approvals ?? overview?.approvals_count)
   if (approvals === null) missing.push('approvals')
   sources.push({ name: 'approvals', status: approvals === null ? 'UNAVAILABLE' : 'OK', asOf: str(overview?.as_of),
-    basis: 'overview.pending_approvals / approvals_count · same as header', ageS: null, stale: false,
+    basis: 'overview.pending_approvals / approvals_count · same as header', ageS: null, stale: !!retained.approvalsStale,
     error: approvals === null ? 'Approval count unavailable' : null })
   if (approvals !== null && approvals > 0) items.push({ id: 'approvals:pending', category: 'decide', severity: 'P2',
     title: `${approvals} approvals waiting`, why: 'Review the approval queue', actionLabel: 'Review approvals', where: '/approvals',
@@ -210,16 +212,21 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const counts: Record<Tab, number> = { all: items.length, protect: 0, decide: 0, fix: 0 }
   for (const item of items) counts[item.category]++
   const allSourcesAnswered = model.allSourcesAnswered && missing.length === 0
-  const state = model.state === 'STALE' || stops?.stale ? 'STALE'
+  const staleSources = [...new Set([...model.staleSources, ...(positionsStale ? ['cio_positions'] : []),
+    ...(retained.approvalsStale ? ['approvals'] : [])])]
+  const state = model.state === 'STALE' || staleSources.length > 0 ? 'STALE'
     : items.length ? 'ITEMS' : allSourcesAnswered ? 'CLEAR' : model.state === 'LOADING' ? 'LOADING' : 'UNAVAILABLE'
   return { ...model, items, counts, sources, unavailableSources: missing, allSourcesAnswered, state,
-    staleSources: [...model.staleSources, ...(stops?.stale ? ['cio_positions'] : [])],
-    reason: stops?.stale ? 'Stop counts are from the last broker read' : missing.length ? `Source gaps: ${missing.join(', ')}` : model.reason,
+    staleSources,
+    reason: stops?.stale ? 'Stop counts are from the last broker read'
+      : retained.positionsStale ? 'Current positions refresh failed; showing the last answer'
+      : retained.approvalsStale ? 'Approval count refresh failed; showing the last answer'
+      : missing.length ? `Source gaps: ${missing.join(', ')}` : model.reason,
     numbers: { ...model.numbers, unprotected: answered ? num(stops?.unprotected_count) : null,
       unprotectedValue: answered ? num(pages?.positions?.unprotected_value_usd) : null,
       unprotectedBasis: 'CIO categorized positions · same as Risk; counts as of last broker stop read',
       positionsSource: answered ? str(pages.positions.source) ?? 'CIO positions' : 'Current CIO positions unavailable',
-      stale: model.numbers.stale || !!stops?.stale } }
+      stale: model.numbers.stale || positionsStale } }
 }
 
 export function severityTone(s: Severity): 'danger' | 'warning' | 'info' {

@@ -137,5 +137,27 @@ check('restoration: stale broker read keeps its gap', homeWithCurrentTruth(m, { 
 check('restoration: failed refresh cannot claim current categories', homeWithCurrentTruth(m, current, { pending_approvals: 0 }, 'timeout').numbers.unprotected === null)
 check('restoration: known zero approvals removes old approval actions', !homeWithCurrentTruth(m, current, { pending_approvals: 0 }).items.some(i => i.id.startsWith('approvals:')))
 
+
+// Retained HTTP 503 answers have stale=true/error=null in useApi. They keep their categories and count,
+// while the queue and source receipt must visibly lose their fresh state.
+const retainedPositions = homeWithCurrentTruth(m, current, { pending_approvals: 2 }, undefined, { positionsStale: true })
+check('restoration: retained positions make the queue, receipt and number stale', retainedPositions.state === 'STALE'
+  && retainedPositions.sources.find(s => s.name === 'cio_positions')?.stale === true
+  && retainedPositions.staleSources.includes('cio_positions') && retainedPositions.numbers.stale)
+check('restoration: retained positions preserve categories and the last categorized count', retainedPositions.numbers.unprotected === 3
+  && retainedPositions.items.some(i => i.title.includes('pending activation'))
+  && !retainedPositions.items.some(i => i.title.includes('below its stop')))
+const retainedApprovals = homeWithCurrentTruth(m, current, { pending_approvals: 2, approvals_count: 98 }, undefined, { approvalsStale: true })
+check('restoration: retained approvals preserve header parity and disclose stale receipt', retainedApprovals.state === 'STALE'
+  && retainedApprovals.items.find(i => i.id === 'approvals:pending')?.title === '2 approvals waiting'
+  && retainedApprovals.sources.find(s => s.name === 'approvals')?.stale === true)
+const sourceStale = doNowFrom({ ...ok, sources: { risk: { ...ok.sources.risk, stale: true } } }, { nowMs: now })
+check('restoration: a stale contributing source never presents a fresh queue',
+  homeWithCurrentTruth(sourceStale, current, { pending_approvals: 0 }).state === 'STALE')
+const emptyCurrent = { positions: { source: 'fixture CIO', rows: [] }, stops: { unprotected_count: 0 } }
+const retainedEmpty = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), emptyCurrent,
+  { pending_approvals: 0 }, undefined, { positionsStale: true })
+check('restoration: an empty retained answer is never a fresh all-clear', retainedEmpty.state === 'STALE')
+
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

@@ -6,8 +6,8 @@
  *  STOP, Agents & Hermes, News & movers). Drawer bodies mount only when opened, so a closed drawer polls nothing.
  *
  *  Sources (every number's tooltip names its own): /api/v2/overview (header, movers, cash; holdings.json),
- *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, unprotected, heat; risk snapshot +
- *  desk-truth coverage), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
+ *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, heat), /api/v2/cio/pages
+ *  (categorized stop protection, shared with Risk), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
  *  /api/v3/opportunities, /api/v2/system/platform-health, release-train summary, /api/v2/command.
  *  Protection uses the categorized CIO positions read model, shared with Risk; summary performance uses overview/performance.
  *  The previous Home stays reachable at ?view=classic for one release. */
@@ -121,7 +121,7 @@ export default function HomeDoNow() {
   const openSymbol = useOpenSymbol()
   const doNowApi = useApi<any>('/api/v2/home/do-now', 60_000)
   const cioApi = useApi<any>('/api/v2/cio/pages', 60_000)
-  const { data: overview, loading: ovLoading } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
@@ -133,7 +133,9 @@ export default function HomeDoNow() {
   const cmd = command?.data ?? command ?? {}
 
   const cio = unwrap(cioApi.data)
-  const dn = homeWithCurrentTruth(doNowFrom(doNowApi.data, { loading: doNowApi.loading, error: doNowApi.error, nowMs: now }), cio, overview, cioApi.error)
+  const dn = homeWithCurrentTruth(doNowFrom(doNowApi.data, { loading: doNowApi.loading,
+    error: doNowApi.error ?? (doNowApi.stale ? 'queue refresh failed; showing the last answer' : undefined), nowMs: now }),
+    cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError })
   const pos = positionsFreshness(overview, now)
   const pv: number | null = overview?.portfolio_value ?? null
   const todayChg: number | null = overview?.today_change ?? null
@@ -167,8 +169,8 @@ export default function HomeDoNow() {
       tone: scanStale || setup.degraded || setup.healthDegraded ? 'warning' : 'success', tip: `/api/v2/trade-ai/summary · ${setup.population || 'population unknown'}${setup.runHealthStatus ? ` · ${setup.runHealthStatus}` : ''}` },
     { k: 'Data health', v: overview ? `${overview.pipeline_status ?? 'unknown'}${notFresh.length ? ` · ${notFresh.length} not fresh` : ''}` : '—', to: '/system?tab=Data%20Sources',
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
-    { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered`, to: '/health',
-      tone: dn.unavailableSources.length ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
+    { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',
+      tone: dn.unavailableSources.length || dn.staleSources.length || dn.state === 'STALE' ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
     { k: 'Release train', v: `${rt.stop.text} · next ${rt.nextWindow.text}`, to: '/system/releases',
       tone: rt.stop.effective ? 'danger' : rtF.state === 'OK' ? 'neutral' : 'warning', tip: `release-train summary · ${rtF.state}${rtF.reason ? ` · ${rtF.reason}` : ''}` },
   ]
@@ -184,7 +186,7 @@ export default function HomeDoNow() {
 
   return (
     <div data-testid="home-do-now-page" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1392, margin: '0 auto' }}>
-      <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
+      <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
