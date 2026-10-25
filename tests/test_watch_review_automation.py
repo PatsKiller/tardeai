@@ -23,7 +23,7 @@ class TestModelPolicyExact(unittest.TestCase):
         from lib.watch_review_policy_ledger import MARIA_SPEC, MARIA_PROCESS_ID
 
         self.assertEqual(MARIA_PROCESS_ID, "watchlist_maria_flash_narrative")
-        self.assertEqual(MARIA_SPEC["model"], "deepseek-v4-flash")
+        self.assertEqual(MARIA_SPEC["model"], "deepseek-flash")
         self.assertEqual(MARIA_SPEC["policy"], "FAST")
         self.assertEqual(MARIA_SPEC["thinking"], "off")
         self.assertFalse(MARIA_SPEC["fallback_allowed"])
@@ -33,9 +33,9 @@ class TestModelPolicyExact(unittest.TestCase):
         from lib.watch_review_policy_ledger import CIO_SPEC, CIO_PROCESS_ID
 
         self.assertEqual(CIO_PROCESS_ID, "watchlist_cio_synthesis")
-        self.assertEqual(CIO_SPEC["model"], "deepseek-v4-pro")
-        self.assertEqual(CIO_SPEC["policy"], "PRO")
-        self.assertEqual(CIO_SPEC["thinking"], "off")
+        self.assertEqual(CIO_SPEC["model"], "deepseek-flash")
+        self.assertEqual(CIO_SPEC["policy"], "PRO_THINK")
+        self.assertEqual(CIO_SPEC["thinking"], "enabled")
         self.assertFalse(CIO_SPEC["fallback_allowed"])
 
     def test_registry_cio_allows_pro(self):
@@ -222,7 +222,7 @@ class TestPolicyLedger(unittest.TestCase):
                 agent_id="maria",
                 process_id="watchlist_maria_flash_narrative",
                 provider="deepseek",
-                model="deepseek-v4-flash",
+                model="deepseek-flash",
                 policy="FAST",
                 input_hash="hash1",
             )
@@ -234,7 +234,7 @@ class TestPolicyLedger(unittest.TestCase):
                 agent_id="maria",
                 process_id="watchlist_maria_flash_narrative",
                 provider="deepseek",
-                model="deepseek-v4-flash",
+                model="deepseek-flash",
                 policy="FAST",
                 input_hash="WRONG",
             )
@@ -248,7 +248,7 @@ class TestPolicyLedger(unittest.TestCase):
                 agent_id="maria",
                 process_id="watchlist_maria_flash_narrative",
                 provider="deepseek",
-                model="deepseek-v4-flash",
+                model="deepseek-flash",
                 policy="FAST",
                 input_hash="hash1",
             )
@@ -272,8 +272,8 @@ class TestPolicyLedger(unittest.TestCase):
                 agent_id="cio",
                 process_id="watchlist_maria_flash_narrative",  # wrong
                 provider="deepseek",
-                model="deepseek-v4-pro",
-                policy="PRO",
+                model="deepseek-flash",
+                policy="PRO_THINK",
                 input_hash="h",
             )
             self.assertFalse(ok)

@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from lib.watch_review_policy_ledger import MARIA_SPEC, CIO_SPEC
+
 # Global daily cap for this process only
 os.environ.setdefault("LLM_GLOBAL_DAILY_USD_CAP", "0.25")
 
@@ -337,26 +339,24 @@ def run_agent_call(
         create_execution_authorization,
         validate_execution_authorization,
         mark_execution_consumed,
-        persist_policy,
-        build_intended_policy,
         load_policy,
     )
     from lib import llm_consumption as lc
 
-    if not load_policy():
-        pol = build_intended_policy(operator_id="johnclaw")
-        pol["workers_enabled"] = False
-        pol["event_watcher_enabled"] = False
-        persist_policy(pol)
-    else:
-        # ensure operator_id
-        pol = load_policy()
-        assert pol is not None
-        if pol.get("operator_id") != "johnclaw":
-            pol["operator_id"] = "johnclaw"
-            from lib.watch_review_policy_ledger import _atomic_write, POLICIES_DIR
+    from lib.llm_model_registry import deepseek_model_id, resolve_logical_policy
+    from lib.watch_review_policy_ledger import agent_spec
 
-            _atomic_write(POLICIES_DIR / f"{pol['authorization_policy_id']}.json", pol)
+    # Admission before any authorization/cost mutation. No policy auto-creation,
+    # identity rewrite, legacy alias fallback or implicit scope migration.
+    spec = agent_spec(agent_id)
+    if (process_id, model, policy) != (spec["registered_process_id"], spec["model"], spec["policy"]):
+        raise ValueError("watch_review_route_mismatch")
+    binding = resolve_logical_policy(policy)
+    if model != deepseek_model_id(policy):
+        raise ValueError("watch_review_model_not_current")
+    pol = load_policy(policy_id)
+    if not pol or pol.get("authorization_policy_id") != policy_id:
+        raise PermissionError("watch_review_policy_missing")
 
     input_hash = _sha(prompt)
     snap = f"canary-snap-{symbol}-{agent_id}-{input_hash[:12]}"
@@ -387,7 +387,7 @@ def run_agent_call(
     # gate_and_generate reserves + settles
     text, prov = lc.gate_and_generate(
         prompt,
-        lane="deepseek-flash" if policy == "FAST" else "pro",
+        lane="deepseek-flash" if policy == "FAST" else "pro_think",
         process_id=process_id,
         task_summary=f"watch_review_canary:{agent_id}:{symbol}"[:160],
         manual_trigger=manual_trigger,
@@ -402,7 +402,7 @@ def run_agent_call(
             "authorization_policy_id": ex["authorization_policy_id"],
             "canary": True,
             "fallback_used": False,
-            "thinking": "off",
+            "thinking": binding["thinking"],
         },
         return_provenance=True,
     )
@@ -414,6 +414,9 @@ def run_agent_call(
             raise RuntimeError(f"model_mismatch requested={model} returned={prov.get('returned_model')}")
     if prov.get("fallback_used"):
         raise RuntimeError("fallback_used")
+
+    prov = {**prov, "thinking": prov.get("thinking", binding["thinking"]),
+            "executed_policy": prov.get("executed_policy", policy)}
 
     # Mark consumed with provider request reference
     rid = prov.get("request_id")
@@ -488,7 +491,7 @@ def main() -> int:
             agent_id="maria",
             symbol=symbol,
             process_id="watchlist_maria_flash_narrative",
-            model="deepseek-v4-flash",
+            model=MARIA_SPEC["model"],
             policy="FAST",
             prompt=prompt,
             max_cost=0.02,
@@ -501,7 +504,7 @@ def main() -> int:
             agent_id="maria",
             symbol=symbol,
             process_id="watchlist_maria_flash_narrative",
-            model="deepseek-v4-flash",
+            model=MARIA_SPEC["model"],
             policy="FAST",
             thinking="off",
             prompt=prompt,
@@ -521,12 +524,12 @@ def main() -> int:
                 json.dumps({k: v for k, v in maria_body.items() if k != "_path"}, indent=2, default=str) + "\n"
             )
         assert_complete(maria_body)
-        if maria_body.get("model") != "deepseek-v4-flash" and res["prov"].get("returned_model") not in (
+        if maria_body.get("model") != MARIA_SPEC["model"] and res["prov"].get("returned_model") not in (
             None,
-            "deepseek-v4-flash",
+            MARIA_SPEC["model"],
         ):
             # prefer returned
-            if res["prov"].get("returned_model") == "deepseek-v4-flash":
+            if res["prov"].get("returned_model") == MARIA_SPEC["model"]:
                 pass
             else:
                 raise RuntimeError(f"maria_model_not_flash: {res['prov'].get('returned_model')}")
@@ -542,8 +545,8 @@ def main() -> int:
                 "maria_reservation_id": res["prov"].get("reservation_id"),
                 "maria_provider_request_reference": res["prov"].get("request_id"),
                 "maria_settlement_id": res["prov"].get("settlement_id") or res["prov"].get("reservation_id"),
-                "maria_model_requested": "deepseek-v4-flash",
-                "maria_model_executed": res["prov"].get("returned_model") or "deepseek-v4-flash",
+                "maria_model_requested": MARIA_SPEC["model"],
+                "maria_model_executed": res["prov"].get("returned_model") or MARIA_SPEC["model"],
                 "maria_policy": "FAST",
                 "maria_fallback_used": False,
                 "maria_retry_count": 0,
@@ -581,8 +584,8 @@ def main() -> int:
             agent_id="cio",
             symbol=symbol,
             process_id="watchlist_cio_synthesis",
-            model="deepseek-v4-pro",
-            policy="PRO",
+            model=CIO_SPEC["model"],
+            policy=CIO_SPEC["policy"],
             prompt=prompt,
             max_cost=0.05,
             manual_trigger=True,
@@ -594,8 +597,8 @@ def main() -> int:
             agent_id="cio",
             symbol=symbol,
             process_id="watchlist_cio_synthesis",
-            model="deepseek-v4-pro",
-            policy="PRO",
+            model=CIO_SPEC["model"],
+            policy=CIO_SPEC["policy"],
             thinking="off",
             prompt=prompt,
             text=res["text"],
@@ -608,15 +611,15 @@ def main() -> int:
             started=res["started"],
             maria_ref=maria_body,
         )
-        if cio_body.get("thinking") in (None, True):
-            cio_body["thinking"] = "off"
+        if cio_body.get("thinking") is None:
+            cio_body["thinking"] = CIO_SPEC["thinking"]
         if res["prov"].get("returned_model"):
             cio_body["model"] = res["prov"]["returned_model"]
         Path(cio_body["_path"]).write_text(
             json.dumps({k: v for k, v in cio_body.items() if k != "_path"}, indent=2, default=str) + "\n"
         )
         assert_complete(cio_body)
-        if res["prov"].get("returned_model") and res["prov"]["returned_model"] != "deepseek-v4-pro":
+        if res["prov"].get("returned_model") and res["prov"]["returned_model"] != CIO_SPEC["model"]:
             raise RuntimeError(f"cio_model_not_pro: {res['prov'].get('returned_model')}")
         report.update(
             {
@@ -624,9 +627,9 @@ def main() -> int:
                 "cio_reservation_id": res["prov"].get("reservation_id"),
                 "cio_provider_request_reference": res["prov"].get("request_id"),
                 "cio_settlement_id": res["prov"].get("settlement_id") or res["prov"].get("reservation_id"),
-                "cio_model_requested": "deepseek-v4-pro",
-                "cio_model_executed": res["prov"].get("returned_model") or "deepseek-v4-pro",
-                "cio_policy": "PRO",
+                "cio_model_requested": CIO_SPEC["model"],
+                "cio_model_executed": res["prov"].get("returned_model") or CIO_SPEC["model"],
+                "cio_policy": CIO_SPEC["policy"],
                 "cio_fallback_used": False,
                 "cio_retry_count": 0,
                 "cio_artifact_id": cio_body["artifact_id"],

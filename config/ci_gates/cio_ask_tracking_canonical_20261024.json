@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_tracking_canonical_20261024",
+  "files": [
+    "tests/test_cio_ask_tracking_canonical_20261024.py"
+  ],
+  "anchor": "CIO_ASK_TRACKING_CANONICAL_20261024",
+  "comment": [
+    "ANCHOR: CIO_ASK_TRACKING_CANONICAL_20261024; canonical Watch writer/readback, GUID binding, no legacy parallel writes or unowned removals."
+  ]
+}

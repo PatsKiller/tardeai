@@ -417,7 +417,9 @@ def test_daily_cap_and_fail_closed(gov, reason):
 
 
 def test_unregistered_process_is_refused_by_default_registry():
-    gov = car.CostGovernor(check_fn=lambda *a, **k: {"allow": True})
+    # cio_ask_deep_research itself is registered (2026-10-24, operator-approved cap); a process id that is NOT in
+    # config/llm_process_registry.json must still be refused before any spend.
+    gov = car.CostGovernor(process_id="ask_research_unregistered_probe", check_fn=lambda *a, **k: {"allow": True})
     assert gov.admit("deepseek", 0.01) == (False, "PROCESS_NOT_REGISTERED")
 
 

@@ -79,26 +79,10 @@ _BEHAVIOR_FIELDS_FALLBACK = ("recommended_delta_usd", "size_usd", "shares", "qty
                              "stop", "limit", "target_weight_pct", "trade", "execution")
 
 
-import contextvars as _cv
-
-_CURRENT_CTX: _cv.ContextVar[dict | None] = _cv.ContextVar("tradeai_intelligence_context", default=None)
-
-
-def set_current_context(ctx: dict | None) -> None:
-    """Make ``ctx`` the process-current MemoryContext so chokepoints the producer cannot pass a kwarg
-    to (gate_and_generate via helpers, the :8766 bridge clients) still see its id (Ring 2, 01 §2).
-    shadow_open sets it; shadow_commit clears it."""
-    _CURRENT_CTX.set(ctx)
-
-
-def current_context_id() -> str | None:
-    c = _CURRENT_CTX.get()
-    return c.get("context_id") if isinstance(c, dict) else None
-
-
-def current_retrieval_receipt_id() -> str | None:
-    c = _CURRENT_CTX.get()
-    return c.get("retrieval_receipt") if isinstance(c, dict) else None
+try:  # one ContextVar for the process, defined in the stdlib-only module light callers import
+    from .intelligence_context import _CURRENT_CTX, current_context_id, current_retrieval_receipt_id, set_current_context  # noqa: F401
+except ImportError:  # imported as a top-level module (scripts/lib on sys.path)
+    from intelligence_context import _CURRENT_CTX, current_context_id, current_retrieval_receipt_id, set_current_context  # type: ignore  # noqa: F401
 
 
 class MemoryUnavailable(RuntimeError):

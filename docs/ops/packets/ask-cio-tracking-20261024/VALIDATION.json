@@ -1,0 +1,135 @@
+{
+  "schema": "AskTrackingSourceValidation@v1",
+  "task": "DSN-20261024-ask-tracking-P1-T1",
+  "base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "status": "SOURCE_FIXTURES_PASS_PUBLICATION_PENDING",
+  "affected_whole_files": {
+    "summary": {
+      "tests": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "files": [
+      "tests/test_cio_ask_tracking_canonical_20261024.py",
+      "tests/test_cio_ask_20261023.py",
+      "tests/test_ci_gates_registry_20261021.py",
+      "tests/test_watch_lists_20261023.py",
+      "tests/test_cio_ask_contract_20261023.py"
+    ],
+    "receipt": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/affected-final.xml"
+  },
+  "real_tree_completeness": {
+    "summary": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "receipt": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/completeness.xml"
+  },
+  "ratchets": [
+    {
+      "command": [
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_test_host_paths.log"
+    },
+    {
+      "command": [
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_test_coverage.log"
+    },
+    {
+      "command": [
+        "scripts/check_dark_contracts.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_dark_contracts.log"
+    },
+    {
+      "command": [
+        "scripts/check_retention_policy.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_retention_policy.log"
+    }
+  ],
+  "proof": [
+    "Real post_mine_decision(add) command to membership_operator to watch_curation.my_rows over isolated fake SQL state",
+    "Independently supplied CONFIRMED security_guid matched against registry before write and at readback",
+    "Accepted command without complete consumer visibility remains unverified",
+    "Identity refusal cannot be bypassed by later CIO/directive writes",
+    "Repeated questions preserve entries; question untrack never removes shared operator membership"
+  ],
+  "runtime": "NOT_MEASURED; no production writes or reads",
+  "ask_mobile_companion": "NOT_MEASURED by this backend package; actual Ask-quality/mobile owner must prove 412 and390 interactions",
+  "full_project_profile": "NOT_RERUN: prior actual protected-state fixture refusals remain held; no guard weakening or green full-suite claim",
+  "source_hashes": "SOURCE_HASHES.json",
+  "final_static_checks": [
+    {
+      "command": [
+        "scripts/report_docs_inventory.py",
+        "--check-index"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/report_docs_inventory-final.log"
+    },
+    {
+      "command": [
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_test_host_paths-final.log"
+    },
+    {
+      "command": [
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_test_coverage-final.log"
+    },
+    {
+      "command": [
+        "scripts/check_dark_contracts.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_dark_contracts-final.log"
+    },
+    {
+      "command": [
+        "scripts/check_retention_policy.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/check_retention_policy-final.log"
+    },
+    {
+      "command": [
+        "ruff",
+        "check",
+        "changed-python"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-tracking-20261024/ruff-final.log"
+    }
+  ],
+  "hidden_psycopg2": {
+    "origin": "/home/johnclaw/.cache/rtc/nopg/psycopg2.py",
+    "exception": "ModuleNotFoundError",
+    "name": "psycopg2",
+    "effective_refusal": true
+  },
+  "production_barrier_refusals": 0,
+  "harness_note": "First import assertion incorrectly expected a special exception message; corrected to exact resolved nopg module path and ModuleNotFoundError.name. Production/test code unchanged."
+}

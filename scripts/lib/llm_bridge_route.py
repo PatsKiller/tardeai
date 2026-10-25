@@ -51,7 +51,7 @@ def process_admitted(process_id: str) -> bool:
 
 
 def _call_bridge(messages: list[dict[str, str]], *, process_id: str, timeout_s: float,
-                 max_tokens: int = 2048) -> dict[str, Any]:
+                 max_tokens: int = 2048, manual_trigger: bool = False) -> dict[str, Any]:
     route = route_for_process(process_id)
     if route is None:
         return {"error": {"code": "PROCESS_ROUTE_NOT_REGISTERED"}, "governance_pass": False}
@@ -63,11 +63,12 @@ def _call_bridge(messages: list[dict[str, str]], *, process_id: str, timeout_s: 
         task_type=route[1],
         caller=route[0],
         max_tokens=max_tokens,
+        **({"manual_trigger": True} if manual_trigger is True else {}),
     )
 
 
 def text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
-                    max_tokens: Optional[int] = None) -> Optional[str]:
+                    max_tokens: Optional[int] = None, manual_trigger: bool = False) -> Optional[str]:
     """Return the bridge text, or None when the bridge refuses or is unreachable.
 
     None is not a silent fallback to a provider. The caller decides. ``max_tokens`` (default: the transport's
@@ -78,6 +79,8 @@ def text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
     kw: dict[str, Any] = {"process_id": process_id, "timeout_s": timeout_s}
     if max_tokens is not None:
         kw["max_tokens"] = int(max_tokens)
+    if manual_trigger is True:
+        kw["manual_trigger"] = True
     result = _call_bridge([{"role": "user", "content": prompt}], **kw)
     if not isinstance(result, dict) or result.get("error"):
         return None
@@ -96,12 +99,15 @@ def text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
 
 
 def require_text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
-                            max_tokens: Optional[int] = None) -> str:
+                            max_tokens: Optional[int] = None, manual_trigger: bool = False) -> str:
     """``text_via_bridge`` for a caller that treats "no answer" as a failure: the text, or BridgeRouteRefused.
 
     The refusal is raised, never swallowed into a fallback: a lane on the bridge path that catches it records the
     row as failed (no output), it does not try a provider client, another lane or a local model."""
-    text = text_via_bridge(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens)
+    text = text_via_bridge(
+        process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
+        **({"manual_trigger": True} if manual_trigger is True else {}),
+    )
     if text is None or not str(text).strip():
         raise BridgeRouteRefused(f"{REFUSED}: governed bridge returned no text for process {process_id}")
     return str(text)

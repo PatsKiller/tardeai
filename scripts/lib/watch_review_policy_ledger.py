@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from lib.llm_model_registry import deepseek_model_id, resolve_logical_policy
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ET = ZoneInfo("America/New_York")
 
@@ -55,7 +57,7 @@ MARIA_SPEC = {
     "agent_id": "maria",
     "registered_process_id": MARIA_PROCESS_ID,
     "provider": "deepseek",
-    "model": "deepseek-v4-flash",
+    "model": deepseek_model_id("FAST"),
     "policy": "FAST",
     "thinking": "off",
     "fallback_allowed": False,
@@ -64,9 +66,9 @@ CIO_SPEC = {
     "agent_id": "cio",
     "registered_process_id": CIO_PROCESS_ID,
     "provider": "deepseek",
-    "model": "deepseek-v4-pro",
-    "policy": "PRO",
-    "thinking": "off",
+    "model": deepseek_model_id("PRO_THINK"),
+    "policy": "PRO_THINK",
+    "thinking": resolve_logical_policy("PRO_THINK")["thinking"],
     "fallback_allowed": False,
 }
 
@@ -167,7 +169,7 @@ def build_intended_policy(
                 "agent_id": "maria",
                 "registered_process_id": MARIA_PROCESS_ID,
                 "provider": "deepseek",
-                "model": "deepseek-v4-flash",
+                "model": deepseek_model_id("FAST"),
                 "policy": "FAST",
                 "thinking": "off",
             },
@@ -177,9 +179,9 @@ def build_intended_policy(
                 "agent_id": "cio",
                 "registered_process_id": CIO_PROCESS_ID,
                 "provider": "deepseek",
-                "model": "deepseek-v4-pro",
-                "policy": "PRO",
-                "thinking": "off",
+                "model": deepseek_model_id("PRO_THINK"),
+                "policy": "PRO_THINK",
+                "thinking": CIO_SPEC["thinking"],
                 "requires_current_maria": True,
             },
         },
@@ -215,8 +217,8 @@ def build_intended_policy(
         "allowed_agents": ["maria", "cio"],
         "allowed_process_ids": [MARIA_PROCESS_ID, CIO_PROCESS_ID],
         "allowed_providers": ["deepseek"],
-        "allowed_models": ["deepseek-v4-flash", "deepseek-v4-pro"],
-        "allowed_policies": ["FAST", "PRO"],
+        "allowed_models": list(dict.fromkeys([MARIA_SPEC["model"], CIO_SPEC["model"]])),
+        "allowed_policies": ["FAST", "PRO_THINK"],
         "maximum_calls_per_run": {
             "maria": MARIA_MAX_CALLS_PER_RUN,
             "cio": CIO_MAX_CALLS_PER_RUN,
