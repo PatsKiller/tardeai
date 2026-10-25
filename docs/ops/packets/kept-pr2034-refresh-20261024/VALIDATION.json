@@ -1,0 +1,112 @@
+{
+  "task": "DSN-20261024-kept-pr2034-refresh-P1-T1",
+  "boundary": "LOCAL_SOURCE_FIXTURE; no remote publication, release, flag change or live PostgreSQL verification",
+  "source_merge": "ebb7c44932b6f37b3683450f5df55009183d0b05",
+  "accepted_main": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "remote_pr2034": "a47bb5a17e87401573d24229c4eef17d407aa401",
+  "publication_remote_branch": "feat/cio-prospect-writer-20261023",
+  "private_local_merge_not_ancestor": "99f3dccae46358c3f92a74a3a9103bc78d6512a2",
+  "old_worktree_mutation": "NONE",
+  "classification": {
+    "accepted_main": {
+      "ref": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+      "entries": 157,
+      "all_rows_preserved_unchanged": true
+    },
+    "original_pr": {
+      "ref": "a47bb5a17e87401573d24229c4eef17d407aa401",
+      "entries": 150,
+      "all_rows_preserved_unchanged": true
+    },
+    "merged_entries": 158,
+    "writer_schema_retained": true,
+    "w11_classifier_matches_main": true
+  },
+  "unchanged_from_accepted_main": [
+    "scripts/lib/cio_prospect_builder.py",
+    "scripts/lib/cio_instrument_record.py",
+    "scripts/lib/cio_company_population.py",
+    "scripts/lib/cio_company_facts.py",
+    "tests/test_agent_task_done_evidence_only_20261023.py",
+    "AGENTS.md",
+    "bin/guard"
+  ],
+  "file_sha256": {
+    "scripts/lib/cio_prospect_builder.py": "143ac0728c5e5950a027af9946f064320410b0492118e7f61a9477fe23682e69",
+    "scripts/lib/cio_instrument_record.py": "425459209f19f331a9711669948575c85b116cb8d13339b69307103ff1d71a61",
+    "scripts/lib/cio_company_population.py": "ff2b95e559ae74d9313d921f5a4f803b744d4e076c24ce221a835261fd0cb374",
+    "scripts/lib/cio_company_facts.py": "3efbd3bf46b68aaf43a6149cedb41f2728d2b42973d7cfee977af18b9481f97c",
+    "tests/test_agent_task_done_evidence_only_20261023.py": "3f930dbb5f6d7244dba7098966401bb2ec8caebd59b03ebbb35ed0e2069013ef",
+    "AGENTS.md": "35e320ae1b18a58375b0c93802295f45ef9862ddf96b48bab79840a38a084e2d",
+    "bin/guard": "18989e910df5d9ff5e5f1e67e2021247581d107a33511fa7a1b99d5ea2fbf55b",
+    "scripts/lib/cio_prospect_writer.py": "27484d08a87d3fa5303fa73eea2771c874c2b4970b7ef8dd0222d7fc4569d414",
+    "scripts/cio_entry_state_runner.py": "1e86e744b6637ec5d9cfc45f4adcc75ea7930b0b5f1adf3df298217cadc9ae63",
+    "scripts/cio_opportunity_curator.py": "41a6c228c9e0619a2e88597d0d9abc544b3e25f2bce736ed0c0b49268086a5bc",
+    "tests/test_cio_prospect_writer_20261023.py": "8a0e87ec304842ed2a2c885a02ef282667c456bd1df8a53282854493cd562c52",
+    "config/cio_surface_classification.json": "bd10a3982aefd9ca3702c925254b1194f07ab9ed64873e4abee86ed5c9e5aee0",
+    "config/ci_gates/cio_prospect_writer_20261023.json": "0525684ba99f5b3d913d6c412a2fe2ce147798b4f51a92494ef926d28c8dddba",
+    "apps/command-center-v3/package.json": "1b533eb4af10044134d8f0fa72f14424fbd3b3377a86b691b3609b2ad7098790",
+    "apps/command-center-v3/package-lock.json": "044d61c448bae21d84b9f6d7f890b0fd2bbfaea4c6315a4ffaceb4a80905e7f6"
+  },
+  "checks": [
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-affected-tests-final.log",
+      "sha256": "b6bc4b694c154a62a121a14d45a9e319ee09bf01753e487d55caedd9c3928054",
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q -rs evidence-only,writer,foundation,shadow-readonly,directives-proposals,catalyst-facts,company-facts,population",
+      "result": "PASS145;3 explicit PostgreSQL integration skips"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-cio-registry-tests.log",
+      "sha256": "9bb2bbc19366618fd865c7b7c923cc17a5ed51d0db8eceebe8da8f5beef1bdf2",
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q both strict real-tree CIO checks + tests/test_data_source_authority_20260913.py",
+      "result": "PASS34"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-native-build.log",
+      "sha256": "2d7e20979ac7bd483109ab88dd796505038f31f53e55fc6093023c285c1ee82b",
+      "command": "npm run build",
+      "result": "PASS; existing Vite bundle-size advisory"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-source-registry.log",
+      "sha256": "3fe201fde79268197bffac5ea9d7ec6443afc3c6b95b7a356a09fc4929d240b9",
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python scripts/check_data_source_authority.py",
+      "result": "PASS0 findings;27 proposal warnings"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-docs-index.log",
+      "sha256": "be57b193ce4de67a57d9be9f69866cb63dbfaf62b6268ee2825cd2ef408922ee",
+      "command": "python3 scripts/report_docs_inventory.py --write-index / --check-index",
+      "result": "PASS"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-dark_contracts.log",
+      "sha256": "e8ed0ef1f3fc2eb2fed9b772a7c435f7fda7db9bf226681923cfdcc5fc9aab82",
+      "command": "python3 scripts/check_dark_contracts.py --fail-on-new",
+      "result": "PASS0 new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-retention_policy.log",
+      "sha256": "c3663855d1750404e2f1a90498561d1e4e3d80897e5db32d02351bc1932c88f5",
+      "command": "python3 scripts/check_retention_policy.py --fail-on-new",
+      "result": "PASS0 new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_coverage.log",
+      "sha256": "1bd0e6a2d9ebd783847bdc758aa5e8216bf2e7f7f9fd5dccf3935e30d1e1c6dd",
+      "command": "python3 scripts/check_test_coverage.py --fail-on-new",
+      "result": "PASS0 new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_host_paths.log",
+      "sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+      "command": "python3 scripts/check_test_host_paths.py --fail-on-new",
+      "result": "PASS0 new"
+    }
+  ],
+  "runtime_flag_state": "NOT_OBSERVED; source default OFF and no flag/environment edits",
+  "remaining": [
+    "Coordinator/operator fast-forwards the existing PR branch and watches its actual required checks",
+    "No new PR creation; no writer enablement or live DB proof in this refresh"
+  ]
+}

@@ -1024,9 +1024,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
 | `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
-| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
+| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |

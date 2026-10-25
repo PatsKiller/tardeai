@@ -3,8 +3,8 @@
 docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §11 backlog item 2, §11A (this writer), §12 audit (PR #2030).
 Pins (task T-20261023-e95684):
 
-1. Flag OFF (default): build + the shadow artifact + the writer receipt only; no jsonl prospect row, no Postgres
-   contact (the backend is never even constructed). A dry run writes nothing at all.
+1. Flag OFF (default): build + the shadow artifact + the writer receipt only; no jsonl prospect row or PostgreSQL
+   write backend (production build inputs may still use the declared read-only callback). A dry run writes nothing.
 2. Flag ON: one upsert per security_guid; a second identical run writes nothing (idempotent); the jsonl stays the
    store of record and the Postgres write happens only when prospect_store_status is live.
 3. Conflicts recorded, never resolved: builder conflicts pass through; one GUID under two symbols is a conflict on
@@ -118,6 +118,50 @@ def test_flag_off_writes_the_shadow_and_receipt_only_and_never_touches_postgres(
     # explicit backend object also untouched
     rep = _run(root, env={}, backend=Exploding(), registry=GRANTED)
     assert rep["ok"] and rep["counts"]["pg_upserted"] == 0
+
+
+@pytest.mark.parametrize("apply,env", [(True, {}), (False, ON)], ids=["default-off", "dry-run"])
+def test_c1_fact_only_record_is_not_promoted_by_inert_writer(tmp_path, monkeypatch, apply, env):
+    """The real C1 population -> builder -> writer chain cannot invent a canonical judgment while inert."""
+    from scripts.lib import cio_company_population as company
+
+    identity = _identity("NVDA")
+    monkeypatch.setattr(company, "resolve_security_identity", lambda *_a, **_k: dict(identity))
+    monkeypatch.setattr(company, "stored_catalysts", lambda *_a: {})
+    monkeypatch.setattr(company.facts, "collect_inputs", lambda *_a, **_k: {
+        "errors": [], "profiles": {}, "finviz": {}, "identity_profiles": {
+            "NVDA": {"company": "Fixture company", "updated_at": NOW.isoformat()}}})
+    monkeypatch.setattr(ir, "_now", lambda: NOW.isoformat())
+    capture = {"captured_at": NOW.isoformat(), "database_read_only": True,
+               "my_watchlist": ["NVDA"], "held": [], "formerly_held": [],
+               "identities": {"NVDA": identity}, "profiles": {"NVDA": {
+                   "description": "Fixture company description.", "sector": "Technology",
+                   "industry": "Fixture industry", "updated_at": NOW.isoformat(), "source": "stored_fixture"}},
+               "gaps": []}
+    populated = company.populate(tmp_path, capture, apply=True, now=NOW, env={})
+    assert populated["created"] == 1 and populated["judgment_writes"] == populated["prospect_promotions"] == 0
+    before = (tmp_path / W.RECORDS_REL).read_bytes()
+    original = ir.InstrumentRecordStore(tmp_path / W.RECORDS_REL).all()[0]
+    assert ir.is_fact_only_record(original) and original["security_guid"] == G_NVDA
+    assert original["research"]["company_facts"]["description"]["value"] == "Fixture company description."
+
+    def build(root, **kwargs):
+        return B.build(root, symbols=["NVDA"], held_reader=lambda: {
+            "symbols": set(), "source": "fixture", "as_of": NOW.isoformat()},
+            identity_resolver=_identity, **kwargs)
+
+    def forbidden_backend():
+        pytest.fail("inert writer constructed a PostgreSQL backend")
+
+    report = W.write_prospects(tmp_path, caller="manual", apply=apply, env=env,
+                               build_fn=build, backend_factory=forbidden_backend, registry=GRANTED, now=NOW)
+    assert report["ok"] and report["counts"]["built"] == 1, report
+    assert report["counts"]["jsonl_written"] == report["counts"]["pg_upserted"] == 0
+    assert report["pg"]["mode"] == "off"
+    assert (tmp_path / W.RECORDS_REL).read_bytes() == before
+    current = ir.InstrumentRecordStore(tmp_path / W.RECORDS_REL).all()[0]
+    assert current == original and ir.is_fact_only_record(current) and not ir.is_prospect_record(current)
+    assert not any(key in current for key in ("stance", "conviction", "stage", "prospect_schema"))
 
 
 def test_subset_scope_never_overwrites_the_full_shadow(tmp_path):
