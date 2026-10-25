@@ -3,13 +3,14 @@
 // Read shapes: docs/ops/RELEASE_TRAIN_API.md (summary, /queue, /trains/{id}, /events); STOP: docs/ops/
 // RELEASE_TRAIN_UI_CONTRACT.md. Projections and the "never 0, never green" rules: lib/releaseTrain.ts.
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import ReleaseStopControl from '../components/ReleaseStopControl'
 import {
   censusFrom, DESIGN_OUTCOMES, freshness, freshnessText, freshnessTone, historyFrom, HISTORY_OUTCOMES, OUTCOME_LABEL,
-  OUTCOME_TONE, queueFrom, RELEASE_TRAIN_PATHS, summaryFrom, trainDetailFrom, trainDetailPath, TRAIN_ID_RE,
+  OUTCOME_TONE, lifecycleFrom, queueFrom, RELEASE_TRAIN_PATHS, summaryFrom, trainDetailFrom, trainDetailPath, TRAIN_ID_RE,
   type Freshness, type HistoryRow, type QueueRow, type ReleaseEventsWire, type ReleaseQueueWire,
   type ReleaseTrainDetailWire, type ReleaseTrainSummaryWire,
 } from '../lib/releaseTrain'
@@ -71,6 +72,16 @@ export default function ReleaseTrainTab() {
   const queue = useMemo(() => queueFrom(qApi.data, qT, now), [qApi.data, qT.state, now])
   const qF = queue.f
   const summary = summaryFrom(sumApi.data, sumF, now, queue)
+  const lifecycle = useMemo(() => lifecycleFrom(sumApi.data, sumF, now), [sumApi.data, sumF.state, now])
+  const controllerStatus = (() => {
+    const f = sumApi.data?.controller
+    const st = f?.value?.status
+    if (sumF.state === 'LOADING') return { text: '…', tone: 'neutral' as const, title: 'loading' }
+    if (sumF.state === 'UNAVAILABLE' || !st) return { text: 'UNAVAILABLE', tone: 'warning' as const, title: f?.reason || sumF.reason || 'controller field missing' }
+    const up = String(st).toUpperCase()
+    const tone = up === 'ACTIVE' ? ('success' as const) : ('warning' as const)
+    return { text: up, tone, title: f?.reason || up }
+  })()
   const census = censusFrom(sumApi.data?.census ?? qApi.data?.census, sumApi.data ? sumF : qT, now)
   const history = useMemo(() => historyFrom(eApi.data, eT, now), [eApi.data, eT.state, now])
   const hF = history.f
@@ -91,6 +102,48 @@ export default function ReleaseTrainTab() {
       <div style={panel} data-testid="release-train-stop-panel">
         <Header title="Release train" sub="agents queue PRs · the train integrates, releases and reports · this page shows; only STOP acts" />
         <div style={{ marginTop: 10 }}><ReleaseStopControl /></div>
+        <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: TYPE.sm }}>
+          <Link to="/system/ops-controls?tab=jobs" data-testid="rt-run-now-link" style={{ color: TOKENS.primary, fontWeight: 750, textDecoration: 'none' }}>
+            Run now on Ops → Controls →
+          </Link>
+          <Link to="/policy" data-testid="rt-rulebook-link" style={{ color: TOKENS.text[2], fontWeight: 650, textDecoration: 'none' }}>
+            Rulebook (ratify 22.0.0 via PR 2117 Policy versions) →
+          </Link>
+        </div>
+      </div>
+
+      <div style={panel} data-testid="release-train-incubator">
+        <Header title="Incubator" sub="controller · standing policy · STOP · next window · lifecycle chambers" f={sumF} what="summary" />
+        <Unavailable f={sumF} what="Release-train incubator" />
+        <ChipRow style={{ marginTop: 8 }}>
+          <Chip tone={controllerStatus.tone} title={controllerStatus.title}>controller {controllerStatus.text}</Chip>
+          <Chip tone={summary.policy.tone} title={summary.policy.f.reason ?? undefined}>standing policy {summary.policy.text}</Chip>
+          <Chip tone={summary.stop.tone} title={summary.stop.f.reason ?? undefined}>STOP {summary.stop.text}</Chip>
+          <Chip tone={summary.nextWindow.tone} title={summary.nextWindow.f.reason ?? undefined}>next window {summary.nextWindow.text}</Chip>
+          <Chip tone={summary.lastOutcome.tone} title={summary.lastOutcome.f.reason ?? undefined}>last outcome {summary.lastOutcome.text}</Chip>
+        </ChipRow>
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }} data-testid="rt-lifecycle-chambers">
+          {lifecycle.chambers.map(ch => {
+            const tone = !lifecycle.usable ? 'warning' : (ch.count ?? 0) > 0 ? 'info' : 'neutral'
+            const title = lifecycle.usable
+              ? Object.entries(ch.states).map(([s, n]) => `${s}:${n}`).join(' · ') || ch.label
+              : (lifecycle.f.reason || 'lifecycle UNAVAILABLE')
+            return (
+              <div key={ch.name} style={{ padding: '8px 10px', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0] }}
+                data-testid={`rt-chamber-${ch.name}`} title={title}>
+                <div style={label}>{ch.label}</div>
+                <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: toneVars(tone).color, marginTop: 4 }}>
+                  {lifecycle.usable && ch.count !== null ? ch.count : (sumF.state === 'LOADING' ? '…' : '—')}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {!lifecycle.usable && sumF.state !== 'LOADING' ? (
+          <div role="status" style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.warning, fontWeight: 650 }}>
+            Lifecycle counts UNAVAILABLE — never shown as 0.
+          </div>
+        ) : null}
       </div>
 
       <div style={panel} data-testid="release-train-summary">

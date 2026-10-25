@@ -7,6 +7,8 @@
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
+import CountTile from '../components/CountTile'
+import { dataApprovalTiles } from '../lib/measuredCount'
 import { useSearchParams } from 'react-router-dom'
 import JobsHealth from '../components/JobsHealth'
 import './OpsEvidencePages.css'
@@ -321,20 +323,23 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
     <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
+      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume, Arm and Run now need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n” / “RUN NOW EPOCH n WINDOW HHMM”) and are applied by the host applier; clearing the kill switch stays host terminal only. Run now stays disabled until AGENTS.md 22.0.0 is ACTIVE (and the canary force gates pass).</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
       <Table label="Release train and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
-        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
+        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip>{rt.run_now ? <Chip tone={rt.run_now.allowed ? 'info' : 'warning'} title={rt.run_now.block_reason || rt.run_now.phrase_example || ''}>Run now {rt.run_now.allowed ? 'ready' : 'blocked'}</Chip> : null}</ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
           <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
             <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
           <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} />
+            <ActionButton state={d} kind="release_train.run_now" text="Run now" params={{ ...relParams, force_window: rt?.run_now?.default_slot || '1800', forced_n: 1 }} title="Force a live canary Run now (AGENTS 22.0.0)" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
+      {rt?.run_now?.block_reason ? <p role="status" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }} data-testid="ops-run-now-block">{rt.run_now.block_reason}</p> : null}
+      <p style={muted}>Ratify AGENTS.md 22.0.0 (Run now) at <a href="/v3/policy" data-testid="ops-rulebook-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Rulebook → Policy versions</a> (PR 2117). Until ACTIVE, Run now stays disabled with an explicit reason — never a silent no-op. Host CLI remains the fallback.</p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>
@@ -694,16 +699,6 @@ function FlagsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
 // Each row is one data-dictionary domain (config/data_source_authority.json). The server
 // (scripts/lib/data_domain_readiness.py) promotes each proposed row in memory with today's ceilings and runs the real
 // gates on it; src/lib/opsControlsData.ts turns that into words. Read-only: nothing on this tab approves a row.
-function Stat({ label: l, value, tone, tip, testId }: { label: string; value: ReactNode; tone: Tone; tip: string; testId: string }) {
-  const t = toneVars(tone)
-  return <Tooltip content={tip} as="div">
-    <div data-testid={testId} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '8px 12px', minWidth: 120, cursor: 'help' }}>
-      <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{l}</div>
-      <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: FONT.mono }}>{value}</div>
-    </div>
-  </Tooltip>
-}
-
 function FileListView({ fl, empty }: { fl?: FileList | null; empty: string }) {
   if (!fl || !fl.count) return <span style={{ color: TOKENS.text[2] }}>{empty}</span>
   return <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
@@ -769,6 +764,7 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
   const da = d?.data_approvals
   const rows = sortRows(da?.rows as DataRow[] | undefined)
   const sum = summarize(rows)
+  const tiles = dataApprovalTiles(rows, sum, da?.scan)
   const [filter, setFilter] = useState<DataFilter>('all')
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -780,10 +776,10 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
       <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-data-explainer">{EXPLAINER} Hover or tap any underlined heading, number or badge for its meaning.</p>
       {legacy ? <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>This server sends only domain names and status; readiness needs the newer server.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }} role="group" aria-label="Data approvals summary">
-        <Stat testId="ops-data-approved" label="Approved" value={sum.approved} tone="success" tip={SUMMARY_TIP.approved} />
-        <Stat testId="ops-data-ready" label="Ready to approve" value={sum.ready} tone="info" tip={SUMMARY_TIP.ready} />
-        <Stat testId="ops-data-not-ready" label="Not ready" value={sum.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} />
-        <Stat testId="ops-data-findings" label="Findings" value={sum.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} />
+        <CountTile size="lg" testId="ops-data-approved" label="Approved" count={tiles.approved} tone="success" tip={SUMMARY_TIP.approved} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-ready" label="Ready to approve" count={tiles.ready} tone="info" tip={SUMMARY_TIP.ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-not-ready" label="Not ready" count={tiles.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-findings" label="Findings" count={tiles.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} style={{ minWidth: 120 }} />
       </div>
       {sum.pendingPr.length ? <p style={muted}>Operator-approved, waiting for its promotion PR: <span style={mono}>{sum.pendingPr.join(', ')}</span>. It binds only once that PR merges.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter domains">

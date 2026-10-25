@@ -70,8 +70,23 @@ def _s288(text: str = AGENTS) -> str:
     return m.group(0)
 
 
+def pre_21_0_0(text: str) -> str:
+    """21.0.0 adds only §28.13–§28.15 and its row (PROPOSED: no header or banner change; AI_WORK_POLICY.md is not pinned here)."""
+    from tests.test_agents_policy_20_0_0_agent_operations import pre_22_0_0
+
+    text = pre_22_0_0(text)
+    if "**21.0.0 is " in text:
+        b = text.index("**21.0.0 is ")
+        text = text[:b] + text[text.index("**20.3.0 is ", b):]
+    if "\n## 28.13 " in text:
+        s = text.index("\n## 28.13 ")
+        text = text[:s] + text[text.index("\n---\n\n# Version history", s):]
+    return re.sub(r"^\| 21\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
+
+
 def pre_20_3_0(text: str) -> str:
     """20.3.0 adds only §28.12 and its row (PROPOSED: no header or banner change); a ratified 20.3.0 adds a banner."""
+    text = pre_21_0_0(text)
     if "**20.3.0 is " in text:
         b = text.index("**20.3.0 is ")
         text = text[:b] + text[text.index("**20.2.0 is ", b):]
@@ -128,7 +143,8 @@ def test_row_waits_for_the_operator_or_records_the_token():
     else:
         assert re.search(rf"{TOKEN} \d+ [0-9a-f]{{40}}", rest), "ACTIVE 20.1.0 row must record token, PR and sha"
         assert "(20.1.0, ACTIVE)" in _s288()
-    assert re.search(r"^Supersedes:\s+20\.[0-2]\.0$", AGENTS, re.M)  # 20.1.0 while current; later versions supersede it
+    # Tip may still be 20.1.0 or a later ACTIVE version (20.2+/21+/22+) that supersedes it.
+    assert re.search(r"^Supersedes:\s+(20\.[0-3]\.0|21\.0\.0)$", AGENTS, re.M)
 
 
 def test_banner_explains_class_scope_and_phrase():

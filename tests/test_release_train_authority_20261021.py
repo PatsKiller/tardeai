@@ -1023,6 +1023,11 @@ def test_libraries_are_wired_into_nothing():
         # 19.0.0). It never builds a HostCliProof and never calls change_scope / revoke (still NOT_SUPPORTED).
         "scripts/lib/ops_controls_core.py",
         "scripts/lib/ops_controls_api.py",
+        # Ops → Controls Run now (feat/train-run-now-incubator-wt; AGENTS.md 22.0.0 PROPOSED §25.3):
+        # release_train_run_now sets TrainConfig.forced_confirmed after a passkey + phrase proof, then
+        # runs the controller. Read/write of control + capability only through existing libraries;
+        # POLICY_NOT_ACTIVE until 22.0.0 is ratified. Never arms, merges or promotes on its own.
+        "scripts/lib/release_train_run_now.py",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):

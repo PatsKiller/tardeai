@@ -3,12 +3,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeskPage, { DeskGap } from '../components/DeskPage'
 import { GOVERNANCE, askAboutRule, governanceRequest, useGovernance, type Policy } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
+import { AuditLastLine, PolicyCountTiles, RuleMarkdown, sectionOption, type RulebookPolicy } from '../components/PolicyRuleParts'
 
 export default function PolicyHub() {
   const [params, setParams] = useSearchParams()
   const section = params.get('section') ?? ''
   const offset = Math.max(0, Number(params.get('offset') ?? 0) || 0)
-  const { data, error, refresh } = useGovernance<Policy>(`${GOVERNANCE}/policy?section=${encodeURIComponent(section)}&offset=${offset}`)
+  const { data: raw, error, refresh } = useGovernance<Policy>(`${GOVERNANCE}/policy?section=${encodeURIComponent(section)}&offset=${offset}`)
+  const data = raw as unknown as RulebookPolicy | null | undefined
   const selected = data?.rules.find(rule => rule.id === params.get('rule')) ?? null
   const position = params.get('respond') ?? ''
   const [comment, setComment] = useState('')
@@ -46,13 +48,15 @@ export default function PolicyHub() {
     {notice && !selected && <p ref={noticeElement} role="status" className="panel">{notice}</p>}
     {!data && !error && <p role="status">Loading rules…</p>}
     {data && <>
-      <div className="counts">{Object.entries(data.counts).map(([name, count]) => <div key={name} className="panel"><span>{name}</span><strong>{count}</strong></div>)}</div>
+      <PolicyCountTiles data={data} />
       <p className="muted">Written-only means no verified evidence is attached to this exact version. A test name alone does not prove enforcement.</p>
       <div className="policy-grid">
-        <nav className="panel stack" aria-label="Rulebook sections"><label>Section<select aria-label="Rulebook section" value={section} onChange={event => chooseSection(event.target.value)} style={{ width: '100%' }}><option value="">All sections</option>{data.sections.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+        <nav className="panel stack" aria-label="Rulebook sections"><label>Section<select aria-label="Rulebook section" value={section} onChange={event => chooseSection(event.target.value)} style={{ width: '100%' }}><option value="">All sections</option>{data.sections.map(value => <option key={value} value={value}>{sectionOption(data, value)}</option>)}</select></label>
           <details><summary>Document version</summary><code>{data.source_sha}</code></details><Link className="primary" to="/approvals">Open approvals</Link><Link className="primary" to="/conflicts/rules">Conflict rules →</Link></nav>
-        <article aria-label="Policy rules">{data.rules.map(rule => <section key={rule.id} className="rule panel">
-          <h2 style={{ fontSize: 14 }}>{rule.section}</h2><p className="rule-text">{rule.text}</p>
+        <article aria-label="Policy rules">{data.rules.map((rule, index) => <section key={rule.id} className="rule panel" data-testid="rulebook-rule">
+          {(index === 0 || data.rules[index - 1].section !== rule.section) && <h2 data-testid="rulebook-section-heading" style={{ fontSize: 15 }}>{rule.section}</h2>}
+          {(rule.subsection || rule.number) && <p className="muted" style={{ margin: '0 0 4px' }}>{rule.number ? `Rule ${rule.number}` : ''}{rule.number && rule.subsection ? ' · ' : ''}{rule.subsection ?? ''}</p>}
+          <RuleMarkdown text={rule.text} testId="rulebook-rule-text" />
           <details><summary>ⓘ In plain words</summary><p>{rule.plain ?? 'A plain-language explanation has not been reviewed for this rule yet.'}</p></details>
           <span className="badge">{rule.status}</span><p className="muted">{rule.reason}</p>
           {Object.keys(rule.evidence).length > 0 && <details><summary>Enforcement evidence</summary><pre>{JSON.stringify(rule.evidence, null, 2)}</pre></details>}
@@ -64,14 +68,14 @@ export default function PolicyHub() {
             const first = controls[0], last = controls[controls.length - 1]
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
             if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
-          }}><button onClick={closeResponse}>← Back to Rulebook</button><h2>{rule.section}</h2><p className="rule-text">{rule.text}</p><label>{position === 'QUESTION' ? 'Your question' : position === 'DISAGREE' ? 'Proposed change and reason' : 'Optional comment'}<textarea ref={responseInput} aria-label="Rule response comment" value={comment} onChange={event => setComment(event.target.value)} /></label>
+          }}><button onClick={closeResponse}>← Back to Rulebook</button><h2>{rule.section}</h2><RuleMarkdown text={rule.text} /><label>{position === 'QUESTION' ? 'Your question' : position === 'DISAGREE' ? 'Proposed change and reason' : 'Optional comment'}<textarea ref={responseInput} aria-label="Rule response comment" value={comment} onChange={event => setComment(event.target.value)} /></label>
             {notice && <p ref={responseNotice} role="alert">{notice}</p>}
             <button className="primary" disabled={busy || (position !== 'AGREE' && !comment.trim())} onClick={feedback}>{position === 'QUESTION' ? 'Ask the CIO with this rule' : position === 'DISAGREE' ? 'Propose change in Approvals' : 'Record agreement'}</button><button onClick={closeResponse}>Cancel</button></section>}
         </section>)}
           <div className="toolbar"><button disabled={!offset} onClick={() => chooseSection(section, Math.max(0, offset - 40))}>Previous rules</button><button disabled={offset + 40 >= data.section_total} onClick={() => chooseSection(section, offset + 40)}>Next rules</button></div>
         </article>
         <aside className="stack"><section className="panel"><h2>Enforcement audit</h2><p>Weekly on Sunday at 20:00 and after an amendment. Mechanical checks map rules to tests and runtime checks; a governed reviewer can propose findings.</p>
-          <p className="warning">Last audit: {data.audit.last_audit ?? 'Not measured'}</p><p className="muted">Findings go to Approvals for review. Changes are never applied automatically.</p><Link className="primary" to="/system/ops-controls?tab=jobs">Review audit job</Link></section>
+          <AuditLastLine audit={data.audit} /><p className="muted">Findings go to Approvals for review. Changes are never applied automatically.</p><Link className="primary" to="/system/ops-controls?tab=jobs">Review audit job</Link></section>
           {data.audit.scope && <section className="panel"><h2>Audit coverage</h2><p>{data.audit.scope}</p><p>Mapped {data.audit.mapped_count ?? 'unknown'} · Unmapped {data.audit.unmapped_count ?? 'unknown'}</p></section>}
           {!!data.audit.findings?.length && <section className="panel"><h2>Latest findings</h2>{data.audit.findings.slice(0, 5).map((finding, index) => <p key={index}>{finding.title}</p>)}<Link className="primary" to="/approvals">Review findings in Approvals</Link></section>}
           <section className="panel"><h2>Your recent responses</h2><p>Agreed {data.positions.filter(p => p.position === 'AGREE').length} · Questions {data.positions.filter(p => p.position === 'QUESTION').length} · Proposed changes {data.positions.filter(p => p.position === 'DISAGREE').length}</p></section></aside>
