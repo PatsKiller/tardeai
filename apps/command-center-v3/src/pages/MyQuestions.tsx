@@ -17,6 +17,7 @@ import {
 import { askCio, askErrorText, regroupQuestion, requestDeep, untrackEntity } from '../lib/askCioApi'
 import { CHANNEL_OPTIONS, GROUP_BYS, GROUP_LABEL, countsText, groupBy as groupByOf, groupedPath, groupedPayload, memoryText, relatedFor, type GroupBy, type GroupedQuestions } from '../lib/askCioGroups'
 import AskCioAnswer from '../components/AskCioAnswer'
+import DeskPage from '../components/DeskPage'
 import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, keepNewestThread, matchingThread, publishAskUpdate, readableVersion, threadVersionKey } from '../lib/askCioPresentation'
 import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
 import '../components/AskCio.css'
@@ -24,13 +25,18 @@ import '../components/AskCio.css'
 const card = { border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, background: TOKENS.bg[1], padding: 12 } as const
 const btn = { fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
 
+type AsksListPayload = { threads: ThreadSummary[]; as_of?: string | null }
+
 export default function MyQuestions() {
   const { threadId } = useParams()
   const location = useLocation()
   const [search, setSearch] = useSearchParams()
   const [pending, setPending] = useState(false)
   const list = useApi<unknown>(ASK_PATHS.list, pending ? 5_000 : 30_000)
-  const rows = useMemo(() => sortSummaries(unwrap<{ threads: ThreadSummary[] }>(list.data)?.threads ?? []), [list.data])
+  const listPayload = useMemo(() => unwrap<AsksListPayload>(list.data), [list.data])
+  const rows = useMemo(() => sortSummaries(listPayload?.threads ?? []), [listPayload])
+  // Prefer the list envelope as_of; fall back to the newest thread stamp so the DeskPage clock is never blank when rows exist.
+  const asksAsOf = listPayload?.as_of ?? rows[0]?.updated_at ?? null
   useEffect(() => { setPending(rows.some(row => isPending(row.status))) }, [rows])
   useEffect(() => {
     const refresh = (event: Event) => { if (askUpdate(event)) list.refetch() }
@@ -51,11 +57,25 @@ export default function MyQuestions() {
   const shown = filterSummaries(rows, filter).filter(r => !channel || r.channels.includes(channel as never))
   const options = grouped?.group_bys ?? GROUP_BYS.map(id => ({ id, available: true, reason: null }))
   const themeGap = options.find(o => o.id === 'theme' && !o.available)
+  const sourceGap = list.error
+    ? `Could not load questions: ${list.error}`
+    : list.stale
+      ? 'Questions refresh unavailable — showing saved questions.'
+      : undefined
   return (
+    <DeskPage
+      title="My questions"
+      purpose="Every question you asked here or on Telegram · saved in CIO memory · related questions grouped"
+      sources={[{
+        id: 'asks',
+        label: 'Ask threads',
+        asOf: asksAsOf,
+        laneIds: ['cio-ask-research'],
+        gap: sourceGap,
+      }]}
+    >
     <div className="ask-questions" data-testid="my-questions" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <section style={{ ...card, flex: '1 1 300px', maxWidth: 520 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: TYPE.md }}>My questions</h2>
-        <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginBottom: 8 }}>Every question you asked here or on Telegram · saved in CIO memory · related questions grouped</div>
         <input aria-label="Filter questions" placeholder="Search questions, tickers, sectors" value={filter} onChange={e => setFilter(e.target.value)}
           style={{ width: '100%', boxSizing: 'border-box', fontSize: TYPE.base, padding: '5px 8px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
@@ -109,6 +129,7 @@ export default function MyQuestions() {
         )}
       </section>
     </div>
+    </DeskPage>
   )
 }
 
