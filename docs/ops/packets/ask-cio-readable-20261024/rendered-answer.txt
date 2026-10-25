@@ -1,0 +1,48 @@
+QUESTION
+I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play
+
+QUICK
+TSLA — CIO recorded view: unavailable; conviction unavailable.
+SPCX — CIO recorded view: unavailable; conviction unavailable.
+
+The quick check can establish exposure; it is not yet a researched investment view.
+
+TSLA: $371.94 (quote as of 2026-10-23 15:46 ET). Your stated 100 shares represent $37,194.00 of exposure; loss at the reference price $342.18: $2,976.00.
+
+This quick check does not establish that the proposed exposure is an effective hedge; that needs a sourced assessment of how the two investments would behave.
+
+A merger probability has not been established by this quick check. The deeper answer must distinguish sourced transaction evidence from speculation.
+
+The 3-, 6- and 12-month research will appear in this thread when it finishes.
+
+DEEP
+This research is partial: some sources or model analysis were unavailable.
+
+TSLA — CIO recorded view: unavailable; conviction unavailable.
+SPCX — CIO recorded view: unavailable; conviction unavailable.
+
+Hedge assessment: the collected evidence does not establish that one company's shares hedge the other. No quantified hedge effectiveness is available; shared risks could affect both.
+
+Merger likelihood: no sourced probability estimate is available. A merger should be treated as speculation unless a cited source supports the specific transaction.
+
+TSLA
+The available facts do not yet support a researched CIO view.
+Stored quote: $371.94 (as of 2026-10-23 15:46 ET).
+3 months: no sourced scenario is available yet.
+6 months: no sourced scenario is available yet.
+12 months:
+bear: published reference $128.11 (2026-10-09)
+base: published reference $392.42 (2026-10-09)
+bull: published reference $600.00 (2026-10-09)
+
+SPCX
+The available facts do not yet support a researched CIO view.
+Stored quote: $147.49 (as of 2026-10-23 15:46 ET).
+3 months: no sourced scenario is available yet.
+6 months: no sourced scenario is available yet.
+12 months:
+bear: published reference $70.00 (2026-10-24)
+base: published reference $257.49 (2026-10-24)
+bull: published reference $800.00 (2026-10-24)
+
+Your stated 100 TSLA shares represent $37,194.00 of exposure at $371.94 (quote as of 2026-10-23 15:46 ET).

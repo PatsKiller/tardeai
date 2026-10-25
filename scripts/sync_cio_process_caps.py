@@ -15,6 +15,7 @@ Matches config/llm_process_registry.json (source of truth), and is idempotent
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -51,19 +52,29 @@ CAPS: dict[str, tuple[float, int]] = {
     "grok_stop_review": (0.05, 30),
     # 2026-10-22: the options-desk CIO thesis review on its own process (AGENTS.md §9.2; was Steph's pool).
     "options_thesis_cio_review": (0.40, 40),
+    # Ask-CIO approved dollars; finite request bound, global cap unchanged.
+    "cio_ask_deep_research": (5.00, 30),
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     # 2026-10-22: --dry-run prints the upserts and touches no database (AGENTS.md §0 rule 7: dry run first).
     args = sys.argv[1:] if argv is None else argv
-    if "--dry-run" in args:
-        for process_id, (cost, soft) in CAPS.items():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--process-id", choices=sorted(CAPS), default=None,
+                        help="sync only this declared process; omission retains the existing full sync")
+    opts = parser.parse_args(args)
+    selected = CAPS if opts.process_id is None else {opts.process_id: CAPS[opts.process_id]}
+    if opts.dry_run:
+        for process_id, (cost, soft) in selected.items():
             print(f"  [dry-run] would upsert {process_id}: cost={cost} soft={soft}")
+            if process_id == "cio_ask_deep_research":
+                print("  [dry-run] Ask-CIO new-row mode=manual; existing-row mode unchanged")
         return 0
     import db_adapter
 
-    for process_id, (cost, soft) in CAPS.items():
+    for process_id, (cost, soft) in selected.items():
         db_adapter._execute(
             """INSERT INTO llm_process_config
                      (process_id, process_name, category, mode, daily_soft_cap,
@@ -73,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                      daily_cost_cap_usd = EXCLUDED.daily_cost_cap_usd,
                      daily_soft_cap = EXCLUDED.daily_soft_cap,
                      updated_at = NOW()""",
-            (process_id, process_id, None, "automated", soft, cost,
+            (process_id, process_id, None,
+             "manual" if process_id == "cio_ask_deep_research" else "automated", soft, cost,
              "synced by sync_cio_process_caps.py"),
         )
         print(f"  [db] {process_id}: cost={cost} soft={soft}")
@@ -82,12 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     rows = db_adapter._execute(
         """SELECT process_id, daily_cost_cap_usd, daily_soft_cap
              FROM llm_process_config
-            WHERE process_id IN (
-              'guardian_risk_critique','ledger_tax_critique','steph_allocation_review',
-              'maria_research_critique','morgan_wealth_synthesis','alex_cio_synthesis',
-              'alex_cio_escalation','reflective_critic_flash','hermes_external_research',
-              'advisory_desk_opinion')
+            WHERE process_id = ANY(%s)
             ORDER BY process_id""",
+        (list(selected),),
         fetch="all",
     ) or []
     print("\n  verify:")

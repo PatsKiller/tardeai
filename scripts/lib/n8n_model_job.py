@@ -408,14 +408,25 @@ ROUTING_POLICY_HEADER = "X-TradeAI-Routing-Policy"   # the bridge reads this; an
 def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, response_format: Optional[dict] = None,
                          request_id: Optional[str] = None, timeout_s: float = 60.0, task_type: str = "model_job",
                          routing_policy: Optional[str] = None, caller: str = BRIDGE_CALLER,
-                         max_tokens: int = 2048) -> dict[str, Any]:
+                         max_tokens: int = 2048, context_id: Optional[str] = None,
+                         manual_trigger: bool = False) -> dict[str, Any]:
     """Loopback HTTP to the running governed bridge (cio-governed-bridge.service, 127.0.0.1:8766).
 
     The bridge maps the caller header + task type to the process server-side (CALLER_TASK_PROCESS_MAP); the
     job's process_id is checked against what the bridge reports, never sent as an instruction. No key
-    lives here: the bridge holds the provider credential. A transport failure is a provider_outage."""
+    lives here: the bridge holds the provider credential. A transport failure is a provider_outage.
+
+    Forward an explicit retrieved context, or the existing current context when omitted. Never mint a
+    context id here. Missing context stays missing so the bridge's Ring2 policy decides; unsafe header
+    values and an unavailable current-context reader refuse before any transport."""
     import urllib.error
     import urllib.request
+    from .governed_process_routes import MANUAL_TRIGGER_HEADER, OPERATOR_INTENT_PROCESS_IDS
+
+    if process_id in OPERATOR_INTENT_PROCESS_IDS and manual_trigger is not True:
+        return {"error": {"code": "MANUAL_TRIGGER_REQUIRED", "status": 403,
+                          "message": "Explicit operator-origin intent is required for Ask research"},
+                "governance_pass": False, "cost_estimate": 0.0}
     url = os.environ.get(BRIDGE_URL_ENV) or "http://127.0.0.1:8766/v1/chat/completions"
     body = json.dumps({"model": "tradeai_governed", "messages": messages, "response_format": response_format or {"type": "json_object"},
                        "max_tokens": int(max_tokens), "request_id": request_id}).encode("utf-8")
@@ -423,6 +434,21 @@ def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, res
                "X-TradeAI-Task-Type": task_type}   # 2026-10-08: ops_summary selects n8n_ops_summary_draft server-side
     if routing_policy:
         headers[ROUTING_POLICY_HEADER] = str(routing_policy)[:64]
+    if process_id in OPERATOR_INTENT_PROCESS_IDS:
+        headers[MANUAL_TRIGGER_HEADER] = "1"
+    if context_id is None:
+        try:
+            from .intelligence_context import current_context_id
+            context_id = current_context_id()
+        except Exception:
+            return {"error": {"code": "MEMORY_CONTEXT_UNAVAILABLE", "status": 503,
+                              "message": "Current research context could not be read"}, "governance_pass": False}
+    if context_id is not None:
+        if (not isinstance(context_id, str) or not 0 < len(context_id) <= 256
+                or any(ord(c) < 33 or ord(c) > 126 for c in context_id)):
+            return {"error": {"code": "MEMORY_CONTEXT_INVALID", "status": 400,
+                              "message": "Context id must be a bounded visible ASCII identifier"}, "governance_pass": False}
+        headers["X-TradeAI-Context-Id"] = context_id
     req = urllib.request.Request(url, data=body, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
