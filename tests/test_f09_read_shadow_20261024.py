@@ -10,6 +10,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -228,7 +229,7 @@ def test_executor_capture_and_live_refusal_have_no_underlying_read(tmp_path):
 
 
 @pytest.mark.parametrize("path", PACKETS, ids=lambda p: p.stem)
-def test_each_reviewed_packet_has_matching_argv_contract_and_unchanged_host_lineage(path, monkeypatch):
+def test_each_lane_packet_has_matching_argv_contract_and_unchanged_host_lineage(path, monkeypatch):
     packet = json.loads(path.read_text())
     entry = packet["allowlist_entry"]
     row = packet["registry_row"]
@@ -239,7 +240,18 @@ def test_each_reviewed_packet_has_matching_argv_contract_and_unchanged_host_line
     assert dispatch.validate_dispatch_block(row) == []
     assert lane_registry.validate_row(row) == []
     assert health.validate_contract(packet["health_contract"]) == []
+    assert packet["health_contract"]["status"] == "DRAFT"
+    assert packet["health_contract"]["review"]["status"] == "PENDING_OWNER_REVIEW"
     assert _check_expected_output(packet["health_contract"])["status"] == "pass"
+    timing = packet["offline_timing"]
+    assert timing["runs_considered"] == len(timing["samples_s"]) == 5
+    assert max(timing["samples_s"]) < timing["slow_above_s"] < timing["timeout_s"]
+    for key, relative in [
+        ("wrapper_blob", shadow.WRAPPER),
+        ("admission_blob", "scripts/lib/n8n_broker_read_shadow.py"),
+    ]:
+        body = (ROOT / relative).read_bytes()
+        assert hashlib.sha1(b"blob " + str(len(body)).encode() + b"\0" + body).hexdigest() == timing[key]
     host = next(
         r
         for r in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
@@ -291,3 +303,55 @@ def test_empty_or_mismatched_evidence_is_not_a_success(field, value):
     assert code == 0 and calls == [] and shadow.receipt_problem(receipt) is None
     receipt[field] = value
     assert shadow.receipt_problem(receipt) is not None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["future", "naive", "missing_clock", "reversed", "missing_run", "exit_one", "exit_false", "missing_exit"],
+)
+def test_invalid_final_receipt_never_advances_control_success(tmp_path, mutation):
+    code, out, err, calls, _ = captured_plan()
+    now = datetime.now(timezone.utc)
+    receipt = {
+        "lane_id": shadow.lane_id("schwab_positions"),
+        "broker_read_step": "schwab_positions",
+        "run_id": "fixture",
+        "attempt": 1,
+        "code_sha": None,
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": code,
+        "stdout_tail": out,
+        "stderr_tail": err,
+        "started_at": (now - timedelta(seconds=2)).isoformat(),
+        "finished_at": (now - timedelta(seconds=1)).isoformat(),
+    }
+    assert calls == [] and shadow.final_receipt_problem(receipt, now=now) is None
+    executor.write_receipt(receipt, state_root=tmp_path, write_last=False)
+    path = tmp_path / shadow.receipt_path("schwab_positions")
+    before = path.read_bytes()
+    if mutation == "future":
+        receipt["finished_at"] = (now + timedelta(hours=1)).isoformat()
+    elif mutation == "naive":
+        receipt["finished_at"] = now.replace(tzinfo=None).isoformat()
+    elif mutation == "missing_clock":
+        receipt.pop("finished_at")
+    elif mutation == "reversed":
+        receipt["started_at"] = now.isoformat()
+    elif mutation == "missing_run":
+        receipt.pop("run_id")
+    elif mutation == "exit_one":
+        receipt["exit_code"] = 1
+    elif mutation == "exit_false":
+        receipt["exit_code"] = False
+    elif mutation == "missing_exit":
+        receipt.pop("exit_code")
+    assert shadow.final_receipt_problem(receipt, now=now) is not None
+    # Generic RunReceipt storage still requires a run id. A missing-id receipt is
+    # rejected before publishing any record, and cannot advance the success alias.
+    if mutation == "missing_run":
+        with pytest.raises(KeyError):
+            executor.write_receipt(receipt, state_root=tmp_path, write_last=False)
+    else:
+        executor.write_receipt(receipt, state_root=tmp_path, write_last=False)
+    assert path.read_bytes() == before

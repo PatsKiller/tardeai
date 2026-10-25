@@ -1243,7 +1243,7 @@ def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: b
     if "broker_read_step" in receipt:
         from lib import n8n_broker_read_shadow as read_shadow
 
-        if read_shadow.receipt_problem(receipt) is None:
+        if read_shadow.final_receipt_problem(receipt) is None:
             # Executor control evidence only: the wrapper writes no lane/business state.
             # Failed or empty plans never advance this per-lane success timestamp.
             shadow_last = state_root / read_shadow.receipt_path(receipt["broker_read_step"])

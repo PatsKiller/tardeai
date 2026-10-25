@@ -65,7 +65,7 @@
     ],
     "lock": "/tmp/schwab_pos_sync.lock",
     "lock_kind": "flock",
-    "timeout_s": 60,
+    "timeout_s": 5,
     "dry_run_arg": [],
     "live_arg": null,
     "market_gate": false,
@@ -79,7 +79,7 @@
     "id": "f09-read-schwab-positions",
     "kind": "lane",
     "workflow_id": "tradeai-dispatcher",
-    "status": "REVIEWED",
+    "status": "DRAFT",
     "target_reason": "stage:shadow",
     "stage": "shadow",
     "owner": "execution",
@@ -126,14 +126,14 @@
         "text": "RunReceipt mode dry_run RUN_DONE captures exactly one LaneOutput@v1: produced_count=0 attempted_count=0 empty_reason=dry_run_requires_broker_read."
       },
       {
-        "check": "state_unchanged",
-        "text": "output signal mtime before equals after; wrapper writes no lane/business state and makes no broker call; executor control snapshot records only validated plan success."
+        "check": "business_state_unchanged",
+        "text": "Underlying business/broker state and host cron are unchanged. The wrapper writes nothing; executor publishes a success-only finalized RunReceipt control snapshot after the wrapper returns. That timestamp proves only an offline plan, never broker freshness."
       }
     ],
     "degraded": [
       {
         "check": "slow",
-        "text": "offline wrapper duration > 5 seconds; investigate locally, never rerun a broker read."
+        "text": "Offline in-process wrapper duration above1second, compared with five recorded tripwire samples; investigate locally, never rerun a broker read."
       }
     ],
     "failed": [
@@ -148,13 +148,13 @@
     ],
     "baseline": {
       "basis": "CLASS_DEFAULT_PROVISIONAL",
-      "timeout_s": 60,
-      "duration_degraded_above_s": 5,
+      "timeout_s": 5,
+      "duration_degraded_above_s": 1,
       "freshness_degraded_after_h": 128.5,
       "freshness_failed_after_h": 192.75,
-      "runs_considered": 0,
+      "runs_considered": 5,
       "computed_on": "2026-10-24",
-      "source": "Offline plan cap only, not a broker runtime measurement. No live run is available."
+      "source": "CLASS_DEFAULT_PROVISIONAL: 5s hard cap and1s slow bound both exceed all five measured offline-plan samples; no broker runtime bound inferred; exact wrapper/admission blobs and samples in offline_timing."
     },
     "alerting": {
       "failed": {
@@ -174,17 +174,17 @@
     },
     "evidence": {
       "verify": [
-        "TRADE_AI_CI=1 python3 -m pytest tests/test_f09_read_shadow_20261024.py",
+        "TRADE_AI_CI=1 python3 -m pytest tests/test_f09_read_shadow_20261024.py -k each_lane_packet",
         "Read captured RunReceipt stdout/stderr for matching plan and LaneOutput; never use n8n execution status."
       ],
       "expected_output_basis": "No live mode available. SHADOW LaneOutput reports zero counts and typed empty reason; dry_run is exempt from durable receipts. Future live admission needs a separate implementation and operator action."
     },
     "review_by": "2026-11-07",
     "review": {
-      "reviewed_on": "2026-10-24",
-      "reviewed_by": "codex-w12 machine cross-check",
-      "status": "REVIEWED",
-      "scope": "SHADOW offline contract only; no operator activation approval claimed"
+      "status": "PENDING_OWNER_REVIEW",
+      "prepared_on": "2026-10-24",
+      "prepared_by": "codex-w12",
+      "scope": "Structural machine check only; owner/operator review provenance is required before config admission."
     },
     "expected_output": {
       "schema": "N8nExpectedOutput@v1",
@@ -212,8 +212,29 @@
     }
   },
   "activation_blockers": [
+    "Health contract remains DRAFT until actual owner/operator review provenance is recorded; config integration is HELD. Machine structural checks do not certify owner review.",
     "Separate reviewed per-lane config integration by W8; no source registry changes by W12.",
     "Operator \u00a717 activation; never activate from this source PR.",
-    "Live implementation is intentionally unavailable; any canary/cutover/live request refuses."
-  ]
+    "Live implementation is intentionally unavailable; any canary/cutover/live request refuses.",
+    "Durable business receipt, executable live runtime/preconditions and measured live broker timeout are NOT_IMPLEMENTED; only offline control evidence exists."
+  ],
+  "offline_timing": {
+    "scope": "OFFLINE in-process wrapper under preserved F09 no-broker/no-write tripwires; excludes process spawn, dispatcher, broker runtime and live scheduling",
+    "samples_s": [
+      0.002648,
+      0.001773,
+      0.003911,
+      0.001755,
+      0.001623
+    ],
+    "max_s": 0.003911,
+    "runs_considered": 5,
+    "broker_calls": 0,
+    "state_writes": 0,
+    "wrapper_blob": "042056f099ab57a120096954b013f24db3146cdc",
+    "admission_blob": "e058a4a0339e080caa201becfc181cfda9571da8",
+    "timeout_s": 5,
+    "slow_above_s": 1,
+    "basis": "CLASS_DEFAULT_PROVISIONAL: 5s hard cap and1s slow bound both exceed all five measured offline-plan samples; no broker runtime bound inferred"
+  }
 }

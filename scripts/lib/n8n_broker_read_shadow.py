@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 try:
@@ -176,4 +177,21 @@ def receipt_problem(receipt: Mapping[str, Any]) -> str | None:
         return "read_plan_output_mismatch"
     if any(type(output.get(k)) is not int or output[k] != 0 for k in ("produced_count", "attempted_count")):
         return "read_plan_output_counts"
+    return None
+
+
+def final_receipt_problem(receipt: Mapping[str, Any], *, now: datetime | None = None) -> str | None:
+    """Only finalized, aware, ordered success clocks may advance control freshness."""
+    problem = receipt_problem(receipt)
+    if problem:
+        return problem
+    try:
+        started = datetime.fromisoformat(receipt["started_at"])
+        finished = datetime.fromisoformat(receipt["finished_at"])
+    except (KeyError, TypeError, ValueError):
+        return "read_plan_clock_missing"
+    if started.utcoffset() is None or finished.utcoffset() is None:
+        return "read_plan_clock_naive"
+    if started > finished or finished > (now or datetime.now(timezone.utc)):
+        return "read_plan_clock_order"
     return None
