@@ -19,6 +19,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 READ_LIMIT = 4 * 1024 * 1024
 MAX_ROWS = 12
@@ -27,6 +28,23 @@ GAP_NOT_ON_FILE = "not on file"
 GAP_NOT_MEASURED = "not measured"
 
 DbQuery = Callable[..., Any]
+_ET = ZoneInfo("America/New_York")
+
+
+# Board 3 / board 15 stop vocabulary (display only; categories come from cio_truth.resolve "stop_category").
+BOOK_STOP_TEXT = {"active": "stop active", "pending_activation": "stop pending activation",
+                  "filled": "stop filled · awaiting holdings sync", "unknown": "stop state not recorded",
+                  "planned": "planned level only · no resting order", "none": "no stop"}
+
+
+def _stop_category(p: dict) -> str:
+    cat = p.get("stop_category")
+    if cat in BOOK_STOP_TEXT:
+        return cat
+    state = p.get("stop_state")
+    if state in ("active", "pending_activation", "filled", "unknown"):
+        return state
+    return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
 
 
 # ── primitives ────────────────────────────────────────────────────────────────
@@ -104,9 +122,10 @@ def _count(value: Any) -> str:
 
 
 def _date(raw: Any) -> str:
+    """Readable Eastern time ("Fri Oct 23 17:55 ET"); a stamp without a zone shows its date only."""
     at = _time(raw)
     if at:
-        return at.strftime("%Y-%m-%d %H:%M UTC")
+        return at.astimezone(_ET).strftime("%a %b %d %H:%M ET").replace(" 0", " ")
     return str(raw)[:10] if raw else GAP_NOT_ON_FILE
 
 
@@ -598,23 +617,52 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     portfolio = truth.get("portfolio") or {}
     stops = truth.get("stops") or {}
     book = []
-    for p in sorted(positions, key=lambda p: -(_num(p.get("market_value")) or 0))[:MAX_ROWS]:
+    # Board 3 "Your book": the counted positions (same set as Home/Risk counts) by stop category from cio_truth.
+    has_counted = any(isinstance(p.get("counted"), bool) for p in positions)
+    shown = [p for p in positions if p.get("counted")] if has_counted else positions
+    for p in sorted(shown, key=lambda p: -(_num(p.get("market_value")) or 0))[:MAX_ROWS]:
         sym = str(p.get("symbol") or "?")
-        state = str(p.get("stop_state") or "none").replace("_", " ")
+        cat = _stop_category(p)
+        state = BOOK_STOP_TEXT[cat]
+        dist = next((p.get(k) for k in ("distance_to_stop_pct", "resting_stop_distance_pct", "planned_stop_distance_pct")
+                     if _num(p.get(k)) is not None), None)
         book.append(_row(f"bk-{sym}-{p.get('account_id')}", f"{sym} · {p.get('account_label') or p.get('account_id')}",
-                         f"{_money(p.get('market_value'))} · stop {state}",
+                         f"{_money(p.get('market_value'))} · {state}",
                          "good" if p.get("broker_protected") else "warn",
                          detail=_detail(f"{sym} · {p.get('account_label') or ''}", [
-                             ("Market value", _money(p.get("market_value"))), ("Stop state", state),
+                             ("Market value", _money(p.get("market_value"))), ("Stop", state),
                              ("Stop source", str(p.get("stop_source") or "none").replace("_", " ")),
-                             ("Stop price", p.get("stop_price")), ("Distance to stop", _pct(p.get("distance_to_stop_pct"), 2)),
+                             ("Stop price", p.get("stop_price")), ("Distance to stop", _pct(dist, 2)),
                              ("Defensive score", GAP_NOT_MEASURED), ("Beta", GAP_NOT_MEASURED)],
                              "cio_truth.resolve positions + stops (stop_last_known before stops.json)",
-                             href="/risk?tab=exposure", href_label="Stop review on Risk →")))
-    book_rows = [
-        _row("bk-unprot", "Positions without an active broker stop", _count(stops.get("unprotected_count"))
-             if stops.get("unprotected_count") is not None else GAP_NOT_ON_FILE, "warn" if stops.get("unprotected_count") else None),
-        _row("bk-heat", "Unprotected value", _money((truth.get("positions") or {}).get("unprotected_value_usd"))),
+                             href=f"/risk?tab=exposure&detail=position:{p.get('account_id')}:{sym}",
+                             href_label="Stop review on Risk →")))
+    breakdown = (truth.get("positions") or {}).get("stop_breakdown")
+    if isinstance(breakdown, dict):
+        def _n(cat):
+            return int((breakdown.get(cat) or {}).get("count") or 0)
+
+        def _syms(cat):
+            names = [str(s.get("symbol")) for s in (breakdown.get(cat) or {}).get("symbols") or [] if isinstance(s, dict)]
+            return ", ".join(f"{n} ×{names.count(n)}" if names.count(n) > 1 else n for n in dict.fromkeys(names))
+
+        values = [(breakdown.get(c) or {}).get("value_usd") for c in ("none", "planned")]
+        no_stop = _n("none") + _n("planned")
+        book_rows = [
+            _row("bk-unprot", "Positions with no broker stop", f"{no_stop:,}" + (f" ({_n('planned')} planned level only)" if _n("planned") else ""),
+                 "warn" if no_stop else None, href="/risk?tab=exposure"),
+            _row("bk-heat", "Value with no broker stop", _money(sum(values)) if all(_num(v) is not None for v in values) else GAP_NOT_ON_FILE),
+            _row("bk-pending", "Stops resting · pending activation", f"{_n('pending_activation'):,}", "warn" if _n("pending_activation") else None),
+            _row("bk-filled", "Stops filled · awaiting holdings sync",
+                 f"{_n('filled'):,}" + (f" · {_syms('filled')}" if _n("filled") else ""), "warn" if _n("filled") else None),
+        ] + ([_row("bk-unknown", "Broker stop, state not recorded", f"{_n('unknown'):,} · {_syms('unknown')}", "warn")] if _n("unknown") else [])
+    else:
+        book_rows = [
+            _row("bk-unprot", "Positions without an active broker stop", _count(stops.get("unprotected_count"))
+                 if stops.get("unprotected_count") is not None else GAP_NOT_ON_FILE, "warn" if stops.get("unprotected_count") else None),
+            _row("bk-heat", "Unprotected value", _money((truth.get("positions") or {}).get("unprotected_value_usd"))),
+        ]
+    book_rows += [
         _row("bk-hedged", "Hedged share of book", GAP_NOT_MEASURED),
         _row("bk-exposed", "Most exposed (beta)", GAP_NOT_MEASURED),
     ] + book
@@ -658,7 +706,7 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
 
     review_rows = [
         _row("rv-locked", "Criteria locked", "yes" if review.get("criteria_locked") else "no" if review else GAP_NOT_ON_FILE),
-        _row("rv-lock", "Last lock", str(review.get("locked_at") or GAP_NOT_ON_FILE), "warn"),
+        _row("rv-lock", "Last lock", _date(review.get("locked_at")), "warn"),
         _row("rv-amend", "Amendments", _count(len(review.get("amendments") or [])) if review else GAP_NOT_ON_FILE),
         _row("rv-dec", "Decisions recorded", _count(len(review.get("decisions") or [])) if review else GAP_NOT_ON_FILE),
         _row("rv-open", "Review console (rate, lock, decide)", "Classic view →", "info", href="/defense/classic"),
@@ -674,14 +722,14 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
         _source("options", "Options lifecycle", options.get("generated_at"), DEFENSE_LANES["options"], gap=o_gap),
         _source("cash", "Cash alternatives", cash.get("generated_at"), DEFENSE_LANES["cash"], gap=c_gap),
         _source("review", "Review console", None, DEFENSE_LANES["review"],
-                gap=v_gap or (f"Last lock {review.get('locked_at')} (recorded without a time zone)." if review.get("locked_at") else "No lock on file.")),
+                gap=v_gap or (f"Last lock {_date(review.get('locked_at'))} (recorded without a time zone, so only the date is shown)." if review.get("locked_at") else "No lock on file.")),
     ]
     decisions = _writer_decisions(sources, states, {
         "options": "The options lifecycle panel shows the last output of a paused writer.",
         "cash": "Cash alternatives yields are frozen at their last manual run.",
     })
     if review.get("locked_at"):
-        decisions.append({"id": "review-console", "title": f"Review console last locked {review.get('locked_at')}",
+        decisions.append({"id": "review-console", "title": f"Review console last locked {_date(review.get('locked_at'))}",
                           "detail": "Keep it as a log or retire it (board 3)."})
     tabs = {
         "where-to-act": {"panels": [
@@ -781,6 +829,132 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | N
     if not root.is_dir():
         return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
                 "gap": "The agent run journals are not on file."}
+    cached = _cached_journal_listing(root, now)
+    if cached is not None:
+        entries, by_agent, scanned = cached
+    else:
+        entries, by_agent, scanned = _scan_journal_listing(root)
+    if isinstance(entries, str):
+        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None, "gap": entries}
+    entries.sort(key=lambda e: e[0], reverse=True)
+    runs = []
+    for _mtime, f in entries[: limit * 3]:
+        rows, _gap = _tail_records_cached(f)
+        row = rows[-1] if rows else None
+        if row and _time(row.get("ts")):
+            runs.append(row)
+    runs.sort(key=lambda r: _time(r.get("ts")), reverse=True)
+    return {"runs": runs[:limit], "count": sum(by_agent.values()), "by_agent": by_agent,
+            "newest": runs[0].get("ts") if runs else None, "window": _run_window(entries, now),
+            "gap": "Journal scan stopped at the listing limit; counts are partial." if scanned > JOURNAL_SCAN_LIMIT else None}
+
+
+# ── journal listing / tail caches (perf + memory 2026-10-25) ───────────────────────────────────────────────────
+# The run journals are one write-once JSONL per run (~91k files, ~500 B each). Every cold Agents desk build listed
+# and stat()ed all of them and built ~91k Path objects (~1.5-2 s, the bulk of a ~150 MB per-request peak). Now each
+# agent directory's {name: mtime} is kept and refreshed only when the directory itself changes (a new run file
+# changes the directory mtime; only the new names are stat()ed), and only the files the timeline actually opens
+# (newest ``MAX_ROWS * 3`` plus the 24 h window candidates) become Paths. Parsed tails are cached per
+# (path, mtime_ns, size), bounded, so an unchanged run file is never re-read.
+_LISTING_MAX_DIRS = 64
+_TAIL_CACHE_MAX = 4096
+# Plain dicts (this module keeps its stdlib-only import set, see tests/test_desks_a_20261025.py): each read or
+# write is one dict operation, so concurrent requests at worst redo a listing; insertion order gives LRU eviction.
+_LISTING: dict[str, tuple[int, int, int, dict[str, float], list[tuple[float, str]]]] = {}
+_TAILS: dict[tuple[str, int, int], tuple[list[dict], str | None]] = {}
+
+
+def _agent_dir_listing(agent_dir: Path) -> tuple[int, int, dict[str, float], list[tuple[float, str]]] | None:
+    """(entries in the directory, .jsonl names, {jsonl name: mtime}, newest MAX_ROWS*3 (mtime, name)) — refreshed
+    only when the directory mtime changes."""
+    try:
+        dir_sig = agent_dir.stat().st_mtime_ns
+    except OSError:
+        return None
+    key = str(agent_dir)
+    hit = _LISTING.get(key)
+    if hit is not None and hit[0] == dir_sig:
+        return hit[1], hit[2], hit[3], hit[4]
+    try:
+        entries = list(agent_dir.iterdir())
+    except OSError:
+        return None
+    old = hit[3] if hit is not None else {}
+    mtimes: dict[str, float] = {}
+    n_jsonl = 0
+    for f in entries:
+        if f.suffix != ".jsonl":
+            continue
+        n_jsonl += 1
+        name = f.name
+        if name in old:
+            mtimes[name] = old[name]
+            continue
+        try:
+            mtimes[name] = f.stat().st_mtime
+        except OSError:
+            continue
+    top = sorted(((mt, name) for name, mt in mtimes.items()), reverse=True)[: MAX_ROWS * 3]
+    _LISTING.pop(key, None)
+    _LISTING[key] = (dir_sig, len(entries), n_jsonl, mtimes, top)
+    while len(_LISTING) > _LISTING_MAX_DIRS:
+        _LISTING.pop(next(iter(_LISTING)), None)
+    return len(entries), n_jsonl, mtimes, top
+
+
+def _cached_journal_listing(root: Path, now: datetime | None):
+    """(entries, by_agent, scanned) like ``_scan_journal_listing`` but from the per-directory cache, with
+    ``entries`` holding only the files ``run_timeline`` / ``_run_window`` can use. None = use the full scan
+    (listing limit reached or a directory unreadable), so partial-scan behaviour is unchanged."""
+    try:
+        agent_dirs = [d for d in sorted(root.iterdir()) if d.is_dir()]
+    except OSError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=RUN_WINDOW_HOURS) - timedelta(hours=2)).timestamp()
+    by_agent: dict[str, int] = {}
+    scanned = 0
+    keep: list[tuple[float, str, str]] = []
+    newest: list[tuple[float, str, str]] = []
+    for agent_dir in agent_dirs:
+        got = _agent_dir_listing(agent_dir)
+        if got is None:
+            return None
+        n_entries, n_jsonl, mtimes, top = got
+        scanned += n_entries
+        if scanned > JOURNAL_SCAN_LIMIT:
+            return None
+        by_agent[agent_dir.name] = n_jsonl
+        d = str(agent_dir)
+        for name, mt in mtimes.items():
+            if mt >= cutoff:
+                keep.append((mt, d, name))
+        newest.extend((mt, d, name) for mt, name in top)
+    chosen = {(d, n): mt for mt, d, n in keep}
+    for mt, d, n in sorted(newest, reverse=True)[: MAX_ROWS * 3]:
+        chosen[(d, n)] = mt
+    entries = [(mt, Path(d) / n) for (d, n), mt in chosen.items()]
+    return entries, by_agent, scanned
+
+
+def _tail_records_cached(path: Path, limit: int = 64 * 1024) -> tuple[list[dict], str | None]:
+    """``_tail_records`` cached per (path, mtime_ns, size). Callers treat the rows as read-only."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return _tail_records(path, limit)
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    hit = _TAILS.pop(key, None)
+    if hit is None:
+        hit = _tail_records(path, limit)
+    _TAILS[key] = hit  # (re)inserted last = most recently used
+    while len(_TAILS) > _TAIL_CACHE_MAX:
+        _TAILS.pop(next(iter(_TAILS)), None)
+    return hit
+
+
+def _scan_journal_listing(root: Path):
+    """The original full listing: (entries, by_agent, scanned), or (gap text, {}, 0) when unreadable."""
     entries, by_agent, scanned = [], {}, 0
     try:
         for agent_dir in sorted(root.iterdir()):
@@ -799,19 +973,8 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | N
                         continue
             by_agent[agent_dir.name] = n
     except OSError as exc:
-        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
-                "gap": f"The agent run journals could not be listed ({type(exc).__name__})."}
-    entries.sort(key=lambda e: e[0], reverse=True)
-    runs = []
-    for _mtime, f in entries[: limit * 3]:
-        rows, _gap = _tail_records(f, 64 * 1024)
-        row = rows[-1] if rows else None
-        if row and _time(row.get("ts")):
-            runs.append(row)
-    runs.sort(key=lambda r: _time(r.get("ts")), reverse=True)
-    return {"runs": runs[:limit], "count": sum(by_agent.values()), "by_agent": by_agent,
-            "newest": runs[0].get("ts") if runs else None, "window": _run_window(entries, now),
-            "gap": "Journal scan stopped at the listing limit; counts are partial." if scanned > JOURNAL_SCAN_LIMIT else None}
+        return f"The agent run journals could not be listed ({type(exc).__name__}).", {}, 0
+    return entries, by_agent, scanned
 
 
 def _run_window(entries: list[tuple[float, Path]], now: datetime | None) -> dict:
@@ -826,7 +989,7 @@ def _run_window(entries: list[tuple[float, Path]], now: datetime | None) -> dict
     candidates = [f for mtime, f in entries if mtime >= cutoff]
     agents: dict[str, dict[str, int]] = {}
     for f in candidates[:RUN_WINDOW_OPEN_LIMIT]:
-        rows, _gap = _tail_records(f, 64 * 1024)
+        rows, _gap = _tail_records_cached(f)
         for r in rows:
             at = _time(r.get("ts"))
             if not at or not (start < at <= now):

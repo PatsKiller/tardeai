@@ -2,12 +2,15 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
+import { protectionHref } from '../lib/stopDisplay'
 
 export const usd = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : 'Not available'
 export const pct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : 'Not measured'
 const fractionPct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 2 }) : 'Not measured'
 export const text = (v: unknown, gap = 'Not available') => v == null ? gap : String(v)
 const localHref = (v: unknown) => typeof v === 'string' ? v.replace(/^\/v3(?=\/|$)/, '') || '/' : null
+/** Do-now links: a protection item opens its own position on Risk (account+symbol), others go where the CIO says. */
+const itemHref = (item: any) => protectionHref(item) || localHref(item.href || item.action?.where)
 export const when = (v: unknown) => {
   if (!v) return 'Time unavailable'
   const raw = String(v)
@@ -60,7 +63,7 @@ export function W7HomePanels({ data }: { data: any }) {
           {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
           <div style={{ color: TOKENS.text[2], marginTop: 4 }}>{item.reason || item.why || item.detail}</div>
           {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
-        </div>{localHref(item.href || item.action?.where) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={localHref(item.href || item.action?.where)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
+        </div>{itemHref(item) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={itemHref(item)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
       </div>)}
     </W7Panel>
     <div style={{ display: 'grid', gap: 12 }}>
