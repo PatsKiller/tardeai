@@ -7,6 +7,8 @@
 // batch covers Home yet (batch #1 is the Watch held flag), so every number says so.
 
 import { accountName as accountLabelName, rowAccountKey } from './accountLabels.ts'
+import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
+import { readableTimesInText } from './readableTime.ts'
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
@@ -164,6 +166,60 @@ export function doNowFrom(
 export function visibleItems(m: DoNowModel, tab: Tab, showAll: boolean, topN = TOP_N): { shown: DoNowItem[]; total: number } {
   const filtered = tab === 'all' ? m.items : m.items.filter(i => i.category === tab)
   return { shown: showAll ? filtered : filtered.slice(0, topN), total: filtered.length }
+}
+
+/** Home-only adapter: retain the pre-Board-14 queue, but protection comes from the same categorized CIO
+ * positions as Risk, and the approval total comes from the same overview field as MetricStrip. A missing
+ * current source is a gap, never permission to revive the old risk-snapshot stop claims. No writes. */
+export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: any, sourceError?: unknown): DoNowModel {
+  const isStop = (i: DoNowItem) => /^(?:stop:|stops:|protection:)/.test(i.id)
+    || i.sources.some(s => s === 'risk' || s.includes('desk_truth')) && i.category === 'protect'
+  const isApproval = (i: DoNowItem) => i.id.startsWith('approvals:') || i.sources.some(s => s.includes('approvals'))
+  const items = model.items.filter(i => !isStop(i) && !isApproval(i))
+  const rows: any[] | null = Array.isArray(pages?.positions?.rows) ? pages.positions.rows : null
+  const stops = pages?.stops
+  const answered = rows !== null && !sourceError && !pages?.positions?.gap
+  const missing = [...model.unavailableSources]
+  const sources = [...model.sources, { name: 'cio_positions', status: answered ? 'OK' : 'UNAVAILABLE',
+    asOf: str(stops?.last_broker_read_at ?? stops?.as_of), basis: 'CIO positions · same categories as Risk', ageS: null,
+    stale: !!stops?.stale, error: answered ? null : 'Current stop categories unavailable' }]
+  if (!answered) missing.push('cio_positions')
+  if (answered) for (const row of rows!) {
+    const sym = str(row.symbol)
+    if (!sym) continue
+    const category = stopCategory(row)
+    // A resting stop is not a below-stop/no-stop action. Its broker status remains on Risk.
+    if (category === 'active') continue
+    const account = rowAccountKey(row)
+    const label = accountLabelName(account, row.account_label)
+    const query = new URLSearchParams({ tab: 'exposure', detail: `position:${account}:${sym}` })
+    items.push({ id: `protection:${account}:${sym}`, category: 'protect', severity: category === 'none' ? 'P1' : 'P2',
+      title: `${sym} · ${STOP_CATEGORY_LABEL[category]}`, why: readableTimesInText(row.stop_reason ?? STOP_CATEGORY_LABEL[category]),
+      actionLabel: `Review ${sym}`, where: `/risk?${query}`, money: category === 'filled' ? null : num(row.market_value), moneyBasis: 'market value of the position',
+      sources: ['CIO positions'], since: str(row.stop_captured_at), accounts: [{ account, label }] })
+  }
+  const approvals = num(overview?.pending_approvals ?? overview?.approvals_count)
+  if (approvals === null) missing.push('approvals')
+  sources.push({ name: 'approvals', status: approvals === null ? 'UNAVAILABLE' : 'OK', asOf: str(overview?.as_of),
+    basis: 'overview.pending_approvals / approvals_count · same as header', ageS: null, stale: false,
+    error: approvals === null ? 'Approval count unavailable' : null })
+  if (approvals !== null && approvals > 0) items.push({ id: 'approvals:pending', category: 'decide', severity: 'P2',
+    title: `${approvals} approvals waiting`, why: 'Review the approval queue', actionLabel: 'Review approvals', where: '/approvals',
+    money: null, moneyBasis: null, sources: ['overview'], since: null, accounts: [] })
+  items.sort((a, b) => (b.money ?? -1) - (a.money ?? -1) || SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity))
+  const counts: Record<Tab, number> = { all: items.length, protect: 0, decide: 0, fix: 0 }
+  for (const item of items) counts[item.category]++
+  const allSourcesAnswered = model.allSourcesAnswered && missing.length === 0
+  const state = model.state === 'STALE' || stops?.stale ? 'STALE'
+    : items.length ? 'ITEMS' : allSourcesAnswered ? 'CLEAR' : model.state === 'LOADING' ? 'LOADING' : 'UNAVAILABLE'
+  return { ...model, items, counts, sources, unavailableSources: missing, allSourcesAnswered, state,
+    staleSources: [...model.staleSources, ...(stops?.stale ? ['cio_positions'] : [])],
+    reason: stops?.stale ? 'Stop counts are from the last broker read' : missing.length ? `Source gaps: ${missing.join(', ')}` : model.reason,
+    numbers: { ...model.numbers, unprotected: answered ? num(stops?.unprotected_count) : null,
+      unprotectedValue: answered ? num(pages?.positions?.unprotected_value_usd) : null,
+      unprotectedBasis: 'CIO categorized positions · same as Risk; counts as of last broker stop read',
+      positionsSource: answered ? str(pages.positions.source) ?? 'CIO positions' : 'Current CIO positions unavailable',
+      stale: model.numbers.stale || !!stops?.stale } }
 }
 
 export function severityTone(s: Severity): 'danger' | 'warning' | 'info' {
