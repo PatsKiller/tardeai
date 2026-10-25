@@ -116,6 +116,12 @@ def test_policy_value_change_flows_through_the_same_reader(tmp_path):
     assert result["limit_pct"] == 30 and result["status"] == "ok"
 
 
+def test_explicit_fixture_policy_path_is_respected(tmp_path):
+    path = tmp_path / "captured-ips.json"
+    path.write_text(json.dumps({"constraints": {"max_single_position_pct": 8}}))
+    assert policy.ips_max_position_pct(path) == 8
+
+
 def test_curator_stops_universal_trim_for_broad_fund_and_marks_missing_evidence():
     ctx = {"position": {"owned": True, "weight_pct": 16.8, "asset_type": "ETF"},
            "fund_holdings_evidence": fund()}

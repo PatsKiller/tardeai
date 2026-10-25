@@ -80,15 +80,15 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
 
     ips = (_load(p["ips"]) or {}).get("constraints") or {}
     from scripts.lib.ips_policy import ips_max_position_pct, concentration_policy, concentration_for_position
-    policy = concentration_policy(Path(p["ips"]).parent)
+    policy = concentration_policy(Path(p["ips"]))
     instrument = dict(mine[0]) if mine else {}
     if len({(r.get("asset_type"), r.get("is_fund")) for r in mine}) > 1:
         instrument = {}
     if any(r.get("fund_holdings_evidence") != instrument.get("fund_holdings_evidence") for r in mine):
         instrument.pop("fund_holdings_evidence", None)
     position_policy = concentration_for_position(instrument,
-        weight_pct=100.0 * name_mv / total_mv if total_mv > 0 else None, config_dir=Path(p["ips"]).parent)
-    max_single = position_policy["limit_pct"] if not policy["gap"] else ips_max_position_pct(Path(p["ips"]).parent)
+        weight_pct=100.0 * name_mv / total_mv if total_mv > 0 else None, config_dir=Path(p["ips"]))
+    max_single = position_policy["limit_pct"] if not policy["gap"] else ips_max_position_pct(Path(p["ips"]))
     max_sector = policy["lookthrough_sector_limit_pct"] if not policy["gap"] else _f(ips.get("max_sector_concentration_pct"))
     if max_single is None:
         unknowns.append("IPS instrument-class concentration limit unavailable")

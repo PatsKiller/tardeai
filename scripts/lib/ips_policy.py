@@ -27,7 +27,8 @@ CLASS_LABELS = {"broad_diversified_fund": "Broad diversified fund", "narrow_them
 
 
 def _constraints(config_dir: Path | None) -> tuple[dict[str, Any], Path]:
-    path = (config_dir or CONFIG_DIR) / IPS_FILENAME
+    location = Path(config_dir) if config_dir is not None else CONFIG_DIR
+    path = location if location.suffix == ".json" else location / IPS_FILENAME
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
