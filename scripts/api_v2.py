@@ -16394,8 +16394,11 @@ def _defense_posture(query=None):
                         "chg_pct": data.get("chg_pct"),
                         "rel_pct": data.get("rel_pct"),
                         "state": data.get("state"),
-                        "rs5": data.get("rs5"), "rs20": data.get("rs20"), "rs60": data.get("rs60"),
-                        "cio_posture": data.get("cio_posture"), "as_of": data.get("as_of"),
+                        "rs5": data.get("rs5"),
+                        "rs20": data.get("rs20"),
+                        "rs60": data.get("rs60"),
+                        "cio_posture": data.get("cio_posture"),
+                        "as_of": data.get("as_of"),
                         "gap": data.get("gap"),
                     }
                 )
@@ -45090,6 +45093,7 @@ _SECTOR_ETF_MAP = {
 def _sectors_monitor(query=None):
     """Watch Sectors — canonical multi-horizon read model (W3)."""
     from lib.sectors_monitor import monitor
+
     return monitor(_db_query, STATE_DIR, sector_map=_SECTOR_ETF_MAP, query=query)
 
 
@@ -46532,6 +46536,7 @@ def _snaptrade_status():
 def _w7_cio_pages():
     """Read-only W7 page projection over one CIO truth document."""
     from scripts.lib.w7_pages import page_payload
+
     return page_payload(STATE_DIR.parents[2], db_query=_db_query)
 
 
@@ -48087,6 +48092,7 @@ def _hermes_discovery_gaps(query=None):
 def _cio_truth_readers():
     """W1 read adapters; dependency f74bea4042959719c19d7b01a88237cd5fe99d12."""
     from lib import cio_truth
+
     return cio_truth
 
 
@@ -48139,7 +48145,9 @@ ROUTES = {
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": lambda: _cio_truth_readers().overview_payload(overview(), db_query=_db_query),
-    "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(portfolio_holdings(), db_query=_db_query),
+    "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(
+        portfolio_holdings(), db_query=_db_query
+    ),
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
     "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
     "/api/v2/holdings/share-reconciliation/history": lambda q=None: _share_drift_history(q),
@@ -48966,6 +48974,7 @@ from lib.site_payload_reads import bounded_routes as _site_bounded_routes
 
 def _site_payload_state_root():
     from lib.lane_registry import state_root
+
     return state_root()
 
 
@@ -48976,16 +48985,27 @@ def _site_payload_state_root():
 #   /watch-directives (Hermes panel, Watchlist hub), /hermes/* (W6 pagers),
 #   /broker-proposals + /summary (stored-list publisher is a W8 lane; today only the
 #   legacy handler writes broker_list_cache.json), scheduler-operations paging (W4 UI).
-_SITE_BOUNDED_INSTALLED = frozenset({
-    "/api/v2/trade-ai/candidates",
-    "/api/v2/watchpool",
-    "/api/v2/holdings/live-stops",
-    "/api/v2/communications/retention-summary",
-})
-ROUTES.update({path: handler for path, handler in _site_bounded_routes(
-    root=_site_payload_state_root, db_query=_db_query, clean=_json_clean,
-    scanner=trade_ai_scanner, evidence_packet=_evidence_packet,
-).items() if path in _SITE_BOUNDED_INSTALLED})
+_SITE_BOUNDED_INSTALLED = frozenset(
+    {
+        "/api/v2/trade-ai/candidates",
+        "/api/v2/watchpool",
+        "/api/v2/holdings/live-stops",
+        "/api/v2/communications/retention-summary",
+    }
+)
+ROUTES.update(
+    {
+        path: handler
+        for path, handler in _site_bounded_routes(
+            root=_site_payload_state_root,
+            db_query=_db_query,
+            clean=_json_clean,
+            scanner=trade_ai_scanner,
+            evidence_packet=_evidence_packet,
+        ).items()
+        if path in _SITE_BOUNDED_INSTALLED
+    }
+)
 
 _current_query = {}  # Thread-local would be better; single-threaded server is fine
 
@@ -55328,6 +55348,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 405, {"ok": False, "error": "read_only"}
         try:
             from scripts.lib.desk_sources import get_sources as _desk_sources
+
             return 200, {"ok": True, "data": _desk_sources(query)}
         except ValueError as e:
             return 400, {"ok": False, "error": str(e)}
