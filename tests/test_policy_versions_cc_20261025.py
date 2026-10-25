@@ -144,12 +144,13 @@ def test_idempotent_retry_returns_same_row(rig):
     assert post(ctx, approve_body(request_id="req_approve_2"))[1]["error"] == "ALREADY_DECIDED"
 
 
-@pytest.mark.parametrize("actor,listener", [("service-token", "serve_proxy"), ("codex", "serve_proxy"),
+@pytest.mark.parametrize("actor,listener", [("service-token", "serve_proxy"), ("codex", "serve_proxy"), ("agent-reader:claude", "serve_proxy"),
                                             (OPERATOR, "loopback"), ("tailnet:stranger@example.test", "serve_proxy")])
 def test_agents_refused(rig, actor, listener):
     ctx, state, clock = rig
     read_everything(ctx, clock, state["rows"][0])
     ctx.principal, ctx.listener = (lambda: actor), (lambda: listener)
+    ctx.can_read = lambda: True  # a read-only agent reader may read, never approve
     assert post(ctx, approve_body()) == (403, {"ok": False, "error": "AGENT_CALLER_REFUSED"})
     assert not any(r["event"] == "DECIDED" for r in ctx.ledger.rows())
 
