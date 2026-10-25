@@ -55,7 +55,8 @@ for (const width of [1440, 412, 390]) for (const state of ['attention', 'all', '
       await expect(review).toBeInViewport()
       if (state === 'attention') await jobs.getByRole('button', {name: 'Needs attention', exact: true}).tap()
     }
-    expect(apiRequests.every(p => p === '/api/v2/jobs-health')).toBeTruthy()
+    // Board 0 frame (batch 27): the page also reads its writer clocks; nothing else.
+    expect(apiRequests.every(p => p === '/api/v2/jobs-health' || p === '/api/v2/desk-sources')).toBeTruthy()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
     if (process.env.W4_SCREENSHOT_DIR) await page.screenshot({path: path.join(process.env.W4_SCREENSHOT_DIR, `impl-16-${state}-${width}.png`), fullPage: true})
   })

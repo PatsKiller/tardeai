@@ -20,6 +20,16 @@ const messages: Record<string, string> = {
   AGENT_CALLER_REFUSED: 'Only your authenticated operator session can record a decision.',
 }
 
+/** Decision/question request ids. crypto.randomUUID exists only in secure contexts; getRandomValues works everywhere
+ *  (an http:// fixture or a non-TLS tailnet hop must not turn Approve into "randomUUID is not a function"). */
+export function governanceRequestId(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  const bytes = new Uint8Array(16)
+  c?.getRandomValues(bytes)
+  return 'req-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function governanceRequest<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal })
@@ -55,7 +65,7 @@ export const KIND_LABEL: Record<string, string> = { POLICY: 'Policy', RELEASE: '
 export async function askAboutRule(question: string, section: string, text: string, documentSha: string, sourceSha: string): Promise<string | null> {
   const answer = await governanceRequest<{ thread_id?: string }>('/api/v2/cio/ask', {
     question: `${question}\n\nAttached rule: ${section}\nDocument SHA: ${documentSha}\nCommit: ${sourceSha}\n${text}`,
-    client_request_id: crypto.randomUUID(),
+    client_request_id: governanceRequestId(),
   })
   return answer.thread_id ?? null
 }

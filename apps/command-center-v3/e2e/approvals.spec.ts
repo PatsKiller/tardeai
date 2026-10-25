@@ -35,10 +35,13 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     const decisions: unknown[] = [], feedback: unknown[] = [], questions: Record<string, unknown>[] = []
     page.on('pageerror', error => errors.push(error.message))
     const tap = async (target: Locator) => {
-      await target.scrollIntoViewIfNeeded()
-      const box = await target.boundingBox()
-      expect(box).not.toBeNull(); expect(box!.height).toBeGreaterThanOrEqual(44)
-      expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1)
+      // A filter tap refetches the queue and re-renders its rows; re-resolve until the target is stable on screen.
+      await expect(async () => {
+        await target.scrollIntoViewIfNeeded()
+        const box = await target.boundingBox()
+        expect(box).not.toBeNull(); expect(box!.height).toBeGreaterThanOrEqual(44)
+        expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1)
+      }).toPass({ timeout: 10_000 })
       if (width <= 820) await target.tap(); else await target.click()
     }
     const visible = async (target: Locator) => {
@@ -64,7 +67,8 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
       if (url.pathname === '/api/v2/governance/policy' && request.method() === 'GET') return respond({ source_sha: sourceSha, document_sha: documentSha, sections: ['0 · Rules', '28 · Operations'],
         rules: [{ id: 'rule_1', section: url.searchParams.get('section') || '0 · Rules', text: 'An agent may propose a change. The operator decides.', plain: 'You make decisions; agents prepare proposals.', status: 'WRITTEN-only', reason: 'No evidence is attached to this version.', evidence: {} }],
         counts: { ENFORCED: 0, TESTED: 0, 'WRITTEN-only': 1, VIOLATED: 0 }, total_rules: 1, section_total: 1, offset: 0, positions: feedback, audit: { state: 'NOT_MEASURED', last_audit: null } })
-      const item = items.find(item => url.pathname === '/api/v2/governance/approvals/' + item.id)
+      // The reader encodes ids (policy:42 -> policy%3A42) exactly as the server receives them; the API decodes.
+      const item = items.find(item => decodeURIComponent(url.pathname) === '/api/v2/governance/approvals/' + item.id)
       if (item && request.method() === 'GET') return respond(item)
       if (request.method() === 'POST') {
         const body = request.postDataJSON()
@@ -139,7 +143,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await visible(page.getByRole('heading', { name: 'Activation review fixture', exact: true }))
     await tap(page.getByRole('link', { name: 'Back to approvals', exact: false }))
     await tap(page.getByRole('link', { name: 'Open Rulebook', exact: true }))
-    await page.getByLabel('Rulebook section').selectOption('28 · Operations')
+    await page.getByLabel('Rulebook section', { exact: true }).selectOption('28 · Operations')
     await expect(page).toHaveURL(/section=28/)
     await tap(page.getByRole('button', { name: 'Disagree → propose change', exact: true }))
     await page.getByLabel('Rule response comment').fill('Please clarify this operator-review rule.')

@@ -386,3 +386,15 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     assert row["decision_mode"] == "GOVERNED_PATH"
     assert urlparse(row["governed_href"]).path == "/watch"
     assert parse_qs(urlparse(row["governed_href"]).query)["conflict"] == [key]
+
+
+def test_encoded_item_ids_resolve_for_read_and_open(rig):
+    """Batch 27: the reader sends encodeURIComponent(id) ("policy:42" -> "policy%3A42") and the portfolio server does
+    not decode paths, so the governance API decodes the id itself; before this every real Read & decide 404'd."""
+    ctx, row, _ = rig
+    row["id"] = "policy:42"
+    status, data = api.handle(api.PREFIX + "/approvals/policy%3A42", "GET", ctx=ctx)
+    assert status == 200 and data["data"]["id"] == "policy:42"
+    status, data = api.handle(api.PREFIX + "/approvals/policy%3A42/open", "POST",
+                              {"document_sha": row["document"]["document_sha"]}, ctx=ctx)
+    assert status == 200 and data["data"]["review_id"]

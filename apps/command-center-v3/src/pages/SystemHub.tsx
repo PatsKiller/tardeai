@@ -23,6 +23,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 import { OvernightQueuePanel, DataPlausibilityPanel, PipelineFailuresPanel } from '../components/system/HiddenFailurePanels'
 import { SYSTEM_TABS as TABS, systemTab, systemTabParams, type SystemTab } from '../lib/systemTabModel'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -128,7 +129,8 @@ export default function SystemHub({ onDrill }: Props) {
     }
   }
 
-  return (
+  return <OpsDeskFrame page="system" asOf={{}}>
+
     <div className="ops-evidence-page" data-testid="system-hub" data-active-tab={tab}>
       <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setOpTick(t => t + 1)} />
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
@@ -920,5 +922,5 @@ export default function SystemHub({ onDrill }: Props) {
         </div>
       </>)}
     </div>
-  )
+  </OpsDeskFrame>
 }

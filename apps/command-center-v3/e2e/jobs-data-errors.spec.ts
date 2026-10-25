@@ -36,6 +36,8 @@ for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-he
       const url = new URL(request.url())
       methods.push(request.method())
       if (url.port === '7777') throw new Error('Live API traffic is forbidden')
+      // Board 0 frame (batch 27): /ops/jobs also reads its writer clocks.
+      if (url.pathname === '/api/v2/desk-sources') return route.fulfill({status: 200, json: {ok: true, data: {observed_at: at, writers: []}}})
       if (url.pathname === '/api/v2/jobs-health') {
         const supplied = state === 'multi' ? {...section, findings: [finding, second]}
           : state === 'null-headline' ? {...section, headline: null}
@@ -131,6 +133,7 @@ for (const width of [1440, 412, 390]) {
       const request = route.request(), url = new URL(request.url())
       expect(request.method()).toBe('GET')
       if (url.port === '7777') throw new Error('Live API traffic is forbidden')
+      if (url.pathname === '/api/v2/desk-sources') return route.fulfill({status: 200, json: {ok: true, data: {observed_at: at, writers: []}}})
       if (url.pathname === '/api/v2/jobs-health') return route.fulfill({status: 200,
         json: {...jobs, data_errors: {section: native.section, unavailable_reason: null}}})
       if (url.pathname === `/api/v3/conflicts/${encodeURIComponent(native.record.key)}`) {

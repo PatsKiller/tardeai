@@ -16,6 +16,7 @@ import {
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -206,7 +207,8 @@ export default function ReleasesSchedules() {
   const labels: Record<string, string> = { serving: 'Serving', next_release: 'Releasing next', next_window: 'Next train window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
-  return <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
+<div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
       <p style={muted}>What is queued, for when · what actually shipped · what failed. Release train and n8n in one place. Read-only; nothing here releases, stops or schedules.</p>
@@ -238,4 +240,5 @@ export default function ReleasesSchedules() {
     </nav>
     {tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
+  </OpsDeskFrame>
 }

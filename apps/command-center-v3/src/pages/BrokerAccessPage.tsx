@@ -13,6 +13,7 @@ import { FONT, RADIUS, type Tone } from '../lib/designTokens'
 import { accountName } from '../lib/accountLabels'
 import './OpsEvidencePages.css'
 import { observedTime } from '../lib/w9PageModel'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 type State = 'OK' | 'STALE' | 'DEGRADED' | 'PAUSED' | 'NEEDS_REAUTH'
 type Step = { name?: string; rc?: number | null; signals?: string[] }
@@ -116,7 +117,8 @@ export default function BrokerAccessPage() {
   useEffect(() => {
     if (window.location.hash === '#automation-controls') document.getElementById('automation-controls')?.scrollIntoView?.({ block: 'start' })
   }, [!!d]) // eslint-disable-line react-hooks/exhaustive-deps
-  return <section className="ops-evidence-page" data-testid="broker-access" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="broker" asOf={{ positions: d?.as_of, stops: d?.as_of }}>
+<section className="ops-evidence-page" data-testid="broker-access" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Broker Access & Sync</h1>
       <p style={muted}>Access mode, trading lock, Schwab login state, sync freshness per broker and stop health are read-only, from receipts, logs and token metadata; no broker is called from this page. The Automation controls section at the bottom (moved from Trading → ATM Controls) writes per-account automation policy through the admin guard.</p>
@@ -198,4 +200,5 @@ export default function BrokerAccessPage() {
       </ChipRow>
     </Panel>
   </section>
+  </OpsDeskFrame>
 }

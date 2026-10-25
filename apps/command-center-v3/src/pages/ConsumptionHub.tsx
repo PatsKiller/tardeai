@@ -10,6 +10,7 @@ import SpendPanel from '../components/SpendPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
 import { BB, RAIL } from '../lib/watchTokens'
 import './OpsEvidencePages.css'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 const GREEN = TOKENS.success, RED = TOKENS.danger, AMBER = TOKENS.warning, BLUE = TOKENS.info, MUTED = TOKENS.text[2], TEXT = TOKENS.text[0]
 
@@ -131,7 +132,8 @@ export default function ConsumptionHub() {
   const grokLane = oauth.grok
   const chatLane = oauth.chatgpt
 
-  return (
+  return <OpsDeskFrame page="llm" asOf={{}}>
+
     <div className="ops-evidence-page" data-testid="llm-consumption" style={{ maxWidth: 1100 }}>
       {([['Usage summary', overviewRead], ['Processes', processRead], ['Lane policies', registryRead], ['Activity', logRead]] as const).map(([label, read]) => {
         const reason = read.error || (read.data?.ok === false ? read.data.error || 'Read failed' : null)
@@ -381,5 +383,5 @@ export default function ConsumptionHub() {
         )}
       </div>
     </div>
-  )
+  </OpsDeskFrame>
 }

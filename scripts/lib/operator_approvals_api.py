@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from scripts.lib import operator_approvals as core
 
@@ -437,7 +437,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["positions"] = [r for r in ctx.ledger.rows() if r.get("event") == "RULE_FEEDBACK"][-100:]
                 return 200, {"ok": True, "data": data}
             if sub.startswith("/approvals/"):
-                ident = sub[len("/approvals/"):]
+                # The reader encodes ids ("policy:42" -> "policy%3A42"); the server does not decode paths.
+                ident = unquote(sub[len("/approvals/"):])
                 return 200, {"ok": True, "data": _current(ctx, ident)()}
             raise core.Refused("NOT_FOUND", 404)
         if method != "POST":
@@ -455,7 +456,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
         parts = sub.strip("/").split("/")
         if len(parts) != 3 or parts[0] != "approvals":
             raise core.Refused("NOT_FOUND", 404)
-        current = _current(ctx, parts[1])
+        current = _current(ctx, unquote(parts[1]))
         if parts[2] == "open":
             result = ctx.ledger.start(actor, current, body.get("document_sha"))
         elif parts[2] == "read":

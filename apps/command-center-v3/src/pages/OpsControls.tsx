@@ -28,6 +28,7 @@ import {
   failuresBadge, GLOSSARY, healthView, lastRunView, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
   readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -958,7 +959,8 @@ export default function OpsControlsPage() {
   ]
   const policyTone: Tone = d?.policy?.state === 'ACTIVE' ? 'success' : 'danger'
 
-  return <section className="ops-evidence-page" data-testid="ops-controls" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+  return <OpsDeskFrame page="controls" asOf={{ applier: d?.applier?.heartbeat_at }}>
+<section className="ops-evidence-page" data-testid="ops-controls" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Ops · Controls</h1>
       <p style={muted}>Change how the system runs without touching files. Every change: validate → preview (dry run) → confirm → applied with backup → audited.</p>
@@ -1009,4 +1011,5 @@ export default function OpsControlsPage() {
 
     {flow ? <FlowModal flow={flow} state={d} onClose={close} /> : null}
   </section>
+  </OpsDeskFrame>
 }

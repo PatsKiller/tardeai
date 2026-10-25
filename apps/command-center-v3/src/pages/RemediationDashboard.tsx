@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useApi } from '../hooks/useApi'
+import { RADIUS } from '../lib/designTokens'
 import { StatusBadge } from '../components/StatusBadge'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -160,7 +161,7 @@ export default function RemediationDashboard() {
           marginBottom: 14,
         }}
       >
-        <div style={{ padding: '10px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+        <div style={{ padding: '10px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text0)' }}>{stats.verified_fixes_24h ?? '—'}</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>Verified repairs in last 24h</div>
         </div>

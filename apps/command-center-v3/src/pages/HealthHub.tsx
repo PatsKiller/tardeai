@@ -13,6 +13,7 @@ import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './Maturi
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
+import OpsDeskFrame from '../components/OpsDeskFrame'
 
 interface Props { onDrill?: (ctx: DrillContext) => void; jobsHealth?: ReactNode }
 const HEALTH_TABS = ['overview', 'jobs', 'coders', 'history', 'log', 'autonomy', 'intelligence-loop', 'daily-intelligence'] as const
@@ -120,7 +121,8 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
   const findings: any[] = health?.findings || []
   const trends: any[] = health?.trends || []
 
-  return (
+  return <OpsDeskFrame page="health" asOf={{ health: health?.captured_at }}>
+
     <div data-testid="health-hub" data-active-tab={tab}>
       {/* Header */}
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
@@ -135,7 +137,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {HEALTH_TABS.map(t => (
-            <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>
+            <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={{ ...hubTab(tab === t, terminalUi), minHeight: 44 }}>
               {t === 'jobs' ? 'Jobs & health' : t === 'autonomy' ? 'Ops Command' : t === 'intelligence-loop' ? 'Intelligence loop' : t === 'daily-intelligence' ? 'Daily Intelligence' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
@@ -624,5 +626,5 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
       {tab === 'intelligence-loop' && <><AutonomyLoopPanel /><div style={{ height: 12 }} /><MemoryPanel /></>}
       {tab === 'daily-intelligence' && <DailyIntelligencePanel />}
     </div>
-  )
+  </OpsDeskFrame>
 }

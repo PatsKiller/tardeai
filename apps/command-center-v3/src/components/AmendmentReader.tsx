@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DeskPage, { DeskGap } from './DeskPage'
-import { GOVERNANCE, askAboutRule, governanceRequest, useGovernance, type ApprovalItem, type Change, type Decision } from '../lib/operatorApprovals'
+import { GOVERNANCE, askAboutRule, governanceRequest, governanceRequestId, useGovernance, type ApprovalItem, type Change, type Decision } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 
 type Mode = 'changes' | 'whole' | 'side'
@@ -90,7 +90,7 @@ export default function AmendmentReader({ id }: { id: string }) {
     setBusy(true); setError('')
     try {
       setSaved(await governanceRequest<Decision>(`${GOVERNANCE}/approvals/${encodeURIComponent(id)}/decide`, {
-        decision, review_id: review, document_sha: doc.document_sha, request_id: crypto.randomUUID(),
+        decision, review_id: review, document_sha: doc.document_sha, request_id: governanceRequestId(),
         comment: selection ? `Selected wording: ${selection}\n\n${comment}` : comment,
       }))
     } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
