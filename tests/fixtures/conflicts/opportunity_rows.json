@@ -2,8 +2,9 @@
   "provenance": {
     "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
     "sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
-    "captured_at": "2026-10-24T23:18:00+00:00",
-    "selection": "exact fields only; no synthetic GUID assigned"
+    "selection": "exact fields only; no synthetic GUID assigned",
+    "capture_time_status": "NOT_RECORDED",
+    "source_as_of": "2026-10-23T20:30:11.972482+00:00"
   },
   "items": {
     "FATN": {

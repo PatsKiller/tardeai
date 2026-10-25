@@ -110,3 +110,12 @@ def test_option_contradiction_reaches_scope_rule_without_equity_vocabulary_error
     fs = evaluate_inputs(sec(canonical={"stance": "EXIT", "as_of": AT},
         extras=[Input("options", "LONG_CALL", NOW, metadata={"instrument": "option"})]), now=NOW)
     assert [(f.kind, f.rule) for f in fs] == [("NEEDS_OPERATOR", "R10")]
+
+
+def test_numeric_units_must_match_and_rates_do_not_get_dollar_rounding_tolerance():
+    bad = numeric_inputs("cash", {"source": "W1", "value": 100, "as_of": AT, "unit": "$"},
+        [{"source": "reader", "value": 100, "as_of": AT, "unit": "%"}])
+    assert evaluate_inputs(bad, now=NOW)[0].kind == "DATA_ERROR"
+    rate = numeric_inputs("paper_win_rate", {"source": "W1", "value": 50, "as_of": AT},
+        [{"source": "reader", "value": 51, "as_of": AT}], unit="%")
+    assert evaluate_inputs(rate, now=NOW)[0].kind == "DATA_ERROR"

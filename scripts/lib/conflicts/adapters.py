@@ -119,10 +119,11 @@ def numeric_inputs(metric, canonical, readers, *, unit="$", approximate=False):
     Counts compare exactly. Approximation must be explicitly requested per metric.
     Money never has relative tolerance.
     """
-    profile = NumericFactProfile(unit=unit, abs_tolerance=0 if unit == "count" else RULEBOOK["numeric_fact"]["abs_tolerance"],
+    profile = NumericFactProfile(unit=unit, abs_tolerance=RULEBOOK["numeric_fact"]["abs_tolerance"] if unit == "$" else 0,
                                  rel_tolerance=RULEBOOK["numeric_fact"]["rel_tolerance"] if approximate else 0)
     def item(row):
-        return Input(row["source"], row.get("value"), timestamp(row.get("as_of")), subject_id=row.get("subject_id"))
+        return Input(row["source"], row.get("value"), timestamp(row.get("as_of")), subject_id=row.get("subject_id"),
+                     metadata={"unit": row.get("unit", unit)})
     return EvaluationInputs(Subject("metric", metric, metric, {"unit": unit}),
                             item(canonical) if canonical else None, [item(r) for r in readers], profile)
 
@@ -164,7 +165,9 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
             reason = "unknown claim vocabulary or unit"
         elif isinstance(bundle.profile, NumericFactProfile):
             try:
-                if isinstance(item.value, bool) or not math.isfinite(float(item.value)):
+                if item.metadata.get("unit", bundle.profile.unit) != bundle.profile.unit:
+                    reason = "different or unknown numeric unit"
+                elif isinstance(item.value, bool) or not math.isfinite(float(item.value)):
                     reason = "non-finite or non-numeric value"
             except (ValueError, TypeError, OverflowError):
                 reason = "non-numeric value"
