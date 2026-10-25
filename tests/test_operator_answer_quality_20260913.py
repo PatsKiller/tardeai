@@ -2,11 +2,11 @@
 questions of 2026-09-13 replay offline.
 
 On 2026-09-13 the operator got, in order:
-  * "Is now a good time to get back into schg"      -> the whole re-entry book
+  * "Is now a good time to get back into zqau"      -> the whole re-entry book
   * "How does the market normally perform in September ... what sectors ..."
         -> model prose claiming cash/holdings were "not available ... all empty"
-           while the CIO snapshot carried total_cash 710,933 and sector weights
-  * "What's the outlook for SpaceX ..."               -> a pending that could not close
+           while the CIO snapshot carried total_cash 439,357 and sector weights
+  * "What's the outlook for Orbitex ..."               -> a pending that could not close
 and no reply named its sources.
 
 Part 1 proves each rule of scripts/check_operator_answer_quality.py fires on an
@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_operator_answer_quality as oaq  # noqa: E402
 import replay_operator_question as rq  # noqa: E402
+from scripts.lib import company_name_index as cni  # noqa: E402
 
 # Declares to the C1 alarm gate that this file's send_telegram site is exercised.
 COVERS = ["scripts/check_operator_answer_quality.py"]
@@ -49,7 +50,7 @@ FIX = ROOT / "tests" / "fixtures" / "litmus_20260913"
 #: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
 #: which would break these equality assertions and make an offline test depend
 #: on the host.
-OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+OPERATOR_CHAT = "900000001"  # hardcode-ok: routing fixture, not a credential
 
 
 def _ago(h: float) -> str:
@@ -57,7 +58,7 @@ def _ago(h: float) -> str:
 
 
 def _schg_only(text: str) -> list[str]:
-    return ["SCHG"] if "schg" in (text or "").lower() else []
+    return ["ZQAU"] if "zqau" in (text or "").lower() else []
 
 
 def _turn(**kw) -> dict:
@@ -168,7 +169,7 @@ def test_negative_control_a_gap_bullet_beside_a_sources_footer_is_not_a_claim():
     """Found by the litmus replay: the gap bullet and the footer naming 'cash'
     fused into one 'sentence' and fired. Each line stands alone."""
     txt = (
-        "• Cash: pct=56.1 bp=710933.07\n• Gaps (DATA_UNAVAILABLE): book:topic\n"
+        "• Cash: pct=56.1 bp=439356.64\n• Gaps (DATA_UNAVAILABLE): book:topic\n"
         "Sources: CIO snapshot (cash, sector_exposure, risk, investment_policy, portfolio)\nREAD_ONLY_ADVISORY"
     )
     assert oaq.empty_claims(txt) == []
@@ -183,12 +184,12 @@ def test_book_dump_for_a_named_symbol_fires_with_the_desk_extractor(monkeypatch)
     """Uses the desk's own _extract_symbols, with a known-symbol set injected."""
     import scripts.lib.cio_operator_desk_loop as desk
 
-    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG"}))
+    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"ZQAU"}))
     f = oaq.evaluate_turns(
-        [_turn(question="Is now a good time to get back into schg", reply=_BOOK)],
+        [_turn(question="Is now a good time to get back into zqau", reply=_BOOK)],
         extract=oaq.default_symbol_extractor(),
     )
-    assert f["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["symbols"] == ["SCHG"]
+    assert f["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["symbols"] == ["ZQAU"]
 
 
 def test_negative_control_the_book_is_the_answer_when_no_symbol_is_named():
@@ -197,14 +198,14 @@ def test_negative_control_the_book_is_the_answer_when_no_symbol_is_named():
 
 
 def test_negative_control_a_symbol_card_is_not_a_book_dump():
-    card = "🎯 *SCHG — re-entry check*\nzone $34.55–$34.85\nSources: re-entry desk"
-    f = _rules([_turn(question="get back into schg", reply=card)])
+    card = "🎯 *ZQAU — re-entry check*\nzone $34.55–$34.85\nSources: re-entry desk"
+    f = _rules([_turn(question="get back into zqau", reply=card)])
     assert f["BOOK_DUMP_FOR_NAMED_SYMBOL"] == []
 
 
 def test_pending_never_closed_fires_and_closed_or_young_ones_do_not():
     rows = [
-        {"pending_id": "opr_old", "status": "open", "ts": _ago(7.7), "operator_text": "What's the outlook for SpaceX"},
+        {"pending_id": "opr_old", "status": "open", "ts": _ago(7.7), "operator_text": "What's the outlook for Orbitex"},
         {"pending_id": "opr_done", "status": "open", "ts": _ago(5)},
         {"pending_id": "opr_done", "status": "fulfilled", "fulfilled_ts": _ago(4)},
         {"pending_id": "opr_expired", "status": "open", "ts": _ago(5)},
@@ -276,7 +277,7 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
     monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     import scripts.lib.cio_operator_desk_loop as desk
 
-    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG", "WMT"}))
+    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"ZQAU", "WMT"}))
     ev = tmp_path / "cio_events.jsonl"
     ev.write_text(
         "\n".join(
@@ -291,7 +292,7 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
                 ),
                 _event(
                     "51668",
-                    "What's the outlook for SpaceX in the next 3 months",
+                    "What's the outlook for Orbitex in the next 3 months",
                     "2026-09-13T16:32:36+00:00",
                     "deferred_gap",
                     "deferred",
@@ -299,7 +300,7 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
                 ),
                 _event(
                     "51679",
-                    "Is now a good time to get back into schg",
+                    "Is now a good time to get back into zqau",
                     "2026-09-13T22:51:06+00:00",
                     "tradeai_deterministic",
                     "answered",
@@ -324,7 +325,7 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
                 "pending_id": "opr_5bc20393b457",
                 "status": "open",
                 "ts": "2026-09-13T16:32:36+00:00",
-                "operator_text": "What's the outlook for SpaceX",
+                "operator_text": "What's the outlook for Orbitex",
             }
         )
         + "\n"
@@ -356,7 +357,7 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
     }
     assert rep["findings"]["FALSE_EMPTY_CLAIM"][0]["rule"] == "store_health"
     assert rep["findings"]["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["question"].startswith(
-        "Is now a good time to get back into schg"
+        "Is now a good time to get back into zqau"
     )
 
 
@@ -435,7 +436,7 @@ def test_alarm_fires_in_operator_words_and_routes_as_an_interrupt(wired):
         _report(
             FALSE_EMPTY_CLAIM=[_FEC],
             BOOK_DUMP_FOR_NAMED_SYMBOL=[
-                {"message_id": "51679", "question": "Is now a good time to get back into schg", "symbols": ["SCHG"]}
+                {"message_id": "51679", "question": "Is now a good time to get back into zqau", "symbols": ["ZQAU"]}
             ],
         )
     )
@@ -444,7 +445,7 @@ def test_alarm_fires_in_operator_words_and_routes_as_an_interrupt(wired):
     assert body.startswith(oaq.SENTINEL), "the sentinel routes this, not the wording"
     assert "How does the market normally perform in September and normal" in body
     assert "[FALSE_EMPTY_CLAIM]" in body and "decided by snapshot_health" in body
-    assert "asked about SCHG, got the book" in body
+    assert "asked about ZQAU, got the book" in body
     assert "What will be done:" in body
 
     from telegram_alert_router import classify_alert
@@ -586,7 +587,7 @@ _Q = {q["id"]: q["text"] for q in json.loads((FIX / "questions.json").read_text(
 
 
 @pytest.fixture(scope="module")
-def replays():
+def replays(tmp_path_factory):
     from scripts.lib import cio_plan_enrichment as enrichment
 
     snap = json.loads((FIX / "snapshot.json").read_text())
@@ -604,11 +605,18 @@ def replays():
         # governed transport leaf is guarded without replacing replay/curation.
         patch.setattr(enrichment.urllib.request, "urlopen", forbidden_transport)
         patch.setenv("CIO_SUBJECT_FLASH", "1")
+        # Synthetic house-held names (never config/ipo_lockups.json): the litmus Orbitex ask resolves through them.
+        lockups = tmp_path_factory.mktemp("litmus_lockups") / "ipo_lockups.json"
+        lockups.write_text(json.dumps({"lockups": {"ZQBK": {"company": "Orbitex (Orbital Exploration Systems Corp)"}}}),
+                           encoding="utf-8")
+        patch.setenv("TRADEAI_IPO_LOCKUPS", str(lockups))
+        cni.refresh()
         results = {k: rq.replay(v, snapshot=snap, desk=desk, holdings=hold) for k, v in _Q.items()}
         assert os.environ["CIO_SUBJECT_FLASH"] == "1"
         # The product catches transport exceptions; zero attempts must therefore
         # be asserted independently instead of relying on the raised sentinel.
         assert calls == []
+    cni.refresh()
     assert enrichment.urllib.request.urlopen is original_transport
     return results
 
@@ -631,7 +639,7 @@ def test_fixtures_carry_the_live_domain_keys_and_no_secrets():
         assert key in snap["domains"], key
     assert snap["domains"]["cash_buying_power"]["data"]["total_cash"] > 0
     desk = json.loads((FIX / "desk.json").read_text())
-    assert {r["symbol"] for r in desk["rows"]} >= {"SCHG"}
+    assert {r["symbol"] for r in desk["rows"]} >= {"ZQAU"}
     assert any(all(g["pass"] for g in r["gates"]) for r in desk["rows"]), "one READY row"
     blob = "".join(p.read_text() for p in FIX.glob("*.json")).lower()
     for needle in ("password", "token", "api_key", "/home/johnclaw"):
@@ -639,19 +647,19 @@ def test_fixtures_carry_the_live_domain_keys_and_no_secrets():
 
 
 def test_litmus_schg_names_the_symbol_zone_gates_verdict_and_never_the_book(replays):
-    r = replays["schg"]
+    r = replays["zqau"]
     txt = r["reply"]
-    assert r["kind"] == "answered" and r["intent"]["symbols"] == ["SCHG"]
-    assert "SCHG" in txt
+    assert r["kind"] == "answered" and r["intent"]["symbols"] == ["ZQAU"]
+    assert "ZQAU" in txt
     assert "zone $34.55–$34.85" in txt
     assert "Gates:" in txt and "zone ✗" in txt and "not_held ✗" in txt
     assert "Verdict: *Monitor / No Action*" in txt
-    assert "READY TO REVIEW" not in txt and "NEAR ENTRY (" not in txt and "ARKQ" not in txt
+    assert "READY TO REVIEW" not in txt and "NEAR ENTRY (" not in txt and "ZQBM" not in txt
     assert r["pending_rows_written"] == 0
 
 
 def test_litmus_schg_has_a_sources_line(replays):
-    assert "Sources:" in replays["schg"]["reply"]
+    assert "Sources:" in replays["zqau"]["reply"]
 
 
 def test_litmus_seasonality_carries_house_facts_and_calls_nothing_empty(replays):
@@ -673,18 +681,18 @@ def test_litmus_seasonality_carries_house_facts_and_calls_nothing_empty(replays)
     assert oaq.empty_claims(txt) == [], "no 'not available'/'empty' claim about cash, holdings, sectors or weights"
 
 
-def test_litmus_spacex_resolves_to_spcx_and_never_promises_without_an_eta(replays):
-    """Corrected 2026-09-13: SpaceX is SPCX, which the book holds. It must resolve and
+def test_litmus_orbitex_resolves_to_spcx_and_never_promises_without_an_eta(replays):
+    """Corrected 2026-09-13: Orbitex is ZQBK, which the book holds. It must resolve and
     be answered from house data, not refused and not given an empty promise."""
-    r = replays["spacex"]
-    assert r["intent"]["symbols"] == ["SPCX"], r["intent"]
+    r = replays["orbitex"]
+    assert r["intent"]["symbols"] == ["ZQBK"], r["intent"]
     assert r["kind"] != "unanswerable", r["reply"]
     assert "I'll reply when it lands" not in r["reply"]
     if r["pending_id"]:
         assert "≈" in r["reply"], "a pending is only opened with an ETA the operator can see"
 
 
-@pytest.mark.parametrize("qid", ["schg", "seasonality", "spacex"])
+@pytest.mark.parametrize("qid", ["zqau", "seasonality", "orbitex"])
 def test_litmus_reply_provenance_fields_agent_a(replays, qid):
     prov = replays[qid]["reply_provenance"]
     if prov is None:

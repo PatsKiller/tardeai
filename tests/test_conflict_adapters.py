@@ -16,7 +16,7 @@ FIXTURES = Path(__file__).parent / "fixtures/conflicts"
 
 
 def sec(**kwargs):
-    bundle = security_inputs(**{"security_guid": "confirmed-fixture-guid", "symbol": "SPCX", "held": True,
+    bundle = security_inputs(**{"security_guid": "confirmed-fixture-guid", "symbol": "ZQBL", "held": True,
                                "canonical": {"stance": "ADD", "as_of": AT}, **kwargs})
     bundle.subject.context["concentration_policy"] = {"weight_pct": 1, "limit_pct": 12, "instrument_class": "single_stock"}
     return bundle
@@ -36,7 +36,7 @@ def test_exact_real_opportunity_rows_keep_evidence_clock_and_do_not_mint_guid():
 
 def test_watch_review_and_synthesis_keep_their_distinct_evidence_times():
     old = (NOW - timedelta(days=60)).isoformat()
-    b = sec(card={"symbol": "SPCX", "cio_review": {"verdict": "HOLD", "completed_at": old},
+    b = sec(card={"symbol": "ZQBL", "cio_review": {"verdict": "HOLD", "completed_at": old},
                   "decision": {"inputs": {"synthesis": "SELL", "synthesis_at": AT}}})
     fs = evaluate_inputs(b, now=NOW)
     assert [(f.kind, f.rule) for f in fs] == [("AGREEMENT", "R6"), ("NEEDS_OPERATOR", "U7")]
@@ -67,10 +67,10 @@ def test_w1_unknown_holdings_never_defaults_to_unheld():
 def test_w1_filled_stop_while_still_held_needs_operator_and_named_account():
     truth = {"security_guid": "guid", "canonical": {"source": "CIO record", "value": "ADD", "as_of": AT},
              "context": {"held": True}, "protection_inputs": [{"source": "stop_last_known", "value": "filled",
-             "as_of": AT, "account": "schwab_rollover_ira", "subject_id": "guid"}]}
+             "as_of": AT, "account": "ira_b", "subject_id": "guid"}]}
     fs = evaluate_inputs(security_inputs_from_truth(truth), now=NOW)
     assert [f.kind for f in fs] == ["DATA_ERROR"] and fs[0].never_auto
-    assert fs[0].sides[0]["account"] == "schwab_rollover_ira"
+    assert fs[0].sides[0]["account"] == "ira_b"
 
 
 def test_count_difference_of_one_is_not_rounding_noise():

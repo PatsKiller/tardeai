@@ -43,8 +43,8 @@ test('Open Trades: protect first, one table, PAPER badge, detail panel, stop con
   await expect(page.getByTestId('ot-freshness')).toContainText('1 stale')
 
   const protect = page.getByTestId('ot-protect-card')
-  await expect(protect.first()).toContainText('SCHD')
-  await expect(page.getByTestId('ot-row').filter({ hasText: 'SRNE' })).toHaveCount(0)
+  await expect(protect.first()).toContainText('ZQCH')
+  await expect(page.getByTestId('ot-row').filter({ hasText: 'ZQBW' })).toHaveCount(0)
 
   await page.getByTestId('ot-filter-paper').click()
   const rows = page.getByTestId('ot-row')
@@ -54,16 +54,16 @@ test('Open Trades: protect first, one table, PAPER badge, detail panel, stop con
   await expect(rows.first()).toContainText('Alpaca Paper')
   await page.getByTestId('ot-filter-all').click()
 
-  await rows.filter({ hasText: 'Schwab Roth IRA' }).getByRole('button', { name: 'Show details for V' }).click()
+  await rows.filter({ hasText: 'Schwab Roth IRA' }).getByRole('button', { name: 'Show details for ZQCE' }).click()
   const detail = page.getByTestId('ot-detail')
   await expect(detail).toContainText('Schwab Roth IRA')
-  await expect(page.getByTestId('ot-stop-history')).toContainText('Broker stop $399.82 × 130')
-  await expect(page.getByTestId('ot-stop-history')).toContainText('Covers 130 of 130.4985 shares held')
+  await expect(page.getByTestId('ot-stop-history')).toContainText('Broker stop $371.83 × 143')
+  await expect(page.getByTestId('ot-stop-history')).toContainText('Covers 143 of 143.5484 shares held')
 
   // Arm stop opens the existing decision card (Stage 2c ARM + 2FA flow) — nothing is sent by opening it.
   await page.getByTestId('ot-arm-stop').click()
   await expect(page.getByTestId('ot-stop-controls')).toBeVisible()
-  await expect(page.getByTestId('ot-stop-controls')).toContainText('Stop controls · V')
+  await expect(page.getByTestId('ot-stop-controls')).toContainText('Stop controls · ZQCE')
   expect(writes).toEqual([])
 
   await page.getByTestId('ot-snooze').click()
@@ -71,7 +71,7 @@ test('Open Trades: protect first, one table, PAPER badge, detail panel, stop con
   expect(writes).toEqual(['POST /api/v2/holdings/stop-snooze'])
 
   await page.getByRole('button', { name: /Write-offs/ }).click()
-  await expect(page.getByTestId('ot-writeoff-row')).toContainText('SRNE')
+  await expect(page.getByTestId('ot-writeoff-row')).toContainText('ZQBW')
 })
 
 test('retired tabs redirect: Broker Recon → Open Trades drawer, Entry Desk → Proposals Path A', async ({ page }) => {

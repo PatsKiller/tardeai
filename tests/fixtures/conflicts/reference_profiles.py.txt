@@ -42,7 +42,7 @@ class SecurityStanceProfile:
     supersede_days: dict = field(default_factory=lambda: {"watchlist CIO review": 14, "watchlist_final_synthesis": 3,
                                                            "agent_escalation": 2, "advisory_desk": 2,
                                                            "analyst_consensus": 30})
-    taxable_accounts: frozenset = frozenset({"schwab_taxable"})
+    taxable_accounts: frozenset = frozenset({"taxable_c"})
 
     def compare(self, a: Any, b: Any, s: Subject) -> str:
         held = bool(s.context.get("held"))

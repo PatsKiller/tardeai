@@ -17,9 +17,9 @@ function near(name: string, got: number | null, want: number, tol = 0.011) {
 function ok(name: string, cond: unknown) { if (!cond) { failed++; console.error(`FAIL ${name}`) } }
 
 const props: any[] = FIXTURE.proposals.data.proposals
-const spcx = props.find(p => p.symbol === 'SPCX' && p.shares_held === 600)
-const xlb = props.find(p => p.symbol === 'XLB')
-ok('fixture has the SPCX and XLB protective puts', spcx && xlb)
+const spcx = props.find(p => p.symbol === 'ZQBL' && p.shares_held === 1800)
+const xlb = props.find(p => p.symbol === 'ZQBM')
+ok('fixture has the ZQBL and ZQBM protective puts', spcx && xlb)
 
 // Protective put: breakeven (put alone), floor, hedged max loss, total cost — economics() outputs.
 eq('put breakeven = strike − premium (economics.put_breakeven)', breakevenPerShare('protective_put', spcx.strike, spcx.premium), spcx.put_breakeven)
@@ -29,10 +29,10 @@ eq('floor matches the served floor_value', protectivePutFloor(spcx.strike, spcx.
 eq('hedged max loss from mark (economics.hedged_max_loss_from_mark)',
   hedgedMaxLossFromMark(spcx.underlying_price, spcx.strike, spcx.premium, spcx.economics.insured_shares), spcx.economics.hedged_max_loss_from_mark)
 eq('total cost = premium × 100 × contracts (premium_total)', premiumTotal(spcx.premium, spcx.contracts), spcx.premium_total)
-eq('XLB floor on the 500 insured of 506 shares', protectivePutFloor(xlb.strike, xlb.premium, xlb.economics.insured_shares), xlb.economics.floor_value_after_premium)
+eq('ZQBM floor on the 1,500 insured of 1,518 shares', protectivePutFloor(xlb.strike, xlb.premium, xlb.economics.insured_shares), xlb.economics.floor_value_after_premium)
 
 // Cash-secured put plan match: premium/collateral, simple annualized, collateral, breakeven — rank_csp outputs.
-const spcxPlan = FIXTURE.intents.data.intents.find((i: any) => i.symbol === 'SPCX')
+const spcxPlan = FIXTURE.intents.data.intents.find((i: any) => i.symbol === 'ZQBL')
 const csp = spcxPlan.matches.plays.cash_secured_put[0]
 eq('collateral per contract = strike × 100 (rank_csp)', cspCollateral(csp.strike), csp.collateral_per_contract)
 eq('credit per contract = mid × 100 (rank_csp)', premiumTotal(csp.mid, 1), csp.credit_per_contract)
@@ -46,7 +46,7 @@ for (const r of spcxPlan.matches.plays.cash_secured_put) {
 
 // Spread %: the served bid_ask_spread_pct.
 near('spread % = 100 × (ask − bid) / chain mid (liquidity_gate)', spreadPct(spcx.bid, spcx.ask, spcx.enterprise.liquidity.mid), spcx.bid_ask_spread_pct, 0.01)
-near('XLB spread % (114%: above the 12% cap)', spreadPct(xlb.bid, xlb.ask, xlb.enterprise.liquidity.mid), xlb.enterprise.liquidity.bid_ask_spread_pct, 0.01)
+near('ZQBM spread % (114%: above the 12% cap)', spreadPct(xlb.bid, xlb.ask, xlb.enterprise.liquidity.mid), xlb.enterprise.liquidity.bid_ask_spread_pct, 0.01)
 for (const p of props) near(`spread % for ${p.symbol} matches liquidity_gate`, spreadPct(p.bid, p.ask, p.enterprise.liquidity.mid), p.enterprise.liquidity.bid_ask_spread_pct, 0.01)
 eq('crossed quote has no spread %', spreadPct(1.3, 1.2), null)
 

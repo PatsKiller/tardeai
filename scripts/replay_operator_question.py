@@ -25,7 +25,7 @@ OFFLINE MEANS
 
 USAGE
 -----
-    python scripts/replay_operator_question.py --question "Is now a good time to get back into schg"
+    python scripts/replay_operator_question.py --question "Is now a good time to get back into zqau"
     python scripts/replay_operator_question.py --question "..." \\
         --snapshot tests/fixtures/litmus_20260913/snapshot.json \\
         --desk tests/fixtures/litmus_20260913/desk.json \\

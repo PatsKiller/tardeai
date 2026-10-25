@@ -3,19 +3,21 @@
  *
  *   PLAYWRIGHT_BASE_URL=http://127.0.0.1:7777 npx playwright test e2e/operator-cards-screenshots.spec.ts --reporter=line
  *
- * Output: e2e/screenshots/operator-cards/{SYM}-collapsed.png, {SYM}-details.png
+ *   OPERATOR_CARD_SYMBOLS=AAA,BBB (required; the test skips without it)
+ *   OPERATOR_CARDS_OUT=<dir>      (default: ~/trade-ai-releases/persistent-state/data/design/operator-cards)
+ *
+ * Output: {OUT}/{SYM}-collapsed.png, {SYM}-details.png. Captures of the live site show real portfolio data, so they
+ * are written OUTSIDE the public repo (the 2026-07-21 captures were archived privately on 2026-10-25).
  * Advisory only — no orders, no 2FA.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
-import { fileURLToPath } from 'url'
+import os from 'os'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-const SYMBOLS = ['CECO', 'FATN', 'DXCM', 'MRLN', 'NUAI', 'SMCI', 'BETA', 'SWBI'] as const
-const OUT = path.join(__dirname, 'screenshots', 'operator-cards')
+const SYMBOLS = (process.env.OPERATOR_CARD_SYMBOLS || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+const OUT = process.env.OPERATOR_CARDS_OUT
+  || path.join(os.homedir(), 'trade-ai-releases', 'persistent-state', 'data', 'design', 'operator-cards')
 
 async function findCardRoot(page: Page, sym: string): Promise<Locator> {
   // Ticker is rendered large in the header; climb to a card-sized ancestor.
@@ -32,7 +34,8 @@ async function findCardRoot(page: Page, sym: string): Promise<Locator> {
 test.describe('operator decision cards — screenshots', () => {
   test.setTimeout(240_000)
 
-  test('collapsed + details for eight symbols', async ({ page }) => {
+  test('collapsed + details for the requested symbols', async ({ page }) => {
+    test.skip(SYMBOLS.length === 0, 'set OPERATOR_CARD_SYMBOLS (live captures stay out of the repo)')
     fs.mkdirSync(OUT, { recursive: true })
     page.setDefaultTimeout(30_000)
 

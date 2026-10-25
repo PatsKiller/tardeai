@@ -37,7 +37,7 @@ POLICY_NOTICE = (
 )
 GUIDS = {
     "S": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e",
-    "NOC": "0bcf1ac9-0000-5000-8000-000000000001",
+    "ZQBD": "0bcf1ac9-0000-5000-8000-000000000001",
     "XYZ": "7a7a7a7a-0000-5000-8000-000000000002",
 }
 
@@ -95,7 +95,7 @@ def cio_dir(tmp_path, monkeypatch):
 
 def test_real_s_reply_is_scrubbed_corrected_and_footed(cio_dir):
     raw = FIXTURE.read_text(encoding="utf-8")
-    res = mg.gate(raw, session_key="agent:maria:telegram:direct:8797974247", to="8797974247",  # hardcode-ok: fixture asserts Maria-chat routing
+    res = mg.gate(raw, session_key="agent:maria:telegram:direct:1000000001", to="1000000001",  # hardcode-ok: fixture asserts Maria-chat routing
                   db_query=_db({}), resolve=_resolve, cio_dir=cio_dir)
     out = res.content
     # specialist roleplay stripped, exact policy notice once
@@ -119,13 +119,13 @@ def test_real_s_reply_is_scrubbed_corrected_and_footed(cio_dir):
 
 
 def test_bullish_vs_avoid_is_held_with_notice_not_silence(cio_dir):
-    raw = "NOC looks like a BUY here — strong setup into earnings."
-    res = mg.gate(raw, db_query=_db({"NOC": "AVOID"}), resolve=_resolve, cio_dir=cio_dir)
+    raw = "ZQBD looks like a BUY here — strong setup into earnings."
+    res = mg.gate(raw, db_query=_db({"ZQBD": "AVOID"}), resolve=_resolve, cio_dir=cio_dir)
     assert res.held and res.held_reason == "cio_stance_conflict"
     assert "⛔ Held by the CIO stance gate" in res.content
     assert "strong setup" not in res.content
-    assert "[CIO Stance: NOC AVOID — held]" in res.content
-    out = mg.handle({"content": raw, "mode": "live"}, db_query=_db({"NOC": "AVOID"}),
+    assert "[CIO Stance: ZQBD AVOID — held]" in res.content
+    out = mg.handle({"content": raw, "mode": "live"}, db_query=_db({"ZQBD": "AVOID"}),
                     resolve=_resolve, cio_dir=cio_dir)
     assert out["cancel"] is False and out["content"].startswith(LEGEND)
 
@@ -137,24 +137,24 @@ def test_bullish_with_missing_cio_row_fails_closed(cio_dir):
 
 
 def test_bullish_vs_neutral_cio_is_rewritten_to_watch_and_sent(cio_dir):
-    res = mg.gate("NOC is a BUY into the print.", db_query=_db({"NOC": "RESEARCH_MORE"}),
+    res = mg.gate("ZQBD is a BUY into the print.", db_query=_db({"ZQBD": "RESEARCH_MORE"}),
                   resolve=_resolve, cio_dir=cio_dir)
     assert not res.held
     assert "BUY" not in res.content.split("\n\n")[1]
-    assert "[CIO Stance: NOC RESEARCH_MORE — Action rewritten to WATCH]" in res.content
+    assert "[CIO Stance: ZQBD RESEARCH_MORE — Action rewritten to WATCH]" in res.content
     assert res.stance[0]["outcome"] == "rewritten_to_watch"
 
 
 def test_bullish_aligned_is_stamped_and_sent(cio_dir):
-    res = mg.gate("NOC is a BUY.", db_query=_db({"NOC": "BUY"}), resolve=_resolve, cio_dir=cio_dir)
-    assert not res.held and "[CIO Stance: NOC BUY]" in res.content
+    res = mg.gate("ZQBD is a BUY.", db_query=_db({"ZQBD": "BUY"}), resolve=_resolve, cio_dir=cio_dir)
+    assert not res.held and "[CIO Stance: ZQBD BUY]" in res.content
 
 
 def test_bearish_read_is_stamped_never_held(cio_dir):
-    res = mg.gate("I'd AVOID NOC for now.", db_query=_db({"NOC": "BUY"}), resolve=_resolve,
+    res = mg.gate("I'd AVOID ZQBD for now.", db_query=_db({"ZQBD": "BUY"}), resolve=_resolve,
                   cio_dir=cio_dir)
     assert not res.held
-    assert "[CIO Stance: NOC BUY — reply reads bearish; CIO disagrees]" in res.content
+    assert "[CIO Stance: ZQBD BUY — reply reads bearish; CIO disagrees]" in res.content
 
 
 def test_hyphen_compound_is_not_a_stance(cio_dir):
@@ -196,8 +196,8 @@ def test_receipts_never_written_under_pytest_without_explicit_path(cio_dir, tmp_
     assert mg.receipts_path() is None
     target = tmp_path / "r.jsonl"
     monkeypatch.setenv("MARIA_GATE_RECEIPTS", str(target))
-    mg.handle({"content": "NOC is a BUY.", "mode": "observe", "sessionKey": "agent:maria:x"},
-              db_query=_db({"NOC": "BUY"}), resolve=_resolve, cio_dir=cio_dir)
+    mg.handle({"content": "ZQBD is a BUY.", "mode": "observe", "sessionKey": "agent:maria:x"},
+              db_query=_db({"ZQBD": "BUY"}), resolve=_resolve, cio_dir=cio_dir)
     row = json.loads(target.read_text(encoding="utf-8").splitlines()[-1])
     assert row["mode"] == "observe" and row["applied"] is False
     assert row["schema"] == mg.SCHEMA and "content" not in row

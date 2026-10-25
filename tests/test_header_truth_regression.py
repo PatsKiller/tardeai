@@ -114,7 +114,7 @@ def test_the_two_dates_are_both_published_and_separately_named(clock_aggregate: 
     # to: 2026-09-03 is when alpaca's positions were last observed, 2026-09-04
     # is when schwab's were AND when the book was valued.
     assert agg["position_observation_oldest"] == "2026-09-03"
-    assert agg["position_observation_oldest_account"] == "alpaca_taxable_live"
+    assert agg["position_observation_oldest_account"] == "taxable_a"
     assert agg["position_observation_newest"] == "2026-09-04"
     assert str(agg["valuation_time"]).startswith("2026-09-04")
     assert str(agg["quote_observation_time"]).startswith("2026-09-04")
@@ -146,12 +146,12 @@ def test_the_headline_date_cannot_be_stated_without_the_value_it_covers(
 
     # Empty accounts are named, not counted as unobserved coverage.
     assert live["accounts_contributing"] == 4
-    assert live["non_contributing_accounts"] == ["fidelity_rollover_ira", "moomoo_taxable_live"]
+    assert live["non_contributing_accounts"] == ["ira_a", "taxable_b"]
 
 
 def test_the_two_copies_of_the_position_clock_are_both_published(clock_aggregate: dict) -> None:
     """Never auto-remediate a divergent store: report both and say which governs."""
-    row = next(a for a in clock_aggregate["accounts"] if a["account"] == "schwab_rollover_ira")
+    row = next(a for a in clock_aggregate["accounts"] if a["account"] == "ira_b")
     assert row["position_observation_time"] == "2026-09-04"
     assert row["position_observation_source"] == "holdings.broker_position_as_of"
     assert row["summary_as_of"] == "2026-07-17"
@@ -165,17 +165,17 @@ def test_the_two_copies_of_the_position_clock_are_both_published(clock_aggregate
     assert "2026-07-17" in row["summary_as_of_stale"]
 
     reported = {d["account"] for d in clock_aggregate["observation_divergences"]}
-    assert "schwab_rollover_ira" not in reported
+    assert "ira_b" not in reported
 
 
 def test_the_dominant_account_reports_every_clock_separately(clock_aggregate: dict) -> None:
-    """schwab_rollover_ira is 90% of the book and every clock on it differs.
+    """ira_b is 90% of the book and every clock on it differs.
 
     v1 published `observation_time: 2026-07-17` and nothing else, so the $1.16M
     looked like a July number or a September number depending on which surface
     you read.
     """
-    row = next(a for a in clock_aggregate["accounts"] if a["account"] == "schwab_rollover_ira")
+    row = next(a for a in clock_aggregate["accounts"] if a["account"] == "ira_b")
     assert row["position_observation_time"] == "2026-09-04"  # from the live rows
     assert row["summary_as_of"] == "2026-07-17"  # the abandoned mirror
     assert row["valuation_time"] == "2026-09-04"
@@ -184,16 +184,16 @@ def test_the_dominant_account_reports_every_clock_separately(clock_aggregate: di
     assert row["position_row_count"] == 14
     # The custodian's own total and the derived total are 2x apart and must not
     # be confusable for one another.
-    assert row["reported_total_value"] == 549233.46
-    assert row["total_value"] == 1158374.79
+    assert row["reported_total_value"] == 400940.43
+    assert row["total_value"] == 845613.6
     # v1 alias preserved, and it is the POSITION clock -- never the valuation.
     assert row["observation_time"] == row["position_observation_time"]
 
 
 def test_an_empty_account_cannot_date_the_book(clock_aggregate: dict, summaries_only_aggregate: dict) -> None:
-    """fidelity_rollover_ira holds $0 and no rows, and was pinning the book STALE.
+    """ira_a holds $0 and no rows, and was pinning the book STALE.
 
-    It was merged into schwab_rollover_ira on 2026-07-16 and its stranded stamp
+    It was merged into ira_b on 2026-07-16 and its stranded stamp
     outlived it. Being the oldest is only meaningful among accounts that
     contribute something.
     """
@@ -202,10 +202,10 @@ def test_an_empty_account_cannot_date_the_book(clock_aggregate: dict, summaries_
     assert summaries_only_aggregate["freshness_state"] == "STALE"
     # fidelity is excluded from the bound by the contributor rule alone, so it
     # is no longer the named oldest even on the defective reading.
-    assert summaries_only_aggregate["position_observation_oldest_account"] != "fidelity_rollover_ira"
+    assert summaries_only_aggregate["position_observation_oldest_account"] != "ira_a"
 
     agg = clock_aggregate
-    assert agg["position_observation_oldest_account"] == "alpaca_taxable_live"
+    assert agg["position_observation_oldest_account"] == "taxable_a"
     assert agg["position_observation_oldest"] == "2026-09-03"
     assert agg["position_observation_newest"] == "2026-09-04"
     assert agg["freshness_state"] == "COMPLETE"
@@ -213,7 +213,7 @@ def test_an_empty_account_cannot_date_the_book(clock_aggregate: dict, summaries_
     assert "4 of 6" in agg["freshness_reason"]
     assert "2 hold nothing" in agg["freshness_reason"]
 
-    empty = next(a for a in agg["accounts"] if a["account"] == "fidelity_rollover_ira")
+    empty = next(a for a in agg["accounts"] if a["account"] == "ira_a")
     assert empty["contributes"] is False
     assert empty["holds_positions"] is False
     assert empty["position_row_count"] == 0
@@ -261,13 +261,13 @@ def test_undated_accounts_never_borrow_another_accounts_date(clocks: dict) -> No
         aggregate_value=clocks["aggregate_value"],
         account_summaries=clocks["account_summaries"],
         data_as_of="2026-09-03",
-        data_as_of_account="alpaca_taxable_live",
+        data_as_of_account="taxable_a",
         now=datetime.fromisoformat(clocks["now_utc"]),
     )
     by_acct = {a["account"]: a for a in agg["accounts"]}
-    assert by_acct["alpaca_taxable_live"]["position_observation_time"] == "2026-09-03"
-    assert by_acct["alpaca_taxable_live"]["position_observation_source"] == "holdings.data_as_of"
-    for acct in ("schwab_roth", "schwab_taxable", "moomoo_taxable_live"):
+    assert by_acct["taxable_a"]["position_observation_time"] == "2026-09-03"
+    assert by_acct["taxable_a"]["position_observation_source"] == "holdings.data_as_of"
+    for acct in ("roth_a", "taxable_c", "taxable_b"):
         assert by_acct[acct]["position_observation_time"] == ""
         assert by_acct[acct]["dated"] is False
 
@@ -481,19 +481,19 @@ def test_an_empty_account_is_not_a_missing_one(clocks: dict) -> None:
     out = fn(
         clocks["holdings_envelope"],
         today_by_account={
-            "schwab_taxable": {"change": -143.4},
-            "alpaca_taxable_live": {"change": 0.0},
+            "taxable_c": {"change": -104.68},
+            "taxable_a": {"change": 0.0},
         },
         account_summaries=clocks["account_summaries"],
         positions=_position_rows(clocks),
-        total_change=-143.4,
+        total_change=-104.68,
     )
-    assert out["empty_accounts"] == ["fidelity_rollover_ira", "moomoo_taxable_live"]
+    assert out["empty_accounts"] == ["ira_a", "taxable_b"]
     # A flat account is represented, not missing: a real 0 is data.
-    assert out["zero_change_accounts"] == ["alpaca_taxable_live"]
-    assert out["contributing_accounts"] == ["schwab_taxable"]
-    # schwab_roth and schwab_rollover_ira HOLD positions and did not report.
-    assert out["missing_accounts"] == ["schwab_rollover_ira", "schwab_roth"]
+    assert out["zero_change_accounts"] == ["taxable_a"]
+    assert out["contributing_accounts"] == ["taxable_c"]
+    # roth_a and ira_b HOLD positions and did not report.
+    assert out["missing_accounts"] == ["ira_b", "roth_a"]
     assert out["complete"] is False
     assert out["funded_account_count"] == 4
 
@@ -502,17 +502,17 @@ def test_a_funded_account_that_does_not_report_still_breaks_completeness(clocks:
     """Negative control: the empty/missing split must not mute a real gap."""
     fn = _today_pnl()
     every = {
-        "schwab_rollover_ira": {"change": -3255.28},
-        "schwab_roth": {"change": -335.51},
-        "schwab_taxable": {"change": -143.4},
-        "alpaca_taxable_live": {"change": 0.0},
+        "ira_b": {"change": -2376.35},
+        "roth_a": {"change": -244.92},
+        "taxable_c": {"change": -104.68},
+        "taxable_a": {"change": 0.0},
     }
     complete = fn(
         clocks["holdings_envelope"],
         today_by_account=every,
         account_summaries=clocks["account_summaries"],
         positions=_position_rows(clocks),
-        total_change=-3734.19,
+        total_change=-2725.95,
     )
     assert complete["complete"] is True
     assert complete["missing_accounts"] == []
@@ -521,11 +521,11 @@ def test_a_funded_account_that_does_not_report_still_breaks_completeness(clocks:
     # Drop one FUNDED account and completeness must fail.
     partial = fn(
         clocks["holdings_envelope"],
-        today_by_account={k: v for k, v in every.items() if k != "schwab_roth"},
+        today_by_account={k: v for k, v in every.items() if k != "roth_a"},
         account_summaries=clocks["account_summaries"],
         positions=_position_rows(clocks),
-        total_change=-3398.68,
+        total_change=-2481.03,
     )
     assert partial["complete"] is False
-    assert partial["missing_accounts"] == ["schwab_roth"]
-    assert "MISSING schwab_roth" in partial["coverage_reason"]
+    assert partial["missing_accounts"] == ["roth_a"]
+    assert "MISSING roth_a" in partial["coverage_reason"]

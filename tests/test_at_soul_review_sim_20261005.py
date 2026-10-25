@@ -5,10 +5,10 @@ its foundation … both the option for manual and automated … it would have go
 according to the volume and what was happening in the Level 2."
 
 Pins (docs/active_trader/ACTIVE_TRADER_SOUL.md):
-- the review reproduces the operator's XNDU 2026-10-05 table from real bars + journal + fills;
+- the review reproduces the operator's 2026-10-05 table (synthetic ticker ZRZX) from real bars + journal + fills;
 - one exit rule serves review and simulator; the simulator sizes to the supply near the ask;
 - there is no live mode and neither module can reach a broker, an order or a market-data provider.
-Fixture: tests/fixtures/active_trader/xndu_session_20261005.json (real data). Fakes only.
+Fixture: tests/fixtures/active_trader/xndu_session_20261005.json (frozen bars/journal/fills; synthetic ticker and account label). Fakes only.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _trips():
 
 
 def _review():
-    return sr.review_symbol("XNDU", bars=FX["bars"], journal=FX["journal"], trips=_trips(), cfg=CFG)
+    return sr.review_symbol("ZRZX", bars=FX["bars"], journal=FX["journal"], trips=_trips(), cfg=CFG)
 
 
 def _row(rv, time):
@@ -171,7 +171,7 @@ def test_run_day_persists_and_sends_only_in_send_mode(monkeypatch, _journal_dir)
     assert sent and res["auto_sim_ledger"] > 0
     body = sent[0]["title"] + "\n" + sent[0]["body"]
     assert body.startswith("ACTIVE TRADER · SCALP ALERT") and "NOT AN ORDER" in body
-    assert "XNDU: ideal" in body and "COOLDOWN" in body and len(body.splitlines()) < 15
+    assert "ZRZX: ideal" in body and "COOLDOWN" in body and len(body.splitlines()) < 15
 
 
 def test_session_review_route_is_a_pure_read(monkeypatch, _journal_dir):

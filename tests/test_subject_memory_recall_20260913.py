@@ -55,7 +55,7 @@ PRICE = {"V": {"close": 372.10, "price_date": "2026-09-15", "change_30d_pct": 2.
 #: deliberately NOT used -- it reads TELEGRAM_CHAT_ID from the environment and
 #: returns a LIST, which would break the equality assertions and make a
 #: deliberately offline test depend on the host.
-OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+OPERATOR_CHAT = "900000001"  # hardcode-ok: routing fixture, not a credential
 
 
 @pytest.fixture(autouse=True)

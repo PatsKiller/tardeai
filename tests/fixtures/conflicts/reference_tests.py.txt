@@ -34,7 +34,7 @@ def test_action_depends_on_holding():
 
 
 # ── the 15 live flags → what the engine says ──────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("sym", ["FATN", "ANET", "SMCI"])
+@pytest.mark.parametrize("sym", ["ZRAX", "ZQBU", "ZRBX"])
 def test_live_trade_ai_fail_is_a_gate_not_a_conflict(sym):
     fs = sec("RE_ENTER", Input("trade_ai", "DETERMINISTIC_FAIL", ago(0), role="gate", detail="Trade AI checks"))
     assert k(fs) == [("GATE", "U6")] and "passes on its next run" in fs[0].clears_when
@@ -47,20 +47,20 @@ def test_live_dxcm_desk_near_entry_vs_cio_watch_is_a_real_conflict_gate_irreleva
 
 
 @pytest.mark.parametrize("cio,age", [("RE_ENTER", 79), ("ADD", 52)])
-def test_live_old_hold_reviews_on_unheld_names_are_superseded(cio, age):     # QCOM 79d, BAH/LDOS 52d
+def test_live_old_hold_reviews_on_unheld_names_are_superseded(cio, age):     # ZQAE 79d, ZQBF/ZQAS 52d
     fs = sec(cio, Input("watchlist CIO review", "HOLD", ago(age)))
     assert k(fs) == [("SUPERSEDED", "U4")] and fs[0].action == "queue_refresh" and headline(fs) is None
 
 
 def test_live_spcx_held_add_vs_old_hold_agrees_and_the_stop_goes_to_operator():
     fs = sec("ADD", Input("watchlist CIO review", "HOLD", ago(52)),
-             Input("broker_stop", "AWAITING_FILL", ago(1), role="protection", account="schwab_rollover_ira"), held=True)
+             Input("broker_stop", "AWAITING_FILL", ago(1), role="protection", account="ira_b"), held=True)
     assert k(fs) == [("AGREEMENT", "U5"), ("NEEDS_OPERATOR", "U0")]
     assert headline(fs).startswith("Stop likely filled")
 
 
 @pytest.mark.parametrize("syn,age", [("AVOID", 4), ("AVOID", 10), ("AVOID", 12), ("SELL", 12)])
-def test_live_watch_vs_avoid_or_sell_on_unheld_names_agree(syn, age):        # AXTI AXON PSQ GEV MDLN ISRG
+def test_live_watch_vs_avoid_or_sell_on_unheld_names_agree(syn, age):        # ZRCX ZRDX ZREX ZRFX ZRGX ZRHX
     fs = sec("WATCH", Input("watchlist_final_synthesis", syn, ago(age)))
     assert k(fs) == [("AGREEMENT", "U5")] and headline(fs) is None
 
@@ -85,7 +85,7 @@ def test_u3_stale_canonical_loses_to_newer_input():
 
 
 def test_u0_policy_breach_with_add_needs_operator_without_add_is_a_gate():
-    p = Input("policy", "BREACH", ago(0), role="policy", detail="SPCX 22.6% > 12% max")
+    p = Input("policy", "BREACH", ago(0), role="policy", detail="ZQBL 22.6% > 12% max")
     assert k(sec("ADD", p, held=True)) == [("NEEDS_OPERATOR", "U0")]
     assert k(sec("HOLD", p, held=True)) == [("GATE", "U0")]
 
@@ -96,8 +96,8 @@ def test_u0_kill_switch_never_automatic():
 
 
 def test_wash_sale_counts_only_in_taxable():
-    ira = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="schwab_rollover_ira")
-    tax = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="schwab_taxable")
+    ira = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="ira_b")
+    tax = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="taxable_c")
     assert sec("RE_ENTER", ira) == [] and k(sec("RE_ENTER", tax)) == [("GATE", "U6")]
 
 

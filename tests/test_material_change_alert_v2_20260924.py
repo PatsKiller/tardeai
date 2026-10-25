@@ -187,7 +187,7 @@ GOLDEN_DIGEST = f"""📋 Material change — daily digest · Thu 24 Sep · 16:15
 ⛔ PLAN INVALIDATED (watchlist, not held) — re-plan or drop (3)
 • ROL $30.24 · -4.2% (3.1× its normal daily move) · through stop $31.57 · no CIO stance · ▶ re-plan or drop
 • RCL $233.72 · -5.0% (3.0× its normal daily move) · through stop $238.08 · CIO hold off (price is at or below the plan stop) · ▶ re-plan or drop
-• EXPE $258.13 · -7.0% (3.0× its normal daily move) · through stop $260.84 · CIO hold off (price is at or below the plan stop) · ▶ re-plan or drop
+• EXPE $257.93 · -7.0% (3.0× its normal daily move) · through stop $260.84 · CIO hold off (price is at or below the plan stop) · ▶ re-plan or drop
 
 🔕 Not shown — 2 names with no live price or no plan: LTRN, KLXE → Command Center
 Details → Command Center {CC}/v3/watch/intelligence · Advisory only."""

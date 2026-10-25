@@ -27,7 +27,7 @@
    },
    "validation_fresh_minutes": 15,
    "whitelist": {
-    "covered_call": "held symbols only, \u2265100 sh",
+    "covered_call": "held symbols only, \u226580 sh",
     "inverse_etf": [
      "SH",
      "PSQ",
@@ -43,142 +43,142 @@
    {
     "actor": "engine",
     "at": "2026-07-24 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-24 10:10:01",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-24 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 17:50:01",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 17:50:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 17:50:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 10:10:01",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-23 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 17:50:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 17:50:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 17:50:01",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 10:10:01",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-22 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-21 17:50:02",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-21 17:50:02",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-21 17:50:02",
-    "detail": "BND move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQAG move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-BND"
+    "intent_key": "mute-ZQAG"
    },
    {
     "actor": "engine",
     "at": "2026-07-21 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    },
    {
     "actor": "engine",
     "at": "2026-07-21 10:10:01",
-    "detail": "SPCX move_out suppressed (operator mute 2026-07-18)",
+    "detail": "ZQBL move_out suppressed (operator mute 2026-07-18)",
     "hop": "advisory_suppressed",
-    "intent_key": "mute-SPCX"
+    "intent_key": "mute-ZQBL"
    }
   ],
   "hedging_radar": {
@@ -191,31 +191,31 @@
      "XLF",
      "XLV",
      "XLE",
-     "XLI",
+     "ZQBT",
      "XLY",
      "XLP",
      "XLU",
-     "XLB",
+     "ZQBM",
      "XLRE",
      "XLC",
-     "SCHD",
-     "JEPI",
-     "V",
-     "ANET",
-     "ARKX",
-     "BND",
-     "XAR",
-     "DXCM",
-     "SPCX",
-     "CSCO",
-     "QCOM",
-     "DIV",
-     "BAH",
-     "LDOS"
+     "ZQCH",
+     "ZQAK",
+     "ZQCE",
+     "ZQBU",
+     "ZQAQ",
+     "ZQAG",
+     "ZQAD",
+     "ZQCD",
+     "ZQBL",
+     "ZQBX",
+     "ZQAE",
+     "ZQAH",
+     "ZQBF",
+     "ZQAS"
     ],
     "failed": [
-     "DIVI",
-     "AMANX"
+     "ZQAM",
+     "ZQCG"
     ],
     "note": "REDACTED"
    },
@@ -227,7 +227,7 @@
      "call_oi": 115675,
      "call_vol": 441,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-08-04 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-08-04 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 6.4,
       "bid": 5.3,
@@ -248,7 +248,7 @@
       "volume": 1
      },
      "cc_verdict": null,
-     "line": "ANET: put OI +22% vs prior snapshot \u00b7 skew -2.2 \u00b7 P/C OI 0.656 \u2014 hedging demand building",
+     "line": "ZQBU: put OI +22% vs prior snapshot \u00b7 skew -2.2 \u00b7 P/C OI 0.656 \u2014 hedging demand building",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.656,
      "pc_vol_ratio": 0.717,
@@ -273,7 +273,7 @@
      "put_vol": 316,
      "skew25": -3.13,
      "skew25_delta": -2.17,
-     "symbol": "ANET",
+     "symbol": "ZQBU",
      "underlying_price": 173.58
     },
     {
@@ -281,7 +281,7 @@
      "call_oi": 8147,
      "call_vol": 156,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-08-04 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-08-04 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 2.55,
       "bid": 1.95,
@@ -302,7 +302,7 @@
       "volume": 33
      },
      "cc_verdict": null,
-     "line": "LDOS: put OI +10% vs prior snapshot \u00b7 skew +2.4 \u00b7 P/C OI 0.522 \u2014 hedging demand building",
+     "line": "ZQAS: put OI +10% vs prior snapshot \u00b7 skew +2.4 \u00b7 P/C OI 0.522 \u2014 hedging demand building",
      "pc_mean_n": 2,
      "pc_oi_ratio": 0.522,
      "pc_vol_ratio": 0.038,
@@ -327,7 +327,7 @@
      "put_vol": 6,
      "skew25": 2.89,
      "skew25_delta": 2.44,
-     "symbol": "LDOS",
+     "symbol": "ZQAS",
      "underlying_price": 114.32
     },
     {
@@ -385,7 +385,7 @@
      "call_oi": 220310,
      "call_vol": 2142,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-07-29 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-07-29 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 5.45,
       "bid": 5.0,
@@ -406,7 +406,7 @@
       "volume": 92
      },
      "cc_verdict": null,
-     "line": "QCOM: put OI +8% vs prior snapshot \u00b7 skew -2.2 \u00b7 P/C OI 1.478 \u2014 hedging demand building",
+     "line": "ZQAE: put OI +8% vs prior snapshot \u00b7 skew -2.2 \u00b7 P/C OI 1.478 \u2014 hedging demand building",
      "pc_mean_n": 6,
      "pc_oi_ratio": 1.478,
      "pc_vol_ratio": 0.848,
@@ -431,7 +431,7 @@
      "put_vol": 1816,
      "skew25": -9.69,
      "skew25_delta": -2.22,
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "underlying_price": 167.11
     },
     {
@@ -445,7 +445,7 @@
       "reason_code": "NO_CONTRACT_MEETS_RAILS",
       "state": "NO_ELIGIBLE_COVERED_CALL"
      },
-     "line": "SPCX: put OI +5% vs prior snapshot \u00b7 skew -1.8 \u00b7 P/C OI 4.621 \u2014 hedging demand building",
+     "line": "ZQBL: put OI +5% vs prior snapshot \u00b7 skew -1.8 \u00b7 P/C OI 4.621 \u2014 hedging demand building",
      "pc_mean_n": 6,
      "pc_oi_ratio": 4.621,
      "pc_vol_ratio": 1.577,
@@ -470,7 +470,7 @@
      "put_vol": 46224,
      "skew25": -27.31,
      "skew25_delta": -1.78,
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "underlying_price": 114.27
     },
     {
@@ -545,7 +545,7 @@
       "volume": 123
      },
      "cc_verdict": null,
-     "line": "JEPI: put OI +4% vs prior snapshot \u00b7 skew -2.7 \u00b7 P/C OI 0.603 \u2014 no unusual hedging read",
+     "line": "ZQAK: put OI +4% vs prior snapshot \u00b7 skew -2.7 \u00b7 P/C OI 0.603 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.603,
      "pc_vol_ratio": 0.019,
@@ -570,7 +570,7 @@
      "put_vol": 4,
      "skew25": -4.79,
      "skew25_delta": -2.74,
-     "symbol": "JEPI",
+     "symbol": "ZQAK",
      "underlying_price": 56.66
     },
     {
@@ -595,7 +595,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "XLB: put OI +3% vs prior snapshot \u00b7 skew -6.3 \u00b7 P/C OI 0.53 \u2014 no unusual hedging read",
+     "line": "ZQBM: put OI +3% vs prior snapshot \u00b7 skew -6.3 \u00b7 P/C OI 0.53 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.53,
      "pc_vol_ratio": 1.0,
@@ -620,7 +620,7 @@
      "put_vol": 22,
      "skew25": -0.57,
      "skew25_delta": -6.31,
-     "symbol": "XLB",
+     "symbol": "ZQBM",
      "underlying_price": 50.47
     },
     {
@@ -678,7 +678,7 @@
      "call_oi": 9373,
      "call_vol": 889,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-07-24 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-07-24 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 2.25,
       "bid": 1.5,
@@ -699,7 +699,7 @@
       "volume": 542
      },
      "cc_verdict": null,
-     "line": "BAH: put OI +3% vs prior snapshot \u00b7 skew +4.5 \u00b7 P/C OI 0.953 \u2014 hedging demand building",
+     "line": "ZQBF: put OI +3% vs prior snapshot \u00b7 skew +4.5 \u00b7 P/C OI 0.953 \u2014 hedging demand building",
      "pc_mean_n": 2,
      "pc_oi_ratio": 0.953,
      "pc_vol_ratio": 0.117,
@@ -724,7 +724,7 @@
      "put_vol": 104,
      "skew25": 2.98,
      "skew25_delta": 4.52,
-     "symbol": "BAH",
+     "symbol": "ZQBF",
      "underlying_price": 75.17
     },
     {
@@ -732,7 +732,7 @@
      "call_oi": 330245,
      "call_vol": 1203,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-08-12 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-08-12 fall before expiry 2026-08-21. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 3.85,
       "bid": 3.55,
@@ -753,7 +753,7 @@
       "volume": 3
      },
      "cc_verdict": null,
-     "line": "CSCO: put OI +2% vs prior snapshot \u00b7 skew -1.7 \u00b7 P/C OI 0.493 \u2014 no unusual hedging read",
+     "line": "ZQBX: put OI +2% vs prior snapshot \u00b7 skew -1.7 \u00b7 P/C OI 0.493 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.493,
      "pc_vol_ratio": 0.388,
@@ -778,7 +778,7 @@
      "put_vol": 467,
      "skew25": 0.23,
      "skew25_delta": -1.67,
-     "symbol": "CSCO",
+     "symbol": "ZQBX",
      "underlying_price": 112.77
     },
     {
@@ -853,7 +853,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "SCHD: put OI +1% vs prior snapshot \u00b7 skew +2.4 \u00b7 P/C OI 0.644 \u2014 hedging demand building",
+     "line": "ZQCH: put OI +1% vs prior snapshot \u00b7 skew +2.4 \u00b7 P/C OI 0.644 \u2014 hedging demand building",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.644,
      "pc_vol_ratio": 0.463,
@@ -878,7 +878,7 @@
      "put_vol": 279,
      "skew25": -6.05,
      "skew25_delta": 2.37,
-     "symbol": "SCHD",
+     "symbol": "ZQCH",
      "underlying_price": 33.05
     },
     {
@@ -903,7 +903,7 @@
       "volume": 26
      },
      "cc_verdict": null,
-     "line": "BND: put OI +1% vs prior snapshot \u00b7 skew -4.9 \u00b7 P/C OI 0.509 \u2014 no unusual hedging read",
+     "line": "ZQAG: put OI +1% vs prior snapshot \u00b7 skew -4.9 \u00b7 P/C OI 0.509 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.509,
      "pc_vol_ratio": 0.0,
@@ -928,7 +928,7 @@
      "put_vol": 0,
      "skew25": -1.55,
      "skew25_delta": -4.87,
-     "symbol": "BND",
+     "symbol": "ZQAG",
      "underlying_price": 72.35
     },
     {
@@ -953,7 +953,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "XAR: put OI +1% vs prior snapshot \u00b7 skew -1.0 \u00b7 P/C OI 0.217 \u2014 no unusual hedging read",
+     "line": "ZQAD: put OI +1% vs prior snapshot \u00b7 skew -1.0 \u00b7 P/C OI 0.217 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.217,
      "pc_vol_ratio": 0.0,
@@ -978,7 +978,7 @@
      "put_vol": 0,
      "skew25": -1.25,
      "skew25_delta": -0.97,
-     "symbol": "XAR",
+     "symbol": "ZQAD",
      "underlying_price": 270.85
     },
     {
@@ -1103,7 +1103,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "ARKX: put OI +0% vs prior snapshot \u00b7 skew -0.7 \u00b7 P/C OI 0.424 \u2014 no unusual hedging read",
+     "line": "ZQAQ: put OI +0% vs prior snapshot \u00b7 skew -0.7 \u00b7 P/C OI 0.424 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.424,
      "pc_vol_ratio": 1.067,
@@ -1128,7 +1128,7 @@
      "put_vol": 16,
      "skew25": -0.42,
      "skew25_delta": -0.68,
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "underlying_price": 30.57
     },
     {
@@ -1136,7 +1136,7 @@
      "call_oi": 163230,
      "call_vol": 893,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-07-28 fall before expiry 2026-08-28. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-07-28 fall before expiry 2026-08-28. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 6.05,
       "bid": 4.3,
@@ -1157,7 +1157,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "V: put OI +0% vs prior snapshot \u00b7 skew -0.7 \u00b7 P/C OI 0.65 \u2014 no unusual hedging read",
+     "line": "ZQCE: put OI +0% vs prior snapshot \u00b7 skew -0.7 \u00b7 P/C OI 0.65 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.65,
      "pc_vol_ratio": 0.601,
@@ -1182,7 +1182,7 @@
      "put_vol": 537,
      "skew25": -2.03,
      "skew25_delta": -0.67,
-     "symbol": "V",
+     "symbol": "ZQCE",
      "underlying_price": 352.92
     },
     {
@@ -1240,7 +1240,7 @@
      "call_oi": 32689,
      "call_vol": 54,
      "cc_call": {
-      "ack_prompt": "CSCO-style event risk: earnings 2026-07-30 fall before expiry 2026-08-14. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
+      "ack_prompt": "ZQBX-style event risk: earnings 2026-07-30 fall before expiry 2026-08-14. Assignment risk and an IV crush both sit inside this contract. Confirm you intend to sell premium through the report.",
       "actionable": true,
       "ask": 3.0,
       "bid": 0.35,
@@ -1261,7 +1261,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "DXCM: put OI -0% vs prior snapshot \u00b7 skew -9.6 \u00b7 P/C OI 1.212 \u2014 no unusual hedging read",
+     "line": "ZQCD: put OI -0% vs prior snapshot \u00b7 skew -9.6 \u00b7 P/C OI 1.212 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 1.212,
      "pc_vol_ratio": 1.204,
@@ -1286,7 +1286,7 @@
      "put_vol": 65,
      "skew25": 0.64,
      "skew25_delta": -9.63,
-     "symbol": "DXCM",
+     "symbol": "ZQCD",
      "underlying_price": 69.82
     },
     {
@@ -1400,7 +1400,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "XLI: put OI -6% vs prior snapshot \u00b7 skew +0.3 \u00b7 P/C OI 0.859 \u2014 no unusual hedging read",
+     "line": "ZQBT: put OI -6% vs prior snapshot \u00b7 skew +0.3 \u00b7 P/C OI 0.859 \u2014 no unusual hedging read",
      "pc_mean_n": 6,
      "pc_oi_ratio": 0.859,
      "pc_vol_ratio": 2.947,
@@ -1425,7 +1425,7 @@
      "put_vol": 716,
      "skew25": -0.03,
      "skew25_delta": 0.26,
-     "symbol": "XLI",
+     "symbol": "ZQBT",
      "underlying_price": 182.73
     },
     {
@@ -1550,7 +1550,7 @@
       "volume": 0
      },
      "cc_verdict": null,
-     "line": "DIV: put OI -100% vs prior snapshot \u00b7 skew -1.7 \u00b7 P/C OI 0.0 \u2014 no unusual hedging read",
+     "line": "ZQAH: put OI -100% vs prior snapshot \u00b7 skew -1.7 \u00b7 P/C OI 0.0 \u2014 no unusual hedging read",
      "pc_mean_n": 3,
      "pc_oi_ratio": 0.0,
      "pc_vol_ratio": null,
@@ -1575,7 +1575,7 @@
      "put_vol": 0,
      "skew25": -41.89,
      "skew25_delta": -1.74,
-     "symbol": "DIV",
+     "symbol": "ZQAH",
      "underlying_price": 19.93
     }
    ]
@@ -1592,7 +1592,7 @@
     "limit_high": 26.85,
     "limit_low": 26.5,
     "linked_intent": null,
-    "qty": 100,
+    "qty": 80,
     "refusal": null,
     "sequence_gate": null,
     "side": "buy",
@@ -1615,8 +1615,8 @@
       ],
       "coverage": "31/31 cards",
       "incoherences": [
-       "SPCX is 'not decomposed' yet a covered-call advisory is still proposed.",
-       "DXCM is held despite weakening evidence, yet also targeted for both puts and calls.",
+       "ZQBL is 'not decomposed' yet a covered-call advisory is still proposed.",
+       "ZQCD is held despite weakening evidence, yet also targeted for both puts and calls.",
        "PSQ rationale cites tech-led deterioration but also leans on Industrials exposure, muddying hedge logic."
       ],
       "strongest_objection": "The desk is treating a mixed, late-cycle tape as justification for a broad menu of hedges, calls, shorts, and inverse exposure. That risks death-by-overlays: paying option decay, capping rebounds, and adding whipsaw exposure when simpler trims-to-cash already satisfy the defensive mandate more cleanly.",
@@ -1629,25 +1629,25 @@
      "status": "ok",
      "verdicts": [
       {
-       "id": "pput-XLI-ACCOUNT_B-2026-07-24",
+       "id": "pput-ZQBT-ACCOUNT_B-2026-07-24",
        "missed_risk": "Put cost bleed and over-hedging if Industrials stabilize.",
        "reason": "Constitution-allowed IRA hedge on a lagging sector, but no premium/tenor guardrails shown. Protective puts help, yet cost discipline matters in a mixed tape, not a confirmed breakdown.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "moveout-ARKX-ACCOUNT_B-2026-07-24",
+       "id": "moveout-ZQAQ-ACCOUNT_B-2026-07-24",
        "missed_risk": "Basis unknown; re-entry timing may lag a sharp reversal.",
-       "reason": "Core trim respects never-full-exit and 50% stays within the 60% cap. ARKX is concentrated, lagging, and ladder-fired; reducing exposure fits a defensive retirement mandate.",
+       "reason": "Core trim respects never-full-exit and 50% stays within the 60% cap. ZQAQ is concentrated, lagging, and ladder-fired; reducing exposure fits a defensive retirement mandate.",
        "verdict": "CONCUR"
       },
       {
-       "id": "pput-XLB-ACCOUNT_B-2026-07-24",
+       "id": "pput-ZQBM-ACCOUNT_B-2026-07-24",
        "missed_risk": "Breadth may improve before put cost pays off.",
        "reason": "Allowed hedge on a fully lagging sector, but materials breadth at 61% weakens the urgency versus pure breakdown conditions. Hedge may be sensible, yet needs pricing discipline.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "pput-DXCM-ACCOUNT_B-2026-07-24",
+       "id": "pput-ZQCD-ACCOUNT_B-2026-07-24",
        "missed_risk": "Single-name gap risk exists, but blanket hedging may be inefficient.",
        "reason": "Healthcare is weakening, not lagging, and RS20 is still positive. A full protective put overlay on a smaller non-core position looks expensive relative to the evidence.",
        "verdict": "OBJECT"
@@ -1673,7 +1673,7 @@
       {
        "id": "short-LI-2026-07-24",
        "missed_risk": "China/EV headline squeezes can outrun a tight stop.",
-       "reason": "Fits taxable-short constitution: price above $10,000 short float below 10%, stop within 10%, position cap explicit, held-symbol prohibition not contradicted by provided facts.",
+       "reason": "Fits taxable-short constitution: price above $8,000 short float below 10%, stop within 10%, position cap explicit, held-symbol prohibition not contradicted by provided facts.",
        "verdict": "CONCUR"
       },
       {
@@ -1689,115 +1689,115 @@
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-XLI-ACCOUNT_B-2026-07-24",
+       "id": "cc-ZQBT-ACCOUNT_B-2026-07-24",
        "missed_risk": "Assignment risk can impair recovery participation.",
        "reason": "Covered calls are whitelisted, but on a retirement core-adjacent industrial ETF in a mixed tape they can monetize weakness while sacrificing rebound upside. Fine only with disciplined strike selection.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-XLB-ACCOUNT_B-2026-07-24",
+       "id": "cc-ZQBM-ACCOUNT_B-2026-07-24",
        "missed_risk": "Upside forfeiture if cyclicals mean-revert.",
        "reason": "Allowed and logical on a lagging sector, but materials breadth is not collapsed. Income may be purchased by capping upside just as a rebound starts.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-DXCM-ACCOUNT_B-2026-07-24",
+       "id": "cc-ZQCD-ACCOUNT_B-2026-07-24",
        "missed_risk": "Single-name upside gap after weak period.",
-       "reason": "DXCM is not clearly broken; healthcare RS20 remains positive. Selling calls on a smaller non-core growth name risks capping recovery more than it improves defense.",
+       "reason": "ZQCD is not clearly broken; healthcare RS20 remains positive. Selling calls on a smaller non-core growth name risks capping recovery more than it improves defense.",
        "verdict": "OBJECT"
       },
       {
-       "id": "cc-SPCX-ACCOUNT_B-2026-07-24",
+       "id": "cc-ZQBL-ACCOUNT_B-2026-07-24",
        "missed_risk": "Unknown holdings could be near inflection or event risk.",
        "reason": "The desk admits no reliable current decomposition, so writing calls anyway is internally inconsistent. If you cannot judge the holding, you should not cap its upside.",
        "verdict": "OBJECT"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_B",
+       "id": "stance-ZQCH-ACCOUNT_B",
        "missed_risk": "Defensive crowding can make alternatives unattractive.",
-       "reason": "Trim-watch is acceptable, but SCHD remains income/core-aligned and its largest sector is leading Financials. Watch fits; aggressive trimming would overreact to mixed tape.",
+       "reason": "Trim-watch is acceptable, but ZQCH remains income/core-aligned and its largest sector is leading Financials. Watch fits; aggressive trimming would overreact to mixed tape.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-JEPI-ACCOUNT_B",
+       "id": "stance-ZQAK-ACCOUNT_B",
        "missed_risk": "Option-income funds can lag sharply in rebounds.",
-       "reason": "Trim-watch is the right posture. JEPI is defensive-income oriented, yet a large share sits in weakening/lagging sectors; watchfulness is warranted without immediate aggression.",
+       "reason": "Trim-watch is the right posture. ZQAK is defensive-income oriented, yet a large share sits in weakening/lagging sectors; watchfulness is warranted without immediate aggression.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_B",
+       "id": "stance-ZQCE-ACCOUNT_B",
        "missed_risk": "Payment-volume sensitivity if macro deteriorates quickly.",
        "reason": "Leading sector, above 50DMA, core position. HOLD is the right defensive-desk posture here.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_D",
+       "id": "stance-ZQCE-ACCOUNT_D",
        "missed_risk": "Roth concentration not shown; account-level sizing unknown.",
        "reason": "Same logic as rollover: leading sector and technical support argue for HOLD, especially inside a tax-advantaged core account.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DIVI-ACCOUNT_B",
+       "id": "stance-ZQAM-ACCOUNT_B",
        "missed_risk": "FX and non-US sector weakness may be hidden.",
        "reason": "Refusing to guess is correct, but HOLD on an undecomposed international fund is weaker than neutral-watch. Lack of decomposition should reduce conviction, not imply comfort.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-XLI-ACCOUNT_B",
+       "id": "stance-ZQBT-ACCOUNT_B",
        "missed_risk": "Sector breadth could recover before trim triggers.",
        "reason": "Trim-watch fits. Industrials are lagging, but this is core and constitution forbids full exit. Watch posture is appropriately defensive without forcing action.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-ANET-ACCOUNT_B",
+       "id": "stance-ZQBU-ACCOUNT_B",
        "missed_risk": "High-beta tech can reverse despite sector improvement.",
        "reason": "Technology is improving, so HOLD is defensible, but growth-vs-value is lagging hard. For a retirement desk, this deserves at least a tighter watch rather than complacent hold.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-ARKX-ACCOUNT_B",
+       "id": "stance-ZQAQ-ACCOUNT_B",
        "missed_risk": "Theme funds can snap back sharply after capitulation.",
        "reason": "Trim is the right posture. Concentration, lagging industrial exposure, and fired ladder escalation support a defensive core reduction without violating the never-full-exit rule.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-BND-ACCOUNT_B",
+       "id": "stance-ZQAG-ACCOUNT_B",
        "missed_risk": "Duration risk if yields back up further.",
        "reason": "HOLD is sensible. It is fixed income, outside equity-sector mapping, and trims are muted by operator directive. No evidence here argues for changing that stance.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XAR-ACCOUNT_B",
+       "id": "stance-ZQAD-ACCOUNT_B",
        "missed_risk": "Defense/aerospace headlines can trump sector weakness.",
        "reason": "Trim is appropriate. Pure industrials exposure in a lagging sector with ladder evidence justifies defense, especially for retirement capital.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XLB-ACCOUNT_B",
+       "id": "stance-ZQBM-ACCOUNT_B",
        "missed_risk": "Commodity rebound could change the state quickly.",
        "reason": "Trim-watch is right. Materials are lagging, but breadth is not disastrous enough to demand immediate trim from the provided facts.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DXCM-ACCOUNT_B",
+       "id": "stance-ZQCD-ACCOUNT_B",
        "missed_risk": "Single-name healthcare can break faster than sector averages.",
        "reason": "HOLD is acceptable, but evidence already says weakening sector and below 50DMA. A watch posture would better match the facts than plain hold.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-SPCX-ACCOUNT_B",
+       "id": "stance-ZQBL-ACCOUNT_B",
        "missed_risk": "Opaque exposure can hide concentrated cyclicals or growth risk.",
        "reason": "Not guessing is good, but undecomposed should likely mean watchlist ambiguity, not affirmative HOLD. Muting trims does not create conviction.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_F",
+       "id": "stance-ZQCH-ACCOUNT_F",
        "missed_risk": "Tax friction may outweigh modest risk reduction.",
        "reason": "Trim-watch is fair, but taxable adds basis and wash-sale complexity. The stance is right only if tax drag does not overwhelm the defensive benefit.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-CSCO-ACCOUNT_B",
+       "id": "stance-ZQBX-ACCOUNT_B",
        "missed_risk": "Value-tech can lag even if sector broadens.",
        "reason": "Technology improving supports HOLD, but being 4.38% below 50DMA means the name is not clean. Watchful hold is more accurate than plain hold.",
        "verdict": "QUALIFY"
@@ -1809,7 +1809,7 @@
        "verdict": "QUALIFY"
       },
       {
-       "id": "pair-ARKX-ACCOUNT_B-2026-07-24",
+       "id": "pair-ZQAQ-ACCOUNT_B-2026-07-24",
        "missed_risk": "Cash can underperform if risk-on returns abruptly.",
        "reason": "Selling half and parking proceeds in cash is constitutionally clean and fits the stated defensive lean. Cash is appropriate when no destination clearly qualifies.",
        "verdict": "CONCUR"
@@ -1827,19 +1827,19 @@
      "memo": {
       "blind_spots": [
        "No cumulative core-trim ledger enforcing the 60% floor + 90-session re-entry across multiple fired tranches.",
-       "V held $10,000K + $10,000K across two IRAs = $10,000K single-name; no aggregate concentration flag.",
-       "Net portfolio short exposure (PSQ + KTOS + HII + HMY + puts) never summed against 'advisory-only/defensive hedge' intent \u2014 could be materially net-short."
+       "ZQCE held $8,000K + $8,000K across two IRAs = $8,000K single-name; no aggregate concentration flag.",
+       "Net portfolio short exposure (PSQ + ZQAU + HII + HMY + puts) never summed against 'advisory-only/defensive hedge' intent \u2014 could be materially net-short."
       ],
       "coverage": "38/38 cards",
       "incoherences": [
-       "Desk claims lint clean / no contradictions, yet options cards trade SPCX while its stance says never-guess, and multiple ladders per symbol conflict.",
-       "BND trim muted by operator but round_trips still lists BND 'advised' \u2014 muted engine still surfacing actions."
+       "Desk claims lint clean / no contradictions, yet options cards trade ZQBL while its stance says never-guess, and multiple ladders per symbol conflict.",
+       "ZQAG trim muted by operator but round_trips still lists ZQAG 'advised' \u2014 muted engine still surfacing actions."
       ],
-      "strongest_objection": "The book's real risk is $10,000K SCHG (46% Tech) + JEPQ (50% Tech) \u2014 the desk fiddles with $10,000-31K trims and thin-liquidity options collars while the dominant Tech concentration sits on watch-only. Meanwhile it stacks three overlapping treatments (puts+CCs+trims) on the same small Industrials names and layers four bearish instruments without netting exposure. If this is a bear-market head-fake (growth IMPROVING, NH/NL neutral), the defensive lean sells cyclicals into cash at the wrong moment, locks 90-session re-entry, and the un-summed short stack whipsaws \u2014 all while the actual concentration risk goes unaddressed.",
+      "strongest_objection": "The book's real risk is $8,000K ZQAV (46% Tech) + ZQCF (50% Tech) \u2014 the desk fiddles with $8,000-31K trims and thin-liquidity options collars while the dominant Tech concentration sits on watch-only. Meanwhile it stacks three overlapping treatments (puts+CCs+trims) on the same small Industrials names and layers four bearish instruments without netting exposure. If this is a bear-market head-fake (growth IMPROVING, NH/NL neutral), the defensive lean sells cyclicals into cash at the wrong moment, locks 90-session re-entry, and the un-summed short stack whipsaws \u2014 all while the actual concentration risk goes unaddressed.",
       "top_concerns": [
-       "Stacked/duplicate ladder tranches (ARKX 45%+35%+T2, XAR 45%+35%, QCOM 55%+60%) lack a cumulative-total guard \u2014 core names ARKX/XAR risk breaching the 60% trim cap / de-facto full exit forbidden by registry.",
-       "Layered overlapping treatment of single positions: XLI and SPCX each carry protective put + covered call + trim-watch simultaneously \u2014 these are undisclosed collars stacked on trim candidates; net cost/greeks never shown.",
-       "Options advice on SPCX ('not decomposed \u2014 never guess') contradicts the desk's own refusal to analyze it; hedging a black box with 94-IV structures is indefensible."
+       "Stacked/duplicate ladder tranches (ZQAQ 45%+35%+T2, ZQAD 45%+35%, ZQAE 55%+60%) lack a cumulative-total guard \u2014 core names ZQAQ/ZQAD risk breaching the 60% trim cap / de-facto full exit forbidden by registry.",
+       "Layered overlapping treatment of single positions: ZQBT and ZQBL each carry protective put + covered call + trim-watch simultaneously \u2014 these are undisclosed collars stacked on trim candidates; net cost/greeks never shown.",
+       "Options advice on ZQBL ('not decomposed \u2014 never guess') contradicts the desk's own refusal to analyze it; hedging a black box with 94-IV structures is indefensible."
       ]
      },
      "reviewed_build": "e7adb4dcce35",
@@ -1847,45 +1847,45 @@
      "status": "ok",
      "verdicts": [
       {
-       "id": "pput-XLI-ACCOUNT_B-2026-07-20",
-       "missed_risk": "Put premium bleed on a $10,000K position already flagged for trim/exit is wasted cost.",
-       "reason": "Covered protective put on held XLI is IRA-legal and advisory-only. But desk simultaneously trim-watches XLI and shorts defense via KTOS/HII; buying puts atop a trim candidate double-hedges. Pick one.",
+       "id": "pput-ZQBT-ACCOUNT_B-2026-07-20",
+       "missed_risk": "Put premium bleed on a $8,000K position already flagged for trim/exit is wasted cost.",
+       "reason": "Covered protective put on held ZQBT is IRA-legal and advisory-only. But desk simultaneously trim-watches ZQBT and shorts defense via ZQAU/HII; buying puts atop a trim candidate double-hedges. Pick one.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "pput-ANET-ACCOUNT_B-2026-07-20",
+       "id": "pput-ZQBU-ACCOUNT_B-2026-07-20",
        "missed_risk": "Buying high-IV puts + selling calls simultaneously = collar not disclosed as such; net cost/greeks unstated.",
        "reason": "IV 76.4 makes puts expensive; hedging a HOLD-rated name via costly puts vs simply trimming is inefficient. Legal and covered, but the CC card on same shares is the cheaper income hedge.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "moveout-ARKX-ACCOUNT_B-2026-07-20",
+       "id": "moveout-ZQAQ-ACCOUNT_B-2026-07-20",
        "missed_risk": "Stacked ladder tranches (45%+35%+T2) could full-exit a core position \u2014 constitution violation.",
        "reason": "Core trim 45% within 60% cap, IRA no tax gate. But ladder shows T1 45% AND T2 fired AND separate 35% ladder fired \u2014 cumulative trims risk breaching 60% core floor; card shows single tranche only.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "moveout-XAR-ACCOUNT_B-2026-07-20",
+       "id": "moveout-ZQAD-ACCOUNT_B-2026-07-20",
        "missed_risk": "Aggregate ladder execution may exceed 60% core trim cap without a running-total guard.",
        "reason": "45% trim within cap, factor math sound. Same stacked-ladder concern: T1 45% + separate 35% fired + T2 armed. Verify cumulative core reduction stays \u226460%.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "pput-SPCX-ACCOUNT_B-2026-07-20",
+       "id": "pput-ZQBL-ACCOUNT_B-2026-07-20",
        "missed_risk": "94 IV means enormous premium decay; unclear underlying factsheet undermines strike selection.",
-       "reason": "SPCX 'not decomposed, never guess' per stance card, yet IV 94.1 puts advised on it. Covered/legal but hedging an un-analyzable $10,000K position with 94-IV puts is poor cost discipline.",
+       "reason": "ZQBL 'not decomposed, never guess' per stance card, yet IV 94.1 puts advised on it. Covered/legal but hedging an un-analyzable $8,000K position with 94-IV puts is poor cost discipline.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "moveout-QCOM-ACCOUNT_B-2026-07-20",
-       "missed_risk": "Duplicate 55%/60% ladders both fired could over-sell; position tiny ($10,000K residual).",
-       "reason": "55% trim triggers concentration+giveback correctly. But in_play shows TWO QCOM ladders (55% and 60%) both fired; combined exceeds any single-order logic and position is only $10,000K. Reconcile duplicate ladders.",
+       "id": "moveout-ZQAE-ACCOUNT_B-2026-07-20",
+       "missed_risk": "Duplicate 55%/60% ladders both fired could over-sell; position tiny ($8,000K residual).",
+       "reason": "55% trim triggers concentration+giveback correctly. But in_play shows TWO ZQAE ladders (55% and 60%) both fired; combined exceeds any single-order logic and position is only $8,000K. Reconcile duplicate ladders.",
        "verdict": "QUALIFY"
       },
       {
        "id": "cleanup-2026-07-20",
        "missed_risk": "Cleanup must confirm none of the 10 lines are core (cleanup-exempt) before closing.",
-       "reason": "Janitorial consolidation of $10,000K/10 scraps below materiality floor; cleanup-exempt core protection noted. Verify no core registry symbols swept in.",
+       "reason": "Janitorial consolidation of $8,000K/10 scraps below materiality floor; cleanup-exempt core protection noted. Verify no core registry symbols swept in.",
        "verdict": "CONCUR"
       },
       {
@@ -1896,20 +1896,20 @@
       },
       {
        "id": "inverse-PSQ-2026-07-20",
-       "missed_risk": "PSQ + ANET/CSCO puts + KTOS/HII shorts stack net-short beyond stated hedge intent.",
+       "missed_risk": "PSQ + ZQBU/ZQBX puts + ZQAU/HII shorts stack net-short beyond stated hedge intent.",
        "reason": "Whitelisted inverse, bounce-only entry disciplined, hard 2-close exit, sized 2-5%. Tech-led deterioration thesis matches tape. Sound tactical hedge.",
        "verdict": "CONCUR"
       },
       {
-       "id": "short-KTOS-2026-07-20",
+       "id": "short-ZQAU-2026-07-20",
        "missed_risk": "Deep downtrend (-40%) = mean-reversion squeeze risk despite low SF.",
-       "reason": "Taxable-only, SF 5.46%<10%, price\u2265$10,000 stop 9.7%\u226410%, \u22642% book, not held. Meets all short constraints. -40% vs 200DMA is stretched but confirmed pool.",
+       "reason": "Taxable-only, SF 5.46%<10%, price\u2265$8,000 stop 9.7%\u226410%, \u22642% book, not held. Meets all short constraints. -40% vs 200DMA is stretched but confirmed pool.",
        "verdict": "CONCUR"
       },
       {
        "id": "short-HII-2026-07-20",
-       "missed_risk": "KTOS+HII both A&D = single-industry short concentration, not diversified hedge.",
-       "reason": "SF 2.31%, stop 8.0%\u226410%, \u2265$10,000 \u22642% book, not held, confirmed A&D pool. Compliant. Note PSQ already provides broad hedge \u2014 three shorts + inverse is concentrated bearish.",
+       "missed_risk": "ZQAU+HII both A&D = single-industry short concentration, not diversified hedge.",
+       "reason": "SF 2.31%, stop 8.0%\u226410%, \u2265$8,000 \u22642% book, not held, confirmed A&D pool. Compliant. Note PSQ already provides broad hedge \u2014 three shorts + inverse is concentrated bearish.",
        "verdict": "CONCUR"
       },
       {
@@ -1919,133 +1919,133 @@
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-XLI-ACCOUNT_B-2026-07-20",
-       "missed_risk": "10.3% spread + vol 0 means poor execution; $10,000 premium may not clear.",
+       "id": "cc-ZQBT-ACCOUNT_B-2026-07-20",
+       "missed_risk": "10.3% spread + vol 0 means poor execution; $8,000 premium may not clear.",
        "reason": "Spread 10.3% wide, vol 0, OI 78 \u2014 thin liquidity, fill risk real. Caps upside +2.8% on LAGGING name is fine, but combined with protective put = undisclosed collar.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-ANET-ACCOUNT_B-2026-07-20",
+       "id": "cc-ZQBU-ACCOUNT_B-2026-07-20",
        "missed_risk": "CC + protective put on same 200sh = collar; combined greeks/cost not shown.",
-       "reason": "Deep OI 2426, strike +16.1% leaves room, IV 76.4 = rich premium ($10,000). Reasonable income on a HOLD. Note simultaneous put = collar; disclose net structure.",
+       "reason": "Deep OI 2426, strike +16.1% leaves room, IV 76.4 = rich premium ($8,000). Reasonable income on a HOLD. Note simultaneous put = collar; disclose net structure.",
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-SPCX-ACCOUNT_B-2026-07-20",
+       "id": "cc-ZQBL-ACCOUNT_B-2026-07-20",
        "missed_risk": "Un-decomposed underlying; collar on unknown factsheet is flying blind.",
-       "reason": "IV 94.1 = juicy $10,000 premium, strike +15.7%, OI 88 thin. But SPCX 'not decomposed/never guess' \u2014 selling calls on un-analyzable name plus buying puts = full collar on a black box.",
+       "reason": "IV 94.1 = juicy $8,000 premium, strike +15.7%, OI 88 thin. But ZQBL 'not decomposed/never guess' \u2014 selling calls on un-analyzable name plus buying puts = full collar on a black box.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-CSCO-ACCOUNT_B-2026-07-20",
+       "id": "cc-ZQBX-ACCOUNT_B-2026-07-20",
        "missed_risk": null,
        "reason": "Best liquidity (OI 10156, spread 3.7%), strike +6.8%, clean income on LAGGING tech HOLD. Well-constructed.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHG-ACCOUNT_B",
-       "missed_risk": "$10,000K single fund is the dominant book risk; watch-only may be too passive if Tech breaks.",
-       "reason": "$10,000K with 46% Tech LAGGING, no fund stop \u2014 trim-watch is correct, largest single risk in book. Defensive redeploy path sound.",
+       "id": "stance-ZQAV-ACCOUNT_B",
+       "missed_risk": "$8,000K single fund is the dominant book risk; watch-only may be too passive if Tech breaks.",
+       "reason": "$8,000K with 46% Tech LAGGING, no fund stop \u2014 trim-watch is correct, largest single risk in book. Defensive redeploy path sound.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_B",
+       "id": "stance-ZQCH-ACCOUNT_B",
        "missed_risk": null,
        "reason": "71% LEADING/IMPROVING, Financials-led, style-aligned income core. HOLD correct; also the designated redeploy destination.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-JEPI-ACCOUNT_B",
+       "id": "stance-ZQAK-ACCOUNT_B",
        "missed_risk": null,
-       "reason": "45% weakening/lagging, no stop; trim-watch appropriate for covered-call income fund. Lower Tech (14%) than JEPQ justifies watch vs act.",
+       "reason": "45% weakening/lagging, no stop; trim-watch appropriate for covered-call income fund. Lower Tech (14%) than ZQCF justifies watch vs act.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-JEPQ-ACCOUNT_B",
-       "missed_risk": "JEPQ 50% Tech = highest deterioration exposure among income sleeves; watch may lag.",
-       "reason": "70% weakening/lagging, 50% Tech, no stop \u2014 most-impaired income fund. Trim-watch is under-aggressive vs its Tech load; consider elevating above SCHG-parity watch given deeper Nasdaq concentration.",
+       "id": "stance-ZQCF-ACCOUNT_B",
+       "missed_risk": "ZQCF 50% Tech = highest deterioration exposure among income sleeves; watch may lag.",
+       "reason": "70% weakening/lagging, 50% Tech, no stop \u2014 most-impaired income fund. Trim-watch is under-aggressive vs its Tech load; consider elevating above ZQAV-parity watch given deeper Nasdaq concentration.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-V-ACCOUNT_B",
+       "id": "stance-ZQCE-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Financials LEADING +5.2, above 50DMA. HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_D",
-       "missed_risk": "V held across two IRAs ($10,000K total) \u2014 aggregate single-name concentration unflagged.",
-       "reason": "Same V thesis, Roth. HOLD correct.",
+       "id": "stance-ZQCE-ACCOUNT_D",
+       "missed_risk": "ZQCE held across two IRAs ($8,000K total) \u2014 aggregate single-name concentration unflagged.",
+       "reason": "Same ZQCE thesis, Roth. HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DIVI-ACCOUNT_B",
-       "missed_risk": "No factor visibility means no stop/trim trigger on $10,000K international.",
+       "id": "stance-ZQAM-ACCOUNT_B",
+       "missed_risk": "No factor visibility means no stop/trim trigger on $8,000K international.",
        "reason": "International, US 11-sector map inapplicable \u2014 honest non-decomposition. HOLD reasonable absent signal.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XLI-ACCOUNT_B",
+       "id": "stance-ZQBT-ACCOUNT_B",
        "missed_risk": "Triple-treatment of one position (put+CC+trim-watch) is incoherent risk layering.",
-       "reason": "100% Industrials LAGGING, no stop \u2014 trim-watch fair. But desk is buying puts AND selling calls AND watch-trimming same $10,000K XLI: three overlapping actions need consolidation into one collar-or-trim decision.",
+       "reason": "100% Industrials LAGGING, no stop \u2014 trim-watch fair. But desk is buying puts AND selling calls AND watch-trimming same $8,000K ZQBT: three overlapping actions need consolidation into one collar-or-trim decision.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-ANET-ACCOUNT_B",
+       "id": "stance-ZQBU-ACCOUNT_B",
        "missed_risk": null,
-       "reason": "Tech LAGGING watch, HOLD with collar overlay reasonable for a $10,000K high-IV name.",
+       "reason": "Tech LAGGING watch, HOLD with collar overlay reasonable for a $8,000K high-IV name.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-ARKX-ACCOUNT_B",
+       "id": "stance-ZQAQ-ACCOUNT_B",
        "missed_risk": "Escalating core trim toward/past 60% cap without cumulative guard = registry breach.",
        "reason": "T2 fired, escalation live, 85% weakening/lagging \u2014 trim thesis strong. But 'live trim ladder' plus multiple fired tranches must be reconciled against 60% core floor and 90-session re-entry.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-BND-ACCOUNT_B",
-       "missed_risk": "Muted BND trim engine still runs \u2014 round_trip 'advised' despite mute may confuse operator.",
+       "id": "stance-ZQAG-ACCOUNT_B",
+       "missed_risk": "Muted ZQAG trim engine still runs \u2014 round_trip 'advised' despite mute may confuse operator.",
        "reason": "Fixed income, trim advisories operator-muted; HOLD appropriate. Muting is disclosed and reversible.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XAR-ACCOUNT_B",
-       "missed_risk": "Multiple XAR ladders (45%+35% fired, T2 armed) risk cumulative >60% core trim.",
-       "reason": "100% Industrials LAGGING, T1 45% live \u2014 trim correct. Same stacked-ladder / core-floor reconciliation needed as ARKX.",
+       "id": "stance-ZQAD-ACCOUNT_B",
+       "missed_risk": "Multiple ZQAD ladders (45%+35% fired, T2 armed) risk cumulative >60% core trim.",
+       "reason": "100% Industrials LAGGING, T1 45% live \u2014 trim correct. Same stacked-ladder / core-floor reconciliation needed as ZQAQ.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-XLB-ACCOUNT_B",
+       "id": "stance-ZQBM-ACCOUNT_B",
        "missed_risk": null,
        "reason": "100% Materials IMPROVING; HOLD aligns with leadership rotation. Correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DXCM-ACCOUNT_B",
+       "id": "stance-ZQCD-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Healthcare LEADING +7.6, above 50DMA, non-core. HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SPCX-ACCOUNT_B",
+       "id": "stance-ZQBL-ACCOUNT_B",
        "missed_risk": "Options trades on a position the desk says it cannot analyze.",
        "reason": "Correctly refuses to decompose (never guess), trim muted. But desk still advises put+CC collar on this admittedly un-analyzable name \u2014 HOLD-stance and options-cards contradict.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_F",
+       "id": "stance-ZQCH-ACCOUNT_F",
        "missed_risk": null,
-       "reason": "Same SCHD leadership thesis, taxable. HOLD correct; tax-aware to hold winner.",
+       "reason": "Same ZQCH leadership thesis, taxable. HOLD correct; tax-aware to hold winner.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-CSCO-ACCOUNT_B",
+       "id": "stance-ZQBX-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Tech LAGGING, below 50DMA, non-core; HOLD with CC overlay for income is reasonable.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-CSWC-ACCOUNT_F",
+       "id": "stance-ZQAB-ACCOUNT_F",
        "missed_risk": "BDC credit sensitivity not captured by equity-sector state alone.",
        "reason": "Financials LEADING, above 50DMA, non-core BDC. HOLD reasonable.",
        "verdict": "CONCUR"
@@ -2057,21 +2057,21 @@
        "verdict": "QUALIFY"
       },
       {
-       "id": "pair-ARKX-ACCOUNT_B-2026-07-20",
+       "id": "pair-ZQAQ-ACCOUNT_B-2026-07-20",
        "missed_risk": "Core\u2192cash + 90-session re-entry lock plus laddered tranches risks deep de-facto exit.",
-       "reason": "ARKX\u2192cash within trim cap, defensive-lean cash default honest when no destination qualifies. Coherent with directive.",
+       "reason": "ZQAQ\u2192cash within trim cap, defensive-lean cash default honest when no destination qualifies. Coherent with directive.",
        "verdict": "CONCUR"
       },
       {
-       "id": "pair-XAR-ACCOUNT_B-2026-07-20",
+       "id": "pair-ZQAD-ACCOUNT_B-2026-07-20",
        "missed_risk": "Cumulative ladder trims + re-entry lock could strand core underweight for 90 sessions.",
-       "reason": "XAR\u2192cash, 45% within cap, defensive-lean rationale consistent. Fine.",
+       "reason": "ZQAD\u2192cash, 45% within cap, defensive-lean rationale consistent. Fine.",
        "verdict": "CONCUR"
       },
       {
-       "id": "pair-QCOM-ACCOUNT_B-2026-07-20",
-       "missed_risk": "Two fired QCOM ladders may cumulatively exit position via repeated advisories.",
-       "reason": "QCOM non-core so 55% fine, cash destination consistent. But duplicate 55%/60% fired ladders on a $10,000K position risk over-selling into a near-full exit.",
+       "id": "pair-ZQAE-ACCOUNT_B-2026-07-20",
+       "missed_risk": "Two fired ZQAE ladders may cumulatively exit position via repeated advisories.",
+       "reason": "ZQAE non-core so 55% fine, cash destination consistent. But duplicate 55%/60% fired ladders on a $8,000K position risk over-selling into a near-full exit.",
        "verdict": "QUALIFY"
       }
      ]
@@ -2082,19 +2082,19 @@
       "blind_spots": [
        "Cross-account wash-sale consequences if cleanup/trim names are repurchased elsewhere after promotion.",
        "Correlation stacking from trims plus PSQ hedge plus utility redeployment.",
-       "Non-equity risk frameworks absent for BND, DIVI, and BDC-like CSWC."
+       "Non-equity risk frameworks absent for ZQAG, ZQAM, and BDC-like ZQAB."
       ],
       "coverage": "37/37 cards",
       "incoherences": [
-       "Defensive lean excludes cyclicals, yet rotate-in cards still feature XLE and especially XLB.",
+       "Defensive lean excludes cyclicals, yet rotate-in cards still feature XLE and especially ZQBM.",
        "XLU entry zone is above current price while described as a pullback.",
-       "QCOM trim is framed as concentration relief, but portfolio-level tech exposure barely changes."
+       "ZQAE trim is framed as concentration relief, but portfolio-level tech exposure barely changes."
       ],
       "strongest_objection": "Best case against the current advice: the desk is mixing two regimes without admitting it. It claims mixed broadening, yet executes a distinctly defensive funnel into utilities/cash while still advertising cyclical rotate-ins. That can leave the book underinvested if breadth expansion continues, while also overconcentrating into a crowded defensive sleeve and not actually fixing large tech concentration at the portfolio level.",
       "top_concerns": [
        "Defensive redeploys are over-concentrating into XLU; cumulative destination risk is understated.",
        "Several 'hold' stances on lagging tech names are too permissive versus stated defensive posture.",
-       "Data-quality exceptions (DIVI, SPCX, XLI covered call details) are being treated as neutral rather than explicit uncertainty."
+       "Data-quality exceptions (ZQAM, ZQBL, ZQBT covered call details) are being treated as neutral rather than explicit uncertainty."
       ]
      },
      "reviewed_build": "f2c1b089185f",
@@ -2114,25 +2114,25 @@
        "verdict": "QUALIFY"
       },
       {
-       "id": "rotatein-XLB-2026-07-18",
+       "id": "rotatein-ZQBM-2026-07-18",
        "missed_risk": "Improving from oversold is not durable leadership.",
        "reason": "Materials is only IMPROVING, still negative RS20, weak breadth, and cyclical. Under defensive lean, this should not be a rotate-in candidate now.",
        "verdict": "OBJECT"
       },
       {
-       "id": "moveout-ARKX-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAQ-ACCOUNT_B-2026-07-18",
        "missed_risk": "Re-entry lock can delay reclaim if aerospace rebounds fast.",
        "reason": "Within core trim rules, not a full exit, size under caps, and rationale matches lagging Industrials exposure plus weak technicals. Good defensive action.",
        "verdict": "CONCUR"
       },
       {
-       "id": "moveout-XAR-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAD-ACCOUNT_B-2026-07-18",
        "missed_risk": "Aerospace/defense can decouple from broad industrials.",
        "reason": "Core trim is constitutional and proportionate. Industrials lag, no stop protection, and size is meaningful. 35% is patient rather than panicked.",
        "verdict": "CONCUR"
       },
       {
-       "id": "moveout-QCOM-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAE-ACCOUNT_B-2026-07-18",
        "missed_risk": "Single-name trim may leave sector concentration essentially intact.",
        "reason": "Trim case is valid, but concentration math barely moves tech exposure. If objective is real de-risking, this is symbol-level relief more than portfolio repair.",
        "verdict": "QUALIFY"
@@ -2158,7 +2158,7 @@
       {
        "id": "short-GDS-2026-07-18",
        "missed_risk": "ADR/headline risk can gap beyond stop.",
-       "reason": "Constitutional: taxable-only, not a held name, short float under 10%, price above $10,000 stop under 10%, and size cap defined.",
+       "reason": "Constitutional: taxable-only, not a held name, short float under 10%, price above $8,000 stop under 10%, and size cap defined.",
        "verdict": "CONCUR"
       },
       {
@@ -2168,133 +2168,133 @@
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-XLI-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBT-ACCOUNT_B-2026-07-18",
        "missed_risk": "Poorly chosen strike could force unwanted core reduction pressure.",
        "reason": "Covered call is whitelist-allowed, but no strike, expiry, delta, or liquidity evidence shown. Advisory is incomplete versus the better-documented call cards.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-ANET-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBU-ACCOUNT_B-2026-07-18",
        "missed_risk": "High IV may reflect event risk and assignment probability.",
        "reason": "Held shares cover contracts, liquidity was checked, and tech is lagging. Good income overlay without violating core full-exit prohibition.",
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-SPCX-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBL-ACCOUNT_B-2026-07-18",
        "missed_risk": "Unknown portfolio composition may create hidden upside call-away regret.",
        "reason": "Mechanically covered and documented, but underlying stance admits poor decomposition/current factsheet. Writing calls on something insufficiently understood deserves caution.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "cc-CSCO-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBX-ACCOUNT_B-2026-07-18",
        "missed_risk": "Assignment near ex-dividend can alter expected income.",
        "reason": "Constitutionally clean covered call on a lagging-tech holding with validated liquidity. Sensible income enhancement.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHG-ACCOUNT_B",
+       "id": "stance-ZQAV-ACCOUNT_B",
        "missed_risk": "Mega-cap growth weakness can persist longer than expected.",
        "reason": "Trim-watch is the right stance, not immediate trim. Core growth-heavy exposure is vulnerable, but tape is mixed rather than fully risk-off.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_B",
+       "id": "stance-ZQCH-ACCOUNT_B",
        "missed_risk": "Financials leadership can fade if rates reverse sharply.",
        "reason": "Hold is appropriate. Sector mix aligns with current leadership and income orientation suits defensive posture.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-JEPI-ACCOUNT_B",
+       "id": "stance-ZQAK-ACCOUNT_B",
        "missed_risk": "Option-income funds can lag badly in renewed upside.",
        "reason": "Trim-watch fits: not weak enough for action, not strong enough for complacent hold. Covered-income profile cushions mixed tape.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-JEPQ-ACCOUNT_B",
+       "id": "stance-ZQCF-ACCOUNT_B",
        "missed_risk": "Nasdaq weakness can leak through despite income overlay.",
        "reason": "Trim-watch is appropriate given heavy tech sensitivity, but immediate trim would be too aggressive while tape remains mixed and equal-weight broadening is only partial.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_B",
+       "id": "stance-ZQCE-ACCOUNT_B",
        "missed_risk": "Payments can diverge from banks despite sector tag.",
        "reason": "Financials are leading and Visa remains technically sound. Hold is justified.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_D",
+       "id": "stance-ZQCE-ACCOUNT_D",
        "missed_risk": "Consumer-spend slowdown may hit despite sector leadership.",
        "reason": "Same case as rollover: leadership and trend support a hold, and Roth has no short constraints issue here.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DIVI-ACCOUNT_B",
+       "id": "stance-ZQAM-ACCOUNT_B",
        "missed_risk": "Non-US sector/currency exposures may conflict with stated posture.",
        "reason": "Hold is acceptable because US sector map does not apply, but 'not decomposed' is not a thesis. Needs separate international regime framework.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-XLI-ACCOUNT_B",
+       "id": "stance-ZQBT-ACCOUNT_B",
        "missed_risk": "Sector breadth can recover before price confirms.",
        "reason": "Trim-watch is right for a core industrial ETF in a lagging sector; watch rather than force trim absent stronger deterioration.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-ANET-ACCOUNT_B",
+       "id": "stance-ZQBU-ACCOUNT_B",
        "missed_risk": "Single-name volatility can outrun broad sector labels.",
        "reason": "A pure HOLD is too lenient. Technology is lagging and this core already has covered-call suitability; at minimum this should be hold-with-trim/income watch.",
        "verdict": "OBJECT"
       },
       {
-       "id": "stance-ARKX-ACCOUNT_B",
+       "id": "stance-ZQAQ-ACCOUNT_B",
        "missed_risk": "Thematic funds can rebound violently after oversold breaks.",
        "reason": "Trim stance is right and consistent with the live ladder plus core constraints. Weak sector decomposition and fired escalation support action.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-BND-ACCOUNT_B",
+       "id": "stance-ZQAG-ACCOUNT_B",
        "missed_risk": "Duration/rate risk is ignored by sector-only framework.",
        "reason": "Hold is fine. Fixed income sits outside the equity rotation engine, and operator mute is explicitly disclosed.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XAR-ACCOUNT_B",
+       "id": "stance-ZQAD-ACCOUNT_B",
        "missed_risk": "Defense spending themes may offset industrial weakness.",
        "reason": "Trim stance is appropriate: fully tied to lagging Industrials, core-aware, and already laddered.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XLB-ACCOUNT_B",
+       "id": "stance-ZQBM-ACCOUNT_B",
        "missed_risk": "Weak breadth suggests fragile improvement.",
        "reason": "Hold is acceptable, but not strong. Materials is merely IMPROVING with negative RS20; this is a monitored hold, not endorsement of strength.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-DXCM-ACCOUNT_B",
+       "id": "stance-ZQCD-ACCOUNT_B",
        "missed_risk": "Idiosyncratic med-tech risk can trump sector strength.",
-       "reason": "Healthcare is leading and DXCM is above 50DMA. Hold is justified.",
+       "reason": "Healthcare is leading and ZQCD is above 50DMA. Hold is justified.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SPCX-ACCOUNT_B",
+       "id": "stance-ZQBL-ACCOUNT_B",
        "missed_risk": "Unknown holdings may contradict defensive tilt.",
        "reason": "Given missing reliable factsheet, hold is safer than guessing. But this is a data-quality exception, not a confidence signal.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_F",
+       "id": "stance-ZQCH-ACCOUNT_F",
        "missed_risk": "Taxable rebalancing may create avoidable gains if changed later.",
        "reason": "Same logic as IRA position: leadership-aligned, income-oriented, and no constitutional issue in taxable.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-CSCO-ACCOUNT_B",
+       "id": "stance-ZQBX-ACCOUNT_B",
        "missed_risk": "Low-vol tech can still drift lower persistently.",
        "reason": "Hold is tolerable, but weak tech backdrop and below-50DMA status argue for hold-with-income/trim watch rather than plain hold.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-CSWC-ACCOUNT_F",
+       "id": "stance-ZQAB-ACCOUNT_F",
        "missed_risk": "Credit deterioration can hit BDCs before financials sector weakens.",
        "reason": "Financials leadership supports hold, but BDCs are not plain sector proxies; credit-spread and rate sensitivity deserve separate treatment.",
        "verdict": "QUALIFY"
@@ -2306,19 +2306,19 @@
        "verdict": "QUALIFY"
       },
       {
-       "id": "pair-ARKX-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAQ-ACCOUNT_B-2026-07-18",
        "missed_risk": "Utility concentration may rise if multiple pairs funnel there.",
        "reason": "Compliant rendered pair: trims weak core exposure, redeploys only partly into defensive leadership, keeps cash buffer. Sensible under mixed tape.",
        "verdict": "CONCUR"
       },
       {
-       "id": "pair-XAR-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAD-ACCOUNT_B-2026-07-18",
        "missed_risk": "Repeated XLU destination can create hidden single-sector crowding.",
        "reason": "Same logic: constitutional, defensive, and appropriately partial. Cash as destination is acceptable under stated policy.",
        "verdict": "CONCUR"
       },
       {
-       "id": "pair-QCOM-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAE-ACCOUNT_B-2026-07-18",
        "missed_risk": "May create illusion of de-risking without meaningful exposure change.",
        "reason": "The pair is legal and directionally sensible, but the sale barely reduces overall tech concentration. Good trade-level advice, modest portfolio-level effect.",
        "verdict": "QUALIFY"
@@ -2330,7 +2330,7 @@
      "memo": {
       "blind_spots": [
        "Roth IRA short restrictions not explicitly cross-checked on all inverse cards",
-       "Cumulative daily order value nearing $10,000k cap across paired rotations"
+       "Cumulative daily order value nearing $8,000k cap across paired rotations"
       ],
       "coverage": "37/37 cards",
       "incoherences": [
@@ -2360,25 +2360,25 @@
        "verdict": "CONCUR"
       },
       {
-       "id": "rotatein-XLB-2026-07-18",
+       "id": "rotatein-ZQBM-2026-07-18",
        "missed_risk": "Premature IMPROVING rotation",
        "reason": "IMPROVING not LEADING; breadth weak. Shadow ok but entry lower conviction.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "moveout-ARKX-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAQ-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Core trim 45% within 60% cap; Industrials LAGGING; factors valid.",
        "verdict": "CONCUR"
       },
       {
-       "id": "moveout-XAR-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAD-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Core trim 35% justified; concentration and factor score meet rules.",
        "verdict": "CONCUR"
       },
       {
-       "id": "moveout-QCOM-ACCOUNT_B-2026-07-18",
+       "id": "moveout-ZQAE-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Non-core, heavy concentration breach; trim size within bounds.",
        "verdict": "CONCUR"
@@ -2414,133 +2414,133 @@
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-XLI-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBT-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "LAGGING sector, income overlay on held shares; IRA eligible.",
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-ANET-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBU-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Tech LAGGING, liquidity validated; premium capture appropriate.",
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-SPCX-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBL-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Industrials LAGGING, valid Greeks; income ok on held position.",
        "verdict": "CONCUR"
       },
       {
-       "id": "cc-CSCO-ACCOUNT_B-2026-07-18",
+       "id": "cc-ZQBX-ACCOUNT_B-2026-07-18",
        "missed_risk": null,
        "reason": "Tech LAGGING, liquidity ok; covered call fits defensive posture.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHG-ACCOUNT_B",
+       "id": "stance-ZQAV-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Heavy LAGGING exposure; TRIM-WATCH warranted.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_B",
+       "id": "stance-ZQCH-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Leading sector weight; HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-JEPI-ACCOUNT_B",
+       "id": "stance-ZQAK-ACCOUNT_B",
        "missed_risk": "Income priority may override sector signals",
        "reason": "Moderate LAGGING weight but income focus; watch ok but trim threshold high.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "stance-JEPQ-ACCOUNT_B",
+       "id": "stance-ZQCF-ACCOUNT_B",
        "missed_risk": null,
        "reason": "High tech concentration; TRIM-WATCH appropriate.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_B",
+       "id": "stance-ZQCE-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Financials LEADING, above DMA; HOLD justified.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-V-ACCOUNT_D",
+       "id": "stance-ZQCE-ACCOUNT_D",
        "missed_risk": null,
        "reason": "Financials LEADING; Roth HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DIVI-ACCOUNT_B",
+       "id": "stance-ZQAM-ACCOUNT_B",
        "missed_risk": null,
        "reason": "International; US map inapplicable; HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XLI-ACCOUNT_B",
+       "id": "stance-ZQBT-ACCOUNT_B",
        "missed_risk": null,
        "reason": "100% LAGGING; TRIM-WATCH warranted.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-ANET-ACCOUNT_B",
+       "id": "stance-ZQBU-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Tech LAGGING; HOLD with watch correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-ARKX-ACCOUNT_B",
+       "id": "stance-ZQAQ-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Core trim ladder armed and firing; escalation fits constitution.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-BND-ACCOUNT_B",
+       "id": "stance-ZQAG-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Fixed income; muted advisories per operator; HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XAR-ACCOUNT_B",
+       "id": "stance-ZQAD-ACCOUNT_B",
        "missed_risk": null,
        "reason": "100% LAGGING Industrials; TRIM-WATCH correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-XLB-ACCOUNT_B",
+       "id": "stance-ZQBM-ACCOUNT_B",
        "missed_risk": null,
        "reason": "IMPROVING sector; HOLD justified.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-DXCM-ACCOUNT_B",
+       "id": "stance-ZQCD-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Healthcare LEADING; HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SPCX-ACCOUNT_B",
+       "id": "stance-ZQBL-ACCOUNT_B",
        "missed_risk": null,
        "reason": "No factsheet; muted advisories; HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-SCHD-ACCOUNT_F",
+       "id": "stance-ZQCH-ACCOUNT_F",
        "missed_risk": null,
        "reason": "Leading weight; taxable HOLD correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-CSCO-ACCOUNT_B",
+       "id": "stance-ZQBX-ACCOUNT_B",
        "missed_risk": null,
        "reason": "Tech LAGGING, below DMA; HOLD with watch correct.",
        "verdict": "CONCUR"
       },
       {
-       "id": "stance-CSWC-ACCOUNT_F",
+       "id": "stance-ZQAB-ACCOUNT_F",
        "missed_risk": null,
        "reason": "Financials LEADING; HOLD correct.",
        "verdict": "CONCUR"
@@ -2552,19 +2552,19 @@
        "verdict": "OBJECT"
       },
       {
-       "id": "pair-ARKX-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAQ-ACCOUNT_B-2026-07-18",
        "missed_risk": "Cash drag if tape rebounds quickly",
        "reason": "Core trim to defensive + cash valid; equal-weight style supports.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "pair-XAR-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAD-ACCOUNT_B-2026-07-18",
        "missed_risk": "Cash drag if tape rebounds quickly",
        "reason": "Core trim rotation fits LAGGING Industrials; cash leg conservative.",
        "verdict": "QUALIFY"
       },
       {
-       "id": "pair-QCOM-ACCOUNT_B-2026-07-18",
+       "id": "pair-ZQAE-ACCOUNT_B-2026-07-18",
        "missed_risk": "Cash drag if tape rebounds quickly",
        "reason": "Non-core concentration trim justified; defensive lean consistent.",
        "verdict": "QUALIFY"
@@ -2575,9 +2575,9 @@
   },
   "recommendations": {
    "account_equities": {
-    "ACCOUNT_B": 637594,
-    "ACCOUNT_D": 45942,
-    "ACCOUNT_F": 27800
+    "ACCOUNT_B": 95000,
+    "ACCOUNT_D": 40000,
+    "ACCOUNT_F": 20000
    },
    "accounts": {
     "ACCOUNT_A": "ACCOUNT_A",
@@ -2612,18 +2612,18 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 201 sh"
+        "value": "$8,000K \u00b7 161 sh"
        }
       ],
       "group": "income",
-      "id": "cc-XLI-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "cc-ZQBT-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "covered call",
         "note": "REDACTED",
         "price": 182.73,
-        "symbol": "XLI"
+        "symbol": "ZQBT"
        }
       ],
       "invalidation": "Industrials recovers out of LAGGING \u2014 let calls expire/close, stop rolling",
@@ -2636,8 +2636,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "2 contracts against 201 sh ($10,000K)",
-      "title": "COVERED CALL \u00b7 XLI (2 contracts, Rollover IRA)"
+      "size_band": "2 contracts against 161 sh ($8,000K)",
+      "title": "COVERED CALL \u00b7 ZQBT (2 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -2654,18 +2654,18 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 504 sh"
+        "value": "$8,000K \u00b7 403 sh"
        }
       ],
       "group": "income",
-      "id": "cc-XLB-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "cc-ZQBM-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "covered call",
         "note": "REDACTED",
         "price": 50.47,
-        "symbol": "XLB"
+        "symbol": "ZQBM"
        }
       ],
       "invalidation": "Materials recovers out of LAGGING \u2014 let calls expire/close, stop rolling",
@@ -2678,8 +2678,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "5 contracts against 504 sh ($10,000K)",
-      "title": "COVERED CALL \u00b7 XLB (5 contracts, Rollover IRA)"
+      "size_band": "5 contracts against 403 sh ($8,000K)",
+      "title": "COVERED CALL \u00b7 ZQBM (5 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -2696,18 +2696,18 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 225 sh"
+        "value": "$8,000K \u00b7 180 sh"
        }
       ],
       "group": "income",
-      "id": "cc-DXCM-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "cc-ZQCD-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "covered call",
         "note": "REDACTED",
         "price": 69.82,
-        "symbol": "DXCM"
+        "symbol": "ZQCD"
        }
       ],
       "invalidation": "Healthcare recovers out of WEAKENING \u2014 let calls expire/close, stop rolling",
@@ -2720,8 +2720,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "2 contracts against 225 sh ($10,000K)",
-      "title": "COVERED CALL \u00b7 DXCM (2 contracts, Rollover IRA)"
+      "size_band": "2 contracts against 180 sh ($8,000K)",
+      "title": "COVERED CALL \u00b7 ZQCD (2 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -2738,18 +2738,18 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 125 sh"
+        "value": "$8,000K \u00b7 100 sh"
        }
       ],
       "group": "income",
-      "id": "cc-SPCX-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "cc-ZQBL-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "covered call",
         "note": "REDACTED",
         "price": 114.27,
-        "symbol": "SPCX"
+        "symbol": "ZQBL"
        }
       ],
       "invalidation": "Industrials recovers out of LAGGING \u2014 let calls expire/close, stop rolling",
@@ -2762,8 +2762,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "1 contract against 125 sh ($10,000K)",
-      "title": "COVERED CALL \u00b7 SPCX (1 contract, Rollover IRA)"
+      "size_band": "1 contract against 100 sh ($8,000K)",
+      "title": "COVERED CALL \u00b7 ZQBL (1 contract, Rollover IRA)"
      }
     ],
     "protect": [
@@ -2781,7 +2781,7 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 201 sh"
+        "value": "$8,000K \u00b7 161 sh"
        },
        {
         "name": "options tier",
@@ -2789,14 +2789,14 @@
        }
       ],
       "group": "protect",
-      "id": "pput-XLI-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "pput-ZQBT-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "protective put vs held shares",
         "note": "REDACTED",
         "price": 182.73,
-        "symbol": "XLI"
+        "symbol": "ZQBT"
        }
       ],
       "invalidation": "Industrials recovers out of LAGGING (2-close) \u2014 let puts decay or close; roll/kill decision at 21 DTE, never hold to expiry by default",
@@ -2810,8 +2810,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "2 contracts against 201 sh ($10,000K)",
-      "title": "PROTECTIVE PUT \u00b7 XLI (2 contracts, Rollover IRA)"
+      "size_band": "2 contracts against 161 sh ($8,000K)",
+      "title": "PROTECTIVE PUT \u00b7 ZQBT (2 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -2843,21 +2843,21 @@
        }
       ],
       "group": "protect",
-      "id": "moveout-ARKX-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "moveout-ZQAQ-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "held position",
         "note": "REDACTED",
         "price": 30.48,
-        "symbol": "ARKX"
+        "symbol": "ZQAQ"
        }
       ],
       "invalidation": "sector recovers out of WEAKENING/LAGGING (2-close) AND price reclaims the 50DMA",
       "is_core": true,
       "levels": {
        "basis_note": "unrealized P&L n/a \u2014 Cost Basis export pending",
-       "position_value": 10000,
+       "position_value": 8000,
        "price": 30.48
       },
       "mode": "SHADOW",
@@ -2873,22 +2873,22 @@
          "account": "ACCOUNT_B",
          "account_label": "Rollover IRA",
          "kind": "ira_first",
-         "line": "Sell \u2248 500 sh @ ~$10,000 \u2248 $10,000K (50% of Rollover IRA) \u2192 position after $10,000K \u00b7 Industrials effective 16.2% \u2192 15.3%",
-         "position_after": 15240,
+         "line": "Sell \u2248 400 sh @ ~$8,000 \u2248 $8,000K (50% of Rollover IRA) \u2192 position after $8,000K \u00b7 Industrials effective 16.2% \u2192 15.3%",
+         "position_after": 12192,
          "price": 30.48,
          "price_as_of": "prices as of 2026-07-24 (holdings snapshot)",
-         "proceeds_est": 10000,
+         "proceeds_est": 8000,
          "sector_after": {
           "after_pct": 15.3,
           "before_pct": 16.2,
           "sector": "Industrials"
          },
-         "shares": 100
+         "shares": 80
         }
        ],
        "ordering": "IRA-first (no tax event) \u2014 taxable variant labeled, never auto-chosen"
       },
-      "title": "\u2605CORE TRIM \u00b7 ARKX ($10,000K in Rollover IRA)",
+      "title": "\u2605CORE TRIM \u00b7 ZQAQ ($8,000K in Rollover IRA)",
       "trim_plan": {
        "absent_inputs": [],
        "arithmetic": [
@@ -2915,7 +2915,7 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 504 sh"
+        "value": "$8,000K \u00b7 403 sh"
        },
        {
         "name": "options tier",
@@ -2923,14 +2923,14 @@
        }
       ],
       "group": "protect",
-      "id": "pput-XLB-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "pput-ZQBM-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "protective put vs held shares",
         "note": "REDACTED",
         "price": 50.47,
-        "symbol": "XLB"
+        "symbol": "ZQBM"
        }
       ],
       "invalidation": "Materials recovers out of LAGGING (2-close) \u2014 let puts decay or close; roll/kill decision at 21 DTE, never hold to expiry by default",
@@ -2944,8 +2944,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "5 contracts against 504 sh ($10,000K)",
-      "title": "PROTECTIVE PUT \u00b7 XLB (5 contracts, Rollover IRA)"
+      "size_band": "5 contracts against 403 sh ($8,000K)",
+      "title": "PROTECTIVE PUT \u00b7 ZQBM (5 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -2961,7 +2961,7 @@
        },
        {
         "name": "position",
-        "value": "$10,000K \u00b7 225 sh"
+        "value": "$8,000K \u00b7 180 sh"
        },
        {
         "name": "options tier",
@@ -2969,14 +2969,14 @@
        }
       ],
       "group": "protect",
-      "id": "pput-DXCM-ACCOUNT_B-2026-07-24",
-      "impact_dollars": 10000,
+      "id": "pput-ZQCD-ACCOUNT_B-2026-07-24",
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "protective put vs held shares",
         "note": "REDACTED",
         "price": 69.82,
-        "symbol": "DXCM"
+        "symbol": "ZQCD"
        }
       ],
       "invalidation": "Healthcare recovers out of WEAKENING (2-close) \u2014 let puts decay or close; roll/kill decision at 21 DTE, never hold to expiry by default",
@@ -2990,8 +2990,8 @@
       "routes": {
        "options_desk": "queue \u2192 operator approval \u2192 per-order 2FA (the desk itself never places orders)"
       },
-      "size_band": "2 contracts against 225 sh ($10,000K)",
-      "title": "PROTECTIVE PUT \u00b7 DXCM (2 contracts, Rollover IRA)"
+      "size_band": "2 contracts against 180 sh ($8,000K)",
+      "title": "PROTECTIVE PUT \u00b7 ZQCD (2 contracts, Rollover IRA)"
      },
      {
       "accounts": [
@@ -3004,47 +3004,47 @@
       "factors": [
        {
         "name": "materiality floor",
-        "value": "$10,000 (0.15% of book)"
+        "value": "$8,000 (0.15% of book)"
        }
       ],
       "group": "protect",
       "id": "cleanup-2026-07-24",
-      "impact_dollars": 10000,
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "BAH"
+        "symbol": "ZQBF"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "LDOS"
+        "symbol": "ZQAS"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "NOC"
+        "symbol": "ZQBD"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "RTX"
+        "symbol": "ZQAW"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "PFLT"
+        "symbol": "ZQAP"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "CSWC"
+        "symbol": "ZQAB"
        },
        {
         "kind": "residual",
         "note": "REDACTED",
-        "symbol": "SRNE"
+        "symbol": "ZQBW"
        },
        {
         "kind": "residual",
@@ -3064,15 +3064,15 @@
       ],
       "invalidation": "n/a \u2014 housekeeping, not a thesis",
       "levels": {
-       "position_value": 10000,
+       "position_value": 8000,
        "price": null
       },
       "mode": "SHADOW",
       "routes": {
        "note": "REDACTED"
       },
-      "size_band": "total $10,000K across 10 lines",
-      "title": "CLEANUP \u00b7 10 residual scraps \u2264$10,000K \u2014 consolidate or close; not strategy"
+      "size_band": "total $8,000K across 10 lines",
+      "title": "CLEANUP \u00b7 10 residual scraps \u2264$8,000K \u2014 consolidate or close; not strategy"
      },
      {
       "accounts": [
@@ -3153,7 +3153,7 @@
       ],
       "group": "short_side",
       "id": "inverse-PSQ-2026-07-24",
-      "impact_dollars": 10000,
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "inverse ETF",
@@ -3164,21 +3164,21 @@
       ],
       "invalidation": "close when the trigger state exits (2-close confirmed)",
       "levels": {
-       "entry_zone": "bounce days only \u2014 QQQ \u2265 $10,000 (+0.75%)",
+       "entry_zone": "bounce days only \u2014 QQQ \u2265 $8,000 (+0.75%)",
        "price": 26.73,
-       "stop": "take-profit $10,000 / $10,000; hard exit on trigger-state exit (2-close)"
+       "stop": "take-profit $8,000 / $8,000; hard exit on trigger-state exit (2-close)"
       },
       "mode": "SHADOW",
       "playbook": [
-       "1 \u00b7 GET IN on BOUNCE days: QQQ up \u2265 +0.75% (\u2265 $10,000) while the trigger state holds \u2014 the hedge is at a discount when the index pops. Buy 1/3 per bounce day, never after a big down day (you'd pay up). ALERT armed: 'QQQ bounce \u2014 hedge entry window'.",
-       "2 \u00b7 TAKE PROFITS in halves: PSQ +8% (\u2248 $10,000) \u2192 sell half. ALERT armed. PSQ +15% (\u2248 $10,000) or a capitulation gap-down in QQQ \u2192 take the rest. ALERT armed.",
+       "1 \u00b7 GET IN on BOUNCE days: QQQ up \u2265 +0.75% (\u2265 $8,000) while the trigger state holds \u2014 the hedge is at a discount when the index pops. Buy 1/3 per bounce day, never after a big down day (you'd pay up). ALERT armed: 'QQQ bounce \u2014 hedge entry window'.",
+       "2 \u00b7 TAKE PROFITS in halves: PSQ +8% (\u2248 $8,000) \u2192 sell half. ALERT armed. PSQ +15% (\u2248 $8,000) or a capitulation gap-down in QQQ \u2192 take the rest. ALERT armed.",
        "3 \u00b7 STAND DOWN regardless of P&L when the trigger state exits (2-close confirmed) \u2014 the hedge's job ended; holding an inverse ETF past its reason bleeds daily-reset decay.",
        "4 \u00b7 Levels recompute nightly until an entry is recorded (auto-detected from Schwab ingest or your tap on the paper twin)."
       ],
       "routes": {
        "paper_twin": "inverse-ETF paper track via approval queue"
       },
-      "size_band": "2.0\u20135.0% of account equity (\u2248$10,000K book in triggered sectors)",
+      "size_band": "2.0\u20135.0% of account equity (\u2248$8,000K book in triggered sectors)",
       "title": "HEDGE \u00b7 PSQ (1x inverse QQQ \u2014 deterioration is tech-led)"
      },
      {
@@ -3204,7 +3204,7 @@
       ],
       "group": "short_side",
       "id": "short-LI-2026-07-24",
-      "impact_dollars": 10000,
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "short stock",
@@ -3214,9 +3214,9 @@
       ],
       "invalidation": "buy-stop 12.79 hit, or Auto Manufacturers exits LAGGING (2-close)",
       "levels": {
-       "entry_zone": "near $10,000",
+       "entry_zone": "near $8,000",
        "price": 12.39,
-       "stop": "buy-stop $10,000 (+3.2%)"
+       "stop": "buy-stop $8,000 (+3.2%)"
       },
       "mode": "SHADOW",
       "routes": {
@@ -3248,7 +3248,7 @@
       ],
       "group": "short_side",
       "id": "short-NKE-2026-07-24",
-      "impact_dollars": 10000,
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "short stock",
@@ -3258,9 +3258,9 @@
       ],
       "invalidation": "buy-stop 42.73 hit, or Footwear & Accessories exits LAGGING (2-close)",
       "levels": {
-       "entry_zone": "near $10,000",
+       "entry_zone": "near $8,000",
        "price": 40.98,
-       "stop": "buy-stop $10,000 (+4.3%)"
+       "stop": "buy-stop $8,000 (+4.3%)"
       },
       "mode": "SHADOW",
       "routes": {
@@ -3292,7 +3292,7 @@
       ],
       "group": "short_side",
       "id": "short-LEN-2026-07-24",
-      "impact_dollars": 10000,
+      "impact_dollars": 8000,
       "instruments": [
        {
         "kind": "short stock",
@@ -3302,9 +3302,9 @@
       ],
       "invalidation": "buy-stop 89.84 hit, or Residential Construction exits LAGGING (2-close)",
       "levels": {
-       "entry_zone": "near $10,000",
+       "entry_zone": "near $8,000",
        "price": 82.125,
-       "stop": "buy-stop $10,000 (+9.4%)"
+       "stop": "buy-stop $8,000 (+9.4%)"
       },
       "mode": "SHADOW",
       "routes": {
@@ -3318,17 +3318,17 @@
    "ladders": [
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-24",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-24",
      "ladder_id": 18,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 50,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-24T14:10:01.927014+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3340,15 +3340,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3362,17 +3362,17 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-23",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-23",
      "ladder_id": 17,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 45,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-23T14:10:02.025986+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3384,15 +3384,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3406,17 +3406,17 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-22",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-22",
      "ladder_id": 15,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 35,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-22T14:10:02.068904+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3428,15 +3428,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3450,17 +3450,17 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-QCOM-ACCOUNT_B-2026-07-21",
+     "advisory_id": "moveout-ZQAE-ACCOUNT_B-2026-07-21",
      "ladder_id": 14,
      "status": "open",
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "t1_fraction": 45,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-21T14:10:01.845777+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3472,15 +3472,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 170.75,
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "gg_escalation"
         },
         {
@@ -3494,17 +3494,17 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-21",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-21",
      "ladder_id": 13,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 45,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-21T13:37:39.217130+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3516,15 +3516,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3538,10 +3538,10 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-QCOM-ACCOUNT_B-2026-07-20",
+     "advisory_id": "moveout-ZQAE-ACCOUNT_B-2026-07-20",
      "ladder_id": 11,
      "status": "open",
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "t1_fraction": 55,
      "t1_status": "advised",
      "tranches": [
@@ -3560,15 +3560,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 167.75,
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "gg_escalation"
         },
         {
@@ -3582,10 +3582,10 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-XAR-ACCOUNT_B-2026-07-20",
+     "advisory_id": "moveout-ZQAD-ACCOUNT_B-2026-07-20",
      "ladder_id": 10,
      "status": "open",
-     "symbol": "XAR",
+     "symbol": "ZQAD",
      "t1_fraction": 45,
      "t1_status": "advised",
      "tranches": [
@@ -3602,15 +3602,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 258.57,
-         "symbol": "XAR",
+         "symbol": "ZQAD",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "XAR",
+         "symbol": "ZQAD",
          "type": "gg_escalation"
         },
         {
@@ -3624,17 +3624,17 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-20",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-20",
      "ladder_id": 9,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 45,
      "t1_status": "advised",
      "tranches": [
       {
        "add_fraction_pct": 25,
        "fired_at": "2026-07-20T14:10:02.039688+00:00",
-       "fired_by": "close < $10,000 (20d swing low)",
+       "fired_by": "close < $8,000 (20d swing low)",
        "status": "fired",
        "tranche": "T2",
        "triggers": [
@@ -3646,15 +3646,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3668,10 +3668,10 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-XAR-ACCOUNT_B-2026-07-18",
+     "advisory_id": "moveout-ZQAD-ACCOUNT_B-2026-07-18",
      "ladder_id": 3,
      "status": "open",
-     "symbol": "XAR",
+     "symbol": "ZQAD",
      "t1_fraction": 35,
      "t1_status": "advised",
      "tranches": [
@@ -3683,15 +3683,15 @@
        "tranche": "T2",
        "triggers": [
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 258.57,
-         "symbol": "XAR",
+         "symbol": "ZQAD",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "XAR",
+         "symbol": "ZQAD",
          "type": "gg_escalation"
         },
         {
@@ -3705,10 +3705,10 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-18",
+     "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-18",
      "ladder_id": 2,
      "status": "open",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "t1_fraction": 35,
      "t1_status": "advised",
      "tranches": [
@@ -3720,15 +3720,15 @@
        "tranche": "T2",
        "triggers": [
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 30.3,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "gg_escalation"
         },
         {
@@ -3742,10 +3742,10 @@
     },
     {
      "account": "ACCOUNT_B",
-     "advisory_id": "moveout-QCOM-ACCOUNT_B-2026-07-18",
+     "advisory_id": "moveout-ZQAE-ACCOUNT_B-2026-07-18",
      "ladder_id": 4,
      "status": "open",
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "t1_fraction": 60,
      "t1_status": "advised",
      "tranches": [
@@ -3764,15 +3764,15 @@
          "type": "sector_persist"
         },
         {
-         "label": "close < $10,000 (20d swing low)",
+         "label": "close < $8,000 (20d swing low)",
          "level": 170.75,
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "price_below"
         },
         {
          "account": "ACCOUNT_B",
          "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "gg_escalation"
         },
         {
@@ -3787,26 +3787,26 @@
    ],
    "mode": "SHADOW",
    "not_decomposed": {
-    "dollars": 10000,
+    "dollars": 8000,
     "positions": [
      {
-      "dollars": 10000,
-      "symbol": "SPCX",
+      "dollars": 8000,
+      "symbol": "ZQBL",
       "why": "no reliable current factsheet \u2014 never guess"
      },
      {
-      "dollars": 10000,
-      "symbol": "BND",
+      "dollars": 8000,
+      "symbol": "ZQAG",
       "why": "fixed income \u2014 not equity sector exposure"
      },
      {
-      "dollars": 10000,
-      "symbol": "DIVI",
+      "dollars": 8000,
+      "symbol": "ZQAM",
       "why": "international book \u2014 US 11-sector map does not apply"
      },
      {
-      "dollars": 10000,
-      "symbol": "SPCX",
+      "dollars": 8000,
+      "symbol": "ZQBL",
       "why": "no reliable current factsheet \u2014 never guess"
      }
     ]
@@ -3851,13 +3851,13 @@
      "as_of": "2026-07-24",
      "buy_legs": [
       {
-       "alloc_est": 15240,
+       "alloc_est": 12192,
        "kind": "money-market sweep",
-       "line": "hold \u2248 $10,000K in cash (money-market sweep) \u2014 defensive lean; redeploy when the tape confirms risk-on",
+       "line": "hold \u2248 $8,000K in cash (money-market sweep) \u2014 defensive lean; redeploy when the tape confirms risk-on",
        "price": 1.0,
        "score": 0,
        "sector": "cash",
-       "shares": 100,
+       "shares": 80,
        "symbol": "CASH",
        "why": "defensive lean: no further defensive destination qualified \u2014 cash IS the position"
       }
@@ -3884,14 +3884,14 @@
       }
      ],
      "group": "pair",
-     "id": "pair-ARKX-ACCOUNT_B-2026-07-24",
-     "impact_dollars": 10000,
+     "id": "pair-ZQAQ-ACCOUNT_B-2026-07-24",
+     "impact_dollars": 8000,
      "instruments": [
       {
        "kind": "sell leg",
        "note": "REDACTED",
        "price": 30.48,
-       "symbol": "ARKX"
+       "symbol": "ZQAQ"
       },
       {
        "kind": "buy leg",
@@ -3916,25 +3916,25 @@
       "account": "ACCOUNT_B",
       "account_label": "Rollover IRA",
       "kind": "ira_first",
-      "line": "Sell \u2248 500 sh @ ~$10,000 \u2248 $10,000K (50% of Rollover IRA) \u2192 position after $10,000K \u00b7 Industrials effective 16.2% \u2192 15.3%",
-      "position_after": 15240,
+      "line": "Sell \u2248 400 sh @ ~$8,000 \u2248 $8,000K (50% of Rollover IRA) \u2192 position after $8,000K \u00b7 Industrials effective 16.2% \u2192 15.3%",
+      "position_after": 12192,
       "price": 30.48,
       "price_as_of": "prices as of 2026-07-24 (holdings snapshot)",
-      "proceeds_est": 10000,
+      "proceeds_est": 8000,
       "sector_after": {
        "after_pct": 15.3,
        "before_pct": 16.2,
        "sector": "Industrials"
       },
-      "shares": 100
+      "shares": 80
      },
-     "size_band": "$10,000K rotates across 1 destination(s)",
+     "size_band": "$8,000K rotates across 1 destination(s)",
      "style_rationale": "style rotation: equal-weight +0.3% over cap-weight 20d (WEAKENING) \u00b7 VUG\u2212VTV -6.0 (LAGGING) \u00b7 DEFENSIVE LEAN active (operator directive per the 5-seat panel 2026-07-18): cyclical destinations excluded",
      "supersedes": [
-      "moveout-ARKX-ACCOUNT_B-2026-07-24"
+      "moveout-ZQAQ-ACCOUNT_B-2026-07-24"
      ],
      "tax_note": "IRA \u2014 no tax event",
-     "title": "ROTATE \u00b7 ARKX \u2192 CASH (Rollover IRA)"
+     "title": "ROTATE \u00b7 ZQAQ \u2192 CASH (Rollover IRA)"
     }
    ],
    "paper_twins_created": [
@@ -3964,10 +3964,10 @@
      "ladder": "T1 35% advised \u00b7 T2 TRIGGERED \u2014 factor count rises above 3",
      "ladder_detail": {
       "account": "ACCOUNT_B",
-      "advisory_id": "moveout-ARKX-ACCOUNT_B-2026-07-18",
+      "advisory_id": "moveout-ZQAQ-ACCOUNT_B-2026-07-18",
       "ladder_id": 2,
       "status": "open",
-      "symbol": "ARKX",
+      "symbol": "ZQAQ",
       "t1_fraction": 35,
       "t1_status": "advised",
       "tranches": [
@@ -3979,15 +3979,15 @@
         "tranche": "T2",
         "triggers": [
          {
-          "label": "close < $10,000 (20d swing low)",
+          "label": "close < $8,000 (20d swing low)",
           "level": 30.3,
-          "symbol": "ARKX",
+          "symbol": "ZQAQ",
           "type": "price_below"
          },
          {
           "account": "ACCOUNT_B",
           "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-          "symbol": "ARKX",
+          "symbol": "ZQAQ",
           "type": "gg_escalation"
          },
          {
@@ -4006,9 +4006,9 @@
        "conditions": [
         {
          "dma": 50,
-         "label": "ARKX reclaims its 50DMA",
+         "label": "ZQAQ reclaims its 50DMA",
          "met": false,
-         "symbol": "ARKX",
+         "symbol": "ZQAQ",
          "type": "price_reclaim_dma"
         },
         {
@@ -4028,13 +4028,13 @@
        "now_price": 30.52,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "ARKX",
+       "symbol": "ZQAQ",
        "wash_sale": null
       }
      ],
      "stance": "TRIM",
-     "symbol": "ARKX",
-     "value": 10000
+     "symbol": "ZQAQ",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4048,9 +4048,9 @@
        "conditions": [
         {
          "dma": 50,
-         "label": "BND reclaims its 50DMA",
+         "label": "ZQAG reclaims its 50DMA",
          "met": false,
-         "symbol": "BND",
+         "symbol": "ZQAG",
          "type": "price_reclaim_dma"
         },
         {
@@ -4070,13 +4070,13 @@
        "now_price": 72.36,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "BND",
+       "symbol": "ZQAG",
        "wash_sale": null
       }
      ],
      "stance": "HOLD",
-     "symbol": "BND",
-     "value": 10000
+     "symbol": "ZQAG",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4084,10 +4084,10 @@
      "ladder": "T1 35% advised \u00b7 T2 TRIGGERED \u2014 factor count rises above 3",
      "ladder_detail": {
       "account": "ACCOUNT_B",
-      "advisory_id": "moveout-XAR-ACCOUNT_B-2026-07-18",
+      "advisory_id": "moveout-ZQAD-ACCOUNT_B-2026-07-18",
       "ladder_id": 3,
       "status": "open",
-      "symbol": "XAR",
+      "symbol": "ZQAD",
       "t1_fraction": 35,
       "t1_status": "advised",
       "tranches": [
@@ -4099,15 +4099,15 @@
         "tranche": "T2",
         "triggers": [
          {
-          "label": "close < $10,000 (20d swing low)",
+          "label": "close < $8,000 (20d swing low)",
           "level": 258.57,
-          "symbol": "XAR",
+          "symbol": "ZQAD",
           "type": "price_below"
          },
          {
           "account": "ACCOUNT_B",
           "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-          "symbol": "XAR",
+          "symbol": "ZQAD",
           "type": "gg_escalation"
          },
          {
@@ -4126,9 +4126,9 @@
        "conditions": [
         {
          "dma": 50,
-         "label": "XAR reclaims its 50DMA",
+         "label": "ZQAD reclaims its 50DMA",
          "met": false,
-         "symbol": "XAR",
+         "symbol": "ZQAD",
          "type": "price_reclaim_dma"
         },
         {
@@ -4148,13 +4148,13 @@
        "now_price": 270.68,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "XAR",
+       "symbol": "ZQAD",
        "wash_sale": null
       }
      ],
      "stance": "TRIM",
-     "symbol": "XAR",
-     "value": 10000
+     "symbol": "ZQAD",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4175,9 +4175,9 @@
         },
         {
          "dma": 50,
-         "label": "CSCO reclaims its 50DMA",
+         "label": "ZQBX reclaims its 50DMA",
          "met": false,
-         "symbol": "CSCO",
+         "symbol": "ZQBX",
          "type": "price_reclaim_dma"
         },
         {
@@ -4197,13 +4197,13 @@
        "now_price": 112.77,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "CSCO",
+       "symbol": "ZQBX",
        "wash_sale": null
       }
      ],
      "stance": "HOLD",
-     "symbol": "CSCO",
-     "value": 10000
+     "symbol": "ZQBX",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4211,10 +4211,10 @@
      "ladder": "T1 60% advised \u00b7 T2 TRIGGERED \u2014 GG escalates to GIVEBACK-BREACH or CLIMAX",
      "ladder_detail": {
       "account": "ACCOUNT_B",
-      "advisory_id": "moveout-QCOM-ACCOUNT_B-2026-07-18",
+      "advisory_id": "moveout-ZQAE-ACCOUNT_B-2026-07-18",
       "ladder_id": 4,
       "status": "open",
-      "symbol": "QCOM",
+      "symbol": "ZQAE",
       "t1_fraction": 60,
       "t1_status": "advised",
       "tranches": [
@@ -4233,15 +4233,15 @@
           "type": "sector_persist"
          },
          {
-          "label": "close < $10,000 (20d swing low)",
+          "label": "close < $8,000 (20d swing low)",
           "level": 170.75,
-          "symbol": "QCOM",
+          "symbol": "ZQAE",
           "type": "price_below"
          },
          {
           "account": "ACCOUNT_B",
           "label": "GG escalates to GIVEBACK-BREACH or CLIMAX",
-          "symbol": "QCOM",
+          "symbol": "ZQAE",
           "type": "gg_escalation"
          },
          {
@@ -4267,9 +4267,9 @@
         },
         {
          "dma": 50,
-         "label": "QCOM reclaims its 50DMA",
+         "label": "ZQAE reclaims its 50DMA",
          "met": false,
-         "symbol": "QCOM",
+         "symbol": "ZQAE",
          "type": "price_reclaim_dma"
         },
         {
@@ -4289,12 +4289,12 @@
        "now_price": 167.04,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "QCOM",
+       "symbol": "ZQAE",
        "wash_sale": null
       }
      ],
      "stance": null,
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "value": null
     },
     {
@@ -4316,9 +4316,9 @@
         },
         {
          "dma": 50,
-         "label": "SPCX reclaims its 50DMA",
+         "label": "ZQBL reclaims its 50DMA",
          "met": false,
-         "symbol": "SPCX",
+         "symbol": "ZQBL",
          "type": "price_reclaim_dma"
         },
         {
@@ -4338,12 +4338,12 @@
        "now_price": 114.39,
        "now_vs_exit_pct": null,
        "status": "advised",
-       "symbol": "SPCX",
+       "symbol": "ZQBL",
        "wash_sale": null
       }
      ],
      "stance": null,
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "value": null
     }
    ],
@@ -4354,9 +4354,9 @@
      "conditions": [
       {
        "dma": 50,
-       "label": "BND reclaims its 50DMA",
+       "label": "ZQAG reclaims its 50DMA",
        "met": false,
-       "symbol": "BND",
+       "symbol": "ZQAG",
        "type": "price_reclaim_dma"
       },
       {
@@ -4376,7 +4376,7 @@
      "now_price": 72.36,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "BND",
+     "symbol": "ZQAG",
      "wash_sale": null
     },
     {
@@ -4385,9 +4385,9 @@
      "conditions": [
       {
        "dma": 50,
-       "label": "ARKX reclaims its 50DMA",
+       "label": "ZQAQ reclaims its 50DMA",
        "met": false,
-       "symbol": "ARKX",
+       "symbol": "ZQAQ",
        "type": "price_reclaim_dma"
       },
       {
@@ -4407,7 +4407,7 @@
      "now_price": 30.52,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "ARKX",
+     "symbol": "ZQAQ",
      "wash_sale": null
     },
     {
@@ -4416,9 +4416,9 @@
      "conditions": [
       {
        "dma": 50,
-       "label": "XAR reclaims its 50DMA",
+       "label": "ZQAD reclaims its 50DMA",
        "met": false,
-       "symbol": "XAR",
+       "symbol": "ZQAD",
        "type": "price_reclaim_dma"
       },
       {
@@ -4438,7 +4438,7 @@
      "now_price": 270.68,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "XAR",
+     "symbol": "ZQAD",
      "wash_sale": null
     },
     {
@@ -4454,9 +4454,9 @@
       },
       {
        "dma": 50,
-       "label": "CSCO reclaims its 50DMA",
+       "label": "ZQBX reclaims its 50DMA",
        "met": false,
-       "symbol": "CSCO",
+       "symbol": "ZQBX",
        "type": "price_reclaim_dma"
       },
       {
@@ -4476,7 +4476,7 @@
      "now_price": 112.77,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "CSCO",
+     "symbol": "ZQBX",
      "wash_sale": null
     },
     {
@@ -4492,9 +4492,9 @@
       },
       {
        "dma": 50,
-       "label": "SPCX reclaims its 50DMA",
+       "label": "ZQBL reclaims its 50DMA",
        "met": false,
-       "symbol": "SPCX",
+       "symbol": "ZQBL",
        "type": "price_reclaim_dma"
       },
       {
@@ -4514,7 +4514,7 @@
      "now_price": 114.39,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "wash_sale": null
     },
     {
@@ -4530,9 +4530,9 @@
       },
       {
        "dma": 50,
-       "label": "QCOM reclaims its 50DMA",
+       "label": "ZQAE reclaims its 50DMA",
        "met": false,
-       "symbol": "QCOM",
+       "symbol": "ZQAE",
        "type": "price_reclaim_dma"
       },
       {
@@ -4552,7 +4552,7 @@
      "now_price": 167.04,
      "now_vs_exit_pct": null,
      "status": "advised",
-     "symbol": "QCOM",
+     "symbol": "ZQAE",
      "wash_sale": null
     }
    ],
@@ -4568,24 +4568,24 @@
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "62% of fund weight sits in WEAKENING/LAGGING sectors (top: Financials 18% \u2192 LEADING); no stop on funds \u00b7 ~32% of top-10 industry weight in LAGGING/WEAKENING (Banks, Household & Personal Products)",
      "sector": "fund (lookthrough)",
      "stance": "TRIM-WATCH",
-     "symbol": "SCHD",
-     "value": 10000
+     "symbol": "ZQCH",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "66% of fund weight sits in WEAKENING/LAGGING sectors (top: Technology 14% \u2192 IMPROVING); no stop on funds \u00b7 ~27% of top-10 industry weight in LAGGING/WEAKENING (Software, Household & Personal Products)",
      "sector": "fund (lookthrough)",
      "stance": "TRIM-WATCH",
-     "symbol": "JEPI",
-     "value": 10000
+     "symbol": "ZQAK",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4596,8 +4596,8 @@
      "reason": "Financials LEADING (RS20 +3.3), above 50DMA",
      "sector": "Financials",
      "stance": "HOLD",
-     "symbol": "V",
-     "value": 10000
+     "symbol": "ZQCE",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_D",
@@ -4608,8 +4608,8 @@
      "reason": "Financials LEADING (RS20 +3.3), above 50DMA",
      "sector": "Financials",
      "stance": "HOLD",
-     "symbol": "V",
-     "value": 10000
+     "symbol": "ZQCE",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4620,20 +4620,20 @@
      "reason": "not decomposed \u2014 international book \u2014 US 11-sector map does not apply",
      "sector": "fund (not decomposed)",
      "stance": "HOLD",
-     "symbol": "DIVI",
-     "value": 10000
+     "symbol": "ZQAM",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "100% of fund weight sits in WEAKENING/LAGGING sectors (top: Industrials 100% \u2192 LAGGING); no stop on funds",
      "sector": "fund (lookthrough)",
      "stance": "TRIM-WATCH",
-     "symbol": "XLI",
-     "value": 10000
+     "symbol": "ZQBT",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4644,20 +4644,20 @@
      "reason": "Technology IMPROVING, no factors fired",
      "sector": "Technology",
      "stance": "HOLD",
-     "symbol": "ANET",
-     "value": 10000
+     "symbol": "ZQBU",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "upgraded from watch: live trim ladder T1 45% advised \u00b7 T2 FIRED \u2014 escalation live \u00b7 61% of fund weight sits in WEAKENING/LAGGING sectors (top: Industrials 45% \u2192 LAGGING); no stop on funds",
      "sector": "fund (lookthrough)",
      "stance": "TRIM",
-     "symbol": "ARKX",
-     "value": 10000
+     "symbol": "ZQAQ",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4668,32 +4668,32 @@
      "reason": "not decomposed \u2014 fixed income \u2014 not equity sector exposure \u00b7 TRIM ADVISORIES MUTED by operator 2026-07-18 (engine factors still shown \u2014 remove the config entry to unmute)",
      "sector": "fund (not decomposed)",
      "stance": "HOLD",
-     "symbol": "BND",
-     "value": 10000
+     "symbol": "ZQAG",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "upgraded from watch: live trim ladder T1 45% advised \u00b7 100% of fund weight sits in WEAKENING/LAGGING sectors (top: Industrials 100% \u2192 LAGGING); no stop on funds",
      "sector": "fund (lookthrough)",
      "stance": "TRIM",
-     "symbol": "XAR",
-     "value": 10000
+     "symbol": "ZQAD",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
      "account_label": "Rollover IRA",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "100% of fund weight sits in WEAKENING/LAGGING sectors (top: Materials 100% \u2192 LAGGING); no stop on funds",
      "sector": "fund (lookthrough)",
      "stance": "TRIM-WATCH",
-     "symbol": "XLB",
-     "value": 10000
+     "symbol": "ZQBM",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4704,8 +4704,8 @@
      "reason": "Healthcare WEAKENING \u00b7 watch: sector state Healthcare WEAKENING (RS20 +3.5) \u00b7 below 50DMA -1.07%",
      "sector": "Healthcare",
      "stance": "HOLD",
-     "symbol": "DXCM",
-     "value": 10000
+     "symbol": "ZQCD",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4716,20 +4716,20 @@
      "reason": "not decomposed \u2014 no reliable current factsheet \u2014 never guess \u00b7 TRIM ADVISORIES MUTED by operator 2026-07-18 (engine factors still shown \u2014 remove the config entry to unmute)",
      "sector": "fund (not decomposed)",
      "stance": "HOLD",
-     "symbol": "SPCX",
-     "value": 10000
+     "symbol": "ZQBL",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_F",
      "account_label": "Taxable",
      "as_of": "2026-07-24",
      "is_core": true,
-     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 SCHD (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
+     "on_trigger": "if the trim fires (defensive lean, operator directive 2026-07-18): proceeds \u2192 XLU/XLP/XLV (defensive sectors, if LEADING+underweight) \u00b7 ZQCH (income core, style-aligned) \u00b7 cash (money-market sweep) \u2014 the default when nothing qualifies",
      "reason": "62% of fund weight sits in WEAKENING/LAGGING sectors (top: Financials 18% \u2192 LEADING); no stop on funds \u00b7 ~32% of top-10 industry weight in LAGGING/WEAKENING (Banks, Household & Personal Products)",
      "sector": "fund (lookthrough)",
      "stance": "TRIM-WATCH",
-     "symbol": "SCHD",
-     "value": 10000
+     "symbol": "ZQCH",
+     "value": 8000
     },
     {
      "account": "ACCOUNT_B",
@@ -4740,8 +4740,8 @@
      "reason": "Technology IMPROVING \u00b7 watch: below 50DMA -4.38%",
      "sector": "Technology",
      "stance": "HOLD",
-     "symbol": "CSCO",
-     "value": 10000
+     "symbol": "ZQBX",
+     "value": 8000
     }
    ],
    "tensions": []

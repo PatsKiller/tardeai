@@ -62,7 +62,7 @@ ok('data before research before plan (the mockup order)', firstIdx('data') < fir
 ok('calm open legs after plan matches', firstIdx('open:calm') > order.lastIndexOf('plan'))
 eq('buckets are monotonic', all.map(actBucket).every((b, i, a) => i === 0 || a[i - 1] <= b), true)
 const dataRows = all.filter(r => r.lane === 'data')
-eq('inside a bucket, the larger dollar amount first', dataRows.map(r => r.symbol), ['SCHG', 'XLB'])
+eq('inside a bucket, the larger dollar amount first', dataRows.map(r => r.symbol), ['ZQAV', 'ZQBM'])
 const tie = actFirstSort([
   { lane: 'you', strategy: 'cash_secured_put', costValue: 9000, symbol: 'AAA' },
   { lane: 'you', strategy: 'protective_put', costValue: 100, symbol: 'ZZZ' },
@@ -72,9 +72,9 @@ eq('buildIdeas already returns act-first order', buildIdeas(raw, NOW).map(i => i
 
 // ── Freshness on every number ───────────────────────────────────────────────────────────────────
 for (const r of all) ok(`row ${r.id} has a cost freshness line`, typeof r.costAge === 'string' && r.costAge.length > 0)
-const spcx = ideas.find(i => i.symbol === 'SPCX')!
+const spcx = ideas.find(i => i.symbol === 'ZQBL')!
 ok('idea cost age from the contract quote_time', /^quote Oct 21 16:00 ET · 19 h old$/.test(spcx.costAge))
-for (const label of ['Premium', 'Total cost', 'Floor']) ok(`SPCX ${label} tile states its quote time`, /quote Oct 21 16:00 ET/.test(spcx.econ.find(e => e.label === label)?.note || ''))
+for (const label of ['Premium', 'Total cost', 'Floor']) ok(`ZQBL ${label} tile states its quote time`, /quote Oct 21 16:00 ET/.test(spcx.econ.find(e => e.label === label)?.note || ''))
 eq('served request-time age used when there is no quote_time', quoteFreshness({ quote_age_s: 30 }, NOW).text, 'quote 30 s old')
 eq('generation-time age is labelled', quoteFreshness({ quote_age_seconds: 600 }, NOW).text, 'quote 10 min old at generation')
 eq('nothing served → says so', quoteFreshness({}, NOW).text, 'quote time not provided by this server version')

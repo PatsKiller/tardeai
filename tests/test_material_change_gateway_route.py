@@ -264,7 +264,7 @@ GW_TWO_CHATS = {
     "provider_message_id": "51573,51574",
     "provider_coordinates": {"channel": "telegram",
                              "message_ids": ["51573", "51574"],
-                             "chat_ids": ["6993102664", "8797974247"]},  # hardcode-ok: routing fixture, not a credential
+                             "chat_ids": ["900000001", "8797974247"]},  # hardcode-ok: routing fixture, not a credential
 }
 ROWS_TWO = [
     {"symbol": "WMT", "subject_guid": "248e3cdc-4add-5113-b33e-9daf6a00dbe3"},
@@ -305,9 +305,9 @@ def test_each_message_id_keeps_the_chat_it_was_sent_to():
     conn = _TurnConn()
     nmc.capture_agent_turns(conn, message="m", rows=ROWS_TWO, gw=GW_TWO_CHATS)
     pairs = {(p[2], p[3]) for p in _params(conn)}
-    assert ("6993102664", 51573) in pairs  # hardcode-ok: routing fixture, not a credential
+    assert ("900000001", 51573) in pairs  # hardcode-ok: routing fixture, not a credential
     assert ("8797974247", 51574) in pairs  # hardcode-ok: routing fixture, not a credential
-    assert ("6993102664", 51574) not in pairs, "ids must not be cross-paired"  # hardcode-ok: routing fixture, not a credential
+    assert ("900000001", 51574) not in pairs, "ids must not be cross-paired"  # hardcode-ok: routing fixture, not a credential
 
 
 def test_it_falls_back_to_splitting_the_joined_string():

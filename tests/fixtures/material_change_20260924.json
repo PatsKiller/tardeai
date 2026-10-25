@@ -41,7 +41,7 @@
       "cio": {"action": "BUY_READY", "date": "2026-09-22"},
       "last_research": "2026-09-21"},
     "11111111-0000-0000-0000-000000000005": {
-      "price": 258.13, "quote_age_h": 0.25, "strategy": "dividend_growth_compounder", "strategy_inactive": true,
+      "price": 257.93, "quote_age_h": 0.25, "strategy": "dividend_growth_compounder", "strategy_inactive": true,
       "plan": {"entry": 275.32, "stop": 260.84, "target": 344.73, "source": "strategy_card"},
       "entry_state": {"state": "BLOCKED", "date": "2026-09-24", "reasons": ["price is at or below the plan stop"]},
       "cio": {"action": "BUY_READY", "date": "2026-09-22"},
@@ -51,7 +51,7 @@
       "plan": {"entry": 83.20, "stop": 78.50, "target": 95.00, "source": "entry_plan"},
       "cio": {"action": "TRIM_REVIEW", "date": "2026-09-23"},
       "holding": {"shares": 120.0, "accounts": ["Taxable"]},
-      "real_stop": {"price": 78.5, "broker": "schwab", "account": "schwab_taxable", "source": "operator"},
+      "real_stop": {"price": 78.5, "broker": "schwab", "account": "taxable_c", "source": "operator"},
       "last_research": "2026-09-20"}
   }
 }
