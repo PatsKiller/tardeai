@@ -98,6 +98,19 @@ def side(i: Input, profile: Profile) -> dict:
             "account": i.account, "source_label": profile.source_label(i.source) if hasattr(profile, "source_label") else i.source}
 
 
+def _fact_findings(findings, profile):
+    if profile.name in {"numeric_fact", "schedule_state"}:
+        for finding in findings:
+            if finding.kind == "CONFLICT":
+                finding.kind, finding.rule = "DATA_ERROR", "T1"
+                finding.clears_when = "the authoritative source or its reader is repaired and agrees"
+                finding.action = "notify_operator"
+            if finding.kind == "DATA_ERROR":
+                finding.tier, finding.never_auto = 1, True
+                finding.owner = "source owner"
+    return findings
+
+
 def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Input], profile: Profile, *, now: datetime,
              history: Iterable[dict] = ()) -> list[Finding]:
     domain = getattr(profile, "evaluate_domain", None)
@@ -130,7 +143,7 @@ def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Inpu
         out.append(Finding("CONFLICT", "U2", f"No {profile.canonical_source} value on record",
                            f"{profile.canonical_source} records a value", profile.owner_review_action(), "warn", [],
                            f"{pre}:U2"))
-        return out
+        return _fact_findings(out, profile)
     can_age = (now - canonical.as_of) if canonical.as_of else None
     can_stale = can_age is not None and can_age > profile.canonical_max_age
 
@@ -178,7 +191,7 @@ def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Inpu
                            f"{i.source} says {profile.describe(i.value)}",
                            f"{profile.canonical_source} reviews both and records a decision with its reason",
                            profile.owner_review_action(), "warn", [side(canonical, profile), side(i, profile)], key))
-    return out
+    return _fact_findings(out, profile)
 
 
 def finding_sort_key(finding: Finding):
