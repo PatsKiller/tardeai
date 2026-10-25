@@ -181,13 +181,16 @@ def _agents(version, status, row_status="ACTIVE", own="ACTIVE"):
 
 def test_gate_follows_agents_md_and_today_is_not_active():
     assert HOP.policy_state_from_text(_agents("20.4.0", "ACTIVE"))["active"] is True
-    assert HOP.policy_state_from_text(_agents("20.5.0", "ACTIVE"))["active"] is True
+    # Renumbered: ratified as 21.0.0 (PR #2128); the CURRENT version's row decides, no | 20.4.0 | row needed.
+    assert HOP.policy_state_from_text(_agents("21.0.0", "ACTIVE"))["active"] is True
+    assert HOP.policy_state_from_text(_agents("21.0.0", "ACTIVE", own="PROPOSED"))["active"] is True
+    assert HOP.policy_state_from_text(_agents("21.0.0", "PROPOSED", "PROPOSED"))["active"] is False
+    assert HOP.policy_state_from_text(_agents("21.0.0", "ACTIVE", "PROPOSED"))["active"] is False
     assert HOP.policy_state_from_text(_agents("20.4.0", "PROPOSED", "PROPOSED"))["active"] is False
-    assert HOP.policy_state_from_text(_agents("20.5.0", "ACTIVE", own="PROPOSED"))["active"] is False
     assert HOP.policy_state_from_text(_agents("20.3.0", "ACTIVE"))["active"] is False
-    # The repository's own AGENTS.md decides; until the 20.4.0 ratifying merge it is not active.
+    # The repository's own AGENTS.md decides (header >= 20.4.0, ACTIVE, its own row ACTIVE).
     real = SOLO.policy_state(ROOT)
-    assert real["active"] == ("20.4.0" in (ROOT / "AGENTS.md").read_text() and real["state"] == "ACTIVE")
+    assert real["active"] == (HOP.policy_state_from_path(ROOT / "AGENTS.md")["state"] == "ACTIVE")
 
 
 # ── verification ──────────────────────────────────────────────────────────────────────────────────────

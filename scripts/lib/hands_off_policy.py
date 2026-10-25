@@ -8,10 +8,12 @@ reference, adversarial-review receipt).
 Gate (why a policy read and not a config flag). Every 20.4.0 mechanic -- push budget 5 and the coordinator push
 override (pre-push hook), solo shared-infra trains (release train), the registry-derived relay live list -- is ON
 only while ``policy_state(...)["active"]`` is True. ``active`` needs all of: the AGENTS.md control block's
-Policy-Version >= 20.4.0, its Status ACTIVE, the current version's history row ACTIVE, and a ``| 20.4.0 |`` history
-row that begins with ACTIVE (the ``or_later`` reading ``agent_claim_board.claim_policy_state`` already uses for the
-20.0.0 pre-commit gate). Read at call time, no cache, NO environment override: the operator's ratification (the
-ratifying merge of AGENTS.md to main) is the only switch, and nothing else -- no flag an agent could flip -- arms it.
+Policy-Version >= 20.4.0, its Status ACTIVE, and the version-history row of that CURRENT header version beginning
+with ACTIVE (the ``or_later`` reading ``agent_claim_board.claim_policy_state`` already uses for the 20.0.0 pre-commit
+gate). No ``| 20.4.0 |`` row is required: the hands-off rules were renumbered and ratified as 21.0.0 (2026-10-25,
+operator token on PR #2128), and any later ACTIVE version carries them. Read at call time, no cache, NO environment
+override: the operator's ratification (the ratifying merge of AGENTS.md to main) is the only switch, and nothing
+else -- no flag an agent could flip -- arms it.
 A config flag defaulting off would need a second, separate edit after ratification (a second operator step, or an
 agent flipping a governance flag on its own); the policy read needs neither. Unreadable or unparseable is NOT active
 (fail closed: every mechanic keeps its pre-20.4.0 behavior).
@@ -106,18 +108,11 @@ def policy_state_from_text(text: Optional[str], *, source: str = "text") -> dict
     cur = _row_status(text, version or "")
     if not cur or not cur.upper().startswith("ACTIVE"):
         return {**base, "state": "NOT_ACTIVE", "detail": f"AGENTS.md {version} version-history row is not ACTIVE"}
-    own = _row_status(text, POLICY_VERSION_TEXT)
-    if not own or not own.upper().startswith("ACTIVE"):
-        return {
-            **base,
-            "state": "NOT_ACTIVE",
-            "detail": f"no ACTIVE {POLICY_VERSION_TEXT} version-history row (ratification not recorded)",
-        }
     return {
         **base,
         "state": "ACTIVE",
         "active": True,
-        "detail": f"AGENTS.md {version} ACTIVE (>= {POLICY_VERSION_TEXT}, {POLICY_VERSION_TEXT} row ACTIVE)",
+        "detail": f"AGENTS.md {version} ACTIVE (>= {POLICY_VERSION_TEXT})",
     }
 
 
