@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "delivery_lifecycle_20261025",
+  "files": [
+    "tests/test_delivery_failure_alerts_20261025.py",
+    "tests/test_post_release_tester_20261025.py"
+  ],
+  "anchor": "DELIVERY_LIFECYCLE_20261025",
+  "comment": [
+    "ANCHOR: DELIVERY_LIFECYCLE_20261025 — operator 2026-10-25 \"Any failures I need to be emailed, notified, and texted\":",
+    "delivery failure alerts (main CI red, train outcome/receipt, STOP, manual release, post-release tester, nightly sweep,",
+    "request slot missed) page P1 via send_telegram + gateway email/sms; post-release tester API checks + light/nightly sweep",
+    "outside the §28.8 window under the memory gate. Hermetic: temp roots, stubbed senders/HTTP/systemd/sweeper."
+  ]
+}

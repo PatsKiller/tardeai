@@ -1,0 +1,30 @@
+{
+  "schema": "PostReleaseTesterConfig@v1",
+  "_comment": "Post-release verification (AGENTS.md §29 PROPOSED; operator 2026-10-25 'it's deployed, tested'). Read by scripts/lib/post_release_tester.py only. After every release (train or manual, detected from the deploy receipt history) the tester runs the post-promote API checks at once (health ok, /v3/cio 200, served BUILD_SHA == released SHA, release wrapper preflight when admitted), then a light browser sweep through scripts/site_sweep.sh (top routes, 412/390 viewports, 'broken' detectors only) — never 04:00-16:15 ET on a weekday (§28.8) and never above the memory gate; a deferred sweep runs at the first allowed tick. A nightly full sweep runs at nightly_at ET when memory allows. GET only, one request at a time. Changed only by reviewed PR.",
+  "base_url": "http://127.0.0.1:7777",
+  "api_checks": [
+    {"name": "health", "path": "/api/v2/health", "expect_status": 200, "expect_json_ok": true},
+    {"name": "cio_page", "path": "/v3/cio", "expect_status": 200},
+    {"name": "home_page", "path": "/v3/", "expect_status": 200}
+  ],
+  "request_spacing_s": 1.0,
+  "request_timeout_s": 15,
+  "memory_unit": "portfolio-server.service",
+  "memory_abort_bytes": 1300000000,
+  "browser_blackout_et": {"weekdays": [0, 1, 2, 3, 4], "start": "04:00", "end": "16:15"},
+  "light": {
+    "routes": ["/v3/portfolio", "/v3/watch", "/v3/cio", "/v3/risk", "/v3/system/releases"],
+    "viewports": ["m412", "m390"],
+    "broken_kinds": ["console_error", "page_error", "http_error", "route_crash"],
+    "slow_load_ms": 15000,
+    "timeout_s": 1500
+  },
+  "nightly": {
+    "at_et": "21:30",
+    "until_et": "23:45",
+    "viewports": [],
+    "broken_kinds": ["console_error", "page_error", "http_error", "route_crash"],
+    "slow_load_ms": 15000,
+    "timeout_s": 5400
+  }
+}

@@ -1,0 +1,17 @@
+{
+ "schema": "DeliveryLifecycleSchedulePlan@v1",
+ "why_not_in_this_pr": [
+  "config/lane_registry.json and config/n8n_run_allowlist.json are edited by open PR #2099 (Release Train arm); the coordinator asked that no other PR touch them until it merges.",
+  "Both files are sha-pinned in docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json (read by tests/test_disk_standing_apply_20261024.py activation fixtures). Any row added changes the sha, so the schedule PR must re-pin that packet in the same [shared-infra] PR, after #2099 (which faces the same re-pin)."
+ ],
+ "apply_after": "#2099 merged",
+ "pr_title": "[shared-infra] register delivery-failure-alerts (host cron) + post-release-tester (n8n shadow) lanes",
+ "steps": [
+  "append registry_rows.json rows to config/lane_registry.json lanes[]",
+  "append allowlist_entry.json to config/n8n_run_allowlist.json lanes[]",
+  "re-pin lane_registry.json and n8n_run_allowlist.json in docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json (sha256sum of the new files) and say so in the PR body",
+  "operator: install delivery-failure-alerts install_line under a cron grant naming the lane (crontab is operator-applied)",
+  "operator: n8n dispatcher picks post-release-tester from the registry at shadow; canary = live_arg ['--live'] after one clean shadow run"
+ ],
+ "crontab_line": "*/5 * * * * cd $PROJ && set -a && . ./.env && set +a && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state COMMS_GATEWAY_MODE=CANARY SYSTEM_TELEGRAM_ENABLED=1 bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_delivery_failure_alerts.lock timeout 120 $PY scripts/delivery_failure_alerts.py --live >> logs/delivery_failure_alerts.log 2>&1  # TRADEAI_LANE delivery-failure-alerts"
+}

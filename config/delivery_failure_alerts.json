@@ -1,0 +1,39 @@
+{
+  "schema": "DeliveryFailureAlertsConfig@v1",
+  "_comment": "Delivery lifecycle failure alerts (operator 2026-10-25: 'Any failures I need to be emailed, notified, and texted.'; AGENTS.md §29 PROPOSED). Read by scripts/lib/delivery_failure_alerts.py only. Every failure below is an immediate P1 (never the digest): Telegram through the telegram_alert.send_telegram chokepoint (priority P1), email and SMS through the communications gateway (scripts/lib/comms/channel_adapters.send_via_gateway). Recipients and provider keys are read by the gateway adapters only (REPORT_EMAIL_TO; OPERATOR_SMS_EMAIL or TWILIO_SMS_FROM/TWILIO_SMS_TO), never here: this file names env keys so the lane can say NOT_CONFIGURED without reading a value. Changed only by reviewed PR.",
+  "channels": {
+    "telegram": {"enabled": true},
+    "email": {"enabled": true, "required_env_all": ["REPORT_EMAIL_TO", "SMTP_HOST"], "enable_flag": "ENABLE_EMAIL", "enable_flag_default": "true"},
+    "sms": {
+      "enabled": true,
+      "enable_flag": "ENABLE_SMS",
+      "enable_flag_default": "false",
+      "required_env_any": [["OPERATOR_SMS_EMAIL"], ["TWILIO_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM", "TWILIO_SMS_TO"]],
+      "max_chars": 155
+    }
+  },
+  "link_path": "/v3/system/releases",
+  "lookback_hours": 24,
+  "remind_hours": 24,
+  "max_messages_per_hour": 6,
+  "max_separate_per_run": 3,
+  "train": {
+    "alert_outcomes": ["FAILED_PRE_MERGE", "MERGED_NOT_LIVE", "ROLLED_BACK", "ROLLBACK_FAILED", "STOPPED"],
+    "benign_refusal_codes": ["DUPLICATE_WINDOW"]
+  },
+  "request_slots": {
+    "unit_prefix": "tradeai-release-train-request@",
+    "grace_minutes": 15,
+    "horizon_hours": 26
+  },
+  "triggers": {
+    "main_ci_red": {"enabled": true, "receipt_max_age_min": 20},
+    "train_outcome": {"enabled": true},
+    "train_receipt": {"enabled": true},
+    "stop_latched": {"enabled": true},
+    "manual_release": {"enabled": true},
+    "post_release_tester": {"enabled": true},
+    "nightly_sweep": {"enabled": true},
+    "request_slot_missed": {"enabled": true}
+  }
+}
