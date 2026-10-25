@@ -213,8 +213,18 @@ def test_trim_unavailable_is_a_noop(monkeypatch):
 
 
 def test_server_brackets_every_request():
-    src = (ROOT / "scripts" / "portfolio_server.py").read_text(encoding="utf-8")
-    body = src.split("def process_request_thread(self, request, client_address):", 1)[1].split("def ", 1)[0]
-    assert "_malloc_relief.note_request_start()" in body
-    assert "_malloc_relief.note_request_end()" in body
-    assert "finally:" in body
+    """Start at the top of process_request_thread; end in shutdown_request (every served request) and on the
+    server_busy 503 path, which closes the socket itself."""
+    import ast
+
+    tree = ast.parse((ROOT / "scripts" / "portfolio_server.py").read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ReusableHTTPServer")
+    fns = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+    prt = fns["process_request_thread"]
+    first = ast.unparse(prt.body[0])
+    assert first == "_malloc_relief.note_request_start()"
+    prt_src = ast.unparse(prt)
+    busy = prt_src.split("server_busy", 1)[1].split("_t0 = time.monotonic()", 1)[0]
+    assert "_malloc_relief.note_request_end()" in busy
+    shut = ast.unparse(fns["shutdown_request"])
+    assert "finally:" in shut and "_malloc_relief.note_request_end()" in shut

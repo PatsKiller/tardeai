@@ -51,20 +51,20 @@ def _store() -> types.ModuleType:
     return mod
 
 
-def _env_int(name: str, default: int) -> int:
+def _int_or(raw: str | None, default: int) -> int:
     try:
-        v = int(os.environ.get(name, "") or default)
+        v = int(raw or default)
         return v if v >= 0 else default
     except ValueError:
         return default
 
 
 def max_entries() -> int:
-    return _env_int("SHARED_JSON_CACHE_MAX_ENTRIES", DEFAULT_MAX_ENTRIES)
+    return _int_or(os.environ.get("SHARED_JSON_CACHE_MAX_ENTRIES"), DEFAULT_MAX_ENTRIES)
 
 
 def max_bytes() -> int:
-    return _env_int("SHARED_JSON_CACHE_MAX_BYTES", DEFAULT_MAX_BYTES)
+    return _int_or(os.environ.get("SHARED_JSON_CACHE_MAX_BYTES"), DEFAULT_MAX_BYTES)
 
 
 def _evict_locked(st: types.ModuleType) -> None:

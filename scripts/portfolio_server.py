@@ -2866,65 +2866,68 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "48")))
     _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
-    def process_request_thread(self, request, client_address):
-        # 2026-10-25 (portfolio-server memory): bracket every request so the thread that finishes the
-        # last in-flight request returns freed heap to the OS (lib/malloc_relief.py, rate-limited).
-        _malloc_relief.note_request_start()
+    def shutdown_request(self, request):
+        # Every served request ends here (ThreadingMixIn.process_request_thread's finally). 2026-10-25
+        # (portfolio-server memory): the thread finishing the last in-flight request returns freed heap
+        # to the OS (lib/malloc_relief.py, rate-limited). Paired with note_request_start below.
         try:
-            # Bound hung client I/O so dead Tailscale peers release slots
-            try:
-                request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
-            except Exception:
-                pass
-            path = _peek_http_path(request)
-            if _sem_exempt_path(path):
-                try:
-                    super().process_request_thread(request, client_address)
-                except Exception:
-                    try:
-                        request.close()
-                    except Exception:
-                        pass
-                return
-            acquired = False
-            try:
-                acquired = self._sem.acquire(timeout=self._sem_timeout)
-                if not acquired:
-                    # Fail fast — browser useApi will retry; better than wedging 300 CLOSE-WAIT threads
-                    try:
-                        body = b'{"ok":false,"error":"server_busy","retry_after_sec":2}'
-                        resp = (
-                            b"HTTP/1.1 503 Service Unavailable\r\n"
-                            b"Content-Type: application/json\r\n"
-                            b"Content-Length: " + str(len(body)).encode() + b"\r\n"
-                            b"Connection: close\r\n"
-                            b"Retry-After: 2\r\n"
-                            b"\r\n" + body
-                        )
-                        request.sendall(resp)
-                    except Exception:
-                        pass
-                    try:
-                        request.close()
-                    except Exception:
-                        pass
-                    return
-                _t0 = time.monotonic()
-                try:
-                    super().process_request_thread(request, client_address)
-                finally:
-                    _log_slow_request(path, time.monotonic() - _t0)
-            finally:
-                if acquired:
-                    try:
-                        self._sem.release()
-                    except Exception:
-                        pass
+            super().shutdown_request(request)
         finally:
+            _malloc_relief.note_request_end()
+
+    def process_request_thread(self, request, client_address):
+        _malloc_relief.note_request_start()  # ended in shutdown_request, or on the server_busy 503 path
+        # Bound hung client I/O so dead Tailscale peers release slots
+        try:
+            request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
+        except Exception:
+            pass
+        path = _peek_http_path(request)
+        if _sem_exempt_path(path):
             try:
-                _malloc_relief.note_request_end()
+                super().process_request_thread(request, client_address)
             except Exception:
-                pass
+                try:
+                    request.close()
+                except Exception:
+                    pass
+            return
+        acquired = False
+        try:
+            acquired = self._sem.acquire(timeout=self._sem_timeout)
+            if not acquired:
+                # Fail fast — browser useApi will retry; better than wedging 300 CLOSE-WAIT threads
+                try:
+                    body = b'{"ok":false,"error":"server_busy","retry_after_sec":2}'
+                    resp = (
+                        b"HTTP/1.1 503 Service Unavailable\r\n"
+                        b"Content-Type: application/json\r\n"
+                        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                        b"Connection: close\r\n"
+                        b"Retry-After: 2\r\n"
+                        b"\r\n" + body
+                    )
+                    request.sendall(resp)
+                except Exception:
+                    pass
+                try:
+                    request.close()
+                except Exception:
+                    pass
+                _malloc_relief.note_request_end()
+                return
+            _t0 = time.monotonic()
+            try:
+                super().process_request_thread(request, client_address)
+            finally:
+                _log_slow_request(path, time.monotonic() - _t0)
+        finally:
+            if acquired:
+                try:
+                    self._sem.release()
+                except Exception:
+                    pass
+
 
 class ServeProxyUnixHTTPServer(ReusableHTTPServer):
     """ReusableHTTPServer on an AF_UNIX socket (cc_auth serve_proxy, transport: unix).
