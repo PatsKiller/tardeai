@@ -41,7 +41,8 @@ for _stale in (
     # per-holding day P&L is imported inside portfolio_holdings; pop so fixes go live.
     "holding_day_change",
 ):
-    _sys_heal.modules.pop(_stale, None)
+    for _spelling in (_stale, "scripts." + _stale):  # every spelling, or the server's single-load finder re-aliases
+        _sys_heal.modules.pop(_spelling, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)

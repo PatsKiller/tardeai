@@ -72,11 +72,15 @@ _TREE = {
     "scripts/lib/cyc_a.py": "EARLY = 0\nimport scripts.lib.cyc_b\nLATE = 2\n",
     "scripts/lib/cyc_b.py": "from scripts.lib.cyc_a import LATE\nB = 1\n",
     "scripts/lib/calendar.py": "SHADOW = True\n",
-    "scripts/topmod.py": "import threading\nLOCK = threading.Lock()\n",
+    "scripts/topmod.py": (
+        "import builtins, threading\nbuiltins._TOP_EXEC = getattr(builtins, '_TOP_EXEC', 0) + 1\nLOCK = threading.Lock()\n"
+    ),
     "scripts/lib/slowpkg/__init__.py": "import time\ntime.sleep(0.4)\nfrom scripts.lib.slowpkg.child import V\nREADY = True\n",
     "scripts/lib/slowpkg/child.py": "V = 1\n",
     "scripts/lib/slowsame/__init__.py": "import time\ntime.sleep(0.4)\nfrom lib.slowsame.child import V\nREADY = True\n",
     "scripts/lib/slowsame/child.py": "V = 1\n",
+    "scripts/lib/slowlong/__init__.py": "import time\ntime.sleep(1.0)\nfrom lib.slowlong.child import V\nREADY = True\n",
+    "scripts/lib/slowlong/child.py": "V = 1\n",
 }
 
 _SYNTH = r"""
@@ -165,7 +169,10 @@ _THREADS = r"""
 import importlib, json, sys, threading, time
 root, pkg = sys.argv[1], sys.argv[2]
 sys.path[:0] = [root + "/shim", root + "/scripts"]
+import module_single_load
 from module_single_load import install, duplicate_modules
+if len(sys.argv) > 3:
+    module_single_load._WAIT_SEC = float(sys.argv[3])
 import lib
 install(root + "/scripts")
 got, errs = {}, []
@@ -201,11 +208,64 @@ def test_another_threads_package_init_is_awaited_not_split(synthetic_root):
 
 def test_cross_thread_self_import_does_not_deadlock(synthetic_root):
     """lib.slowpkg's __init__ imports scripts.lib.slowpkg.child while thread b holds that spelling's lock.
-    Waiting would deadlock, so b stops waiting and both threads share one package (b may see it mid-__init__,
-    as a same-name import cycle would)."""
+    Waiting would deadlock, so b runs the normal import (its own complete copy, as without the finder) and never
+    sees the half-initialized package."""
     out = _run(_THREADS, str(synthetic_root), "slowpkg")
-    assert out["same"] and out["child_same"] and out["ready"] and out["errs"] == [] and out["dups"] == 0
-    assert out["secs"] < 5
+    assert out["errs"] == [] and out["ready_at_import"] is True and out["ready"] and out["secs"] < 5
+
+
+def test_wait_timeout_runs_the_normal_import_not_a_half_initialized_package(synthetic_root):
+    """Thread a's lib.slowlong __init__ outlasts the (shortened) wait: b imports a complete copy of its own."""
+    out = _run(_THREADS, str(synthetic_root), "slowlong", "0.2")
+    assert out["errs"] == [] and out["ready_at_import"] is True and out["ready"]
+    assert out["same"] is False  # a separate copy, exactly as without the finder
+
+
+_POPS = r"""
+import builtins, importlib, json, sys
+root = sys.argv[1]
+sys.path[:0] = [root + "/shim", root + "/scripts"]
+import module_single_load as M
+import lib  # puts the synthetic root on sys.path, as scripts/lib/__init__ does
+M.install(root + "/scripts")
+count = lambda: builtins._TOP_EXEC
+import topmod, scripts.topmod
+out = {"one": topmod is scripts.topmod and count() == 1}
+old = topmod
+sys.modules.pop("topmod")  # pop only the module's own name (pre-fix api_v2): the alias must not revive it
+fresh = importlib.import_module("topmod")
+out["own_name_pop_is_fresh"] = fresh is not old and count() == 2
+for spelling in ("topmod", "scripts.topmod"):  # api_v2 self-heal: every spelling
+    sys.modules.pop(spelling, None)
+again = importlib.import_module("scripts.topmod")
+out["all_spellings_pop_is_fresh"] = again is not fresh and count() == 3 and importlib.import_module("topmod") is again
+
+# F1: any error inside the finder steps aside and the normal import runs
+def boom(self, name):
+    raise RuntimeError("finder bug")
+    yield
+M.SingleLoadFinder._loaded_twin = boom
+import lib.registry
+out["finder_error_steps_aside"] = lib.registry.CACHE == {}
+print(json.dumps(out))
+"""
+
+
+def test_popped_modules_load_fresh_and_finder_errors_step_aside(synthetic_root):
+    out = _run(_POPS, str(synthetic_root))
+    assert out == {
+        "one": True,
+        "own_name_pop_is_fresh": True,
+        "all_spellings_pop_is_fresh": True,
+        "finder_error_steps_aside": True,
+    }
+
+
+def test_api_v2_self_heal_pops_every_spelling():
+    src = (SCRIPTS / "api_v2.py").read_text(encoding="utf-8")
+    block = src[src.index("for _stale in (") : src.index("PROJECT_ROOT = ")]
+    assert 'for _spelling in (_stale, "scripts." + _stale):' in block
+    assert "_sys_heal.modules.pop(_spelling, None)" in block
 
 
 # ── real modules ─────────────────────────────────────────────────────────────────────────────────────────────────

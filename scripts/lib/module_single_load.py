@@ -18,11 +18,15 @@ object instead of executing the file again. Every other import proceeds as befor
 - a plain module still executing its body (an import cycle through two spellings) is not aliased.
   That import loads a second copy, which is the same result as without the finder. A package whose
   ``__init__`` imports its own submodules under the other spelling is aliased (same-name semantics);
-  if another thread is running that ``__init__``, the import waits for it to finish (bounded, and not
-  while that thread is waiting on this one).
+  if another thread is running that ``__init__``, the import waits for it to finish. If that thread is
+  waiting on this one, or the wait times out, the import runs normally (a separate copy, as today);
+- a module whose own name was popped from ``sys.modules`` (api_v2's reload self-heal) is never revived
+  through another spelling: the next import executes the file fresh;
+- any unexpected error inside the finder steps aside and the normal import runs.
 
 The module keeps its first ``__name__`` and ``__spec__``, so ``importlib.reload``, ``pickle`` and
-``logging.getLogger(__name__)`` see one canonical name, and every spelling resolves to it.
+``logging.getLogger(__name__)`` see one canonical name, and every spelling resolves to it. Logger
+names and ``__module__`` therefore follow whichever spelling imported the file first.
 
 Scope: the portfolio-server entrypoint calls ``install()`` only when it runs as ``__main__``.
 Tests that import the server module and cron or n8n scripts are unaffected, and both import styles
@@ -141,10 +145,11 @@ def _package_alias_wait(mod):
 class _AliasLoader(importlib.abc.Loader):
     """Returns an already-loaded module object for a second spelling and never re-executes it."""
 
-    def __init__(self, module, wait_owner=None) -> None:
+    def __init__(self, module, wait_owner=None, real_spec=None) -> None:
         self._module = module
         self._spec = getattr(module, "__spec__", None)
         self._wait_owner = wait_owner
+        self._real_spec = real_spec
 
     def create_module(self, spec):
         return self._module
@@ -160,11 +165,31 @@ class _AliasLoader(importlib.abc.Loader):
         if self._wait_owner is None:
             return
         # Another thread is executing this package's __init__. Wait for it (only the module lock of this
-        # spelling is held here). Stop waiting when that thread waits on this one: its __init__ imports this
-        # spelling, and it then proceeds on the alias with same-name semantics. Bounded by _WAIT_SEC.
+        # spelling is held here). If that thread waits on this one (its __init__ imports this spelling) or
+        # _WAIT_SEC passes, never hand out the half-initialized package: run the normal import instead.
         deadline = time.monotonic() + _WAIT_SEC
-        while _initializing(module) and not _waits_on_me(self._wait_owner) and time.monotonic() < deadline:
+        while _initializing(module):
+            if _waits_on_me(self._wait_owner) or time.monotonic() >= deadline:
+                self._load_copy()
+                return
             time.sleep(0.005)
+
+    def _load_copy(self) -> None:
+        """The import without the finder: execute the file as a separate module under this spelling.
+
+        _load_unlocked() returns whatever sys.modules holds for the name after exec_module, so the copy
+        replaces the alias for this import only.
+        """
+        real = self._real_spec
+        if real is None or real.loader is None:
+            raise ImportError(f"module_single_load: no loader to import {getattr(real, 'name', '?')} normally")
+        fresh = importlib.util.module_from_spec(real)
+        sys.modules[real.name] = fresh
+        try:
+            real.loader.exec_module(fresh)
+        except BaseException:
+            sys.modules.pop(real.name, None)
+            raise
 
 
 class SingleLoadFinder(importlib.abc.MetaPathFinder):
@@ -183,6 +208,9 @@ class SingleLoadFinder(importlib.abc.MetaPathFinder):
             path = _module_file(mod)
             if not self._owned(path):
                 continue
+            canonical = getattr(getattr(mod, "__spec__", None), "name", None)
+            if canonical and canonical != cand and sys.modules.get(canonical) is not mod:
+                continue  # its own name was popped to force a fresh load (api_v2 self-heal): never revive it
             wait_owner = None
             if _initializing(mod):
                 alias, wait_owner = _package_alias_wait(mod)
@@ -203,6 +231,12 @@ class SingleLoadFinder(importlib.abc.MetaPathFinder):
         return None
 
     def find_spec(self, name, path=None, target=None):
+        try:
+            return self._find_spec(name, path, target)
+        except Exception:
+            return None  # any unexpected error steps aside: the normal import runs, as without the finder
+
+    def _find_spec(self, name, path, target):
         if sys.modules.get(name) is not None:
             return None  # importlib.reload(): re-execute the file under its own name, never alias it
         twins = list(self._loaded_twin(name))
@@ -218,7 +252,7 @@ class SingleLoadFinder(importlib.abc.MetaPathFinder):
             if mod_path == origin:
                 self.aliased += 1
                 return importlib.util.spec_from_loader(
-                    name, _AliasLoader(mod, wait_owner), origin=spec.origin, is_package=hasattr(mod, "__path__")
+                    name, _AliasLoader(mod, wait_owner, spec), origin=spec.origin, is_package=hasattr(mod, "__path__")
                 )
         return spec
 
