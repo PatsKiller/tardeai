@@ -506,9 +506,38 @@ def rules(res):
     return {r["rule"] for r in res["reasons"]}
 
 
-def test_real_policy_is_valid_and_unarmed():
+def test_real_policy_is_valid_and_armed_for_the_1800_canary_only():
+    # 2026-10-25 (arming packet I.3/I.4; operator: "It needs to work without grant. It's a perpetual grant."):
+    # armed, ACTIVE, 18:00 canary enabled; 00:00 / 06:00 / 08:00 stay disabled until their own proofs (packet J).
     assert CLS.validate_policy(POLICY) == []
-    assert POLICY["armed"] is False and all(w["enabled"] is False for w in POLICY["windows"])
+    assert POLICY["armed"] is True and POLICY["status"] == "ACTIVE"
+    assert {w["local_time"]: w["enabled"] for w in POLICY["windows"]} == {
+        "18:00": True, "00:00": False, "06:00": False, "08:00": False}
+    # the classes are unchanged by arming: broker / Active Trader stays held, the train itself blocked
+    by_id = {r["id"]: r["class"] for r in POLICY["rules"]}
+    assert by_id["broker_active_trader"] == "held" and by_id["train_self"] == "blocked"
+    assert POLICY["seed"]["high_category_class"]["broker_and_execution"] == "held"
+
+
+def test_policy_validation_pins_the_arming_order():
+    def mutate(**over):
+        d = json.loads(json.dumps(POLICY))
+        windows = over.pop("windows", None)
+        d.update(over)
+        if windows is not None:
+            for w in d["windows"]:
+                w["enabled"] = w["local_time"] in windows
+        return CLS.validate_policy(d)
+
+    assert mutate() == []
+    assert mutate(armed=False, status="PROPOSED", windows=()) == []          # the unarmed build-only shape
+    assert any("armed=true needs status ACTIVE" in e for e in mutate(status="PROPOSED"))
+    assert any("status must be" in e for e in mutate(status="ARMED"))
+    assert any("armed must be a boolean" in e for e in mutate(armed="true"))
+    assert any("not armed" in e for e in mutate(armed=False))                 # a window enabled while unarmed
+    assert mutate(windows=("18:00", "00:00")) == []                           # packet J step 1
+    assert any("enable_order" in e for e in mutate(windows=("18:00", "06:00")))   # skips 00:00
+    assert any("enable_order" in e for e in mutate(windows=("00:00",)))           # canary not first
 
 
 def test_every_ci_risk_tier_category_is_mapped_by_the_train_policy():
@@ -577,7 +606,7 @@ def test_positive_control_blocked_train_self_and_invalid_input():
     assert cls([])["class"] == "blocked"
     assert cls(["docs/a.md"], head_sha="abc")["class"] == "blocked"
     bad = json.loads(json.dumps(POLICY))
-    bad["armed"] = True
+    bad["status"] = "PROPOSED"                     # armed without an ACTIVE status: an invalid policy blocks
     assert cls(["docs/a.md"], policy=bad)["class"] == "blocked"
 
 
@@ -733,7 +762,8 @@ def test_windows_are_new_york_wall_clock_and_dst_safe():
     w = V.upcoming_windows(POLICY, NOW)  # 17:30 EDT
     assert [x["local_time"] for x in w] == ["18:00", "00:00", "06:00", "08:00"]
     assert w[0]["window_id"] == "2026-10-21T18:00-04:00" and w[0]["starts_in_seconds"] == 1800
-    assert all(x["enabled"] is False for x in w)
+    assert {x["local_time"]: x["enabled"] for x in w} == {"18:00": True, "00:00": False, "06:00": False,
+                                                          "08:00": False}
     # 2026-11-01: EDT -> EST at 02:00. From 23:00 EDT on Oct 31 the next 00:00 is EDT, the next 06:00 is EST.
     w2 = {x["local_time"]: x for x in V.upcoming_windows(POLICY, datetime(2026, 11, 1, 3, 0, tzinfo=timezone.utc))}
     assert w2["00:00"]["window_id"] == "2026-11-01T00:00-04:00"
@@ -804,7 +834,7 @@ def test_summary_before_the_migration_is_unavailable_never_zero(tmp_path):
         assert d[k]["value"] is None and d[k]["freshness"] == "UNAVAILABLE" and d[k]["reason"] == "not_migrated"
     assert d["store"]["value"]["state"] == "NOT_MIGRATED"
     assert d["census"]["freshness"] == "UNAVAILABLE" and d["census"]["reason"] == "no_receipt"
-    assert d["armed"]["value"] is False and d["standing_policy"]["value"]["state"] == "NOT_CONFIGURED"
+    assert d["armed"]["value"] is POLICY["armed"] and d["standing_policy"]["value"]["state"] == "NOT_CONFIGURED"
     assert d["stop"]["value"]["state"] == "ABSENT"
     assert d["state_dir"]["value"]["path"] == str(tmp_path)
     assert d["next_window"]["value"]["local_time"] == "18:00"

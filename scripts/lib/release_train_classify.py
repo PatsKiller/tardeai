@@ -64,6 +64,7 @@ except ImportError:  # pragma: no cover - repo root on sys.path instead of scrip
 CLASSIFIER_VERSION = "release_train_classify/1"
 POLICY_PATH = ROOT / "config" / "release_train_policy.json"
 POLICY_SCHEMA = "ReleaseTrainPolicy@v1"
+POLICY_STATUSES = ("PROPOSED", "ACTIVE")
 CLASSES = C.RISK_CLASSES
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _CODE_SUFFIXES = (".py", ".sh", ".json", ".yaml", ".yml", ".sql")
@@ -100,13 +101,35 @@ def validate_policy(p: Any) -> list[str]:
             errs.append(f"missing {k}")
     if errs:
         return errs
-    if p.get("armed") is not False:
-        errs.append("armed must be false in Phase 1 (arming is an operator act)")
+    armed = p.get("armed")
+    if armed not in (True, False):
+        errs.append("armed must be a boolean")
+    status = p.get("status", "PROPOSED")
+    if status not in POLICY_STATUSES:
+        errs.append(f"status must be one of {list(POLICY_STATUSES)}")
+    if armed is True and status != "ACTIVE":
+        errs.append("armed=true needs status ACTIVE")
     times = [w.get("local_time") for w in p["windows"]]
     if sorted(times) != ["00:00", "06:00", "08:00", "18:00"]:
         errs.append("windows must be exactly 00:00, 06:00, 08:00, 18:00")
-    if any(w.get("enabled") is not False for w in p["windows"]):
-        errs.append("every window must be enabled=false in Phase 1")
+    if any(w.get("enabled") not in (True, False) for w in p["windows"]):
+        errs.append("every window's enabled must be a boolean")
+    elif armed is not True:
+        if any(w.get("enabled") is not False for w in p["windows"]):
+            errs.append("every window must be enabled=false while the train is not armed")
+    else:
+        # Armed (arming packet I.3 / J, 2026-10-25): windows go live strictly in enable_order, canary (18:00) first;
+        # a later window is never enabled while an earlier one is not.
+        try:
+            ordered = sorted(p["windows"], key=lambda w: int(w.get("enable_order")))
+        except (TypeError, ValueError):
+            errs.append("every window needs an integer enable_order")
+            ordered = []
+        if ordered and ordered[0].get("local_time") != "18:00":
+            errs.append("enable_order 1 must be the 18:00 canary window")
+        flags = [w.get("enabled") is True for w in ordered]
+        if any(later and not earlier for earlier, later in zip(flags, flags[1:])):
+            errs.append("windows must be enabled in enable_order (no later window before an earlier one)")
     ids = [r.get("id") for r in p["rules"]]
     if len(set(ids)) != len(ids):
         errs.append("duplicate rule id")

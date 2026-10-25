@@ -22,9 +22,9 @@ The deploy's promote calls it first, then runs conformance and the exact-SHA
 ``--ci-only`` re-query (which writes the receipt), then the consuming call,
 whose CI gate reuses that receipt. One use, consumed only after all of them.
 
-Standing-release binding (arming packet §K, 2026-10-22; PROPOSED, inert). While
+Standing-release binding (arming packet §K, 2026-10-22; ACTIVE since 2026-10-25). While
 ``release_grant_binding.CAPABILITY_BINDING_STATUS`` is "PROPOSED" nothing below
-changes. When a reviewed PR sets it ACTIVE, a ``prepare``/``promote`` under campaign
+changes. While it is ACTIVE, a ``prepare``/``promote`` under campaign
 ``release-train-<train_id>`` that no grant binds is accepted on the host capability
 ledger instead (``decide_capability``: a signed, RESERVED promote-phase capability for
 this train and exact SHA, live lock holder, latch ABSENT, current epoch and digest).
@@ -281,7 +281,7 @@ def main() -> int:
     ap.add_argument("--skip-ci-gate", action="store_true",
                     help="promote only: do not read exact-SHA CI before consuming (CI-outage emergency path only)")
     ap.add_argument("--artifact-digest", default=None,
-                    help="capability binding only (packet §K, inert while CAPABILITY_BINDING_STATUS is PROPOSED): "
+                    help="capability binding only (packet §K; consulted only while CAPABILITY_BINDING_STATUS is ACTIVE): "
                          "the prepared artifact digest; it can only narrow, never grant")
     args = ap.parse_args()
     if args.backstop_check:
@@ -299,7 +299,7 @@ def main() -> int:
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
     _bind_consume_grant(v.grant_id)  # 2026-10-21: a use is consumed only from the grant this verdict approved
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
-    # Packet §K (2026-10-22): the standing-release binding. Inert while CAPABILITY_BINDING_STATUS is PROPOSED (this
+    # Packet §K (2026-10-22; ACTIVE 2026-10-25): the standing-release binding. Inert while CAPABILITY_BINDING_STATUS is PROPOSED (this
     # block never runs and the output above is unchanged). A grant naming the release is tried first and keeps
     # working; only a train campaign with no binding grant consults the host capability ledger, and the campaign
     # only identifies the train: the signed, RESERVED capability is the authority.

@@ -151,7 +151,8 @@ def test_a_head_the_census_saw_fail_never_rides(tmp_path):
 def test_policy_shadow_block_is_on_in_the_repo_and_fails_closed():
     assert T.shadow_policy() == SHADOW_ON
     pol = json.loads((ROOT / "config/release_train_policy.json").read_text())
-    assert pol["armed"] is False and all(x["enabled"] is False for x in pol["windows"])
+    # 2026-10-25: armed for the 18:00 canary only; the shadow block still governs every shadow request.
+    assert pol["armed"] is True and [x["local_time"] for x in pol["windows"] if x["enabled"]] == ["18:00"]
 
 
 @pytest.mark.parametrize(

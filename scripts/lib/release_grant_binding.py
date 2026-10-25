@@ -318,11 +318,12 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 
 # ── the standing-release binding: the host capability ledger (arming packet §K) ───────────────────────────
 #
-# PROPOSED, inert. While ``CAPABILITY_BINDING_STATUS`` is not "ACTIVE", ``release_grant_preflight.py`` never calls
+# ACTIVE since 2026-10-25 (operator directive: "It needs to work without grant. It's a perpetual grant."; arming
+# packet I.4 PR 3). While ``CAPABILITY_BINDING_STATUS`` is not "ACTIVE", ``release_grant_preflight.py`` never calls
 # ``decide_capability`` and its output is byte-identical to the grant-only behaviour above. The flag is a code
 # constant in this protected surface (release_train_controller.PROTECTED_SURFACES): it moves only by a reviewed PR
-# released by the manual path (packet L.1), after the operator says so. No environment variable, argument or file
-# turns it on.
+# released by the manual path (packet L.1). No environment variable, argument or file turns it on; setting it back
+# to "PROPOSED" (or STOP / revoke on the host) returns every train prepare/promote to needing a guard grant.
 #
 # When ACTIVE, a train's ``prepare`` / ``promote`` with no binding grant is accepted only when ALL of these hold
 # (packet §K; AGENTS §25.2 "checks first, then one reservation, then the effect"):
@@ -348,7 +349,7 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 # working unchanged and is tried first. The state dir is the default one; an environment override that resolves to
 # a different directory is refused (a planted state dir must not stand in for the real control and ledger).
 
-CAPABILITY_BINDING_STATUS = "PROPOSED"
+CAPABILITY_BINDING_STATUS = "ACTIVE"
 CAPABILITY_BINDING_SCHEMA = "ReleaseCapabilityBinding@v1"
 CAPABILITY_ACTIONS = {"prepare": "prepare_release", "promote": "promote_release"}
 TRAIN_CAMPAIGN_PREFIX = "release-train-"

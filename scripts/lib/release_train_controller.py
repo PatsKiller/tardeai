@@ -87,6 +87,7 @@ try:
     from scripts.lib import macro_calendar as MC
     from scripts.lib import release_train_drain as DR
     from scripts.lib import release_train_timing as TM
+    from scripts.lib import release_grant_binding as RGB
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -98,6 +99,7 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import macro_calendar as MC  # type: ignore[no-redef]
     from lib import release_train_drain as DR  # type: ignore[no-redef]
     from lib import release_train_timing as TM  # type: ignore[no-redef]
+    from lib import release_grant_binding as RGB  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -110,6 +112,12 @@ SCHEMA_STATE = "ReleaseTrainState@v1"
 TRAIN_CONTROLLER_STATUS = "ACTIVE"
 #: The real GitHub writer refuses until D2 (GitHub App) and the AGENTS 17.0.0 amendment are ACTIVE.
 GITHUB_WRITES_STATUS = "ACTIVE"
+#: Arming packet §K (2026-10-25, operator: "It needs to work without grant. It's a perpetual grant."): the deploy
+#: script's release_grant_preflight accepts a train's prepare/promote on the RESERVED host capability instead of a
+#: guard release-write grant. The controller hands it the signed token for exactly these two actions, while it holds
+#: the reservation (release_grant_binding.write_reservation_token). The token alone grants nothing: the preflight
+#: also requires the RESERVED intent, the live global-lock holder, the control state and the host delegation.
+RESERVATION_TOKEN_ACTIONS = frozenset(RGB.CAPABILITY_ACTIONS.values())   # prepare_release, promote_release
 
 TZ = RW.TZ
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
@@ -2652,6 +2660,8 @@ class TrainController:
             raise self._refusal(exc, "CAPABILITY", label) from exc
         self._update_intent(key, capability_intent=res.intent_id)
         try:
+            if getattr(self, "live", False) and action in RESERVATION_TOKEN_ACTIONS:
+                self._write_reservation_token(key, action, token)
             if recheck_hook:
                 recheck_hook()
             res.recheck(observed())
@@ -2685,6 +2695,16 @@ class TrainController:
         res.succeeded({"result": _clip(out)})
         self._effect(key, "SUCCEEDED", {"result": _clip(out)})
         return out
+
+    def _write_reservation_token(self, key: str, action: str, token: str) -> None:
+        """Packet §K: put the signed token where the deploy's release_grant_preflight reads it
+        (``<state>/trains/<id>/capability/<action>.rcap``, mode 600). A write failure is a refusal before the effect:
+        the reservation is refunded and nothing ran."""
+        try:
+            path = RGB.write_reservation_token(Path(self.state.root), str(self.train_id), action, token)
+        except OSError as exc:
+            raise RC.ControlRefused("RESERVATION_TOKEN_UNWRITABLE", f"{type(exc).__name__}: {str(exc)[:160]}") from exc
+        self._update_intent(key, reservation_token=str(path))
 
     def _update_intent(self, key: str, **kw: Any) -> None:
         intents = list(self.tstate.get("intents") or [])

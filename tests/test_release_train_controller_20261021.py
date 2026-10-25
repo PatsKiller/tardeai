@@ -473,6 +473,60 @@ def test_live_happy_path_releases_and_records_every_contract(tmp_path):
     assert (w.state_dir / "train_measurements.jsonl").exists()
 
 
+def test_live_prepare_and_promote_are_authorized_by_the_reserved_capability_without_a_guard_grant(tmp_path):
+    """Arming packet §K / I.4 PR 3 (2026-10-25, operator: "It needs to work without grant. It's a perpetual grant.").
+    While the deploy runs prepare and promote, the controller has written the signed reservation token, and the
+    preflight's capability binding (now ACTIVE) accepts it with no release-write grant; the guard ledger is never
+    consulted. After the train, the same token no longer authorizes anything (replay)."""
+    from scripts.lib import release_grant_binding as B
+
+    assert B.CAPABILITY_BINDING_STATUS == "ACTIVE" and B.capability_binding_active() is True
+    w = World(tmp_path)
+    verdicts: list[tuple[str, object]] = []
+    real = w.host.run_deploy
+
+    def run_deploy(args, env):
+        if args[0] in ("prepare", "promote"):
+            campaign = env.get("TRADEAI_RELEASE_CAMPAIGN")
+            v = B.decide_capability(
+                args[0],
+                w.host.sha,
+                campaign,
+                state_dir=w.state_dir,
+                key_path=w.key,
+                delegation_path=w.deleg,
+                now=w.clock.t,
+            )
+            verdicts.append((args[0], v))
+            tid = campaign[len("release-train-") :]
+            tok = B.reservation_token_path(w.state_dir, tid, B.CAPABILITY_ACTIONS[args[0]])
+            assert tok.is_file() and (tok.stat().st_mode & 0o777) == 0o600
+        return real(args, env)
+
+    w.host.run_deploy = run_deploy
+    code, rec, _c = w.run()
+    assert code == T.EXIT_OK and rec["outcome"] == T.RELEASED_VERIFIED, rec["steps"]
+    assert [(a, v.allowed, v.code) for a, v in verdicts] == [
+        ("prepare", True, "CAPABILITY_RESERVED"),
+        ("promote", True, "CAPABILITY_RESERVED"),
+    ], [v.to_dict() for _a, v in verdicts]
+    st = json.loads((w.state_dir / "trains" / rec["train_id"] / "state.json").read_text())
+    tokens = {i["action"]: i.get("reservation_token") for i in st["intents"]}
+    assert tokens["prepare_release"] and tokens["promote_release"]
+    assert all(tokens.get(a) is None for a in ("push_train_ref", "open_batch_pr", "merge_batch_pr"))
+    # after the effect: the intent is SUCCEEDED and the lock is free, so the leftover token authorizes nothing
+    after = B.decide_capability(
+        "promote",
+        w.host.sha,
+        f"release-train-{rec['train_id']}",
+        state_dir=w.state_dir,
+        key_path=w.key,
+        delegation_path=w.deleg,
+        now=w.clock.t,
+    )
+    assert after.allowed is False and after.code in ("REPLAY", "RESERVATION_MISSING", "RESERVATION_HOLDER_GONE")
+
+
 def test_dry_run_writes_nothing_and_prints_every_step(tmp_path):
     w = World(tmp_path)
     before = sorted(p.name for p in w.state_dir.iterdir())

@@ -412,7 +412,8 @@ def test_readiness_view_fails_closed_and_never_turns_missing_into_zero(tmp_path,
     assert r["schema"] == "ReleaseTrainReadiness@v1" and r["state"] == "OK"
     assert r["stop"] == {"state": "ABSENT", "effective_stop": False, "freshness": "OK"}
     assert r["queue_counts"] is None and r["queue_freshness"] == "UNAVAILABLE"
-    assert r["delegation"]["state"] == "PAUSED" and r["armed"] is False
+    # the repo policy is armed (18:00 canary, 2026-10-25); a PAUSED delegation still keeps every request shadow
+    assert r["delegation"]["state"] == "PAUSED" and r["armed"] is True
     assert [w["slot"] for w in r["windows"]] == ["1800", "0000", "0600", "0800"]
     assert [c["slot"] for c in r["shadow_coverage"]] == list(W.SLOTS)
     (tmp_path / "rw/STOP.json").write_text("{")
@@ -667,8 +668,10 @@ def test_allowlist_entries_are_shadow_only_with_minimal_env():
     for slot, lane in zip(("1800", "0000", "0600", "0800"), LANES):
         e = entries[lane]
         assert e["command"] == ["$PY", "scripts/release_train_window_request.py", "--window", slot]
-        # H.0: a live run appends only shadow requests (--shadow-only); live --append alone is the canary step (I).
-        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == ["--append", "--shadow-only"]
+        # H.0: a live run appends only shadow requests (--shadow-only); live --append alone is the canary step (I.3),
+        # taken 2026-10-25 for the 18:00 canary slot ONLY. 00:00 / 06:00 / 08:00 stay shadow-only until packet J.
+        live = ["--append"] if slot == "1800" else ["--append", "--shadow-only"]
+        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == live, (slot, e["live_arg"])
         assert e["env_allowlist_mode"] == "report" and e["env_names"] == ["TRADEAI_RELEASE_WINDOW_STATE_DIR"]
         assert e["output_signal"] == f"data/runtime/{lane}_last.json" and e["market_gate"] is False
         argv = " ".join(e["command"] + e["dry_run_arg"] + e["live_arg"])
@@ -753,3 +756,24 @@ def test_unreadable_receipt_is_reported_not_missing(tmp_path, monkeypatch, cfg):
     v = W.window_view(run_id=env["TRADEAI_RUN_ID"], now=REQUEST_TICK.astimezone(timezone.utc),
                       state_dir=tmp_path / "rw")
     assert v["receipt"] is None and v["receipt_problem"] == "receipt_unreadable"
+
+
+def test_canary_drop_in_removes_shadow_only_for_the_1800_instance_only():
+    """2026-10-25 canary arming (docs/ops/packets/release-train-canary-arm-20261025): the host timer's template
+    service keeps --shadow-only for every slot; the proposed drop-in resets ExecStart for the 1800 instance only."""
+    from scripts import release_train_window_request as R
+
+    pkt = ROOT / "docs/ops/packets/release-train-canary-arm-20261025"
+    lines = [ln.strip() for ln in (pkt / "tradeai-release-train-request@1800.service.d--canary-live.conf.proposed")
+             .read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    assert lines[0] == "[Service]" and lines[1] == "ExecStart="     # reset the template's ExecStart first
+    execs = [ln.split("=", 1)[1] for ln in lines if ln.startswith("ExecStart=") and ln != "ExecStart="]
+    assert len(execs) == 1 and len(lines) == 3
+    argv = execs[0].split()
+    assert argv[0] == "%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python"
+    assert argv[1:] == ["scripts/release_train_window_request.py", "--window", "1800", "--append"]
+    a = R._parser().parse_args(argv[2:])
+    assert a.window == "1800" and a.append is True and a.shadow_only is False and a.inject is None
+    assert "%i" not in execs[0]
+    tmpl = (ROOT / "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed")
+    assert "--window %i --append --shadow-only" in tmpl.read_text(encoding="utf-8")
