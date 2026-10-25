@@ -1,0 +1,40 @@
+{
+  "schema": "PremarketMergeFixture@v1",
+  "session_date": "2026-10-23",
+  "now": "2026-10-23T12:00:06+00:00",
+  "candidates": [
+    "AAA",
+    "BBB",
+    {
+      "symbol": "CCC"
+    }
+  ],
+  "fresh_focus": {
+    "status": "ok",
+    "mode": "shadow",
+    "symbols": [
+      "AAA",
+      "CCC"
+    ]
+  },
+  "expected_shadow": {
+    "unchanged": [
+      "AAA",
+      "BBB",
+      {
+        "symbol": "CCC"
+      }
+    ],
+    "would_drop": [
+      "BBB"
+    ]
+  },
+  "flags": {
+    "active_trader_premarket.mode": "shadow",
+    "active_trader_premarket.cadence_mode": "shadow",
+    "scalp_focus.mode": "shadow",
+    "unified_momentum_alert.mode": "shadow",
+    "active_trader_alerts.mode": "send"
+  },
+  "status": "PROVISIONAL_UNMERGED_SCRATCH_FIXTURE_ONLY"
+}
