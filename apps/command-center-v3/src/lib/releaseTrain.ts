@@ -58,6 +58,15 @@ export interface CensusWire {
   buckets?: CensusBucketWire[] | null
   receipt?: Record<string, unknown> | null
 }
+export interface LifecycleChamberWire {
+  count?: number
+  states?: Record<string, number>
+}
+export interface LifecycleWire {
+  chambers?: Record<string, LifecycleChamberWire> | null
+  by_state?: Record<string, number> | null
+  total?: number | null
+}
 export interface ReleaseTrainSummaryWire {
   schema?: string
   authority?: string
@@ -68,11 +77,51 @@ export interface ReleaseTrainSummaryWire {
   next_window?: Field<WindowWire>
   windows?: Field<WindowWire[]>
   queue_counts?: Field<QueueCountsWire>
+  lifecycle?: Field<LifecycleWire>
+  controller?: Field<{ status?: string }>
   last_outcome?: Field<LastOutcomeWire>
   stop?: Field<SummaryStopWire>
   census?: Field<CensusWire>
   store?: Field<{ state?: string; tables?: Record<string, boolean> }>
   policy?: Field<Record<string, unknown>>
+}
+
+export const LIFECYCLE_CHAMBER_ORDER = ['intake', 'gated', 'train', 'release', 'closed'] as const
+export type LifecycleChamberName = typeof LIFECYCLE_CHAMBER_ORDER[number]
+export const LIFECYCLE_CHAMBER_LABEL: Record<LifecycleChamberName, string> = {
+  intake: 'Intake', gated: 'Gated', train: 'In train', release: 'Release', closed: 'Closed',
+}
+
+export interface LifecycleModel {
+  f: Freshness
+  usable: boolean
+  total: number | null
+  chambers: Array<{ name: LifecycleChamberName; label: string; count: number | null; states: Record<string, number> }>
+}
+
+export function lifecycleFrom(
+  payload: ReleaseTrainSummaryWire | null | undefined,
+  transport: Freshness,
+  nowMs: number,
+): LifecycleModel {
+  const f = fieldFresh(payload?.lifecycle, transport, nowMs)
+  const usable = f.state === 'OK' || f.state === 'STALE'
+  const life = payload?.lifecycle?.value
+  const chambers = LIFECYCLE_CHAMBER_ORDER.map(name => {
+    const c = life?.chambers?.[name]
+    return {
+      name,
+      label: LIFECYCLE_CHAMBER_LABEL[name],
+      count: usable && c && typeof c.count === 'number' ? c.count : null,
+      states: (usable && c?.states) ? c.states : {},
+    }
+  })
+  return {
+    f,
+    usable,
+    total: usable && typeof life?.total === 'number' ? life.total : null,
+    chambers,
+  }
 }
 export interface QueueRowWire {
   pr_number: number

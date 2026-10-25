@@ -884,11 +884,14 @@ def data_approvals_view(ctx: Ctx) -> dict:
 
 def release_view(ctx: Ctx) -> dict:
     from scripts.lib import release_control as RC
+    from scripts.lib import release_train_run_now as RN
 
     v = RC.ReleaseControl(ctx.hosts.release_dir).view()
     stop_reason = v.stop.get("reason") if isinstance(v.stop, dict) else None
+    run_now = RN.readiness(hosts=ctx.hosts, agents_path=ctx.agents_path, now=ctx.clock())
     return {"state": "OK", "reason": None, "mode": v.mode, "epoch": v.epoch, "latch": v.latch_state,
-            "stop_phase": v.stop_phase, "stop_reason": stop_reason, "error": v.error}
+            "stop_phase": v.stop_phase, "stop_reason": stop_reason, "error": v.error,
+            "run_now": run_now}
 
 
 def applier_view(ctx: Ctx) -> dict:

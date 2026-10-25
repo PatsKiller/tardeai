@@ -135,7 +135,7 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
         <p style={muted}>Not covered: {errs.not_covered}</p>
       </> : null}
     </Section>
-    <p style={muted}>STOP RELEASES and the train's own queue/trains/events views live on <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }}>Coordination → Release train</Link>.</p>
+    <p style={muted}>Lifecycle chambers, incubator lights and Run now live on <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Lifecycle and Run now →</Link> (Coordination → Release train). This tab stays the PR census; STOP RELEASES is on that page too.</p>
   </div>
 }
 

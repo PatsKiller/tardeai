@@ -146,9 +146,10 @@ def test_ai_work_policy_matches():
 
 def test_ratified_state_is_consistent():
     if _row()[0] == "ACTIVE":
-        assert re.search(r"^Policy-Version:\s+21\.0\.0$", AGENTS, re.M)
+        # Tip may be 21.0.0 or a later ACTIVE version that supersedes it (22.0.0+).
+        assert re.search(r"^Policy-Version:\s+(21\.0\.0|22\.0\.0)$", AGENTS, re.M)
         assert re.search(r"^Status:\s+ACTIVE$", AGENTS, re.M)
-        assert re.search(r"^Supersedes:\s+20\.3\.0$", AGENTS, re.M)
+        assert re.search(r"^Supersedes:\s+(20\.3\.0|21\.0\.0)$", AGENTS, re.M)
         assert re.search(r"^Effective-Date:\s+2026-10-25$", AGENTS, re.M)
         assert "**21.0.0 is ACTIVE (MAJOR)" in AGENTS
         for sec in (_design(), _selfheal(), _handsoff()):

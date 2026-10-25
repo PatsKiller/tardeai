@@ -323,20 +323,23 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
     <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
+      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume, Arm and Run now need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n” / “RUN NOW EPOCH n WINDOW HHMM”) and are applied by the host applier; clearing the kill switch stays host terminal only. Run now stays disabled until AGENTS.md 22.0.0 is ACTIVE (and the canary force gates pass).</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
       <Table label="Release train and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
-        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
+        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip>{rt.run_now ? <Chip tone={rt.run_now.allowed ? 'info' : 'warning'} title={rt.run_now.block_reason || rt.run_now.phrase_example || ''}>Run now {rt.run_now.allowed ? 'ready' : 'blocked'}</Chip> : null}</ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
           <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
             <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
           <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} />
+            <ActionButton state={d} kind="release_train.run_now" text="Run now" params={{ ...relParams, force_window: rt?.run_now?.default_slot || '1800', forced_n: 1 }} title="Force a live canary Run now (AGENTS 22.0.0)" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
+      {rt?.run_now?.block_reason ? <p role="status" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }} data-testid="ops-run-now-block">{rt.run_now.block_reason}</p> : null}
+      <p style={muted}>Ratify AGENTS.md 22.0.0 (Run now) at <a href="/v3/policy" data-testid="ops-rulebook-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Rulebook → Policy versions</a> (PR 2117). Until ACTIVE, Run now stays disabled with an explicit reason — never a silent no-op. Host CLI remains the fallback.</p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>

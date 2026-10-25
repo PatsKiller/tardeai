@@ -127,6 +127,16 @@ No query parameters.
       "value": {"ready": 2, "held": 5, "needs_operator": 3, "blocked": 1, "in_train": 0, "other": 0, "total": 11},
       "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "postgres:release_queue", "reason": null
     },
+    "lifecycle": {
+      "value": null,
+      "as_of": "2026-10-21T21:30:00+00:00", "freshness": "UNAVAILABLE",
+      "source": "postgres:release_queue", "reason": "by_state_missing"
+    },
+    "controller": {
+      "value": {"status": "BUILD_ONLY"},
+      "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK",
+      "source": "code:release_train_controller", "reason": null
+    },
     "current_train": {
       "value": {"train_id": "rt-20261021-1800-a1b2c3", "phase": "integrating", "member_count": 2,
                 "window_id": "2026-10-21T18:00-04:00", "started_at": "2026-10-21T20:30:00+00:00"},

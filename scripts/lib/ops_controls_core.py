@@ -246,6 +246,9 @@ KINDS: dict[str, KindSpec] = {k.kind: k for k in (
     KindSpec("release_train.pause", "Release train: pause after the current train", SAFE, EXEC_CC, "jobs"),
     KindSpec("release_train.resume", "Release train: resume", RISKY, EXEC_APPLIER, "jobs"),
     KindSpec("release_train.arm", "Release train: arm", RISKY, EXEC_APPLIER, "jobs"),
+    # AGENTS.md 22.0.0 PROPOSED: live canary Run now via Ops Controls (passkey + typed phrase). Gated at plan/apply
+    # by release_train_run_now.policy_gate; until ACTIVE the kind is listed but every mutation refuses POLICY_NOT_ACTIVE.
+    KindSpec("release_train.run_now", "Release train: Run now (live canary force)", RISKY, EXEC_APPLIER, "jobs"),
     KindSpec("release_train.change_scope", "Release train: change scope", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
     KindSpec("release_train.revoke", "Release train: revoke delegation", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
     KindSpec("kill_switch.engage", "Kill switch: engage", SAFE, EXEC_APPLIER, "jobs"),
@@ -741,6 +744,10 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
 
     if kind in ("release_train.resume", "release_train.arm"):
         return _plan_release(kind, p, hosts)
+    if kind == "release_train.run_now":
+        from scripts.lib import release_train_run_now as RN
+
+        return RN.plan(p, hosts, request_id=request_id, agents_path=None)
 
     if kind == "kill_switch.engage":
         reason = str(p.get("reason") or "").strip() or "operator, Ops Controls"
@@ -877,6 +884,11 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
     if kind in ("release_train.resume", "release_train.arm"):
         return _apply_release(kind, plan, hosts, request_id=request_id, actor=actor, approval=approval,
                               hmac_key=hmac_key, res=res)
+    if kind == "release_train.run_now":
+        from scripts.lib import release_train_run_now as RN
+
+        return RN.apply(plan, hosts, request_id=request_id, actor=actor, approval=approval,
+                        hmac_key=hmac_key, res=res)
 
     if kind == "release_train.pause":
         from scripts.lib import release_control as RC

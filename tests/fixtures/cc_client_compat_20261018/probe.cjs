@@ -16,7 +16,7 @@ const plugins = [{name:'fake-effects-only',setup(build){
   build.onLoad({filter:/.*/,namespace:'fake'},a=>({loader:'js',resolveDir:area,contents:{
     api:`export const useApi=p=>globalThis.__hook(p);`,
     primitives:`import {createElement as h} from 'react';export const Chip=({children,tone,...p})=>h('span',{'data-tone':tone,title:p.title},children);export const ChipRow=({children})=>h('div',null,children);export const SortHeader=({children})=>h('th',null,children);export const useSort=(rows,sort)=>({rows,sort,toggle:()=>{}});`,
-    router:`export const useSearchParams=()=>[new URLSearchParams('tab=events'),()=>{}];`,
+    router:`import {createElement as h} from 'react';export const useSearchParams=()=>[new URLSearchParams('tab=events'),()=>{}];export const Link=({to,children,...p})=>h('a',{href:typeof to==='string'?to:'#',...p},children);`,
     other:`export default function Other(){return null}`,
   }[a.path]}))
 }}]
