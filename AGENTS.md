@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      20.2.0
+Policy-Version:      20.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-24
-Last-Reviewed:       2026-10-24T20:30:00-04:00
+Effective-Date:      2026-10-25
+Last-Reviewed:       2026-10-25T13:20:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          20.1.0
+Supersedes:          20.2.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,13 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**20.3.0 is ACTIVE (MINOR) — §28.12 delivery lifecycle, claim to verified release.**
+Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0`, §20; PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124).
+One ordered path for every agent: claim, design, build, test, PR, CI green, queue, release; plus two obligations —
+post-release verification after every release (`scripts/post_release_tester.py`) and immediate P1 failure paging by
+Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; §0, §2, §17 and role authority
+unchanged.
 
 **20.2.0 is ACTIVE (MINOR) — §28.9 lessons of 2026-10-23/24 and §28.10 one conflict engine under one rulebook.**
 Ratified by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`, §20; operator typed the token 2026-10-24 ~20:25 ET after reading PR #2073).
@@ -7188,12 +7195,11 @@ Rulebook enforcement audit lists the open ones weekly. No exception allows anyth
   and shared-infra rules; the approvals already exist.*
 
 
-## 28.12 Delivery lifecycle — claim to verified release (20.3.0, PROPOSED)
+## 28.12 Delivery lifecycle — claim to verified release (20.3.0, ACTIVE)
 
-**Status: PROPOSED (MINOR).** Drafted 2026-10-25 at the operator's request, verbatim: "The objective to the lifecycle is
+**Status: ACTIVE (MINOR).** Ratified 2026-10-25 (`APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0`, §20). Drafted 2026-10-25 at the operator's request, verbatim: "The objective to the lifecycle is
 multiple agents can read the agents.md, see how to design and deliver their stuff and queue. We have all of the testers
-that's testing everything and it's deployed, tested. Any failures I need to be emailed, notified, and texted." Binding
-once the operator ratifies (§20 token `APPROVE_AGENTS_POLICY_20_3_0 <pr> <head_sha>`). It is the one ordered path from
+that's testing everything and it's deployed, tested. Any failures I need to be emailed, notified, and texted." It is the one ordered path from
 claim to verified release; steps 1–8 point at the rules that already bind, steps 9–10 add two obligations (post-release
 verification and failure paging). It removes nothing and does not touch §0, §2, §17 or role authority.
 
@@ -7249,7 +7255,7 @@ verification and failure paging). It removes nothing and does not touch §0, §2
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 20.3.0 | 2026-10-25 | PROPOSED | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | Awaiting the operator's `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. |
+| 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 20.2.0 | 2026-10-24 | ACTIVE | MINOR | §28.9 + §28.10 + §28.11 (transition for work in action) added: conflicts resolved only by the conflict engine under the operator-approved rulebook (agreement/superseded never flag, gates not conflicts, owner decides with a reason, CIO always informed, safety never automatic); no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **RATIFIED** by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
 | 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1` (operator, PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit on #2013's branch, which set the header block to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-23. |
