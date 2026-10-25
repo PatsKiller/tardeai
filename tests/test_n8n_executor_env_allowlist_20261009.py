@@ -80,6 +80,13 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         # 2026-10-15 (audit DD08): imported lazily by scripts/n8n_coordination_gateway.py for the per-request run
         # allowlist reload; stdlib only (hashlib, os.stat, threading, pathlib), no environment read, no network.
         "scripts/lib/n8n_policy_reload.py",
+        # 2026-10-25 (AGENTS 20.4.0 hands-off delivery): n8n_due.parse_relay_live_lanes imports the relay live-list
+        # resolver lazily. stdlib only (hashlib, importlib, json, os.stat, tempfile, pathlib) plus lane_dispatch
+        # (already reviewed, render path only); its one env-like read is the caller's ``environ`` mapping
+        # (TRADEAI_STATE_ROOT + the two lane-id keys), never os.environ; it loads hands_off_policy by computed name,
+        # and calls only its file reader (policy_state_from_path; never its git or claim-board helpers), so the board stays out of
+        # this closure. No network, no subprocess, no write on the resolve path (render writes only at deploy).
+        "scripts/lib/n8n_relay_live_lanes.py",
         "scripts/lib/n8n_remediation_catalogue.py",
         "scripts/lib/n8n_retry_policy.py",
         # 2026-10-21 (Release Train v2 Phase 4): imported lazily by scripts/n8n_coordination_gateway.py serve() for the
