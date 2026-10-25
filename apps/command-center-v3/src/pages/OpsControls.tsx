@@ -7,6 +7,8 @@
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
+import CountTile from '../components/CountTile'
+import { dataApprovalTiles } from '../lib/measuredCount'
 import { useSearchParams } from 'react-router-dom'
 import JobsHealth from '../components/JobsHealth'
 import './OpsEvidencePages.css'
@@ -697,16 +699,6 @@ function FlagsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
 // Each row is one data-dictionary domain (config/data_source_authority.json). The server
 // (scripts/lib/data_domain_readiness.py) promotes each proposed row in memory with today's ceilings and runs the real
 // gates on it; src/lib/opsControlsData.ts turns that into words. Read-only: nothing on this tab approves a row.
-function Stat({ label: l, value, tone, tip, testId }: { label: string; value: ReactNode; tone: Tone; tip: string; testId: string }) {
-  const t = toneVars(tone)
-  return <Tooltip content={tip} as="div">
-    <div data-testid={testId} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '8px 12px', minWidth: 120, cursor: 'help' }}>
-      <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{l}</div>
-      <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: FONT.mono }}>{value}</div>
-    </div>
-  </Tooltip>
-}
-
 function FileListView({ fl, empty }: { fl?: FileList | null; empty: string }) {
   if (!fl || !fl.count) return <span style={{ color: TOKENS.text[2] }}>{empty}</span>
   return <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
@@ -772,6 +764,7 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
   const da = d?.data_approvals
   const rows = sortRows(da?.rows as DataRow[] | undefined)
   const sum = summarize(rows)
+  const tiles = dataApprovalTiles(rows, sum, da?.scan)
   const [filter, setFilter] = useState<DataFilter>('all')
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -783,10 +776,10 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
       <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-data-explainer">{EXPLAINER} Hover or tap any underlined heading, number or badge for its meaning.</p>
       {legacy ? <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>This server sends only domain names and status; readiness needs the newer server.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }} role="group" aria-label="Data approvals summary">
-        <Stat testId="ops-data-approved" label="Approved" value={sum.approved} tone="success" tip={SUMMARY_TIP.approved} />
-        <Stat testId="ops-data-ready" label="Ready to approve" value={sum.ready} tone="info" tip={SUMMARY_TIP.ready} />
-        <Stat testId="ops-data-not-ready" label="Not ready" value={sum.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} />
-        <Stat testId="ops-data-findings" label="Findings" value={sum.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} />
+        <CountTile size="lg" testId="ops-data-approved" label="Approved" count={tiles.approved} tone="success" tip={SUMMARY_TIP.approved} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-ready" label="Ready to approve" count={tiles.ready} tone="info" tip={SUMMARY_TIP.ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-not-ready" label="Not ready" count={tiles.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-findings" label="Findings" count={tiles.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} style={{ minWidth: 120 }} />
       </div>
       {sum.pendingPr.length ? <p style={muted}>Operator-approved, waiting for its promotion PR: <span style={mono}>{sum.pendingPr.join(', ')}</span>. It binds only once that PR merges.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter domains">

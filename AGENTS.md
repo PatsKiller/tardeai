@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      20.3.0
+Policy-Version:      21.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-25
-Last-Reviewed:       2026-10-25T13:20:00-04:00
+Last-Reviewed:       2026-10-25T16:35:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          20.2.0
+Supersedes:          20.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -113,12 +113,19 @@ operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE
 
 **22.0.0 is PROPOSED (MAJOR) — Ops → Controls may force a live canary Run now (`release_train.run_now`, §25.3).**
 Awaiting the operator's `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>` (§20). Until it is ratified and the
-header is set ACTIVE, the 20.3.0 text governs and the host CLI remains the only live force path. Once ACTIVE: Ops →
+header is set ACTIVE, the 21.0.0 text governs and the host CLI remains the only live force path. Once ACTIVE: Ops →
 Controls kind `release_train.run_now` (passkey + typed phrase `RUN NOW EPOCH n WINDOW HHMM`, always-fresh) may force
 one live canary train outside a window under every other §25.3 gate; agents still never force; the host CLI remains
-the fallback. Numbered 22.0.0 because open PR #2128 claims 21.0.0; settled at ratification (§20). **Why MAJOR:** it
+the fallback. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128); settled at ratification (§20). **Why MAJOR:** it
 narrows §25.3's "never accepted from … the Command Center" for one operator surface (version policy: classify by the
 weakest guarantee). §0, §2, §2A, §7A and role authority are unchanged.
+
+**21.0.0 is ACTIVE (MAJOR) — §28.13 design lifecycle, §28.14 self-heal monitor and fixer, §28.15 hands-off delivery.**
+Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20; PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834).
+Designs live in `design/` with versioned pages and one-tap operator approval; a host-timer monitor and the self-heal
+fixer correct small errors through ordinary PRs; an approved scope ships through solo trains without the operator, and
+what still reaches the operator is the list in §28.15 item 9. MAJOR: it widens §17 and the §25.2 delegation; §0 text,
+§2, §2A, §23.14 and the four adapters unchanged.
 
 **20.3.0 is ACTIVE (MINOR) — §28.12 delivery lifecycle, claim to verified release.**
 Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0`, §20; PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124).
@@ -7270,13 +7277,253 @@ verification and failure paging). It removes nothing and does not touch §0, §2
   forward with a new PR through this same path; nobody reverts by hand or pushes `main`. *Cause (§20): operator
   2026-10-25, "Any failures I need to be emailed, notified, and texted."*
 
+## 28.13 Design lifecycle — one home, versioned pages, recorded approval (21.0.0, ACTIVE)
+
+**Status: ACTIVE.** Ratified 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20). The operator approved the Design Workflow on 2026-10-25, verbatim: "I approve the design workflow.
+Develop and ship it. Also, make sure that it's referenced in the agents.md". This section is ratified with §28.14 and
+§28.15 by one token (§20 `APPROVE_AGENTS_POLICY_21_0_0 <pr> <head_sha>`). It adds the restrictions below and removes
+none. Details: `design/README.md`.
+
+- **1 One home per page design, every page versioned.** Every Command Center page is in `design/registry.json` with
+  its approved, current and baseline version. `design/pages/<page>/versions/vNNN/` holds `SPEC.md` (what changes, what
+  stays, and every removal, hide or move) and `status.json` (state, approval, fingerprints). `v000` is each page and
+  tab as built on 2026-10-26, captured logged in and read-only at 1440, 412 and 390. `v001` is the operator's
+  2026-10-24 approvals, back-filled. Later changes are `v002` onward. Lifecycle: DRAFT → PROPOSED → APPROVED →
+  IMPLEMENTING → VERIFIED → CURRENT, or SUPERSEDED / REJECTED. An approved version is immutable: a change is a new
+  version. *Cause (§20): the 10-24 approvals of the 22 desk boards, TradeInView and the Watch row existed only in
+  handoff prose. Approvals showed 0 decisions, and nothing recorded a page's approved version.*
+- **2 Only the operator approves a design, and only in the ledger.** A version becomes APPROVED or REJECTED only
+  through the operator's one-tap decision in Approvals → Designs. The decision is recorded as a signed decision in the
+  operator decisions ledger, with the authenticated identity, the time, the version and its fingerprint. Prose in a
+  handoff, chat or PR never counts; v001, back-filled from the 10-24 handoffs, is the one exception. Agents may propose
+  and read; a decision request from an agent is refused. *Cause (§20): the same 10-24 approvals; a decision recorded
+  only in prose cannot be checked.*
+- **3 Build only the approved version, and cite it.** A PR that changes UI under `apps/command-center-v3/src` carries
+  `Design: <page>/vNNN` (APPROVED or IMPLEMENTING), or `Design: none` if it changes no visible layout. The build
+  contains only what that version shows. An agent never adjusts an approved design; if the design proves wrong, the
+  agent stops and proposes a new version. VERIFIED and CURRENT are set automatically after release. *Cause (§20): Board
+  19's "Decided recently" panel was approved 10-24 and never built, and nothing could tell.*
+- **4 No unlisted removal or hide.** If a nav item, route, tab, panel or widget disappears, or moves behind a tap, the
+  cited version's SPEC must list it; otherwise the removal guard fails the PR. This makes §28.9 change control
+  mechanical. *Cause (§20): TradeInView hid Calendar and Replay on 10-24 without an approved mockup.*
+- **5 Phone first, measured; desktop the same.**
+  - Phone (≤820 px, built for 412 and 390): one column, and the whole page scrolls. Fixed or sticky chrome together
+    takes at most 15% of viewport height. A list opens a full-screen sheet with ← Back. Tap targets are at least
+    44 × 44 px. No sideways page scroll. Times are readable ET, never raw ISO timestamps. No empty bullets.
+  - Desktop (≥1280 px, built for 1440): the same data and actions, laid out wider.
+  - Both use tokens only.
+  - These rules are checked on fixtures in every UI PR, by a visual compare against the page's baseline at
+    1440/412/390, and on the live site after each release.
+
+  *Cause (§20): the phone metric strip and Ask bar stayed fixed and pages scrolled under them, and no check measured
+  it.*
+- **6 Logged-in pages are checked too.** The post-release and nightly live drift checks include pages that need
+  sign-in. They use the read-only agent reader identity, which can never approve or change anything, and run under
+  §28.8: never 04:00–16:15 ET Mon–Fri, one page at a time, with portfolio-server memory checked first. *Cause (§20):
+  no agent ever opened Rulebook or Approvals, so "Rulebook unavailable" went unseen.*
+- **7 Design assets that show real data never enter the public repo.** `PatsKiller/tardeai` is public.
+  - Mockups, live screenshots, handoff specs and evidence images stay in the private store
+    (`~/trade-ai-releases/persistent-state/data/design/pages/<page>/`). `status.json` references them by relative path
+    and sha256 only.
+  - Committed SPEC text carries no portfolio values, holdings, positions, account names or numbers, P/L, or real
+    tickers tied to the operator's holdings.
+  - Only fixture-data baselines that pass the privacy scan may be committed.
+
+  *Cause (§20): the repository is public (§2A); real financial data is never committed.*
+
+## 28.14 Self-heal monitor and fixer — the train is watched and small errors are fixed by ordinary PRs (21.0.0, ACTIVE)
+
+**Status: ACTIVE.** Ratified 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20). Drafted 2026-10-25 at the operator's request, verbatim: "Arm the fixer and also a logger that
+tracks what was fixed, but this train should be no different than submitting in [to GitHub]. Somebody needs to
+monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md." It is
+ratified with §28.13 and §28.15 by one token. **Arming is this section becoming ACTIVE; there is no separate guard
+grant.** Before ratification the monitor ran in shadow only; it is armed from 2026-10-25.
+For the train, this section takes the place of the never-ratified 13.0.0 fixer proposal
+(`docs/ops/self_heal_claude_fixer.md` §9). The fixer gains no merge, release or broker authority.
+
+- **1 A monitor independent of n8n.** A host timer, not n8n, so that a broken n8n cannot silence it. It watches main CI
+  after every merge, train outcomes, the post-release tester and the nightly sweep (§28.12 steps 9–10). *Cause (§20):
+  §28.9, "a monitor never depends on the thing it monitors"; operator 2026-10-25, "Somebody needs to monitor it."*
+- **2 Known small errors get deterministic remediations only.** There are four:
+  - one rerun of a CI job that failed on an infrastructure flake, never on a test failure;
+  - regenerating a canonical generated file with its own generator;
+  - the disk-packet re-pin;
+  - the documented stale-lock reconcile.
+
+  Each runs once per incident. A second failure goes to item 3. *Cause (§20): the recurring small errors of 2026-10-25
+  were exactly these, and each one waited on a person.*
+- **3 Every other fix is an ordinary PR.** The self-heal Claude Code fixer (`scripts/self_heal_fixer.py`) works in an
+  isolated worktree, within its budget and diff guard. It never deletes, skips or weakens a test, and its prompt quotes
+  AGENTS.md §0. It opens a normal fix PR, which passes CI and rides the train like any other PR (§28.12, §28.15). The
+  fixer never merges, releases or deploys. *Cause (§20): operator, "this train should be no different than
+  submitting"; 2026-10-16, "connect into Claude Code to fix it in iterations".*
+- **4 Refused scopes go to a person.** These are refused: broker, Active Trader and MBI code; guard, policy, hooks and
+  AGENTS.md; the train's own code; and credentials or `.env`. A failure in one of them raises an alert and a
+  coordinator task on the claim board, and gets no fix attempt. *Cause (§20): §0 rules 1–2; §25.2 (no candidate
+  modifies its own verifier); §24.7.*
+- **5 Every action is logged.** Each detection, remediation, fix PR and outcome is recorded in an append-only fix log.
+  The log is never rewritten, only archived, never deleted. It is shown on System → Releases & schedules → Fixes.
+  *Cause (§20): operator, "a logger that tracks what was fixed".*
+- **6 Escalation.** After the configured maximum attempts for an incident, or on any refused scope, the operator gets a
+  P1 by the §28.12 step 10 path, once per incident. *Cause (§20): operator, "Any failures I need to be emailed,
+  notified, and texted" (§28.12).*
+
+## 28.15 Hands-off delivery — an approved scope ships without the operator (21.0.0, ACTIVE)
+
+**Status: ACTIVE (MAJOR).** Ratified 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20). Drafted 2026-10-25 at the operator's request, verbatim: "I need you to take care of all
+six of those items now. They should be fully done, fully automatic, no input by me, for the train systems unless
+there's an issue. Do 20.4". Earlier the same day: "I don't need hands-on for anything to push or to merge. The agent
+knows to do that automatically once I approve a scope or a plan or ask for something to be executed". And of the
+server `.env`: "is just configurations. All the secrets are in Bitwarden … this should have just been a toggle on the
+control ops."
+
+**Class: MAJOR, so 21.0.0, not 20.4.0.** The operator asked for "20.4", but the version policy decides the class, and
+it is clear here: this section widens what the release train may carry (§17, "expanding the train's scope"), ends
+per-act operator decisions §17 lists (new cron or systemd entries, n8n activation, the relay live list), and admits
+guard and train-self work into the standing delegation (§25.2). The version policy names "widening §17" as MAJOR. Precedent: 20.0.0 was approved as "19.1.0" and numbered by the
+policy. The ratifying edit set the header to 21.0.0 ACTIVE. The §0 text, §2, §2A, the broker and secret rails, §23.14 and the four adapters do not change. Where
+§17, §24.7, §24.8 or §25 read differently, this section governs, as each item states.
+
+**Causes, 2026-10-25:** the per-branch push budget blocked four approved PRs; a release grant expired before its
+release ran; merged lanes stayed dry until the host relay live list was edited by hand; setup packets stopped on
+interactive TTY ACKs for routine schedule changes; enabling SMS waited on the operator to edit `.env` by hand.
+
+- **1 Push budget 5, with a coordinator override on approved scope.** The per-branch budget (`AI_WORK_POLICY.md` §3,
+  §17) is 5 authorized pushes, not 2.
+  - Only the coordinator session may push past it, with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`. That is the session that
+    keeps the day's coordinator worklog (§28.3), identified by its `AGENT_CLAIM_SESSION`.
+  - It may do so only for a PR linked to an operator-approved scope: a claim-board plan carrying an operator approval
+    reference, or a PR body line `Operator-approval: <the operator's words or a reference to them>`. An approval
+    relayed between agents never counts (§28.4).
+  - Each override is logged with that reference: `TRADEAI_REMOTE_PUSH_OVERRIDE_REF` in the push-budget ledger, and
+    `agent_claim.py note` in the coordinator worklog.
+  - Force-push stays forbidden. Renaming or re-creating a branch to reset a budget is still routing around a denial
+    (§0 rule 3).
+  - The hook change (`scripts/lib/tradeai_push_budget.py`) ships after ratification by item 3's two-review path. Until
+    it is merged, the hook enforces 2.
+
+  *Cause (§20): on 2026-10-25 the budget of 2 blocked four operator-approved PRs, and each waited for an operator
+  override.*
+- **2 Solo trains with one adversarial review.** A PR the train classifies `needs_operator` becomes eligible as a
+  **solo train**: exactly one PR in the window, with no other member. This covers scheduler, registry, allowlist,
+  systemd and cron; communications; deploy-adjacent code; the portfolio-server API; oversized PRs; deletions; auth
+  code; and migrations.
+  - **Conditions:** an `Adversarial-review: MERGE` receipt from an agent other than the author, with its reference; a
+    `Real-layout proof:` line (§28.9); and every required check `success` on the head, plus `shared-infra-review` for
+    `[shared-infra]` paths.
+  - **Deletions** must archive with a tripwire (§0 rule 6).
+  - **Migrations** must be expand-only and reversible, proven by a dry run on a scratch database. A destructive DDL is
+    a deletion.
+  - **Auth** code is eligible. A secret value, credential file, `.env` or `config/secret_registry.yaml` change never
+    is.
+  - **Verify:** the train's verify adds `scripts/check_allowlist_consistency.py`, `scripts/check_lane_registry.py` and
+    a clean `scripts/cron_outage_watchdog.py` pass to §28.12 step 9. A failure rolls back, latches STOP and pages P1.
+  - **Never on any train:** broker, Active Trader and MBI (`broker_active_trader`, always held), and secrets.
+  - **§17:** for the cron, systemd, n8n-activation, dispatcher-row and data-source items, the merged, reviewed solo
+    train is the decision, and its release capability comes from the standing delegation (§25.2) in place of the
+    per-act grant.
+
+  *Cause (§20): §28.9, shared infrastructure ships alone; on 2026-10-25 every such PR waited for a per-PR operator
+  release.*
+- **3 Train-self, guard, hook and CI enforcement: a solo train with two reviews and a veto window.** A `train_self` or
+  `guard_ci_enforcement` PR rides a solo train only under all of these conditions:
+  - two `Adversarial-review: MERGE` receipts from two different reviewer agents, each with its reference;
+  - the `shared-infra-review` check `success`;
+  - a `Real-layout proof:` line;
+  - post-release verification that includes a train dry run of the next window.
+
+  **Veto window.** The operator is notified at merge time, and the release runs at the first window at least 3 h
+  later. An operator STOP, or a veto on Ops → Controls, cancels it. Rollback on verify failure, the STOP latch and P1
+  apply as usual. The release capability comes from the standing delegation's `solo` class, not from a guard grant
+  (§24.8 reads accordingly for solo trains).
+
+  **No weakening.** A diff that removes or loosens a §0, §2 or §17 enforcement is refused by the classifier and goes
+  to the operator. That means a guard check, a never-list or forbidden-class entry, a hook refusal, or an assertion
+  of a pinned policy test. Each reviewer receipt attests "does not weaken §0/§2/§17 enforcement". A candidate is
+  qualified by the verifier of the release it replaces, never by its own.
+
+  *Cause (§20): operator 2026-10-25, "fully done, fully automatic, no input by me … unless there's an issue"; a
+  release grant expired on 2026-10-25 before its release ran.*
+- **4 Which lanes run live is declared in the repo.** A lane is live when:
+  - its `config/lane_registry.json` row is at `scheduler.stage` `canary` or `cutover`, with `dispatch.mode` `live`;
+  - and its `config/n8n_run_allowlist.json` entry has a `live_arg`.
+
+  At deploy, the relay derives its live list from those rows (`scripts/render_n8n_relay_env.py`), never from a `never`
+  lane (§23.14). The host setting `TRADEAI_N8N_RELAY_LIVE_LANES` becomes an override only:
+  - removing a lane there takes effect at once;
+  - adding a lane there stays the operator's §17 act;
+  - when the derivation fails, the last good list is kept, never widened.
+
+  Activating a lane is a reviewed registry PR on a solo train (item 2). §17's "changing the n8n relay live list" now
+  reads as changing the host override. *Cause (§20): on 2026-10-25, merged and released lanes stayed dry until the host
+  relay live list was edited by hand.*
+- **5 No TTY ACK for routine setup.** A new packet never needs an interactive TTY acknowledgement for a routine
+  schedule or configuration change. It ships as train-released configuration with a verify step. *Cause (§20): on
+  2026-10-25, setup packets stopped on TTY ACKs for schedule changes the operator had approved.*
+- **6 Configuration is not a secret.** The server `.env` holds configuration only; secrets live in Bitwarden (operator,
+  2026-10-25).
+  - An agent may change a named configuration key with a tool that writes that key alone, backs the file up first
+    (timestamped, mode kept) and prints only that key.
+  - It never prints, copies or reads out another value.
+  - A key on `config/secret_registry.yaml`, or named like a token, secret, password or credential, is refused.
+  - An operator-facing switch belongs on Ops Controls (`/v3/system/ops-controls`) with an audited change log, not in a
+    file edit.
+  - Secrets themselves are unchanged: never read, copied or printed. This item narrows §24.7 for named configuration
+    keys only, once that tool is on main.
+
+  *Cause (§20): on 2026-10-25, enabling SMS waited on the operator to edit `.env` by hand. Operator: "this should have
+  just been a toggle on the control ops."*
+- **7 The `solo` class enters the delegation once, at ratification.** The train's own config
+  (`config/release_train_policy.json`) defines what qualifies as solo (items 2 and 3). The delegation names only the
+  class `solo` once, in `permitted_classes`. `solo` passes `release_delegation.forbidden_class` because the train
+  policy, not the class name, carries the conditions; §25.2's ban on classes "naming guard or policy work" reads
+  accordingly for `solo`.
+  - Adding `solo` changes the delegation digest, so the operator accepts it once (`change-scope`, passkey on Ops →
+    Controls, §25.2) at the same moment as ratifying this version. The coordinator relays both together.
+  - Later changes to what qualifies are reviewed train-policy PRs under item 3, not delegation edits.
+
+  *Cause (§20): §25.2, a record takes effect only when the operator accepts its digest; that should happen once, not
+  per class.*
+- **8 Routine pushes and toolchains need no guard grant.**
+  - (a) An agent working under an operator-approved plan or scope may `git push` its own feature branches without a
+    guard `git-push` grant. The scope is a claim-board plan with an `Operator-approval:` reference, or a
+    coordinator-assigned task file under `data/coordination/handoffs/`. The push must be fast-forward only and within
+    the push budget (item 1). It never goes to `main`, `release/*` or `train/*`, and it never force-pushes, resets,
+    runs `filter-branch`, or deletes a remote branch. The guard records each such push. Pushes to `main`, history
+    rewrites and force pushes still need the operator.
+  - (b) Running an existing toolchain is never in the `deps` scope. That covers `npm run …`, `npx playwright test`,
+    `pytest`, `ruff`, `tsc`, builds and tests. `deps` covers only installing, removing or upgrading packages
+    (`pip`, `npm` or `apt` install, uninstall or upgrade) and lockfile changes. The guard hook must classify commands
+    this way.
+  - (c) The mechanics, namely the guard hook classification and push-without-grant under an approved plan, are a
+    follow-up PR gated on 21.0.0 being ACTIVE, by item 3's path. Until it merges, the guard enforces as today. The `hands_off_policy.py` gate in PRs #2115, #2118 and #2125 must key on the `| 21.0.0 |`
+    version row; there is no `| 20.4.0 |` row.
+
+  *Cause (§20): 2026-10-25 16:14 ET, Cursor, following 20.2.0, asked the operator on Telegram for a `git-push` grant to
+  push routine page-repair branches and a `deps` grant to run `npm run build` and Playwright.*
+- **9 The complete list of what reaches the operator (§17):**
+  - (a) Ratifying `AGENTS.md` or `AI_WORK_POLICY.md`: one tap on the Command Center Rulebook page, "Approve version
+    X", with the operator's passkey identity (§27.3). It is recorded exactly as the PR-comment token
+    `APPROVE_AGENTS_POLICY_<x> <pr> <head_sha>` for the head SHA shown; a stale SHA is refused. The same moment carries
+    item 7's one-time `solo` acceptance. Until that button is on main and verified, the PR comment is the path, and
+    21.0.0 itself is ratified that way. A ratified policy PR then rides a solo train.
+  - (b) Broker and MBI: never delegable (§0 rules 1–2, §28.6, the Schwab mode, locks and kill switches).
+  - (c) Credentials and secrets (§24.7).
+  - (d) Design approvals (§28.13).
+  - (e) Alerts and escalations: a P1, a refused weakening (item 3), a self-heal escalation (§28.14), or clearing a STOP
+    latch after a rollback.
+
+  Everything else ships with no operator input. Spending money (funding a model or data plan) is not delegated by this
+  section. *Cause (§20): operator 2026-10-25, "fully done, fully automatic, no input by me … unless there's an issue".*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 22.0.0 | 2026-10-25 | PROPOSED | MAJOR | §25.3 Ops → Controls Run now (`release_train.run_now`): once ACTIVE, the operator may force a live canary train from Ops → Controls with a passkey and typed phrase `RUN NOW EPOCH n WINDOW HHMM`; every other §25.3 gate stays; agents never force; host CLI remains the fallback. Until ACTIVE the kind refuses `POLICY_NOT_ACTIVE`. Numbered 22.0.0 because open PR #2128 claims 21.0.0 (settled at ratification). Header stays 20.3.0 ACTIVE while PROPOSED. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>` (§20). |
+| 22.0.0 | 2026-10-25 | PROPOSED | MAJOR | §25.3 Ops → Controls Run now (`release_train.run_now`): once ACTIVE, the operator may force a live canary train from Ops → Controls with a passkey and typed phrase `RUN NOW EPOCH n WINDOW HHMM`; every other §25.3 gate stays; agents never force; host CLI remains the fallback. Until ACTIVE the kind refuses `POLICY_NOT_ACTIVE`. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128). Header stays 21.0.0 ACTIVE while PROPOSED. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>` (§20). |
+| 21.0.0 | 2026-10-25 | ACTIVE | MAJOR | Three sections, one token. §28.13 "Design lifecycle" (operator 2026-10-25, "I approve the design workflow"): `design/` the single home, every page versioned (v000 as built 2026-10-26, v001 the 10-24 approvals back-filled), DRAFT → PROPOSED → APPROVED (operator only, one tap in Approvals → Designs, signed ledger decision; prose never counts) → IMPLEMENTING (`Design: <page>/vNNN` or `Design: none`) → VERIFIED → CURRENT, approved versions immutable, removal guard, phone ≤820 (412/390) and desktop ≥1280 (1440) rules, logged-in live drift via a read-only reader, no real data in the public repo. §28.14 "Self-heal monitor and fixer" (operator 2026-10-25, "Arm the fixer and also a logger"): host-timer monitor independent of n8n; four deterministic remediations once per incident; every other fix an ordinary self-heal fixer PR through CI and the train, never merging or deploying; refused scopes alert + coordinator task; append-only fix log on Releases & schedules → Fixes; P1 after max attempts; armed by ACTIVE status, shadow before. §28.15 "Hands-off delivery" (operator 2026-10-25, "Do 20.4"; numbered MAJOR by the version policy because it widens §17 and the §25.2 delegation): push budget 5 with a coordinator-only override on operator-approved scope; solo trains for every `needs_operator` class with one adversarial review and real-layout proof; train-self and guard/CI solo trains with two reviews, a ≥3 h veto window and a next-window dry run, no weakening of §0/§2/§17 enforcement; live lanes derived from the lane registry (host list an override); no TTY ACK for routine setup; `.env` configuration keys changeable, secrets unchanged; the `solo` delegation class accepted once at ratification; routine feature-branch pushes under an approved plan need no guard `git-push` grant (fast-forward only, never `main`/release, never force) and running toolchains (`npm run`, Playwright, pytest, builds) is never `deps`; the complete operator list (ratification, broker/MBI, credentials/secrets, design approvals, alerts/escalations). Broker/Active Trader/MBI always held; secrets never. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3` (operator, PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834, verbatim: "APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3"); ratified by this edit on #2128's branch, which set the header block, banner, row and §28.13–§28.15 to 21.0.0 ACTIVE and marked the `AI_WORK_POLICY.md` paragraphs binding, and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_21_0_0 <pr_number> <head_sha>`; the `solo` delegation digest acceptance (§28.15 item 7) remains the operator's host act. Effective 2026-10-25. |
 | 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 20.2.0 | 2026-10-24 | ACTIVE | MINOR | §28.9 + §28.10 + §28.11 (transition for work in action) added: conflicts resolved only by the conflict engine under the operator-approved rulebook (agreement/superseded never flag, gates not conflicts, owner decides with a reason, CIO always informed, safety never automatic); no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **RATIFIED** by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
