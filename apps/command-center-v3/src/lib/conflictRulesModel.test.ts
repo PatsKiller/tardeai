@@ -1,4 +1,4 @@
-import {awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, liveCountRows, pct, pendingProposals, proposalCases, proposalModel,
+import {approvalWords, awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, liveCountRows, pct, pendingProposals, proposalCases, proposalModel,
   proposalResolutions, proposalTestCount, statusWords, unmatchedStatus} from './conflictRulesModel.ts'
 
 const same = (a: unknown, b: unknown) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`Expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`) }
@@ -57,4 +57,10 @@ same(pct(10.8), '10.8%')
 same(pct(null), 'not set')
 same(coverageWord('IMPLEMENTED'), {label: 'Implemented', tone: 'success'})
 same(coverageWord('MISSING'), {label: 'Missing', tone: 'danger'})
+same(approvalWords(null), 'none recorded')
+same(approvalWords('operator token'), 'operator token')
+same(approvalWords({approved_by: 'operator', approved_on: '2026-10-24', reference: 'PR #9999'}),
+  'by operator · on 2026-10-24 · ref PR #9999')
+same(approvalWords({}), 'none recorded')
+same(approvalWords({mystery: true}), 'recorded (details not in a readable shape)')
 console.log('conflictRulesModel: ok')

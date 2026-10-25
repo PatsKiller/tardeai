@@ -170,6 +170,27 @@ export function statusWords(view: RulebookView['rulebook']): {headline: string; 
   }
 }
 
+/** Plain-language approval line. Never dumps JSON onto the page. */
+export function approvalWords(approval: unknown): string {
+  if (approval == null || approval === '') return 'none recorded'
+  if (typeof approval === 'string' || typeof approval === 'number' || typeof approval === 'boolean') return String(approval)
+  if (typeof approval !== 'object' || Array.isArray(approval)) return 'recorded (details not in a readable shape)'
+  const row = approval as Record<string, unknown>
+  const by = row.approved_by ?? row.by ?? row.actor ?? row.operator
+  const on = row.approved_on ?? row.on ?? row.at ?? row.date
+  const ref = row.reference ?? row.ref ?? row.scope
+  const parts: string[] = []
+  if (by != null && String(by).trim()) parts.push(`by ${String(by).trim()}`)
+  if (on != null && String(on).trim()) parts.push(`on ${String(on).trim()}`)
+  if (ref != null && String(ref).trim()) parts.push(`ref ${String(ref).trim()}`)
+  if (!parts.length) {
+    const keys = Object.keys(row).filter(key => row[key] != null && String(row[key]).trim())
+    if (!keys.length) return 'none recorded'
+    return 'recorded (details not in a readable shape)'
+  }
+  return parts.join(' · ')
+}
+
 export function fingerprint(sha: string | null | undefined): string {
   return sha ? `${sha.slice(0, 12)}…` : 'not pinned'
 }

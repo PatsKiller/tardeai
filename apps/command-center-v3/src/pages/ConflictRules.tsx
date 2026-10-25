@@ -6,7 +6,7 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import {useApi} from '../hooks/useApi'
 import {conflictSource, conflictTime, conflictValue} from '../lib/watchConflictPresentation'
 import {
-  ACTION_WORDS, TIERS, awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, isPending, liveCountRows, pct, pendingProposals,
+  ACTION_WORDS, TIERS, approvalWords, awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, isPending, liveCountRows, pct, pendingProposals,
   proposalCases, proposalModel, proposalResolutions, proposalTestCount, statusWords, unmatchedStatus,
   type DecisionAction, type MatrixRule, type ProposalCollection, type RuleProposal, type RulebookView, type UnmatchedExample,
 } from '../lib/conflictRulesModel'
@@ -42,8 +42,13 @@ export default function ConflictRules() {
 
   return <div className="conflict-rules" data-testid="conflict-rules">
     <DeskPage title="Conflict rules" purpose="How the Command Center decides when two sources disagree: the binding resolution matrix, in plain words."
-      sources={[{id: 'rulebook', label: 'Conflict rulebook', gap: view ? undefined : 'Rulebook not loaded yet.'},
-        {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
+      sources={[
+        {id: 'rulebook', label: 'Conflict rulebook', laneIds: ['conflict-resolver'], gap: view ? undefined : 'Rulebook not loaded yet.'},
+        {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, laneIds: ['conflict-resolver'],
+          gap: view?.live.gap?.reason as string | undefined},
+        {id: 'proposals', label: 'AI rule proposals', laneIds: ['conflict-rule-proposals'],
+          gap: proposalList ? undefined : (proposals.error || 'AI rule proposals not available yet.')},
+      ]}
       decisions={pending.map(proposal => ({id: proposal.proposal_id, title: `Proposed rule: ${proposal.summary || proposal.plain_rule || 'review the AI proposal'} →`,
         href: `/conflicts/rules?proposal=${encodeURIComponent(proposal.proposal_id)}`}))}
       decisionGap={pending.length ? `${pending.length} AI-proposed rule${pending.length === 1 ? '' : 's'} waiting for your approval.` : 'Nothing on this page needs a decision right now.'}>
@@ -97,7 +102,7 @@ function Body({view, openRule, proposalsAvailable, proposalsError, effective}: {
     <section className={`cr-panel cr-banner ${status.tone}`} aria-label="Rulebook status" data-testid="cr-status">
       <strong>{status.headline}</strong>
       <span>{status.live}</span>
-      <span>Approval: {view.rulebook.approval ? String(typeof view.rulebook.approval === 'object' ? JSON.stringify(view.rulebook.approval) : view.rulebook.approval) : 'none recorded'}</span>
+      <span data-testid="cr-approval">Approval: {approvalWords(view.rulebook.approval)}</span>
       <span>Matrix fingerprint <code>{fingerprint(view.rulebook.matrix_sha256)}</code> · {view.rulebook.matrix_check.verified === true ? 'matches the binding matrix file'
         : view.rulebook.matrix_check.verified === false ? 'does NOT match the matrix file on this host' : view.rulebook.matrix_check.reason || 'not checked'}</span>
       <span className="cr-muted">Version {view.rulebook.version ?? 'unknown'} · {view.coverage_summary.implemented} of {view.coverage_summary.total} rules implemented{view.coverage_summary.missing ? ` · ${view.coverage_summary.missing} missing` : ''}</span>
