@@ -1,0 +1,390 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "watch",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 16,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 625709056,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/watch",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/watch-default-1440.png",
+        "sha256": "5b7240f24e550ea9fc76493775f13cf2e193a80a6c4de08a8b422b8daf13aad2",
+        "bytes": 143096,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/watch-default-390.png",
+        "sha256": "7b194c2738e2c1b40d9e38e08962db3801abccfcdebfbbb67a0d684f778d90d1",
+        "bytes": 77191,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/watch-default-412.png",
+        "sha256": "50127ce8ee60a96a305866764cb18d9b07d00cb9848ecb8089e2a719d6656afe",
+        "bytes": 87033,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/watch-t01-1440.png",
+        "sha256": "40172795443ab9d9dfc0059e5ce002b902ddb653bb5131145817d707f160155d",
+        "bytes": 306089,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/watch-t01-390.png",
+        "sha256": "9e515208cbf2a26856c2b3459403bc7d61ad05f824fb111084bea3ce9be4853d",
+        "bytes": 97227,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/watch-t01-412.png",
+        "sha256": "ccc0cd9bbe550fc258ec7af8d3b4cada42e473d18df6f3a9a284e221fff62e27",
+        "bytes": 106979,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/watch-t02-1440.png",
+        "sha256": "335ad42d47adf31c43c6b139590f1574e831bef0159bd35b1dbcb9fbcac3720a",
+        "bytes": 203150,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/watch-t02-390.png",
+        "sha256": "8fe6428414d03ca878bab256e9c91cefa059905f9a091897dfc5cdb7a9785830",
+        "bytes": 62775,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/watch-t02-412.png",
+        "sha256": "d6e3bb6ed92e5ef109319e14e979b7212ad4c68f61c5612b94c3de3522967c4b",
+        "bytes": 72845,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/watch-t03-1440.png",
+        "sha256": "871ee779c861bb9574bdca008e695e8f17e95cc51f288838b7f7f64e7053dbcf",
+        "bytes": 213863,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/watch-t03-390.png",
+        "sha256": "fd51b67ee55f7c3b08d07bc0db14ecebe01eebe8422e134ff90a0dce8460801b",
+        "bytes": 77137,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/watch-t03-412.png",
+        "sha256": "9fc49babcc3f785ededf483aa224a6d6c5595d6d8c25275a2ba2eed02dea4f88",
+        "bytes": 81558,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/watch-t04-1440.png",
+        "sha256": "a6765b340dc3c36b697ae0cf9b41c89092fe012bafa0fb61f5b0ea7c55b49dcf",
+        "bytes": 188499,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/watch-t04-390.png",
+        "sha256": "7a15981d741cbcb06e18dcb84a18580d5a35ee40c679ad4f24e537d74d4bc7d6",
+        "bytes": 84195,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/watch-t04-412.png",
+        "sha256": "d33b757292a054d532dcbabb2f67160ccf533ac7df082b835803751b8ef69988",
+        "bytes": 75041,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/watch-t05-1440.png",
+        "sha256": "ed35c868dcdd9448b14e4a65cd4681341de54a985584577ed5dcc3cb31234f3f",
+        "bytes": 240868,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/watch-t05-390.png",
+        "sha256": "fbf41306aa0e8a1df3c6c3070edcf924396003b024831e254b353e0ac8c4ae46",
+        "bytes": 84175,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/watch-t05-412.png",
+        "sha256": "d379443e616f41347b7c071187b84802ed4afe9a36c9d02b71cb1c78e11e7c1b",
+        "bytes": 91523,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/watch-t06-1440.png",
+        "sha256": "e58ff1491e16fc1c5d5f73fe432d9c3503df43c12e9dac3fe8a03c06e85deb4a",
+        "bytes": 322317,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/watch-t06-390.png",
+        "sha256": "5eaff1750c490376fa440ece3b1dd9f62c592ea8c2d090d3dc8f35016b0770e7",
+        "bytes": 82020,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/watch-t06-412.png",
+        "sha256": "1adcdc9c7f4d9492f59504a14c8478278b185a73be9232151a11d4ab861e0225",
+        "bytes": 84969,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/watch-t07-1440.png",
+        "sha256": "2fd63ac322ca45ef1345c766be0581d4fe7c64dd30b48aa4e3454b6a90f96241",
+        "bytes": 236494,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/watch-t07-390.png",
+        "sha256": "2f0dad42bfe298a7708b7d86898d825d9c62abdb07b37b1f6ca38d1f3fe30b2d",
+        "bytes": 69016,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/watch-t07-412.png",
+        "sha256": "2055b83c585ed2c8ccae421b35132174ac84ea4d1500c3ca662ab4b8f2105663",
+        "bytes": 75435,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/watch-t08-1440.png",
+        "sha256": "aea874eac3bc6799d56f14e890a31ea115644899527f721b1ad38974059f1699",
+        "bytes": 200270,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/watch-t08-390.png",
+        "sha256": "e0f974f7bab45cd618dfc63a1bc0200c310db926ad6a67632552daaa6ecd154b",
+        "bytes": 82348,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/watch-t08-412.png",
+        "sha256": "66a34295dcef3d70a8de239a24c8e0c2beb9036e63f9d465a3259f5897ee43ff",
+        "bytes": 86630,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/watch-t09-1440.png",
+        "sha256": "1a105168c6318d23aa0a3e5d96dbe44142818ba6f178053ad42903cf80e71194",
+        "bytes": 189208,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/watch-t09-390.png",
+        "sha256": "b4f047e1b3636418923963b3b3091de9dee2f2575af20a491e7d1fc314769051",
+        "bytes": 82099,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/watch-t09-412.png",
+        "sha256": "a517ebd1a19a27aaaaeef8eebb999beba3b30ae7c8dc30114f523b86836ed029",
+        "bytes": 85672,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/watch-t10-1440.png",
+        "sha256": "bd8bd1496bdea3273251c145680f1249f50708d9cef8fe1209a85608e3ca02b2",
+        "bytes": 256515,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/watch-t10-390.png",
+        "sha256": "5179256bfb1e3d5811a5522f983592313f866e0a26bc5c3eb632a21c98e8d87e",
+        "bytes": 89101,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/watch-t10-412.png",
+        "sha256": "54fb6032b62dc494b64f1812827ec4612e30df2df79da83aeb1b494024697368",
+        "bytes": 93241,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/watch-t11-412.png",
+        "sha256": "1976f8453d92d4b0d9fd072e87d8e3c4468467d432e58dd1076f3d0af7ebdd43",
+        "bytes": 87072,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/watch-t12-412.png",
+        "sha256": "ef8307caf84e405ea9b4362959a269b0c53319b16fdf23d2a2fe4473548a866e",
+        "bytes": 87312,
+        "role": "capture",
+        "width": 412,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/watch-t13-390.png",
+        "sha256": "6a8953a1418c0b17d47b32096436a4309795cc6132b5602abc96dc79e485d96d",
+        "bytes": 62018,
+        "role": "capture",
+        "width": 390,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/watch-t13-412.png",
+        "sha256": "6cf36965aa512bd03205da2e506314286340782c91805a43681ec73edc719c39",
+        "bytes": 87466,
+        "role": "capture",
+        "width": 412,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/watch-t14-390.png",
+        "sha256": "2f111c3cabdc125b1036fd30505da316329dc5626262736cc84bc9e9ad13595a",
+        "bytes": 61861,
+        "role": "capture",
+        "width": 390,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/watch-t14-412.png",
+        "sha256": "141a4c8b9e659f3cbaaf0fa5e96b493bd58b51da6f37badebbf291ba96236de7",
+        "bytes": 87158,
+        "role": "capture",
+        "width": 412,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/watch-t15-390.png",
+        "sha256": "be5f70f8a05ba7ebf6a106b134cc4b04fc2a12cae30af887ed29fd87656a613b",
+        "bytes": 61171,
+        "role": "capture",
+        "width": 390,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/watch-t15-412.png",
+        "sha256": "7690b2f4228cddc929b4e2351ca634085ba4d888ef777704b4ea3dd31c28883a",
+        "bytes": 86475,
+        "role": "capture",
+        "width": 412,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/watch-t16-390.png",
+        "sha256": "d293a0b263173cfb4ac98e8165d61551980e9a79c015a902f4d9950a2438f2b7",
+        "bytes": 62618,
+        "role": "capture",
+        "width": 390,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/watch-t16-412.png",
+        "sha256": "9dc3e598e57e51eafc4763ed21ffe062657b43d209f1feaa50c9988624bd0b64",
+        "bytes": 74649,
+        "role": "capture",
+        "width": 412,
+        "tab": "t16"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "re-entry",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 4,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 1033863168,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/re-entry",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/re-entry-default-1440.png",
+        "sha256": "335ad42d47adf31c43c6b139590f1574e831bef0159bd35b1dbcb9fbcac3720a",
+        "bytes": 203150,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/re-entry-default-390.png",
+        "sha256": "8fe6428414d03ca878bab256e9c91cefa059905f9a091897dfc5cdb7a9785830",
+        "bytes": 62775,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/re-entry-default-412.png",
+        "sha256": "d6e3bb6ed92e5ef109319e14e979b7212ad4c68f61c5612b94c3de3522967c4b",
+        "bytes": 72845,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/re-entry-t01-1440.png",
+        "sha256": "335ad42d47adf31c43c6b139590f1574e831bef0159bd35b1dbcb9fbcac3720a",
+        "bytes": 203150,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/re-entry-t01-390.png",
+        "sha256": "8fe6428414d03ca878bab256e9c91cefa059905f9a091897dfc5cdb7a9785830",
+        "bytes": 62775,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/re-entry-t01-412.png",
+        "sha256": "d6e3bb6ed92e5ef109319e14e979b7212ad4c68f61c5612b94c3de3522967c4b",
+        "bytes": 72845,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/re-entry-t02-1440.png",
+        "sha256": "703fda4cb70a4e91ec17f0a9712c77d14183cc3dba292a803eda6d026bef817b",
+        "bytes": 184168,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/re-entry-t02-390.png",
+        "sha256": "28ed7e49dadfaded1e5690018c1675db608bccfe87f42512fd88e6a2ccba6935",
+        "bytes": 75641,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/re-entry-t02-412.png",
+        "sha256": "82ef8b89631e5a8619861a14df6d348e6466bb8d9089608b1cf91ee534c6345e",
+        "bytes": 81124,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/re-entry-t03-1440.png",
+        "sha256": "a984e82fe2be0516c15f9734b871ed860c2186ba0874504fad29252d70747e1a",
+        "bytes": 172437,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/re-entry-t03-390.png",
+        "sha256": "3cb0f08571a9a1b8375acf33a3f754aaafea940272558fb51d0deabde5ebc456",
+        "bytes": 81439,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/re-entry-t03-412.png",
+        "sha256": "b50e526a9c58b8c026d1b066004fe6b316bd3663a2382341046510195707b838",
+        "bytes": 86752,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/re-entry-t04-1440.png",
+        "sha256": "bcae001f8566575ad9e11d8d08e7980cb289195f1f3f950af7c7413830087cde",
+        "bytes": 157789,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/re-entry-t04-390.png",
+        "sha256": "2f54c45c36e31bf72f6dbc33b70758b29bebba451513c5e268608f4ef89a674c",
+        "bytes": 70772,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/re-entry-t04-412.png",
+        "sha256": "2b9f385ec064aeb481351fc1e9810db787087457a3ada0a6f6bdcc440018fbf9",
+        "bytes": 77109,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

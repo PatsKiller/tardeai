@@ -1,0 +1,454 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "trading",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 16,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 717778944,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/trading",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/trading-default-1440.png",
+        "sha256": "a167212fc3594ab97793af84d6f1671b521ee0eeef34526e85b73b8b65e40eee",
+        "bytes": 254974,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/trading-default-390.png",
+        "sha256": "ff8aa26f39ac4c7cfc403df968aef2e2c98c4a0ff21795fe689c340ad5de4a9a",
+        "bytes": 77026,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/trading-default-412.png",
+        "sha256": "f10e410cc9be2e00d5d12faa941d3558eb2449ced44d5ee77c871eed00a61f2b",
+        "bytes": 81897,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/trading-t01-1440.png",
+        "sha256": "8b76ccf2891ca3b1cb1b66bdb24ee28cd824aa1a2f6e58988ef41dd35f5c5d59",
+        "bytes": 254853,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/trading-t01-390.png",
+        "sha256": "d7de7ca69582b358b580d2d97f4a488d01a508baf47401f62716f1d38ee95b3b",
+        "bytes": 76925,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/trading-t01-412.png",
+        "sha256": "62ffac961c188413438c0ffbdfe970f0e7c2ebe93820658b9dfb8d0f4089b2de",
+        "bytes": 81849,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/trading-t02-1440.png",
+        "sha256": "9018040bce48f2ab5c10bddd58012fc00b28808e6a01cdb35465d78730e1c3a5",
+        "bytes": 273904,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/trading-t02-390.png",
+        "sha256": "e699d84738efe2d4e7739bc8414285460d9d32f912aceced0518dc628b4cb94d",
+        "bytes": 72324,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/trading-t02-412.png",
+        "sha256": "570005cb7df3ad1146b529e539d348b9da3d13956638be72da10af7399a8a18f",
+        "bytes": 81468,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/trading-t03-1440.png",
+        "sha256": "b400bda15d6f72e842b69d05a2344786a9c72f24e515bff5e0e82b9327d25747",
+        "bytes": 242662,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/trading-t03-390.png",
+        "sha256": "970166f0c6bb46516580b4c40cbc49c2ed2a3a1e0a6b9cb45b857e1b42336b6b",
+        "bytes": 74958,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/trading-t03-412.png",
+        "sha256": "fd7a8ec4f811a4b4b051ab9868a3f79f852171e78f7b938e7f300f09e1a862a2",
+        "bytes": 88534,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/trading-t04-1440.png",
+        "sha256": "8ac8cfda121ceaed1d6cb36d2e1979576e22861631b30c81394c39bb2a2a91ba",
+        "bytes": 192741,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/trading-t04-390.png",
+        "sha256": "38a0fb26ae98a964a4d175c31a6d58b7e86504e1118b6da1a5fbe81bde52f09c",
+        "bytes": 68245,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/trading-t04-412.png",
+        "sha256": "aad0485f88aedd61cb5ee7552345b85f7770399281edbe4f9a33eb7c0af403f1",
+        "bytes": 78050,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/trading-t05-1440.png",
+        "sha256": "1e25feecc8d43389350ab5f9c0c4086161977dc39367724f697674f9d603c269",
+        "bytes": 228449,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/trading-t05-390.png",
+        "sha256": "101b337cfe596020a92f5a2f00279e8a6870935416a4401e5052bb275d39daa8",
+        "bytes": 57130,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/trading-t05-412.png",
+        "sha256": "7dbd54ada8f8226c2429ef03976b199fd622516b47aab5c9e9db575f6b176c98",
+        "bytes": 82861,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/trading-t06-1440.png",
+        "sha256": "845efecb6e90dcb2c042eed8ba55e8e5ef79051b974af5e2f75d7b23a1ae0e4f",
+        "bytes": 199774,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/trading-t06-390.png",
+        "sha256": "36bd75b6ecc2e9c5b86434a06f35f72852308f4b4231ad7a615b8f593dc6edd3",
+        "bytes": 57111,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/trading-t06-412.png",
+        "sha256": "b11374d7ba945057b538f1f7f6c8592846f079c5f2e53a361e6afb5ac13fa4d5",
+        "bytes": 54245,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/trading-t07-1440.png",
+        "sha256": "b32428ff52938a84a60273d099c435cc1ef7ca2e4929ce838087cd20f9fa08a1",
+        "bytes": 200355,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/trading-t07-390.png",
+        "sha256": "4d19150299f00592aa5256a3c663019bce23e70cdae92df22219db364f8abb6d",
+        "bytes": 57144,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/trading-t07-412.png",
+        "sha256": "e9740ac5b24e15ed9f1ec08f60496986f280cb68923c9105e8273737a86e0e1d",
+        "bytes": 54232,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/trading-t08-1440.png",
+        "sha256": "2166227d556b27f376a68b454722e53434f270adf5632d080f2e2b1d3620ebe2",
+        "bytes": 201961,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/trading-t08-390.png",
+        "sha256": "297e5f56b6af673bcf59785e284b308a8e0342f5a5205cde8b5af1a723df45f5",
+        "bytes": 44504,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/trading-t08-412.png",
+        "sha256": "478ae119437321a6eae486cd54ceafcaad68a0493084b8d103db07c1869a7684",
+        "bytes": 51270,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/trading-t09-1440.png",
+        "sha256": "9406942f366429d702e9091313e72bb8efc3fe4c11b99eb7b5595aaee45482c4",
+        "bytes": 203157,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/trading-t09-390.png",
+        "sha256": "dd152142b298db8c0188f3d0a706e5c7d9da56fe35457268441ef88abaab3833",
+        "bytes": 46782,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/trading-t09-412.png",
+        "sha256": "ddc46a516ba016c4488b69497768c33bbe02068c90132e79c1616b90c3f60b38",
+        "bytes": 46929,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/trading-t10-1440.png",
+        "sha256": "9406942f366429d702e9091313e72bb8efc3fe4c11b99eb7b5595aaee45482c4",
+        "bytes": 203157,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/trading-t10-390.png",
+        "sha256": "dd152142b298db8c0188f3d0a706e5c7d9da56fe35457268441ef88abaab3833",
+        "bytes": 46782,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/trading-t10-412.png",
+        "sha256": "ddc46a516ba016c4488b69497768c33bbe02068c90132e79c1616b90c3f60b38",
+        "bytes": 46929,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/trading-t11-1440.png",
+        "sha256": "93384aabef87e7f44586e6214e1615eac003adc4f94c8b74efb3492b7dcc8663",
+        "bytes": 195978,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/trading-t11-390.png",
+        "sha256": "10054eec67fe0af595647fd787fce7fedace53b3bd8da8f1891f99e1a7dcebb3",
+        "bytes": 49133,
+        "role": "capture",
+        "width": 390,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/trading-t11-412.png",
+        "sha256": "ccd9172e522bf6c9d0b1eb5f026a3199c0c56f8cb57a26d2691863c4c7d6d919",
+        "bytes": 61085,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/trading-t12-1440.png",
+        "sha256": "8b76ccf2891ca3b1cb1b66bdb24ee28cd824aa1a2f6e58988ef41dd35f5c5d59",
+        "bytes": 254853,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/trading-t12-390.png",
+        "sha256": "691a7c408fca378c836cf5163df8160186006e3357c7d092413ca7b8f7f0fc06",
+        "bytes": 43315,
+        "role": "capture",
+        "width": 390,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/trading-t12-412.png",
+        "sha256": "9a7692ce59c6be93a45fc47d5e6598c48e37d9708477e926f977d3ec3c69e412",
+        "bytes": 46743,
+        "role": "capture",
+        "width": 412,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/trading-t13-1440.png",
+        "sha256": "cc5479c3764532f242236e84f36d027cb2e0a4806c0e103e0dad380e0b470749",
+        "bytes": 256419,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/trading-t13-390.png",
+        "sha256": "91729028d506c476520d2485819c2ec90f728d3b6cb0efc453a08634badc75b0",
+        "bytes": 43313,
+        "role": "capture",
+        "width": 390,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/trading-t13-412.png",
+        "sha256": "3ddf8632e02707dfbdf39105098310ba50a138d6b5cb3a25a77006bc4dafce9f",
+        "bytes": 46639,
+        "role": "capture",
+        "width": 412,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/trading-t14-1440.png",
+        "sha256": "463f26a3857ce9911e3fb09511f6124fe1bcd6c617ec62fe98df6b4d25824b84",
+        "bytes": 254357,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/trading-t14-390.png",
+        "sha256": "0c638f591f50b96e77a39dd9214f846741a52a7dbfd7856ddb29baa19c274576",
+        "bytes": 45957,
+        "role": "capture",
+        "width": 390,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/trading-t14-412.png",
+        "sha256": "88e78b75867559aa002c6f96c4c811a4ccd86ffadf71259eb2811aa7139f5072",
+        "bytes": 47456,
+        "role": "capture",
+        "width": 412,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/trading-t15-1440.png",
+        "sha256": "0b1cfa9d71d96a4aefcaffcc4392f5b205b6e97e96c72776d04e6c6554ac5479",
+        "bytes": 225159,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/trading-t15-390.png",
+        "sha256": "baf250fc3a0600b7cd258223d5530176b626384516e85c1950c75bf7f9a4d89b",
+        "bytes": 40423,
+        "role": "capture",
+        "width": 390,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/trading-t15-412.png",
+        "sha256": "47350702d7fa063ed437816f82faf2d8eaf32677ba20a4bec37db13537ea860f",
+        "bytes": 62543,
+        "role": "capture",
+        "width": 412,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/trading-t16-1440.png",
+        "sha256": "a0b1b2ac73fa575c8832b8eb9d609f7caf9e399d7dca6fc6e2b13edecc653b11",
+        "bytes": 253255,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/trading-t16-390.png",
+        "sha256": "ba839ed1621918f7dd2b4ef2f3c2d0dac195949c9305ed9105b90c4510bd2380",
+        "bytes": 43221,
+        "role": "capture",
+        "width": 390,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/trading-t16-412.png",
+        "sha256": "021d894381c5caefb0c17739d13c904ad9bebcf760f89a2b64e4b4cc31b15b93",
+        "bytes": 44815,
+        "role": "capture",
+        "width": 412,
+        "tab": "t16"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}
