@@ -1037,9 +1037,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-w1-cio-truth.md` | DSN-20261024-w1-cio-truth.md |
 | `docs/designs/DSN-20261024-w1-r13-policy.md` | DSN-20261024-w1-r13-policy.md |
 | `docs/designs/DSN-20261024-w8-legacy-carryforward.md` | Worker A six-lane carry-forward |
+| `docs/designs/DSN-20261024-w8-writers.md` | W8 monitored writer restoration |
 | `docs/designs/DSN-20261024-w9-nonops-pages.md` | DSN-20261024-w9-nonops-pages.md |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
-| `docs/designs/DSN-20261024-w8-writers.md` | W8 monitored writer restoration |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
