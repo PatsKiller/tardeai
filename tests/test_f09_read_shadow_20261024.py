@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -355,3 +357,43 @@ def test_invalid_final_receipt_never_advances_control_success(tmp_path, mutation
     else:
         executor.write_receipt(receipt, state_root=tmp_path, write_last=False)
     assert path.read_bytes() == before
+
+
+def test_shadow_plan_runs_through_current_symlink_layout(tmp_path):
+    """§28.9: the substituted wrapper runs from a CURRENT symlink, not a flat repo."""
+    from tests.support.real_release_layout import real_release_layout
+
+    layout = real_release_layout(tmp_path, ROOT)
+    for rel in (
+        "scripts/n8n_broker_read_shadow.py",
+        "scripts/lib/n8n_broker_read_shadow.py",
+        "scripts/lib/n8n_broker_read_carveout.py",
+        "scripts/lib/broker_read_sync_policy.py",
+        "scripts/lib/lane_output.py",
+    ):
+        shutil.copy2(ROOT / rel, layout.release / rel)
+    logs = layout.state / "logs"
+    assert layout.current.is_symlink() and not layout.release.is_symlink()
+    assert (layout.release / "logs").is_symlink()
+    assert (logs.stat().st_mode & 0o777) == 0o775
+
+    step = next(s for s in carve.READ_LANES if s.id == "schwab_positions")
+    entry = {**entry_for(step), "lock": str(layout.locks / "read.lock")}
+    argv = executor.build_argv(entry, "dry_run", env={}, state_root=tmp_path, code_root=layout.current)
+    assert argv is not None
+    assert argv[-4:] == [shadow.WRAPPER, "--step", "schwab_positions", "--plan"]
+    assert step.script not in argv and "--dry-run" not in argv
+    assert executor.build_argv(entry, "live", env={}, state_root=tmp_path, code_root=layout.current) is None
+    env = {
+        "PATH": os.defpath,
+        "HOME": str(tmp_path),
+        "TRADEAI_RUN_ID": "layout-fixture",
+        "TRADEAI_RUN_ATTEMPT": "1",
+        "TRADEAI_CODE_SHA": "e37fd36a6e2025482a3dbb7b91a2bcc9fe09e994",
+    }
+    proc = subprocess.run(argv, cwd=layout.current, env=env, text=True, capture_output=True, timeout=20)
+    assert proc.returncode == 0, proc.stderr
+    assert "N8nBrokerReadShadowPlan@v1" in proc.stdout
+    assert '"execution_available": false' in proc.stdout
+    assert "schwab_position_sync" in proc.stdout
+    assert list(logs.iterdir()) == []
