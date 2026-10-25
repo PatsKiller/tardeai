@@ -6,6 +6,7 @@
 - **Component:** `apps/command-center-v3/src/pages/TradingHub.tsx`
 - **Owner:** coordinator (builds) · operator (approves)
 - **Approved version:** none yet
+- **Baseline (as built) version:** v000 — captured 2026-10-25, 51 private screenshots
 - **Current (verified) version:** none yet — becomes CURRENT only after the post-release visual check passes
 
 ## Purpose
@@ -30,5 +31,6 @@ Trade AI, options, open trades and proposals.
 
 | Version | State | Approved | Notes |
 |---|---|---|---|
+| v000 | BASELINE | — | as built 2026-10-25: 51 screenshots at 1440, 412, 390 (private) |
 
 How to change this page: design/README.md (propose a new version; never edit an approved one).

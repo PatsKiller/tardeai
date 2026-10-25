@@ -1,0 +1,70 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "research-lineage",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 0,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 992051200,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/research-lineage",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/research-lineage-default-1440.png",
+        "sha256": "7157cc432f793320c25058262d5ea1fb94c3a16e4048bf782d806fe37a4f1584",
+        "bytes": 290817,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/research-lineage-default-390.png",
+        "sha256": "483902fb0e209db07e2d55f68444f46fa4d1b11d554dd2f9b358fc26081864d1",
+        "bytes": 114046,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/research-lineage-default-412.png",
+        "sha256": "7f8389171057510ac9271b59c7cdfa086ee562fa597f0b8957e4145443e17c4a",
+        "bytes": 120992,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

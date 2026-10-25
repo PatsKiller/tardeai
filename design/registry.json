@@ -66,8 +66,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -85,8 +91,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -104,8 +116,15 @@
       "owner": "coordinator",
       "approved_version": null,
       "current_version": null,
-      "baseline_version": null,
-      "versions": []
+      "baseline_version": "v000",
+      "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
     },
     {
       "id": "watch",
@@ -116,8 +135,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -135,8 +160,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -154,8 +185,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -173,8 +210,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -192,8 +235,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -211,8 +260,15 @@
       "owner": "coordinator",
       "approved_version": null,
       "current_version": null,
-      "baseline_version": null,
-      "versions": []
+      "baseline_version": "v000",
+      "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
     },
     {
       "id": "tradeinview",
@@ -223,8 +279,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -242,8 +304,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -261,8 +329,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -280,8 +354,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -307,7 +387,8 @@
           "approved_at": "2026-10-24",
           "fingerprint": "14a7c802e55b94ff841bddb070d5d703d07bc1053a390dcff9a6a9c3f6b21037"
         }
-      ]
+      ],
+      "baseline_pending": "needs_reader"
     },
     {
       "id": "research-intel",
@@ -318,8 +399,15 @@
       "owner": "coordinator",
       "approved_version": null,
       "current_version": null,
-      "baseline_version": null,
-      "versions": []
+      "baseline_version": "v000",
+      "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
     },
     {
       "id": "intelligence",
@@ -330,8 +418,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -349,8 +443,14 @@
       "owner": "coordinator",
       "approved_version": "v001",
       "current_version": null,
-      "baseline_version": null,
+      "baseline_version": "v000",
       "versions": [
+        {
+          "version": "v000",
+          "state": "BASELINE",
+          "captured_at": "2026-10-25",
+          "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
         {
           "version": "v001",
           "state": "APPROVED",
@@ -376,7 +476,8 @@
           "approved_at": "2026-10-24",
           "fingerprint": "37cebc1ca39538471ef22b8a1235da044f96c8419393cc81a2a1477ab675b01c"
         }
-      ]
+      ],
+      "baseline_pending": "incomplete capture"
     },
     {
       "id": "rec-intel",

@@ -105,6 +105,9 @@ def test_v001_records_the_operator_10_24_approvals():
     for pid in ("home", "risk", "jobs", "approvals", "rulebook", "watch", "tradeinview", "my-questions", "site", "shell"):
         assert pid in approved
     for page, version, status, vdir in dp.iter_versions(ROOT):
+        if version == "v000":  # as-built captures (BASELINE), never approvals
+            assert status["state"] == "BASELINE" and status["approval"] is None
+            continue
         assert version == "v001" and status["state"] == "APPROVED"
         a = status["approval"]
         assert a["by"] == "operator" and a["at"] == "2026-10-24"
@@ -171,7 +174,7 @@ def test_proposed_version_without_private_mockup_is_refused(tmp_path):
                                                   "state": "PROPOSED", "approval": None, "private_assets": {"files": []}}), encoding="utf-8")
     errs = dp.validate(root)
     assert any("needs at least one private mockup" in e for e in errs)
-    assert any("versions [] != folders ['v002']" in e for e in errs)
+    assert any("trading: versions" in e and "'v002']" in e for e in errs)
 
 
 def test_private_store_verification(tmp_path):

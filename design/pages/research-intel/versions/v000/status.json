@@ -1,0 +1,454 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "research-intel",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 16,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 852008960,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/research-intel",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/research-intel-default-1440.png",
+        "sha256": "83985bf4365e6f2cd546114916046fb8d361a85ffcec727cfbd92782c6aa33de",
+        "bytes": 227630,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/research-intel-default-390.png",
+        "sha256": "225dedae8911790e22d76aa1fd8eb97f8303e4ae8d618e9050896424659a9657",
+        "bytes": 71418,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/research-intel-default-412.png",
+        "sha256": "a3f34a89c14240e1249bc0054d5bd08882dd0aac7edba25262a94a2c0917843a",
+        "bytes": 78941,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/research-intel-t01-1440.png",
+        "sha256": "83985bf4365e6f2cd546114916046fb8d361a85ffcec727cfbd92782c6aa33de",
+        "bytes": 227630,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/research-intel-t01-390.png",
+        "sha256": "fc00479c88d1aa9e4a4dee87bbe78ed903b6a4f337c1db6457f5c886754997c0",
+        "bytes": 64041,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/research-intel-t01-412.png",
+        "sha256": "a3f34a89c14240e1249bc0054d5bd08882dd0aac7edba25262a94a2c0917843a",
+        "bytes": 78941,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/research-intel-t02-1440.png",
+        "sha256": "73e8e732ce32642e70712de52a084634e43b0108c0d043ec5480b8d812ab220f",
+        "bytes": 213970,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/research-intel-t02-390.png",
+        "sha256": "42d3c590a44884f08e3c311a9886388c18b4f851f6ebddd801bdeb2bf1d733ac",
+        "bytes": 64078,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/research-intel-t02-412.png",
+        "sha256": "12eac61aa6b6b1fe59789f8cb2e785ad3a0a6d0e095024d79f0fb6fbeff8a1d4",
+        "bytes": 77240,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/research-intel-t03-1440.png",
+        "sha256": "940bc12cee3da4021a415169d2a244c4fb7be7d6ce622267925df142f18fa68c",
+        "bytes": 212992,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/research-intel-t03-390.png",
+        "sha256": "ffa2e8cdba48d689a4f75ca278e628784b33cff772f19a9b5d09f81dff322fdd",
+        "bytes": 63674,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/research-intel-t03-412.png",
+        "sha256": "a00b49dba1bd7e1732e2ec8c4ec1d8c46ac921530d38d175b4bb18f495cf8d71",
+        "bytes": 76594,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/research-intel-t04-1440.png",
+        "sha256": "bc71493dd517a3528d8391435cea526c02c45a445d22a09e61d4bdfdd642fda0",
+        "bytes": 213837,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/research-intel-t04-390.png",
+        "sha256": "85dd1d2b0acd4b79c49257b8b761fd977ff3c1180f000747acb228826a8c8793",
+        "bytes": 63802,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/research-intel-t04-412.png",
+        "sha256": "9cac48d3ee5dab19352f5d8ec41a9757bdc7b8d8138889feee9ccc61b8f07385",
+        "bytes": 79685,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/research-intel-t05-1440.png",
+        "sha256": "78a66adc7827ea76ab12afafa8304db570fe48abbc51bd9ef7671693d79e4aad",
+        "bytes": 202710,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/research-intel-t05-390.png",
+        "sha256": "7ff33c03487b4f98f52f85192ba00e33d8a5e91ed9592552eab5cea19327c009",
+        "bytes": 63865,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/research-intel-t05-412.png",
+        "sha256": "d35475de35982f94ff3aaf5a85ab5834250b34dd5116e3ede6aebdeb79930686",
+        "bytes": 79798,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/research-intel-t06-1440.png",
+        "sha256": "78a66adc7827ea76ab12afafa8304db570fe48abbc51bd9ef7671693d79e4aad",
+        "bytes": 202710,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/research-intel-t06-390.png",
+        "sha256": "7ff33c03487b4f98f52f85192ba00e33d8a5e91ed9592552eab5cea19327c009",
+        "bytes": 63865,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/research-intel-t06-412.png",
+        "sha256": "d35475de35982f94ff3aaf5a85ab5834250b34dd5116e3ede6aebdeb79930686",
+        "bytes": 79798,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/research-intel-t07-1440.png",
+        "sha256": "4763d7d587fde56c733f27ae73781c4293ac7761f91f1261727c9904c57d94ba",
+        "bytes": 202654,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/research-intel-t07-390.png",
+        "sha256": "6733fc2f553e00230d3ae18c238bef5aef69bc294fe40ca3a2140ba4ccc3bcf5",
+        "bytes": 63779,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/research-intel-t07-412.png",
+        "sha256": "d892081e471237ce42e0a6b28cf77e418c302cc66475158b95f3c5218752921d",
+        "bytes": 79698,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/research-intel-t08-1440.png",
+        "sha256": "c157018c4d4cbd8404fc124de0d257587c51e684b7dba06ea2c281e43a5d6cfe",
+        "bytes": 202531,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/research-intel-t08-390.png",
+        "sha256": "850adeb7c430318c012174d2d96429c87f785a222167cd11e9c11374934b8ff0",
+        "bytes": 63870,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/research-intel-t08-412.png",
+        "sha256": "08e4763070fbb47718f7ffe7ad5b8020af9399772593660a81a9203fd9dd4b5d",
+        "bytes": 79787,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/research-intel-t09-1440.png",
+        "sha256": "cecc8cb1866e99278345642e09bfce0eec9daabdd5dc9ff3eb5d43d6096f3d8a",
+        "bytes": 204430,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/research-intel-t09-390.png",
+        "sha256": "93750a6b32c29af2a7343d525caec319e081adf573f04841c6416f6c00c82be6",
+        "bytes": 64011,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/research-intel-t09-412.png",
+        "sha256": "d23fcb14ebfb52ac58737ce5964a1aa9cf62520e531118825fd23db08cb72599",
+        "bytes": 80438,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/research-intel-t10-1440.png",
+        "sha256": "bbef70995f259a4f88ff693a34eea16c6ad2cf8ba632b4786185d7c1abe64c24",
+        "bytes": 203805,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/research-intel-t10-390.png",
+        "sha256": "803a323f5969eabecb9b21046ee18f5486e6109e74c1d8fcb764e3455d65ac51",
+        "bytes": 68403,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/research-intel-t10-412.png",
+        "sha256": "7aabc35afa7719adc2fd6279151006be9ce809bf4baaf0f3c4fcbb92e2c5a61e",
+        "bytes": 77362,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/research-intel-t11-1440.png",
+        "sha256": "0f4bdf0258f9e7998d41bcfb162bdb47c0be984775078de11cc16d2c8d0489fc",
+        "bytes": 202746,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/research-intel-t11-390.png",
+        "sha256": "8497d41d94dd3ea5aa0aa3352b3c50e7d4e83c5eebb90ac9a5668672da863aa2",
+        "bytes": 65100,
+        "role": "capture",
+        "width": 390,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/research-intel-t11-412.png",
+        "sha256": "fb422618c69184c83df7ef216f283800c5abbfa1813ba3a488c41354004e0b38",
+        "bytes": 76742,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/research-intel-t12-1440.png",
+        "sha256": "bf099d20f57bc35abfaf68e4365ba2d1af8f851bc2dd519b6f8ce08ddc4c39bf",
+        "bytes": 213317,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/research-intel-t12-390.png",
+        "sha256": "f045c253883398b09e676a6e303dcc5b1ee07f09c68f2467358976465a0b58fc",
+        "bytes": 62364,
+        "role": "capture",
+        "width": 390,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/research-intel-t12-412.png",
+        "sha256": "4bcd822fa7ae30f55cc5e716e344d1819dfe907317adf98c09f9b0f6c56a4749",
+        "bytes": 75896,
+        "role": "capture",
+        "width": 412,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/research-intel-t13-1440.png",
+        "sha256": "22ebfa62a3b3ab57713c1a03f89143a097fecfe744ba1b8102af0c1a5d643447",
+        "bytes": 211947,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/research-intel-t13-390.png",
+        "sha256": "4315c5e551a3adf12c9eb77114e6bd82e549369e467395f2f1d67ab51bdcba77",
+        "bytes": 60831,
+        "role": "capture",
+        "width": 390,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/research-intel-t13-412.png",
+        "sha256": "8e0dc7ce13915ed337e1f5d20d3582700ad79bdcb177244b71a408d2a2e18430",
+        "bytes": 77211,
+        "role": "capture",
+        "width": 412,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/research-intel-t14-1440.png",
+        "sha256": "fe88a0be87488c309ff8bb13ada7a54459db860fbaf05f10ab0a9923016acdfd",
+        "bytes": 214851,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/research-intel-t14-390.png",
+        "sha256": "f8d5e4bad51bf69d6892469ccf0cc25421c488286ba0866edd683bdb68a31b17",
+        "bytes": 61661,
+        "role": "capture",
+        "width": 390,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/research-intel-t14-412.png",
+        "sha256": "c72eadc567b0264e3b9db69eda4165fff9be0b44da2d103d82b07a5cac45f246",
+        "bytes": 77125,
+        "role": "capture",
+        "width": 412,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/research-intel-t15-1440.png",
+        "sha256": "4ac71ad1553dd732d930a06a703de4d5044be6e6de8578971e15df63c1796785",
+        "bytes": 211028,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/research-intel-t15-390.png",
+        "sha256": "2e128726273864438d0a2f42d5ac4b63ccb1695f3cd8e4168cc3d4ccec3ea489",
+        "bytes": 61253,
+        "role": "capture",
+        "width": 390,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/research-intel-t15-412.png",
+        "sha256": "0c74fef3d83bdc2924568df73d78562b63e1e16f848e320c94b7fb56ab0d0579",
+        "bytes": 77094,
+        "role": "capture",
+        "width": 412,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/research-intel-t16-1440.png",
+        "sha256": "4f2314192b8307bb8226b1ac37972fc6e3e18b497c33f7262fd92b64c8701a5a",
+        "bytes": 17798,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/research-intel-t16-390.png",
+        "sha256": "45d025a66133da14b42fee092e5a44aba76199de49ececad21fb648ca9bd7049",
+        "bytes": 14214,
+        "role": "capture",
+        "width": 390,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/research-intel-t16-412.png",
+        "sha256": "9251a805044c3b03ff88e38845a49741018686720eba418614064d0ef22f661c",
+        "bytes": 14525,
+        "role": "capture",
+        "width": 412,
+        "tab": "t16"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

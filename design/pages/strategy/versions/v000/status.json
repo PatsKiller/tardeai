@@ -1,0 +1,214 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "strategy",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 6,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 986083328,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/strategy",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/strategy-default-1440.png",
+        "sha256": "7868400f483f9fb502ead46995ff84840222b86ed6fb452ebf552ad3d0ddccac",
+        "bytes": 204508,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/strategy-default-390.png",
+        "sha256": "b82a82256bfd949900aecea8ad9083d453934e7d8a4d4ed2f9f247b4e207bad3",
+        "bytes": 68884,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/strategy-default-412.png",
+        "sha256": "c2854e083fe012298105dc2e095f109eaf8a524fc7d46904a5f65d30b1338d46",
+        "bytes": 77739,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/strategy-t01-1440.png",
+        "sha256": "7868400f483f9fb502ead46995ff84840222b86ed6fb452ebf552ad3d0ddccac",
+        "bytes": 204508,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/strategy-t01-390.png",
+        "sha256": "b82a82256bfd949900aecea8ad9083d453934e7d8a4d4ed2f9f247b4e207bad3",
+        "bytes": 68884,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/strategy-t01-412.png",
+        "sha256": "c2854e083fe012298105dc2e095f109eaf8a524fc7d46904a5f65d30b1338d46",
+        "bytes": 77739,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/strategy-t02-1440.png",
+        "sha256": "18a2b2b8d7e81b1159ac3c9af2aa3a6bbe37f5116e5b059d0cce4d37efc8e2f5",
+        "bytes": 168757,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/strategy-t02-390.png",
+        "sha256": "254aa3626784f8a0b7c0d4063be328fd0d8e37302a3492ea16be47daf14934aa",
+        "bytes": 69490,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/strategy-t02-412.png",
+        "sha256": "677f385087feea7847ec3125fb90f0f3fd5525fcc859801a80a38aa67bd2d033",
+        "bytes": 80596,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/strategy-t03-1440.png",
+        "sha256": "b423ea1444befc347f7948b653ec18dc6129286cd5890b432f6e355e025b8d76",
+        "bytes": 173155,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/strategy-t03-390.png",
+        "sha256": "15fee82e1130e80dbac8945df59b8a64deabcc4092055a1a50540435662ac44e",
+        "bytes": 69071,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/strategy-t03-412.png",
+        "sha256": "09acd6a33c02c28b00ce58d2de5a6c5c9a27f925be47cbdde5ef84dd8e6f39dc",
+        "bytes": 79423,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/strategy-t04-1440.png",
+        "sha256": "183e9ae528cd3dc9484c0c9235c8e2946e901f52f5fe76fec73772a056453580",
+        "bytes": 167769,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/strategy-t04-390.png",
+        "sha256": "63d44b98b76c20d4dc2523f38a3f55220406f81d158cb9eefdade61679e8f97d",
+        "bytes": 67926,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/strategy-t04-412.png",
+        "sha256": "d29c24f49a44600f00c8a1c495863a491abf6b0246eeb078a34359f77664e17b",
+        "bytes": 79524,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/strategy-t05-1440.png",
+        "sha256": "22a5a6065f3b10c724144b3369ac362ae93d4af306cc605f3a498b17ff1c6468",
+        "bytes": 157515,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/strategy-t05-390.png",
+        "sha256": "b156467a873219a2441d9a0641c59ad34e27e92c8fd55f310b6c373a4b75c4da",
+        "bytes": 63986,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/strategy-t05-412.png",
+        "sha256": "7c1300412ab6a42d0d640776e6868bcbff16a43f40209be796aff2a925e9fb21",
+        "bytes": 70116,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/strategy-t06-1440.png",
+        "sha256": "04485f527dd57dab0495ef892ce20dd94d54a15e14fc534a0f61b9e1d9b568c0",
+        "bytes": 173231,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/strategy-t06-390.png",
+        "sha256": "d3a9cbab4fee9022020afb51691e2bb5c19197bbe4f284a61225eae874238be0",
+        "bytes": 76381,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/strategy-t06-412.png",
+        "sha256": "36dfb44830c97e1d038e3a086f7bf1ab0d53fae175586bfd975e0bc626d7f689",
+        "bytes": 81290,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

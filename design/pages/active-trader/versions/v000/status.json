@@ -1,0 +1,454 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "active-trader",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 16,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 862846976,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/active-trader",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/active-trader-default-1440.png",
+        "sha256": "56ebbf9a2b46aa85e671f0042fe8b04d7ddf793fe9136df6528b02c2ed2caba4",
+        "bytes": 217388,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/active-trader-default-390.png",
+        "sha256": "a6f562d8f2a2c94a248a649e1463e8c795c75d39d0b7ee4dff8a2e7401c02725",
+        "bytes": 63723,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/active-trader-default-412.png",
+        "sha256": "a6d0d38a479e38cc5203ae2db14e9f4cd1100cdc2553cca3cedbb402a8382f46",
+        "bytes": 68307,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/active-trader-t01-1440.png",
+        "sha256": "4580de5e4876c45ff265193513d7d4d1b76e4cf03f57267d6949e654a24514c2",
+        "bytes": 217393,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/active-trader-t01-390.png",
+        "sha256": "a6f562d8f2a2c94a248a649e1463e8c795c75d39d0b7ee4dff8a2e7401c02725",
+        "bytes": 63723,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/active-trader-t01-412.png",
+        "sha256": "a6d0d38a479e38cc5203ae2db14e9f4cd1100cdc2553cca3cedbb402a8382f46",
+        "bytes": 68307,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/active-trader-t02-1440.png",
+        "sha256": "a573c9e4dd227d525eb0a12290c4b1b7ea5906a4279991c9f68a90c47dc19de4",
+        "bytes": 226133,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/active-trader-t02-390.png",
+        "sha256": "1b9660aafde9b2d990bbff8f934895a767241578dab9a0cec914a600d0d495db",
+        "bytes": 60142,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/active-trader-t02-412.png",
+        "sha256": "43cba084eee96952944251bb0018ff533304785dae6b102d04af2c8dea85988f",
+        "bytes": 69393,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/active-trader-t03-1440.png",
+        "sha256": "4d92251e6983e52193e1254b801e2a7a5e71711cb99b513a42ac8e01da518515",
+        "bytes": 239760,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/active-trader-t03-390.png",
+        "sha256": "97d636f0070e6a4af611809cc1cb31221d4200f28229444958059b5553dea3f6",
+        "bytes": 62437,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/active-trader-t03-412.png",
+        "sha256": "434257593e930c777dd947e3ef6bb2cc8b8f50a356738a142de7f0ee0be7d8e1",
+        "bytes": 71360,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/active-trader-t04-1440.png",
+        "sha256": "a6b55af582ad205a1cceb944f9709e67b8841dcc52259bd2afee56a88491bad9",
+        "bytes": 247472,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/active-trader-t04-390.png",
+        "sha256": "85f0fe3bd6ab80c128fe555531e48e05c71f74332dd24a1df1f2c0c035590243",
+        "bytes": 62442,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/active-trader-t04-412.png",
+        "sha256": "8fa26b81cddfa1fc5ebb577754e9bf67aaa581b6f662675c91c10775afc9ab41",
+        "bytes": 77514,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/active-trader-t05-1440.png",
+        "sha256": "3a57ae4f1d8cabcf7e804d1739d4861a265fd522d1e0f79b5068b9aa4fa74b1e",
+        "bytes": 213431,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/active-trader-t05-390.png",
+        "sha256": "f17febb0d996193e9bdf106e412d202b2972fd49a93b7af14942348c8a59eccd",
+        "bytes": 55827,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/active-trader-t05-412.png",
+        "sha256": "26c35c6ab58e44538b4a4869ec89af9e020626174469bb7bf58a2d1a84a27916",
+        "bytes": 62924,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/active-trader-t06-1440.png",
+        "sha256": "fde0c1790ca0b5207fc4cc4cf990e9320a25b0d0353422c5585b81c75e95f8f4",
+        "bytes": 118067,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/active-trader-t06-390.png",
+        "sha256": "f07d49db36c0c803a2dc6c111485cd07b8d7ccb22f52196bf6638d471af51b24",
+        "bytes": 51598,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/active-trader-t06-412.png",
+        "sha256": "a379cb9c6f5a464e4cb927a1ad39f54fccdcc0399bc7fc48ed2d052250a51681",
+        "bytes": 55748,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/active-trader-t07-1440.png",
+        "sha256": "7c74e324cd902b5d8ea751be44312dbc4839b1295054e29ccc3f85aaa3e22c2b",
+        "bytes": 200414,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/active-trader-t07-390.png",
+        "sha256": "7ffa7584c900ed9fddd182b8d54c355bdd38afedf22de7d71d2b662bb1f7bcf3",
+        "bytes": 59834,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/active-trader-t07-412.png",
+        "sha256": "43569f1a066651565f3be547c2f22ef776c2568819abb40f94dfb08cd6382dfa",
+        "bytes": 70141,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/active-trader-t08-1440.png",
+        "sha256": "27f757adbe5a84bef92cce3268b9cb56b222d81ed2451dabd7376680fb0b6167",
+        "bytes": 200107,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/active-trader-t08-390.png",
+        "sha256": "98290acbe14bb9a06f8b4a78a41051f931163b3962ae982d1f4f545290d8b652",
+        "bytes": 60170,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/active-trader-t08-412.png",
+        "sha256": "a76f4bf3c38ffbf6c46c6e8c1f2d1a0c51718a2c7d84e056a0f5ef723e4c2d9b",
+        "bytes": 70481,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/active-trader-t09-1440.png",
+        "sha256": "3f3d3758fbcba4784df47e69680a698a7ca2684e9d7ca0bbd55e2fad4ac2684a",
+        "bytes": 200479,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/active-trader-t09-390.png",
+        "sha256": "095cd70bc77997f01b65b3c34fa26b6c4f02036dce703a779fc6f4dc0f61daba",
+        "bytes": 60354,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/active-trader-t09-412.png",
+        "sha256": "62f852bd39c33d31608810427797fb4e4fe516799e6b4f209d5643b3f7591c53",
+        "bytes": 70670,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/active-trader-t10-1440.png",
+        "sha256": "c5e717271bc8c39fc5d624b89d6e86b0047a2c054d91e4a232d482275eb5e581",
+        "bytes": 220029,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/active-trader-t10-390.png",
+        "sha256": "be2f0b28633138aabc877289b900b0f3dcb855563d6612aa838dc0bbb0b414c1",
+        "bytes": 56299,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/active-trader-t10-412.png",
+        "sha256": "acabaaef61ee24d2b910f356e5d64d38e556c31932e0011a6c140362ed670a70",
+        "bytes": 60947,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/active-trader-t11-1440.png",
+        "sha256": "31efe59cfa2fa4d3be3f403037bec505cd8c297bcf7ecf4999b7015335094a5d",
+        "bytes": 200787,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/active-trader-t11-390.png",
+        "sha256": "ac3bec89f20f88aa3d82822ff65dcf39ad010655b99557dec780fc36e3909ce4",
+        "bytes": 59862,
+        "role": "capture",
+        "width": 390,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/active-trader-t11-412.png",
+        "sha256": "65cffb3fe5b1b755da9cd4eb5b46171d4e156c851e2857b52c3ad9e57fd8b09a",
+        "bytes": 70163,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/active-trader-t12-1440.png",
+        "sha256": "90d49e05ab99367ff96d5a8e7d4e398e2d95ee4a73e41d77e0691b92387de998",
+        "bytes": 198735,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/active-trader-t12-390.png",
+        "sha256": "7c24090a195e35287aba287ff4495a6817856573bcc9cca9a23e29680c02eb9c",
+        "bytes": 62801,
+        "role": "capture",
+        "width": 390,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/active-trader-t12-412.png",
+        "sha256": "daf0004f0c2e8217b13dd48f54905e13581fe2c0ca5fb9e62d2abf96a09aa284",
+        "bytes": 68473,
+        "role": "capture",
+        "width": 412,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/active-trader-t13-1440.png",
+        "sha256": "7c74e324cd902b5d8ea751be44312dbc4839b1295054e29ccc3f85aaa3e22c2b",
+        "bytes": 200414,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/active-trader-t13-390.png",
+        "sha256": "7ffa7584c900ed9fddd182b8d54c355bdd38afedf22de7d71d2b662bb1f7bcf3",
+        "bytes": 59834,
+        "role": "capture",
+        "width": 390,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/active-trader-t13-412.png",
+        "sha256": "43569f1a066651565f3be547c2f22ef776c2568819abb40f94dfb08cd6382dfa",
+        "bytes": 70141,
+        "role": "capture",
+        "width": 412,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/active-trader-t14-1440.png",
+        "sha256": "a9fa5a739df4afccdac338dc643b3eae71bb472f43a0d76611d45257fe2f2274",
+        "bytes": 200099,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/active-trader-t14-390.png",
+        "sha256": "98290acbe14bb9a06f8b4a78a41051f931163b3962ae982d1f4f545290d8b652",
+        "bytes": 60170,
+        "role": "capture",
+        "width": 390,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/active-trader-t14-412.png",
+        "sha256": "a76f4bf3c38ffbf6c46c6e8c1f2d1a0c51718a2c7d84e056a0f5ef723e4c2d9b",
+        "bytes": 70481,
+        "role": "capture",
+        "width": 412,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/active-trader-t15-1440.png",
+        "sha256": "892622b340160e1c412d361d83c60f7df7b8981415c7c011acffb2ae03d7be51",
+        "bytes": 200386,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/active-trader-t15-390.png",
+        "sha256": "7ccca9fead0fdefc34219051f049bf8d681366fba1cb096219e9e5b79486cf12",
+        "bytes": 60314,
+        "role": "capture",
+        "width": 390,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/active-trader-t15-412.png",
+        "sha256": "364c5c247e4223bf82c44e2e0aa83d9e0b35f8e9f8aef1c3eb290a5a0fb5e8e8",
+        "bytes": 70524,
+        "role": "capture",
+        "width": 412,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/active-trader-t16-1440.png",
+        "sha256": "d26f2966087ef4798e0ac67ef4c117ee6a19aaf5345245f4a6713317a9a1f6bb",
+        "bytes": 200678,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/active-trader-t16-390.png",
+        "sha256": "8d2db198c3e8d3d747bd08b0d4d64feb44083684f65f0ffaec6ac5336a3a7af3",
+        "bytes": 59864,
+        "role": "capture",
+        "width": 390,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/active-trader-t16-412.png",
+        "sha256": "d308cd48468a5ed7413440081715e008bddaa5d15c16c29263912b7546e9a51a",
+        "bytes": 70166,
+        "role": "capture",
+        "width": 412,
+        "tab": "t16"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}
