@@ -1,0 +1,567 @@
+{
+  "schema": "C1CatalystCopyProof@v1",
+  "task": "DSN-20261024-c1-catalyst-P1-T1",
+  "base": "9228634873392073f5849aaa77ec9b9121eb6094",
+  "copy_observed_at": "2026-10-24T22:21:32.459604+00:00",
+  "input_sha256": "2c74849bbc5082e773092c1ea903e575055d7aa0a80365d5345cf841cb287b95",
+  "pinned_now": "2026-10-24T22:21:32.459604+00:00",
+  "database_readonly_verified": true,
+  "statement_timeout": "15s",
+  "lock_timeout": "2s",
+  "source_files_stable_during_capture": true,
+  "source_copy_unchanged": true,
+  "dry_run_copy_unchanged": true,
+  "records_before": 256,
+  "records_after": 256,
+  "private_copy_updates": 198,
+  "private_copy_creates": 0,
+  "replay_writes": 0,
+  "replay_unchanged": 203,
+  "replay_bytes_unchanged": true,
+  "judgment_and_other_record_fields_preserved": true,
+  "sibling_research_preserved": true,
+  "production_writes": 0,
+  "provider_calls": 0,
+  "before": {
+    "total": 104,
+    "complete": 99,
+    "fields": {
+      "company": 101,
+      "description": 101,
+      "sector": 103,
+      "industry": 103
+    },
+    "complete_pct": 95.19
+  },
+  "after": {
+    "total": 104,
+    "complete": 101,
+    "fields": {
+      "company": 103,
+      "description": 101,
+      "sector": 103,
+      "industry": 103
+    },
+    "complete_pct": 97.12
+  },
+  "watch_catalysts_before": {
+    "current": 0,
+    "missing": 104
+  },
+  "watch_catalysts_after": {
+    "current": 54,
+    "missing": 50
+  },
+  "smci_registered_name": {
+    "clock_kind": "instrument_observed_at",
+    "identity_binding": "confirmed_registry_symbol_at_batch",
+    "missing_reason": null,
+    "observed_at": "2026-08-27T19:24:56+00:00",
+    "producer_source": "schwab_instrument_evidence.description",
+    "source": "schwab_instrument_evidence.description",
+    "source_identity": "symbol_keyed",
+    "source_time_raw": "2026-08-27T19:24:56+00:00",
+    "value": "SUPER MICRO COMPUTER"
+  },
+  "remaining_catalyst_gaps": [
+    {
+      "symbol": "AMSC",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "AOS",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ARCC",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "AXON",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "BDSX",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "CECO",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "CIFR",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "CPNG",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "CXMT",
+      "reason": "identity_unresolved",
+      "confirmed_security_guid": false,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "DIVI",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "DLR",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "DRTS",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "DXCM",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ELVN",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ERIC",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": true,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": [
+        "hermes_company_identity_unverified"
+      ]
+    },
+    {
+      "symbol": "ETN",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "FPS",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "FTH",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "GD",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "HTGC",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "IBM",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ISRG",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ITA",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "JBTM",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "JEPQ",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "KRRO",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "MOGU",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "MRLN",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "NRG",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "NYT",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "ORA",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "OUST",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PEPG",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PFSI",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PNR",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PPC",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PRIM",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "PSQ",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "QURE",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "RBLX",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "RDDT",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "RGTI",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "SCHY",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "SWBI",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "VCIT",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "VRT",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "XAR",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "XCUR",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": false,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "XLE",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    },
+    {
+      "symbol": "XLK",
+      "reason": "no_dated_current_catalyst_on_file",
+      "confirmed_security_guid": true,
+      "captured_typed_event_count": 0,
+      "stored_hermes_record": false,
+      "stored_scanner_record": true,
+      "rejected_candidate_reasons": []
+    }
+  ],
+  "remaining_company_field_gaps": [
+    {
+      "symbol": "CXMT",
+      "missing_fields": [
+        "company",
+        "description",
+        "sector",
+        "industry"
+      ],
+      "reason": "identity_unresolved",
+      "missing_reasons": {
+        "company": "identity_unresolved",
+        "description": "identity_unresolved",
+        "sector": "identity_unresolved",
+        "industry": "identity_unresolved"
+      }
+    },
+    {
+      "symbol": "HTGC",
+      "missing_fields": [
+        "description"
+      ],
+      "reason": "company_fields_not_on_cio_record",
+      "missing_reasons": {
+        "description": "not_on_file"
+      }
+    },
+    {
+      "symbol": "PPC",
+      "missing_fields": [
+        "description"
+      ],
+      "reason": "company_fields_not_on_cio_record",
+      "missing_reasons": {
+        "description": "not_on_file"
+      }
+    }
+  ],
+  "tested_source_hashes": {
+    "scripts/lib/cio_company_population.py": "65ee2d01689c6157f121f0d2cb3a6b8a0d40823cc143bb880ed52d31610f4798",
+    "scripts/lib/cio_company_facts.py": "ad10ce84605ac7985d86626cc3073274bf5bb5b17b8d6041b4bfcbb2c5d434ad",
+    "scripts/lib/cio_prospect_builder.py": "4e06365e0ca448186c8576b6548b53c8074dbabfa5d5ad6df9d6bed40d07b074",
+    "scripts/lib/data_broker/catalyst_record_readonly.py": "2102c28c3650cb0d97a65abdd0058949d033b1394613d407031b6d6c3252af45",
+    "scripts/cio_company_facts_populate.py": "9d35181b177822284bf95bb12eaee2c46b7c09899033119b7c13bd20c411233f"
+  },
+  "full_profile": "NOT_RUN; known protected-state fixture refusals remain held, no retry/exemption",
+  "private_evidence": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/copy-proof-release.json"
+}

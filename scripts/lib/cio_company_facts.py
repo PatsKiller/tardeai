@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,29 @@ def missing(symbol: str, guid: str | None, reason: str) -> dict:
             "catalyst": {"headline": None, "status": "MISSING", "missing_reason": reason}, "conflicts": []}
 
 
+# A company label is a registered name, never its business-description prose.
+COMPANY_NAME_MAX_CHARS = 180
+
+
+def company_name_issue(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return "company_name_not_on_file"
+    text = " ".join(value.split())
+    if len(text) > COMPANY_NAME_MAX_CHARS:
+        return "company_name_too_long"
+    if re.search(r"[,;]\s*(?:together\b|which\b|through\b|a\s|an\s)", text, re.I) or re.search(
+            r"\b(?:together with|its subsidiaries|is a |is an |develops |manufactures |provides |operates |specializes in )", text, re.I):
+        return "company_name_is_description"
+    if re.search(r"\b(?:Inc|Corp|Ltd|Co)\.\s+(?:It|They|Its|This|The company)\b", text, re.I):
+        return "company_name_multiple_sentences"
+    # Legal abbreviations/initials are allowed; a following sentence is not.
+    without_abbreviations = re.sub(r"\b(?:Inc|Corp|Ltd|Co|S\.A|N\.V|S\.p\.A)\.", "", text, flags=re.I)
+    without_abbreviations = re.sub(r"\b[A-Z]\.", "", without_abbreviations)
+    if re.search(r"[.!?]\s+\S", without_abbreviations) or "\n" in value or "\r" in value:
+        return "company_name_multiple_sentences"
+    return None
+
+
 def collect_inputs(root: Path, symbols: list[str], *, db_query=None, now: datetime) -> dict:
     """Two bulk stored-source reads per pass, never a per-page/per-symbol fetch."""
     from scripts.lib.data_broker.finviz_enrichment_snapshot import get_enrichment_batch
@@ -79,7 +103,26 @@ def collect_inputs(root: Path, symbols: list[str], *, db_query=None, now: dateti
         pass
     except OSError as exc:
         errors.append(f"identity_profile:{type(exc).__name__}")
-    return {"identity_profiles": identity_profiles, "profiles": profiles, "finviz": finviz.get("symbols") or {}, "errors": errors}
+    # AGENTS company-name source: the already stored instrument description.
+    # Read the actual file, not load()'s empty_evidence() which mints a clock.
+    names = {}
+    name_path = Path(root) / "data/runtime/schwab_instrument_evidence.json"
+    try:
+        doc = json.loads(name_path.read_text(encoding="utf-8"))
+        if isinstance(doc, dict) and doc.get("schema") == "SchwabInstrumentEvidence@v1":
+            for sym in symbols:
+                entry = (doc.get("instruments") or {}).get(sym) or {}
+                if entry.get("description"):
+                    names[sym] = {"company": entry["description"], "updated_at": entry.get("observed_at"),
+                                  "source": "schwab_instrument_evidence.description"}
+        else:
+            errors.append("instrument_names:invalid_schema")
+    except FileNotFoundError:
+        errors.append("instrument_names:not_on_file")
+    except (OSError, ValueError) as exc:
+        errors.append(f"instrument_names:{type(exc).__name__}")
+    return {"instrument_names": names, "identity_profiles": identity_profiles, "profiles": profiles,
+            "finviz": finviz.get("symbols") or {}, "errors": errors}
 
 
 def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None = None,
@@ -101,14 +144,22 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
         (rec, "finviz_enrichment", fv.get("as_of"), "cached_at"),
     ]
     conflicts = []
+    rejected_names = deepcopy(prior.get("rejected_company_names") or [])
     for key in FIELDS:
         candidates = []
-        for data, source, at, clock in sources:
+        field_sources = sources
+        if key == "company":
+            name = (inputs.get("instrument_names") or {}).get(symbol) or {}
+            field_sources = [(name, "schwab_instrument_evidence.description", iso(name.get("updated_at")), "instrument_observed_at"), *sources]
+        for data, source, at, clock in field_sources:
             if data.get("security_guid") and data["security_guid"] != guid:
                 conflicts.append({"field": key, "source": source, "reason": "source_guid_mismatch"})
                 continue
             value = data.get(key)
             if not isinstance(value, str) or not value.strip():
+                continue
+            if key == "company" and company_name_issue(value):
+                rejected_names.append({"source": source, "observed_at": at, "reason": company_name_issue(value)})
                 continue
             candidates.append({"value": " ".join(value.split())[:1200], "source": source,
                                "observed_at": at, "clock_kind": clock, "missing_reason": None,
@@ -118,16 +169,26 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
                                "producer_source": data.get("source")})
         old = prior.get(key) or {}
         if old.get("value"):
-            candidates.append(deepcopy(old))
+            if key == "company" and company_name_issue(old["value"]):
+                rejected_names.append({"source": old.get("source"), "observed_at": old.get("observed_at"),
+                                       "reason": company_name_issue(old["value"]), "retained_value_rejected": True})
+            else:
+                candidates.append(deepcopy(old))
         # A newly read undated value cannot displace an already dated fact.
         candidates.sort(key=lambda f: timestamp(f.get("observed_at")) or datetime.min.replace(tzinfo=timezone.utc),
                         reverse=True)
+        if key == "company":
+            # Registered stored instrument names have explicit authority; source
+            # clocks stay original and disagreement remains visible.
+            candidates.sort(key=lambda f: f.get("source") == "schwab_instrument_evidence.description", reverse=True)
         if candidates:
             out[key] = candidates[0]
             if not out[key].get("observed_at"):
                 out[key]["missing_reason"] = "source_observation_time_unavailable"
             if len({str(c["value"]).casefold() for c in candidates}) > 1:
                 conflicts.append({"field": key, "reason": "source_values_disagree", "values": candidates})
+        elif key == "company" and rejected_names:
+            out[key]["missing_reason"] = "no_valid_registered_company_name_on_file"
     cutoff = now - timedelta(days=30)
     facts = list((catalyst or {}).get("facts") or [])
     old_cat = prior.get("catalyst") or {}
@@ -162,12 +223,15 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
     if eligible:
         f = eligible[0]
         out["catalyst"] = {k: f.get(k) for k in ("headline", "source", "feed", "published_at", "observed_at",
-                                                     "url", "catalyst_type", "verification_basis",
+                                                     "url", "source_ref", "event_id", "created_at", "clock_kind", "catalyst_type", "verification_basis",
                                                      "factual_verification_status", "identity_verification", "identity_record")}
         out["catalyst"].update(status="CURRENT", missing_reason=None, source_verified_claim=bool(
-            f.get("source_verified_claim", f.get("verified"))), independent_verification="NOT_MEASURED")
+            f.get("source_verified_claim", f.get("verified"))) and
+            f.get("verification_basis") != "LEGACY_CONFIDENCE_THRESHOLD", independent_verification="NOT_MEASURED")
     else:
-        out["catalyst"]["missing_reason"] = "no_dated_current_catalyst_on_file"
+        out["catalyst"]["missing_reason"] = ("catalyst_source_not_measured" if any(str(e).startswith("catalyst_events:") for e in inputs.get("errors") or []) else "no_dated_current_catalyst_on_file")
+    if rejected_names:
+        out["rejected_company_names"] = list({json.dumps(r, sort_keys=True): r for r in rejected_names}.values())
     out["conflicts"] = conflicts
     out["missing_reason"] = None
     if prior and {k: v for k, v in prior.items() if k != "assembled_at"} == {

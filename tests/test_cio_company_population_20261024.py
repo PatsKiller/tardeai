@@ -29,7 +29,7 @@ def world(tmp_path, monkeypatch):
         'AAA':{'company':'Acme Instruments','updated_at':NOW.isoformat()}}})
     monkeypatch.setattr(I,'_now',lambda:NOW.isoformat())
     c={'captured_at':NOW.isoformat(),'database_read_only':True,'my_watchlist':['AAA'],'held':[], 'formerly_held':[],
-       'identities':deepcopy(IDS),'profiles':{'AAA':{'description':'Makes precision instruments.','sector':'Industrials',
+       'catalyst_events':{'status':'ok','rows':{}},'identities':deepcopy(IDS),'profiles':{'AAA':{'description':'Makes precision instruments.','sector':'Industrials',
        'industry':'Scientific Instruments','updated_at':NOW.isoformat(),'source':'stored_fixture'}},'gaps':[]}
     return tmp_path,c
 

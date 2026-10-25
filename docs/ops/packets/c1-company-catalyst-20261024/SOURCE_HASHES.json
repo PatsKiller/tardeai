@@ -1,0 +1,14 @@
+{
+  "schema": "SourceContentPins@v1",
+  "base": "9228634873392073f5849aaa77ec9b9121eb6094",
+  "files": {
+    "scripts/lib/cio_company_population.py": "65ee2d01689c6157f121f0d2cb3a6b8a0d40823cc143bb880ed52d31610f4798",
+    "scripts/lib/cio_company_facts.py": "ad10ce84605ac7985d86626cc3073274bf5bb5b17b8d6041b4bfcbb2c5d434ad",
+    "scripts/lib/cio_prospect_builder.py": "4e06365e0ca448186c8576b6548b53c8074dbabfa5d5ad6df9d6bed40d07b074",
+    "scripts/lib/data_broker/catalyst_record_readonly.py": "2102c28c3650cb0d97a65abdd0058949d033b1394613d407031b6d6c3252af45",
+    "scripts/cio_company_facts_populate.py": "9d35181b177822284bf95bb12eaee2c46b7c09899033119b7c13bd20c411233f",
+    "tests/test_cio_company_catalyst_20261024.py": "d40f30339469a83973a5feee0274c7b908ca04e9c4ca9494873468ff7cfcca0a",
+    "tests/test_cio_company_population_20261024.py": "0dbf5f58f5313e760d82e33c5d57b802e2f2dfc31bbdfe106ff86f037f7dfd0b",
+    "config/ci_gates/cio_company_catalyst_20261024.json": "43768b482482852fc55c86534237e16f980ba224f903f0ce8927e52acb5ddb8e"
+  }
+}
