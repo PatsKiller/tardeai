@@ -262,6 +262,12 @@
      "detail": "Open a run in the Run timeline for the recorded error.",
      "id": "runs-model-error",
      "title": "1 recent agent run recorded a model error"
+    },
+    {
+     "detail": "2 of these runs carry the Gate-B placeholder: no provider is contacted and no AI finding is produced; 2 recorded retrieval_count 0. The choice is to pause or slow these timers, or to wire these agents to the CIO governed bridge.",
+     "href": "/agents?tab=runtime&detail=timeline:run-gate-b",
+     "id": "runs-gate-b-shadow",
+     "title": "tradeai-agent-runtime@{alex,morgan} timers: 2 runs in the last 24 h, no model by design"
     }
    ],
    "desk": "agents",
@@ -574,14 +580,50 @@
       },
       {
        "empty": null,
-       "gap": "1 of the 2 newest runs recorded a model error.",
+       "gap": "1 of the 3 newest runs recorded a model error.",
        "id": "timeline",
        "rows": [
         {
          "id": "run-total",
          "label": "Runs on file",
          "tone": null,
-         "value": "2"
+         "value": "3"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "State",
+            "value": "No model by design (Gate-B: reasoning goes through the CIO governed bridge)"
+           },
+           {
+            "label": "Recorded text",
+            "value": "PROVIDER_BLOCKED: Financial agent must route through governed gateway. Direct provider calls removed in Gate-B."
+           },
+           {
+            "label": "Provider contacted",
+            "value": "no"
+           },
+           {
+            "label": "Newest runs with this state",
+            "value": "2 of 3"
+           },
+           {
+            "label": "alex \u00b7 last 24 h",
+            "value": "1 run \u00b7 1 no model \u00b7 1 with retrieval_count 0"
+           },
+           {
+            "label": "morgan \u00b7 last 24 h",
+            "value": "1 run \u00b7 1 no model \u00b7 1 with retrieval_count 0"
+           }
+          ],
+          "source": "scripts/agent_runtime_live_providers.py _build_governed_gateway_provider (Gate-B placeholder); counts from data/runtime/agent_runtime_journals record ts, model_error, retrieval_count",
+          "title": "No model by design (Gate-B: reasoning goes through the CIO governed bridge)"
+         },
+         "id": "run-gate-b",
+         "label": "No model by design",
+         "tone": "info",
+         "value": "2 of 3 newest runs"
         },
         {
          "detail": {
@@ -648,11 +690,15 @@
            },
            {
             "label": "Retrievals",
-            "value": "not on file"
+            "value": "0"
            },
            {
-            "label": "Model error",
-            "value": "none recorded"
+            "label": "Model",
+            "value": "No model by design (Gate-B: reasoning goes through the CIO governed bridge)"
+           },
+           {
+            "label": "Recorded placeholder",
+            "value": "PROVIDER_BLOCKED: Financial agent must route through governed gateway. Direct provider calls removed in Gate-B."
            },
            {
             "label": "Run time",
@@ -668,8 +714,56 @@
          },
          "id": "run-alex-aaa",
          "label": "alex \u00b7 wake event bus",
-         "tone": null,
+         "tone": "info",
          "value": "2026-10-25 13:00 UTC"
+        },
+        {
+         "detail": {
+          "fields": [
+           {
+            "label": "Agent",
+            "value": "morgan"
+           },
+           {
+            "label": "Job",
+            "value": "wake_event_bus"
+           },
+           {
+            "label": "Objective",
+            "value": "not on file"
+           },
+           {
+            "label": "Environment",
+            "value": "not on file"
+           },
+           {
+            "label": "Retrievals",
+            "value": "0"
+           },
+           {
+            "label": "Model",
+            "value": "No model by design (Gate-B: reasoning goes through the CIO governed bridge)"
+           },
+           {
+            "label": "Recorded placeholder",
+            "value": "PROVIDER_BLOCKED: Financial agent must route through governed gateway. Direct provider calls removed in Gate-B."
+           },
+           {
+            "label": "Run time",
+            "value": "2026-10-25 12:45 UTC"
+           },
+           {
+            "label": "Authority",
+            "value": "not on file"
+           }
+          ],
+          "source": "data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl (agent_runtime_live_providers)",
+          "title": "morgan run morgan-ccc"
+         },
+         "id": "run-morgan-ccc",
+         "label": "morgan \u00b7 wake event bus",
+         "tone": "info",
+         "value": "2026-10-25 12:45 UTC"
         }
        ],
        "span": 1,

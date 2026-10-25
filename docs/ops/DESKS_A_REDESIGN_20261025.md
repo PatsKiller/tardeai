@@ -129,6 +129,9 @@ remain on the classic page.
 | Jobs completed / failed / queued (24 h) | `runtime.rows` | `watchlist_agent_jobs` counted with FILTER and no row cap (the legacy pipeline counted a 200-row capped list) | `run-watchlist-agent-jobs-offpeak` |
 | Agent runtime lanes registered · active | `rt-catalog` | `config/lane_registry.json` `tradeai-agent-runtime-*` states | registry |
 | **Run timeline** (board fix) | `timeline.rows`, source clock | `data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl` record `ts`, `job_type`, `model_error` | `tradeai-agent-runtime-*` producers |
+| Run model state per row: none · **No model by design** (info) · model error (red) | `run-<id>.tone`, detail `Model` / `Model error` | journal `model_error` compared with `desks_a.GATE_B_PLACEHOLDER` (exact text) | Gate-B sentinel `agent_runtime_live_providers._build_governed_gateway_provider` |
+| No model by design: N of M newest runs, per-agent 24 h runs / Gate-B / retrieval_count 0 | `run-gate-b` row + detail sheet | journal `ts`, `model_error`, `retrieval_count` over the last 24 h (file mtime picks candidates with 2 h slack, at most 10,000 files; record `ts` decides) | same producers |
+| Decision: `tradeai-agent-runtime@{…}` timers, runs in 24 h, no model by design (links to the `run-gate-b` sheet) | `decisions[runs-gate-b-shadow]` | same 24 h counts, agents whose runs carry the placeholder | same producers |
 | Calibration last run, best and worst Brier | `calibration.rows` | `agent_calibration_windows` latest per agent, `brier_score`, excluding `low_sample_size` | `agent-calibration-engine` (Sun 12:00) |
 | Learning: newest lesson | `ln-newest` | last appended record of `data/runtime/advisory_kb_lessons.jsonl` (2 MB tail read, `ts`) | `advisory-lessons-reflect` |
 | Trade reviews (30 d), newest | `ln-weekly*` | `paper_trade_multi_reviews.created_at` | `multi-tier-trade-reviewer-*` |
@@ -142,7 +145,22 @@ producers (`agent_runtime_live_providers._process`) write only per-run journals 
 calls `persistence.record_shadow_outcome`, which no class defines, so `hasattr` is False and nothing is inserted. The desk
 reads the journals: file mtime only picks which files to open, and the clock is each record's own `ts`. On the 2026-10-25 tree
 the journals hold 90,125 runs, the newest at 06:41 UTC. The 12 newest all record `PROVIDER_BLOCKED` model errors, which the
-desk surfaces as a decision.
+desk surfaced as a decision.
+
+**Gate-B placeholder is not a model error (2026-10-25 follow-up).** That `PROVIDER_BLOCKED` text is the deliberate Gate-B
+sentinel returned by `_build_governed_gateway_provider()` in `scripts/agent_runtime_live_providers.py`: no provider is
+contacted, the response is empty, so no AI finding is produced. Every alex/steph/morgan run since 2026-08-11 carries it, so
+counting it as a model error made the desk read "12 of the 12 newest runs recorded a model error" and would hide a real
+provider failure. The desk now classifies a `model_error` equal to `desks_a.GATE_B_PLACEHOLDER` (exact text) as
+"No model by design (Gate-B: reasoning goes through the CIO governed bridge)": the run row is `info` (neutral), its sheet shows
+`Model` instead of `Model error`, a `run-gate-b` row counts them, and they are left out of the timeline gap and the
+"recorded a model error" decision. Any other `model_error` (including other `PROVIDER_BLOCKED` text) is still red and still
+counted. `desks_a` mirrors the text rather than importing the producer (the module stays import- and side-effect-free);
+`test_gate_b_placeholder_is_pinned_to_the_producer_text` reads the producer's AST and fails CI if the two drift.
+A neutral "Decisions for you" item states the shadow timers' measured 24 h volume, the placeholder count and the
+retrieval_count 0 count, and names the choice (pause or slow the timers, or wire the agents to the CIO governed bridge) with no
+recommendation; it links to the `run-gate-b` detail sheet. The 2026-10-25 audit reported about 1,600 such runs a day;
+the desk shows the live measured count, not that figure.
 
 The producer-side fix is not in this branch. It would implement `record_shadow_outcome` or restore the `agent_runs` insert,
 and the producers are agent-runtime code outside this desk.
