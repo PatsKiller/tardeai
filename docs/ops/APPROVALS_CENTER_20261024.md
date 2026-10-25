@@ -66,3 +66,12 @@ Phone proof belongs to the frontend tranche: 412×915 and 390×844 must tap
 open/back/filter/read/decide/feedback and assert the resulting UI in the viewport.
 Desktop 1440 and phone shots go beside the named mockups. A blocked browser run
 is a proof gap and must not be replaced with a claim of runtime verification.
+
+## Author explanations
+
+The existing PR body may include a fenced `approval-reader-notes` JSON block
+with `head_sha` equal to the full PR head and `annotations` mapping stable reader
+change IDs to `{plain, reason}`. Only current change IDs and bounded strings
+are accepted. Old-head or malformed notes are ignored. The document fingerprint
+includes these notes, so edited explanations reset the review too. Missing notes
+remain an explicit gap; no model invents the author’s reason during a GET.

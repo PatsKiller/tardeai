@@ -38,6 +38,32 @@ def _git(root: Path, *args: str) -> str:
     return out.stdout.decode("utf-8")
 
 
+def reader_annotations(pr: dict, doc: dict) -> dict:
+    """Authors attach bounded explanations in the existing PR body, bound to its exact head.
+
+    No new store, model call or decision is introduced. Changed notes change the review hash.
+    """
+    body = pr.get("body") or ""
+    if not isinstance(body, str) or len(body) > 65536:
+        return {}
+    match = re.search(r"```approval-reader-notes\s*\n(.*?)\n```", body, re.S)
+    if not match:
+        return {}
+    try:
+        record = json.loads(match[1])
+        if not isinstance(record, dict) or record.get("head_sha") != doc["source_sha"]:
+            return {}
+        annotations = record.get("annotations")
+        if not isinstance(annotations, dict) or len(annotations) > 100:
+            return {}
+        ids = {change["id"] for change in doc["changes"]}
+        return {key: {"plain": note["plain"], "reason": note["reason"]} for key, note in annotations.items()
+                if key in ids and isinstance(note, dict) and isinstance(note.get("plain"), str)
+                and isinstance(note.get("reason"), str) and 0 < len(note["plain"]) <= 400 and 0 < len(note["reason"]) <= 800}
+    except (ValueError, TypeError):
+        return {}
+
+
 def git_policy(root: Path = ROOT) -> dict:
     sha = _git(root, "log", "-1", "--format=%H", "--", "AGENTS.md").strip()
     # Read from the commit, not a concurrently edited worktree file.
@@ -178,6 +204,10 @@ def _default_sources(root: Path) -> dict:
             version = re.search(r"^Policy-Version:\s*(\d+\.\d+\.\d+)\s*$", text, re.M)
             doc = core.document(text, base_text=old, source_sha=head, version=version[1] if version else "",
                                 source_verified=True)
+            annotations = reader_annotations(pr, doc)
+            if annotations:
+                doc = core.document(text, base_text=old, source_sha=head, version=doc["version"],
+                                    source_verified=True, annotations=annotations)
             out.append(core.item(ident=f"policy:{pr['number']}", kind="POLICY", title=pr["title"],
                                  proposed_by=(pr.get("user") or {}).get("login"), created_at=pr.get("created_at"),
                                  doc=doc, source="github_pr_snapshot", pr=pr["number"]))
