@@ -11,16 +11,24 @@ const SHOTS = process.env.CONFLICT_RULES_SHOTS || path.join(process.env.TMPDIR |
 mkdirSync(SHOTS, {recursive: true})
 const at = '2026-10-25T14:00:00Z'
 const proposal = {
-  schema: 'RuleProposal@v1', id: 'prop-fixture-1', state: 'PENDING', created_at: at, model: 'fixture-model', revision: 2,
-  unmatched_cases: [{key: 'security:fixture-guid:UNMATCHED:advisory', subject_label: 'FIXT', summary: 'Advisory desk says HEDGE, a label no rule covers',
-    sides: [{source: 'advisory_desk', source_label: 'Advisory desk', value: 'HEDGE', as_of: at}, {source: 'CIO record', source_label: 'CIO canonical record', value: 'HOLD', as_of: at}]}],
-  proposed_rule: {title: 'Hedge labels are a strength note on HOLD', text: 'A held name labelled HEDGE by a desk counts as HOLD with a risk note.', tier: 'T4'},
-  proposed_resolution: 'Treat HEDGE as HOLD for FIXT; no flag.', risks: ['May hide a real reduce signal'], test_cases: [{}, {}, {}],
+  schema: 'RuleProposal@v1', proposal_id: 'rp-fixture-1', status: 'PENDING', revision: 7, signature: 'ups-fixture-a',
+  summary: "Advisory desk says 'HEDGE', which no vocabulary rule maps (R8)", plain_rule: 'Treat HEDGE from the advisory desk as the same stance as HOLD.',
+  tier: 'T4', never_auto: false, proposed_resolution: [{finding_key: 'security:fixture-guid:UNMATCHED:ups-fixture-a', resolution: 'FIXT: HEDGE counts as HOLD; no flag.'}],
+  risks: ['May hide a real reduce signal'], test_cases: [{expected: {kind: 'AGREEMENT'}}, {expected: {kind: 'CONFLICT'}}, {expected: {kind: 'AGREEMENT'}}],
+  model: {provider: 'grok', model_id: 'fixture-model', mock: false}, created_at: at, decision: null,
 }
-const unmatchedRecord = {key: 'security:fixture-guid:UNMATCHED:advisory', summary: 'No rule matched: advisory HEDGE vs CIO HOLD', state: 'OPEN',
-  subject: {kind: 'security', id: 'fixture-guid', label: 'FIXT'}, updated_at: at, kind: 'UNMATCHED'}
+const collection = (decisionsEnabled: boolean) => ({schema: 'RuleProposalCollection@v1', proposals: [proposal], total: 1, offset: 0,
+  counts: {pending: 1, approved: 0, rejected: 0, unmatched_awaiting_ai: 1}, decisions_enabled: decisionsEnabled,
+  rulebook: {schema: 'EffectiveConflictRulebook@v1', base_version: 2, version: '2.1', amendment_count: 1, status: 'PROPOSED'},
+  unmatched: [
+    {signature: 'ups-fixture-a', summary: proposal.summary, proposal_id: proposal.proposal_id, proposal_status: 'Proposed rule awaiting your approval',
+      examples: [{key: 'security:fixture-guid:UNMATCHED:ups-fixture-a', summary: 'Advisory HEDGE vs CIO HOLD', subject: {kind: 'security', id: 'fixture-guid', label: 'FIXT'},
+        sides: [{source: 'advisory_desk', source_label: 'Advisory desk', value: 'HEDGE', as_of: at}, {source: 'CIO record', source_label: 'CIO canonical record', value: 'HOLD', as_of: at}]}]},
+    {signature: 'ups-fixture-b', summary: 'A sector-posture subject has no profile', proposal_id: null, proposal_status: 'AI proposal pending',
+      examples: [{key: 'sector:tech:UNMATCHED:ups-fixture-b', summary: 'Sector posture', subject: {kind: 'sector', id: 'tech', label: 'Technology'}}], last_failure: null},
+  ]})
 
-type Options = {view?: unknown; proposals?: 'none' | 'pending' | 'absent'; posts?: {url: string; body: unknown}[]; decided?: string}
+type Options = {view?: unknown; proposals?: 'none' | 'pending' | 'disabled' | 'absent'; posts?: {url: string; body: unknown}[]; decided?: string; refuse?: boolean}
 
 async function mock(page: Page, opts: Options = {}) {
   const posts = opts.posts ?? []
@@ -30,22 +38,19 @@ async function mock(page: Page, opts: Options = {}) {
     if (url.port === '7777') throw new Error('Live API traffic is forbidden')
     if (request.method() === 'POST') {
       posts.push({url: url.pathname, body: request.postDataJSON()})
-      if (url.pathname === `/api/v3/conflicts/proposals/${proposal.id}/decision`)
-        return route.fulfill({status: 200, json: {ok: true, data: {proposal: {...proposal, state: opts.decided ?? 'APPROVED'}}}})
-      throw new Error(`Unexpected POST ${url.pathname}`)
+      if (url.pathname !== `/api/v3/conflicts/proposals/${proposal.proposal_id}/decision`) throw new Error(`Unexpected POST ${url.pathname}`)
+      if (opts.refuse) return route.fulfill({status: 409, json: {ok: false, error: 'NEVER_AUTO_REFUSED', reason: 'Fixture: protection rules always go to you; edit it to route to an owner.'}})
+      return route.fulfill({status: 200, json: {ok: true, proposal: {...proposal, status: opts.decided ?? 'APPROVED', revision: 8},
+        amendment: opts.decided === 'REJECTED' ? null : {amendment_id: 'A2'}, current_case: {requested: true, applied: true}}})
     }
     if (url.pathname === '/api/v2/desk-sources') return route.fulfill({status: 200, json: {ok: true, data: {observed_at: at, writers: []}}})
     if (url.pathname === '/api/v3/conflicts/rulebook') return route.fulfill({status: 200, json: {ok: true, data: opts.view ?? VIEW}})
     if (url.pathname === '/api/v3/conflicts/proposals') {
       if (opts.proposals === 'absent') return route.fulfill({status: 404, json: {ok: false, error: 'NOT_FOUND'}})
-      return route.fulfill({status: 200, json: {ok: true, data: {schema: 'RuleProposalCollection@v1', proposals: opts.proposals === 'pending' ? [proposal] : [], gap: null}}})
+      if (opts.proposals === 'none' || !opts.proposals) return route.fulfill({status: 200, json: {ok: true, data: {schema: 'RuleProposalCollection@v1', proposals: [], unmatched: [], decisions_enabled: false}}})
+      return route.fulfill({status: 200, json: {ok: true, data: collection(opts.proposals !== 'disabled')}})
     }
-    if (url.pathname === '/api/v3/conflicts') {
-      expect(url.searchParams.get('kind')).toBe('UNMATCHED')
-      const records = opts.proposals === 'pending' ? [unmatchedRecord] : []
-      return route.fulfill({status: 200, json: {ok: true, data: {schema: 'ConflictCollection@v1', records, total: records.length, offset: 0}}})
-    }
-    // Shell chrome reads (header, nav badges) are not under test; answer empty rather than reach a server.
+    // Shell chrome reads (header, nav badges) are not under test; answer 404 rather than reach a server.
     return route.fulfill({status: 404, json: {ok: false, error: 'fixture: not mocked'}})
   })
   return posts
@@ -128,16 +133,21 @@ for (const width of [412, 390]) {
       await page.goto('/v3/conflicts/rules')
       const section = page.getByTestId('cr-proposals')
       await expect(section).toContainText('Proposed rules — awaiting your approval')
-      await expect(section.getByTestId('cr-unmatched')).toContainText('AI proposal pending — awaiting your approval')
+      await expect(section.getByTestId('cr-unmatched')).toContainText('Technology')
+      await expect(section.getByTestId('cr-unmatched')).toContainText('AI proposal pending')
+      await expect(page.getByTestId('cr-amendments')).toContainText('Effective version 2.1')
       const card = section.getByTestId('cr-proposal-card')
       await expect(card).toContainText('3 test cases')
-      await expect(card).toContainText('fixture-model')
+      await expect(card).toContainText('grok · fixture-model')
+      await expect(card).toContainText('Treat HEDGE from the advisory desk')
+      await expect(card).toContainText('FIXT: HEDGE counts as HOLD')
       await noOverflow(page)
       if (flow === 'approve') await page.screenshot({path: path.join(SHOTS, `conflict-rules-proposals-${width}.png`), fullPage: false, animations: 'disabled'})
       await card.tap()
       const sheet = page.getByRole('dialog', {name: 'Proposed rule'})
       await expect(sheet).toBeInViewport()
-      await expect(sheet).toContainText('Treat HEDGE as HOLD for FIXT')
+      await expect(sheet).toContainText('FIXT: HEDGE counts as HOLD; no flag.')
+      await expect(sheet).toContainText('Advisory desk: HEDGE')
       await expect(sheet).toContainText('May hide a real reduce signal')
       await sheet.getByRole('radio', {name: flow === 'approve' ? 'Approve' : 'Reject', exact: true}).tap()
       await sheet.getByRole('button', {name: `${flow === 'approve' ? 'Approve' : 'Reject'}…`}).tap()
@@ -151,9 +161,10 @@ for (const width of [412, 390]) {
       await tapTargets(page, '[role="dialog"]')
       if (flow === 'approve') await page.screenshot({path: path.join(SHOTS, `conflict-rules-proposal-confirm-${width}.png`), fullPage: false, animations: 'disabled'})
       await sheet.getByRole('button', {name: flow === 'approve' ? 'Confirm approve' : 'Confirm reject'}).tap()
-      await expect(sheet.getByTestId('cr-decision-result')).toContainText(flow === 'approve' ? 'You approved this rule. Recorded state: APPROVED' : 'You rejected this rule. Recorded state: REJECTED')
-      expect(posts).toEqual([{url: `/api/v3/conflicts/proposals/${proposal.id}/decision`,
-        body: {decision: flow, reason: flow === 'approve' ? 'Matches how I read hedges' : 'Too broad', expected_revision: 2}}])
+      await expect(sheet.getByTestId('cr-decision-result')).toContainText(flow === 'approve' ? 'You approved this rule. Recorded state: APPROVED · rulebook amendment A2' : 'You rejected this rule. Recorded state: REJECTED')
+      expect(posts).toEqual([{url: `/api/v3/conflicts/proposals/${proposal.proposal_id}/decision`,
+        body: flow === 'approve' ? {decision: 'approve', reason: 'Matches how I read hedges', expected_revision: 7, apply_current_case: true}
+          : {decision: 'reject', reason: 'Too broad', expected_revision: 7}}])
       if (flow === 'reject') await page.screenshot({path: path.join(SHOTS, `conflict-rules-proposal-rejected-${width}.png`), fullPage: false, animations: 'disabled'})
       await sheet.getByRole('button', {name: '← Back'}).tap()
       await expect(sheet).toHaveCount(0)
@@ -161,15 +172,52 @@ for (const width of [412, 390]) {
 
     test(`edit then approve sends the edited text (${width})`, async ({page}) => {
       const posts = await mock(page, {proposals: 'pending'})
-      await page.goto('/v3/conflicts/rules?proposal=prop-fixture-1')
+      await page.goto('/v3/conflicts/rules?proposal=rp-fixture-1')
       const sheet = page.getByRole('dialog', {name: 'Proposed rule'})
       await sheet.getByRole('radio', {name: 'Edit then approve'}).tap()
-      await sheet.getByLabel('Edited rule text').fill('HEDGE counts as HOLD only when the CIO record is HOLD.')
+      await sheet.getByLabel('Edited rule text').fill('Treat HEDGE as HOLD only when the CIO record is HOLD.')
       await sheet.getByLabel('Decision reason').fill('Narrower')
+      await noOverflow(page)
       await sheet.getByRole('button', {name: 'Edit then approve…'}).tap()
       await sheet.getByRole('button', {name: 'Confirm edit and approve'}).tap()
       await expect(sheet.getByTestId('cr-decision-result')).toContainText('approved with your edit')
-      expect(posts[0].body).toEqual({decision: 'edit-and-approve', reason: 'Narrower', edited_rule_text: 'HEDGE counts as HOLD only when the CIO record is HOLD.', expected_revision: 2})
+      expect(posts[0].body).toEqual({decision: 'edit-and-approve', reason: 'Narrower', expected_revision: 7,
+        edited: {plain_rule: 'Treat HEDGE as HOLD only when the CIO record is HOLD.'}, apply_current_case: true})
+    })
+
+    test(`a refused decision shows the server's reason verbatim (${width})`, async ({page}) => {
+      const posts = await mock(page, {proposals: 'pending', refuse: true})
+      await page.goto('/v3/conflicts/rules?proposal=rp-fixture-1')
+      const sheet = page.getByRole('dialog', {name: 'Proposed rule'})
+      await sheet.getByLabel('Decision reason').fill('ok')
+      await sheet.getByRole('button', {name: 'Approve…'}).tap()
+      await sheet.getByRole('button', {name: 'Confirm approve'}).tap()
+      await expect(sheet.getByTestId('cr-decision-result')).toContainText('Fixture: protection rules always go to you; edit it to route to an owner.')
+      expect(posts).toHaveLength(1)
+    })
+
+    test(`"Decisions for you" opens the proposal sheet directly (${width})`, async ({page}) => {
+      await mock(page, {proposals: 'pending'})
+      await page.goto('/v3/conflicts/rules')
+      const link = page.getByRole('region', {name: 'Decisions for you'}).getByRole('link', {name: /Proposed rule:/})
+      expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+      await link.tap()
+      const sheet = page.getByRole('dialog', {name: 'Proposed rule'})
+      await expect(sheet).toBeInViewport()
+      await sheet.getByRole('button', {name: '← Back'}).tap()
+      await expect(sheet).toHaveCount(0)
+    })
+
+    test(`decisions not activated: proposal readable, buttons disabled (${width})`, async ({page}) => {
+      const posts = await mock(page, {proposals: 'disabled'})
+      await page.goto('/v3/conflicts/rules')
+      await expect(page.getByTestId('cr-activation-pending')).toBeVisible()
+      await page.getByTestId('cr-proposal-card').tap()
+      const sheet = page.getByRole('dialog', {name: 'Proposed rule'})
+      await expect(sheet.getByTestId('cr-decisions-disabled')).toContainText('Approval activation pending')
+      await expect(sheet.getByRole('button', {name: 'Approve…'})).toBeDisabled()
+      await expect(sheet.getByRole('radio', {name: 'Reject'})).toBeDisabled()
+      expect(posts).toHaveLength(0)
     })
   })
 }

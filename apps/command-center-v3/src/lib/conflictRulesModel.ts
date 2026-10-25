@@ -37,25 +37,37 @@ export type RulebookView = {
   live: {by_kind: Record<string, number>; by_state: Record<string, number>; open_total: number | null; gap: Gap; as_of?: string | null}
 }
 
-/** Assumed RuleProposal@v1 shape (backend: feat/conflict-rule-proposals-20261025, docs/ops/CONFLICT_RULE_PROPOSALS.md).
- *  Every field is optional-tolerant so a missing field shows "not supplied" rather than an invented value. */
-export type UnmatchedCase = {key: string; summary?: string | null; subject_label?: string | null
-  sides?: {source?: string | null; source_label?: string | null; value: unknown; as_of?: string | null}[]}
-export type RuleProposal = {
-  schema?: string; id: string; state?: string | null; created_at?: string | null; model?: string | null; revision?: number
-  unmatched_cases?: UnmatchedCase[]
-  proposed_rule?: {id?: string | null; title?: string | null; text?: string | null; tier?: string | null} | null
-  proposed_resolution?: string | {summary?: string | null; text?: string | null} | null
-  risks?: string[] | null; test_cases?: unknown[] | null; test_case_count?: number | null
-  decision?: {decision?: string; reason?: string; actor?: string; at?: string} | null
+/** RuleProposal@v1 / RuleProposalCollection@v1 — contract in docs/ops/CONFLICT_RULE_PROPOSALS.md (branch
+ *  feat/conflict-rule-proposals-20261025). Fields are read tolerantly: a missing field shows "not supplied", never a guess. */
+export type ProposalSide = {source?: string | null; source_label?: string | null; value: unknown; as_of?: string | null}
+export type UnmatchedExample = {key: string; summary?: string | null; sides?: ProposalSide[]; subject?: {kind?: string; id?: string; label?: string | null} | null}
+export type UnmatchedRow = {
+  signature: string; summary?: string | null; examples?: UnmatchedExample[]; first_seen?: string | null; last_seen?: string | null
+  proposal_status?: string | null; proposal_id?: string | null
+  policy?: {tier?: string; never_auto?: boolean} | null
+  last_failure?: {at?: string; reason?: string; detail?: string} | null
 }
-export type ProposalCollection = {proposals?: RuleProposal[]; gap?: Gap}
+export type RuleProposal = {
+  schema?: string; proposal_id: string; status?: string | null; revision?: number; signature?: string | null
+  summary?: string | null; plain_rule?: string | null; tier?: string | null
+  never_auto?: boolean; never_auto_implications?: string | null; auto_resolvable?: boolean
+  proposed_resolution?: {finding_key?: string; resolution?: string}[] | string | null
+  example_findings?: string[] | null; risks?: string[] | null; test_cases?: unknown[] | null
+  model?: {model_id?: string | null; provider?: string | null; mock?: boolean} | string | null
+  created_at?: string | null; confidence?: number | null
+  decision?: {decision?: string; reason?: string; actor?: string; at?: string; amendment_id?: string | null} | null
+}
+export type ProposalCollection = {
+  schema?: string; proposals?: RuleProposal[]; unmatched?: UnmatchedRow[]; total?: number
+  counts?: {pending?: number; approved?: number; rejected?: number; unmatched_awaiting_ai?: number}
+  decisions_enabled?: boolean
+  rulebook?: {version?: string | number; base_version?: number; amendment_count?: number; status?: string} | null
+}
 export type DecisionAction = 'approve' | 'edit-and-approve' | 'reject'
-
-const PENDING = new Set(['PENDING', 'PROPOSED', 'AWAITING_APPROVAL', 'AWAITING_OPERATOR'])
+export const TIERS = ['T0', 'T1', 'T2', 'T3', 'T4'] as const
 
 export function isPending(proposal: RuleProposal): boolean {
-  return PENDING.has(String(proposal.state || '').toUpperCase())
+  return String(proposal.status || '').toUpperCase() === 'PENDING'
 }
 
 export function pendingProposals(collection: ProposalCollection | null | undefined): RuleProposal[] {
@@ -63,37 +75,71 @@ export function pendingProposals(collection: ProposalCollection | null | undefin
 }
 
 export function proposalTestCount(proposal: RuleProposal): number | null {
-  if (Array.isArray(proposal.test_cases)) return proposal.test_cases.length
-  return typeof proposal.test_case_count === 'number' && Number.isFinite(proposal.test_case_count) ? proposal.test_case_count : null
+  return Array.isArray(proposal.test_cases) ? proposal.test_cases.length : null
 }
 
-export function proposalResolution(proposal: RuleProposal): string {
+export function proposalResolutions(proposal: RuleProposal): string[] {
   const raw = proposal.proposed_resolution
-  if (typeof raw === 'string' && raw.trim()) return raw
-  if (raw && typeof raw === 'object') return raw.summary || raw.text || 'Proposed resolution not supplied'
-  return 'Proposed resolution not supplied'
+  if (typeof raw === 'string') return raw.trim() ? [raw] : []
+  return Array.isArray(raw) ? raw.map(item => item?.resolution || '').filter(Boolean) : []
 }
 
-/** Label for an open UNMATCHED conflict: only what the proposal store says, never inferred. */
-export function unmatchedStatus(key: string, collection: ProposalCollection | null | undefined, available: boolean): string {
-  if (!available) return 'AI proposal status unavailable'
-  const linked = (collection?.proposals || []).filter(p => (p.unmatched_cases || []).some(c => c.key === key))
-  if (linked.some(isPending)) return 'AI proposal pending — awaiting your approval'
-  const decided = linked.find(p => p.state)
-  if (decided) return `AI proposal ${String(decided.state).toLowerCase().replace(/_/g, ' ')}`
-  return 'AI proposal pending — not drafted yet'
+export function proposalModel(proposal: RuleProposal): string {
+  const raw = proposal.model
+  if (typeof raw === 'string') return raw || 'model not recorded'
+  if (!raw) return 'model not recorded'
+  const name = [raw.provider, raw.model_id].filter(Boolean).join(' · ') || 'model not recorded'
+  return raw.mock ? `${name} (mock)` : name
 }
 
-export function decisionBody(action: DecisionAction, reason: string, editedText: string, original: string | null | undefined, revision?: number) {
+/** Example cases for a proposal: the collection's unmatched pattern with the same signature. */
+export function proposalCases(proposal: RuleProposal, collection: ProposalCollection | null | undefined): UnmatchedExample[] {
+  const row = (collection?.unmatched || []).find(u => u.signature && u.signature === proposal.signature)
+  return row?.examples || []
+}
+
+/** Unmatched rows still waiting for the AI (no proposal yet). The status words are the server's, never inferred. */
+export function awaitingAi(collection: ProposalCollection | null | undefined): UnmatchedRow[] {
+  return (collection?.unmatched || []).filter(row => !row.proposal_id)
+}
+
+export function unmatchedStatus(row: UnmatchedRow): string {
+  const words = row.proposal_status || (row.proposal_id ? 'Proposal status not supplied' : 'AI proposal pending')
+  return row.last_failure?.reason ? `${words} · last attempt failed: ${row.last_failure.reason.replace(/_/g, ' ')}` : words
+}
+
+export type Edited = {plain_rule: string; tier: string}
+
+export function decisionBody(action: DecisionAction, reason: string, proposal: RuleProposal, edited: Edited, applyCurrentCase: boolean) {
   const why = reason.trim()
   if (!why) return {ok: false as const, error: 'Write a short reason. It is recorded with your decision.'}
+  if (typeof proposal.revision !== 'number') return {ok: false as const, error: 'The proposal revision is missing. Refresh the page and try again.'}
+  const base = {decision: action, reason: why, expected_revision: proposal.revision}
+  if (action === 'reject') return {ok: true as const, body: base}
   if (action === 'edit-and-approve') {
-    const text = editedText.trim()
+    const text = edited.plain_rule.trim()
     if (!text) return {ok: false as const, error: 'The edited rule text is empty.'}
-    if (text === (original || '').trim()) return {ok: false as const, error: 'The rule text is unchanged. Use Approve, or edit the text first.'}
-    return {ok: true as const, body: {decision: action, reason: why, edited_rule_text: text, ...(revision !== undefined ? {expected_revision: revision} : {})}}
+    const change: {plain_rule?: string; tier?: string} = {}
+    if (text !== (proposal.plain_rule || '').trim()) change.plain_rule = text
+    if (edited.tier && edited.tier !== proposal.tier) change.tier = edited.tier
+    if (!Object.keys(change).length) return {ok: false as const, error: 'Nothing was edited. Use Approve, or change the rule first.'}
+    return {ok: true as const, body: {...base, edited: change, apply_current_case: applyCurrentCase}}
   }
-  return {ok: true as const, body: {decision: action, reason: why, ...(revision !== undefined ? {expected_revision: revision} : {})}}
+  return {ok: true as const, body: {...base, apply_current_case: applyCurrentCase}}
+}
+
+/** Error envelope → words. NEVER_AUTO_REFUSED's reason is shown verbatim (contract §5). */
+export function decisionError(status: number, envelope: {error?: string; reason?: string} | null): string {
+  const code = envelope?.error || `HTTP ${status}`
+  const words: Record<string, string> = {
+    PROPOSAL_DECISIONS_NOT_ACTIVATED: 'Approval activation is pending',
+    PROPOSAL_CHANGED: 'The proposal changed since you opened it. Refresh and review it again',
+    PROPOSAL_NOT_PENDING: 'This proposal was already decided',
+    AGENT_CALLER_REFUSED: 'Only the operator can decide rule proposals',
+    CSRF_REFUSED: 'The request was refused by the same-origin check',
+  }
+  if (code === 'NEVER_AUTO_REFUSED') return envelope?.reason || 'This rule can never be resolved automatically'
+  return words[code] ? `${words[code]} (${code})` : `${code}${envelope?.reason ? `: ${envelope.reason}` : ''}`
 }
 
 export const ACTION_WORDS: Record<DecisionAction, {verb: string; confirm: string; done: string}> = {

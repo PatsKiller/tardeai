@@ -6,17 +6,14 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import {useApi} from '../hooks/useApi'
 import {conflictSource, conflictTime, conflictValue} from '../lib/watchConflictPresentation'
 import {
-  ACTION_WORDS, coverageWord, decisionBody, fingerprint, isPending, liveCountRows, pct, pendingProposals, proposalResolution,
-  proposalTestCount, statusWords, unmatchedStatus,
-  type DecisionAction, type MatrixRule, type ProposalCollection, type RuleProposal, type RulebookView,
+  ACTION_WORDS, TIERS, awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, isPending, liveCountRows, pct, pendingProposals,
+  proposalCases, proposalModel, proposalResolutions, proposalTestCount, statusWords, unmatchedStatus,
+  type DecisionAction, type MatrixRule, type ProposalCollection, type RuleProposal, type RulebookView, type UnmatchedExample,
 } from '../lib/conflictRulesModel'
 import '../styles/conflictRules.css'
 
 const RULEBOOK = '/api/v3/conflicts/rulebook'
 const PROPOSALS = '/api/v3/conflicts/proposals'
-const UNMATCHED = '/api/v3/conflicts?kind=UNMATCHED&limit=50'
-
-type Collection = {records?: {key: string; summary?: string; state?: string; subject?: {label?: string; id?: string}; updated_at?: string}[]; total?: number}
 
 /** Full-screen on a phone (≤ 820 px), side panel on desktop; ← Back always closes. */
 function DetailSheet({title, mobile, onBack, children}: {title: string; mobile: boolean; onBack: () => void; children: ReactNode}) {
@@ -33,45 +30,53 @@ function DetailSheet({title, mobile, onBack, children}: {title: string; mobile: 
 export default function ConflictRules() {
   const book = useApi<RulebookView>(RULEBOOK, 60_000)
   const proposals = useApi<ProposalCollection>(PROPOSALS, 60_000)
-  const unmatched = useApi<Collection>(UNMATCHED, 60_000)
   const ruleDetail = useMobilePageDetail('rule')
   const proposalDetail = useMobilePageDetail('proposal')
   const view = book.data?.schema === 'ConflictRulebookView@v1' ? book.data : null
   const selectedRule = view?.rules.find(rule => rule.id === ruleDetail.id) ?? null
   const proposalList = proposals.data && Array.isArray(proposals.data.proposals) ? proposals.data : null
   const pending = pendingProposals(proposalList)
-  const selectedProposal = proposalList?.proposals?.find(p => p.id === proposalDetail.id) ?? null
-  const unmatchedRows = unmatched.data && Array.isArray(unmatched.data.records)
-    ? unmatched.data.records.filter(r => !['CLEARED', 'SUPERSEDED'].includes(String(r.state))) : []
+  const selectedProposal = proposalList?.proposals?.find(p => p.proposal_id === proposalDetail.id) ?? null
+  const unmatchedRows = awaitingAi(proposalList)
+  const decisionsEnabled = proposalList?.decisions_enabled === true
 
   return <div className="conflict-rules" data-testid="conflict-rules">
     <DeskPage title="Conflict rules" purpose="How the Command Center decides when two sources disagree: the binding resolution matrix, in plain words."
       sources={[{id: 'rulebook', label: 'Conflict rulebook', gap: view ? undefined : 'Rulebook not loaded yet.'},
         {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
+      decisions={pending.map(proposal => ({id: proposal.proposal_id, title: `Proposed rule: ${proposal.summary || proposal.plain_rule || 'review the AI proposal'} →`,
+        href: `/conflicts/rules?proposal=${encodeURIComponent(proposal.proposal_id)}`}))}
       decisionGap={pending.length ? `${pending.length} AI-proposed rule${pending.length === 1 ? '' : 's'} waiting for your approval.` : 'Nothing on this page needs a decision right now.'}>
       <div className="cr-stack">
         {(pending.length > 0 || unmatchedRows.length > 0) && <section className="cr-panel cr-attention" aria-labelledby="cr-proposals" data-testid="cr-proposals">
           <h2 id="cr-proposals">Proposed rules — awaiting your approval</h2>
           <p className="cr-muted">No existing rule matched these cases, so an AI drafted a rule and a resolution. Nothing changes until you approve.</p>
-          {pending.map(proposal => <button type="button" key={proposal.id} className="cr-card" data-testid="cr-proposal-card" onClick={() => proposalDetail.open(proposal.id)}>
-            <span className="cr-card-head"><strong>{proposal.proposed_rule?.title || 'Untitled proposed rule'}</strong><span className="cr-badge warning">{proposal.proposed_rule?.tier || 'Tier not supplied'}</span></span>
-            <span>Case: {(proposal.unmatched_cases || []).map(c => c.summary || c.subject_label || c.key).join(' · ') || 'not supplied'}</span>
-            <span><b>Proposed resolution:</b> {proposalResolution(proposal)}</span>
-            <span className="cr-muted">{(proposal.risks || []).length} risk{(proposal.risks || []).length === 1 ? '' : 's'} · {proposalTestCount(proposal) ?? 'unknown'} test cases · model {proposal.model || 'not recorded'}</span>
-            <span className="cr-link">Review and decide →</span>
-          </button>)}
+          {pending.length > 0 && !decisionsEnabled && <p className="warning" data-testid="cr-activation-pending">Approval activation pending: you can read every proposal; the decision buttons turn on when the proposal store is activated.</p>}
+          {pending.map(proposal => {
+            const cases = proposalCases(proposal, proposalList)
+            const fixes = proposalResolutions(proposal)
+            return <button type="button" key={proposal.proposal_id} className="cr-card" data-testid="cr-proposal-card" onClick={() => proposalDetail.open(proposal.proposal_id)}>
+              <span className="cr-card-head"><strong>{proposal.summary || 'Unmatched case — summary not supplied'}</strong>
+                <span className="cr-badge warning">{proposal.tier || 'Tier not supplied'}{proposal.never_auto ? ' · never automatic' : ''}</span></span>
+              {cases.length > 0 && <span>Case: {cases.map(c => `${c.subject?.label || 'Subject not recorded'} — ${c.summary || 'summary not supplied'}`).join(' · ')}</span>}
+              <span><b>Proposed rule:</b> {proposal.plain_rule || 'not supplied'}</span>
+              <span><b>Proposed resolution:</b> {fixes.length ? fixes.join(' · ') : 'not supplied'}</span>
+              <span className="cr-muted">{(proposal.risks || []).length} risk{(proposal.risks || []).length === 1 ? '' : 's'} · {proposalTestCount(proposal) ?? 'unknown'} test cases · {proposalModel(proposal)}</span>
+              <span className="cr-link">Review and decide →</span>
+            </button>
+          })}
           {unmatchedRows.length > 0 && <>
             <h3>Open conflicts no rule matched</h3>
-            <ul className="cr-list" data-testid="cr-unmatched">{unmatchedRows.map(row => <li key={row.key}>
-              <strong>{row.subject?.label || row.subject?.id || 'Subject not recorded'}</strong> — {row.summary || 'summary not supplied'}
-              <div className="cr-badge warning">{unmatchedStatus(row.key, proposalList, !!proposalList)}</div>
+            <ul className="cr-list" data-testid="cr-unmatched">{unmatchedRows.map(row => <li key={row.signature}>
+              <strong>{(row.examples || []).map(e => e.subject?.label).filter(Boolean).join(', ') || 'Subject not recorded'}</strong> — {row.summary || 'summary not supplied'}
+              <div className="cr-badge warning">{unmatchedStatus(row)}</div>
             </li>)}</ul>
           </>}
         </section>}
 
         {book.error && !view && <DeskGap title="Conflict rules unavailable" reason={book.error}><button type="button" onClick={book.refetch}>Try again</button></DeskGap>}
         {!view && !book.error && <p role="status">Loading the rulebook…</p>}
-        {view && <Body view={view} openRule={ruleDetail.open} proposalsAvailable={!!proposalList} proposalsError={proposals.error} />}
+        {view && <Body view={view} openRule={ruleDetail.open} proposalsAvailable={!!proposalList} proposalsError={proposals.error} effective={proposalList?.rulebook ?? null} />}
       </div>
     </DeskPage>
 
@@ -79,12 +84,13 @@ export default function ConflictRules() {
       <RuleDetail rule={selectedRule} thresholds={view?.thresholds ?? {}} />
     </DetailSheet>}
     {selectedProposal && <DetailSheet title="Proposed rule" mobile={proposalDetail.mobile} onBack={proposalDetail.close}>
-      <ProposalDetail key={selectedProposal.id} proposal={selectedProposal} onDecided={proposals.refetch} />
+      <ProposalDetail key={selectedProposal.proposal_id} proposal={selectedProposal} cases={proposalCases(selectedProposal, proposalList)} enabled={decisionsEnabled} onDecided={proposals.refetch} />
     </DetailSheet>}
   </div>
 }
 
-function Body({view, openRule, proposalsAvailable, proposalsError}: {view: RulebookView; openRule: (id: string) => void; proposalsAvailable: boolean; proposalsError: string | null}) {
+function Body({view, openRule, proposalsAvailable, proposalsError, effective}: {view: RulebookView; openRule: (id: string) => void; proposalsAvailable: boolean
+  proposalsError: string | null; effective: ProposalCollection['rulebook']}) {
   const status = statusWords(view.rulebook)
   const live = liveCountRows(view.live.by_kind)
   return <>
@@ -95,6 +101,7 @@ function Body({view, openRule, proposalsAvailable, proposalsError}: {view: Ruleb
       <span>Matrix fingerprint <code>{fingerprint(view.rulebook.matrix_sha256)}</code> · {view.rulebook.matrix_check.verified === true ? 'matches the binding matrix file'
         : view.rulebook.matrix_check.verified === false ? 'does NOT match the matrix file on this host' : view.rulebook.matrix_check.reason || 'not checked'}</span>
       <span className="cr-muted">Version {view.rulebook.version ?? 'unknown'} · {view.coverage_summary.implemented} of {view.coverage_summary.total} rules implemented{view.coverage_summary.missing ? ` · ${view.coverage_summary.missing} missing` : ''}</span>
+      {effective?.amendment_count ? <span data-testid="cr-amendments">Effective version {String(effective.version)} · {effective.amendment_count} approved amendment{effective.amendment_count === 1 ? '' : 's'}</span> : null}
       {!proposalsAvailable && <span className="cr-muted" data-testid="cr-proposals-gap">AI rule proposals: not available yet{proposalsError ? ` (${proposalsError})` : ''}.</span>}
       {view.text_gap && <span className="warning">{String(view.text_gap.reason)}</span>}
     </section>
@@ -204,75 +211,88 @@ function RuleDetail({rule, thresholds}: {rule: MatrixRule; thresholds: Record<st
 }
 
 type Step = {stage: 'choose'} | {stage: 'confirm'; action: DecisionAction} | {stage: 'sending'; action: DecisionAction}
-  | {stage: 'done'; action: DecisionAction; state: string} | {stage: 'failed'; action: DecisionAction; error: string}
+  | {stage: 'done'; action: DecisionAction; state: string; amendment: string | null} | {stage: 'failed'; action: DecisionAction; error: string}
 
-function ProposalDetail({proposal, onDecided}: {proposal: RuleProposal; onDecided: () => void}) {
+function ProposalDetail({proposal, cases, enabled, onDecided}: {proposal: RuleProposal; cases: UnmatchedExample[]; enabled: boolean; onDecided: () => void}) {
   const [step, setStep] = useState<Step>({stage: 'choose'})
   const [action, setAction] = useState<DecisionAction>('approve')
   const [reason, setReason] = useState('')
-  const [edited, setEdited] = useState(proposal.proposed_rule?.text || '')
+  const [edited, setEdited] = useState({plain_rule: proposal.plain_rule || '', tier: proposal.tier || ''})
+  const [applyCase, setApplyCase] = useState(true)
   const [problem, setProblem] = useState('')
-  const pendingNow = isPending(proposal)
-  const prepare = (next: DecisionAction) => {
-    const checked = decisionBody(next, reason, edited, proposal.proposed_rule?.text, proposal.revision)
+  const fixes = proposalResolutions(proposal)
+  const check = (chosen: DecisionAction) => decisionBody(chosen, reason, proposal, edited, applyCase)
+  const prepare = (chosen: DecisionAction) => {
+    const checked = check(chosen)
     if (!checked.ok) { setProblem(checked.error); return }
-    setProblem(''); setStep({stage: 'confirm', action: next})
+    setProblem(''); setStep({stage: 'confirm', action: chosen})
   }
   const send = async (chosen: DecisionAction) => {
-    const checked = decisionBody(chosen, reason, edited, proposal.proposed_rule?.text, proposal.revision)
+    const checked = check(chosen)
     if (!checked.ok) { setProblem(checked.error); setStep({stage: 'choose'}); return }
     setStep({stage: 'sending', action: chosen})
     try {
-      const response = await fetch(`${PROPOSALS}/${encodeURIComponent(proposal.id)}/decision`, {method: 'POST', credentials: 'same-origin',
+      const response = await fetch(`${PROPOSALS}/${encodeURIComponent(proposal.proposal_id)}/decision`, {method: 'POST', credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify(checked.body)})
-      let envelope: {ok?: boolean; error?: string; reason?: string; data?: {proposal?: RuleProposal; state?: string}} = {}
+      type Envelope = {ok?: boolean; error?: string; reason?: string; proposal?: RuleProposal; amendment?: {amendment_id?: string} | null
+        data?: {proposal?: RuleProposal; amendment?: {amendment_id?: string} | null}}
+      let envelope: Envelope | null = null
       try { envelope = await response.json() } catch { /* non-JSON error page */ }
-      if (!response.ok || envelope.ok === false) {
-        setStep({stage: 'failed', action: chosen, error: `${envelope.error || `HTTP ${response.status}`}${envelope.reason ? `: ${envelope.reason}` : ''}`})
-        return
-      }
-      const state = envelope.data?.proposal?.state || envelope.data?.state || 'recorded'
-      setStep({stage: 'done', action: chosen, state: String(state)})
+      if (!response.ok || envelope?.ok === false) { setStep({stage: 'failed', action: chosen, error: decisionError(response.status, envelope)}); return }
+      const result = envelope?.proposal ? envelope : envelope?.data
+      setStep({stage: 'done', action: chosen, state: String(result?.proposal?.status || 'recorded'), amendment: result?.amendment?.amendment_id || null})
       onDecided()
     } catch (err) {
       setStep({stage: 'failed', action: chosen, error: (err as Error).message || 'network error'})
     }
   }
   return <div className="cr-detail" data-testid="cr-proposal-detail">
-    <h2 tabIndex={-1} data-detail-focus>{proposal.proposed_rule?.title || 'Untitled proposed rule'}</h2>
-    <span className="cr-badge warning">{proposal.proposed_rule?.tier || 'Tier not supplied'}</span>
+    <h2 tabIndex={-1} data-detail-focus>{proposal.summary || 'Unmatched case — summary not supplied'}</h2>
+    <span className="cr-badge warning">{proposal.tier || 'Tier not supplied'}{proposal.never_auto ? ' · never automatic' : ''}</span>
+    {proposal.never_auto && proposal.never_auto_implications && <p className="warning">{proposal.never_auto_implications}</p>}
     <h3>What no rule matched</h3>
-    {(proposal.unmatched_cases || []).length ? <ul className="cr-list">{(proposal.unmatched_cases || []).map(c => <li key={c.key}>
-      <strong>{c.subject_label || 'Subject not recorded'}</strong> — {c.summary || 'summary not supplied'}
+    {cases.length ? <ul className="cr-list">{cases.map(c => <li key={c.key}>
+      <strong>{c.subject?.label || 'Subject not recorded'}</strong> — {c.summary || 'summary not supplied'}
       {(c.sides || []).map((side, i) => <span key={i} className="cr-block cr-muted">{conflictSource(side)}: {conflictValue(side.value)} · {conflictTime(side.as_of)}</span>)}
-    </li>)}</ul> : <p className="cr-muted">The unmatched case was not supplied.</p>}
+    </li>)}</ul> : <p className="cr-muted">The example cases were not supplied.</p>}
     <h3>Proposed rule</h3>
-    <blockquote className="cr-quote">{proposal.proposed_rule?.text || 'Rule text not supplied'}</blockquote>
-    <h3>Proposed resolution for this case</h3>
-    <p>{proposalResolution(proposal)}</p>
+    <blockquote className="cr-quote">{proposal.plain_rule || 'Rule text not supplied'}</blockquote>
+    <h3>Proposed resolution for the current case</h3>
+    {fixes.length ? <ul className="cr-list">{fixes.map((fix, i) => <li key={i}>{fix}</li>)}</ul> : <p className="cr-muted">Not supplied.</p>}
     <h3>Risks</h3>
     {(proposal.risks || []).length ? <ul className="cr-list">{(proposal.risks || []).map((risk, i) => <li key={i}>{risk}</li>)}</ul> : <p className="cr-muted">No risks were listed.</p>}
-    <p className="cr-muted">{proposalTestCount(proposal) ?? 'Unknown number of'} test cases · drafted by {proposal.model || 'model not recorded'} · {conflictTime(proposal.created_at)}</p>
+    <details><summary>{proposalTestCount(proposal) ?? 'Unknown number of'} test cases</summary>
+      <pre className="cr-pre">{JSON.stringify(proposal.test_cases ?? [], null, 2)}</pre></details>
+    <p className="cr-muted">Drafted by {proposalModel(proposal)} · {conflictTime(proposal.created_at)}</p>
 
     {step.stage === 'done' ? <p role="status" className="cr-result success" data-testid="cr-decision-result">
-      You {ACTION_WORDS[step.action].done} this rule. Recorded state: {step.state.replace(/_/g, ' ')}.</p>
+      You {ACTION_WORDS[step.action].done} this rule. Recorded state: {step.state.replace(/_/g, ' ')}{step.amendment ? ` · rulebook amendment ${step.amendment}` : ''}.
+      {step.action !== 'reject' && ' The next conflict-engine run re-evaluates the cases under it.'}</p>
     : step.stage === 'failed' ? <div role="alert" className="cr-result danger" data-testid="cr-decision-result">
       <p>Your decision was not recorded: {step.error}.</p><button type="button" onClick={() => setStep({stage: 'choose'})}>Try again</button></div>
-    : !pendingNow ? <p className="cr-muted">This proposal is {String(proposal.state || 'not pending').toLowerCase()}; no decision is needed.</p>
+    : !isPending(proposal) ? <p className="cr-muted">This proposal is {String(proposal.status || 'not pending').toLowerCase()}; no decision is needed.</p>
     : step.stage === 'confirm' || step.stage === 'sending' ? <div className="cr-confirm" data-testid="cr-confirm">
       <p><b>{ACTION_WORDS[step.action].verb}?</b> Your tailnet identity, this reason and the time are recorded. No order, size or stop is changed.</p>
-      <p className="cr-muted">Reason: {reason.trim()}</p>
+      <p className="cr-muted">Reason: {reason.trim()}{step.action !== 'reject' ? ` · ${applyCase ? 'also applies' : 'does not apply'} the proposed resolution to the current case` : ''}</p>
       <button type="button" className="cr-primary" disabled={step.stage === 'sending'} onClick={() => send(step.action)}>{step.stage === 'sending' ? 'Recording…' : ACTION_WORDS[step.action].confirm}</button>
       <button type="button" disabled={step.stage === 'sending'} onClick={() => setStep({stage: 'choose'})}>Go back</button>
     </div>
     : <div className="cr-decide">
       <h3>Your decision</h3>
+      {!enabled && <p className="warning" data-testid="cr-decisions-disabled">Approval activation pending — decisions cannot be recorded yet.</p>}
       <div className="cr-choice" role="radiogroup" aria-label="Decision">{(['approve', 'edit-and-approve', 'reject'] as const).map(choice => <button type="button" key={choice}
-        role="radio" aria-checked={action === choice} onClick={() => { setAction(choice); setProblem('') }}>{ACTION_WORDS[choice].verb}</button>)}</div>
-      {action === 'edit-and-approve' && <label>Edited rule text<textarea aria-label="Edited rule text" value={edited} onChange={event => setEdited(event.target.value)} /></label>}
-      <label>Reason (recorded with your decision)<textarea aria-label="Decision reason" value={reason} onChange={event => setReason(event.target.value)} /></label>
+        role="radio" aria-checked={action === choice} disabled={!enabled} onClick={() => { setAction(choice); setProblem('') }}>{ACTION_WORDS[choice].verb}</button>)}</div>
+      {action === 'edit-and-approve' && <>
+        <label>Edited rule text<textarea aria-label="Edited rule text" value={edited.plain_rule} onChange={event => setEdited({...edited, plain_rule: event.target.value})} /></label>
+        <label>Tier<select aria-label="Edited tier" value={edited.tier} onChange={event => setEdited({...edited, tier: event.target.value})}>
+          {!TIERS.includes(edited.tier as never) && <option value={edited.tier}>{edited.tier || 'not supplied'}</option>}
+          {TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}</select></label>
+      </>}
+      {action !== 'reject' && <label className="cr-check"><input type="checkbox" checked={applyCase} disabled={!enabled} onChange={event => setApplyCase(event.target.checked)} />
+        Also record the proposed resolution for the current case</label>}
+      <label>Reason (recorded with your decision)<textarea aria-label="Decision reason" value={reason} disabled={!enabled} onChange={event => setReason(event.target.value)} /></label>
       {problem && <p role="alert" className="danger">{problem}</p>}
-      <button type="button" className="cr-primary" onClick={() => prepare(action)}>{ACTION_WORDS[action].verb}…</button>
+      <button type="button" className="cr-primary" disabled={!enabled} onClick={() => prepare(action)}>{ACTION_WORDS[action].verb}…</button>
     </div>}
   </div>
 }
