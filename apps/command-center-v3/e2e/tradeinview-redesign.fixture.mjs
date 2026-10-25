@@ -91,7 +91,15 @@ try {
     await expect(page.getByRole('heading', { level: 1, name: 'TradeInView', exact: true })).toBeVisible()
     if (c.screen === 'journeys') {
       await expect(page.getByTestId('trade-journey')).toBeVisible()
-      for (const chip of c.response.freshness_chips) await expect(page.getByTestId(`tj-chip-${chip.key}`)).toContainText(chip.value ?? chip.missing_reason ?? 'Sync evidence unavailable')
+      for (const chip of c.response.freshness_chips) {
+        const loc = page.getByTestId(`tj-chip-${chip.key}`)
+        // Batch 32: ISO stamps render as readable ET text; the raw stamp stays in the datetime/title attribute.
+        if (chip.value && /^\d{4}-\d{2}-\d{2}T/.test(chip.value)) {
+          await expect(loc).toBeVisible()
+          expect(await loc.evaluate(e => e.outerHTML)).toContain(chip.value)
+          await expect(loc).not.toContainText(chip.value)
+        } else await expect(loc).toContainText(chip.value ?? chip.missing_reason ?? 'Sync evidence unavailable')
+      }
       await expect(page.getByTestId('tj-row')).toHaveCount(c.response.journeys.length)
       if (c.state === 'awaiting-fill') {
         await expect(page.getByTestId('tj-awaiting-fill')).toContainText('Awaiting fill confirmation')
