@@ -18768,6 +18768,28 @@
       }
     },
     {
+      "lane_id": "conflict-rule-proposals",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "PAUSED",
+      "state_since": "2026-10-25",
+      "state_reason": "APPROVED BUILD, PENDING ACTIVATION (operator 2026-10-25: 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'). Declared PAUSED with scheduler kind none so nothing fires and no n8n contract is armed yet: it reads the UNMATCHED patterns the conflict-resolver shadow run records, so it activates after conflict-resolver is in shadow. Activation PR (operator grant): scheduler {kind n8n, expression dispatcher, match scripts/conflict_rule_proposals.py, cadence '40 7,12,16 * * 1-5', stage shadow} + dispatch {cron ['40 7,12,16 * * 1-5'], tz America/New_York} + its N8nHealthContract + state ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/conflict-rule-proposals_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_conflict_rule_proposals.py (PR #2103); docs/ops/CONFLICT_RULE_PROPOSALS.md; CLI --dry-run on a temp state root: 2 patterns due, 0 model calls, store unchanged.",
+      "review_by": "2026-11-01",
+      "severity": "Low",
+      "remediation": "No proposals: check the receipt's skipped reasons (caps, offpeak_deferred) and proposal_failed rows in data/conflicts/rule_proposals.jsonl (governance_refused = bridge process not registered; provider_outage = bridge down). Unmatched conflicts still show on the card as DATA_ERROR without a proposal.",
+      "note": "Process conflict_rule_proposal via the governed bridge (grok OAuth -> chatgpt OAuth -> DeepSeek FAST; $0.05/call, $0.25/day, 10 proposals/day, config/conflict_rule_proposals.json). Writes only data/conflicts/rule_proposals.jsonl and its receipt; queues ONE grouped P2 comms intent (conflicts/rule_proposals_pending); never a send, broker, order or stop."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

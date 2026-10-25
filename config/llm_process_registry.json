@@ -1913,6 +1913,42 @@
       "registered_by": "DSN-20261024-cio-ask-process-P1-T1",
       "registered_at": "2026-10-24T22:17:25Z",
       "notes": "Spend authority is the existing APPROVED cost section of config/cio_ask.json (operator 2026-10-24): $0.50 per question and $5/day inside unchanged LLM_GLOBAL_DAILY_USD_CAP. The bridge route ceiling is per call; the Ask caller must enforce the cumulative answer/question budget independently, including retries/panel calls. Thirty requests/day is a restrictive engineering bound (3 existing panel members x 10 full $0.50 budget slots), not measured demand or a promise of 10 answers; on the governed bridge route, free OAuth calls still consume request slots. Legacy in-process OAuth does not inherit the bridge reservation counter or per-call routing ceiling; production Ask uses its explicit registered bridge route. Manual mode requires explicit operator intent on in-process generation; event re-answer remains governed by its separate shadow configuration. Routes grok OAuth -> chatgpt OAuth -> DeepSeek FAST; declared high reasoning uses PRO_THINK within the same caps. Runtime sync/restart and operator re-ask are not performed by source registration."
+    },
+    {
+      "id": "conflict_rule_proposal",
+      "name": "Conflict engine: AI-proposed rule for an UNMATCHED conflict pattern (OAuth first)",
+      "category": "N8nCoordination",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Operator 2026-10-25: unmatched conflicts go to AI for a proposed rule, approved by the operator on the Conflict rules page. Run by scripts/conflict_rule_proposals.py (lib/conflicts/proposals.py) through the governed bridge (caller n8n_model_job, task type conflict_rule_proposal). Input: the UNMATCHED pattern, example findings, config/conflict_rulebook.json and the binding exceptions matrix (sha256-verified) only. Output RuleProposal JSON validated by the caller (supplied-fact citations, grounded numbers, data-only machine form); never applied without an operator decision; never a send. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 2048,
+      "daily_soft_cap": 10,
+      "daily_cost_cap_usd": 0.25,
+      "output_schema_id": "conflict_rule_proposal/v1",
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "free_text_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "offpeak_tier": "standard",
+      "registered_by": "claude/conflict-rule-proposals-20261025",
+      "registered_at": "2026-10-25T15:00:00Z",
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge) and re-checked by the caller; $0.25/day and 10 proposals/day (config/conflict_rule_proposals.json caps). Deduped by pattern signature, at most 2 attempts per signature per day. offpeak_tier standard: a proposal is not time-critical, paid DeepSeek fallback waits for the off-peak window when LLM_DEFER_OFFPEAK is armed.",
+      "reasoning_tier": "standard",
+      "escalate_below_confidence": 0.7
     }
   ],
   "default_deepseek_policy": "FAST",
