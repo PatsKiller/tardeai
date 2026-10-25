@@ -424,7 +424,7 @@ def read_broker_list(root, query=None, *, now=None):
         if not isinstance(entry, dict):
             raise ValueError("invalid_cache_entry")
         data = entry.get("data")
-        if not isinstance(data, dict):
+        if not isinstance(data, dict) or not isinstance(data.get("proposals"), list) or not isinstance(data.get("pagination"), dict) or data["pagination"].get("total") is None:
             raise ValueError("snapshot_missing_for_query")
         age = max(0, int(now.timestamp() - float(entry["ts"])))
         out = {**data, "cached": True, "cache_age_sec": age, "stale": age > 180,
@@ -546,11 +546,15 @@ def read_hermes_findings(query=None, *, db_query, clean=lambda x: x):
     audit_total = db_query("SELECT count(*) AS n FROM hermes_promotion_audit", fetch="one")
     audit = db_query("""SELECT source_id,target_table,promoted_at FROM hermes_promotion_audit
         ORDER BY promoted_at DESC,source_id DESC LIMIT %s OFFSET %s""", (50, audit_offset))
-    audit_page = page_rows({"audit": [{k: clean(v) for k, v in r.items()} for r in audit or []]}, "audit",
-                          {"offset": audit_offset, "limit": 50}, total=int((audit_total or {}).get("n") or 0),
-                          source_offset=audit_offset, budget=40_000)
+    audit_page = (page_rows({"audit": [{k: clean(v) for k, v in r.items()} for r in audit]}, "audit",
+                           {"offset": audit_offset, "limit": 50}, total=int(audit_total["n"]),
+                           source_offset=audit_offset, budget=40_000)
+                  if audit is not None and audit_total is not None else
+                  {"audit": [], "pagination": {"offset": audit_offset, "limit": 50, "returned": 0,
+                                               "total": None, "has_more": False, "next_offset": None}})
     return page_rows({"ok": True, "rows": [{k: clean(v) for k, v in r.items()} for r in rows], **total,
-                      "audit": audit_page["audit"], "audit_pagination": audit_page["pagination"]},
+                      "audit": audit_page["audit"], "audit_pagination": audit_page["pagination"],
+                      "audit_status": "ok" if audit is not None and audit_total is not None else "unavailable"},
                      "rows", query, total=int(total["total"]), source_offset=offset)
 
 

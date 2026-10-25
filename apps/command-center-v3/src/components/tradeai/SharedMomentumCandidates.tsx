@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS } from '../../lib/designTokens'
 import { SymbolLink } from '../opportunity/OpportunityContext'
+import ListPager, { useListOffset } from '../ListPager'
+import type { ListPage } from '../ListPager'
 
 type SetupEvidence = {
   source_name: string; passed_count: number; required_count: number; source_observation_state: string;
@@ -12,12 +15,14 @@ type SetupEvidence = {
 }
 
 type Observation = { verdict: string; observed_at: string | null; event_at?: string | null; source_ref?: string | null; run_id?: string | null; kind?: string; sent?: boolean | null; lineage?: { event_id?: string | null; run_attempt_id?: string | null; source_sha?: string | null }; setup_evidence?: SetupEvidence }
-type Source = { status: string; session_state: string; verdicts: string[]; observations: Observation[] }
+type Source = { status: string; session_state: string; verdicts: string[]; observations: Observation[]; observation_count?: number }
 type Candidate = { candidate_id: string; symbol: string; security_guid?: string | null; event_at?: string | null; session_date?: string | null; reconciliation_status?: string; sources: string[]; classification: string; conflicts: string[]; trade_ai: Source; active_trader: Source }
 type Snapshot = {
   schema: 'SharedMomentumCandidates@v1'; snapshot_id: string; status: string; candidate_count: number | null;
   session_date: string; generated_at: string; candidates: Candidate[];
   source_metadata: Record<string, { status: string; cache_run_id?: string | null; stale?: boolean; cache_error?: string | null; tail_truncated?: boolean }>;
+  pagination?: ListPage; filter_counts?: Record<string, number | null>; payload_gap?: { reason: string };
+  history_source?: string;
 }
 
 type FilterMode = 'ACTIONABLE' | 'CONFLICT' | 'CURRENT' | 'ALL'
@@ -41,13 +46,21 @@ function isActionableRow(row: Candidate): boolean {
 
 /** Both pages render this exact server snapshot. Source verdicts never grant approval. */
 export default function SharedMomentumCandidates() {
-  const { data, loading, error, stale } = useApi<Snapshot>('/api/v2/trade-ai/candidates', 30_000)
   const [filter, setFilter] = useState<FilterMode>('ACTIONABLE')
+  const paging = useListOffset(filter)
+  const { data, loading, error, stale } = useApi<Snapshot>(`/api/v2/trade-ai/candidates?filter=${filter}&offset=${paging.offset}&limit=20`, 30_000)
+  const [params, setParams] = useSearchParams()
+  const historyId = params.get('candidate')
+  const setHistoryId = (id: string | null) => setParams(p => { if (id) p.set('candidate', id); else p.delete('candidate'); return p })
+  const [historySource, setHistorySource] = useState<'TRADE_AI' | 'ACTIVE_TRADER'>('TRADE_AI')
+  const historyPaging = useListOffset(`${historyId}:${historySource}`)
+  const { data: history, loading: historyLoading, error: historyError } = useApi<Snapshot>(`/api/v2/trade-ai/candidates?candidate_id=${encodeURIComponent(historyId || '')}&history_source=${historySource}&offset=${historyPaging.offset}&limit=10`, 0, { enabled: !!historyId })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const valid = data?.schema === 'SharedMomentumCandidates@v1' && Array.isArray(data.candidates)
   const retained = stale || Boolean(error)
   const allRows = valid ? data.candidates : []
   const rows = useMemo(() => {
+    if (data?.pagination) return allRows
     if (filter === 'ALL') return allRows
     if (filter === 'CONFLICT') return allRows.filter(r => r.conflicts.length > 0)
     if (filter === 'CURRENT') {
@@ -55,7 +68,7 @@ export default function SharedMomentumCandidates() {
         r.trade_ai.session_state === 'CURRENT_SESSION' || r.active_trader.session_state === 'CURRENT_SESSION')
     }
     return allRows.filter(isActionableRow)
-  }, [allRows, filter])
+  }, [allRows, filter, data?.pagination])
 
   const sourceCell = (source: Source, label: string) => {
     const last = observed(source)
@@ -118,8 +131,9 @@ export default function SharedMomentumCandidates() {
   ]
 
   return (
-    <section data-testid="shared-momentum-candidates" data-snapshot-id={valid ? data.snapshot_id : ''}
+    <section className="shared-candidates" data-testid="shared-momentum-candidates" data-snapshot-id={valid ? data.snapshot_id : ''}
       style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 12, background: 'var(--bg1)', marginBottom: 12 }}>
+      <style>{`.shared-candidates button,.shared-candidates summary{min-height:44px;min-width:44px}.candidate-history{position:fixed;inset:80px 12px 12px auto;width:600px;max-width:calc(100vw - 24px);overflow:auto;background:var(--bg1);padding:16px;border:1px solid var(--border);z-index:1200;box-sizing:border-box}@media(max-width:820px){.shared-candidates table,.shared-candidates tbody,.shared-candidates tr,.shared-candidates td{display:block;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}.shared-candidates thead{display:none}.shared-candidates td{min-width:0!important}.candidate-history{inset:0;width:100%;max-width:none}}`}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <strong style={{ fontSize: 13 }}>Shared momentum candidates · {valid && data.candidate_count != null ? data.candidate_count : '—'}</strong>
         <span style={{ fontSize: 10, color: 'var(--text3)' }} title={valid ? data.snapshot_id : undefined}>
@@ -132,18 +146,18 @@ export default function SharedMomentumCandidates() {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
         {filters.map(f => (
           <button key={f.id} type="button" data-testid={`shared-candidates-filter-${f.id}`}
-            onClick={() => setFilter(f.id)}
+            onClick={() => { setFilter(f.id); paging.reset(); setHistoryId(null) }}
             style={{
               fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: RADIUS.md, cursor: 'pointer',
               border: `1px solid ${filter === f.id ? TOKENS.info : 'var(--border)'}`,
               background: filter === f.id ? 'rgba(59,130,246,.15)' : 'var(--bg2)',
               color: filter === f.id ? TOKENS.info : 'var(--text2)',
             }}>
-            {f.label}{f.id === 'ACTIONABLE' && valid ? ` (${allRows.filter(isActionableRow).length})` : ''}
-            {f.id === 'ALL' && valid ? ` (${allRows.length})` : ''}
+            {f.label}{valid ? ` (${data.filter_counts ? data.filter_counts[f.id] ?? '—' : f.id === 'ALL' ? data.candidate_count ?? '—' : allRows.filter(isActionableRow).length})` : ''}
           </button>
         ))}
       </div>
+      <ListPager page={data?.pagination} previous={paging.previous} next={paging.next} busy={loading} gap={data?.payload_gap} />
       {!valid && <div style={{ color: TOKENS.warning }}>{loading ? 'Loading shared candidates…' : 'Shared candidates unavailable · count not measured.'}</div>}
       {valid && (retained || data.status !== 'AVAILABLE') && <div style={{ fontSize: 11, color: TOKENS.warning, marginBottom: 8 }}>
         {retained ? 'Retained snapshot · latest read failed. ' : ''}Source state {data.status} · {Object.entries(data.source_metadata).map(([name, meta]) => `${name} ${meta.status}${meta.tail_truncated ? ' (journal tail only)' : ''}`).join(' · ')}
@@ -157,7 +171,9 @@ export default function SharedMomentumCandidates() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }} aria-label="Shared momentum candidate observations">
           <thead><tr style={{ textAlign: 'left', color: 'var(--text3)' }}>{['Symbol', 'TradeAI', 'ActiveTrader', 'Catalyst / five facts', 'Reconciliation'].map(label => <th key={label} style={{ padding: '6px 8px' }}>{label}</th>)}</tr></thead>
           <tbody>{rows.map(row => <tr key={row.candidate_id} data-symbol={row.symbol} style={{ borderTop: '1px solid var(--border)' }}>
-            <td style={{ padding: '6px 8px', fontWeight: 700 }}><SymbolLink symbol={row.symbol} /></td>
+            <td style={{ padding: '6px 8px', fontWeight: 700 }}><SymbolLink symbol={row.symbol} />
+              {['trade_ai', 'active_trader'].some(k => ((row[k as 'trade_ai' | 'active_trader'].observation_count ?? 0) > 1)) && <button type="button" onClick={() => setHistoryId(row.candidate_id)}>Observation history</button>}
+            </td>
             <td style={{ padding: '6px 8px' }}>{sourceCell(row.trade_ai, 'TradeAI')}</td>
             <td style={{ padding: '6px 8px' }}>{sourceCell(row.active_trader, 'ActiveTrader')}</td>
             <td style={{ padding: '6px 8px', minWidth: 280 }}>
@@ -173,6 +189,15 @@ export default function SharedMomentumCandidates() {
           </tr>)}</tbody>
         </table>
       </div>}
+      {historyId && <aside className="candidate-history" role="dialog" aria-modal="true" aria-label="Candidate observation history">
+        <button type="button" autoFocus onClick={() => setHistoryId(null)}>Back to candidates</button>
+        <div>{(['TRADE_AI', 'ACTIVE_TRADER'] as const).map(source => <button key={source} type="button" aria-pressed={source === historySource} onClick={() => setHistorySource(source)}>{source === 'TRADE_AI' ? 'TradeAI' : 'Active Trader'}</button>)}</div>
+        <ListPager page={history?.pagination} previous={historyPaging.previous} next={historyPaging.next} busy={historyLoading} gap={history?.payload_gap} />
+        {history?.candidates?.[0]?.candidate_id === historyId && (!history.history_source || history.history_source === historySource) ? <>
+          <h3>{history.candidates[0].symbol} observation history</h3>
+          {sourceCell(historySource === 'TRADE_AI' ? history.candidates[0].trade_ai : history.candidates[0].active_trader, historySource === 'TRADE_AI' ? 'TradeAI' : 'ActiveTrader')}
+        </> : <div role="status">{history?.payload_gap || historyError ? 'Observation history unavailable for this read.' : 'Loading observation history…'}</div>}
+      </aside>}
     </section>
   )
 }

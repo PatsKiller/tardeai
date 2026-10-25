@@ -88,7 +88,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
     return () => window.clearInterval(id)
   }, [])
   const { data: alerts } = useApi<any>('/api/v3/active-trader/alerts?limit=300', 60_000, { enabled: !!tradeAi })
-  const { data: candidates } = useApi<any>('/api/v2/trade-ai/candidates', 120_000, { enabled: !!tradeAi && !drawer.momentum })
+  const { data: candidates } = useApi<any>('/api/v2/trade-ai/candidates?view=summary', 120_000, { enabled: !!tradeAi && !drawer.momentum })
 
   const all = useMemo(() => (Array.isArray(tradeAi?.tickers) ? tradeAi.tickers : []).map(toOpportunity) as Opportunity[], [tradeAi])
   const rows = useMemo(() => sortOpportunities(applyFilters(all, f), sort), [all, f, sort])
@@ -129,7 +129,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   const l2For = (sym: string) => l2View(latestAlertFor(alerts, sym))
   const l2Short = (sym: string) => l2Brief(latestAlertFor(alerts, sym))
   const cands: any[] = Array.isArray(candidates?.candidates) ? candidates.candidates : []
-  const conflicts = cands.filter(c => (c?.conflicts ?? []).length > 0).length
+  const conflicts = candidates?.filter_counts ? candidates.filter_counts.CONFLICT : cands.filter(c => (c?.conflicts ?? []).length > 0).length
   const gaps = Object.values(candidates?.source_metadata ?? {}).filter((m: any) => m?.stale || (m?.status && m.status !== 'OK' && m.status !== 'ok')).length
 
   const sortBtn = (k: SortKey, label: string, enabled = true): ReactNode => (
@@ -304,7 +304,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
           <div style={panel} data-testid="ta-momentum-drawer">
             <button type="button" aria-expanded={drawer.momentum} onClick={() => setDrawer(d => ({ ...d, momentum: !d.momentum }))}
               style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, background: 'none', border: 'none', color: TOKENS.text[0], padding: 14, cursor: 'pointer', fontSize: TYPE.md, minHeight: 48, textAlign: 'left', fontFamily: 'inherit' }}>
-              <span><b>Shared Momentum</b> <span style={{ color: TOKENS.text[2] }}>· {candidates ? `${candidates.candidate_count ?? cands.length} candidates · ${conflicts} conflict${conflicts === 1 ? '' : 's'}${gaps ? ` · ${gaps} source gap${gaps === 1 ? '' : 's'}` : ''}` : 'Trade AI and Active Trader on one record'}</span></span>
+              <span><b>Shared Momentum</b> <span style={{ color: TOKENS.text[2] }}>· {candidates ? `${candidates.candidate_count ?? '—'} candidates · ${conflicts ?? '—'} conflict${conflicts === 1 ? '' : 's'}${gaps ? ` · ${gaps} source gap${gaps === 1 ? '' : 's'}` : ''}` : 'Trade AI and Active Trader on one record'}</span></span>
               <span aria-hidden="true" style={{ color: TOKENS.info }}>{drawer.momentum ? 'Hide ▴' : 'Show ▾'}</span>
             </button>
             {drawer.momentum && <div style={{ borderTop: `1px solid ${TOKENS.border}`, padding: 14 }}><SharedMomentumCandidates /></div>}

@@ -13,6 +13,11 @@ from lib import site_payload_reads as reads
 NOW = datetime(2026, 10, 24, 20, tzinfo=timezone.utc)
 
 
+def fixture_stance(guid, **kwargs):
+    return {"stance": None, "conviction": None, "conflicts": [], "stale": True,
+            "as_of": NOW.isoformat(), "gap": {"reason": "fixture canonical record unavailable"}}
+
+
 def candidate(i, *, history=4):
     source = {"status": "AVAILABLE", "session_state": "CURRENT_SESSION", "verdicts": ["WAIT"],
               "observations": [{"verdict": "WAIT", "observed_at": NOW.isoformat(),
@@ -90,7 +95,7 @@ def test_scheduler_paging_preserves_global_health_summary():
 
 def test_prospects_returns_only_selected_lane_rows_and_all_lane_counts():
     source = {"counts": {"total": 180}, "lanes": [{"id": lane, "count": 90, "items": [{"symbol": f"{lane}{i}"} for i in range(90)]} for lane in ("actionable", "forming")]}
-    page = reads.prospects_page(source, {"lane": "forming", "offset": 25, "limit": 25})
+    page = reads.prospects_page(source, {"lane": "forming", "offset": 25, "limit": 25}, stance_resolver=fixture_stance)
     assert page["lanes"][0]["items"] == [] and page["lanes"][0]["count"] == 90
     assert page["lanes"][1]["items"][0]["symbol"] == "forming25"
     assert page["pagination"]["total"] == 90 and page["counts"]["total"] == 180
@@ -124,7 +129,7 @@ def test_expired_invalidated_and_bad_expiry_removed_before_top_n(monkeypatch):
     g = {"now": NOW, "payload": {}, "row_for": rows.__getitem__, "opps": {s: {"rank": i+1, "conviction": 80-i} for i, s in enumerate(rows)}, "operator": {}, "held": set(), "proj_meta": {}}
     monkeypatch.setattr(watch_prospects, "gather", lambda q: g)
     monkeypatch.setattr(watch_curation, "read_dismissed", lambda **k: ({}, "ok"))
-    out = reads.read_curation({"n": 2, "view": "suggests"})
+    out = reads.read_curation({"n": 2, "view": "suggests"}, stance_resolver=fixture_stance)
     assert [r["symbol"] for r in out["suggests"]["rows"]] == ["TEST2", "TEST3"]
     assert out["suggests"]["pagination"]["total"] == 2
     assert "capped stage view" in out["suggests"]["universe_note"]
@@ -170,7 +175,7 @@ def test_directive_and_staged_totals_do_not_equal_list_caps(monkeypatch, tmp_pat
                 return {"total": 1200, "proposed": 110}
             return {"n": 900}
         return []
-    out = reads.read_watch_directives({"offset": 50, "limit": 25}, db_query=query, root=tmp_path)
+    out = reads.read_watch_directives({"offset": 50, "limit": 25}, db_query=query, root=tmp_path, now=NOW)
     assert out["directive_count"] == 1200 and out["proposed_count"] == 110
     assert out["desk_suggestions_count"] == 900 and out["recent_hits_count"] == 900
     assert any("LIMIT %s OFFSET %s" in sql and params == (25, 50) for sql, params in calls)
@@ -346,7 +351,19 @@ def test_prospect_conflict_batch_only_fetches_requested_window(tmp_path):
         calls.append(guids)
         return {g: {"headline": None, "gap": None, "findings": []} for g in guids}
     page = reads.prospects_page({"lanes": [{"id": "forming", "count": 300, "items": rows}]},
-        {"lane": "forming", "offset": 50, "limit": 25}, section_reader=reader, section_root=tmp_path)
+        {"lane": "forming", "offset": 50, "limit": 25}, stance_resolver=fixture_stance, section_reader=reader, section_root=tmp_path)
     assert len(calls) == 1 and set(calls[0]) == {f"guid-{i}" for i in range(50, 75)}
     assert page["conflict_count"] == 0 and page["conflict_count_scope"] == "flagged_names_on_page"
     assert page["pagination"]["total"] == 300
+
+
+def test_failed_audit_count_does_not_become_zero():
+    def query(sql, params=None, fetch="all"):
+        if "hermes_promotion_audit" in sql:
+            return None
+        if fetch == "one":
+            return {"total": 1, "promoted": 0, "staged": 1, "embedded": 0}
+        return [{"id": 1, "symbol": "TEST"}]
+    out = reads.read_hermes_findings({}, db_query=query)
+    assert out["total"] == 1 and out["audit_pagination"]["total"] is None
+    assert out["audit_status"] == "unavailable"
