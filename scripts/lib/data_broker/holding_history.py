@@ -91,7 +91,9 @@ def _holding_rows(snapshot):
 def _accounts(snapshot, trips):
     """All observed account memberships, not a second financial ledger."""
     result = defaultdict(set)
-    for row in [*trips, *_holding_rows(snapshot), *src.source_rows(snapshot, "trade_transactions")]:
+    embedded = src.file_document(snapshot, "holdings").get("trade_journal")
+    embedded = [r for r in embedded if isinstance(r, dict)] if isinstance(embedded, list) else []
+    for row in [*trips, *_holding_rows(snapshot), *src.source_rows(snapshot, "trade_transactions"), *embedded]:
         sym = src.symbol(row.get("symbol"))
         acct = row.get("account_id") if "account_label" in row else src.account(row.get("account") or row.get("account_id"))["account_id"]
         if sym and acct:
@@ -134,12 +136,16 @@ def _observed_segments(trips, holdings, accounts, now):
         for row in held:
             if (src.number(row.get("shares", row.get("quantity"))) or 0) <= 0:
                 continue
-            at = src.iso(row.get("provider_observed_at") or row.get("broker_position_as_of") or row.get("updated_at"))
-            segments.append({"start_date": src.day(at), "end_date": src.day(at),
+            observation = row.get("provider_observed_at") or row.get("broker_position_as_of") or row.get("updated_at")
+            at = src.iso(observation)
+            segments.append({"start_date": src.day(observation), "end_date": src.day(observation),
                              "start_at": at, "end_at": at, "status": "current_holding_observation",
                              "source": "holdings_accounts.holdings_json", "precision": "snapshot only",
                              "gaps": [{"source": "holdings_accounts", "reason": "opening date and distinct holding transition not established"}]})
-        groups.append({**src.account(acct), "as_of": now.isoformat(), "segments": segments})
+        clocks = [at for segment in segments for key in ("start_at", "end_at")
+                  if (at := src.instant(segment.get(key))) is not None]
+        groups.append({**src.account(acct), "as_of": max(clocks).isoformat() if clocks else None,
+                       "generated_at": now.isoformat(), "segments": segments})
     return groups
 
 
@@ -157,6 +163,51 @@ def _stats(trips, coverage, gaps, symbol):
                          "reasons": [*coverage["reasons"], *(
                              ["journal and ledger overlap without an explicit trade link"] if ambiguous else [])]}
     return value
+
+
+def _history_checks(snapshot, holdings):
+    """Disclose stored-source discrepancies; never repair quantities or basis."""
+    gaps = []
+    mapping = snapshot.get("mapping") or {}
+    if mapping.get("snaptrade_accounts_present") is not True:
+        gaps.append({"source": "release account mapping", "reason": "Fidelity mapping presence not established in captured release"})
+    fidelity = [r for r in holdings if (src.account(r.get("account") or r.get("account_id"))["account_id"] or "").startswith("fidelity")]
+    observed = [str(r.get("provider_observed_at") or r.get("broker_position_as_of") or "") for r in fidelity]
+    latest = max((v for v in observed if src.day(v)), default=None)
+    gaps.append({"source": "Fidelity sync", "reason": "successful sync receipt not collected; position observations are not sync-success proof",
+                 "latest_position_observed_at": latest})
+    lots = defaultdict(list)
+    for value in src.file_document(snapshot, "tax_lots").values():
+        for row in value if isinstance(value, list) else []:
+            if isinstance(row, dict) and row.get("closed") is not True:
+                lots[(src.symbol(row.get("symbol")), src.account(row.get("account"))["account_id"])].append(row)
+    held = defaultdict(list)
+    for row in holdings:
+        held[(src.symbol(row.get("symbol")), src.account(row.get("account") or row.get("account_id"))["account_id"])].append(row)
+    for (sym, acct), rows in held.items():
+        if not lots.get((sym, acct)):
+            continue
+        quantities = [src.number(r.get("shares", r.get("quantity"))) for r in rows]
+        remaining = [src.number(r.get("shares_remaining", r.get("shares"))) for r in lots[(sym, acct)]]
+        if all(v is not None for v in [*quantities, *remaining]) and abs(sum(quantities) - sum(remaining)) > .000001:
+            gaps.append({"source": "tax lots vs holdings", "symbol": sym, "account_id": acct,
+                         "account_label": src.account(acct)["account_label"], "reason": "stored share quantities disagree",
+                         "holdings_shares": sum(quantities), "tax_lot_shares": sum(remaining)})
+        held_basis = [src.number(r.get("cost_basis")) for r in rows]
+        lot_basis = [src.number(r.get("cost_per_share")) for r in lots[(sym, acct)]]
+        if all(v is not None for v in [*held_basis, *lot_basis, *remaining]):
+            basis = sum(p * q for p, q in zip(lot_basis, remaining))
+            if abs(sum(held_basis) - basis) > .01:
+                gaps.append({"source": "tax lots vs holdings", "symbol": sym, "account_id": acct,
+                             "account_label": src.account(acct)["account_label"], "reason": "stored cost basis disagrees",
+                             "holdings_basis": sum(held_basis), "tax_lot_basis": basis})
+    # The captured embedded journal is a transaction log, not a closed-trip
+    # producer. Use its account membership, never clone FIFO matching here.
+    embedded = src.file_document(snapshot, "holdings").get("trade_journal")
+    if isinstance(embedded, list) and embedded:
+        gaps.append({"source": "holdings.trade_journal", "reason": "transaction observations retained for membership; no explicit closed-trip links",
+                     "observed_rows": len(embedded)})
+    return gaps
 
 
 def build_history(snapshot, query, *, now=None):
@@ -179,6 +230,7 @@ def build_history(snapshot, query, *, now=None):
     trips = [t for t in all_trips if not start or (t.get("exit_date") and start <= t["exit_date"] <= end)]
     accounts = _accounts(snapshot, all_trips)
     holding_rows = _holding_rows(snapshot)
+    gaps += _history_checks(snapshot, holding_rows)
     for name in ("holdings", "tax_lots", "legacy_journal"):
         if gap := _file_gap(snapshot, name):
             if gap not in gaps:
@@ -242,7 +294,7 @@ def build_history(snapshot, query, *, now=None):
                 "gaps": [*row["gaps"], {"source": "holding transitions", "reason": reason}]}
     dates = [r["entry_date"] for r in trips if r.get("entry_date")] + [r["exit_date"] for r in trips if r.get("exit_date")]
     options = {a: src.account(a)["account_label"] for group in accounts.values() for a in group}
-    return {"ok": True, "schema": SCHEMA, "as_of": now.isoformat(),
+    return {"ok": True, "schema": SCHEMA, "as_of": snapshot.get("as_of") or now.isoformat(),
         "range": {"start_date": start or min(dates, default=None), "end_date": end or max(dates, default=None),
                   "basis": "explicit dates" if start else "all available named stored sources; no lifetime coverage assertion",
                   "coverage": trip_coverage},
@@ -255,4 +307,7 @@ def build_history(snapshot, query, *, now=None):
 
 def get_history(query=None):
     query = query or {}
-    return build_history(src.collect_snapshot(kind="history", query=query), query)
+    checked = build_history({}, query)
+    if not checked.get("ok"):
+        return checked
+    return build_history(src.cached_snapshot(kind="history", query=query), query)

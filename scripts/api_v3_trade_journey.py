@@ -26,3 +26,20 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
 def get_detail(trade_id: str, query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker.trade_journey import detail_trade_journey
     return detail_trade_journey(unquote(trade_id), query or {})
+
+
+
+def get_calendar(query: dict | None = None) -> dict[str, Any]:
+    from lib.data_broker.trade_calendar import get_calendar as project
+    return project(query or {})
+
+
+def get_history(query: dict | None = None) -> dict[str, Any]:
+    from lib.data_broker.holding_history import get_history as project
+    return project(query or {})
+
+
+def get_replay(query: dict | None = None) -> dict[str, Any]:
+    """Explicit stored-only delegate; never imports the legacy chart provider."""
+    from lib.data_broker.trade_replay import get_replay as project
+    return project(query or {})

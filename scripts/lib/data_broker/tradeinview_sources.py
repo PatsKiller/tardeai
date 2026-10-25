@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
+import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -122,6 +124,8 @@ def normalise_closed(snapshot: dict) -> tuple[list[dict], list[dict]]:
     out: list[dict] = []
     gaps = [g for name in ("schwab_round_trips", "trade_closed") if (g := source_gap(snapshot, name))]
     by_srt: dict[str, dict] = {}
+    excluded_srt_ids = {str(r.get("id")) for r in source_rows(snapshot, "schwab_round_trips")
+                        if r.get("canary") is True and r.get("id") is not None}
     seen: dict[tuple[str, str], dict] = {}
     for row in source_rows(snapshot, "schwab_round_trips"):
         if row.get("canary") is True:
@@ -160,6 +164,8 @@ def normalise_closed(snapshot: dict) -> tuple[list[dict], list[dict]]:
             by_srt[str(row["id"])] = trip
     for row in source_rows(snapshot, "trade_closed"):
         dedupe = str(row.get("dedupe_key") or "")
+        if dedupe.startswith("srt:") and dedupe[4:] in excluded_srt_ids:
+            continue
         if dedupe.startswith("srt:") and dedupe[4:] in by_srt:
             trip = by_srt[dedupe[4:]]
             # A copied row may have drifted since the journal rebuild. Preserve
@@ -224,6 +230,8 @@ def bounded_json(path: Path, *, max_bytes: int = 32_000_000) -> dict:
             return {"status": "missing", "reason": "stored document exceeds read bound", "path": str(path)}
         raw = path.read_bytes()
         doc = json.loads(raw)
+        if not isinstance(doc, dict):
+            raise ValueError("stored document must be an object")
         return {"status": "ok", "document": doc, "path": str(path),
                 "sha256": hashlib.sha256(raw).hexdigest(),
                 "written_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()}
@@ -245,7 +253,12 @@ SOURCE_SQL = {
     "position_transfer_history": """SELECT id,event_id,symbol,from_account,to_account,shares_moved,
         cost_basis_total,per_share_basis,basis_source,transfer_type,status,detected_at,normalized_at,
         sync_source FROM position_transfer_history ORDER BY detected_at,id LIMIT %s""",
-    "catalyst_events": "SELECT * FROM catalyst_events ORDER BY id DESC LIMIT %s",
+    "catalyst_events": """SELECT id,symbol,catalyst_type,headline,source,source_url,published_at,created_at,
+        to_jsonb(catalyst_events)->>'event_type' AS event_type,
+        to_jsonb(catalyst_events)->>'event_date' AS event_date,
+        to_jsonb(catalyst_events)->>'scheduled_at' AS scheduled_at,
+        to_jsonb(catalyst_events)->>'updated_at' AS updated_at
+        FROM catalyst_events ORDER BY id DESC LIMIT %s""",
 }
 
 
@@ -280,6 +293,8 @@ def collect_snapshot(*, kind: str, query: dict | None = None, db_query=None,
     names = ["schwab_round_trips", "trade_closed"]
     if kind == "history":
         names += ["trade_transactions", "position_transfer_history"]
+    if kind == "replay":
+        names += ["trade_transactions"]
     if kind == "calendar":
         names += ["catalyst_events"]
     for name in names:
@@ -319,6 +334,7 @@ def collect_snapshot(*, kind: str, query: dict | None = None, db_query=None,
     }
     if kind == "history":
         stored_files["tax_lots"] = root / "data/portfolios/state/tax_lots.json"
+    if kind in ("history", "replay"):
         stored_files["legacy_journal"] = root / "data/portfolios/state/trade_journal.json"
     for key, path in stored_files.items():
         result["files"][key] = bounded_json(path)
@@ -344,6 +360,9 @@ def collect_snapshot(*, kind: str, query: dict | None = None, db_query=None,
     except Exception as exc:
         result["company_facts"] = {}
         result["company_facts_missing_reason"] = type(exc).__name__
+    if kind == "replay":
+        from lib.data_broker.trade_replay import collect_inputs
+        collect_inputs(result, query or {}, db, root, now)
     return result
 
 
@@ -372,3 +391,27 @@ def trip_stats(trips: list[dict], *, complete: bool) -> dict:
             "median_hold_days": median if len(holds) == len(trips) and complete else None,
             "best_trip_pct": max(returns) if returns and len(returns) == len(trips) and complete else None,
             "worst_trip_pct": min(returns) if returns and len(returns) == len(trips) and complete else None}
+
+
+# One stored snapshot per broad screen, shared across pagination. Replay is not
+# retained here: caching many trade-specific copies would grow without bound.
+_SNAPSHOT_CACHE = {}
+_SNAPSHOT_LOCK = threading.Lock()
+
+
+def cached_snapshot(*, kind, query=None):
+    query = query or {}
+    if kind not in ("calendar", "history"):
+        return collect_snapshot(kind=kind, query=query)
+    # One collector per refresh avoids duplicate large reads from simultaneous
+    # month/day polls. This is an in-memory read cache, not a new data writer.
+    with _SNAPSHOT_LOCK:
+        now = time.monotonic()
+        hit = _SNAPSHOT_CACHE.get(kind)
+        fresh = query.get("fresh")
+        fresh = fresh[0] if isinstance(fresh, list) and fresh else fresh
+        if hit and now - hit[0] < 60 and str(fresh or "").lower() not in ("1", "true"):
+            return hit[1]
+        data = collect_snapshot(kind=kind, query=query)
+        _SNAPSHOT_CACHE[kind] = (now, data)
+        return data

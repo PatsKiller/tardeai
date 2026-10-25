@@ -14,6 +14,23 @@ def one(query: dict, key: str, default=None):
     return value[0] if isinstance(value, list) and value else value
 
 
+def _integer(query, key, default, maximum):
+    value = one(query, key, default)
+    if isinstance(value, bool):
+        raise ValueError(key)
+    parsed = int(str(value))
+    if parsed < 0 or parsed > maximum or (key.endswith("limit") and parsed == 0):
+        raise ValueError(key)
+    return parsed
+
+
+def _page(rows, *, offset, limit, complete=True):
+    selected = rows[offset:offset + limit]
+    return selected, {"offset": offset, "limit": limit, "returned_count": len(selected),
+                      "known_total": len(rows), "total_count": len(rows) if complete else None,
+                      "next_offset": offset + len(selected) if offset + len(selected) < len(rows) else None}
+
+
 def build_calendar(snapshot: dict, query: dict, *, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     raw_month = str(one(query, "month") or "")
@@ -31,6 +48,20 @@ def build_calendar(snapshot: dict, query: dict, *, now: datetime | None = None) 
     acct = src.account(raw_account)["account_id"] if raw_account else None
     if raw_account and acct is None:
         return {"ok": False, "schema": SCHEMA, "error": "account_not_identified"}
+    selected_day = str(one(query, "day") or "")
+    try:
+        if selected_day and (date.fromisoformat(selected_day).isoformat() != selected_day
+                             or not selected_day.startswith(raw_month + "-")):
+            raise ValueError("day")
+        event_offset = _integer(query, "event_offset", 0, src.READ_ROWS)
+        event_limit = _integer(query, "event_limit", 50, 100)
+        day_event_offset = _integer(query, "day_event_offset", 0, src.READ_ROWS)
+        day_event_limit = _integer(query, "day_event_limit", 50, 100)
+        trade_offset = _integer(query, "trade_offset", 0, src.READ_ROWS)
+        trade_limit = _integer(query, "trade_limit", 50, 100)
+    except (ValueError, TypeError):
+        return {"ok": False, "schema": SCHEMA, "error": "invalid_paging_or_day",
+                "reason": "day must belong to selected month; offsets must be nonnegative; limits are 1–100"}
     trips, gaps = src.normalise_closed(snapshot)
     complete = src.coverage(snapshot, ("schwab_round_trips", "trade_closed"))
     # A missing date prevents a trustworthy monthly total, rather than being
@@ -83,7 +114,25 @@ def build_calendar(snapshot: dict, query: dict, *, now: datetime | None = None) 
     if non_grid:
         gaps.append({"source": "calendar", "reason": "recorded activity outside weekday grid",
                      "dates": [d["date"] for d in non_grid]})
-    return {"ok": True, "schema": SCHEMA, "as_of": now.isoformat(), "month": raw_month,
+    # Statistics above use every selected source row. Only response material is
+    # paged; a preview must never silently become the financial denominator.
+    event_complete = src.source_gap(snapshot, "catalyst_events") is None and not event_gaps
+    events.sort(key=lambda r: (r["date"], r["id"], r.get("symbol") or ""))
+    event_rows, event_paging = _page(events, offset=event_offset, limit=event_limit, complete=event_complete)
+    for d in days:
+        all_events = sorted(d["events"], key=lambda r: (r["date"], r["id"], r.get("symbol") or ""))
+        d["event_counts"] = {kind: sum(e["type"] == kind for e in all_events)
+                             for kind in sorted({e["type"] for e in all_events})}
+        is_selected = d["date"] == selected_day
+        d["events"], d["events_paging"] = _page(all_events,
+            offset=day_event_offset if is_selected else 0,
+            limit=day_event_limit if is_selected else 3, complete=event_complete)
+        all_trades = sorted(d["trades"], key=lambda r: (r.get("exit_at") or r["exit_date"], r["trade_id"]))
+        d["trades"], d["trades_paging"] = _page(all_trades,
+            offset=trade_offset if is_selected else 0, limit=trade_limit if is_selected else 10,
+            complete=complete["status"] == "COMPLETE")
+    gap_rows, gap_paging = _page(gaps, offset=0, limit=100)
+    return {"ok": True, "schema": SCHEMA, "as_of": snapshot.get("as_of") or now.isoformat(), "month": raw_month,
             "account": acct, "names": scope,
             "summary": {"realized_pl": stats["realized_pl"], "known_realized_pl": stats["known_realized_pl"],
                         "trade_count": stats["round_trip_count"], "known_trade_count": len(selected),
@@ -92,9 +141,11 @@ def build_calendar(snapshot: dict, query: dict, *, now: datetime | None = None) 
                         "active_days": active if complete["status"] == "COMPLETE" else None,
                         "known_active_days": active, "unpriced_trade_count": stats["unpriced_trade_count"],
                         "coverage": complete},
-            "days": days, "weeks": weeks, "non_grid_days": non_grid, "events": events,
+            "days": days, "weeks": weeks, "non_grid_days": non_grid, "events": event_rows,
+            "events_paging": event_paging, "selected_day": selected_day or None,
             "account_options": [{"id": k, "label": v} for k, v in sorted(accounts.items())],
-            "gaps": gaps, "provider_calls": 0, "writes": 0, "read_only": True}
+            "gaps": gap_rows, "gaps_paging": gap_paging,
+            "provider_calls": 0, "writes": 0, "read_only": True}
 
 
 def _events(snapshot: dict, month: str, scope: str) -> tuple[list[dict], list[dict]]:
@@ -104,6 +155,19 @@ def _events(snapshot: dict, month: str, scope: str) -> tuple[list[dict], list[di
     watch = set(((snapshot.get("operator_membership") or {}).get("names") or {}))
     names = held | watch if scope == "held_watch" else held
     gaps = [g] if (g := src.source_gap(snapshot, "catalyst_events")) else []
+    held_source = (snapshot.get("files") or {}).get("holdings") or {}
+    if held_source.get("status") != "ok" or not isinstance(holdings.get("holdings"), list):
+        gaps.append({"source": "held-name scope", "reason": "stored holdings unavailable; held event population not measured"})
+    if scope == "held_watch":
+        membership = snapshot.get("operator_membership") or {}
+        sources = membership.get("sources") or {}
+        missing = [name for name, value in sources.items() if value.get("status") != "ok"]
+        if membership.get("reason") or not sources or missing:
+            gaps.append({"source": "operator watchlist scope", "reason": "membership source coverage unavailable or incomplete",
+                         "missing_sources": missing})
+    reentry_source = (snapshot.get("files") or {}).get("reentry") or {}
+    if reentry_source.get("status") != "ok":
+        gaps.append({"source": "reentry wash windows", "reason": "stored wash-sale window source unavailable"})
     events = []
     for row in src.source_rows(snapshot, "catalyst_events"):
         sym = src.symbol(row.get("symbol"))
@@ -151,4 +215,8 @@ def _events(snapshot: dict, month: str, scope: str) -> tuple[list[dict], list[di
 
 def get_calendar(query: dict | None = None) -> dict:
     q = query or {}
-    return build_calendar(src.collect_snapshot(kind="calendar", query=q), q)
+    # Reuse the pure query validation before any stored-source collection.
+    checked = build_calendar({}, q)
+    if not checked.get("ok"):
+        return checked
+    return build_calendar(src.cached_snapshot(kind="calendar", query=q), q)

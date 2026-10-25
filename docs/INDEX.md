@@ -2060,6 +2060,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SYMBOL_THESIS_JOB_REPAIR_2026-10-09.md` | Symbol-thesis job repair (2026-10-09) |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue |
 | `docs/ops/TRADEINVIEW_JOURNEY_2026-10-22.md` | TradeInView — the per-trade journey (2026-10-22) |
+| `docs/ops/TRADEINVIEW_REDESIGN_20261024.md` | WP-22 TradeInView A: stored-data lineage and trust |
 | `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | M2 memory substrate benchmark |
 | `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 memory consolidation |
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 ContextEnvelope@v2 + Command Center spec |
@@ -2221,6 +2222,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) |
 | `docs/ops/packets/sync-social-residual-cron-20261024/README.md` | WP-33 item2: residual sync-social cron retirement packet |
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
+| `docs/ops/packets/tradeinview-redesign-20261024/README.md` | WP-22 TradeInView A source packet |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |

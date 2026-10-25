@@ -2,9 +2,11 @@
   "schema": "CiGate@v1",
   "name": "tradeinview_projections_20261024",
   "files": [
-    "tests/test_tradeinview_projections_20261024.py"
+    "tests/test_tradeinview_projections_20261024.py",
+    "tests/test_tradeinview_real_tree_20261024.py"
   ],
   "comment": [
-    "Stored-only TradeInView: exact SRT-derived-copy accounting, ET month boundaries, unknown basis/null totals, account aliases and event-date provenance. No provider calls or live writes."
+    "Stored-only TradeInView: exact SRT-derived-copy accounting, ET month boundaries, unknown basis/null totals, account aliases and event-date provenance. No provider calls or live writes.",
+    "Full Draft202012 schema validator pinned as test-only dependency. Private immutable COPY cases require explicit fixture env; absent input skips without live fallback. No host/broker/provider access."
   ]
 }
