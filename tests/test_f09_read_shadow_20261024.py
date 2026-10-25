@@ -185,6 +185,93 @@ def test_dispatcher_never_lifts_other_commands_or_stages(monkeypatch, part, muta
     assert dispatch.dispatch_eligible(row, cutover_policy={})[0] is False
 
 
+ROW_MUTATIONS = [
+    ("scheduler", {"stage": "canary"}),
+    ("scheduler", {"match": "scripts/alpaca_stop_manager.py"}),
+    ("scheduler", {"wave": "W4"}),
+    ("dispatch", {"mode": "live"}),
+    ("dispatch", {"cron": []}),
+    ("dispatch", {"tz": "UTC"}),
+    (None, {"state": "PAUSED"}),
+    (None, {"output_signal": {"kind": "mtime", "path": "x"}}),
+    (None, {"command": "scripts/schwab_transport.py"}),
+    (None, {"broker_read_step": "not_a_read_step"}),
+    (None, {"lane_id": "f09-read-not-a-read-step"}),
+]
+
+
+@pytest.mark.parametrize("step", carve.READ_LANES, ids=lambda s: s.id)
+@pytest.mark.parametrize("part,mutation", [(None, {})] + ROW_MUTATIONS)
+def test_dispatcher_row_check_matches_full_admission_for_admitted_entries(step, part, mutation):
+    """The carve-out-free dispatcher check gives full admission's row verdict for every admitted entry."""
+    entry = entry_for(step)
+    assert shadow.entry_problem(entry) is None
+    row = row_for(entry)
+    (row[part] if part else row).update(mutation)
+    assert dispatch.broker_read_row_problem(row, entry) == shadow.row_problem(row, entry)
+    assert (dispatch.broker_read_row_problem(row, entry) is None) == (not mutation)
+    assert (dispatch.BROKER_READ_MARKER, dispatch.BROKER_READ_WRAPPER) == (shadow.MARKER, shadow.WRAPPER)
+    assert (dispatch.broker_read_lane_id(step.id), dispatch.broker_read_receipt_path(step.id)) == (
+        shadow.lane_id(step.id),
+        shadow.receipt_path(step.id),
+    )
+
+
+def test_dispatcher_keeps_read_steps_out_of_every_lane_import_closure():
+    """lane_dispatch is in every dispatched lane's closure; it must not reach the carve-out or read scripts."""
+    import ast
+
+    forbidden = {"n8n_broker_read_shadow", "n8n_broker_read_carveout", "broker_read_sync_policy"}
+    names = set()
+    for node in ast.walk(ast.parse((ROOT / "scripts/lib/lane_dispatch.py").read_text())):
+        if isinstance(node, ast.Import):
+            names |= {p for a in node.names for p in a.name.split(".")}
+        elif isinstance(node, ast.ImportFrom):
+            names |= set((node.module or "").split(".")) | {a.name for a in node.names}
+    assert not names & forbidden, names & forbidden
+
+
+def test_dispatcher_defers_entry_admission_to_the_executor(monkeypatch):
+    """A carve-out refusal no longer reaches lane_dispatch; the executor refuses before any spawn."""
+    entry = entry_for(carve.READ_LANES[0])
+    row = row_for(entry)
+    monkeypatch.setattr(dispatch, "load_run_allowlist_entries", lambda: {entry["lane_id"]: entry})
+    monkeypatch.setattr(carve, "CARVEOUT_STATUS", "PROPOSED")
+    assert dispatch.dispatch_eligible(row, cutover_policy={}) == (True, "eligible:broker_read_shadow_27_1")
+    assert "carveout_not_active" in executor.validate_entry(entry)
+    monkeypatch.setattr(dispatch, "load_run_allowlist_entries", lambda: {})
+    assert dispatch.dispatch_eligible(row, cutover_policy={}) == (False, "read_not_allowlisted")
+
+
+def test_executor_admits_reads_when_imported_as_a_package_module(tmp_path):
+    """validate_entry/build_argv work as scripts.n8n_run_executor, with no bare `lib` on sys.path."""
+    step = carve.READ_LANES[0]
+    entry = {**entry_for(step), "lock": str(tmp_path / "read.lock")}
+    probe = (
+        "import json, sys\n"
+        f"sys.path[:] = [{str(ROOT)!r}] + [p for p in sys.path if p and 'scripts' not in p]\n"
+        "try:\n    import lib\nexcept ImportError:\n    pass\nelse:\n    raise SystemExit('bare lib importable')\n"
+        "from scripts import n8n_run_executor as ex\n"
+        "entry = json.loads(sys.argv[1])\n"
+        "bad = {k: v for k, v in entry.items() if k != 'broker_read_step'}\n"
+        "argv = ex.build_argv(entry, 'dry_run', env={}, state_root=sys.argv[2], code_root=sys.argv[3])\n"
+        "print(json.dumps([ex.validate_entry(entry), ex.validate_entry(bad), argv[-4:] if argv else None,\n"
+        "                  'lib.n8n_broker_read_shadow' in sys.modules]))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c", probe, json.dumps(entry), str(tmp_path), str(ROOT)],
+        cwd=tmp_path,
+        env={"PATH": os.defpath, "HOME": str(tmp_path)},
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    valid, unmarked, plan, bare = json.loads(proc.stdout.splitlines()[-1])
+    assert valid is None and unmarked == "unknown_read_step" and bare is False
+    assert plan == [shadow.WRAPPER, "--step", step.id, "--plan"]
+
+
 def test_operator_hold_still_wins_and_unmarked_broker_lane_stays_refused(monkeypatch):
     entry = entry_for(carve.READ_LANES[0])
     row = row_for(entry)

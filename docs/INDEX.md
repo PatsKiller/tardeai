@@ -1029,8 +1029,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
-| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-f09-reads.md` | F09 read lanes at SHADOW |
+| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
 | `docs/designs/DSN-20261024-tradeinview-history.md` | Holding history source and evidence |

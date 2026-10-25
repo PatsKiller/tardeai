@@ -477,6 +477,15 @@ def parse_allowlist(raw: bytes) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _read_shadow():
+    """The §27.1 SHADOW read admission, importable as scripts.n8n_run_executor or with scripts/ on sys.path."""
+    try:
+        from scripts.lib import n8n_broker_read_shadow as read_shadow
+    except ImportError:
+        from lib import n8n_broker_read_shadow as read_shadow  # type: ignore
+    return read_shadow
+
+
 def validate_entry(entry: Mapping[str, Any]) -> str | None:
     """None when the entry is runnable; otherwise the first defect. Pure."""
     if not isinstance(entry.get("lane_id"), str) or not entry["lane_id"]:
@@ -484,7 +493,7 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
     cmd = entry.get("command")
     if not isinstance(cmd, list) or not cmd or not all(isinstance(t, str) and t for t in cmd):
         return "bad_command"
-    from lib import n8n_broker_read_shadow as read_shadow
+    read_shadow = _read_shadow()
     if read_shadow.handles(entry):
         problem = read_shadow.entry_problem(entry)
         if problem:
@@ -611,7 +620,7 @@ def build_argv(
     mode_arg = entry.get(f"{mode}_arg")
     if mode_arg is None:
         return None
-    from lib import n8n_broker_read_shadow as read_shadow
+    read_shadow = _read_shadow()
     if read_shadow.handles(entry):
         plan = read_shadow.plan_argv(entry, mode)
         if plan is None:
@@ -972,8 +981,7 @@ def _spawn(
         receipt["timed_out"] = True
         return _finish(receipt, "RUN_TIMEOUT", reason=f"timeout_exit_{result.returncode}", started=started)
     if result.returncode == 0 and "broker_read_step" in entry:
-        from lib import n8n_broker_read_shadow as read_shadow
-
+        read_shadow = _read_shadow()
         receipt["state"] = "RUN_DONE"
         problem = read_shadow.receipt_problem(receipt)
         if problem:
@@ -1241,8 +1249,7 @@ def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: b
     tmp.write_text(body, encoding="utf-8")
     os.replace(tmp, out)
     if "broker_read_step" in receipt:
-        from lib import n8n_broker_read_shadow as read_shadow
-
+        read_shadow = _read_shadow()
         if read_shadow.final_receipt_problem(receipt) is None:
             # Executor control evidence only: the wrapper writes no lane/business state.
             # Failed or empty plans never advance this per-lane success timestamp.
