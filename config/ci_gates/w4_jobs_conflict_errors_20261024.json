@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w4_jobs_conflict_errors_20261024",
+  "files": [
+    "tests/test_w4_jobs_conflict_errors_20261024.py"
+  ],
+  "comment": [
+    "W4 Jobs consumes the canonical W10 DATA_ERROR section unchanged; fixture-only contract and availability proof."
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "producer_head": "e9d3c76fe74f39103603b171ea09018ba5443689",
+  "scope": "Synthetic native producer output; not production or 31-row golden evidence",
+  "section": {
+    "findings": [
+      {
+        "action": "notify_operator",
+        "clears_when": "the authoritative source or its reader is repaired and agrees",
+        "engine": "ConflictEngine@v1-matrix-draft",
+        "key": "metric:fixture-count:U7:Reader fixture count",
+        "kind": "DATA_ERROR",
+        "never_auto": true,
+        "next_run": "Not measured",
+        "owner": "source owner",
+        "rule": "T1",
+        "schema": "ConflictFinding@v1",
+        "severity": "warn",
+        "sides": [
+          {
+            "account": null,
+            "as_of": "2026-10-24T22:00:00+00:00",
+            "source": "Canonical fixture count",
+            "source_label": "Canonical fixture count",
+            "value": "count10.00"
+          },
+          {
+            "account": null,
+            "as_of": "2026-10-24T22:00:00+00:00",
+            "source": "Reader fixture count",
+            "source_label": "Reader fixture count",
+            "value": "count20.00"
+          }
+        ],
+        "summary": "the canonical aggregate says count10.00; Reader fixture count says count20.00",
+        "tier": 1,
+        "subject": {
+          "context": {
+            "unit": "count"
+          },
+          "id": "fixture-count",
+          "kind": "metric",
+          "label": "fixture-count"
+        },
+        "state": "OPEN",
+        "opened_at": "2026-10-24T22:00:00+00:00",
+        "updated_at": "2026-10-24T22:00:00+00:00",
+        "revision": 1,
+        "decision": null,
+        "history": null,
+        "history_gap": "fetch conflict detail for lifecycle history"
+      }
+    ],
+    "headline": "the canonical aggregate says count10.00; Reader fixture count says count20.00 — clears when the authoritative source or its reader is repaired and agrees",
+    "gap": null,
+    "source": "conflict_events.jsonl",
+    "as_of": "2026-10-24T22:00:00+00:00",
+    "stale": null
+  },
+  "record": {
+    "action": "notify_operator",
+    "clears_when": "the authoritative source or its reader is repaired and agrees",
+    "engine": "ConflictEngine@v1-matrix-draft",
+    "key": "metric:fixture-count:U7:Reader fixture count",
+    "kind": "DATA_ERROR",
+    "never_auto": true,
+    "next_run": "Not measured",
+    "owner": "source owner",
+    "rule": "T1",
+    "schema": "ConflictRecord@v1",
+    "severity": "warn",
+    "sides": [
+      {
+        "account": null,
+        "as_of": "2026-10-24T22:00:00+00:00",
+        "source": "Canonical fixture count",
+        "source_label": "Canonical fixture count",
+        "value": "count10.00"
+      },
+      {
+        "account": null,
+        "as_of": "2026-10-24T22:00:00+00:00",
+        "source": "Reader fixture count",
+        "source_label": "Reader fixture count",
+        "value": "count20.00"
+      }
+    ],
+    "summary": "the canonical aggregate says count10.00; Reader fixture count says count20.00",
+    "tier": 1,
+    "subject": {
+      "context": {
+        "unit": "count"
+      },
+      "id": "fixture-count",
+      "kind": "metric",
+      "label": "fixture-count"
+    },
+    "state": "OPEN",
+    "finding": {
+      "action": "notify_operator",
+      "clears_when": "the authoritative source or its reader is repaired and agrees",
+      "engine": "ConflictEngine@v1-matrix-draft",
+      "key": "metric:fixture-count:U7:Reader fixture count",
+      "kind": "DATA_ERROR",
+      "never_auto": true,
+      "next_run": "Not measured",
+      "owner": "source owner",
+      "rule": "T1",
+      "schema": "ConflictFinding@v1",
+      "severity": "warn",
+      "sides": [
+        {
+          "account": null,
+          "as_of": "2026-10-24T22:00:00+00:00",
+          "source": "Canonical fixture count",
+          "source_label": "Canonical fixture count",
+          "value": "count10.00"
+        },
+        {
+          "account": null,
+          "as_of": "2026-10-24T22:00:00+00:00",
+          "source": "Reader fixture count",
+          "source_label": "Reader fixture count",
+          "value": "count20.00"
+        }
+      ],
+      "summary": "the canonical aggregate says count10.00; Reader fixture count says count20.00",
+      "tier": 1
+    },
+    "opened_at": "2026-10-24T22:00:00+00:00",
+    "updated_at": "2026-10-24T22:00:00+00:00",
+    "revision": 1,
+    "decision": null,
+    "history": [
+      {
+        "at": "2026-10-24T22:00:00+00:00",
+        "event": "opened",
+        "event_id": "conflict-d427d7126fa752821dc2dd7ce6d9e409156f04734f95b42475081b8ba30ad942",
+        "finding": {
+          "action": "notify_operator",
+          "clears_when": "the authoritative source or its reader is repaired and agrees",
+          "engine": "ConflictEngine@v1-matrix-draft",
+          "key": "metric:fixture-count:U7:Reader fixture count",
+          "kind": "DATA_ERROR",
+          "never_auto": true,
+          "next_run": "Not measured",
+          "owner": "source owner",
+          "rule": "T1",
+          "schema": "ConflictFinding@v1",
+          "severity": "warn",
+          "sides": [
+            {
+              "account": null,
+              "as_of": "2026-10-24T22:00:00+00:00",
+              "source": "Canonical fixture count",
+              "source_label": "Canonical fixture count",
+              "value": "count10.00"
+            },
+            {
+              "account": null,
+              "as_of": "2026-10-24T22:00:00+00:00",
+              "source": "Reader fixture count",
+              "source_label": "Reader fixture count",
+              "value": "count20.00"
+            }
+          ],
+          "summary": "the canonical aggregate says count10.00; Reader fixture count says count20.00",
+          "tier": 1
+        },
+        "key": "metric:fixture-count:U7:Reader fixture count",
+        "memory_required": false,
+        "schema": "ConflictEvent@v1",
+        "sequence": 1,
+        "subject": {
+          "context": {
+            "unit": "count"
+          },
+          "id": "fixture-count",
+          "kind": "metric",
+          "label": "fixture-count"
+        }
+      }
+    ]
+  }
+}

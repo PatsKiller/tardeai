@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import ConflictLine from './conflicts/ConflictLine'
+import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
@@ -12,6 +14,7 @@ export interface JobHealthRow {
 export interface JobsHealthWire {
   schema: string; as_of: string; rows: JobHealthRow[]; total: number; offset: number; limit: number; has_more: boolean
   summary: Record<string, number>; coverage_gaps: string[]; incident_count: number
+  data_errors?: { section: ConflictSection | null; unavailable_reason: string | null }
   monitor: { observed_at: string | null; status: string; cause: string | null; notification?: { status?: string; delivered?: boolean } | null }
 }
 const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market', 'Market hours only'], ['n8n', 'n8n'], ['cron', 'Host cron (moving to n8n)']] as const
@@ -25,8 +28,11 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
   const [offset, setOffset] = useState(0)
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('job')
+  const conflict = useConflictSheet()
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const { data, loading, error } = useApi<JobsHealthWire>(`/api/v2/jobs-health?filter=${filter}&offset=${offset}&limit=50`, 60_000, { enabled })
+  const dataErrors = data?.data_errors
+  const conflictUnavailable = dataErrors?.unavailable_reason || (data && !dataErrors?.section ? 'The canonical data error section is unavailable.' : null)
   const inList = data?.rows.find(row => row.lane_id === selectedId)
   const detail = useApi<JobsHealthWire>(`/api/v2/jobs-health?job=${encodeURIComponent(selectedId || '')}&filter=all&limit=1`, 60_000, { enabled: enabled && !!selectedId && !inList })
   const selected = inList || detail.data?.rows.find(row => row.lane_id === selectedId)
@@ -56,6 +62,14 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused} / ${data.summary.retired}` : '—'}</strong></div>
     </div>
     {data?.monitor.cause && <div role="status" style={{ ...panel, borderColor: toneVars('warning').border, color: TOKENS.warning }}>{data.monitor.cause}</div>}
+    <section aria-label="Data errors" style={{ ...panel, display: 'grid', gap: 8 }}>
+      <h3 style={{ margin: 0, fontSize: TYPE.base }}>Data quality</h3>
+      {conflictUnavailable && <p role="status" data-testid="jobs-conflict-unavailable" style={{ margin: 0, color: TOKENS.warning }}>{conflictUnavailable}</p>}
+      {dataErrors?.section?.stale && <p role="status" style={{ margin: 0, color: TOKENS.warning }}>The data error comparison is out of date. The last supplied section remains visible.</p>}
+      {dataErrors?.section && <ConflictLine section={dataErrors.section} onOpen={conflict.open} />}
+      {conflict.key && !dataErrors?.section && <button type="button" onClick={conflict.close} style={{ minHeight: 44 }}>Back to jobs</button>}
+    </section>
+    {enabled && conflict.key && dataErrors?.section && <ConflictSheet title="Job data error" section={dataErrors.section} mobile={conflict.mobile} onBack={conflict.close} />}
     <div role="group" aria-label="Filter jobs" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       {filters.map(([key, label]) => <button key={key} type="button" aria-pressed={key === filter} onClick={() => { setFilter(key); setOffset(0) }} style={{ minHeight: 44, padding: '6px 12px', borderRadius: RADIUS.pill, fontSize: TYPE.base, cursor: 'pointer', color: key === filter ? TOKENS.warning : TOKENS.text[1], border: `1px solid ${key === filter ? TOKENS.warning : TOKENS.border}`, background: key === filter ? toneVars('warning').bg : TOKENS.bg[1] }}>{label}</button>)}
     </div>

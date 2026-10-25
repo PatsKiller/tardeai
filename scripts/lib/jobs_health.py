@@ -224,8 +224,11 @@ def _load(root: Path, registry_path: Path, now: datetime):
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")
     if not registry.get("lanes"):
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
-    return build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
-                 now=now, trading_day=is_trading_day)
+    report = build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
+                   now=now, trading_day=is_trading_day)
+    from scripts.lib.jobs_conflict_errors import get_data_errors
+    report["data_errors"] = get_data_errors(root)
+    return report
 
 
 def get_jobs_health(query=None, *, state_root=None, registry_path=None, now=None):
