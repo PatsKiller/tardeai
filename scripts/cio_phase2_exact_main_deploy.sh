@@ -607,6 +607,10 @@ release_grant_preflight() {
   local extra=("${@:3}")   # e.g. --no-consume (decide only; release train 2026-10-21)
   local pr_arg=() ci_arg=()
   [[ -n "${TRADEAI_RELEASE_PR:-}" ]] && pr_arg=(--pr "${TRADEAI_RELEASE_PR}")
+  if [[ "$action" == "promote" && -n "${NEW_RELEASE:-}" ]]; then
+    # Review F4 (2026-10-25): bind the exact prepared artifact for the release-train capability path.
+    extra+=(--release-dir "$NEW_RELEASE")
+  fi
   if [[ "$action" == "promote" ]]; then
     if [[ -n "$EMERGENCY_SHA" && "$EMERGENCY_SHA" == "$sha" ]]; then
       ci_arg=(--skip-ci-gate)

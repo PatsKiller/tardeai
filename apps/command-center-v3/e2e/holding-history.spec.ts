@@ -240,3 +240,71 @@ if (copyPath) {
     await shot(page, 'actual-' + detail.symbol.toLowerCase(), width)
   })
 }
+
+// Batch 30: list cards stay readable (gap chip, counts, per-account state) and collapsed lists never expose empty bullets.
+const longGap = (n: number) => ({ source: 'closed trips', symbol: 'CHIP', reason: `journal and ledger overlap without an explicit trade link ${n}`, date: '2025-10-17' })
+function chipName() {
+  return { symbol: 'CHIP', company_name: 'Chip Fixture Holdings', company_name_source: 'SEC company tickers', account_count: 2, round_trip_count: null, known_trip_count: 3, realized_pl: null, known_realized_pl: null, held_now: true, basis_unknown: true,
+    accounts: [{ account_id: 'a', account_label: 'Fixture Taxable', held_quantity: 10 }, { account_id: 'b', account_label: 'Fixture Rollover IRA', held_quantity: 0, as_of: '2026-10-23', quantity_basis: "absent from this account's stored broker positions" }],
+    gaps: [longGap(1), longGap(2), longGap(3)] }
+}
+function cusipName() { return { ...missingName('44984F807'), identifier_label: 'CUSIP 44984F807', company_missing_reason: null, gaps: [] } }
+function chipDetail() {
+  const trip = (id: string, pl: number | null, ret: number | null) => ({ trade_id: id, symbol: 'CHIP', account_id: 'a', account_label: 'Fixture Taxable', entry_at: '2026-01-02T15:00:00Z', exit_at: '2026-02-02T15:00:00Z', entry_price: pl == null ? null : 10, exit_price: 11, shares: 1, realized_pl: pl, return_pct: ret, hold_days: 31, hold_days_basis: 'elapsed timestamps', basis_unknown: pl == null, basis_reason: pl == null ? 'opening basis not recorded' : null, source: 'fixture ledger', provenance: [{ source: 'fixture ledger', record_id: `rec-${id}`, writer: 'fixture writer' }] })
+  return { symbol: 'CHIP', company_name: 'Chip Fixture Holdings', company_name_source: 'SEC company tickers', company_missing_reason: null,
+    stats: { ...structuredClone(nilStats), round_trip_count: 3, known_win_rate_pct: 50, known_best_trip_pct: 10, known_worst_trip_pct: -5, known_median_hold_days: 31, known_priced_trip_count: 2, known_return_trip_count: 2, known_timed_trip_count: 3, excluded_basis_unknown_count: 1 },
+    account_segments: [], trips: [trip('t1', 1, 10), trip('t2', -0.5, -5), trip('t3', null, null)], gaps: [longGap(1), longGap(2), longGap(3)] }
+}
+const pageGaps = Array.from({ length: 8 }, (_, i) => ({ source: `source ${i}`, reason: `page level finding ${i}` }))
+test.describe('phone list card chip and detail sheet', () => {
+  test.use({ hasTouch: true })
+  for (const viewport of [{ width: 412, height: 915 }, { width: 390, height: 844 }]) {
+    test(`gap chip, counts, collapsed lists and known stats ${viewport.width}`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      const state = await fixture(page, u => ({ body: { ...capture, ok: true, gaps: pageGaps, symbols: [chipName(), cusipName()], detail: u.searchParams.get('symbol') === 'CHIP' ? chipDetail() : null } }))
+      await page.goto(origin + '/?tab=history&fixture_mobile_flow=1')
+      const card = page.getByTestId('history-name').filter({ hasText: 'CHIP' })
+      await expect(card.getByTestId('history-gap-chip')).toHaveText('3 data gaps')
+      await expect(card).not.toContainText('without an explicit trade link')
+      await expect(card).toContainText('3 recorded round trips (count unconfirmed) · 2 accounts')
+      await expect(card).not.toContainText('— round trips')
+      await expect(card).toContainText('Fixture Taxable: 10 sh')
+      await expect(card).toContainText('Fixture Rollover IRA: not held · broker positions 2026-10-23')
+      await expect(card).not.toContainText('quantity unavailable')
+      const cusip = page.getByTestId('history-name').filter({ hasText: '44984F807' })
+      await expect(cusip).toContainText('CUSIP 44984F807'); await expect(cusip).not.toContainText('Company name unavailable')
+      // Collapsed page findings are not mounted: no empty bullets for page-text readers; expanding shows text.
+      const findings = page.getByTestId('history-gaps').first()
+      await expect(findings.locator('li')).toHaveCount(0)
+      const summary = findings.getByText('8 source findings · view all')
+      await inViewport(summary, page, 44); await summary.tap()
+      await expect(findings.locator('li')).toHaveCount(8)
+      expect(await findings.locator('li').evaluateAll(es => es.every(e => (e.textContent || '').trim().length > 0))).toBe(true)
+      await noOverflow(page); await shot(page, 'chip-names', viewport.width)
+      const chip = card.getByTestId('history-gap-chip')
+      await chip.scrollIntoViewIfNeeded(); await inViewport(card, page, 44); await chip.tap()
+      const sheet = page.getByTestId('history-detail-sheet')
+      await expect(sheet).toBeVisible(); await expect(page.getByTestId('history-back')).toBeFocused()
+      await expect(page.getByTestId('history-back')).toHaveText('← Back to names')
+      expect(await sheet.boundingBox()).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height })
+      // The gap detail moved off the card stays reachable in the sheet.
+      await expect(sheet.getByRole('complementary', { name: 'CHIP source gaps' })).toContainText('without an explicit trade link 3')
+      await expect(sheet.getByTestId('history-stat-win_rate_pct')).toContainText('50%')
+      await expect(sheet.getByTestId('history-stat-win_rate_pct')).toContainText('1 basis unknown excluded')
+      await expect(sheet.getByTestId('history-stat-avg_hold_days')).toContainText('Median hold')
+      await expect(sheet.getByTestId('history-stat-avg_hold_days')).toContainText('31 d')
+      await expect(sheet.getByTestId('history-stat-best_trip_pct')).toContainText('10% / -5%')
+      await expect(sheet.getByTestId('history-stat-times_held')).toContainText('—')
+      const trip = sheet.getByTestId('history-trip').first()
+      await expect(trip.locator('li')).toHaveCount(0)
+      const provenance = trip.getByText('Provenance', { exact: true })
+      await provenance.scrollIntoViewIfNeeded(); await inViewport(provenance, page, 44); await provenance.tap()
+      await expect(trip.locator('li')).toHaveCount(1)
+      await expect(trip.locator('li')).toHaveText('fixture ledger · Record rec-t1 · fixture writer')
+      await noOverflow(page); await shot(page, 'chip-detail', viewport.width)
+      await page.getByTestId('history-back').tap()
+      await expect(sheet).toHaveCount(0); await expect(card).toBeFocused()
+      expect(state.forbidden).toEqual([])
+    })
+  }
+})

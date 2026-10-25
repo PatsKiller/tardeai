@@ -89,3 +89,4 @@
   .hh-sheet-header button { flex: 0 0 auto; }
   .hh-sheet-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px max(16px, env(safe-area-inset-bottom)); }
 }
+.hh-gap-chip { align-self: flex-start; border: 1px solid; border-radius: var(--radius-pill); padding: 2px 8px; font-size: var(--hh-small); line-height: 1.5; }

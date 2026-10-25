@@ -1963,6 +1963,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
 | `docs/ops/CONFLICT_ENGINE.md` | Conflict engine (W10 PR 1) |
 | `docs/ops/CONFLICT_LEDGER.md` | Conflict ledger, operator API and CIO integration |
+| `docs/ops/CONFLICT_RULE_PROPOSALS.md` | Conflict rule proposals — unmatched conflicts, AI-proposed rules, operator approval |
 | `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
@@ -2279,6 +2280,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
 | `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows |
 | `docs/ops/packets/release-train-arming-20261021/README.md` | Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand) |
+| `docs/ops/packets/release-train-canary-arm-20261025/README.md` | Release train: arm the schedule with no per-release grant (2026-10-25) |
 | `docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md` | Proposal: a §23.24 bootstrap exception for arming step F |
 | `docs/ops/packets/release-train-host-trigger-20261023/README.md` | Release train host trigger: request and census timers (2026-10-23) |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York |

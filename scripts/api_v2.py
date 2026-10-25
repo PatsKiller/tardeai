@@ -163,12 +163,16 @@ _ENRICH_CACHE = {"data": {}, "mtime": 0.0}
 
 
 def _enrich_cache() -> dict:
+    # 2026-10-25 (portfolio-server memory): one shared, stat-keyed parse per process (scripts/lib/
+    # shared_json_cache.py) — this 10 MB file was also parsed privately by holding_family and
+    # portfolio_benchmarks (~21 MB RSS per copy). _ENRICH_CACHE stays as the last-good fallback.
     p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
     try:
-        mt = p.stat().st_mtime
-        if mt != _ENRICH_CACHE["mtime"]:
-            _ENRICH_CACHE["data"] = json.loads(p.read_text()) or {}
-            _ENRICH_CACHE["mtime"] = mt
+        from scripts.lib import shared_json_cache as _sjc
+
+        data = _sjc.load_json(p, default=None)
+        if data is not None:
+            _ENRICH_CACHE["data"] = data
     except Exception:
         pass
     return _ENRICH_CACHE["data"]
@@ -37371,6 +37375,22 @@ def _data_source_health(query=None):
 _FINVIZ_ENRICH_CACHE = {"mtime": 0, "data": {}}
 
 
+def _load_finviz_enrich_cache(p: Path) -> dict:
+    """Point _FINVIZ_ENRICH_CACHE at the process-wide parse of ``p`` (scripts/lib/shared_json_cache.py).
+
+    2026-10-25 (portfolio-server memory): this was a fourth private ~21 MB parse of the 10 MB
+    ticker_enrichment_cache.json. Raises when the file is missing or its root is not an object."""
+    from scripts.lib import shared_json_cache as _sjc
+
+    mt = p.stat().st_mtime
+    loaded = _sjc.get_or_load(p, _sjc.json_loader, namespace="json")
+    if not isinstance(loaded, dict):
+        raise ValueError("cache root must be an object")
+    _FINVIZ_ENRICH_CACHE["data"] = loaded
+    _FINVIZ_ENRICH_CACHE["mtime"] = mt
+    return loaded
+
+
 def _finviz_enrichment(query=None):
     """GET /api/v2/finviz-enrichment?symbol=X — the ~60 Finviz fields already collected daily
     (ticker_enrichment_cache.json), grouped for display: technicals / performance / valuation /
@@ -37386,13 +37406,7 @@ def _finviz_enrichment(query=None):
         # checkout-relative legacy location; in an immutable release it did not
         # exist, so a healthy cache was misreported as service-unavailable.
         p = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
-        mt = p.stat().st_mtime
-        if mt != _FINVIZ_ENRICH_CACHE["mtime"]:
-            loaded = json.loads(p.read_text())
-            if not isinstance(loaded, dict):
-                raise ValueError("cache root must be an object")
-            _FINVIZ_ENRICH_CACHE["data"] = loaded
-            _FINVIZ_ENRICH_CACHE["mtime"] = mt
+        _load_finviz_enrich_cache(p)
     except Exception as e:
         return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}"}
     d = _FINVIZ_ENRICH_CACHE["data"].get(sym) or {}
@@ -37529,10 +37543,7 @@ def _finviz_strip_map_compute(query=None):
     """Heavy computation for the Finviz strip map (cached by _finviz_strip_map). Read-only."""
     try:
         p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
-        mt = p.stat().st_mtime
-        if mt != _FINVIZ_ENRICH_CACHE["mtime"]:
-            _FINVIZ_ENRICH_CACHE["data"] = json.loads(p.read_text())
-            _FINVIZ_ENRICH_CACHE["mtime"] = mt
+        _load_finviz_enrich_cache(p)
     except Exception as e:
         return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}", "map": {}}
     cache = _FINVIZ_ENRICH_CACHE["data"]
@@ -55416,6 +55427,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": _jobs_health(query)}
         except ValueError as e:
             return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
+    # AI-proposed conflict rules (operator 2026-10-25; docs/ops/CONFLICT_RULE_PROPOSALS.md). Must precede the
+    # /api/v3/conflicts/{key} catch-all below. GET is read-only; POST .../decision is operator identity + CSRF only
+    # and answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED until config decision_writes_enabled is flipped.
+    if base_path.rstrip("/") == "/api/v3/conflicts/proposals" or base_path.startswith("/api/v3/conflicts/proposals/"):
+        try:
+            from scripts.lib.conflicts import proposals_api as _proposals_api
+
+            _proposals_out = _proposals_api.handle(base_path, method, body, query)
+            if _proposals_out is not None:
+                status, payload = _proposals_out
+                if status == 200 and not (isinstance(payload, dict) and "ok" in payload):
+                    payload = {"ok": True, "data": payload}
+                elif status != 200 and isinstance(payload, dict) and "ok" not in payload:
+                    payload = {"ok": False, **payload}
+                return status, payload
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 

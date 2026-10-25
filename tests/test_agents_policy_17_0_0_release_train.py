@@ -344,7 +344,8 @@ def test_code_named_in_section_25_exists_and_agrees():
                  "docs/ops/RELEASE_TRAIN_GITHUB_APP.md", "tests/test_release_train_authority_20261021.py"):
         assert (ROOT / path).exists(), path
         assert path.split("/")[-1] in s25 or path.startswith("config/schemas"), path
-    assert set(RD.WINDOW_IDS) == {"0000", "0600", "0800", "1800"}
+    # the four 17.0.0 windows plus the 2026-10-25 schedule slots (weekdays 12:00; weekends every three hours)
+    assert set(RD.WINDOW_IDS) == {"0000", "0300", "0600", "0800", "0900", "1200", "1500", "1800", "2100"}
     assert RD.HARD_MAX_TTL_S == 3600 and RD.HARD_MAX_ATTEMPTS == 3
     assert not str(RD.DEFAULT_PATH).startswith(str(ROOT))
     assert not (CAP.PHASE_ACTIONS[CAP.PHASE_BUILD] & (CAP.PHASE_ACTIONS[CAP.PHASE_MERGE]

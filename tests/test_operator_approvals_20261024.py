@@ -398,3 +398,65 @@ def test_encoded_item_ids_resolve_for_read_and_open(rig):
     status, data = api.handle(api.PREFIX + "/approvals/policy%3A42/open", "POST",
                               {"document_sha": row["document"]["document_sha"]}, ctx=ctx)
     assert status == 200 and data["data"]["review_id"]
+
+
+def _rule_proposal_store(root, monkeypatch, *, pending=("rp-pending1",), decided=("rp-done1",)):
+    from scripts.lib.conflicts import proposals as rp
+    monkeypatch.setattr(rp, "default_root", lambda: root)
+    store = rp.ProposalStore(root)
+    for ident in (*pending, *decided):
+        store.append({"event": "proposal_created", "at": "2032-04-12T13:00:00Z", "proposal_id": ident,
+                      "proposal": {"proposal_id": ident, "signature": "ups-" + ident, "summary": "desk says FOO_BAR",
+                                   "plain_rule": "Treat FOO BAR as WATCH.", "tier": "T4", "never_auto": False,
+                                   "model": {"provider": "grok"}, "created_at": "2032-04-12T13:00:00Z",
+                                   "facts_sha256": "f" * 64}})
+    for ident in decided:
+        store.append({"event": "decided", "at": "2032-04-12T13:30:00Z", "proposal_id": ident,
+                      "decision": {"decision": "reject", "actor_kind": "operator", "actor": "tailnet:operator@example.test"}})
+    return store
+
+
+def test_pending_ai_rule_proposals_join_queue_as_governed_conflicts_linked_to_proposal_sheet(tmp_path, monkeypatch):
+    from urllib.parse import parse_qs, urlparse
+    _rule_proposal_store(tmp_path, monkeypatch)
+    rows = api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]()
+    assert [r["id"] for r in rows] == ["rule-proposal:rp-pending1"]  # approved/rejected proposals never wait on you
+    row = rows[0]
+    assert (row["kind"], row["decision_mode"], row["source"]) == ("CONFLICT", "GOVERNED_PATH", "conflict_rule_proposals")
+    assert urlparse(row["governed_href"]).path == "/conflicts/rules"
+    assert parse_qs(urlparse(row["governed_href"]).query)["proposal"] == ["rp-pending1"]
+    assert row["proposed_by"] == "AI rule proposer (grok)" and "facts_sha256" not in row["document"]["text"]
+    queue = c.queue_projection({"conflict_rule_proposals": lambda: rows}, decisions=[], now=NOW)
+    assert queue["pending_count"] == 1 and queue["items"][0]["requires_governed_action"]
+
+
+def test_rule_proposal_cannot_be_approved_in_approvals_ledger(tmp_path, monkeypatch, rig):
+    ctx, _, clock = rig
+    _rule_proposal_store(tmp_path, monkeypatch)
+    row = api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]()[0]
+    review = start(ctx, row)
+    read_all(ctx, row, clock, review)
+    with pytest.raises(c.Refused, match="GOVERNED_ACTION_REQUIRED"):
+        ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review))
+    # Recording a reject disposition never hides a still-pending proposal: only the conflict rules page decides it.
+    ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, decision="REJECT", request_id="request_654321"))
+    queue = c.queue_projection({"conflict_rule_proposals": lambda: [row]}, decisions=ctx.ledger.rows(), now=NOW)
+    assert [r["id"] for r in queue["items"]] == ["rule-proposal:rp-pending1"]
+
+
+def test_unreadable_rule_proposal_store_is_a_named_gap_not_zero(tmp_path, monkeypatch):
+    _rule_proposal_store(tmp_path, monkeypatch, pending=("rp-pending1",), decided=())
+    path = tmp_path / "data/conflicts/rule_proposals.jsonl"
+    path.write_text(path.read_text().replace("FOO_BAR", "TAMPERED"))
+    sources = {"conflict_rule_proposals": api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]}
+    queue = c.queue_projection(sources, decisions=[], now=NOW)
+    assert queue["pending_count"] is None and queue["gaps"][0]["source"] == "conflict_rule_proposals"
+
+
+def test_rule_proposal_href_allowlist_rejects_other_conflict_paths():
+    doc = c.document("x", source_sha=SHA)
+    ok = c.item(ident="rule-proposal:rp-1", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
+                source="conflict_rule_proposals", governed_href="/conflicts/rules?proposal=rp-1")
+    bad = c.item(ident="rule-proposal:rp-2", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
+                 source="conflict_rule_proposals", governed_href="/conflicts/rules/../../evil")
+    assert ok["governed_href"] == "/conflicts/rules?proposal=rp-1" and bad["governed_href"] is None

@@ -759,6 +759,11 @@ the default one: a `TRADEAI_RELEASE_WINDOW_STATE_DIR` naming another directory i
 Still open, each a reviewed protected-surface change: the controller must write the reserved token with
 `release_grant_binding.write_reservation_token` inside `_cap_effect` before the deploy runs; the deploy's promote
 should pass `--artifact-digest` of the prepared dir; then the flag flip, after the operator says so.
+**Status (2026-10-25): ACTIVE** (branch `feat/release-train-arm-20261025`, packet
+`docs/ops/packets/release-train-canary-arm-20261025/`; operator: "It needs to work without grant. It's a perpetual
+grant."). `CAPABILITY_BINDING_STATUS = "ACTIVE"`; `_cap_effect` writes the reservation token for
+`prepare_release` / `promote_release` (live only) right after `reserve()`. The `--artifact-digest` narrowing is still
+not passed by the deploy (optional; it can only narrow).
 
 ## L. Fallback: the manual release, STOP and revoke
 
