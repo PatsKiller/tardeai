@@ -4,11 +4,18 @@
  *  judgment: lane, conviction, stance, conflicts, next trigger, next step. This file only shapes it for display,
  *  ties armed alerts to prospects (orphans listed), and holds the tooltip text. No colour literals (design tokens). */
 
-export type CompanyFact = { value: string | null; source?: string | null; observed_at?: string | null; clock_kind?: string; missing_reason?: string | null }
+export type CompanyFact = { value: string | null; source?: string | null; observed_at?: string | null; clock_kind?: string; missing_reason?: string | null
+  /** company only: common card name; `legal_name` is the registered name (secondary). */
+  display_name?: string | null; legal_name?: string | null; display_name_source?: string | null }
+export type CompanyNews = { headline?: string | null; date?: string | null; date_kind?: string | null; source_label?: string | null; url?: string | null; not_catalyst_reason?: string | null }
 export type CompanyFacts = {
   schema: 'CIOCompanyFacts@v1'; security_guid?: string | null; status?: string; missing_reason?: string | null
   company: CompanyFact; description: CompanyFact; sector: CompanyFact; industry: CompanyFact
-  catalyst: { headline?: string | null; status?: string; published_at?: string | null; observed_at?: string | null; source?: string | null; feed?: string | null; url?: string | null; missing_reason?: string | null; factual_verification_status?: string | null }
+  catalyst: { headline?: string | null; status?: string; published_at?: string | null; observed_at?: string | null; source?: string | null; feed?: string | null; url?: string | null; missing_reason?: string | null; factual_verification_status?: string | null
+    /** C1 quality: the source event's date (scheduled event date, else publication), its kind, a human source and class. */
+    date?: string | null; date_kind?: string | null; source_label?: string | null; catalyst_class?: string | null; event_type?: string | null; event_at?: string | null; reason?: string | null }
+  /** Dated company news that is NOT a catalyst (price predictions, insider trades, plain price moves...). */
+  recent_news?: CompanyNews[]
   conflicts?: unknown[]
 }
 

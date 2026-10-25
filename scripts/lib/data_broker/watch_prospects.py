@@ -871,7 +871,10 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
     def _attach(r: dict[str, Any]) -> dict[str, Any]:
         saved = for_security(saved_company_facts, r["symbol"], r.get("security_guid"), now=now)
         r["company_facts"] = saved["company_facts"]
-        r["company"] = (saved["company_facts"].get("company") or {}).get("value")
+        company = saved["company_facts"].get("company") or {}
+        # Card name is the common display name; the registered legal name rides along as a secondary field.
+        r["company"] = company.get("display_name") or company.get("value")
+        r["company_legal_name"] = company.get("legal_name") or company.get("value")
         if facts_for is not None and "position_state" not in r:
             r.update({k: v for k, v in facts_for(r["symbol"]).items()})
         return r

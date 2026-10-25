@@ -189,12 +189,48 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
                 conflicts.append({"field": key, "reason": "source_values_disagree", "values": candidates})
         elif key == "company" and rejected_names:
             out[key]["missing_reason"] = "no_valid_registered_company_name_on_file"
-    cutoff = now - timedelta(days=30)
-    facts = list((catalyst or {}).get("facts") or [])
-    old_cat = prior.get("catalyst") or {}
-    if old_cat.get("headline"):
+    # Card display name (common name); the registered legal name stays as a secondary field.
+    from scripts.lib import cio_company_quality as quality
+    fv_name = rec.get("company") if not (rec.get("security_guid") and rec["security_guid"] != guid) else None
+    out["company"] = {**out["company"], **quality.display_name(
+        symbol, out["company"].get("value"), finviz_name=fv_name, description=(out.get("description") or {}).get("value"))}
+    out["catalyst"], out["recent_news"] = select_catalyst(
+        symbol, guid, list((catalyst or {}).get("facts") or []), inputs, profile=profile, prior=prior,
+        names=[n for n in (out["company"].get("display_name"), out["company"].get("value")) if n],
+        company_conflict=any(c.get("field") == "company" for c in conflicts), conflicts=conflicts, now=now)
+    if rejected_names:
+        out["rejected_company_names"] = list({json.dumps(r, sort_keys=True): r for r in rejected_names}.values())
+    out["conflicts"] = conflicts
+    out["missing_reason"] = None
+    if prior and {k: v for k, v in prior.items() if k != "assembled_at"} == {
+            k: v for k, v in out.items() if k != "assembled_at"}:
+        return deepcopy(prior)
+    return out
+
+
+CATALYST_KEYS = ("headline", "source", "feed", "published_at", "observed_at", "url", "source_ref", "event_id",
+                 "created_at", "clock_kind", "catalyst_type", "verification_basis", "factual_verification_status",
+                 "identity_verification", "identity_record", "event_at", "producer_source")
+
+
+def select_catalyst(symbol: str, guid: str | None, facts: list[dict], inputs: dict, *, profile: dict | None,
+                    prior: dict | None, names: list[str], company_conflict: bool, conflicts: list[dict],
+                    now: datetime) -> tuple[dict, list[dict]]:
+    """(catalyst, recent_news) under the reviewed C1 quality rules (config/cio_company_facts_quality.json).
+
+    The next dated upcoming event wins, then the newest recent material corporate event. Everything else that is
+    dated and about this company is recent news, never the catalyst. Nothing qualifies -> NONE_ON_FILE + reason.
+    """
+    from scripts.lib import cio_company_quality as quality
+    cfg = quality.rules()["catalyst"]
+    cutoff = now - timedelta(days=int(cfg["material_window_days"]))
+    horizon = now + timedelta(days=int(cfg["upcoming_horizon_days"]))
+    facts = list(facts) + quality.scheduled_events(symbol, profile, now=now)
+    old_cat = (prior or {}).get("catalyst") or {}
+    # A retained scheduled event is re-read from its schedule every pass (dates move); never carried forward.
+    if old_cat.get("headline") and old_cat.get("catalyst_class") != quality.UPCOMING:
         facts.append(deepcopy(old_cat))
-    eligible = []
+    upcoming, material, news = [], [], []
     for f in facts:
         if f.get("subject_guid") and str(f["subject_guid"]) != str(guid):
             conflicts.append({"field": "catalyst", "reason": "source_guid_mismatch", "source": f.get("source")})
@@ -204,40 +240,68 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
             continue
         if f.get("source") == "hermes_momentum_catalysts":
             from scripts.lib.hermes_scalp_catalyst_record import verify_identity, VERIFIED
-            name = (out.get("company") or {}).get("value")
+            name = names[0] if names else None
             raw = f.get("identity_record") or {"catalyst_summary": headline, "sources": []}
-            proof = verify_identity(symbol, raw, [name] if name else [])
+            proof = verify_identity(symbol, raw, [n for n in names if n])
             # A missing/conflicting company name is a collection gap, never
             # permission to bind arbitrary search evidence by ticker alone.
-            if not name or any(c.get("field") == "company" for c in conflicts):
+            if not name or company_conflict:
                 proof = {**proof, "status": "UNVERIFIED_IDENTITY", "reason": "company_name_missing_or_conflicting"}
             if proof.get("status") != VERIFIED:
                 conflicts.append({"field": "catalyst", "source": f.get("source"),
-                                   "reason": "hermes_company_identity_unverified", "identity_verification": proof})
+                                  "reason": "hermes_company_identity_unverified", "identity_verification": proof})
                 continue
             f = {**f, "identity_verification": proof, "identity_record": raw}
+        verdict = quality.classify(f, symbol=symbol, names=names)
+        if verdict["class"] == quality.UPCOMING:
+            at = quality.parse_when(f.get("event_at"))
+            if at and now.date() <= at.date() and at <= horizon:
+                upcoming.append((at, f, verdict))
+            continue
         at = timestamp(f.get("published_at")) or timestamp(f.get("observed_at"))
-        if at and cutoff <= at <= now:
-            eligible.append(f)
-    eligible.sort(key=lambda f: timestamp(f.get("published_at")) or timestamp(f.get("observed_at")), reverse=True)
-    if eligible:
-        f = eligible[0]
-        out["catalyst"] = {k: f.get(k) for k in ("headline", "source", "feed", "published_at", "observed_at",
-                                                     "url", "source_ref", "event_id", "created_at", "clock_kind", "catalyst_type", "verification_basis",
-                                                     "factual_verification_status", "identity_verification", "identity_record")}
-        out["catalyst"].update(status="CURRENT", missing_reason=None, source_verified_claim=bool(
-            f.get("source_verified_claim", f.get("verified"))) and
-            f.get("verification_basis") != "LEGACY_CONFIDENCE_THRESHOLD", independent_verification="NOT_MEASURED")
-    else:
-        out["catalyst"]["missing_reason"] = ("catalyst_source_not_measured" if any(str(e).startswith("catalyst_events:") for e in inputs.get("errors") or []) else "no_dated_current_catalyst_on_file")
-    if rejected_names:
-        out["rejected_company_names"] = list({json.dumps(r, sort_keys=True): r for r in rejected_names}.values())
-    out["conflicts"] = conflicts
-    out["missing_reason"] = None
-    if prior and {k: v for k, v in prior.items() if k != "assembled_at"} == {
-            k: v for k, v in out.items() if k != "assembled_at"}:
-        return deepcopy(prior)
-    return out
+        if not at or not cutoff <= at <= now:
+            continue
+        (material if verdict["class"] == quality.MATERIAL else news).append((at, f, verdict))
+    upcoming.sort(key=lambda x: x[0])
+    material.sort(key=lambda x: x[0], reverse=True)
+    news.sort(key=lambda x: x[0], reverse=True)
+    recent, seen = [], set()
+    for _, f, verdict in news:
+        if verdict["reason"] in ("headline_does_not_name_subject", "foreign_listing"):
+            continue  # probably another company's story; not this company's news either
+        key = " ".join(str(f.get("headline")).lower().split())[:120]
+        if key in seen:
+            continue
+        seen.add(key)
+        day, kind = quality.fact_date(f)
+        recent.append({"headline": f.get("headline"), "date": day, "date_kind": kind,
+                       "source_label": quality.source_label(f), "feed": f.get("feed"), "source": f.get("source"),
+                       "url": f.get("url"), "published_at": f.get("published_at"), "catalyst_type": f.get("catalyst_type"),
+                       "not_catalyst_reason": verdict["reason"]})
+        if len(recent) >= int(cfg["recent_news_max"]):
+            break
+    chosen = (upcoming or material or [None])[0]
+    if chosen:
+        _, f, verdict = chosen
+        out = {k: f.get(k) for k in CATALYST_KEYS}
+        day, kind = quality.fact_date(f)
+        out.update(status="CURRENT", missing_reason=None, reason=None, catalyst_class=verdict["class"],
+                   event_type=verdict["event_type"], date=day, date_kind=kind, source_label=quality.source_label(f),
+                   source_verified_claim=bool(f.get("source_verified_claim", f.get("verified"))) and
+                   f.get("verification_basis") != "LEGACY_CONFIDENCE_THRESHOLD", independent_verification="NOT_MEASURED",
+                   rules="config/cio_company_facts_quality.json")
+        return out, recent
+    unmeasured = any(str(e).startswith("catalyst_events:") for e in inputs.get("errors") or [])
+    skipped = sorted({v["reason"].split(":")[0] for _, _, v in news})
+    code = ("catalyst_source_not_measured" if unmeasured else
+            "no_qualifying_catalyst_only_news_on_file" if news else "no_dated_current_catalyst_on_file")
+    reason = ("Catalyst source was not read this pass." if unmeasured else
+              "No dated upcoming event or recent material corporate event on file" +
+              (f"; {len(news)} recent news item(s) are not catalysts ({', '.join(r.replace('_', ' ') for r in skipped)})."
+               if news else "."))
+    return ({"headline": None, "status": "MISSING" if unmeasured else "NONE_ON_FILE", "missing_reason": code,
+             "reason": reason, "date": None, "date_kind": "date_unknown",
+             "rules": "config/cio_company_facts_quality.json"}, recent)
 
 
 def public_research(record: dict, guid: str | None) -> dict:

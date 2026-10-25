@@ -99,7 +99,7 @@ def test_wrong_identity_stale_future_or_undated_events_do_not_invent_current_cat
     root, c = world; c['catalyst_events'] = captured([event(**patch)])
     P.populate(root, c, apply=True, now=NOW, env={})
     cat = tip(root)['research']['company_facts']['catalyst']
-    assert cat['headline'] is None and cat['status'] == 'MISSING'
+    assert cat['headline'] is None and cat['status'] == 'NONE_ON_FILE' and cat['reason']
 
 
 def test_proven_empty_and_uncaptured_sources_are_distinct(world):
