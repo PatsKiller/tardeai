@@ -195,8 +195,9 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 19.0.0 (PROPOSED, operator-applied patch) supersedes 18.0.0 (ACTIVE, #1931).
     # 20.0.0 (PROPOSED, operator-applied patch) supersedes 19.0.0 (ACTIVE, #1962).
     # 20.1.0 (PROPOSED, MINOR, operator-applied patch) supersedes 20.0.0 (ACTIVE, #2013).
+    # 20.2.0 (MINOR, ratified on #2073) supersedes 20.1.0 (ACTIVE, #2019).
     allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
-               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}}.get(
+               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}, (20, 2, 0): {"20.1.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f

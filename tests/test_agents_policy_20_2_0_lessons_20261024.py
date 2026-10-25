@@ -38,9 +38,17 @@ def test_does_not_touch_operator_gated_sections():
 
 def test_section_28_10_conflict_engine_rules_cite_causes():
     s = AGENTS.index("\n## 28.10 ")
-    sec = AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    sec = AGENTS[s:AGENTS.index("\n## 28.11 ", s)]
     bullets = re.split(r"\n- ", sec)[1:]
     assert len(bullets) == 6 and all("*Cause (§20):" in b for b in bullets)
     for needle in ("scripts/lib/conflicts", "config/conflict_rulebook.json", "never flag", "Gates are not conflicts",
                    "CIO is always informed", "never resolved automatically"):
         assert needle in sec, needle
+
+
+def test_section_28_11_transition_exceptions_name_replacement_and_sunset():
+    s = AGENTS.index("\n## 28.11 ")
+    sec = AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    bullets = re.split(r"\n- ", sec)[1:]
+    assert len(bullets) == 6 and all("*Cause (§20):" in b for b in bullets)
+    assert "2026-12-31" in sec and "No exception allows anything §0, §2 or §17 forbids" in sec
