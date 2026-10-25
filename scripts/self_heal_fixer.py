@@ -52,11 +52,14 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_egress as EG  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 from lib import self_heal_fixer_claims as C  # noqa: E402
+from lib import self_heal_train_intake as TI  # noqa: E402
 from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
 CUTOVER_POLICY = ROOT / "config" / "lane_cutover_policy.json"
+TRAIN_DEFECTS_REL = "data/self_heal/fixer_defects.jsonl"
+TRAIN_FIX_LOG_REL = "data/self_heal/fix_log.jsonl"
 _DEADLINE = contextvars.ContextVar("self_heal_absolute_deadline", default=None)
 
 
@@ -1139,6 +1142,22 @@ def advance(
     ):
         job["acceptance_hold"] = "required_exact_head_acceptance_unavailable_or_rejected"
         return None
+    if st == F.FIX_DEPLOYED and str(job.get("lane") or "").startswith(TI.LANE_PREFIX):
+        # A train-monitor defect has no lane output in the coordination ledger: it is recovered when the monitor
+        # verified on the release that the failure signature no longer occurs (fix log fixed-released + verified_at).
+        row = TI.verified_for_defect(root / TRAIN_FIX_LOG_REL, str(job.get("defect_id") or ""))
+        job["recovery_check"] = {"validator": "self_heal_train_monitor.fix_log", "recovered": bool(row)}
+        if row:
+            F.transition(
+                job,
+                F.OUTPUT_RECOVERED,
+                now,
+                output_at=row.get("verified_at"),
+                recovery_basis="train_monitor_fix_log_verified",
+                updated_at=now.isoformat(),
+            )
+            return F.OUTPUT_RECOVERED
+        return None
     if st == F.FIX_DEPLOYED:
         rv = output_recovered(job["lane"], F._parse(job.get("deployed_at")), recovery_contract(cfg, root))
         job["recovery_check"] = rv
@@ -1226,7 +1245,34 @@ def incidents_from(args, cfg: dict, root: Path) -> tuple[list[dict], Optional[di
         return [inc], None
     diag = _load_json(root / i["diagnosis_state_rel"])
     records = _tail_jsonl(root / i["diagnoses_rel"], int(i.get("diagnoses_tail_lines", 5000)))
-    return F.code_defects(records, diag, cfg), diag
+    found = F.code_defects(records, diag, cfg)
+    # Second producer (2026-10-25): the self-heal train monitor (scripts/self_heal_train_monitor.py) hands CI / train
+    # / post-release tester / sweep defects over as the SAME N8nCodeDefect@v1 contract in its own store, each record
+    # carrying the failing log tail as its receipt. Read-only here; consumption is recorded in this lane's state.
+    train = train_incidents(cfg, root)
+    known = {inc.get("defect_id") for inc in found}
+    return found + [inc for inc in train if inc.get("defect_id") not in known], diag
+
+
+def train_incidents(cfg: dict, root: Path) -> list[dict]:
+    """Incidents from data/self_heal/fixer_defects.jsonl (the train monitor's hand-off store), oldest first."""
+    path = root / str(cfg["intake"].get("train_defects_rel") or TRAIN_DEFECTS_REL)
+    out: dict[str, dict] = {}
+    for doc in TI.read_fixer_defects(path):
+        found = F.code_defects([doc], None, cfg)
+        if not found:
+            continue
+        inc = found[0]
+        inc["_receipt"] = doc.get("receipt")
+        out[inc["defect_id"]] = inc
+    return sorted(out.values(), key=lambda e: str(e.get("at") or ""))
+
+
+def train_incident_for(cfg: dict, root: Path, defect_id: Optional[str]) -> Optional[dict]:
+    for inc in train_incidents(cfg, root):
+        if inc.get("defect_id") == defect_id:
+            return inc
+    return None
 
 
 def main(
@@ -1439,7 +1485,12 @@ def _cycle(
     queue.sort(key=lambda j: str(j.get("created_at")))
     it = cfg["iteration"]
     for job in queue[: int(cfg["arming"]["max_jobs_per_cycle"])]:
-        src = ev_by_job.get(job["job_id"]) or {
+        src = ev_by_job.get(job["job_id"])
+        if src is None and str(job.get("lane") or "").startswith(TI.LANE_PREFIX):
+            tinc = train_incident_for(cfg, root, job.get("defect_id"))
+            if tinc is not None:
+                src = {"incident": tinc, "receipt": tinc.pop("_receipt", None), "row": None}
+        src = src or {
             "incident": {"lane": job["lane"], "key": job.get("escalation_key")},
             "receipt": failed_receipt(ledger, job["lane"], job.get("failed_run_id")),
             "row": registry_row(job["lane"]),

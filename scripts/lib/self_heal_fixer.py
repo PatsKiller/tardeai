@@ -1184,15 +1184,21 @@ def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any]
 def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
     """Push/PR allowed only when AGENTS.md (at the job's base) carries the ACTIVE amendment heading."""
     pg = cfg["policy_gate"]
+    # Either amendment authorizes the push/PR: the original 24.11 draft, or AGENTS.md 20.4.0 section 28.14
+    # "Self-heal monitor and fixer" (2026-10-25). Each needs the status word on its own heading line.
+    markers = [pg["amendment_heading_marker"], *(pg.get("additional_heading_markers") or [])]
     for line in (agents_text or "").splitlines():
-        if line.startswith(pg["amendment_heading_marker"]):
+        if any(line.startswith(m) for m in markers):
             ok = pg["required_status_word"] in line
             return {
                 "push_allowed": ok,
                 "why": "amendment ACTIVE" if ok else "amendment present but not ACTIVE",
                 "heading": line[:200],
             }
-    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.11 absent"}
+    return {
+        "push_allowed": False,
+        "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment (24.11 / 28.14) absent",
+    }
 
 
 def branch_name(job: Mapping[str, Any], cfg: Mapping[str, Any], now: datetime) -> str:

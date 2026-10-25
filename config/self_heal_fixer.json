@@ -52,6 +52,10 @@
   "policy_gate": {
     "_why": "AGENTS.md 12.0.0 section 24.5 forbids a scheduled job from pushing or opening a PR. Until the operator ratifies the amendment (docs/ops/self_heal_claude_fixer.md section 9) the fixer stops at fix_ready_local: the fix is committed on a local branch and the PR body is written as an artifact. The push/PR step runs only when AGENTS.md at the job's base commit carries this heading marker with the word ACTIVE on the same line.",
     "amendment_heading_marker": "## 24.11 Self-heal fix PRs from the self-heal-fixer lane",
+    "additional_heading_markers": [
+      "## 28.14 Self-heal monitor and fixer"
+    ],
+    "_additional_why": "2026-10-25: AGENTS.md 20.4.0 section 28.14 (docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
     "required_status_word": "ACTIVE"
   },
   "repo": {
@@ -272,7 +276,8 @@
     "contract_schema": "N8nCodeDefect@v1",
     "consumer": "claude_code_iterative_fix",
     "diagnoses_rel": "data/runtime/n8n_diagnoses/diagnoses.jsonl",
-    "diagnoses_tail_lines": 5000
+    "diagnoses_tail_lines": 5000,
+    "train_defects_rel": "data/self_heal/fixer_defects.jsonl"
   },
   "state": {
     "state_rel": "data/runtime/self_heal_fixer_state.json",
