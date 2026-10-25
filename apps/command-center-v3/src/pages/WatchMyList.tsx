@@ -13,7 +13,9 @@ import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watchProspectsModel'
 import { armedBySymbol, positionQuery, unwrapAny, withQuery, type ListRow } from '../lib/watchListsModel'
-import { Detail, Row, WatchConflictDetail, conflictSection } from './WatchProspects'
+import { Detail, Row, WatchConflictDetail, askFromRow, conflictSection } from './WatchProspects'
+import { useCioReview } from '../components/watch/CioReview'
+import { asksCio } from '../lib/watchProspectsModel'
 import {useConflictSheet} from '../components/conflicts/ConflictSheet'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import './W9Mobile.css'
@@ -53,13 +55,14 @@ export default function WatchMyList() {
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
   const [toast, setToast] = useState('')
+  const cio = useCioReview(refetch)
   const kind = sp.get('mine') || ''
   const mw = c?.my_watchlist
   const refreshUnavailable = snapshotStale || Boolean(error)
   const rows: ListRow[] = (mw?.rows || []).filter((r: ListRow) => !kind || (kind === 'starred' ? r.starred : (r.membership || []).some(m => m.kind === kind)))
   const selected = rows.find(r => r.symbol === sel) || null
   const onStep = (r: ProspectRow) => {
-    if (r.next_action.kind === 'resolve_conflict') {openConflict(r); return}
+    if (asksCio(r.next_action.kind)) {askFromRow(r, cio, openConflict, setSel); return}
     setSel(r.symbol)
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
@@ -116,7 +119,7 @@ export default function WatchMyList() {
             {rows.length === 0 && <div data-testid="mine-empty" style={{ padding: 12, color: TOKENS.text[2] }}>{(mw?.filters && Object.keys(mw.filters).length) || kind ? `None of your names match these filters. ${MINE_TIPS.empty}` : MINE_TIPS.empty}</div>}
             {rows.map(r => (
               <div key={r.symbol} className="watch-my-list-market-record" data-testid="mine-row" data-symbol={r.symbol}>
-                <Row r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict} alerts={armed[r.symbol] || 0}
+                <Row r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict} cio={cio} alerts={armed[r.symbol] || 0}
                   retained={refreshUnavailable} onAlert={r => setAlertFor(r)} onMineChanged={changed} extra={<RemoveButton symbol={r.symbol} onChanged={changed} />} />
               </div>
             ))}
@@ -124,10 +127,10 @@ export default function WatchMyList() {
         </section>
         {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Record" style={panel}>
           <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
-          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+          <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
         {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · watch record`} onBack={detail.close}>
-          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+          <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </MobileDetailSheet>}
         {selected && sheet.key && <WatchConflictDetail row={selected} onBack={sheet.close} onRefresh={refetch} />}
       </div>

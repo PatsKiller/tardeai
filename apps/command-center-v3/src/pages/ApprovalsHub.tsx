@@ -50,6 +50,7 @@ function Queue() {
               <Link className="primary" to="/approvals?tab=history">Full decision history</Link></section>
             <section className="panel"><h2>Notify me</h2><p className="muted">Approval notification delivery and its schedule have not been verified yet.</p></section>
             <section className="panel"><h2>Rulebook</h2><p>Read the rules, ask questions, and propose changes.</p><Link className="primary" to="/policy">Open Rulebook</Link></section>
+            <section className="panel"><h2>Conflict rules</h2><p>How disagreements between sources are decided, and AI-proposed rules waiting for you.</p><Link className="primary" to="/conflicts/rules">How conflicts are decided →</Link></section>
           </aside>
         </div>}
       </>}

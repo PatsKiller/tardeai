@@ -222,8 +222,49 @@ def canonical_rows(rows, *, resolver=None, projection=None):
                  source_signal={"stance": row.get("stance"), "conviction": row.get("conviction"), "source": row.get("conviction_source")})
         if truth.get("gap"):
             r["whats_missing"] = [*(row.get("whats_missing") or []), truth["gap"]["reason"]]
-        if len(r["conflicts"]) > len(row.get("conflicts") or []) or truth.get("gap"):
-            r["next_action"] = {"kind": "resolve_conflict", "label": "Ask the CIO", "reason": "The canonical CIO view needs review."}
+        added = r["conflicts"][len(row.get("conflicts") or []):]
+        unresolved = [c for c, raw in zip(added, _sources(row, truth)) if not raw.get("resolved")]
+        kind = (row.get("next_action") or {}).get("kind")
+        if unresolved:
+            r["next_action"] = {"kind": "resolve_conflict", "label": "Ask the CIO",
+                                "reason": "Sources disagree with the canonical CIO view; a recorded CIO review is needed."}
+        elif truth.get("gap") and kind not in {"protect", "resolve_conflict"}:
+            # No CIO stance is a missing view, not a disagreement (batch 31): never labelled as a conflict.
+            r["next_action"] = {"kind": "cio_missing", "label": "Ask the CIO for a view",
+                                "reason": truth["gap"]["reason"], "gap": dict(truth["gap"])}
+        out.append(r)
+    return out
+
+
+def _sources(row, truth):
+    """The raw origin of each conflict canonical_rows appends, in append order (stance/conviction, then record)."""
+    out = [{} for key in ("stance", "conviction")
+           if row.get(key) is not None and truth.get(key) is not None and row.get(key) != truth.get(key)]
+    return out + [c for c in truth.get("conflicts") or []]
+
+
+def attach_review_states(rows, *, reader=None):
+    """One batch read of each row's CIO review request state (queue + acquisition outcome); read-only.
+
+    An unreadable source is a named gap on the row, never "not requested".
+    """
+    symbols = sorted({str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")})
+    states, gap = {}, None
+    if symbols:
+        try:
+            if reader is None:
+                from .symbol_thesis_priority import review_states as reader
+            states = reader(symbols)
+        except (ImportError, OSError, ValueError) as exc:
+            gap = f"Review request state unavailable ({type(exc).__name__})"
+    out = []
+    for row in rows:
+        sym = str(row.get("symbol") or "").upper()
+        r = dict(row)
+        if sym in states:
+            r["review_state"] = states[sym]
+        elif sym:
+            r["review_state"] = {"status": "unavailable", "label": gap or "Review request state unavailable", "open": False}
         out.append(r)
     return out
 
@@ -268,7 +309,8 @@ def _flagged_name_count(rows):
     return len({r["security_guid"] for r in rows if r["conflict_section"].get("headline")})
 
 
-def prospects_page(payload, query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None):
+def prospects_page(payload, query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None,
+                   review_reader=None):
     lane = str(value(query, "lane", "actionable"))
     lanes = payload.get("lanes") or []
     if lane not in {r.get("id") for r in lanes}:
@@ -289,7 +331,8 @@ def prospects_page(payload, query=None, *, stance_resolver=None, stance_projecti
         out["lanes"].append({**item, "items": []})
     out["lane_membership"] = membership
     offset, limit = window(query)
-    attached = attach_conflict_sections(selected[offset:offset + limit], reader=section_reader, root=section_root)
+    attached = attach_review_states(attach_conflict_sections(selected[offset:offset + limit], reader=section_reader,
+                                                             root=section_root), reader=review_reader)
     paged = page_rows({**out, "_items": attached}, "_items", query, budget=POLL_BUDGET - 1_000,
                       total=len(selected), source_offset=offset)
     if "lanes" not in paged:
@@ -304,7 +347,8 @@ def prospects_page(payload, query=None, *, stance_resolver=None, stance_projecti
     return paged
 
 
-def read_curation(query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None):
+def read_curation(query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None,
+                  review_reader=None):
     """Validate stages BEFORE ranking so expired names never consume suggestion slots."""
     from .data_broker.watch_prospects import gather
     from .data_broker.watch_curation import build_curation, read_dismissed
@@ -356,7 +400,8 @@ def read_curation(query=None, *, stance_resolver=None, stance_projection=None, s
         else:
             out[section] = page_rows(data, "rows", query, budget=210_000)
     emitted = out["my_watchlist"]["rows"] + out["suggests"]["rows"]
-    attached = attach_conflict_sections(emitted, reader=section_reader, root=section_root)
+    attached = attach_review_states(attach_conflict_sections(emitted, reader=section_reader, root=section_root),
+                                    reader=review_reader)
     n_mine = len(out["my_watchlist"]["rows"])
     for section, rows in (("my_watchlist", attached[:n_mine]), ("suggests", attached[n_mine:])):
         data = out[section]
