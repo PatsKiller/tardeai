@@ -48,7 +48,8 @@
     "holding_protection_advisor": "protected holding/stop path; unchanged",
     "holding_protection_advisor_batch": "protected holding/stop path; unchanged",
     "deepseek_flash_operator_smoke": "must probe the named provider",
-    "oauth_lane_keepalive": "must probe OAuth providers"
+    "oauth_lane_keepalive": "must probe OAuth providers",
+    "unregistered": "Legacy calls without process_id; sentinel is not a governed task and remains unchanged"
   },
   "pricing": {
     "claude-haiku-5-5": {

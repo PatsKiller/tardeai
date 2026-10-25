@@ -33,7 +33,8 @@ def test_inprocess_router_falls_through_provider_errors_but_stops_on_manual_refu
     attempts=[]
     def call(_prompt,**kwargs):
         attempts.append(kwargs['lane'])
-        if len(attempts)<3:raise AnthropicError('RATE_LIMITED')
+        if len(attempts)==1:raise AnthropicError('RATE_LIMITED')
+        if len(attempts)==2:return '',{}
         return 'synthetic',{}
     monkeypatch.setattr(lc,'gate_and_generate',call)
     text,prov=promo.generate_in_process('synthetic',process_id='fixture',cfg=cfg,options={'return_provenance':True})
@@ -97,3 +98,22 @@ def test_native_free_fallback_keeps_request_cap_without_using_paid_pool(monkeypa
     assert check.call_args.kwargs['global_cap'] is None
     assert reserve.call_args.args[1]==0 and reserve.call_args.kwargs['global_cap'] is None
     assert settle.call_args.args[0]==42
+
+
+def test_missing_credit_admission_keeps_existing_free_routes(monkeypatch):
+    from scripts.lib import anthropic_routing as r
+    p=r.load_policy();cfg={'registered':True,'anthropic_first':True,'allowed_lanes':['anthropic','grok','chatgpt']}
+    plan=r.configured_plan('fixture',cfg,{'requested_policy':'FAST'},enabled={'grok','chatgpt','deepseek'},
+        model_for_provider=lambda p,t:p,env={'ANTHROPIC_API_KEY':'synthetic'},now=NOW,policy=p)
+    assert plan[0]['skip']=='process_caps_not_admitted'
+    assert plan[1]['provider']=='grok' and plan[1]['skip'] is None
+    assert not r.credit_admitted(cfg)
+    assert r.credit_admitted(dict(cfg,daily_soft_cap=10,daily_cost_cap_usd=0.1))
+
+
+def test_legacy_unregistered_sentinel_has_no_new_provider_authority():
+    import json
+    from pathlib import Path
+    root=Path(__file__).resolve().parents[1]
+    row=next(r for r in json.loads((root/'config/llm_process_registry.json').read_text())['processes'] if r['id']=='unregistered')
+    assert 'anthropic_first' not in row and 'allowed_lanes' not in row

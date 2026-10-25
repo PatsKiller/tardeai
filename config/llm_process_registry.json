@@ -938,8 +938,7 @@
       "category": "System",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Legacy calls without process_id",
-      "anthropic_first": true
+      "description": "Legacy calls without process_id"
     },
     {
       "id": "watchlist_agent_debate_flash",

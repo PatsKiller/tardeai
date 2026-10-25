@@ -177,7 +177,7 @@ Full caller runtime mapping, all-call daily totals, provider key configuration, 
 
 ## Implementation checkpoint (source only)
 
-The config opts 82 processes into Anthropic → Grok OAuth → ChatGPT OAuth → DeepSeek; eight named protected/provider-probe processes retain their original routing. Both the authenticated bridge and native consumption path preserve registration, manual intent, memory checks, per-process limits and paid fallback authorization. Native requested reasoning policies are retained when admitted. Provider/model kill switches remain effective. No caller-map entries were changed.
+The config opts 81 process profiles into Anthropic → Grok OAuth → ChatGPT OAuth → DeepSeek; eight protected/provider-probe processes and the legacy unregistered sentinel retain their original routing. Both the authenticated bridge and native consumption path preserve registration, manual intent, memory checks, per-process limits and paid fallback authorization. Native requested reasoning policies are retained when admitted. Provider/model kill switches remain effective. No caller-map entries were changed.
 
 The adapter uses standard-library HTTPS, no new dependency, bounded retries and deadlines, configured current models/prices, and ephemeral system-prompt caching. It meters input, output, cache reads and both cache-write durations. Explicit asynchronous Batch submission/readback is implemented and tested; existing synchronous callers stay synchronous. No current caller has been granted an automatic async conversion.
 
@@ -208,3 +208,10 @@ LLM Spend has a token-based, phone-first credit section, 44px details button, ro
 ## Proposed AGENTS wording (operator review only)
 
 While the configured Anthropic promotional credit is usable, governed cloud calls follow the config order Anthropic API → Grok OAuth → ChatGPT OAuth → DeepSeek. Model tiers and prices come from the model/credit configuration. The promotion is limited to $190 total, $10 per UTC day and its configured per-call limits, expires 2026-11-16 00:00 UTC, and never raises any process or paid fallback limit. Missing credentials, unavailable credit, exhaustion, expiry and provider refusal fall through under the same caller/manual/memory/output rules; billing exhaustion is durable and rate limits are bounded retries, not exhaustion. Local-only and explicitly protected/provider-pinned processes keep their approved routes. Direct bypasses remain named gaps. No LLM path places, sizes or stops orders.
+
+
+## Final admission correction
+
+81 task profiles opt into the new order. The eight protected/provider probes plus the legacy `unregistered` sentinel are unchanged (nine exclusions). **56** opted-in source rows declare positive USD/request caps; **25** need live DB cap overrides measured or an operator budget decision. No budgets were added. At runtime, absent caps skip Anthropic and preserve existing free-only service; paid fallback still requires its own admission. Missing token-limit fields retain the caller's existing limits while the promotional per-call authorization still bounds worst-case token cost. The dry-run table labels these admission boundaries instead of claiming all 81 are ready.
+
+The first broader compatibility run used system Python's Pydantic 1 and exposed an existing `model_validate` dependency mismatch. The existing CI virtualenv has Pydantic 2; its subsequent 257-test compatibility run passed without installing dependencies. Final exact-head receipts supersede these checkpoint counts. No refusal was bypassed to obtain that result.

@@ -1283,8 +1283,7 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0,
-          "anthropic_first": true
+          "cost_ceiling_usd": 2.0
         },
         "watchlist_agent_debate_flash": {
           "primary": {

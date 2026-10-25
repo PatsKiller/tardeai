@@ -142,6 +142,11 @@ class AnthropicTransport:
             except AnthropicError as exc:
                 self.book.record_failure("timeout" if exc.code == "TIMEOUT" else "invalid_response", now=self.now())
                 raise
+            except Exception as exc:
+                # A malformed/aborted provider response can follow billable work.
+                self.book.record_failure("invalid_response", now=self.now())
+                billable = method == "POST" and path in {"/v1/messages", "/v1/messages/batches"}
+                raise AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=billable) from exc
             if not isinstance(body, dict):
                 raise AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=path == "/v1/messages")
             if 200 <= status < 300:
@@ -238,10 +243,11 @@ class AnthropicTransport:
                               process_cap=process_cap, now=self.now())
         except CreditDenied as exc:
             raise AnthropicError(exc.reason) from exc
-        result_received = False
+        result_received = request_started = False
         try:
             if self.reserve_process is not None:
                 self.reserve_process(projected, model)
+            request_started = True
             body, ambiguous = self._send("POST", "/v1/messages", payload, deadline=deadline)
             result_received = True
             if body.get("model") != model:
@@ -271,7 +277,8 @@ class AnthropicTransport:
                                  "credit_usage_unknown": ambiguous, "request_sent": True,
                                  "provider_request_id": body.get("id"), "funding_source": "anthropic_promotional_credit"}}
         except BaseException as exc:
-            actual = None if (result_received or getattr(exc, "possibly_billable", False)) else Decimal(0)
+            actual = None if (result_received or getattr(exc, "possibly_billable", False)
+                              or (request_started and not isinstance(exc, AnthropicError))) else Decimal(0)
             self.book.settle(client_request_id, actual, now=self.now())
             if self.settle_process is not None:
                 self.settle_process(actual)

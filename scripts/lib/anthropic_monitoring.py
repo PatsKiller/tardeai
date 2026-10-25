@@ -91,7 +91,7 @@ def snapshot(root: Path, *, policy=None, now=None, configured=None) -> dict:
     status=credit['status']
     if not configured:
         status='NOT_CONFIGURED'
-    elif (critical or last_success is None) and status=='OK':
+    elif (critical or last_success is None or (last_error and utc(last_error['at']) > utc(last_success))) and status=='OK':
         status='DEGRADED'
     return {'schema':'AnthropicProviderStatus@v1','provider':'anthropic','status':status,
             'configured':bool(configured),'credit':credit,'usage':usage,

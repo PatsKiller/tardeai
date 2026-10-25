@@ -96,3 +96,12 @@ def test_milestone_messages_are_stable_for_notification_intent_dedupe(tmp_path):
     later=due_notes(snapshot(tmp_path,policy=p,now=NOW+timedelta(minutes=5),configured=True),p)
     assert first==later
     assert p['milestone_dedupe_minutes']>22*24*60
+
+
+def test_latest_unrecovered_transient_failure_is_degraded_not_exhausted(tmp_path):
+    p=load_policy();book=CreditBook(tmp_path,p);book.record_failure('rate_limited',now=NOW)
+    path=tmp_path/'data/runtime/provider_cost/events.jsonl'
+    path.write_text(json.dumps({'provider':'anthropic','usage_start':(NOW-timedelta(minutes=5)).isoformat(),'model':'fixture','calculated_cost_usd':0.001})+'\n')
+    result=snapshot(tmp_path,policy=p,now=NOW,configured=True)
+    assert result['status']=='DEGRADED' and result['credit']['status']=='OK'
+    assert not result['p1_continuous_failure']

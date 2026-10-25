@@ -290,7 +290,7 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
     rows,total=report(tmp_path,observed)
     assert len(rows)==90
-    assert len([r for r in rows if r['new'].startswith('anthropic')])==82
+    assert len([r for r in rows if r['new'].startswith('anthropic')])==81
     assert total==Decimal('0.7226378')
     assert before=={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
 
@@ -318,3 +318,11 @@ def test_disabling_provider_still_returns_to_configured_oauth_before_paid():
     plan=r.configured_plan('fixture',cfg,{'requested_policy':'FAST'},enabled={'grok','chatgpt','deepseek'},
         model_for_provider=lambda p,t:p,policy=p,env={'ANTHROPIC_API_KEY':'synthetic'},now=NOW)
     assert plan[0]['skip']=='provider_disabled' and plan[1]['provider']=='grok'
+
+
+@pytest.mark.parametrize('failure',[ValueError('synthetic malformed response'),KeyboardInterrupt()])
+def test_abort_or_invalid_http_decode_keeps_possibly_billable_hold(tmp_path,failure):
+    _,transport=modules();client,book,*_=adapter_fixture(tmp_path,[failure])
+    expected=KeyboardInterrupt if isinstance(failure,KeyboardInterrupt) else transport.AnthropicError
+    with pytest.raises(expected):invoke(client)
+    assert Decimal(book.snapshot(now=NOW)['reserved_usd'])>0

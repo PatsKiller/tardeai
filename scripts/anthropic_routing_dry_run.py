@@ -40,7 +40,7 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
             old_model='proxy-selected (not pinned in routing row)'
         rows.append({'process':pid,'old':old['provider']+' / '+old_model,
                      'new':('anthropic / '+new) if eligible else 'EXCLUDED / unchanged',
-                     'tier':tier,'observed_calls':observed['events'] if observed else 'NOT_MEASURED',
+                     'tier':tier,'admission':'DECLARED_USD_REQUEST_CAPS' if process.get('daily_cost_cap_usd') and process.get('daily_soft_cap') else 'DB_BUDGET_NOT_MEASURED','observed_calls':observed['events'] if observed else 'NOT_MEASURED',
                      'comparable_token_usd':str(cost) if cost is not None else 'NOT_MEASURED'})
     return rows,total
 
@@ -51,9 +51,9 @@ def main():
     ap.add_argument('--observations',type=Path,required=True)
     args=ap.parse_args()
     rows,total=report(args.project_root,json.loads(args.observations.read_text()))
-    print('| Process | Old provider / model | New provider / model | Tier | Observed calls | Comparable-token USD |')
-    print('|---|---|---|---|---:|---:|')
-    for row in rows: print('| '+' | '.join(str(row[k]) for k in ('process','old','new','tier','observed_calls','comparable_token_usd'))+' |')
+    print('| Process | Old provider / model | New provider / model | Tier | Budget admission | Observed calls | Comparable-token USD |')
+    print('|---|---|---|---|---|---:|---:|')
+    for row in rows: print('| '+' | '.join(str(row[k]) for k in ('process','old','new','tier','admission','observed_calls','comparable_token_usd'))+' |')
     print(f'\nObserved-subset comparable-token estimate: ${total:.8f} against $10/day. Full-day cost: NOT_MEASURED.')
     print('Assumes usable key/credit, identical observed input/output volumes and no cache savings; no dispatch. Provider output/thinking and unobserved OAuth calls can change actual spend. UTC pacing differs from captured ET-day census.')
 

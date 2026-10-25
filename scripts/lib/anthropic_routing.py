@@ -25,6 +25,18 @@ def eligible(process_id: str, cfg: dict[str, Any], *, policy: dict | None = None
                 and process_id not in policy.get("excluded_processes", {}))
 
 
+def credit_admitted(cfg: dict) -> bool:
+    """Paid/promotional dispatch requires existing declared request and USD caps.
+
+    A missing cap does not create paid authority and must not disable the caller's
+    existing free-only route. Live DB cap overrides are resolved by the native gate.
+    """
+    try:
+        return amount(cfg.get("daily_cost_cap_usd")) > 0 and int(cfg.get("daily_soft_cap")) > 0
+    except (RuntimeError, ValueError, TypeError):
+        return False
+
+
 def tier_for(logical_policy: str, reasoning_tier: str = "standard", *, policy: dict | None = None) -> str:
     policy = load_policy() if policy is None else policy
     if str(logical_policy).upper() == "PRO_MAX":
@@ -75,6 +87,8 @@ def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set 
                 skip = "not_configured"
             elif now >= expiry:
                 skip = "credit_expired"
+            elif not credit_admitted(cfg):
+                skip = "process_caps_not_admitted"
         else:
             model = model_for_provider(provider, logical)
             if provider not in enabled:
@@ -223,6 +237,13 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
                                 requested_policy=candidate["policy_name"])
         try:
             text, provenance = lc.gate_and_generate(prompt, process_id=process_id, **call)
+            if not str(text or "").strip():
+                raise AnthropicError("EMPTY_OUTPUT")
+            if options.get("response_json") or options.get("output_schema_id"):
+                try:
+                    json.loads(text)
+                except (ValueError, TypeError) as exc:
+                    raise AnthropicError("OUTPUT_INVALID") from exc
             provenance.update(provider=provider, route_receipts=receipts + [{"provider": provider, "outcome": "ok"}],
                               fallback_used=bool(receipts))
             return (text, provenance) if options.get("return_provenance") else text

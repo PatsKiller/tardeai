@@ -1935,11 +1935,11 @@ def walk_routes(
                 "client_request_id": request_id,
             }
             if funding is not None:
-                kwargs["max_tokens"] = min(int(max_tokens), int(funding.cfg["max_output_tokens"]))
+                kwargs["max_tokens"] = min(int(max_tokens), int(funding.cfg.get("max_output_tokens") or max_tokens))
             if provider == "anthropic" and funding is not None:
                 kwargs.update(process_id=funding.process_id,
                               process_cap=funding.cfg["daily_cost_cap_usd"],
-                              max_input_tokens=funding.cfg["max_input_tokens"],
+                              max_input_tokens=funding.cfg.get("max_input_tokens"),
                               cost_ceiling_usd=funding.cost_ceiling,
                               credit_tier=cand.get("credit_tier"), deadline_s=remaining)
             if isinstance(transport, oauth_transport.OAuthProxyTransport):
@@ -2623,7 +2623,7 @@ def execute_governed_call(
         log.exception("reservation failed for %s", process_id)
         return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}", status=500)
 
-    _funding = (promo.FundingContext(process_id, cfg, reservation_id, global_cap=gcap,
+    _funding = (promo.FundingContext(process_id, dict(cfg, max_output_tokens=cfg.get("max_output_tokens") or max_tokens), reservation_id, global_cap=gcap,
                                      cost_ceiling=policy.get("cost_ceiling_usd")) if _promotion else None)
     # Real provider calls get a durable side-effect identity before dispatch.
     # Mock calls intentionally remain isolated from the production journal.

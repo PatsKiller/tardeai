@@ -1331,8 +1331,8 @@ def gate_and_generate(
     if is_anthropic_lane:
         from lib.consumption_run_manual import validate_paid_cap_config
         validate_paid_cap_config(cfg, require_global=False)
-        effective_out = min(effective_out, int(cfg["max_output_tokens"]))
-        effective_in = int(cfg["max_input_tokens"])
+        effective_out = min(effective_out, int(cfg.get("max_output_tokens") or effective_out))
+        effective_in = int(cfg["max_input_tokens"]) if cfg.get("max_input_tokens") else None
         reservation_id = reserve_projected_cost(process_id, 0, model_id=model_id, process_config=cfg,
             metadata={"funding_source": "anthropic_promotional_credit", "paid_component_usd": 0})
         _funding = promo.FundingContext(process_id, cfg, reservation_id, global_cap=None,
@@ -1428,7 +1428,7 @@ def gate_and_generate(
         cap = check_cost_cap(process_id, projected_usd=0.0, global_cap=None if _anthropic_route else gcap)
         if not cap.get("allow"):
             raise RuntimeError(f"COST_CAP_EXCEEDED: {cap}")
-        if _anthropic_route and lane in {"grok", "chatgpt"}:
+        if _anthropic_route and lane in {"grok", "chatgpt"} and promo.credit_admitted(cfg):
             reservation_id = reserve_projected_cost(process_id, 0, process_config=cfg, global_cap=None,
                 metadata={"funding_source": "oauth_subscription", "paid_component_usd": 0})
 
@@ -1488,9 +1488,14 @@ def gate_and_generate(
                 from lib import bridge_agent_preconditions as _gate
                 refusal = _gate.output_refusal(process_id, response, _gate.registry_row(process_id))
                 if refusal:
-                    raise RuntimeError(refusal["code"])
+                    from lib.anthropic_transport import AnthropicError
+                    raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True)
                 if response_json or output_schema_id:
-                    json.loads(result[0])
+                    try:
+                        json.loads(result[0])
+                    except (ValueError, TypeError) as invalid:
+                        from lib.anthropic_transport import AnthropicError
+                        raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True) from invalid
             else:
                 result = llm_lane.generate(
                     prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
