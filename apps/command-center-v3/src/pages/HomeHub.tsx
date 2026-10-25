@@ -10,7 +10,9 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 export default function HomeHub(_props: Props) {
   const { data, loading, error } = useW7Pages()
   return <DeskPage title="Home" purpose="What needs you today — straight from the CIO." sources={[
-    { id: 'cio', label: 'CIO record', asOf: data?.do_now?.as_of, laneIds: ['cio-decision-engine'], gap: data?.do_now?.gap?.reason },
+    // The CIO record is projected on each request from the holdings, stops and approval-queue sources below; it has
+    // no scheduled writer of its own. cio-decision-engine is PAUSED since 2026-08-08 and is not its producer.
+    { id: 'cio', label: 'CIO record', asOf: data?.do_now?.as_of, gap: data?.do_now?.gap?.reason },
     { id: 'holdings', label: 'Holdings', asOf: data?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: data?.portfolio?.gap?.reason },
     { id: 'stops', label: 'Stops', asOf: data?.stops?.as_of, laneIds: ['unified-stop-supervisor', 'stop-health-check'], gap: data?.stops?.gap?.reason },
   ]} decisionGap="Review the CIO-ranked actions below.">
