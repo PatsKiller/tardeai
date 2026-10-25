@@ -38,6 +38,7 @@ from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
 from tests.support import release_train_h0 as RTH0  # noqa: E402
+from tests.support import cio_prospect_canary_20261025 as CPC  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -148,6 +149,8 @@ def _scope() -> set[str]:
     # 2026-10-22 release train H.0 shadow-enable (tests/support/release_train_h0.py): n8n-native request lanes and
     # pr-hygiene-audit, no cron side to fence; a request is one O_EXCL file per window id. Not keyed.
     canary -= set(RTH0.LIVE)
+    # 2026-10-25 cio-prospect-shadow canary (tests/support/cio_prospect_canary_20261025.py): n8n-native, overwrite-only.
+    canary -= set(CPC.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 
