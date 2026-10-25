@@ -15,6 +15,9 @@ from scripts.lib import cio_instrument_record as ir
 from scripts.lib.identity_carriage import resolve_security_identity
 
 LANE_ID = 'cio-company-facts-populate'
+# Deeper than the prospect builder's 3: the C1 quality rules pass over news to the newest material event.
+CAPTURE_CATALYSTS_PER_SYMBOL = 12
+CATALYST_FACTS_MAX = 40
 RECEIPT_REL = 'data/runtime/cio-company-facts-populate_last.json'
 
 
@@ -53,16 +56,22 @@ def _coverage(records: list[dict], groups: dict, identities: dict, *, now: datet
     for name, syms in groups.items():
         fields = {k: 0 for k in facts.FIELDS}
         complete, gaps = 0, []
-        catalysts = {'current': 0, 'missing': 0, 'gaps': []}
+        catalysts = {'current': 0, 'missing': 0, 'dated': 0, 'none_on_file': 0, 'stored_current': 0, 'by_class': {}, 'gaps': []}
         for sym in syms:
             guid = (identities.get(sym) or {}).get('security_guid')
+            stored = (((snapshot.get(str(guid)) or {}).get('company_facts') or {}).get('catalyst') or {})
+            catalysts['stored_current'] += stored.get('status') == 'CURRENT' and bool(stored.get('headline'))
             public = for_security(snapshot, sym, guid, now=now)
             f = (public or {}).get('company_facts') or {}
             cat = f.get('catalyst') or {}
             if cat.get('status') == 'CURRENT' and cat.get('headline'):
                 catalysts['current'] += 1
+                catalysts['dated'] += bool(cat.get('date'))
+                cls = cat.get('catalyst_class') or 'UNCLASSIFIED_LEGACY'
+                catalysts['by_class'][cls] = catalysts['by_class'].get(cls, 0) + 1
             else:
                 catalysts['missing'] += 1
+                catalysts['none_on_file'] += cat.get('status') == 'NONE_ON_FILE'
                 catalysts['gaps'].append({'symbol': sym, 'reason': cat.get('missing_reason') or 'catalyst_not_on_cio_record'})
             missing = []
             for key in fields:
@@ -147,7 +156,7 @@ def populate(root: Path, capture: dict, *, apply=False, now=None, backend=None, 
         if rec.get('subject_key') in {r.get('subject_key') for r in records if r.get('security_guid') not in (None, guid)}:
             result['gaps'].append({'symbol': sym, 'reason': 'canonical_subject_key_identity_conflict'})
             continue
-        catalyst, _, _ = catalyst_facts(sym, catalysts, ident, now=now)
+        catalyst, _, _ = catalyst_facts(sym, catalysts, ident, now=now, max_facts=CATALYST_FACTS_MAX)
         assembled = facts.assemble(sym, ident, inputs, catalyst=catalyst,
                                    prior=(rec.get('research') or {}).get('company_facts'), now=now)
         # Retained values can be identical to the freshly read winning evidence.
@@ -236,7 +245,7 @@ def capture_readonly_inputs(root: Path, query, *, now=None) -> dict:
     bounds = query('SELECT min(trade_date) AS first_trade_date, max(trade_date) AS last_trade_date, count(*) AS ledger_rows FROM trade_transactions')
     syms = sorted(set(membership['names']) | set(held) | set(formerly))
     from scripts.lib.cio_prospect_builder import load_catalyst_inputs
-    catalyst_events = load_catalyst_inputs(query)['catalyst_events']
+    catalyst_events = load_catalyst_inputs(query, per_symbol=CAPTURE_CATALYSTS_PER_SYMBOL)['catalyst_events']
     return {'catalyst_events': catalyst_events, 'captured_at': now.isoformat(), 'database_read_only': True,
             'snapshot_coherence': 'PER_QUERY_TRANSACTIONS; original observation clocks retained',
             'my_watchlist': sorted(membership['names']), 'held': held, 'formerly_held': formerly,

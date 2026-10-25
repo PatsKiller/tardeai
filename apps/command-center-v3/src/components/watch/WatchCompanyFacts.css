@@ -30,3 +30,16 @@
   .watch-company-catalyst { display: block; }
   .watch-company-catalyst > * { margin-right: 5px; }
 }
+.watch-company-legal { display: block; color: var(--text-3); font-size: 11px; margin-top: 1px; }
+.watch-company-upcoming { font-size: 11px; font-weight: 600; color: var(--info-color); text-transform: uppercase; }
+.watch-company-none-reason { display: block; }
+.watch-company-news { margin-top: 6px; }
+.watch-company-news ul { margin: 2px 0 0; padding-left: 16px; }
+.watch-company-news li { margin: 2px 0; }
+/* Phone (mobile-first standard 2026-10-24): the catalyst reads as headline, then date · source on its own
+   line; links are full-width tap targets >= 44px; no hover-only information (reasons are shown inline). */
+@media (max-width: 820px) {
+  .watch-company-catalyst a, .watch-company-news a { display: block; min-height: 44px; padding: 10px 0; box-sizing: border-box; }
+  .watch-company-catalyst .watch-company-source { display: block; }
+  .watch-company-news ul { padding-left: 0; list-style: none; }
+}
