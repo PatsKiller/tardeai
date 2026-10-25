@@ -83,6 +83,8 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
         if (url.pathname === '/api/v2/governance/policy/feedback') { feedback.push(body); return respond(body) }
         if (url.pathname === '/api/v2/cio/ask') { questions.push(body); return respond({ thread_id: 'thr_fixture' }) }
       }
+      // Approvals → Designs (design workflow): an empty synthetic design queue; decisions are covered by e2e/design-approvals.fixture.mjs.
+      if (url.pathname === '/api/v2/design/approvals' && request.method() === 'GET') return respond({ proposed: [], dsn_proposed: [], decided_recently: [], counts: { proposed: 0, dsn_proposed: 0 }, complete: true, gaps: [], as_of: '2026-10-24T12:00:00Z', can_decide: true, signature: 'fixture' })
       forbidden.push(request.method() + ' ' + url.pathname); return route.abort()
     })
     await page.goto('http://w11-approvals-fixture.test/approvals')

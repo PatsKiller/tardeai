@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "design_approvals_20261025",
+  "files": [
+    "tests/test_design_decisions_20261025.py"
+  ],
+  "anchor": "DESIGN_APPROVALS_20261025",
+  "comment": [
+    "ANCHOR: DESIGN_APPROVALS_20261025 — Approvals → Designs lifecycle (design workflow approved by the operator 2026-10-25; AGENTS.md §28.13 proposed): GET /api/v2/design/approvals projects PROPOSED page versions from design/, PROPOSED docs/designs DSNs and Board 19 'Decided recently' (ledger DESIGN decisions + the 10-24 back-fill labelled 'recorded in handoff'); POST /api/v2/design/decide is operator tailnet identity via serve_proxy + hard same-origin CSRF only (agents, service token, loopback refused), binds the current status.json fingerprint (DOCUMENT_CHANGED on drift), REJECT needs a reason, request_id idempotent, appends a DECIDED kind DESIGN row to the operator decisions ledger through DecisionLedger (same hash chain and store gate: STORE_APPROVAL_PENDING while the operator_decisions row is proposed) and mirrors the effective state to the private store (0600 decision.json); GET /api/v2/design/asset serves only PNG/JPEG listed in status.json with a matching sha256, inside the page's private folder, to the operator or an authenticated reader. Hermetic."
+  ]
+}
