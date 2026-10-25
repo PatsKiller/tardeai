@@ -281,6 +281,9 @@ export default function TradeReplayChart({ trade, onClose, embedded = false, pro
   }, [playing, data, speed])
 
   const controlButton = { background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, color: TOKENS.text[1], borderRadius: RADIUS.md, minHeight: 44, minWidth: 44, cursor: 'pointer' } as const
+  // Pressed/active controls use the tone tokens (tinted bg + tone text) so they keep AA contrast in both themes.
+  const toggleButton = (on: boolean, tone: 'info' | 'success' | 'danger' = 'info') => ({ ...controlButton, fontSize: TYPE.xs, padding: '4px 10px',
+    ...(on ? { background: toneVars(tone).bg, border: `1px solid ${toneVars(tone).border}`, color: toneVars(tone).color } : {}) })
   const pnl = !embedded && data?.markers?.length === 2 ? (Number(data.markers[1].price) - Number(data.markers[0].price)) : null
   const ti = data?.integrity?.time_integrity
   const holdSec = ti?.hold_seconds
@@ -371,11 +374,11 @@ export default function TradeReplayChart({ trade, onClose, embedded = false, pro
           <div className="tradeinview-controls" style={{ gap: 10, marginTop: 10 }}>
             <button type="button" aria-label="Step back" onClick={() => { setPlaying(false); setN(v => Math.max(1, (v || data.bars.length) - 1)) }} style={{ ...controlButton }}>⏮</button>
             <button type="button" aria-label="Step forward" onClick={() => { setPlaying(false); setN(v => Math.min(data.bars.length, (v || data.bars.length) + 1)) }} style={{ ...controlButton }}>⏭</button>
-            <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(p => !p)} style={{ fontSize: TYPE.base, padding: '4px 12px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: playing ? p.danger : p.success, color: TOKENS.text[0], cursor: 'pointer', fontWeight: 700 }}>{playing ? '❚❚ pause' : '▶ replay'}</button>
-            <button onClick={() => setAutoSyncScale(v => !v)} title="Auto-sync Y-axis to visible replay bars (off = lock to full trade)" style={{ fontSize: TYPE.xs, padding: '4px 10px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: autoSyncScale ? p.series[0] : 'var(--bg2)', color: autoSyncScale ? TOKENS.text[0] : 'var(--text2)', cursor: 'pointer' }}>{autoSyncScale ? '⟳ Auto scale' : '🔒 Locked'}</button>
-            <button onClick={resyncScale} title="Re-fit price and time axes now" style={{ fontSize: TYPE.xs, padding: '4px 10px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>↻ Re-sync</button>
+            <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(p => !p)} style={{ ...toggleButton(true, playing ? 'danger' : 'success'), fontSize: TYPE.base, padding: '4px 12px', fontWeight: 700 }}>{playing ? '❚❚ pause' : '▶ replay'}</button>
+            <button type="button" aria-pressed={autoSyncScale} onClick={() => setAutoSyncScale(v => !v)} title="Auto-sync Y-axis to visible replay bars (off = lock to full trade)" style={toggleButton(autoSyncScale)}>{autoSyncScale ? '⟳ Auto scale' : '🔒 Locked'}</button>
+            <button type="button" onClick={resyncScale} title="Re-fit price and time axes now" style={toggleButton(false)}>↻ Re-sync</button>
             <div style={{ display: 'flex', gap: 2 }} title="Replay speed">
-              {(embedded ? [1, 4, 16] : [0.5, 1, 2, 4, 8]).map(s => <button key={s} onClick={() => setSpeed(s)} style={{ fontSize: TYPE.xs, padding: '3px 6px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: speed === s ? p.series[0] : 'var(--bg2)', color: speed === s ? TOKENS.text[0] : 'var(--text3)', cursor: 'pointer' }}>{s}×</button>)}
+              {(embedded ? [1, 4, 16] : [0.5, 1, 2, 4, 8]).map(s => <button type="button" key={s} aria-pressed={speed === s} onClick={() => setSpeed(s)} style={{ ...toggleButton(speed === s), padding: '3px 6px' }}>{s}×</button>)}
             </div>
             <input type="range" aria-label="Replay position" min={1} max={data.bars.length} value={n === 0 ? data.bars.length : n} onChange={e => { setPlaying(false); setN(Number(e.target.value)) }} style={{ flex: 1 }} />
             <span style={{ fontSize: TYPE.xs, color: 'var(--text3)', minWidth: 70, textAlign: 'right' }}>{n === 0 ? data.bars.length : n}/{data.bars.length} bars</span>
