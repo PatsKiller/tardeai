@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import '../pages/OpsEvidencePages.css'
 import { BB, T, TYPE, numCell, statePill } from '../lib/watchTokens'
 import { hubPanel } from '../lib/terminalHubChrome'
+import { useApi } from '../hooks/useApi'
 
 /**
  * Real paid AI + search spend (operator ask 2026-09-14): dollars and tokens by provider, model and
@@ -19,13 +21,15 @@ const PERIODS: { key: Period; label: string }[] = [
 ]
 
 function usd(v: number | null | undefined): string {
-  const n = Number(v ?? 0)
+  if (v == null || !Number.isFinite(v)) return '—'
+  const n = v
   if (!n) return '$0'
   return n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4)}`
 }
 
 function tok(v: number | null | undefined): string {
-  const n = Number(v ?? 0)
+  if (v == null || !Number.isFinite(v)) return '—'
+  const n = v
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
@@ -51,35 +55,17 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
 
 export default function SpendPanel() {
   const [period, setPeriod] = useState<Period>('week')
-  const [report, setReport] = useState<any>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch(`/api/v2/consumption/spend?period=${period}`, { cache: 'no-store' })
-      const j = await res.json()
-      const data = j?.data ?? j
-      if (!data?.ok) throw new Error(data?.error || 'spend report unavailable')
-      setReport(data.report)
-    } catch (e: any) {
-      setError(String(e?.message || e))
-      setReport(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [period])
-
-  useEffect(() => { void load() }, [load])
+  const read = useApi<any>(`/api/v2/consumption/spend?period=${period}`, 90_000)
+  const report = read.data?.report
+  const loading = read.loading
+  const error = read.error || (read.data?.ok === false ? read.data.error || 'spend report unavailable' : '')
 
   const t = report?.totals
   const cap = report?.global_cap_usd_per_day
   const offShare = t ? (t.usd ? t.usd_offpeak / t.usd : 1) : 1
 
   return (
-    <div className="cc-panel" style={{ ...hubPanel(true), marginBottom: 16 }}>
+    <div className="cc-panel ops-evidence-page" style={{ ...hubPanel(true), marginBottom: 16 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: TYPE.md, fontWeight: 800, color: BB.text0 }}>Spend — paid AI &amp; search</div>
@@ -102,7 +88,7 @@ export default function SpendPanel() {
         </div>
       </div>
 
-      {error ? <div style={{ ...statePill('red'), marginBottom: 8 }}>Spend unavailable: {error}</div> : null}
+      {error || read.stale ? <div role="alert" style={{ ...statePill('red'), marginBottom: 8 }}>Spend {report ? 'out of date' : 'unavailable'}: {error || 'refresh pending'}. Retrying automatically.</div> : null}
       {loading && !report ? <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading spend…</div> : null}
 
       {t ? (
@@ -135,18 +121,18 @@ export default function SpendPanel() {
             </div>
           ) : null}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 12, marginBottom: 12 }}>
             <div style={{ overflowX: 'auto' }}>
               <div style={{ fontSize: TYPE.sm, fontWeight: 800, color: BB.text0, marginBottom: 4 }}>By provider</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="ops-evidence-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr><th style={th}>Provider</th><th style={{ ...th, textAlign: 'right' }}>Spend</th><th style={{ ...th, textAlign: 'right' }}>Calls</th><th style={{ ...th, textAlign: 'right' }}>Tokens</th></tr></thead>
                 <tbody>
                   {(report.by_provider || []).map((p: any) => (
                     <tr key={p.provider}>
-                      <td style={td}>{p.provider}</td>
-                      <td style={num}>{usd(p.usd)}</td>
-                      <td style={num}>{Number(p.calls).toLocaleString()}</td>
-                      <td style={num}>{tok(Number(p.tokens_in) + Number(p.tokens_out))}</td>
+                      <td data-label="Provider" style={td}>{p.provider}</td>
+                      <td data-label="Spend" style={num}>{usd(p.usd)}</td>
+                      <td data-label="Calls" style={num}>{Number(p.calls).toLocaleString()}</td>
+                      <td data-label="Tokens" style={num}>{tok(Number(p.tokens_in) + Number(p.tokens_out))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -154,16 +140,16 @@ export default function SpendPanel() {
             </div>
             <div style={{ overflowX: 'auto' }}>
               <div style={{ fontSize: TYPE.sm, fontWeight: 800, color: BB.text0, marginBottom: 4 }}>By model</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="ops-evidence-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr><th style={th}>Model</th><th style={th}>Lane</th><th style={{ ...th, textAlign: 'right' }}>Spend</th><th style={{ ...th, textAlign: 'right' }}>Calls</th><th style={{ ...th, textAlign: 'right' }}>In / out</th></tr></thead>
                 <tbody>
                   {(report.by_model || []).map((m: any, i: number) => (
                     <tr key={`${m.model}-${m.lane}-${i}`}>
-                      <td style={td}>{m.model || '—'}</td>
-                      <td style={{ ...td, color: BB.text3 }}>{m.lane || '—'}</td>
-                      <td style={num}>{usd(m.usd)}</td>
-                      <td style={num}>{Number(m.calls).toLocaleString()}</td>
-                      <td style={num}>{tok(m.tokens_in)} / {tok(m.tokens_out)}</td>
+                      <td data-label="Model" style={td}>{m.model || '—'}</td>
+                      <td data-label="Lane" style={{ ...td, color: BB.text3 }}>{m.lane || '—'}</td>
+                      <td data-label="Spend" style={num}>{usd(m.usd)}</td>
+                      <td data-label="Calls" style={num}>{Number(m.calls).toLocaleString()}</td>
+                      <td data-label="In / out" style={num}>{tok(m.tokens_in)} / {tok(m.tokens_out)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -173,7 +159,7 @@ export default function SpendPanel() {
 
           <div style={{ overflowX: 'auto' }}>
             <div style={{ fontSize: TYPE.sm, fontWeight: 800, color: BB.text0, marginBottom: 4 }}>By process</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="ops-evidence-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th style={th}>Process</th><th style={th}>Kind</th>
@@ -185,17 +171,17 @@ export default function SpendPanel() {
               <tbody>
                 {(report.by_process || []).map((p: any) => (
                   <tr key={`${p.process_id}-${p.kind}`}>
-                    <td style={td} title={p.process_id}>{p.process_name}</td>
-                    <td style={td}><span style={statePill(p.kind === 'scheduled' ? 'green' : 'slate')}>{p.kind === 'scheduled' ? 'Scheduled' : 'Ad hoc'}</span></td>
-                    <td style={num}>{usd(p.usd)}</td>
-                    <td style={num}>{Number(p.calls).toLocaleString()}{p.failures ? <span style={{ color: BB.red }}> · {p.failures} failed</span> : null}</td>
-                    <td style={num}>{tok(p.tokens_in)} / {tok(p.tokens_out)}</td>
-                    <td style={{ ...num, color: p.kind === 'scheduled' && p.calls_peak ? BB.amber : BB.text2 }}>
+                    <td data-label="Process" style={td} title={p.process_id}>{p.process_name}</td>
+                    <td data-label="Kind" style={td}><span style={statePill(p.kind === 'scheduled' ? 'green' : 'slate')}>{p.kind === 'scheduled' ? 'Scheduled' : 'Ad hoc'}</span></td>
+                    <td data-label="Spend" style={num}>{usd(p.usd)}</td>
+                    <td data-label="Calls" style={num}>{Number(p.calls).toLocaleString()}{p.failures ? <span style={{ color: BB.red }}> · {p.failures} failed</span> : null}</td>
+                    <td data-label="Tokens in / out" style={num}>{tok(p.tokens_in)} / {tok(p.tokens_out)}</td>
+                    <td data-label="On peak" style={{ ...num, color: p.kind === 'scheduled' && p.calls_peak ? BB.amber : BB.text2 }}>
                       {p.calls_peak ? `${Number(p.calls_peak).toLocaleString()} · ${usd(p.usd_peak)}` : '—'}
                     </td>
-                    <td style={{ ...td, color: BB.text3 }}>{p.models || '—'}</td>
-                    <td style={num}>{p.daily_cost_cap_usd != null ? `${usd(p.daily_cost_cap_usd)}/day` : '—'}</td>
-                    <td style={{ ...td, color: BB.text3, whiteSpace: 'nowrap' }}>{p.last_call || '—'}</td>
+                    <td data-label="Models" style={{ ...td, color: BB.text3 }}>{p.models || '—'}</td>
+                    <td data-label="Process cap" style={num}>{p.daily_cost_cap_usd != null ? `${usd(p.daily_cost_cap_usd)}/day` : '—'}</td>
+                    <td data-label="Last call" style={{ ...td, color: BB.text3, whiteSpace: 'nowrap' }}>{p.last_call || '—'}</td>
                   </tr>
                 ))}
               </tbody>

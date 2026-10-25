@@ -2124,6 +2124,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
 | `docs/ops/W4_JOBS_DATA_ERRORS_20261024.md` | Jobs DATA_ERROR consumer: canonical conflict section |
 | `docs/ops/W4_JOBS_HEALTH_20261024.md` | Jobs and health: execution evidence and incident recovery |
+| `docs/ops/W4_LLM_BROKER_PAGES_20261024.md` | LLM Spend and Broker Access page preparation |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
