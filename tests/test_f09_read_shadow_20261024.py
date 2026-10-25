@@ -323,6 +323,8 @@ def test_each_lane_packet_has_matching_argv_contract_and_unchanged_host_lineage(
     entry = packet["allowlist_entry"]
     row = packet["registry_row"]
     assert path.stem == entry["broker_read_step"] == packet["step_id"]
+    # Repository lock convention (every config/n8n_run_allowlist.json lock is /tmp/<name>.lock); no host paths.
+    assert entry["lock"].startswith("/tmp/") and "/home/" not in path.read_text()
     assert packet["source"]["harness_blob"] == "a8c9738b0c1ca36b0edfca42a6273a83c4f1cb9e"
     assert executor.validate_entry(entry) is None and shadow.row_problem(row, entry) is None
     monkeypatch.setattr(dispatch, "load_run_allowlist_entries", lambda: {entry["lane_id"]: entry})
