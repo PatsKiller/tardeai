@@ -48073,7 +48073,7 @@ def _hermes_discovery_gaps(query=None):
 
 
 def _cio_truth_readers():
-    """W1 read adapters; dependency 8a81111c49a23ec002810fdeed2853f9e8071337."""
+    """W1 read adapters; dependency f74bea4042959719c19d7b01a88237cd5fe99d12."""
     from lib import cio_truth
     return cio_truth
 
