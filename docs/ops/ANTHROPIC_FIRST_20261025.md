@@ -190,7 +190,7 @@ LLM Spend has a token-based, phone-first credit section, 44px details button, ro
 ## Verification boundaries and next actions
 
 - Isolated tests use pinned clocks, fake HTTP/ledger services and a temporary PROJECT_ROOT. No real API calls or secrets were used. Canonical pricing is tested against the authorization calculation for all three models, long context, caching and Batch.
-- `npm run build` passed before the final nullable-cost presentation adjustment; final verification receipts are in the local build report. Test coverage, host-path and dark-contract checks reported zero new violations at the preceding checkpoint.
+- `npm run build` passed with the final nullable-cost presentation; its frontend source tree is unchanged at the tested backend head. The final selected CI-parity run passed 263 tests. Test coverage, host-path and line-ending checks have zero new violations; exact receipts and blocked proof are in the local build report.
 - The socket-backed HTTP test was refused by the sandbox (`Operation not permitted`). Do not retry it through another transport or privilege path.
 - Chromium launch was refused by the sandbox before the 412/390 fixture could run (`sandbox_host_linux.cc`, `Operation not permitted`). Screenshots and tap proof are **NOT_MEASURED**. `scripts/tests/anthropic_credit_fixture.mjs` is the prepared no-server, network-blocked fixture for an operator-permitted environment.
 - Full provider-call counts remain NOT_MEASURED: the read-only PostgreSQL aggregate was OS-refused. The exact readonly SQL is preserved in the packet; do not infer zero OAuth calls.
