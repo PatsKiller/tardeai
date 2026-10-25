@@ -1,0 +1,6387 @@
+{
+ "_comment": "SYNTHETIC pinned inputs run through the TradeInView builders; regenerate via tests/test_tradeinview_redesign_fixture_20261025.py. Not production data.",
+ "calendar": {
+  "empty": {
+   "account": null,
+   "account_options": [],
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "days": [
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-01",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-02",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-03",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-04",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-05",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-06",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-07",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-08",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-09",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-10",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-11",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-12",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-13",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-14",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-15",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-16",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-17",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-18",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-19",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-20",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-21",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-22",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-23",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-24",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-25",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-26",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-27",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-28",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-29",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-30",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    }
+   ],
+   "events": [],
+   "events_paging": {
+    "known_total": 0,
+    "limit": 50,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 0,
+    "total_count": null
+   },
+   "gaps": [
+    {
+     "missing_sources": [],
+     "reason": "membership source coverage unavailable or incomplete",
+     "source": "operator watchlist scope"
+    }
+   ],
+   "gaps_paging": {
+    "known_total": 1,
+    "limit": 100,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 1,
+    "total_count": 1
+   },
+   "month": "2026-11",
+   "names": "held_watch",
+   "non_grid_days": [],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeCalendar@v1",
+   "selected_day": null,
+   "summary": {
+    "active_days": 0,
+    "coverage": {
+     "missing_sources": [],
+     "reasons": [],
+     "status": "COMPLETE"
+    },
+    "green_days": 0,
+    "known_active_days": 0,
+    "known_realized_pl": 0.0,
+    "known_trade_count": 0,
+    "realized_pl": 0.0,
+    "trade_count": 0,
+    "unpriced_trade_count": 0
+   },
+   "weeks": [
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-01",
+     "included_dates": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "2026-11-01"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-01",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06"
+     ],
+     "end_date": "2026-11-08",
+     "included_dates": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-02",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13"
+     ],
+     "end_date": "2026-11-15",
+     "included_dates": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-09",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20"
+     ],
+     "end_date": "2026-11-22",
+     "included_dates": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-16",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27"
+     ],
+     "end_date": "2026-11-29",
+     "included_dates": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-23",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-30",
+     "included_dates": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-30",
+     "trade_count": 0
+    }
+   ],
+   "writes": 0
+  },
+  "missing": {
+   "account": null,
+   "account_options": [],
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "days": [
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-01",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-02",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-03",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-04",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-05",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-06",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-07",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-08",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-09",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-10",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-11",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-12",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-13",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-14",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-15",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-16",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-17",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-18",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-19",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-20",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-21",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-22",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-23",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-24",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-25",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-26",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-27",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-28",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-29",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "date": "2026-11-30",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": null,
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "symbols": [],
+     "trade_count": null,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "unpriced_trade_count": 0
+    }
+   ],
+   "events": [],
+   "events_paging": {
+    "known_total": 0,
+    "limit": 50,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 0,
+    "total_count": null
+   },
+   "gaps": [
+    {
+     "as_of": null,
+     "reason": "fixture source unavailable",
+     "source": "schwab_round_trips"
+    },
+    {
+     "missing_sources": [],
+     "reason": "membership source coverage unavailable or incomplete",
+     "source": "operator watchlist scope"
+    }
+   ],
+   "gaps_paging": {
+    "known_total": 2,
+    "limit": 100,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 2,
+    "total_count": 2
+   },
+   "month": "2026-11",
+   "names": "held_watch",
+   "non_grid_days": [],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeCalendar@v1",
+   "selected_day": null,
+   "summary": {
+    "active_days": null,
+    "coverage": {
+     "missing_sources": [
+      "schwab_round_trips"
+     ],
+     "reasons": [
+      "fixture source unavailable"
+     ],
+     "status": "PARTIAL"
+    },
+    "green_days": null,
+    "known_active_days": 0,
+    "known_realized_pl": null,
+    "known_trade_count": 0,
+    "realized_pl": null,
+    "trade_count": null,
+    "unpriced_trade_count": 0
+   },
+   "weeks": [
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-01",
+     "included_dates": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "2026-11-01"
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-01",
+     "trade_count": null
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06"
+     ],
+     "end_date": "2026-11-08",
+     "included_dates": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08"
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-02",
+     "trade_count": null
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13"
+     ],
+     "end_date": "2026-11-15",
+     "included_dates": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-09",
+     "trade_count": null
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20"
+     ],
+     "end_date": "2026-11-22",
+     "included_dates": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22"
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-16",
+     "trade_count": null
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27"
+     ],
+     "end_date": "2026-11-29",
+     "included_dates": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29"
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-23",
+     "trade_count": null
+    },
+    {
+     "coverage": {
+      "missing_sources": [
+       "schwab_round_trips"
+      ],
+      "reasons": [
+       "fixture source unavailable"
+      ],
+      "status": "PARTIAL"
+     },
+     "days": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-30",
+     "included_dates": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "known_realized_pl": null,
+     "known_trade_count": 0,
+     "realized_pl": null,
+     "start_date": "2026-11-30",
+     "trade_count": null
+    }
+   ],
+   "writes": 0
+  },
+  "populated": {
+   "account": null,
+   "account_options": [
+    {
+     "id": "schwab_roth_ira",
+     "label": "Schwab Roth IRA"
+    }
+   ],
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "days": [
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-01",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-02",
+     "event_counts": {
+      "catalyst": 1
+     },
+     "events": [
+      {
+       "as_of": null,
+       "date": "2026-11-02",
+       "date_basis": "publication date; event date not recorded",
+       "id": "catalyst:1",
+       "missing_reason": null,
+       "source": "fixture publisher",
+       "source_event_type": "catalyst",
+       "source_ref": null,
+       "symbol": "TSTA",
+       "title": "Fixture publication",
+       "type": "catalyst"
+      }
+     ],
+     "events_paging": {
+      "known_total": 1,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 1,
+      "total_count": null
+     },
+     "heat_intensity": 1.0,
+     "known_realized_pl": 27.5,
+     "known_trade_count": 1,
+     "realized_pl": 27.5,
+     "symbols": [
+      {
+       "known_realized_pl": 27.5,
+       "realized_pl": 27.5,
+       "symbol": "TSTA",
+       "trade_count": 1
+      }
+     ],
+     "trade_count": 1,
+     "trades": [
+      {
+       "account_id": "schwab_roth_ira",
+       "account_label": "Schwab Roth IRA",
+       "account_missing_reason": null,
+       "basis_reason": null,
+       "basis_unknown": false,
+       "classification": null,
+       "entry_at": "2026-10-28T14:15:00+00:00",
+       "entry_date": "2026-10-28",
+       "entry_price": 41.25,
+       "entry_trade_date": null,
+       "exit_at": "2026-11-02T15:25:00+00:00",
+       "exit_date": "2026-11-02",
+       "exit_price": 43.75,
+       "exit_trade_date": null,
+       "hold_days": 5.048611111111111,
+       "hold_days_basis": "elapsed timestamps",
+       "provenance": [
+        {
+         "observed_at": null,
+         "record_id": "901",
+         "source": "schwab_round_trips",
+         "writer": "scripts/schwab_journal_builder.py"
+        }
+       ],
+       "realized_pl": 27.5,
+       "return_pct": 6.060606060606055,
+       "shares": 11.0,
+       "source": "schwab_round_trips",
+       "symbol": "TSTA",
+       "trade_id": "rt:fixture-ledger-trip"
+      }
+     ],
+     "trades_paging": {
+      "known_total": 1,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 1,
+      "total_count": 1
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-03",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.43636363636363634,
+     "known_realized_pl": -12.0,
+     "known_trade_count": 1,
+     "realized_pl": -12.0,
+     "symbols": [
+      {
+       "known_realized_pl": -12.0,
+       "realized_pl": -12.0,
+       "symbol": "TSTB",
+       "trade_count": 1
+      }
+     ],
+     "trade_count": 1,
+     "trades": [
+      {
+       "account_id": "schwab_roth_ira",
+       "account_label": "Schwab Roth IRA",
+       "account_missing_reason": null,
+       "basis_reason": null,
+       "basis_unknown": false,
+       "classification": null,
+       "entry_at": "2026-10-28T14:15:00+00:00",
+       "entry_date": "2026-10-28",
+       "entry_price": 41.25,
+       "entry_trade_date": null,
+       "exit_at": "2026-11-03T15:00:00+00:00",
+       "exit_date": "2026-11-03",
+       "exit_price": 40.16,
+       "exit_trade_date": null,
+       "hold_days": 6.03125,
+       "hold_days_basis": "elapsed timestamps",
+       "provenance": [
+        {
+         "observed_at": null,
+         "record_id": "902",
+         "source": "schwab_round_trips",
+         "writer": "scripts/schwab_journal_builder.py"
+        }
+       ],
+       "realized_pl": -12.0,
+       "return_pct": 6.060606060606055,
+       "shares": 11.0,
+       "source": "schwab_round_trips",
+       "symbol": "TSTB",
+       "trade_id": "rt:fixture-ledger-trip-3"
+      }
+     ],
+     "trades_paging": {
+      "known_total": 1,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 1,
+      "total_count": 1
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-04",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-05",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-06",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-07",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-08",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-09",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-10",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-11",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-12",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-13",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-14",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-15",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-16",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-17",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-18",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-19",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-20",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-21",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-22",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-23",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-24",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-25",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-26",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-27",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-28",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-29",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "date": "2026-11-30",
+     "event_counts": {},
+     "events": [],
+     "events_paging": {
+      "known_total": 0,
+      "limit": 3,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": null
+     },
+     "heat_intensity": 0.0,
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "symbols": [],
+     "trade_count": 0,
+     "trades": [],
+     "trades_paging": {
+      "known_total": 0,
+      "limit": 10,
+      "next_offset": null,
+      "offset": 0,
+      "returned_count": 0,
+      "total_count": 0
+     },
+     "unpriced_trade_count": 0
+    }
+   ],
+   "events": [
+    {
+     "as_of": null,
+     "date": "2026-11-02",
+     "date_basis": "publication date; event date not recorded",
+     "id": "catalyst:1",
+     "missing_reason": null,
+     "source": "fixture publisher",
+     "source_event_type": "catalyst",
+     "source_ref": null,
+     "symbol": "TSTA",
+     "title": "Fixture publication",
+     "type": "catalyst"
+    }
+   ],
+   "events_paging": {
+    "known_total": 1,
+    "limit": 50,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 1,
+    "total_count": null
+   },
+   "gaps": [
+    {
+     "missing_sources": [],
+     "reason": "membership source coverage unavailable or incomplete",
+     "source": "operator watchlist scope"
+    }
+   ],
+   "gaps_paging": {
+    "known_total": 1,
+    "limit": 100,
+    "next_offset": null,
+    "offset": 0,
+    "returned_count": 1,
+    "total_count": 1
+   },
+   "month": "2026-11",
+   "names": "held_watch",
+   "non_grid_days": [],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeCalendar@v1",
+   "selected_day": null,
+   "summary": {
+    "active_days": 2,
+    "coverage": {
+     "missing_sources": [],
+     "reasons": [],
+     "status": "COMPLETE"
+    },
+    "green_days": 1,
+    "known_active_days": 2,
+    "known_realized_pl": 15.5,
+    "known_trade_count": 2,
+    "realized_pl": 15.5,
+    "trade_count": 2,
+    "unpriced_trade_count": 0
+   },
+   "weeks": [
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-01",
+     "included_dates": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "2026-11-01"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-01",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06"
+     ],
+     "end_date": "2026-11-08",
+     "included_dates": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08"
+     ],
+     "known_realized_pl": 15.5,
+     "known_trade_count": 2,
+     "realized_pl": 15.5,
+     "start_date": "2026-11-02",
+     "trade_count": 2
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13"
+     ],
+     "end_date": "2026-11-15",
+     "included_dates": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-09",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20"
+     ],
+     "end_date": "2026-11-22",
+     "included_dates": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-16",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27"
+     ],
+     "end_date": "2026-11-29",
+     "included_dates": [
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29"
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-23",
+     "trade_count": 0
+    },
+    {
+     "coverage": {
+      "missing_sources": [],
+      "reasons": [],
+      "status": "COMPLETE"
+     },
+     "days": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null
+     ],
+     "end_date": "2026-11-30",
+     "included_dates": [
+      "2026-11-30",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "known_realized_pl": 0.0,
+     "known_trade_count": 0,
+     "realized_pl": 0.0,
+     "start_date": "2026-11-30",
+     "trade_count": 0
+    }
+   ],
+   "writes": 0
+  }
+ },
+ "clock": "2026-11-04T17:00:00+00:00",
+ "journeys": {
+  "fresh": {
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "counts": {
+    "all": 4,
+    "awaiting_fill": 1,
+    "closed": 2,
+    "conflicts": 0,
+    "internal": 0,
+    "open": 2,
+    "operator": 0,
+    "unknown": 4
+   },
+   "freshness": [
+    {
+     "at": null,
+     "key": "fills",
+     "label": "Fills",
+     "tip": "Closed round trips from schwab_round_trips (built from the broker transaction ledger every 15 min in market hours). A sell that is not in the ledger yet is not shown as closed.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "holdings",
+     "label": "Holdings",
+     "tip": "Open positions from the holdings_accounts store (lib.portfolio_positions, the one accessor). Its as_of is shown; a stop that filled after it is flagged.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "stops",
+     "label": "Stops",
+     "tip": "Observed stop orders from stop_last_known — one durable row per stop order the scan saw, with the time it was captured. Stop levels are reference facts, never orders.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "cio",
+     "label": "CIO",
+     "tip": "Conviction, rank and stance from the CIO opportunity book (cio_opportunity_projection + its append-only history).",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "reentry",
+     "label": "Re-entry desk",
+     "tip": "The deterministic re-entry desk snapshot — the same record the Watch page's Re-entry near lane reads. No model sets READY / NEAR / BLOCK.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "links",
+     "label": "Origin links",
+     "tip": "Recommendation → trade links (learning loop PR1: recommendation_registry + trade_recommendation_links). Without them, origin falls back to the CIO opportunity history and CIO entry calls.",
+     "tone": "warning",
+     "value": "not available"
+    },
+    {
+     "at": null,
+     "key": "source",
+     "label": "Record",
+     "tip": "AGENTS.md §26: pages read the CIO prospect record through its projection. Until that store is live this page uses an interim adapter over today's sources with the identical shape.",
+     "tone": "warning",
+     "value": "interim — CIO prospect store not live"
+    }
+   ],
+   "freshness_chips": [
+    {
+     "at": "2026-11-02T15:25:00Z",
+     "key": "last_closing_fill",
+     "label": "Last closing fill",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-02T15:25:00Z"
+    },
+    {
+     "at": "2026-11-04T16:45:00+00:00",
+     "key": "ledger_sync",
+     "label": "Ledger synced",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-04T16:45:00+00:00"
+    },
+    {
+     "at": "2026-11-04T16:55:00Z",
+     "key": "holdings_sync",
+     "label": "Holdings synced",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-04T16:55:00Z"
+    },
+    {
+     "at": "2026-11-04T16:50:00+00:00",
+     "key": "stop_monitor",
+     "label": "Stop monitor",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-04T16:50:00+00:00"
+    },
+    {
+     "at": null,
+     "key": "next_broker_sync",
+     "label": "Next registered broker sync",
+     "missing_reason": "active registered ingest schedule not available",
+     "tip": "active registered ingest schedule not available",
+     "tone": "neutral",
+     "value": "Not measured"
+    }
+   ],
+   "gaps": [],
+   "interim": true,
+   "journeys": [
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-28T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 41.0,
+      "source": null
+     },
+     "exit": null,
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "mark under stop $40.00 · fill sync time not measured",
+      "evidence": [
+       "stop_last_known",
+       "holdings_accounts mark"
+      ],
+      "kind": "stop_likely_filled",
+      "label": "Awaiting fill",
+      "level_ref": 40.0,
+      "raises": 0,
+      "tone": "info"
+     },
+     "fill_qty": 11.0,
+     "hold_days": 7.1,
+     "identity_status": "unresolved",
+     "mark": {
+      "at": "2026-11-04T16:59:00Z",
+      "price_ref": 39.0
+     },
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": -22.0,
+      "basis": "unrealized",
+      "note": null,
+      "pct": -4.88
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 40.0,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 40.0,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-11-04T16:55:00Z",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": null,
+       "source": "holdings_accounts",
+       "value": 11.0
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": "2026-11-04T16:59:00Z",
+       "missing_reason": null,
+       "source": "stop_last_known + recorded mark",
+       "stop_at": "2026-11-04T16:30:00+00:00",
+       "value": "Stop $40.00 · mark $39.00"
+      },
+      {
+       "at": null,
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "loaded window is not proof of an unobserved fill",
+       "source": null,
+       "value": "no closing fill in loaded ledger"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$41.00"
+       },
+       {
+        "key": "return",
+        "label": "Return so far",
+        "source": "fills + mark",
+        "tone": "danger",
+        "value": "-4.88%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "7.1 days"
+       },
+       {
+        "key": "stops",
+        "label": "Stop path",
+        "source": "stop_last_known",
+        "tone": "neutral",
+        "value": "40.00 (0 raises)"
+       },
+       {
+        "key": "cause",
+        "label": "Status",
+        "source": "fills + stops",
+        "tone": "warning",
+        "value": "Stop likely filled — not confirmed"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": -4.88,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-28T14:15:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "open",
+     "stop_path": [
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "change_pct": null,
+       "kind": "initial",
+       "level_ref": 40.0,
+       "order_ref": null,
+       "prior_ref": null,
+       "source": "stop_last_known",
+       "status": "WORKING"
+      }
+     ],
+     "symbol": "TSTA",
+     "timeline": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 11 sh @ $41.00",
+       "source": null
+      },
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "detail": null,
+       "kind": "stop_change",
+       "label": "Stop $40.00",
+       "source": "stop_last_known",
+       "value": {
+        "level_ref": 40.0,
+        "prior_ref": null
+       }
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "cause": "stop_likely_filled",
+       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. The stop has likely filled; the position will close here once the broker fill is synced.",
+       "kind": "exit_fill",
+       "label": "Stop likely filled — not confirmed",
+       "source": "stop_last_known + mark",
+       "unconfirmed": true
+      }
+     ],
+     "trade_id": "open:schwab_roth_ira:TSTA"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-28T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 41.25,
+      "source": null
+     },
+     "exit": {
+      "at": "2026-11-02T15:25:00+00:00",
+      "price_ref": 43.75,
+      "source": null
+     },
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "Sold at $43.75; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+      "evidence": [
+       "schwab_round_trips exit price"
+      ],
+      "kind": "unknown",
+      "label": "Exit cause unknown",
+      "level_ref": null,
+      "raises": 0
+     },
+     "fill_qty": 11.0,
+     "hold_days": 5.0,
+     "identity_status": "unresolved",
+     "mark": null,
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": 27.5,
+      "basis": "realized",
+      "note": null,
+      "pct": 6.06
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 43.75,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 43.75,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": "originating quantity source unavailable",
+       "source": null,
+       "value": 11.0
+      },
+      {
+       "at": null,
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": null,
+       "missing_reason": "mark or observed stop unavailable",
+       "source": "stop_last_known + recorded mark",
+       "stop_at": null,
+       "value": "Stop — · mark —"
+      },
+      {
+       "at": "2026-11-02T15:25:00+00:00",
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "originating fill source unavailable",
+       "source": null,
+       "value": "closing timestamp recorded; origin unavailable"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$41.25"
+       },
+       {
+        "key": "exit",
+        "label": "Exit fill",
+        "source": "fills",
+        "tone": "success",
+        "value": "$43.75"
+       },
+       {
+        "key": "return",
+        "label": "Return",
+        "source": "fills",
+        "tone": "success",
+        "value": "+6.06%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "5.0 days"
+       },
+       {
+        "key": "cause",
+        "label": "Why it ended",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Exit cause unknown"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": 6.06,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-11-02T15:25:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "closed",
+     "stop_path": [],
+     "symbol": "TSTA",
+     "timeline": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 11 sh @ $41.25",
+       "source": null
+      },
+      {
+       "at": "2026-11-02T15:25:00+00:00",
+       "cause": "unknown",
+       "detail": "Sold at $43.75; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+       "kind": "exit_fill",
+       "label": "Sold @ $43.75 · Exit cause unknown",
+       "source": null
+      }
+     ],
+     "trade_id": "rt:fixture-ledger-trip"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-29T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 20.0,
+      "source": null
+     },
+     "exit": null,
+     "exit_cause": {
+      "confirmed": true,
+      "detail": "Working stop $18.00",
+      "evidence": [
+       "stop_last_known"
+      ],
+      "kind": "open",
+      "label": "Still open",
+      "level_ref": 18.0,
+      "raises": 0
+     },
+     "fill_qty": 5.0,
+     "hold_days": 6.1,
+     "identity_status": "unresolved",
+     "mark": {
+      "at": "2026-11-04T16:59:00Z",
+      "price_ref": 19.0
+     },
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": -5.0,
+      "basis": "unrealized",
+      "note": null,
+      "pct": -5.0
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": null,
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": null,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Still held — re-entry applies after the exit.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-11-04T16:55:00Z",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": null,
+       "source": "holdings_accounts",
+       "value": 5.0
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": "2026-11-04T16:59:00Z",
+       "missing_reason": null,
+       "source": "stop_last_known + recorded mark",
+       "stop_at": "2026-11-04T16:30:00+00:00",
+       "value": "Stop $18.00 · mark $19.00"
+      },
+      {
+       "at": null,
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "loaded window is not proof of an unobserved fill",
+       "source": null,
+       "value": "no closing fill in loaded ledger"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$20.00"
+       },
+       {
+        "key": "return",
+        "label": "Return so far",
+        "source": "fills + mark",
+        "tone": "danger",
+        "value": "-5.00%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "6.1 days"
+       },
+       {
+        "key": "stops",
+        "label": "Stop path",
+        "source": "stop_last_known",
+        "tone": "neutral",
+        "value": "18.00 (0 raises)"
+       },
+       {
+        "key": "cause",
+        "label": "Status",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Still open"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": -5.0,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-29T14:15:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "open",
+     "stop_path": [
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "change_pct": null,
+       "kind": "initial",
+       "level_ref": 18.0,
+       "order_ref": null,
+       "prior_ref": null,
+       "source": "stop_last_known",
+       "status": "WORKING"
+      }
+     ],
+     "symbol": "TSTB",
+     "timeline": [
+      {
+       "at": "2026-10-29T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 5 sh @ $20.00",
+       "source": null
+      },
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "detail": null,
+       "kind": "stop_change",
+       "label": "Stop $18.00",
+       "source": "stop_last_known",
+       "value": {
+        "level_ref": 18.0,
+        "prior_ref": null
+       }
+      }
+     ],
+     "trade_id": "open:schwab_roth_ira:TSTB"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-20T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 18.0,
+      "source": null
+     },
+     "exit": {
+      "at": "2026-10-27T15:25:00+00:00",
+      "price_ref": 21.0,
+      "source": null
+     },
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "Sold at $21.00; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+      "evidence": [
+       "schwab_round_trips exit price"
+      ],
+      "kind": "unknown",
+      "label": "Exit cause unknown",
+      "level_ref": null,
+      "raises": 0
+     },
+     "fill_qty": 5.0,
+     "hold_days": 7.0,
+     "identity_status": "unresolved",
+     "mark": null,
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": 15.0,
+      "basis": "realized",
+      "note": null,
+      "pct": 16.67
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 21.0,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 21.0,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-10-20T14:15:00+00:00",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": "originating quantity source unavailable",
+       "source": null,
+       "value": 5.0
+      },
+      {
+       "at": null,
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": null,
+       "missing_reason": "mark or observed stop unavailable",
+       "source": "stop_last_known + recorded mark",
+       "stop_at": null,
+       "value": "Stop — · mark —"
+      },
+      {
+       "at": "2026-10-27T15:25:00+00:00",
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "originating fill source unavailable",
+       "source": null,
+       "value": "closing timestamp recorded; origin unavailable"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$18.00"
+       },
+       {
+        "key": "exit",
+        "label": "Exit fill",
+        "source": "fills",
+        "tone": "success",
+        "value": "$21.00"
+       },
+       {
+        "key": "return",
+        "label": "Return",
+        "source": "fills",
+        "tone": "success",
+        "value": "+16.67%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "7.0 days"
+       },
+       {
+        "key": "cause",
+        "label": "Why it ended",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Exit cause unknown"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": 16.67,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-27T15:25:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "closed",
+     "stop_path": [],
+     "symbol": "TSTB",
+     "timeline": [
+      {
+       "at": "2026-10-20T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 5 sh @ $18.00",
+       "source": null
+      },
+      {
+       "at": "2026-10-27T15:25:00+00:00",
+       "cause": "unknown",
+       "detail": "Sold at $21.00; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+       "kind": "exit_fill",
+       "label": "Sold @ $21.00 · Exit cause unknown",
+       "source": null
+      }
+     ],
+     "trade_id": "rt:fixture-ledger-trip-2"
+    }
+   ],
+   "memory_behavior_influence": 0,
+   "next_broker_sync": {
+    "at": null,
+    "reason": "active registered ingest schedule not available"
+   },
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeJourneys@v1",
+   "source": {
+    "cio_prospect_status": "absent",
+    "kind": "interim",
+    "projection": "trade_journey",
+    "reads": []
+   },
+   "source_label": "interim — CIO prospect store not live",
+   "window_days": 30,
+   "writes": 0
+  },
+  "stale": {
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "counts": {
+    "all": 4,
+    "awaiting_fill": 1,
+    "closed": 2,
+    "conflicts": 0,
+    "internal": 0,
+    "open": 2,
+    "operator": 0,
+    "unknown": 4
+   },
+   "freshness": [
+    {
+     "at": null,
+     "key": "fills",
+     "label": "Fills",
+     "tip": "Closed round trips from schwab_round_trips (built from the broker transaction ledger every 15 min in market hours). A sell that is not in the ledger yet is not shown as closed.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "holdings",
+     "label": "Holdings",
+     "tip": "Open positions from the holdings_accounts store (lib.portfolio_positions, the one accessor). Its as_of is shown; a stop that filled after it is flagged.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "stops",
+     "label": "Stops",
+     "tip": "Observed stop orders from stop_last_known — one durable row per stop order the scan saw, with the time it was captured. Stop levels are reference facts, never orders.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "cio",
+     "label": "CIO",
+     "tip": "Conviction, rank and stance from the CIO opportunity book (cio_opportunity_projection + its append-only history).",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "reentry",
+     "label": "Re-entry desk",
+     "tip": "The deterministic re-entry desk snapshot — the same record the Watch page's Re-entry near lane reads. No model sets READY / NEAR / BLOCK.",
+     "tone": "neutral",
+     "value": "time unknown"
+    },
+    {
+     "at": null,
+     "key": "links",
+     "label": "Origin links",
+     "tip": "Recommendation → trade links (learning loop PR1: recommendation_registry + trade_recommendation_links). Without them, origin falls back to the CIO opportunity history and CIO entry calls.",
+     "tone": "warning",
+     "value": "not available"
+    },
+    {
+     "at": null,
+     "key": "source",
+     "label": "Record",
+     "tip": "AGENTS.md §26: pages read the CIO prospect record through its projection. Until that store is live this page uses an interim adapter over today's sources with the identical shape.",
+     "tone": "warning",
+     "value": "interim — CIO prospect store not live"
+    }
+   ],
+   "freshness_chips": [
+    {
+     "at": "2026-11-02T15:25:00Z",
+     "key": "last_closing_fill",
+     "label": "Last closing fill",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-02T15:25:00Z"
+    },
+    {
+     "at": "2026-11-01T16:45:00+00:00",
+     "key": "ledger_sync",
+     "label": "Ledger synced",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-01T16:45:00+00:00"
+    },
+    {
+     "at": "2026-11-04T16:55:00Z",
+     "key": "holdings_sync",
+     "label": "Holdings synced",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "success",
+     "value": "2026-11-04T16:55:00Z"
+    },
+    {
+     "at": "2026-11-01T16:00:00+00:00",
+     "key": "stop_monitor",
+     "label": "Stop monitor",
+     "missing_reason": null,
+     "tip": "Recorded source clock; not page/cache generation time",
+     "tone": "warning",
+     "value": "2026-11-01T16:00:00+00:00"
+    },
+    {
+     "at": null,
+     "key": "next_broker_sync",
+     "label": "Next registered broker sync",
+     "missing_reason": "active registered ingest schedule not available",
+     "tip": "active registered ingest schedule not available",
+     "tone": "neutral",
+     "value": "Not measured"
+    }
+   ],
+   "gaps": [],
+   "interim": true,
+   "journeys": [
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-28T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 41.0,
+      "source": null
+     },
+     "exit": null,
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "mark under stop $40.00 · fill sync time not measured",
+      "evidence": [
+       "stop_last_known",
+       "holdings_accounts mark"
+      ],
+      "kind": "stop_likely_filled",
+      "label": "Awaiting fill",
+      "level_ref": 40.0,
+      "raises": 0,
+      "tone": "info"
+     },
+     "fill_qty": 11.0,
+     "hold_days": 7.1,
+     "identity_status": "unresolved",
+     "mark": {
+      "at": "2026-11-04T16:59:00Z",
+      "price_ref": 39.0
+     },
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": -22.0,
+      "basis": "unrealized",
+      "note": null,
+      "pct": -4.88
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 40.0,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 40.0,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-11-04T16:55:00Z",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": null,
+       "source": "holdings_accounts",
+       "value": 11.0
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": "2026-11-04T16:59:00Z",
+       "missing_reason": null,
+       "source": "stop_last_known + recorded mark",
+       "stop_at": "2026-11-04T16:30:00+00:00",
+       "value": "Stop $40.00 · mark $39.00"
+      },
+      {
+       "at": null,
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "loaded window is not proof of an unobserved fill",
+       "source": null,
+       "value": "no closing fill in loaded ledger"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$41.00"
+       },
+       {
+        "key": "return",
+        "label": "Return so far",
+        "source": "fills + mark",
+        "tone": "danger",
+        "value": "-4.88%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "7.1 days"
+       },
+       {
+        "key": "stops",
+        "label": "Stop path",
+        "source": "stop_last_known",
+        "tone": "neutral",
+        "value": "40.00 (0 raises)"
+       },
+       {
+        "key": "cause",
+        "label": "Status",
+        "source": "fills + stops",
+        "tone": "warning",
+        "value": "Stop likely filled — not confirmed"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": -4.88,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-28T14:15:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "open",
+     "stop_path": [
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "change_pct": null,
+       "kind": "initial",
+       "level_ref": 40.0,
+       "order_ref": null,
+       "prior_ref": null,
+       "source": "stop_last_known",
+       "status": "WORKING"
+      }
+     ],
+     "symbol": "TSTA",
+     "timeline": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 11 sh @ $41.00",
+       "source": null
+      },
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "detail": null,
+       "kind": "stop_change",
+       "label": "Stop $40.00",
+       "source": "stop_last_known",
+       "value": {
+        "level_ref": 40.0,
+        "prior_ref": null
+       }
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "cause": "stop_likely_filled",
+       "detail": "Latest mark $39.00 at 2026-11-04 16:59 is at or below the working stop $40.00. The stop has likely filled; the position will close here once the broker fill is synced.",
+       "kind": "exit_fill",
+       "label": "Stop likely filled — not confirmed",
+       "source": "stop_last_known + mark",
+       "unconfirmed": true
+      }
+     ],
+     "trade_id": "open:schwab_roth_ira:TSTA"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-28T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 41.25,
+      "source": null
+     },
+     "exit": {
+      "at": "2026-11-02T15:25:00+00:00",
+      "price_ref": 43.75,
+      "source": null
+     },
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "Sold at $43.75; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+      "evidence": [
+       "schwab_round_trips exit price"
+      ],
+      "kind": "unknown",
+      "label": "Exit cause unknown",
+      "level_ref": null,
+      "raises": 0
+     },
+     "fill_qty": 11.0,
+     "hold_days": 5.0,
+     "identity_status": "unresolved",
+     "mark": null,
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": 27.5,
+      "basis": "realized",
+      "note": null,
+      "pct": 6.06
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 43.75,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 43.75,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": "originating quantity source unavailable",
+       "source": null,
+       "value": 11.0
+      },
+      {
+       "at": null,
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": null,
+       "missing_reason": "mark or observed stop unavailable",
+       "source": "stop_last_known + recorded mark",
+       "stop_at": null,
+       "value": "Stop — · mark —"
+      },
+      {
+       "at": "2026-11-02T15:25:00+00:00",
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "originating fill source unavailable",
+       "source": null,
+       "value": "closing timestamp recorded; origin unavailable"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$41.25"
+       },
+       {
+        "key": "exit",
+        "label": "Exit fill",
+        "source": "fills",
+        "tone": "success",
+        "value": "$43.75"
+       },
+       {
+        "key": "return",
+        "label": "Return",
+        "source": "fills",
+        "tone": "success",
+        "value": "+6.06%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "5.0 days"
+       },
+       {
+        "key": "cause",
+        "label": "Why it ended",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Exit cause unknown"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": 6.06,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-11-02T15:25:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "closed",
+     "stop_path": [],
+     "symbol": "TSTA",
+     "timeline": [
+      {
+       "at": "2026-10-28T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 11 sh @ $41.25",
+       "source": null
+      },
+      {
+       "at": "2026-11-02T15:25:00+00:00",
+       "cause": "unknown",
+       "detail": "Sold at $43.75; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+       "kind": "exit_fill",
+       "label": "Sold @ $43.75 · Exit cause unknown",
+       "source": null
+      }
+     ],
+     "trade_id": "rt:fixture-ledger-trip"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-29T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 20.0,
+      "source": null
+     },
+     "exit": null,
+     "exit_cause": {
+      "confirmed": true,
+      "detail": "Working stop $18.00",
+      "evidence": [
+       "stop_last_known"
+      ],
+      "kind": "open",
+      "label": "Still open",
+      "level_ref": 18.0,
+      "raises": 0
+     },
+     "fill_qty": 5.0,
+     "hold_days": 6.1,
+     "identity_status": "unresolved",
+     "mark": {
+      "at": "2026-11-04T16:59:00Z",
+      "price_ref": 19.0
+     },
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": -5.0,
+      "basis": "unrealized",
+      "note": null,
+      "pct": -5.0
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": null,
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": null,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Still held — re-entry applies after the exit.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-11-04T16:55:00Z",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": null,
+       "source": "holdings_accounts",
+       "value": 5.0
+      },
+      {
+       "at": "2026-11-04T16:59:00Z",
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": "2026-11-04T16:59:00Z",
+       "missing_reason": null,
+       "source": "stop_last_known + recorded mark",
+       "stop_at": "2026-11-04T16:30:00+00:00",
+       "value": "Stop $18.00 · mark $19.00"
+      },
+      {
+       "at": null,
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "loaded window is not proof of an unobserved fill",
+       "source": null,
+       "value": "no closing fill in loaded ledger"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$20.00"
+       },
+       {
+        "key": "return",
+        "label": "Return so far",
+        "source": "fills + mark",
+        "tone": "danger",
+        "value": "-5.00%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "6.1 days"
+       },
+       {
+        "key": "stops",
+        "label": "Stop path",
+        "source": "stop_last_known",
+        "tone": "neutral",
+        "value": "18.00 (0 raises)"
+       },
+       {
+        "key": "cause",
+        "label": "Status",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Still open"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": -5.0,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-29T14:15:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "open",
+     "stop_path": [
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "change_pct": null,
+       "kind": "initial",
+       "level_ref": 18.0,
+       "order_ref": null,
+       "prior_ref": null,
+       "source": "stop_last_known",
+       "status": "WORKING"
+      }
+     ],
+     "symbol": "TSTB",
+     "timeline": [
+      {
+       "at": "2026-10-29T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 5 sh @ $20.00",
+       "source": null
+      },
+      {
+       "at": "2026-11-04T16:30:00+00:00",
+       "detail": null,
+       "kind": "stop_change",
+       "label": "Stop $18.00",
+       "source": "stop_last_known",
+       "value": {
+        "level_ref": 18.0,
+        "prior_ref": null
+       }
+      }
+     ],
+     "trade_id": "open:schwab_roth_ira:TSTB"
+    },
+    {
+     "account": "schwab_roth",
+     "account_label": "Schwab Roth IRA",
+     "chart": null,
+     "company": null,
+     "conflicts": [],
+     "conviction_now": null,
+     "entry": {
+      "at": "2026-10-20T14:15:00+00:00",
+      "at_basis": null,
+      "price_ref": 18.0,
+      "source": null
+     },
+     "exit": {
+      "at": "2026-10-27T15:25:00+00:00",
+      "price_ref": 21.0,
+      "source": null
+     },
+     "exit_cause": {
+      "confirmed": false,
+      "detail": "Sold at $21.00; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+      "evidence": [
+       "schwab_round_trips exit price"
+      ],
+      "kind": "unknown",
+      "label": "Exit cause unknown",
+      "level_ref": null,
+      "raises": 0
+     },
+     "fill_qty": 5.0,
+     "hold_days": 7.0,
+     "identity_status": "unresolved",
+     "mark": null,
+     "next_sync_at": null,
+     "origin": {
+      "cio_entry_state": null,
+      "cio_entry_state_at": null,
+      "conviction_at_entry": null,
+      "evidence": [],
+      "issued_at": null,
+      "kind": "unknown",
+      "label": "Origin unknown — the recommendation link tables are not available",
+      "link_confidence": null,
+      "link_status": "unavailable",
+      "plan": null,
+      "rank_at_entry": null,
+      "rec_id": null,
+      "rec_source": null,
+      "stance_at_entry": null,
+      "surface": null,
+      "surface_href": null
+     },
+     "pl": {
+      "amount": 15.0,
+      "basis": "realized",
+      "note": null,
+      "pct": 16.67
+     },
+     "rank_now": null,
+     "re_entry": {
+      "action": null,
+      "alert_seed": {
+       "entryHigh": 21.0,
+       "entryLow": null,
+       "price": null,
+       "rsi": null
+      },
+      "condition_counts": {
+       "met": null,
+       "missing_reason": "re-entry conditions unavailable",
+       "total": null
+      },
+      "conditions": [],
+      "desk_as_of": null,
+      "distance_pct": null,
+      "invalidation_ref": null,
+      "price_as_of": null,
+      "price_ref": null,
+      "reason": null,
+      "reclaim_ref": 21.0,
+      "source": "reentry_decision_desk (same record as Watch · Re-entry near)",
+      "stale": null,
+      "state": null,
+      "summary": "Not on the re-entry desk yet — the desk lists names sold in the last year once the sell is in the transaction ledger.",
+      "target_ref": null,
+      "wash_blocked": null,
+      "wash_until": null,
+      "watch_href": null,
+      "zone_high_ref": null,
+      "zone_low_ref": null
+     },
+     "reconciliation_facts": [
+      {
+       "at": "2026-10-20T14:15:00+00:00",
+       "key": "holdings",
+       "label": "Holdings",
+       "missing_reason": "originating quantity source unavailable",
+       "source": null,
+       "value": 5.0
+      },
+      {
+       "at": null,
+       "key": "stop_mark",
+       "label": "Stop vs mark",
+       "mark_at": null,
+       "missing_reason": "mark or observed stop unavailable",
+       "source": "stop_last_known + recorded mark",
+       "stop_at": null,
+       "value": "Stop — · mark —"
+      },
+      {
+       "at": "2026-10-27T15:25:00+00:00",
+       "key": "fills",
+       "label": "Fills ledger",
+       "missing_reason": "originating fill source unavailable",
+       "source": null,
+       "value": "closing timestamp recorded; origin unavailable"
+      }
+     ],
+     "review": {
+      "advisory": null,
+      "facts": [
+       {
+        "key": "entry",
+        "label": "Entry fill",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "$18.00"
+       },
+       {
+        "key": "exit",
+        "label": "Exit fill",
+        "source": "fills",
+        "tone": "success",
+        "value": "$21.00"
+       },
+       {
+        "key": "return",
+        "label": "Return",
+        "source": "fills",
+        "tone": "success",
+        "value": "+16.67%"
+       },
+       {
+        "key": "held",
+        "label": "Held",
+        "source": "fills",
+        "tone": "neutral",
+        "value": "7.0 days"
+       },
+       {
+        "key": "cause",
+        "label": "Why it ended",
+        "source": "fills + stops",
+        "tone": "neutral",
+        "value": "Exit cause unknown"
+       }
+      ],
+      "metrics": {
+       "captured_pct": null,
+       "giveback_pct": null,
+       "mae_pct": null,
+       "mfe_pct": null,
+       "noise_verdict": null,
+       "return_pct": 16.67,
+       "stop_raises": 0
+      }
+     },
+     "schema": "TradeJourney@v1",
+     "security_guid": null,
+     "sort_at": "2026-10-27T15:25:00+00:00",
+     "stage": null,
+     "stance_now": null,
+     "status": "closed",
+     "stop_path": [],
+     "symbol": "TSTB",
+     "timeline": [
+      {
+       "at": "2026-10-20T14:15:00+00:00",
+       "detail": null,
+       "kind": "entry_fill",
+       "label": "Bought 5 sh @ $18.00",
+       "source": null
+      },
+      {
+       "at": "2026-10-27T15:25:00+00:00",
+       "cause": "unknown",
+       "detail": "Sold at $21.00; no stop was observed on this position, so the cause cannot be told from the records (no stop history).",
+       "kind": "exit_fill",
+       "label": "Sold @ $21.00 · Exit cause unknown",
+       "source": null
+      }
+     ],
+     "trade_id": "rt:fixture-ledger-trip-2"
+    }
+   ],
+   "memory_behavior_influence": 0,
+   "next_broker_sync": {
+    "at": null,
+    "reason": "active registered ingest schedule not available"
+   },
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeJourneys@v1",
+   "source": {
+    "cio_prospect_status": "absent",
+    "kind": "interim",
+    "projection": "trade_journey",
+    "reads": []
+   },
+   "source_label": "interim — CIO prospect store not live",
+   "window_days": 30,
+   "writes": 0
+  }
+ },
+ "replay": {
+  "bars": {
+   "account_id": "schwab_roth_ira",
+   "account_label": "Schwab Roth IRA",
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "available_intervals": [
+    "1D"
+   ],
+   "bars": [
+    {
+     "close": 220.0,
+     "high": 250.0,
+     "low": 190.0,
+     "observed_at": "2026-10-20T00:00:00+00:00",
+     "open": 200.0,
+     "t": 1792454400,
+     "time": "2026-10-20",
+     "volume": null
+    },
+    {
+     "close": 43.0,
+     "high": 44.0,
+     "low": 40.0,
+     "observed_at": "2026-10-28T00:00:00+00:00",
+     "open": 41.0,
+     "t": 1793145600,
+     "time": "2026-10-28",
+     "volume": null
+    },
+    {
+     "close": 43.75,
+     "high": 45.0,
+     "low": 42.0,
+     "observed_at": "2026-11-02T00:00:00+00:00",
+     "open": 43.0,
+     "t": 1793577600,
+     "time": "2026-11-02",
+     "volume": null
+    },
+    {
+     "close": 2.0,
+     "high": 3.0,
+     "low": 1.0,
+     "observed_at": "2026-11-03T00:00:00+00:00",
+     "open": 2.0,
+     "t": 1793664000,
+     "time": "2026-11-03",
+     "volume": null
+    }
+   ],
+   "gaps": [],
+   "interval": "1D",
+   "kind": "candles",
+   "markers": [
+    {
+     "at": "2026-10-28T14:15:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "buy",
+     "label": "Buy fill",
+     "price": 41.25,
+     "source": "schwab_round_trips",
+     "t": 1793145600,
+     "time": "2026-10-28"
+    },
+    {
+     "at": "2026-11-02T15:25:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "sell",
+     "label": "Sell fill",
+     "price": 43.75,
+     "source": "schwab_round_trips",
+     "t": 1793577600,
+     "time": "2026-11-02"
+    }
+   ],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeReplay@v1",
+   "source": {
+    "as_of": "2026-11-03T00:00:00+00:00",
+    "bar_basis": "daily session OHLC; not tick or intraday execution prices",
+    "stored_only": true,
+    "table": "market_ohlcv_bars"
+   },
+   "stats": {
+    "coach_note": null,
+    "exit_basis": "fill does not declare exit type",
+    "exit_kind": "unknown",
+    "exit_label": "Unknown",
+    "max_drawdown_pct": -3.0303,
+    "max_gain_pct": 9.0909,
+    "metrics_basis": "MFE/MAE relative to recorded entry; available daily session-range proxy",
+    "metrics_missing_reason": null
+   },
+   "symbol": "TSTA",
+   "trade": {
+    "account_id": "schwab_roth_ira",
+    "account_label": "Schwab Roth IRA",
+    "account_missing_reason": null,
+    "basis_reason": null,
+    "basis_unknown": false,
+    "classification": null,
+    "entry_at": "2026-10-28T14:15:00+00:00",
+    "entry_date": "2026-10-28",
+    "entry_price": 41.25,
+    "entry_trade_date": null,
+    "exit_at": "2026-11-02T15:25:00+00:00",
+    "exit_date": "2026-11-02",
+    "exit_price": 43.75,
+    "exit_trade_date": null,
+    "hold_days": 5.048611111111111,
+    "hold_days_basis": "elapsed timestamps",
+    "provenance": [
+     {
+      "observed_at": null,
+      "record_id": "901",
+      "source": "schwab_round_trips",
+      "writer": "scripts/schwab_journal_builder.py"
+     }
+    ],
+    "realized_pl": 27.5,
+    "return_pct": 6.060606060606055,
+    "shares": 11.0,
+    "source": "schwab_round_trips",
+    "symbol": "TSTA",
+    "trade_id": "rt:fixture-ledger-trip"
+   },
+   "trade_id": "rt:fixture-ledger-trip",
+   "writes": 0
+  },
+  "closes": {
+   "account_id": "schwab_roth_ira",
+   "account_label": "Schwab Roth IRA",
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "available_intervals": [
+    "1D"
+   ],
+   "bars": [
+    {
+     "close": 43.0,
+     "high": null,
+     "low": null,
+     "observed_at": "2026-10-28T00:00:00+00:00",
+     "open": null,
+     "t": 1793145600,
+     "time": "2026-10-28",
+     "volume": null
+    },
+    {
+     "close": 43.75,
+     "high": null,
+     "low": null,
+     "observed_at": "2026-11-02T00:00:00+00:00",
+     "open": null,
+     "t": 1793577600,
+     "time": "2026-11-02",
+     "volume": null
+    }
+   ],
+   "gaps": [],
+   "interval": "1D",
+   "kind": "closes",
+   "markers": [
+    {
+     "at": "2026-10-28T14:15:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "buy",
+     "label": "Buy fill",
+     "price": 41.25,
+     "source": "schwab_round_trips",
+     "t": 1793145600,
+     "time": "2026-10-28"
+    },
+    {
+     "at": "2026-11-02T15:25:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "sell",
+     "label": "Sell fill",
+     "price": 43.75,
+     "source": "schwab_round_trips",
+     "t": 1793577600,
+     "time": "2026-11-02"
+    }
+   ],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeReplay@v1",
+   "source": {
+    "as_of": "2026-11-02T00:00:00+00:00",
+    "bar_basis": "recorded daily closes only",
+    "stored_only": true,
+    "table": "ticker_prices"
+   },
+   "stats": {
+    "coach_note": null,
+    "exit_basis": "fill does not declare exit type",
+    "exit_kind": "unknown",
+    "exit_label": "Unknown",
+    "max_drawdown_pct": 0,
+    "max_gain_pct": 6.0606,
+    "metrics_basis": "MFE/MAE relative to recorded entry; available daily close-only proxy; intraday extremes unavailable",
+    "metrics_missing_reason": null
+   },
+   "symbol": "TSTA",
+   "trade": {
+    "account_id": "schwab_roth_ira",
+    "account_label": "Schwab Roth IRA",
+    "account_missing_reason": null,
+    "basis_reason": null,
+    "basis_unknown": false,
+    "classification": null,
+    "entry_at": "2026-10-28T14:15:00+00:00",
+    "entry_date": "2026-10-28",
+    "entry_price": 41.25,
+    "entry_trade_date": null,
+    "exit_at": "2026-11-02T15:25:00+00:00",
+    "exit_date": "2026-11-02",
+    "exit_price": 43.75,
+    "exit_trade_date": null,
+    "hold_days": 5.048611111111111,
+    "hold_days_basis": "elapsed timestamps",
+    "provenance": [
+     {
+      "observed_at": null,
+      "record_id": "901",
+      "source": "schwab_round_trips",
+      "writer": "scripts/schwab_journal_builder.py"
+     }
+    ],
+    "realized_pl": 27.5,
+    "return_pct": 6.060606060606055,
+    "shares": 11.0,
+    "source": "schwab_round_trips",
+    "symbol": "TSTA",
+    "trade_id": "rt:fixture-ledger-trip"
+   },
+   "trade_id": "rt:fixture-ledger-trip",
+   "writes": 0
+  },
+  "missing": {
+   "account_id": "schwab_roth_ira",
+   "account_label": "Schwab Roth IRA",
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "available_intervals": [],
+   "bars": [],
+   "gaps": [
+    {
+     "reason": "stored bar coverage missing or truncated",
+     "source": "market_ohlcv_bars"
+    }
+   ],
+   "interval": "1D",
+   "kind": "none",
+   "markers": [
+    {
+     "at": "2026-10-28T14:15:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "buy",
+     "label": "Buy fill",
+     "price": 41.25,
+     "source": "schwab_round_trips",
+     "t": 1793145600,
+     "time": "2026-10-28"
+    },
+    {
+     "at": "2026-11-02T15:25:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "sell",
+     "label": "Sell fill",
+     "price": 43.75,
+     "source": "schwab_round_trips",
+     "t": 1793577600,
+     "time": "2026-11-02"
+    }
+   ],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeReplay@v1",
+   "source": {
+    "as_of": null,
+    "bar_basis": "recorded daily closes only",
+    "stored_only": true,
+    "table": "market_ohlcv_bars"
+   },
+   "stats": {
+    "coach_note": null,
+    "exit_basis": "fill does not declare exit type",
+    "exit_kind": "unknown",
+    "exit_label": "Unknown",
+    "max_drawdown_pct": null,
+    "max_gain_pct": null,
+    "metrics_basis": "not measured",
+    "metrics_missing_reason": "stored holding-range bars unavailable"
+   },
+   "symbol": "TSTA",
+   "trade": {
+    "account_id": "schwab_roth_ira",
+    "account_label": "Schwab Roth IRA",
+    "account_missing_reason": null,
+    "basis_reason": null,
+    "basis_unknown": false,
+    "classification": null,
+    "entry_at": "2026-10-28T14:15:00+00:00",
+    "entry_date": "2026-10-28",
+    "entry_price": 41.25,
+    "entry_trade_date": null,
+    "exit_at": "2026-11-02T15:25:00+00:00",
+    "exit_date": "2026-11-02",
+    "exit_price": 43.75,
+    "exit_trade_date": null,
+    "hold_days": 5.048611111111111,
+    "hold_days_basis": "elapsed timestamps",
+    "provenance": [
+     {
+      "observed_at": null,
+      "record_id": "901",
+      "source": "schwab_round_trips",
+      "writer": "scripts/schwab_journal_builder.py"
+     }
+    ],
+    "realized_pl": 27.5,
+    "return_pct": 6.060606060606055,
+    "shares": 11.0,
+    "source": "schwab_round_trips",
+    "symbol": "TSTA",
+    "trade_id": "rt:fixture-ledger-trip"
+   },
+   "trade_id": "rt:fixture-ledger-trip",
+   "writes": 0
+  },
+  "winner": {
+   "account_id": "schwab_roth_ira",
+   "account_label": "Schwab Roth IRA",
+   "as_of": "2026-11-04T17:00:00+00:00",
+   "available_intervals": [
+    "1D"
+   ],
+   "bars": [
+    {
+     "close": 18.5,
+     "high": 19.0,
+     "low": 17.5,
+     "observed_at": "2026-10-20T00:00:00+00:00",
+     "open": 18.0,
+     "t": 1792454400,
+     "time": "2026-10-20",
+     "volume": null
+    },
+    {
+     "close": 20.0,
+     "high": 20.5,
+     "low": 18.2,
+     "observed_at": "2026-10-23T00:00:00+00:00",
+     "open": 18.5,
+     "t": 1792713600,
+     "time": "2026-10-23",
+     "volume": null
+    },
+    {
+     "close": 21.0,
+     "high": 21.5,
+     "low": 19.8,
+     "observed_at": "2026-10-27T00:00:00+00:00",
+     "open": 20.0,
+     "t": 1793059200,
+     "time": "2026-10-27",
+     "volume": null
+    }
+   ],
+   "gaps": [],
+   "interval": "1D",
+   "kind": "candles",
+   "markers": [
+    {
+     "at": "2026-10-20T14:15:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "buy",
+     "label": "Buy fill",
+     "price": 18.0,
+     "source": "schwab_round_trips",
+     "t": 1792454400,
+     "time": "2026-10-20"
+    },
+    {
+     "at": "2026-10-27T15:25:00+00:00",
+     "date_basis": "recorded fill timestamp",
+     "kind": "sell",
+     "label": "Sell fill",
+     "price": 21.0,
+     "source": "schwab_round_trips",
+     "t": 1793059200,
+     "time": "2026-10-27"
+    }
+   ],
+   "ok": true,
+   "provider_calls": 0,
+   "read_only": true,
+   "schema": "TradeReplay@v1",
+   "source": {
+    "as_of": "2026-10-27T00:00:00+00:00",
+    "bar_basis": "daily session OHLC; not tick or intraday execution prices",
+    "stored_only": true,
+    "table": "market_ohlcv_bars"
+   },
+   "stats": {
+    "coach_note": null,
+    "exit_basis": "fill does not declare exit type",
+    "exit_kind": "unknown",
+    "exit_label": "Unknown",
+    "max_drawdown_pct": -2.7778,
+    "max_gain_pct": 19.4444,
+    "metrics_basis": "MFE/MAE relative to recorded entry; available daily session-range proxy",
+    "metrics_missing_reason": null
+   },
+   "symbol": "TSTB",
+   "trade": {
+    "account_id": "schwab_roth_ira",
+    "account_label": "Schwab Roth IRA",
+    "account_missing_reason": null,
+    "basis_reason": null,
+    "basis_unknown": false,
+    "classification": null,
+    "entry_at": "2026-10-20T14:15:00+00:00",
+    "entry_date": "2026-10-20",
+    "entry_price": 18.0,
+    "entry_trade_date": null,
+    "exit_at": "2026-10-27T15:25:00+00:00",
+    "exit_date": "2026-10-27",
+    "exit_price": 21.0,
+    "exit_trade_date": null,
+    "hold_days": 7.048611111111111,
+    "hold_days_basis": "elapsed timestamps",
+    "provenance": [
+     {
+      "observed_at": null,
+      "record_id": "902",
+      "source": "schwab_round_trips",
+      "writer": "scripts/schwab_journal_builder.py"
+     }
+    ],
+    "realized_pl": 15.0,
+    "return_pct": 16.666666666666675,
+    "shares": 5.0,
+    "source": "schwab_round_trips",
+    "symbol": "TSTB",
+    "trade_id": "rt:fixture-ledger-trip-2"
+   },
+   "trade_id": "rt:fixture-ledger-trip-2",
+   "writes": 0
+  }
+ }
+}
