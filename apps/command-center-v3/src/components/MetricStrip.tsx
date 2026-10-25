@@ -15,6 +15,8 @@ import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib
 import { BB, T, TYPE, numStyle, rowRail } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
 import type { DrillContext } from './DetailDrawer'
+
+const CHROME = { priority: 'background' } as const
 import AlertsCenterModal from './AlertsCenterModal'
 
 
@@ -85,17 +87,18 @@ export default function MetricStrip({ onDrill }: Props) {
     return next
   })
 
-  const { data: overview } = useApi<any>('/api/v2/overview', 120_000)
-  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
-  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000)
-  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
-  const { data: health } = useApi<any>('/api/v2/health', 120_000)
+  // App chrome: these yield to the page's own reads (useApi priority 'background', perf 2026-10-25).
+  const { data: overview } = useApi<any>('/api/v2/overview', 120_000, CHROME)
+  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, CHROME)
+  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
+  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000, CHROME)
+  const { data: health } = useApi<any>('/api/v2/health', 120_000, CHROME)
   // Presentation flags from config/design_features.yaml. Cosmetics only: the
   // loader REFUSES to define a flag for a fault signal, so there is no flag here
   // that could gate a divergence, an underfilled run or degraded quotes. See
   // PROTECTED_SIGNALS in scripts/lib/design_features.py.
-  const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000)
+  const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000, CHROME)
   useEffect(() => {
     const viewport = metricsViewport.current
     if (!viewport) return

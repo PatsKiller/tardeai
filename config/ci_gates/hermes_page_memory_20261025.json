@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_page_memory_20261025",
+  "files": [
+    "tests/test_hermes_page_memory_20261025.py"
+  ],
+  "anchor": "HERMES_PAGE_MEMORY_20261025",
+  "comment": [
+    "ANCHOR: HERMES_PAGE_MEMORY_20261025 — batch 36: /api/v2/hermes/pipeline-quality?limit=N (newest + newest-open windows and counts in Postgres; peak-allocation regression on 30k synthetic rows), memoised hermes_source_registry._norm (bounded), watch-directives offset/limit, guarded portfolio_server sys.path inserts."
+  ]
+}

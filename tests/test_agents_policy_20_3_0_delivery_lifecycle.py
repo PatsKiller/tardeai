@@ -10,7 +10,10 @@ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 def _section() -> str:
     s = AGENTS.index("\n## 28.12 ")
-    return AGENTS[s : AGENTS.index("\n---\n\n# Version history", s)]
+    end = AGENTS.index("\n---\n\n# Version history", s)
+    if "\n## 28.13 " in AGENTS[s:end]:  # 20.4.0 (§28.13) follows §28.12
+        end = AGENTS.index("\n## 28.13 ", s)
+    return AGENTS[s:end]
 
 
 def test_one_row_proposed_or_ratified_with_token():
@@ -52,8 +55,8 @@ def test_ratified_state_is_consistent():
     row = re.search(r"^\| 20\.3\.0 \| 2026-10-25 \| (PROPOSED|ACTIVE)[^|]* \|", AGENTS, re.M).group(1)
     if row == "ACTIVE":
         assert re.search(r"APPROVE_AGENTS_POLICY_20_3_0 2107 [0-9a-f]{40}", _section())
-        assert re.search(r"^Policy-Version:\s+20\.3\.0$", AGENTS, re.M)
+        assert re.search(r"^Policy-Version:\s+(20\.3\.0|21\.0\.0)$", AGENTS, re.M)  # 21.0.0 supersedes it
         assert re.search(r"^Status:\s+ACTIVE$", AGENTS, re.M)
-        assert re.search(r"^Supersedes:\s+20\.2\.0$", AGENTS, re.M)
+        assert re.search(r"^Supersedes:\s+20\.[23]\.0$", AGENTS, re.M)
         assert re.search(r"^Effective-Date:\s+2026-10-25$", AGENTS, re.M)
         assert "**20.3.0 is ACTIVE (MINOR)" in AGENTS and "(20.3.0, ACTIVE)" in _section()
