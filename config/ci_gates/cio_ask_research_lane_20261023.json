@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_research_lane_20261023",
+  "files": [
+    "tests/test_cio_ask_research_lane_20261023.py"
+  ],
+  "anchor": "CIO_ASK_RESEARCH_LANE_20261023",
+  "comment": [
+    "ANCHOR: CIO_ASK_RESEARCH_LANE_20261023 — n8n-native report lane cio-ask-research at SHADOW (dispatch dry_run, allowlist live_arg null, flock, no broker env), DRAFT health contract (operator reviews, AGENTS.md §23.19), import closure free of sender / broker / order."
+  ]
+}

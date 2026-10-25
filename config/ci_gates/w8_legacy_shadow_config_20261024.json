@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w8_legacy_shadow_config_20261024",
+  "files": [
+    "tests/test_w8_legacy_shadow_config_20261024.py"
+  ],
+  "anchor": "W8_LEGACY_SHADOW_CONFIG_20261024",
+  "comment": [
+    "ANCHOR: W8_LEGACY_SHADOW_CONFIG_20261024 — six cross-registry SHADOW boundaries, explicit archive review provenance, inert quote refresh, preserved recent main rows and disabled archive removal. No broker/model/host calls."
+  ]
+}

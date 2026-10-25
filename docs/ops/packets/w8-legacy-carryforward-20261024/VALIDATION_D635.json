@@ -1,0 +1,394 @@
+{
+  "schema": "W8LegacyCarryforwardValidation@v1",
+  "status": "AFFECTED_SOURCE_GREEN; publication pending accepted-main reconciliation",
+  "task": "DSN-20261024-w8-legacy-carryforward-P1-T1",
+  "base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "tested_source_head": "53adc931220db789d8220844d5cffd3a53079392",
+  "source_provenance": {
+    "original_worker_a": "8ba33bd6c4612770a71a814874632eaba3b19f6e",
+    "helper_minimal_policy_reader": "9a478b9969b3be9067596d3acafed1f4cf86408c",
+    "helper_source": "f75362c253c03b7bbb5a597c020f36ac73dc3020",
+    "initial_w8_source_frozen_separately": "369de012149e2737001fc5ef47f66d39f8404140"
+  },
+  "full_affected_suite": {
+    "files": [
+      "tests/test_ci_gates_registry_20261021.py",
+      "tests/test_cio_ask_contract_20261023.py",
+      "tests/test_cio_ask_research.py",
+      "tests/test_cio_ask_research_lane_20261023.py",
+      "tests/test_cio_completeness_measurement.py",
+      "tests/test_cio_xsurface_census_completeness_20261002.py",
+      "tests/test_disk_hygiene_20261018.py",
+      "tests/test_disk_standing_apply_20261024.py",
+      "tests/test_jsonl_archive_rotate_20261023.py",
+      "tests/test_lane_dispatch_word_boundary_20261010.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_contract_baselines_20261012.py",
+      "tests/test_n8n_desk_truth_20261022.py",
+      "tests/test_n8n_desk_truth_lanes_20261022.py",
+      "tests/test_n8n_executor_env_allowlist_20261009.py",
+      "tests/test_n8n_health_contracts_20261010.py",
+      "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "tests/test_n8n_run_allowlist_20261008.py",
+      "tests/test_stale_n8n_set_rebuild_20261024.py",
+      "tests/test_w8_legacy_shadow_config_20261024.py"
+    ],
+    "tests": 1074,
+    "passed": 1073,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 245.822,
+    "psycopg2_hidden": true,
+    "TRADE_AI_CI": "1",
+    "CIO_TELEGRAM_INTERDICT": "1",
+    "command": [
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_ci_gates_registry_20261021.py",
+      "tests/test_cio_ask_contract_20261023.py",
+      "tests/test_cio_ask_research.py",
+      "tests/test_cio_ask_research_lane_20261023.py",
+      "tests/test_cio_completeness_measurement.py",
+      "tests/test_cio_xsurface_census_completeness_20261002.py",
+      "tests/test_disk_hygiene_20261018.py",
+      "tests/test_disk_standing_apply_20261024.py",
+      "tests/test_jsonl_archive_rotate_20261023.py",
+      "tests/test_lane_dispatch_word_boundary_20261010.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_contract_baselines_20261012.py",
+      "tests/test_n8n_desk_truth_20261022.py",
+      "tests/test_n8n_desk_truth_lanes_20261022.py",
+      "tests/test_n8n_executor_env_allowlist_20261009.py",
+      "tests/test_n8n_health_contracts_20261010.py",
+      "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "tests/test_n8n_run_allowlist_20261008.py",
+      "tests/test_stale_n8n_set_rebuild_20261024.py",
+      "tests/test_w8_legacy_shadow_config_20261024.py",
+      "--basetemp",
+      "/home/johnclaw/.cache/rtc/codex-w8-legacy-carryforward-20261024/pytest-full-affected-final",
+      "--junitxml",
+      "/home/johnclaw/.cache/rtc/codex-w8-legacy-carryforward-20261024/full-affected-final.xml"
+    ]
+  },
+  "first_combined_run_preserved": {
+    "head": "20d21d9d1691241fd824287bbd4533b68e31b772",
+    "tests": 1074,
+    "passed": 1068,
+    "skipped": 1,
+    "failures": 5,
+    "failure_cause": "Existing activation packet rejects intentional source-config changes until exact pin repin; no guard weakening",
+    "junit_sha256": "4b1e262d92151bb10f9e66d9002bd6f11793f46de8a7db6dd41ac92841c70108"
+  },
+  "checks": {
+    "env-ratchet-final": {
+      "command": [
+        "python3",
+        "scripts/check_env_flags_unread.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 3.262,
+      "log": "env-ratchet-final.log"
+    },
+    "test-coverage-final": {
+      "command": [
+        "python3",
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 0.207,
+      "log": "test-coverage-final.log"
+    },
+    "test-host-paths-final": {
+      "command": [
+        "python3",
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 0.437,
+      "log": "test-host-paths-final.log"
+    },
+    "dark-contracts-final": {
+      "command": [
+        "python3",
+        "scripts/check_dark_contracts.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 20.735,
+      "log": "dark-contracts-final.log"
+    },
+    "retention-final": {
+      "command": [
+        "python3",
+        "scripts/check_retention_policy.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 4.97,
+      "log": "retention-final.log"
+    },
+    "health-contracts-final": {
+      "command": [
+        "python3",
+        "scripts/check_n8n_health_contracts.py",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.484,
+      "log": "health-contracts-final.log"
+    },
+    "lane-registry-final": {
+      "command": [
+        "python3",
+        "scripts/check_lane_registry.py",
+        "--fail-on-new",
+        "--no-exemptions",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.471,
+      "log": "lane-registry-final.log"
+    },
+    "data-source-authority-final": {
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/check_data_source_authority.py",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 141.08,
+      "baseline_unchanged": true
+    },
+    "ruff-final": {
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "ruff",
+        "check",
+        "scripts/lib/cio_ask_contract.py",
+        "scripts/lib/retention_tripwire.py",
+        "scripts/ops/jsonl_archive_rotate.py",
+        "scripts/options_desk_quote_refresh.py",
+        "tests/test_cio_ask_research_lane_20261023.py",
+        "tests/test_jsonl_archive_rotate_20261023.py",
+        "tests/test_lane_dispatch_word_boundary_20261010.py",
+        "tests/test_lane_registry_n8n_kind_20261008.py",
+        "tests/test_n8n_contract_baselines_20261012.py",
+        "tests/test_n8n_desk_truth_20261022.py",
+        "tests/test_n8n_desk_truth_lanes_20261022.py",
+        "tests/test_n8n_executor_env_allowlist_20261009.py",
+        "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+        "tests/test_stale_n8n_set_rebuild_20261024.py",
+        "tests/test_w8_legacy_shadow_config_20261024.py"
+      ],
+      "exit_code": 0,
+      "files": 15
+    }
+  },
+  "config_preservation": {
+    "lane_registry.json": {
+      "before_rows": 678,
+      "after_rows": 684,
+      "added_ids": [
+        "jsonl-archive-rotate",
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        "options-desk-quote-refresh",
+        "cio-ask-research"
+      ],
+      "all_preexisting_objects_preserved": true,
+      "all_other_top_level_fields_preserved": true,
+      "before_file_sha256": "50401e0b25a49f8a2bb502448a6c2a66398a0cb93ab94564870e9fa650b0a8f6",
+      "after_file_sha256": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+    },
+    "n8n_run_allowlist.json": {
+      "before_rows": 134,
+      "after_rows": 139,
+      "added_ids": [
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        "jsonl-archive-rotate",
+        "cio-ask-research"
+      ],
+      "all_preexisting_objects_preserved": true,
+      "all_other_top_level_fields_preserved": true,
+      "before_file_sha256": "65ad007975e0a0ef25e0b604120b4d367a69b282c6abd417e360ff694c7f8912",
+      "after_file_sha256": "ef779c56dfa4137e3eb107988e89e0c8875d3c2c669b0ab808966c4ee6fedf05"
+    },
+    "n8n_health_contracts.json": {
+      "before_rows": 158,
+      "after_rows": 164,
+      "added_ids": [
+        "jsonl-archive-rotate",
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        "options-desk-quote-refresh",
+        "cio-ask-research"
+      ],
+      "all_preexisting_objects_preserved": true,
+      "all_other_top_level_fields_preserved": true,
+      "before_file_sha256": "1a6bbe53b795090df3eef60298ab29a21fc3f3977e673a96fdd287437f3d917d",
+      "after_file_sha256": "dca33efc0f387b60295292b26d71566ac2f342b32be1642a35a642033792c6d2"
+    }
+  },
+  "retention_preservation": {
+    "base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+    "all_preexisting_disk_fields_preserved": true,
+    "disk_added_top_level": [
+      "jsonl_retention"
+    ],
+    "jsonl_retention_enabled": false,
+    "all_preexisting_retention_fields_rows_and_order_preserved": true,
+    "only_added_purge_paths_entry": {
+      "id": "jsonl_archive_rotate",
+      "scripts": [
+        "scripts/ops/jsonl_archive_rotate.py"
+      ],
+      "kind": "FILE_PRUNE",
+      "targets": "the append-only JSONL stores in config/disk_hygiene_rules.json jsonl_retention.stores with rotate=true (aif_memory_retrievals, research_call_accounting, health_inspector_fixes, advisory_notif_broker/decisions, daily_intelligence_heartbeats): rows before the hot tail (hot_days, min_tail_rows) move out; cio_workflow_lineage is rotate=false",
+      "scheduler": "none yet: operator packet docs/ops/packets/jsonl-rotation-20261023 (after 16:15 ET); n8n lane jsonl-archive-rotate registered at SHADOW (dry_run, 45 16 * * 1-5 ET); promotion is the operator's",
+      "archive": "archive-then-rewrite: head byte-for-byte to archive/file_prune/<store>/<store>.<UTC>.jsonl.gz + sha256/line-count manifest + RetentionArchiveTripwire@v1; the two renamed-aside intermediates are unlinked only after every byte is verified in the archive or the live file",
+      "state": "UNSCHEDULED",
+      "note": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete). Archive segments are NOT deleted by any code path; retention_days/max_archive_bytes only select (jsonl_archive_rotate.py --retention-preview)."
+    }
+  },
+  "disk_pending_pin_refresh": {
+    "source_head_before_metadata_patch": "20d21d9d1691241fd824287bbd4533b68e31b772",
+    "claim": "20261024T234943Z-codex-899f2f66",
+    "normal_owner_release": "3af5cbc1 to a10b72db",
+    "changed_packet_files": [
+      "activation-input-sha256.json",
+      "review.required.json"
+    ],
+    "old_sha256": {
+      "activation-input-sha256.json": "dadd80b311b0c283930d6e344a1b1ec7e96d3c20796eee401cb10c7bb8f9c5ac",
+      "review.required.json": "5b9deee8cacae642e5ed4583d1b64a24e4f34ce218e2894f60602a7c4da202af",
+      "activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
+      "standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3"
+    },
+    "new_sha256": {
+      "activation-input-sha256.json": "ddaf7221c43143decd394925222ebc946946cae8f8c196b489edcb38cbfb94f3",
+      "review.required.json": "9224ccbe3ade4fcbb6d76060996c05aafb2aeaa05672cdd0aed7f25190867592",
+      "activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
+      "standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3"
+    },
+    "review": {
+      "decision": "PENDING_OPERATOR_REVIEW",
+      "approved_by": null,
+      "approved_at": null,
+      "draft_contract_sha256": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
+      "source_config_pins_sha256": "ddaf7221c43143decd394925222ebc946946cae8f8c196b489edcb38cbfb94f3",
+      "rules_sha256": "dda63362a19281e5878c25f060370be09f8f074db98e04bf5e7afa27391faa1b"
+    },
+    "standing_enabled": false,
+    "jsonl_retention_enabled": false,
+    "guard_source_and_draft_unchanged": true
+  },
+  "historical_reconciliation": {
+    "command": [
+      "python3",
+      "scripts/reconcile_lane_registry.py",
+      "--dry-run",
+      "--snapshot-in",
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+      "--json"
+    ],
+    "exit_code": 0,
+    "seconds": 5.31,
+    "historical_snapshot_only": true,
+    "current_host_scheduler_not_measured": true,
+    "before_sha256": {
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "config/lane_registry.json": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+    },
+    "after_sha256": {
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "config/lane_registry.json": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+    },
+    "source_unchanged": true
+  },
+  "frontend_build": {
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "cwd": "apps/command-center-v3",
+    "recorded_success": true,
+    "build_log_sha256": "3804f3108c2bf25ad5a72be5b63894b7652eac61fd33301c1815061eefb93aea",
+    "frontend_tree": "bcf3285db58c3e8ff94dabcf7765935bfe679f96",
+    "frontend_and_build_sources_unchanged_from_base": true,
+    "ui_code_changed": false,
+    "responsive_browser_proof": "NOT_APPLICABLE; no UI code changes",
+    "warning": "Existing Vite chunk size advisory"
+  },
+  "relay": {
+    "static": "INHERITED_REFUSED; approval-escalate missing row",
+    "baseline_comparison": {
+      "base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+      "command": [
+        "python3",
+        "scripts/check_n8n_relay_contract.py",
+        "--no-probe",
+        "--relay-root",
+        "/home/johnclaw/wt-codex-w8-legacy-carryforward-20261024",
+        "--registry",
+        "/home/johnclaw/.cache/rtc/codex-w8-legacy-carryforward-20261024/accepted-base-lane-registry.json"
+      ],
+      "baseline_exit": 1,
+      "baseline_findings": [
+        {
+          "workflow": "tradeai-approval-router",
+          "node": "GET relay /due",
+          "code": "lane_filter_unknown",
+          "detail": "lane=approval-escalate is not a registry row (gateway: bad_lane_filter)"
+        }
+      ],
+      "combined_findings": [
+        {
+          "workflow": "tradeai-approval-router",
+          "node": "GET relay /due",
+          "code": "lane_filter_unknown",
+          "detail": "lane=approval-escalate is not a registry row (gateway: bad_lane_filter)"
+        }
+      ],
+      "same_findings": true,
+      "relay_and_all_workflow_sources_unchanged": true,
+      "verified_paths": 17,
+      "scope": "static inherited defect; no runtime or concurrency proof"
+    },
+    "scratch_probe": "UNCHECKED PermissionError; not retried",
+    "runtime_and_concurrency": "NOT_MEASURED"
+  },
+  "safety": {
+    "runnable_new_entries": 5,
+    "shadow_dry_run_only": true,
+    "live_args_all_null": true,
+    "quote_refresh": "NEVER_SCHEDULED; no operative allowlist or dispatch",
+    "standing_apply_enabled": false,
+    "jsonl_retention_enabled": false,
+    "disk_review": "PENDING_OPERATOR_REVIEW; approved_by/approved_at null",
+    "broker_or_sender_calls": 0,
+    "host_scheduler_changes": 0,
+    "pushes": 0,
+    "releases": 0
+  },
+  "logs": {
+    "full-affected.log": "1d0b2b0f28e931837e05ab36fac862099f1f36533c8155b51abea459995a4a69",
+    "full-affected-final.log": "b5fc8aeb1ca41045bc581d16022ef80d67e2c56a38cdf57f356c5cabdc0b4654",
+    "build.log": "3804f3108c2bf25ad5a72be5b63894b7652eac61fd33301c1815061eefb93aea",
+    "ruff-final.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "data-source-authority-final.log": "d169f27bfc53c476027c9bbd583eb3a7c92c779893d914ab4370af0589039f6f",
+    "relay-static-final.log": "c6ec31d9cb2b5a41baf3568107380c959f6f4686fe772e90fda9cc551c3bb018",
+    "relay-static-baseline.log": "17c0351fb8439888011a057e7d9c8ff2182fca4d9c17fb824ab299b53445468a"
+  }
+}

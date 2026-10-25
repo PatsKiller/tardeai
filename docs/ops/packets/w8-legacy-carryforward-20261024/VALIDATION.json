@@ -1,0 +1,440 @@
+{
+  "schema": "W8LegacyCarryforwardValidation@v1",
+  "status": "READY_FOR_SOURCE_REVIEW; inherited static relay defect disclosed; runtime not activated",
+  "task": "DSN-20261024-w8-legacy-carryforward-P1-T1",
+  "accepted_base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+  "tested_source_head": "5f00ca577d80ebd18744d050ca5ae18811b74bb1",
+  "branch": "work/DSN-20261024-w8-legacy-carryforward-P1-T1",
+  "worktree": "/home/johnclaw/wt-codex-w8-legacy-carryforward-20261024",
+  "claim": "20261024T234943Z-codex-899f2f66",
+  "rebase": {
+    "accepted_base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+    "rebase_conflicts": false,
+    "pins_all_match_no_further_repin_needed": true,
+    "all_accepted_governed_process_caps_routes_and_legacy_refusal_test_preserved": true,
+    "checks": {
+      "config/llm_process_registry.json": true,
+      "config/llm_routing_policy.json": true,
+      "config/cio_surface_classification.json": true,
+      "config/data_source_authority.json": true,
+      "config/data_source_authority_baseline.json": true,
+      "scripts/lib/cio_ask_research.py": true,
+      "tests/test_cio_ask_research.py": true
+    },
+    "head": "5f00ca577d80ebd18744d050ca5ae18811b74bb1"
+  },
+  "full_affected_suite": {
+    "passed": 1073,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "files": [
+      "tests/test_ci_gates_registry_20261021.py",
+      "tests/test_cio_ask_contract_20261023.py",
+      "tests/test_cio_ask_research.py",
+      "tests/test_cio_ask_research_lane_20261023.py",
+      "tests/test_cio_completeness_measurement.py",
+      "tests/test_cio_xsurface_census_completeness_20261002.py",
+      "tests/test_disk_hygiene_20261018.py",
+      "tests/test_disk_standing_apply_20261024.py",
+      "tests/test_jsonl_archive_rotate_20261023.py",
+      "tests/test_lane_dispatch_word_boundary_20261010.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_contract_baselines_20261012.py",
+      "tests/test_n8n_desk_truth_20261022.py",
+      "tests/test_n8n_desk_truth_lanes_20261022.py",
+      "tests/test_n8n_executor_env_allowlist_20261009.py",
+      "tests/test_n8n_health_contracts_20261010.py",
+      "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "tests/test_n8n_run_allowlist_20261008.py",
+      "tests/test_stale_n8n_set_rebuild_20261024.py",
+      "tests/test_w8_legacy_shadow_config_20261024.py"
+    ],
+    "test_seconds": 137.689,
+    "head": "5f00ca577d80ebd18744d050ca5ae18811b74bb1",
+    "accepted_base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+    "args": [
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_ci_gates_registry_20261021.py",
+      "tests/test_cio_ask_contract_20261023.py",
+      "tests/test_cio_ask_research.py",
+      "tests/test_cio_ask_research_lane_20261023.py",
+      "tests/test_cio_completeness_measurement.py",
+      "tests/test_cio_xsurface_census_completeness_20261002.py",
+      "tests/test_disk_hygiene_20261018.py",
+      "tests/test_disk_standing_apply_20261024.py",
+      "tests/test_jsonl_archive_rotate_20261023.py",
+      "tests/test_lane_dispatch_word_boundary_20261010.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_contract_baselines_20261012.py",
+      "tests/test_n8n_desk_truth_20261022.py",
+      "tests/test_n8n_desk_truth_lanes_20261022.py",
+      "tests/test_n8n_executor_env_allowlist_20261009.py",
+      "tests/test_n8n_health_contracts_20261010.py",
+      "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "tests/test_n8n_run_allowlist_20261008.py",
+      "tests/test_stale_n8n_set_rebuild_20261024.py",
+      "tests/test_w8_legacy_shadow_config_20261024.py",
+      "--basetemp",
+      "/home/johnclaw/.cache/rtc/codex-w8-legacy-carryforward-20261024/pytest-full-affected-23e87",
+      "--junitxml",
+      "/home/johnclaw/.cache/rtc/codex-w8-legacy-carryforward-20261024/full-affected-23e87.xml"
+    ],
+    "exit_code": 0,
+    "seconds": 141.176,
+    "psycopg2_hidden": true,
+    "TRADE_AI_CI": "1",
+    "CIO_TELEGRAM_INTERDICT": "1",
+    "full_affected_files": 20
+  },
+  "checks": [
+    {
+      "check": "env-ratchet",
+      "command": [
+        "python3",
+        "scripts/check_env_flags_unread.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 2.305
+    },
+    {
+      "check": "test-coverage",
+      "command": [
+        "python3",
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 0.174
+    },
+    {
+      "check": "test-host-paths",
+      "command": [
+        "python3",
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 0.429
+    },
+    {
+      "check": "dark-contracts",
+      "command": [
+        "python3",
+        "scripts/check_dark_contracts.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 18.798
+    },
+    {
+      "check": "retention",
+      "command": [
+        "python3",
+        "scripts/check_retention_policy.py",
+        "--fail-on-new"
+      ],
+      "exit_code": 0,
+      "seconds": 4.185
+    },
+    {
+      "check": "health-contracts",
+      "command": [
+        "python3",
+        "scripts/check_n8n_health_contracts.py",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.137
+    },
+    {
+      "check": "lane-registry",
+      "command": [
+        "python3",
+        "scripts/check_lane_registry.py",
+        "--fail-on-new",
+        "--no-exemptions",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.246
+    },
+    {
+      "check": "data-source-authority",
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/check_data_source_authority.py",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 89.812,
+      "baseline_unchanged": true
+    },
+    {
+      "check": "ruff",
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "ruff",
+        "check",
+        "scripts/lib/cio_ask_contract.py",
+        "scripts/lib/retention_tripwire.py",
+        "scripts/ops/jsonl_archive_rotate.py",
+        "scripts/options_desk_quote_refresh.py",
+        "tests/test_cio_ask_research_lane_20261023.py",
+        "tests/test_jsonl_archive_rotate_20261023.py",
+        "tests/test_lane_dispatch_word_boundary_20261010.py",
+        "tests/test_lane_registry_n8n_kind_20261008.py",
+        "tests/test_n8n_contract_baselines_20261012.py",
+        "tests/test_n8n_desk_truth_20261022.py",
+        "tests/test_n8n_desk_truth_lanes_20261022.py",
+        "tests/test_n8n_executor_env_allowlist_20261009.py",
+        "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+        "tests/test_stale_n8n_set_rebuild_20261024.py",
+        "tests/test_w8_legacy_shadow_config_20261024.py"
+      ],
+      "exit_code": 0,
+      "files": 15
+    }
+  ],
+  "native_health_counts": {
+    "contracts": 164,
+    "targets": 139,
+    "draft": 51,
+    "reviewed": 113,
+    "unknown_fields": 4,
+    "by_baseline": {
+      "CLASS_DEFAULT_PROVISIONAL": 160,
+      "LEARNED_PROVISIONAL": 4
+    },
+    "by_kind": {
+      "generic_workflow": 7,
+      "host_monitor": 3,
+      "lane": 154
+    }
+  },
+  "config_preservation": {
+    "base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+    "configs": {
+      "lane_registry.json": {
+        "before_rows": 678,
+        "after_rows": 684,
+        "added_ids": [
+          "jsonl-archive-rotate",
+          "holdings-drift-monitor",
+          "options-desk-staleness-monitor",
+          "held-exit-coverage-monitor",
+          "options-desk-quote-refresh",
+          "cio-ask-research"
+        ],
+        "all_preexisting_objects_preserved": true,
+        "all_other_top_level_fields_preserved": true,
+        "before_file_sha256": "50401e0b25a49f8a2bb502448a6c2a66398a0cb93ab94564870e9fa650b0a8f6",
+        "after_file_sha256": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+      },
+      "n8n_run_allowlist.json": {
+        "before_rows": 134,
+        "after_rows": 139,
+        "added_ids": [
+          "holdings-drift-monitor",
+          "options-desk-staleness-monitor",
+          "held-exit-coverage-monitor",
+          "jsonl-archive-rotate",
+          "cio-ask-research"
+        ],
+        "all_preexisting_objects_preserved": true,
+        "all_other_top_level_fields_preserved": true,
+        "before_file_sha256": "65ad007975e0a0ef25e0b604120b4d367a69b282c6abd417e360ff694c7f8912",
+        "after_file_sha256": "ef779c56dfa4137e3eb107988e89e0c8875d3c2c669b0ab808966c4ee6fedf05"
+      },
+      "n8n_health_contracts.json": {
+        "before_rows": 158,
+        "after_rows": 164,
+        "added_ids": [
+          "jsonl-archive-rotate",
+          "holdings-drift-monitor",
+          "options-desk-staleness-monitor",
+          "held-exit-coverage-monitor",
+          "options-desk-quote-refresh",
+          "cio-ask-research"
+        ],
+        "all_preexisting_objects_preserved": true,
+        "all_other_top_level_fields_preserved": true,
+        "before_file_sha256": "1a6bbe53b795090df3eef60298ab29a21fc3f3977e673a96fdd287437f3d917d",
+        "after_file_sha256": "dca33efc0f387b60295292b26d71566ac2f342b32be1642a35a642033792c6d2"
+      }
+    }
+  },
+  "retention_preservation": {
+    "base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+    "all_preexisting_disk_fields_preserved": true,
+    "disk_only_added_top_level": [
+      "jsonl_retention"
+    ],
+    "all_preexisting_retention_rows_fields_and_order_preserved": true,
+    "retention_only_added_purge_paths_entry": "jsonl_archive_rotate",
+    "jsonl_retention_enabled": false,
+    "standing_apply_enabled": false
+  },
+  "disk_pending_pin_refresh": {
+    "source_head_before_metadata_patch": "20d21d9d1691241fd824287bbd4533b68e31b772",
+    "claim": "20261024T234943Z-codex-899f2f66",
+    "normal_owner_release": "3af5cbc1 to a10b72db",
+    "changed_packet_files": [
+      "activation-input-sha256.json",
+      "review.required.json"
+    ],
+    "old_sha256": {
+      "activation-input-sha256.json": "dadd80b311b0c283930d6e344a1b1ec7e96d3c20796eee401cb10c7bb8f9c5ac",
+      "review.required.json": "5b9deee8cacae642e5ed4583d1b64a24e4f34ce218e2894f60602a7c4da202af",
+      "activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
+      "standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3"
+    },
+    "new_sha256": {
+      "activation-input-sha256.json": "ddaf7221c43143decd394925222ebc946946cae8f8c196b489edcb38cbfb94f3",
+      "review.required.json": "9224ccbe3ade4fcbb6d76060996c05aafb2aeaa05672cdd0aed7f25190867592",
+      "activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
+      "standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3"
+    },
+    "review": {
+      "decision": "PENDING_OPERATOR_REVIEW",
+      "approved_by": null,
+      "approved_at": null,
+      "draft_contract_sha256": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
+      "source_config_pins_sha256": "ddaf7221c43143decd394925222ebc946946cae8f8c196b489edcb38cbfb94f3",
+      "rules_sha256": "dda63362a19281e5878c25f060370be09f8f074db98e04bf5e7afa27391faa1b"
+    },
+    "standing_enabled": false,
+    "jsonl_retention_enabled": false,
+    "guard_source_and_draft_unchanged": true
+  },
+  "historical_reconciliation": {
+    "command": [
+      "python3",
+      "scripts/reconcile_lane_registry.py",
+      "--dry-run",
+      "--snapshot-in",
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+      "--json"
+    ],
+    "exit_code": 0,
+    "historical_snapshot_only": true,
+    "current_host_scheduler_not_measured": true,
+    "before_sha256": {
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "config/lane_registry.json": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+    },
+    "after_sha256": {
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "config/lane_registry.json": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3"
+    },
+    "source_unchanged": true
+  },
+  "frontend_build": {
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "exit_code": 0,
+    "seconds": 127.234,
+    "head": "5f00ca577d80ebd18744d050ca5ae18811b74bb1",
+    "frontend_tree": "08039f991bdb668f63e7dec7fea19a4508ef48b8",
+    "ui_code_changed_by_this_package": false,
+    "responsive_browser_proof": "NOT_APPLICABLE; frontend source byte-identical to accepted main",
+    "log_sha256": "4041e65708da805ec7f7b31dd8d92e76c491ec37a26d35be848777df848c459d"
+  },
+  "relay": {
+    "command": [
+      "python3",
+      "scripts/check_n8n_relay_contract.py",
+      "--no-probe",
+      "--relay-root",
+      "/home/johnclaw/wt-codex-w8-legacy-carryforward-20261024"
+    ],
+    "exit_code": 1,
+    "accepted_base": "23e87f15b1e973f4520cedb28c5998036374c55e",
+    "static_verdict": "REFUSED",
+    "same_findings_as_accepted_base": true,
+    "accepted_base_registry_identical_to_prior_baseline_check": true,
+    "relay_and_all_workflow_sources_unchanged": true,
+    "verified_paths": 17,
+    "findings": [
+      {
+        "workflow": "tradeai-approval-router",
+        "node": "GET relay /due",
+        "code": "lane_filter_unknown",
+        "detail": "lane=approval-escalate is not a registry row (gateway: bad_lane_filter)"
+      }
+    ],
+    "runtime_and_concurrency": "NOT_MEASURED; scratch probe refused PermissionError, not retried"
+  },
+  "historical_validation_receipt": "VALIDATION_D635.json; retains first1068pass/1skip/5pin failures, corrected1073pass/1skip before rebase",
+  "source_sha256": {
+    "config/ci_gates/cio_ask_research_lane_20261023.json": "5d3ea6012a8b50f6ba07ef66bb215cbb120915dfc284691befcdffcf641f4651",
+    "config/ci_gates/jsonl_archive_rotate_20261023.json": "3c57a89be2c5f742ecf21a35d0a7969333da199dd0402ff806645948b5c45c07",
+    "config/ci_gates/n8n_desk_truth_lanes_20261022.json": "87b30c356e1c21901bea05fdfcdd73daf42daa346c2b4cdd1760e366efe9eb01",
+    "config/ci_gates/stale_n8n_set_rebuild_20261024.json": "e2e4d617973cf40c1f9dbdd6206d2c539c303c47e2c884294156900cebee4650",
+    "config/ci_gates/w8_legacy_shadow_config_20261024.json": "37f9627820a3d6c767709a11ee93e1e34467f723a9319ceb8a976cdb0c0b9997",
+    "config/data_retention_policy.json": "0b3278bc0d7ab94e8a5d6f4ddbadc3bd657ee90c3c4adb9417bd8ed3acd132aa",
+    "config/disk_hygiene_rules.json": "dda63362a19281e5878c25f060370be09f8f074db98e04bf5e7afa27391faa1b",
+    "config/lane_registry.json": "e14817f6630fe7f23511843662c25e8bab1f4915e2b904d2389b7b55de2670b3",
+    "config/n8n_health_contracts.json": "dca33efc0f387b60295292b26d71566ac2f342b32be1642a35a642033792c6d2",
+    "config/n8n_run_allowlist.json": "ef779c56dfa4137e3eb107988e89e0c8875d3c2c669b0ab808966c4ee6fedf05",
+    "docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json": "ddaf7221c43143decd394925222ebc946946cae8f8c196b489edcb38cbfb94f3",
+    "docs/ops/packets/disk-standing-apply-20261024/review.required.json": "9224ccbe3ade4fcbb6d76060996c05aafb2aeaa05672cdd0aed7f25190867592",
+    "scripts/lib/cio_ask_contract.py": "0c2328230c94aeec54ed4538cb1f93b132cb08062792337382704e6b89d41e9c",
+    "scripts/lib/retention_tripwire.py": "c8103aa619c85d8cd46d2ec817c3405f86f957798ae3ed2249ec8a9a1dca58e1",
+    "scripts/ops/jsonl_archive_rotate.py": "a3e5d2227a64e0c15851d10ff9e31d7ff9769db3561adcada636dba8f7cf6799",
+    "scripts/options_desk_quote_refresh.py": "281476e99874eb8c5fdbc99069cec525647fc0ee15c9ea5f1c59d85fc51fa999",
+    "tests/test_cio_ask_research_lane_20261023.py": "a941ca0c69b983057f5bf44bc3399c42f99b61dc165e6da3bc71c5afb37e80c1",
+    "tests/test_jsonl_archive_rotate_20261023.py": "0128b147dfc312f0a79acbf13542dfc6c5cc02fb865545d96856a4dda4f98e8f",
+    "tests/test_lane_dispatch_word_boundary_20261010.py": "a877474be9bfbba6f7d64199dbaf64c376a80197fa3249c295f3cff8aaf3dace",
+    "tests/test_lane_registry_n8n_kind_20261008.py": "9b381cc8ed58a9eee102851dfc6e10ce75b88532a09156577a8000d904db7ad9",
+    "tests/test_n8n_contract_baselines_20261012.py": "9e68132256198c400af8f6a1a102dfe09da6a87b082ffafc6c02ffc682e862a8",
+    "tests/test_n8n_desk_truth_20261022.py": "773a56087df3b1dd036b261817cb5331bd545439dd112d6352cc6968e5af23eb",
+    "tests/test_n8n_desk_truth_lanes_20261022.py": "4558f6ea2bc3e9ce9430b37ad508d20611b2e9132547056cc19b812976b79ef1",
+    "tests/test_n8n_executor_env_allowlist_20261009.py": "5cf23cd7811c5284be7dc96b6b6ff33b8cccd89a33fbdfb90f38d3154d8f1094",
+    "tests/test_n8n_maturity_registry_dispatch_20261009.py": "aad677d82b041d7c754746587b7e7444fdd5e40e719ed2b3def16c39ad67e843",
+    "tests/test_stale_n8n_set_rebuild_20261024.py": "0bb0ffba5dabe6ae12e17ed32befdafead80899a8f2e9eadca8c2acb462b3a18",
+    "tests/test_w8_legacy_shadow_config_20261024.py": "098690c45f1c4ef24f28e0e3f238736ff8ad4bb578a8522ee0ce27a8e2ca717b"
+  },
+  "source_provenance": {
+    "original_worker_a": "8ba33bd6c4612770a71a814874632eaba3b19f6e",
+    "helper_minimal_policy_reader": "9a478b9969b3be9067596d3acafed1f4cf86408c",
+    "helper_source": "f75362c253c03b7bbb5a597c020f36ac73dc3020",
+    "initial_w8_source_frozen_separately": "369de012149e2737001fc5ef47f66d39f8404140",
+    "rebased_config": "3a9371d87",
+    "rebased_policy_reader": "19928c94d",
+    "rebased_helper_source": "44367d6d5",
+    "rebased_pending_pin_refresh": "0b2b38f27"
+  },
+  "safety": {
+    "runnable_new_entries": 5,
+    "shadow_dry_run_only": true,
+    "live_args_all_null": true,
+    "quote_refresh": "NEVER_SCHEDULED; no operative allowlist or dispatch",
+    "standing_apply_enabled": false,
+    "jsonl_retention_enabled": false,
+    "disk_review": "PENDING_OPERATOR_REVIEW; approved_by/approved_at null",
+    "policy_guard_or_broker_source_edits": false,
+    "live_provider_or_sender_calls": 0,
+    "host_scheduler_changes": 0,
+    "pushes": 0,
+    "releases": 0,
+    "claims_retained": true
+  },
+  "logs_sha256": {
+    "full-affected-23e87.log": "b2872059204299518aad36287252c92adcf0e0b69359e046c189f9c3aa8b13d1",
+    "full-affected-23e87.xml": "c234077b1e80e83ccba8a7f944370a6c9bbe31373d2ba6605103827177a4e320",
+    "build-23e87.log": "4041e65708da805ec7f7b31dd8d92e76c491ec37a26d35be848777df848c459d",
+    "ruff-23e87.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "data-source-authority-23e87.log": "ad32e5ba48fd844d435dcb59ebafa2fb1e3881d58143226bf4e05709976758cf",
+    "relay-static-23e87.log": "c6ec31d9cb2b5a41baf3568107380c959f6f4686fe772e90fda9cc551c3bb018",
+    "historical-reconcile-23e87.log": "57b0bdc746e6caac2e4003c8c9e5a7e61c3991a58175a200c29233082c2a8557"
+  }
+}

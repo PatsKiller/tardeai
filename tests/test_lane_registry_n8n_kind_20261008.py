@@ -356,6 +356,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     # The operator's2026-10-12 admission adds two new native metadata lanes;
     # neither retires or impersonates a legacy host trigger.
     n8n_native_lanes = {
+        # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
+        # (no host line; tests/test_cio_ask_research_lane_20261023.py).
+        "cio-ask-research",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
@@ -391,6 +394,14 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-22 calibration-shadow-harness: n8n-native report dispatcher row at shadow, weekdays 12:25
         # dry_run (no host line; tests/test_calibration_shadow_harness_20261022.py).
         "calibration-shadow-harness",
+        # 2026-10-22 desk truth: three read-only monitors at shadow, no host line for any of them (the quote-only
+        # options refresh is staged as kind none; tests/test_n8n_desk_truth_lanes_20261022.py).
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        # 2026-10-23 jsonl-archive-rotate: n8n-native hygiene dispatcher row at shadow, weekdays 16:45
+        # dry_run (no host line; tests/test_jsonl_archive_rotate_20261023.py).
+        "jsonl-archive-rotate",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
