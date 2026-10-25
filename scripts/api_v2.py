@@ -46523,6 +46523,12 @@ def _snaptrade_status():
         return {"client_id_set": False, "consumer_key_set": False, "ready": False, "connected": False, "error": str(e)}
 
 
+def _w7_cio_pages():
+    """Read-only W7 page projection over one CIO truth document."""
+    from scripts.lib.w7_pages import page_payload
+    return page_payload(STATE_DIR.parents[2], db_query=_db_query)
+
+
 def _portfolio_lookthrough():
     """Stock-level look-through + theme exposure + advisories (cached by portfolio_lookthrough_themes.py;
     refreshed on a schedule). Fast — no yfinance in the request path."""
@@ -48118,6 +48124,7 @@ ROUTES = {
     "/api/v2/rec-intel/outcomes": _rec_intel_outcomes,
     "/api/v2/rec-intel/open-positions": _rec_intel_open_positions,
     "/api/v2/rec-intel/lifecycle": _rec_intel_lifecycle,
+    "/api/v2/cio/pages": _w7_cio_pages,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
@@ -48946,6 +48953,20 @@ ROUTES = {
     "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 
+
+# W2 bounded stored-list reads. Handlers stay in their owned module.
+from lib.site_payload_reads import bounded_routes as _site_bounded_routes
+
+
+def _site_payload_state_root():
+    from lib.lane_registry import state_root
+    return state_root()
+
+
+ROUTES.update(_site_bounded_routes(
+    root=_site_payload_state_root, db_query=_db_query, clean=_json_clean,
+    scanner=trade_ai_scanner, evidence_packet=_evidence_packet,
+))
 
 _current_query = {}  # Thread-local would be better; single-threaded server is fine
 
@@ -55270,6 +55291,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # Desk source clocks: registry intent and captured successful-run evidence only.
+    if base_path == "/api/v2/desk-sources":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.desk_sources import get_sources as _desk_sources
+            return 200, {"ok": True, "data": _desk_sources(query)}
+        except ValueError as e:
+            return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # Unified scheduler intent/observations/host receipts. Additive read-only route.
     if base_path == "/api/v2/scheduler-operations":
         if method != "GET":
@@ -55283,7 +55316,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return None
                 return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
 
-            return 200, {"ok": True, "data": _scheduler_projection(db_query=_signal_query)}
+            from lib.site_payload_reads import scheduler_page
+            return 200, {"ok": True, "data": scheduler_page(_scheduler_projection(db_query=_signal_query), query)}
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
