@@ -438,7 +438,7 @@ def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, res
         headers[MANUAL_TRIGGER_HEADER] = "1"
     if context_id is None:
         try:
-            from .intelligence_client import current_context_id
+            from .intelligence_context import current_context_id
             context_id = current_context_id()
         except Exception:
             return {"error": {"code": "MEMORY_CONTEXT_UNAVAILABLE", "status": 503,

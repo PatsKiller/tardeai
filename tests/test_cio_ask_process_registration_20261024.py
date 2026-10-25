@@ -362,13 +362,14 @@ def test_unsafe_context_never_reaches_transport(monkeypatch, context):
 
 
 def test_failed_context_reader_does_not_forge_id_or_hide_refusal(monkeypatch):
-    from lib import intelligence_client as ic
+    # n8n_model_job reads the context from the stdlib-only lib.intelligence_context (lane capability guard).
+    from lib import intelligence_context as ictx
     from lib.n8n_model_job import bridge_governed_call
 
     def failed():
         raise RuntimeError("sensitive internal detail")
 
-    monkeypatch.setattr(ic, "current_context_id", failed)
+    monkeypatch.setattr(ictx, "current_context_id", failed)
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unavailable context reached transport"))
     out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, manual_trigger=True)
     assert out["error"]["code"] == "MEMORY_CONTEXT_UNAVAILABLE"
