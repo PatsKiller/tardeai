@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
+import { marketViewNote } from '../lib/marketSessionFreshness'
 
 export const usd = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : 'Not available'
 export const pct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : 'Not measured'
@@ -78,7 +79,7 @@ export function W7HomePanels({ data }: { data: any }) {
       </W7Panel>
       <W7Panel title="CIO view of the market">
         <p>Regime <b>{text(regime.label, 'Not classified')}</b> · VIX <b>{text(regime.vix)}</b></p>
-        <p style={{ color: TOKENS.text[2] }}>{when(regime.as_of)}{regime.stale ? ' · Last published view; refresh overdue' : ''}</p>
+        <p style={{ color: TOKENS.text[2] }} data-testid="w7-market-view-clock">{when(regime.as_of)}{marketViewNote(regime.as_of, regime.stale)}</p>
         {regime.gap && <W7Gap>{typeof regime.gap === 'string' ? regime.gap : regime.gap.reason}</W7Gap>}
         <p>Favoured sectors: {Array.isArray(favoured) ? favoured.length ? favoured.join(', ') : 'None favoured' : 'Not published'}</p>
         {!Array.isArray(favoured) && data.sectors?.favoured_gap && <W7Gap>{typeof data.sectors.favoured_gap === 'string' ? data.sectors.favoured_gap : data.sectors.favoured_gap.reason}</W7Gap>}

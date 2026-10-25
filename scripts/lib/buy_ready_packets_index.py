@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from .session_freshness import trading_age_hours
+
 SCHEMA = "BuyReadyPacketIndex@v2"
 STATE_ORDER = {"BUY_READY": 0, "ENTRY_NEAR": 1, "WATCH": 2}
 
@@ -197,8 +199,9 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
 def index_packets(packet_dir: Path, *, proposals: Optional[list[dict[str, Any]]] = None,
                   dropped: Optional[list[dict[str, Any]]] = None, now: Optional[datetime] = None,
                   max_age_h: float = 48.0) -> dict[str, Any]:
-    """The served payload. Packets older than ``max_age_h`` are listed under ``stale`` by symbol
-    only, so the lane never shows a days-old BUY_READY as current."""
+    """The served payload. Packets older than ``max_age_h`` trading-day hours (session_freshness.
+    trading_age_hours: weekends and exchange holidays do not count) are listed under ``stale`` by
+    symbol only, so the lane never shows a days-old BUY_READY as current."""
     now = now or datetime.now(timezone.utc)
     rows: list[dict[str, Any]] = []
     stale: list[dict[str, Any]] = []
@@ -210,8 +213,13 @@ def index_packets(packet_dir: Path, *, proposals: Optional[list[dict[str, Any]]]
             errors.append(f"{path.name}: {type(exc).__name__}")
             continue
         row = index_packet(packet, proposals=proposals or [], dropped=dropped or [], now=now)
-        if row["packet_age_h"] is not None and row["packet_age_h"] > max_age_h:
-            stale.append({"symbol": row["symbol"], "state": row["state"], "saved_at": row["saved_at"], "packet_age_h": row["packet_age_h"]})
+        # The expiry window counts trading days only: a Friday packet must not fall out of
+        # Ready now on Sunday because 48 wall-clock hours passed while the exchange was shut.
+        row["packet_trading_age_h"] = trading_age_hours(row["saved_at"], now) if row["packet_age_h"] is not None else None
+        expiry_age = row["packet_trading_age_h"] if row["packet_trading_age_h"] is not None else row["packet_age_h"]
+        if expiry_age is not None and expiry_age > max_age_h:
+            stale.append({"symbol": row["symbol"], "state": row["state"], "saved_at": row["saved_at"], "packet_age_h": row["packet_age_h"],
+                          "packet_trading_age_h": row["packet_trading_age_h"]})
             continue
         rows.append(row)
     rows.sort(key=lambda r: (STATE_ORDER.get(r["state"] or "", 9), r["packet_age_h"] if r["packet_age_h"] is not None else 1e9))
@@ -219,6 +227,8 @@ def index_packets(packet_dir: Path, *, proposals: Optional[list[dict[str, Any]]]
     for r in rows:
         counts[r["state"] or "UNKNOWN"] = counts.get(r["state"] or "UNKNOWN", 0) + 1
     return {"schema": SCHEMA, "as_of": now.isoformat(), "count": len(rows), "counts": counts, "rows": rows,
-            "stale": stale, "max_age_h": max_age_h, "errors": errors, "authority": "READ_ONLY_ADVISORY",
+            "stale": stale, "max_age_h": max_age_h, "max_age_basis": "trading_days",
+            "max_age_label": f"{max_age_h:g} h (weekends and exchange holidays not counted)",
+            "errors": errors, "authority": "READ_ONLY_ADVISORY",
             "note": ("Entry-state packets the runner saved (BUY_READY pages Telegram; ENTRY_NEAR pages when starred). "
                      "Plan R:R is quoted at the zone top; R:R at quote uses the current price. Advisory only.")}
