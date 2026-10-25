@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "gaps_not_zero_20261025",
+  "files": [
+    "tests/test_jobs_health_not_measured_20261025.py"
+  ],
+  "comment": [
+    "2026-10-25 live page audit: Jobs showed Missed 0 while most due jobs were not measured; the summary now says when missed runs cannot be counted."
+  ]
+}

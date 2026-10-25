@@ -19,8 +19,11 @@ ST_RATE = 0.37  # Short-term = ordinary income (top bracket)
 LT_RATE = 0.20  # Long-term capital gains rate (top bracket)
 NIIT_RATE = 0.038  # Net investment income tax (high income)
 
-# Wash sale window (30 days before/after sale)
-WASH_SALE_DAYS = 30
+# Wash sale window (30 days before/after sale) — the ONE implementation (scripts/lib/wash_sale.py, matrix R9)
+try:
+    from lib.wash_sale import WASH_DAYS as WASH_SALE_DAYS  # noqa: F401  (scripts/ on sys.path)
+except ImportError:
+    from scripts.lib.wash_sale import WASH_DAYS as WASH_SALE_DAYS  # type: ignore  # noqa: F401
 
 
 # ── Lot Data Structures ───────────────────────────────────────────────────────
