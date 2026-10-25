@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "design_checks_20261025",
+  "files": [
+    "tests/test_design_checks_20261025.py"
+  ],
+  "anchor": "DESIGN_CHECKS_20261025",
+  "comment": [
+    "ANCHOR: DESIGN_CHECKS_20261025 — Design checks in CI (operator-approved design workflow 2026-10-25, AGENTS.md §28.13 proposed): a PR changing UI under apps/command-center-v3/src must cite 'Design: <page>/vNNN' (APPROVED or IMPLEMENTING, page in design/registry.json) or 'Design: none'; the removal guard refuses a removed or newly hidden nav item, route, tab or panel heading not listed in the cited version's SPEC removal list (moved = re-added in the same diff is not a removal; TradeInView Calendar/Replay hide regression fails); the design-checks workflow runs these blocking, the fixture phone-rule ratchet blocking and the fixture visual compare report-only until 2026-11-01. Hermetic: synthetic bodies and diffs."
+  ]
+}
