@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_activation_20261025",
+  "files": [
+    "tests/test_conflict_resolver_lane_20261025.py",
+    "tests/test_conflict_matrix_gaps_20261025.py",
+    "tests/test_conflict_review_completion_e2e_20261025.py"
+  ],
+  "anchor": "CONFLICT_ACTIVATION_20261025",
+  "comment": [
+    "ANCHOR: CONFLICT_ACTIVATION_20261025 — conflict-resolver lane at canary, decision writer activated by the operator-approved authority row, rulebook APPROVED, matrix gap rows, and review completion that writes the compared input and clears on the next run (operator 2026-10-25)."
+  ]
+}

@@ -76,6 +76,13 @@ BASELINE = {
     # the entry script it shares with the */5 early lane statically reaches auto_proposal_generator (advisory send,
     # account_policy reads). Fix: give the hot-list owner its own entry script (cron + allowlist change, cron grant).
     "scalp-hot-list": "shared entry script reaches the early-lane proposal handoff (path-insensitive scan)",
+    # 2026-10-25 conflict-resolver admission (operator directive "You should turn on everything ... Get it working."):
+    # the runner composes the Watch universe exactly as the served Watch page does (compose_universe ->
+    # list_intelligence -> _decision_for -> rockville live_projection), whose static closure reaches the CIO
+    # stance-review / thesis-publish notifier and api_v2 order verbs. The runner itself has no sender
+    # (notifications always 0) and the real-state proof runs left the review-request ledger untouched. Fix: a
+    # read-only Watch card core for the runner (WP-21 pattern), then drop this entry.
+    "conflict-resolver": "Watch universe composition reaches the stance-review notifier and api_v2 (static)",
 }
 NAMED_SENDER_EXCEPTIONS = frozenset({"trade-ai-scalp-live"})
 

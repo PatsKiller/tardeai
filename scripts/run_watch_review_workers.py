@@ -299,6 +299,22 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
                 base["provider_calls"] += 1
                 base["estimated_cost_usd"] += cost
                 base["completed"].append({"symbol": sym, "agent_id": "cio", "cost": cost, "path": str(path)})
+                # Conflict engine owner hook (EXCEPTIONS_MATRIX prerequisite 6): the completed CIO review records
+                # the CIO decision on that security's open stance conflicts and links them in this artifact; the
+                # next conflict-resolver run re-evaluates and clears. Never raises into the worker.
+                try:
+                    if str(ROOT) not in sys.path:
+                        sys.path.insert(0, str(ROOT))
+                    from scripts.lib.canonical_store_registry import production_state_root
+                    from scripts.lib.conflicts.review import complete_from_watch_review
+
+                    base.setdefault("conflict_reviews", []).extend(
+                        {"symbol": sym, **r} for r in complete_from_watch_review(
+                            production_state_root(), symbol=sym, artifact_path=path,
+                            now=datetime.now(timezone.utc)))
+                except Exception as exc:  # noqa: BLE001
+                    base.setdefault("conflict_reviews", []).append(
+                        {"symbol": sym, "applied": False, "reason": type(exc).__name__})
             else:
                 base["skipped"].append({"symbol": sym, "agent_id": agent, "reason": "unknown_agent"})
         except Exception as e:

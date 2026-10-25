@@ -18394,6 +18394,62 @@
       }
     },
     {
+      "lane_id": "conflict-resolver",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/conflict_resolver.py",
+        "cadence": "*/15 9-16 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5",
+        "cadence_note": "dispatch.cron also fires 30 7 * * 1-5 and 20 16 * * 1-5 (pre-open and post-close evaluations)"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-25",
+      "state_reason": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" Admits the conflict engine runner (DESIGN conflict-resolution-20261024 §8; docs/ops/CONFLICT_LEDGER.md) as an n8n-native dispatcher lane at canary, dispatch live: every 15 min in market hours plus 07:30 and 16:20 ET the dispatcher runs --shadow, which appends the conflict ledger data/conflicts/conflict_events.jsonl (ConflictEvent@v1, one row per state change, never per poll), the observation history, one comparison report and the receipt. Notifications are always 0 (the runner has no sender); NEEDS_OPERATOR items reach the operator only through the Approvals Center read model and the existing grouped CIO brief digest. Live from n8n only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (host step). No cron line exists or is added (cron freeze 2026-10-09).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_conflict_runner.py (write-free dry run, shadow report + standard attempt receipt + zero notifications, duplicate attempt refused, hysteresis); tests/test_conflict_resolver_lane_20261025.py (registry/allowlist/contract pins, transitive closure reaches no broker/order/sender capability, argv never carries --input-file); real-layout proof on a temp state root in the admission PR body.",
+      "review_by": "2026-11-08",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/conflict-resolver_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/conflict_resolver.py --shadow writes LaneRunReceipt@v2 (produced_count 1 = one comparison report, attempted_count = subjects evaluated) on every run, a failed receipt on error; NOT_MEASURED until the first live n8n fire after relay arming"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Reads: the Watch universe and re-entry desk rows (SELECT only), lib/cio_truth (CIO stance through the cio_prospect shadow, holdings, policy) — never writes an input store. Writes (live/--shadow only): data/conflicts/{conflict_events.jsonl, conflict_delivery_receipts.jsonl, conflict_observations.jsonl, reports/<sha>.json, conflict_resolver.lock}, CIO memory contributions (data/cio/security_research_spine.jsonl, silo=cio tag=conflict, once per event) and data/runtime/conflict-resolver_last.json. Safety, protection, money and policy findings are never auto-resolved (ledger rules U0/T0/T1/R12/R16). No broker call, no model, no send. Exit 0 = evaluated and reported; 2 = could not run (failed receipt written).",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/15 9-16 * * 1-5",
+          "30 7 * * 1-5",
+          "20 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      },
+      "canary": {
+        "since": "2026-10-25",
+        "evidence": "real-layout proof on a temp state root (admission PR body): the allowlist argv + live_arg wrote the ledger, the comparison report and the receipt with notifications 0; dry-run against production state read-only counted the findings",
+        "rollback": "revert this registry/allowlist/contract commit, or drop the lane from TRADEAI_N8N_RELAY_LIVE_LANES (kill switch: fires then run --dry-run, write-free); the ledger is append-only and stays readable"
+      }
+    },
+    {
       "lane_id": "cio-company-facts-populate",
       "owner": "cio",
       "state": "NEVER_SCHEDULED",

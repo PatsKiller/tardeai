@@ -33287,6 +33287,205 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "conflict-resolver",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Every 15 min in market hours plus 07:30 and 16:20 ET, evaluate every Watch/held security (and its identity) with the conflict engine (scripts/lib/conflicts, rulebook config/conflict_rulebook.json) and reconcile the append-only conflict ledger: open, change, supersede or clear findings, one event per state change. The ledger is what Watch, Home, Approvals, the CIO brief and Ask read; a page never computes its own conflicts.",
+        "business_function": "cio-data-foundation",
+        "source": "scripts/conflict_resolver.py; docs/ops/CONFLICT_LEDGER.md; coordination handoff conflict-resolution-20261024 DESIGN §8"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/conflict_resolver.py --state-root $STATE_ROOT",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_conflict_resolver.lock + $STATE_ROOT/data/conflicts/conflict_resolver.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock); scripts/conflict_resolver.run"
+        },
+        {
+          "name": "Watch universe cards (data_broker.watch_intelligence.compose_universe), re-entry desk rows (SELECT), lib/cio_truth (data/cio/cio_prospect_shadow.json, holdings, stops, policy)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/conflict_resolver.collect_inputs"
+        },
+        {
+          "name": "data/conflicts/{conflict_events.jsonl, conflict_delivery_receipts.jsonl, conflict_observations.jsonl, reports/<sha>.json}",
+          "kind": "store",
+          "direction": "write",
+          "source": "live runs only: --shadow (ConflictLedger.reconcile apply=True)"
+        },
+        {
+          "name": "data/cio/security_research_spine.jsonl (silo=cio, tag conflict, once per event_id)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/conflicts/cio.memory_writer (ledger drain)"
+        },
+        {
+          "name": "data/runtime/conflict-resolver_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2; allowlist output_signal"
+        },
+        {
+          "name": "scripts/lib/conflicts/api.py (/api/v3/conflicts, Watch sections, Approvals rows), scripts/lib/conflicts/cio.py (brief digest, Ask context)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "docs/ops/CONFLICT_LEDGER.md"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/conflict-resolver_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 30 min in market hours (2x expected_cadence_hours 0.25)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count 1 (one comparison report) and attempted_count = subjects evaluated (> 0)"
+        },
+        {
+          "check": "no_notifications",
+          "text": "receipt summary notifications == 0 (the runner has no sender)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 30 min but younger than 45 min in market hours (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        },
+        {
+          "check": "data_errors",
+          "text": "DATA_ERROR findings rise run over run (a producer lost identity/time); surfaced in Jobs & health"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no receipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "failed_receipt",
+          "text": "the receipt is ok=false (exit 2: inputs unreadable, ledger invalid, or a CIO-memory delivery pending)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 45 min in market hours (3x cadence)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (market hours)",
+        "timeout_s": 600,
+        "class": "report",
+        "computed_on": "2026-10-25",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet; class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence; the real-state read-only dry run of 2026-10-25 took about 8 s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity (a missed run leaves conflict flags stale; never a trade)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; the lane sends nothing itself. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A failed run is fixed in code or at the producer; the lane never repairs an input store and never deletes ledger history."
+      },
+      "evidence": {
+        "receipt": "data/runtime/conflict-resolver_last.json",
+        "verify": [
+          "python3 scripts/conflict_resolver.py --dry-run --state-root $STATE_ROOT   # write-free; prints findings and planned events",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='conflict-resolver' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.ok, .produced_count, .attempted_count, .summary.notifications' data/runtime/conflict-resolver_last.json",
+          "wc -l data/conflicts/conflict_events.jsonl"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-25 from scripts/conflict_resolver._run: a live run writes one comparison report (produced_count 1) even when no finding changed; a failure writes ok=false with empty_reason run_failed."
+      },
+      "review_by": "2026-11-08",
+      "review": {
+        "prepared_by": "agent draft (conflict-resolver admission, 2026-10-25)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-25 (activation directive)",
+        "reviewed_on": "2026-10-25",
+        "reference": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" Approves activating the Watch conflict path, including this lane at canary."
+      },
+      "state_note": "Admitted at canary 2026-10-25 on the operator directive. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include conflict-resolver after the release (host step); until then fires run --dry-run (write-free). Never a send, broker or model call.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "conflict comparison reports",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable",
+          "run_failed"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/conflict-resolver_last.json produced_count"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "jsonl-archive-rotate",
       "kind": "lane",
       "workflow_id": "dispatcher",

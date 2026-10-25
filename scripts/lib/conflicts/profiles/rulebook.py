@@ -12,11 +12,19 @@ def load_rulebook(path: Path | None = None) -> dict:
         raise ValueError("unsupported conflict rulebook")
     if doc.get("status") not in {"PROPOSED", "APPROVED"}:
         raise ValueError("unknown conflict rulebook status")
-    required = {"safety", "protection", "policy", "money_mismatch", "schedule_state", "flapping"}
+    # The full matrix never-auto list (EXCEPTIONS_MATRIX "Never auto-resolved"); a rulebook may add, never drop.
+    required = {"safety", "protection", "policy", "money_mismatch", "schedule_state", "flapping", "ownership",
+                "pending_fill", "wash_window", "cross_instrument", "nway_recorded_split", "held_exit_vs_add"}
     if not required.issubset(doc.get("never_auto", [])):
         raise ValueError("conflict rulebook weakens never-auto boundary")
     if doc.get("status") == "PROPOSED" and (doc.get("approval") or doc.get("live_enabled")):
         raise ValueError("proposed conflict rulebook cannot assert approval or live authority")
+    if doc.get("status") == "APPROVED":
+        approval = doc.get("approval") or {}
+        if not all(str(approval.get(k) or "").strip() for k in ("by", "at", "ref")) or approval.get("by") != "operator":
+            raise ValueError("approved conflict rulebook needs the operator's approval record (by, at, ref)")
+        if not doc.get("matrix_sha256"):
+            raise ValueError("approved conflict rulebook must stay bound to the exceptions matrix sha256")
     return doc
 
 

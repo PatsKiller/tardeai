@@ -96,9 +96,22 @@ def test_schedule_adapter_preserves_registry_and_observation():
     assert section["headline"] and section["gap"] is None
 
 
-def test_rulebook_does_not_assert_operator_ratification_or_live_authority():
+def test_rulebook_is_operator_approved_and_bound_to_the_matrix(tmp_path):
+    """2026-10-25 operator directive ("You should turn on everything ... Get it working."): APPROVED + live,
+    still bound to the 2026-10-24 exceptions matrix; an approval without the operator record is refused."""
+    import json
+
     doc = load_rulebook()
-    assert doc["status"] == "PROPOSED" and doc["approval"] is None and not doc["live_enabled"]
+    assert doc["status"] == "APPROVED" and doc["live_enabled"] is True
+    assert doc["approval"]["by"] == "operator" and doc["approval"]["at"] == "2026-10-25"
+    assert doc["matrix_sha256"] == "e40e97179386206cf04ac568dff8a36b90922befcabe407403a200a3575d73c9"
+    assert doc["matrix_sha256"] in doc["approval"]["ref"]
+    for broken in ({**doc, "approval": None}, {**doc, "approval": {**doc["approval"], "by": "agent"}},
+                   {**doc, "matrix_sha256": None}, {**doc, "status": "PROPOSED"}):
+        path = tmp_path / "rb.json"
+        path.write_text(json.dumps(broken))
+        with pytest.raises(ValueError):
+            load_rulebook(path)
 
 
 def test_failed_paper_and_intra_synthesis_inputs_do_not_become_data_error_sides():

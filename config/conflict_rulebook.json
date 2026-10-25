@@ -1,9 +1,13 @@
 {
   "schema": "ConflictRulebook@v1",
   "version": 2,
-  "status": "PROPOSED",
-  "approval": null,
-  "live_enabled": false,
+  "status": "APPROVED",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-25",
+    "ref": "operator directive 2026-10-25 (verbatim): 'You should turn on everything. It shouldn't need me to turn on anything. Get it working.'; matrix approved 2026-10-24 'I agree to that resolution' (EXCEPTIONS_MATRIX.md sha256 e40e97179386206cf04ac568dff8a36b90922befcabe407403a200a3575d73c9)"
+  },
+  "live_enabled": true,
   "source": "coordinator conflict-resolution-20261024/reference, 2026-10-24",
   "never_auto": [
     "safety",

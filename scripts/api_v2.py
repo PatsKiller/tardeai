@@ -55449,13 +55449,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 503, {"ok": False, "error": type(e).__name__}
 
     # Conflict engine ledger (AGENTS.md 28.10, W10; docs/ops/CONFLICT_LEDGER.md). GET list/detail are read-only;
-    # POST .../decision is operator-identity + CSRF only and stays refused (CONFLICT_WRITER_NOT_ACTIVATED) until the
-    # operator activates the writer. Agents never decide a conflict.
+    # POST .../decision is operator-identity + CSRF only. The writer is active only while the conflict_ledger row in
+    # config/data_source_authority.json carries the operator's approval (operator directive 2026-10-25); otherwise
+    # it is refused CONFLICT_WRITER_NOT_ACTIVATED. Agents never decide a conflict.
     if base_path.rstrip("/") == "/api/v3/conflicts" or base_path.startswith("/api/v3/conflicts/"):
         try:
             from scripts.lib.conflicts import api as _conflicts_api
 
-            _conflicts_out = _conflicts_api.handle(base_path, method, body, query, write_enabled=False)
+            _conflicts_out = _conflicts_api.handle(
+                base_path,
+                method,
+                body,
+                query,
+                write_enabled=(method.upper() == "POST" and _conflicts_api.writer_activated()),
+            )
             if _conflicts_out is not None:
                 status, payload = _conflicts_out
                 if status == 200 and not (isinstance(payload, dict) and "ok" in payload):

@@ -56,6 +56,15 @@ OPERATOR_RULING_DD01_REASON = (
 #: gate tests/test_agents_policy_7_0_0_advisory_market_data.py stays green). Reviewed addition, not a ruling widening.
 DATA_INTEGRITY_MONITORS_20261018 = frozenset({"n8n-data-plausibility-audit", "n8n-gap-resolution-audit"})
 
+#: 2026-10-25 conflict-resolver admission PR (operator directive 2026-10-25, verbatim: "You should turn on everything.
+#: It shouldn't need me to turn on anything. Get it working."; under the 2026-10-15 DD01 ruling "n8n ignor broker
+#: code it can't trade live ccontinue"): scripts/conflict_resolver.py reaches broker_module / order_placement only
+#: through LAZY shared chains (watch_intelligence -> watch_domains -> positions_sync; cio_truth / the CIO memory
+#: spine -> db_adapter -> holdings_guard -> schwab_position_sync). The runner reads stores and appends the conflict
+#: ledger; it has no sender and calls no broker; the trading lock refuses every order. Reviewed addition, not a
+#: ruling widening; direct_sender stays forbidden (test_conflict_resolver_lane_20261025.py pins it).
+CONFLICT_RESOLVER_20261025 = frozenset({"conflict-resolver"})
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -130,7 +139,8 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | CONFLICT_RESOLVER_20261025,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -206,7 +216,8 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | CONFLICT_RESOLVER_20261025,
 }
 
 

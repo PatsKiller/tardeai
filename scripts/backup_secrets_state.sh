@@ -140,7 +140,25 @@ else
     # runtime/ is excluded: 5.4G of ephemeral logs, 9.6G -> 4.2G dereferenced without it.
     data) TAR_FLAGS="czhf"; EXCLUDES=(--exclude=data/runtime) ;;
   esac
-  run_tar "$TAR_FLAGS" "$TAR" -C "$TAR_BASE" "${EXCLUDES[@]}" "${LIST[@]}"
+  # 2026-10-25 (conflict ledger + operator decision ledger activation): two append-only governance stores live
+  # ONLY under persistent-state (no dev-tree symlink reaches them), so the data family names them explicitly.
+  # Archived as persistent-state/<rel>; restore: untar, then copy persistent-state/<rel> back under the
+  # persistent-state root. Comparison reports (data/conflicts/reports) are derived evidence and are not copied.
+  PS_TAIL=()
+  if [ "$TARGET" = data ]; then
+    PS_ROOT="${TRADEAI_PERSISTENT_STATE_ROOT:-$HOME/trade-ai-releases/persistent-state}"
+    PS_PARENT="$(dirname "$PS_ROOT")"; PS_NAME="$(basename "$PS_ROOT")"
+    PS_LIST=()
+    for s in data/conflicts/conflict_events.jsonl data/conflicts/conflict_delivery_receipts.jsonl \
+             data/conflicts/conflict_observations.jsonl data/governance/operator_decisions.jsonl; do
+      [ -f "$PS_ROOT/$s" ] && PS_LIST+=("$PS_NAME/$s")
+    done
+    if [ ${#PS_LIST[@]} -gt 0 ]; then
+      echo "[backup:data] + ${#PS_LIST[@]} persistent-state ledger file(s): ${PS_LIST[*]}"
+      PS_TAIL=(-C "$PS_PARENT" "${PS_LIST[@]}")
+    fi
+  fi
+  run_tar "$TAR_FLAGS" "$TAR" -C "$TAR_BASE" "${EXCLUDES[@]}" "${LIST[@]}" "${PS_TAIL[@]}"
 fi
 
 # Encrypt (AES-256, symmetric). Plaintext tar is deleted with $TMP on exit.

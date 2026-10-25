@@ -39,6 +39,40 @@ def _bytes(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str, allow_nan=False).encode()
 
 
+def next_run_label(now, registry_path=None):
+    """R5: every flag names the lane's next scheduled evaluation (registry dispatch.cron, America/New_York)."""
+    from zoneinfo import ZoneInfo
+    from scripts.lib.cron_schedule import next_run_any
+    try:
+        doc = json.loads(Path(registry_path or ROOT / "config/lane_registry.json").read_text(encoding="utf-8"))
+        row = next(r for r in doc["lanes"] if r.get("lane_id") == "conflict-resolver")
+        tz = ZoneInfo((row.get("dispatch") or {}).get("tz") or "America/New_York")
+        nxt = next_run_any((row.get("dispatch") or {}).get("cron") or [], now.astimezone(tz).replace(tzinfo=None))
+    except (OSError, ValueError, StopIteration, KeyError):
+        return None
+    return nxt.replace(tzinfo=tz).isoformat() if nxt else None
+
+
+def global_halt_inputs(now, query=None):
+    """T0: the risk gate's global halt (system_controls.halt_all_trading) as a safety input. SELECT only."""
+    try:
+        if query is None:
+            from db_adapter import _execute
+
+            def query(sql, params):
+                return _execute(sql, params, fetch="all")
+        rows = query("SELECT key, value FROM system_controls WHERE key IN (%s, %s)",
+                     ("halt_all_trading", "kill_switch_engaged")) or []
+    except Exception:
+        return []
+    out = []
+    for row in rows:
+        key, value = (row.get("key"), row.get("value")) if isinstance(row, dict) else (row[0], row[1])
+        if str(value).strip().lower() == "true":
+            out.append(Input(f"risk_gate:{key}", "HALT", now, role="safety", detail="Risk gate global halt"))
+    return out
+
+
 def collect_inputs(root, now):
     """Only registered W1 canonical and existing read-only broker projections."""
     from scripts.lib.cio_truth import resolve, security_inputs_for, stances_for_symbols
@@ -53,13 +87,18 @@ def collect_inputs(root, now):
     projection = get_prospects(shadow_base=Path(root) / "data/cio/cio_prospect_shadow.json", now=now)
     canonicals = stances_for_symbols(symbols, root=root, projection=projection, now=now)
     document = resolve(root, now)
+    next_run = next_run_label(now)
+    safety = global_halt_inputs(now)
     bundles = []
     for symbol in symbols:
         guid = (canonicals.get(symbol) or {}).get("security_guid")
         truth = security_inputs_for(guid, document=document, projection=projection, now=now)
         truth["symbol"] = symbol
         truth.setdefault("context", {})["concentration_policy"] = policy_for_security(guid, document=document)
-        bundles.append(security_inputs_from_truth(truth, card=cards.get(symbol), reentry=desk.get(symbol)))
+        bundle = security_inputs_from_truth(truth, card=cards.get(symbol), reentry=desk.get(symbol), extras=list(safety))
+        if next_run:
+            bundle.subject.context["next_run"] = next_run
+        bundles.append(bundle)
     return bundles
 
 

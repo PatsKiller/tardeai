@@ -388,6 +388,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row at shadow, daily 05:05
         # dry_run (no host line; tests/test_macro_calendar_20261021.py).
         "macro-calendar-refresh",
+        # 2026-10-25 operator "turn on everything": conflict-resolver, n8n-native canary dispatcher row, no host line
+        # (tests/test_conflict_resolver_lane_20261025.py).
+        "conflict-resolver",
         # WP-21: restored n8n-native shadow builder after removing forbidden transitive imports.
         # No host line; tests/test_cio_prospect_shadow_readonly_20261023.py.
         "cio-prospect-shadow",

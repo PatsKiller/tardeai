@@ -547,6 +547,7 @@ N8N_NATIVE_SHADOW = frozenset(
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
+from tests.support import conflict_resolver_canary_20261025 as _CRC  # noqa: E402
 
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
 N8N_NATIVE_CANARY = frozenset(
@@ -562,6 +563,8 @@ N8N_NATIVE_CANARY = frozenset(
         # 2026-10-22 release train H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0):
         # shadow -> canary, dispatch live, live_arg [] (a real run writes the census receipt).
         "pr-hygiene-audit",
+        # 2026-10-25 operator "turn on everything": conflict-resolver admitted at canary, live_arg --shadow.
+        *_CRC.LIVE,
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
@@ -575,6 +578,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
+    **_CRC.LIVE_ARG,
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

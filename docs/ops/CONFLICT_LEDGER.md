@@ -101,3 +101,25 @@ broker call, migration, lane activation or notification is performed.
 Runtime owner hooks, registered store/backup/completeness edges, final rulebook
 ratification, the exact captured 31-row golden replay, actual UI tap evidence and
 live flips remain separately evidenced dependencies. W9/W7/W4 own UI proof.
+
+## Activation (2026-10-25)
+
+Operator directive 2026-10-25 (verbatim): "You should turn on everything. It shouldn't need me to turn on
+anything. Get it working."
+
+- Lane `conflict-resolver`: n8n-native dispatcher row at canary, dispatch live (`*/15 9-16`, `30 7`, `20 16`
+  Mon-Fri ET), allowlist argv `$PY scripts/conflict_resolver.py --state-root $STATE_ROOT` + live_arg `--shadow`.
+  Live from n8n once the lane is in `TRADEAI_N8N_RELAY_LIVE_LANES`; until then fires run `--dry-run`.
+- Decision writer: `POST /api/v3/conflicts/{key}/decision` is active while the `conflict_ledger` row in
+  `config/data_source_authority.json` `domains` carries the operator approval (`conflicts.api.writer_activated`).
+  The default POST ledger delivers the decision to CIO memory before answering.
+- `operator_decisions` (Approvals Center ledger) and `conflict_ledger` are granted rows; both ledgers join the
+  weekly `data_offsite` backup (`scripts/backup_secrets_state.sh data`, class `ps_ledgers_data_offsite`).
+- Rulebook `config/conflict_rulebook.json` is APPROVED and live (`live_enabled: true`), still bound to the matrix
+  sha256; the loader refuses an APPROVED rulebook without the operator approval record or with a weakened
+  never-auto list. The read-only rulebook page/endpoint is PR #2104 (`scripts/lib/conflicts/rulebook_view.py`).
+- Review completion: after the CIO watch-review worker writes a COMPLETE `<SYM>_cio.json`,
+  `conflicts.review.complete_from_watch_review` records the CIO decision on that GUID's open U2/U3/U7/R11
+  conflicts and writes the linkage into the artifact with exact readback; the next resolver run clears.
+- Inputs added to the runner: R5 `next_run` (the lane's next scheduled fire) and T0 global halt
+  (`system_controls.halt_all_trading` / `kill_switch_engaged`, SELECT only).

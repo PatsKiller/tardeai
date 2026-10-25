@@ -17,6 +17,35 @@ def _root():
     return Path(resolve_durable_dir("data/conflicts")).parent.parent
 
 
+WRITER = "scripts/lib/conflicts/ledger.py"
+STORE_FILE = "data/conflicts/conflict_events.jsonl"
+
+
+def writer_activated(registry=None):
+    """Decision-writer activation is the operator's approval of the conflict_ledger authority row.
+
+    True only when config/data_source_authority.json ``domains`` (not ``proposed_domains``) holds the
+    conflict_ledger row for this store and writer with an operator approval (approved_by, approved_on,
+    reference). A request body, header, actor claim or env flag can never activate it. Unreadable -> False.
+    """
+    try:
+        if registry is None:
+            root = Path(__file__).resolve().parents[3]
+            registry = json.loads((root / "config/data_source_authority.json").read_text(encoding="utf-8"))
+        domains = registry.get("domains") or []
+        rows = domains.values() if isinstance(domains, dict) else domains
+        for row in rows:
+            approval = row.get("approval") or {}
+            store = row.get("store") or {}
+            if (row.get("domain") == "conflict_ledger" and isinstance(store, dict) and store.get("file") == STORE_FILE
+                    and row.get("writer") == WRITER and approval.get("approved_by") == "operator"
+                    and approval.get("approved_on") and approval.get("reference")):
+                return True
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
+    return False
+
+
 def _first(value, default=None):
     return value[0] if isinstance(value, list) and value else default if value is None else value
 
@@ -48,7 +77,15 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
             return 503, {"error": "CONFLICT_WRITER_NOT_ACTIVATED"}
     elif method != "GET":
         return 405, {"error": "METHOD_NOT_ALLOWED"}
-    ledger = ledger or ConflictLedger(root or _root())
+    if ledger is None:
+        root = root or _root()
+        if method == "POST":
+            # A security decision event is delivered to CIO memory before the response (the ledger drain);
+            # without the sink the append would succeed and the response would wrongly say "pending".
+            from .cio import memory_writer
+            ledger = ConflictLedger(root, memory_writer=memory_writer(root))
+        else:
+            ledger = ConflictLedger(root)
     q = {k: _first(v) for k, v in (query or {}).items()}
     if base == PREFIX:
         if method != "GET":

@@ -831,6 +831,21 @@
    ]
   },
   {
+   "id": "ps_ledgers_data_offsite",
+   "description": "Append-only governance ledgers that live only under persistent-state, named explicitly in the data_offsite family (2026-10-25 conflict ledger + operator decision ledger activation)",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg, untar, copy persistent-state/data/conflicts/{conflict_events,conflict_delivery_receipts,conflict_observations}.jsonl and persistent-state/data/governance/operator_decisions.jsonl back under the persistent-state root (restore conflict_events and conflict_delivery_receipts together; records rebuild from events). data/conflicts/reports (derived comparison reports) is not copied.",
+   "gap": "weekly cadence (data_offsite, KEEP=1): up to 7 days of ledger events can be lost on disk loss; restore never drilled",
+   "covers": [
+    "ps:data/conflicts",
+    "store:conflict_ledger",
+    "store:operator_decisions"
+   ]
+  },
+  {
    "id": "ps_forked",
    "description": "persistent-state/data subdirs that are separate from their dev-tree namesakes",
    "mechanism": [

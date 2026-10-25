@@ -4377,6 +4377,39 @@
       "source": "Operator directive 2026-10-22 ('start executing immediately ... everything that's not built and not live'; the CIO prospect foundation, AGENTS.md §26). n8n-native lane: no cron line, no systemd unit; the lock is new (a dry run takes <lock>.dryrun). SHADOW ONLY: live_arg null, registry dispatch mode dry_run; dry_run_arg --dry-run prints only. Canary live_arg (separate PR): [\"--write-shadow\"]."
     },
     {
+      "lane_id": "conflict-resolver",
+      "command": [
+        "$PY",
+        "scripts/conflict_resolver.py",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--shadow"
+      ],
+      "lock": "/tmp/tradeai_conflict_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/conflict-resolver_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/conflict_resolver.py collect_inputs reads the Watch universe (data_broker.watch_intelligence.compose_universe) and the re-entry desk rows (data_broker.watch_decision.reentry_rows through db_adapter._execute: DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD, SELECT only), lib/cio_truth (state-root files, the cio_prospect shadow) and lib/ips_policy; lib/lane_last_receipt + canonical_store_registry read TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT (executor base name); TRADEAI_RUN_ID is an executor base name. No model, provider or broker credential name.",
+      "env_report_reason": "report until the Watch-universe import closure is re-inventoried for enforce (it spans the Watch, CIO and data-broker libraries); the only credential names read are DB_* for SELECTs.",
+      "source": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" n8n-native lane: no cron line, no systemd unit; the lock is the lane's own (a dry run takes <lock>.dryrun) and the runner also holds <state>/data/conflicts/conflict_resolver.lock. live_arg [\"--shadow\"] is the runner's writing mode: it appends ConflictEvent@v1 rows to data/conflicts/conflict_events.jsonl (append-only), the observation history and one comparison report per run, delivers security events to CIO memory (SecurityResearchSpine silo=cio tag=conflict, idempotent by event_id) and writes the LaneRunReceipt@v2. It has NO notification sender (notifications always 0), no broker, no model. --input-file (fixture replay) is never in the argv."
+    },
+    {
       "lane_id": "holdings-drift-monitor",
       "command": [
         "$PY",
