@@ -277,3 +277,18 @@ def test_audit_proposals_cannot_embed_a_decision_or_invent_evidence(rig):
     assert ctx.ledger.proposal_rows()[0]["kind"] == "FINDING"
     with pytest.raises(c.Refused, match="UNSUPPORTED_AUDIT_FINDING"):
         ctx.ledger.audit_findings(policy=policy, audit_key="d" * 40, findings=[finding], evidence_refs=set())
+
+
+def test_financial_adapter_accepts_real_database_clock_types_without_losing_queue(monkeypatch):
+    import sys
+    import types
+    from decimal import Decimal
+    module = types.ModuleType("scripts.lib.cio_truth")
+    module.financial_queue_items = lambda **kwargs: {"complete": True, "items": [{"source_id": "7", "canonical_entity_id": "action_queue:7",
+        "source": "action_queue", "source_refs": [{"source": "action_queue", "id": "7"}], "kind": "actions", "title": "Review fixture",
+        "created_at": NOW, "action": {"amount": Decimal("12.34")}}]}
+    monkeypatch.setitem(sys.modules, "scripts.lib.cio_truth", module)
+    result = api._default_sources(Path(__file__).resolve().parents[1])["financial_queues"]()
+    assert result["gap"] is None and result["rows"][0]["created_at"] == NOW.isoformat()
+    assert "action_queue:7" in result["rows"][0]["source_refs"]
+    assert "12.34" in result["rows"][0]["document"]["text"]
