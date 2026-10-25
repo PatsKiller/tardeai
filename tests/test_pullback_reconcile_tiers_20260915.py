@@ -14,20 +14,31 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def _stub_missing(*names):
-    """CI's source-only runner has no numpy/pandas; _reconcile_proposals uses neither."""
+    """CI's source-only runner has no numpy/pandas; _reconcile_proposals uses neither.
+
+    Returns the names it stubbed so the caller can remove them again: a bare stub left in
+    sys.modules breaks later tests in the same session (pytest.approx probes numpy.isscalar).
+    """
     import types
+    stubbed = []
     for name in names:
         try:
             __import__(name)
         except ImportError:
             sys.modules[name] = types.ModuleType(name)
+            stubbed.append(name)
+    return stubbed
 
 
 def _load():
-    _stub_missing("numpy", "pandas")
-    spec = importlib.util.spec_from_file_location("pullback_macd_screener_t", ROOT / "scripts" / "pullback_macd_screener.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    stubbed = _stub_missing("numpy", "pandas")
+    try:
+        spec = importlib.util.spec_from_file_location("pullback_macd_screener_t", ROOT / "scripts" / "pullback_macd_screener.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        for name in stubbed:
+            sys.modules.pop(name, None)
     return mod
 
 
