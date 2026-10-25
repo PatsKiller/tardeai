@@ -1,10 +1,10 @@
 # Worker A carry-forward: six shadow lanes
 
-Status: IN_PROGRESS — combined source validated; accepted-main reconciliation pending
+Status: READY_FOR_SOURCE_REVIEW — accepted-main source validated; publication pending
 as_of: 2026-10-24
 Design-Task: DSN-20261024-w8-legacy-carryforward-P1-T1
 
-The approved `legacy-pr-carryforward.md` assigns the Worker A source at `8ba33bd6c4612770a71a814874632eaba3b19f6e` to a fresh task/branch/worktree on accepted main `d635873e1063efb8a9ff8e8ce542654ed2ef7654`. The original W8 source `369de0121` and its one publication request remain frozen and separate.
+The approved `legacy-pr-carryforward.md` assigns the Worker A source at `8ba33bd6c4612770a71a814874632eaba3b19f6e` to a fresh task/branch/worktree on accepted main. The initial baseline was `d635873e1063efb8a9ff8e8ce542654ed2ef7654`; the coordinator-directed final baseline is `23e87f15b1e973f4520cedb28c5998036374c55e` (#2083). The original W8 source `369de0121` and its one publication request remain frozen and separate.
 
 W8 owns the six registry/allowlist/health integrations: holdings drift, options desk staleness, held exit coverage, options desk quote refresh (inert), Ask CIO research and JSONL archive rotation. Five runnable source entries must stay SHADOW/dry_run with `live_arg=null`. Quote refresh retains no operative allowlist/dispatch and remains NEVER_SCHEDULED. Its shadow candidate is a proposal, not activation.
 
@@ -34,4 +34,8 @@ The offline relay route check reports the inherited missing `approval-escalate` 
 
 The complete 20-file affected suite passed **1073 tests with1skip** at `53adc931220db789d8220844d5cffd3a53079392`, with psycopg2 hidden, `TRADE_AI_CI=1` and Telegram interdicted. This includes CIO completeness, the full archive behavior suite and the disk activation/refusal tests. The four ratchets, retention inventory, native lane and health checks, data-source authority checker and Ruff all pass. Historical scheduler reconciliation was CHECK-only; both input snapshot and registry hashes remained unchanged. The frontend build passed, and its entire source tree and build scripts are unchanged from the accepted baseline.
 
-The [d635 validation receipt](packets/w8-legacy-carryforward-20261024/VALIDATION_D635.json) preserves the exact commands, source and log hashes, successful final run, earlier failures, preservation comparisons and relay limitation. Publication remains pending reconciliation with newly accepted main; there is no runtime activation in this package.
+The [d635 validation receipt](packets/w8-legacy-carryforward-20261024/VALIDATION_D635.json) preserves the exact commands, source and log hashes, successful run, earlier failures, preservation comparisons and relay limitation. It is historical proof before the accepted-main rebase.
+
+All five commits rebased cleanly onto accepted main `23e87f15` without conflict resolution. The accepted model process registrations, caps, routes, data-source authority and updated default-refusal test are byte-identical to that main. The test now uses an explicitly unregistered probe id; it does not assert that the registered research process is absent. The separate injected unregistered fixture tests only that refusal precedes the cost check. All five activation input pins still match exactly after rebase, so no further repin was needed.
+
+The final 20-file run at `5f00ca577d80ebd18744d050ca5ae18811b74bb1` again passed **1073 tests with1skip**, with psycopg2 hidden and the same hermetic guards. The frontend build, all four ratchets, native registry/health checks, retention, data-source authority, Ruff and historical reconciliation CHECK pass on this source. The [final validation receipt](packets/w8-legacy-carryforward-20261024/VALIDATION.json) pins the tested source, commands, hashes and full limitations. Final evidence-only commits preserve all tested source bytes. Claims remain held for coordinator publication; runtime activation remains separate.

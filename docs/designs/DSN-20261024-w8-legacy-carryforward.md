@@ -32,3 +32,5 @@ phases:
 # Worker A six-lane carry-forward
 
 See [the source scope and proof plan](../ops/W8_LEGACY_CARRYFORWARD_20261024.md). Runtime activation is a separate operator action.
+
+Source validation is complete on coordinator-pinned accepted main `23e87f15b1e973f4520cedb28c5998036374c55e`:1073 affected tests pass with1skip, plus required native checks and build. The inherited static relay refusal and unmeasured runtime/concurrency probes are disclosed. This task and its claim remain in progress for coordinator publication; no runtime completion is asserted.
