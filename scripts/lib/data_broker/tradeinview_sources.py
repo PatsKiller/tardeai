@@ -239,6 +239,62 @@ def bounded_json(path: Path, *, max_bytes: int = 32_000_000) -> dict:
         return {"status": "missing", "reason": type(exc).__name__, "path": str(path)}
 
 
+def cusip_like(value: Any) -> bool:
+    """A nine-character key with a valid CUSIP check digit (tickers are never nine characters)."""
+    text = symbol(value)
+    if len(text) != 9 or not text.isalnum() or not text[-1].isdigit():
+        return False
+    total = 0
+    for n, ch in enumerate(text[:8]):
+        v = int(ch) if ch.isdigit() else ord(ch) - 55
+        v = v * 2 if n % 2 else v
+        total += v // 10 + v % 10
+    return (10 - total % 10) % 10 == int(text[-1])
+
+
+def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, Any]:
+    """Stored display names for symbols the CIO record does not name. Read only.
+
+    Order: broker holdings row name, SEC company_tickers title, stored Schwab
+    instrument description. CUSIP-keyed rows map to a ticker only through an
+    exact stored CUSIP identifier (identity registry or Schwab instrument record).
+    """
+    names: dict[str, dict] = {}
+    for row in holdings.get("holdings") or []:
+        sym = symbol(row.get("symbol")) if isinstance(row, dict) else ""
+        if sym in symbols and sym not in names and isinstance(row.get("name"), str) and row["name"].strip():
+            names[sym] = {"name": row["name"].strip(), "source": "holdings broker position name"}
+    sec = bounded_json(root / "data/runtime/sec_company_tickers.json").get("document") or {}
+    for row in sec.values():
+        sym = symbol(row.get("ticker")) if isinstance(row, dict) else ""
+        if sym in symbols and sym not in names and isinstance(row.get("title"), str) and row["title"].strip():
+            names[sym] = {"name": row["title"].strip(), "source": "SEC company tickers"}
+    instruments = (bounded_json(root / "data/runtime/schwab_instrument_evidence.json").get("document") or {}).get("instruments")
+    instruments = instruments if isinstance(instruments, dict) else {}
+    by_cusip: dict[str, str] = {}
+    for sym, rec in instruments.items():
+        if not isinstance(rec, dict):
+            continue
+        sym = symbol(sym)
+        if sym in symbols and sym not in names and isinstance(rec.get("description"), str) and rec["description"].strip():
+            names[sym] = {"name": rec["description"].strip(), "source": "Schwab instrument description"}
+        cusip = symbol((rec.get("identifiers") or {}).get("cusip")) if isinstance(rec.get("identifiers"), dict) else ""
+        if cusip:
+            by_cusip.setdefault(cusip, sym)
+    wanted = {s for s in symbols if cusip_like(s)}
+    if wanted:
+        try:
+            from scripts.lib.identity_registry import load_cached
+            for entity in (load_cached(root).get("entities") or {}).values():
+                ids = entity.get("identifiers") if isinstance(entity, dict) else None
+                cusip = symbol(ids.get("cusip")) if isinstance(ids, dict) else ""
+                if cusip in wanted and entity.get("active") is not False and entity.get("ticker_alias"):
+                    by_cusip.setdefault(cusip, symbol(entity["ticker_alias"]))
+        except Exception:  # noqa: BLE001 - an unreadable registry leaves the CUSIP unmapped, never guessed
+            pass
+    return {"names": names, "cusip_tickers": {c: by_cusip[c] for c in sorted(wanted) if c in by_cusip}}
+
+
 READ_ROWS = 25_000
 SOURCE_SQL = {
     "schwab_round_trips": """SELECT id,account,symbol,entry_time,exit_time,entry_trade_date,exit_trade_date,
@@ -350,6 +406,25 @@ def collect_snapshot(*, kind: str, query: dict | None = None, db_query=None,
     trips, _ = normalise_closed(result)
     holdings = file_document(result, "holdings")
     syms = {r["symbol"] for r in trips} | {symbol(r.get("symbol")) for r in holdings.get("holdings") or []}
+    if kind == "history":
+        # Holding history lists names from every membership source, so name them all.
+        legacy = file_document(result, "legacy_journal").get("closed_trades")
+        embedded = holdings.get("trade_journal")
+        lots = [r for v in file_document(result, "tax_lots").values() if isinstance(v, list) for r in v]
+        for rows in (source_rows(result, "trade_transactions"), source_rows(result, "position_transfer_history"),
+                     legacy if isinstance(legacy, list) else [], embedded if isinstance(embedded, list) else [], lots):
+            syms |= {symbol(r.get("symbol")) for r in rows if isinstance(r, dict)}
+        syms.discard("")
+        try:
+            fallback = name_fallbacks(syms, root, holdings)
+            for cusip, ticker in fallback["cusip_tickers"].items():
+                syms.add(ticker)
+            if fallback["cusip_tickers"]:
+                fallback["names"].update({k: v for k, v in name_fallbacks(
+                    set(fallback["cusip_tickers"].values()), root, holdings)["names"].items() if k not in fallback["names"]})
+            result["company_names"] = fallback
+        except Exception as exc:  # noqa: BLE001 - a fallback failure keeps CIO-only names
+            result["company_names"] = {"names": {}, "cusip_tickers": {}, "missing_reason": type(exc).__name__}
     try:
         from lib.data_broker.cio_company_facts import for_security, load_snapshot
         from scripts.lib.identity_carriage import resolve_security_identity

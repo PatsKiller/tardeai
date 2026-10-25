@@ -159,9 +159,36 @@ def _stats(trips, coverage, gaps, symbol):
         # sum cannot be advertised as a known realized-profit subtotal either.
         value["known_realized_pl"] = None
         value["known_trade_count"] = None
+    _known_trip_stats(trips, value, ambiguous)
     value["coverage"] = {**coverage, "status": "PARTIAL" if ambiguous else coverage["status"],
                          "reasons": [*coverage["reasons"], *(
                              ["journal and ledger overlap without an explicit trade link"] if ambiguous else [])]}
+    return value
+
+
+def _known_trip_stats(trips, value, ambiguous):
+    """Per-trip figures over the trips that carry both ends. Excluded rows are counted, not hidden.
+
+    The complete-coverage fields stay null when any trip lacks basis; these
+    ``known_*`` companions say exactly which trips they cover.
+    """
+    priced = [r for r in trips if not r.get("basis_unknown") and src.number(r.get("realized_pl")) is not None]
+    returns = [v for r in priced if (v := src.number(r.get("return_pct"))) is not None]
+    timed = sorted(v for r in trips if r.get("hold_days_basis") == "elapsed timestamps"
+                   and (v := src.number(r.get("hold_days"))) is not None)
+    mid = len(timed) // 2
+    value.update({
+        "known_win_rate_pct": round(sum(src.number(r["realized_pl"]) > 0 for r in priced) / len(priced) * 100, 2)
+            if priced else None,
+        "known_best_trip_pct": max(returns) if returns else None,
+        "known_worst_trip_pct": min(returns) if returns else None,
+        "known_median_hold_days": (timed[mid] if len(timed) % 2 else (timed[mid - 1] + timed[mid]) / 2) if timed else None,
+        "known_priced_trip_count": len(priced), "known_return_trip_count": len(returns),
+        "known_timed_trip_count": len(timed),
+        "excluded_basis_unknown_count": sum(1 for r in trips if r.get("basis_unknown")),
+        "known_stats_basis": "trips with recorded entry and exit; basis-unknown trips excluded"
+            + ("; journal and ledger overlap unresolved, a copied trip may count twice" if ambiguous else ""),
+    })
     return value
 
 
@@ -210,6 +237,33 @@ def _history_checks(snapshot, holdings):
     return gaps
 
 
+def _cio_name(snapshot, sym):
+    facts = (snapshot.get("company_facts") or {}).get(sym) or {}
+    return (facts.get("company") or {}).get("value") if isinstance(facts.get("company"), dict) else None
+
+
+def _display_name(snapshot, sym):
+    """CIO memory first, then a stored name another system already holds; never a guess."""
+    fallback = snapshot.get("company_names") or {}
+    names = fallback.get("names") or {}
+    if sym == "CASH":
+        return {"company_name": "Cash", "company_missing_reason": None,
+                "company_name_source": "cash position", "identifier_label": None}
+    label = None
+    lookup = sym
+    if src.cusip_like(sym):
+        ticker = (fallback.get("cusip_tickers") or {}).get(sym)
+        label = f"CUSIP {sym}" + (f" · {ticker}" if ticker else "")
+        lookup = ticker or sym
+    name = _cio_name(snapshot, lookup)
+    source = "CIO memory" if name else None
+    if not name and isinstance(names.get(lookup), dict):
+        name, source = names[lookup].get("name"), names[lookup].get("source")
+    reason = None if name or label else "company name not recorded in CIO memory or stored instrument names"
+    return {"company_name": name, "company_missing_reason": reason,
+            "company_name_source": source, "identifier_label": label}
+
+
 def build_history(snapshot, query, *, now=None):
     now = now or datetime.now(timezone.utc)
     range_name = one(query, "range", "all")
@@ -230,6 +284,17 @@ def build_history(snapshot, query, *, now=None):
     trips = [t for t in all_trips if not start or (t.get("exit_date") and start <= t["exit_date"] <= end)]
     accounts = _accounts(snapshot, all_trips)
     holding_rows = _holding_rows(snapshot)
+    # An account with stored broker position rows (cash included) was observed as a
+    # whole position list; a name absent from it is not held there as of that observation.
+    observed_at, stored_pairs = {}, set()
+    for row in src.file_document(snapshot, "holdings").get("holdings") or []:
+        if not isinstance(row, dict):
+            continue
+        when = row.get("provider_observed_at") or row.get("broker_position_as_of")
+        acct = src.account(row.get("account") or row.get("account_id"))["account_id"]
+        stored_pairs.add((src.symbol(row.get("symbol")), acct))
+        if acct and when and str(when) > str(observed_at.get(acct) or ""):
+            observed_at[acct] = str(when)
     gaps += _history_checks(snapshot, holding_rows)
     for name in ("holdings", "tax_lots", "legacy_journal"):
         if gap := _file_gap(snapshot, name):
@@ -258,15 +323,20 @@ def build_history(snapshot, query, *, now=None):
             quantities = [src.number(r.get("shares", r.get("quantity"))) for r in rows]
             # Absence is not a proven zero for an unavailable/incomplete store.
             qty = sum(quantities) if rows and all(n is not None for n in quantities) else None
-            observed_accounts.append({**src.account(acct), "held_quantity": qty,
-                "as_of": next((src.iso(r.get("provider_observed_at") or r.get("updated_at")) for r in rows), None),
-                "missing_reason": None if qty is not None else "current quantity not observed for this account"})
+            # Cash rows are stored but are not holdings here; their absence from rows is not a zero.
+            absent = not rows and acct in observed_at and (sym, acct) not in stored_pairs
+            observed_accounts.append({**src.account(acct), "held_quantity": 0.0 if absent else qty,
+                "as_of": observed_at[acct] if absent else
+                    next((src.iso(r.get("provider_observed_at") or r.get("updated_at")) for r in rows), None),
+                "quantity_basis": "absent from this account's stored broker positions" if absent else
+                    ("stored broker position" if qty is not None else None),
+                "missing_reason": None if absent or qty is not None else
+                    ("cash balance is not a holding row" if (sym, acct) in stored_pairs and not rows else
+                     "account has no stored broker positions" if not rows else "stored position quantity missing")})
         stats = _stats(group, trip_coverage, gaps, sym)
-        facts = (snapshot.get("company_facts") or {}).get(sym) or {}
-        name = (facts.get("company") or {}).get("value") if isinstance(facts.get("company"), dict) else None
+        naming = _display_name(snapshot, sym)
         sym_gaps = [g for g in gaps if g.get("symbol") in (None, sym)]
-        symbols.append({"symbol": sym, "company_name": name,
-            "company_missing_reason": None if name else "company name not recorded in CIO memory",
+        symbols.append({"symbol": sym, **naming,
             "account_count": len(accounts[sym]), "accounts": observed_accounts,
             "round_trip_count": stats["round_trip_count"], "known_trip_count": stats["known_trade_count"],
             "observed_trip_rows": len(group),
@@ -286,6 +356,7 @@ def build_history(snapshot, query, *, now=None):
             reason = "distinct holding stretches need quantity transitions with a proven opening balance; lot matches are not holding counts"
             detail = {"symbol": requested, "company_name": row["company_name"],
                 "company_missing_reason": row["company_missing_reason"],
+                "company_name_source": row.get("company_name_source"), "identifier_label": row.get("identifier_label"),
                 "stats": {**stats, "times_held": None, "known_holding_stretches": None,
                           "coverage": {**stats["coverage"], "status": "PARTIAL",
                                        "reasons": [*stats["coverage"]["reasons"], reason]}},

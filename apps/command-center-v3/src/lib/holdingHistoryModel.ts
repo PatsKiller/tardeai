@@ -8,16 +8,18 @@ export const HISTORY_SORTS = [
 export type HistorySort = typeof HISTORY_SORTS[number]['id']
 export type Gap = { source?: string | null; reason?: string | null; symbol?: string | null; date?: string | null; account_id?: string | null; account_label?: string | null; as_of?: string | null; [key: string]: unknown }
 export type Coverage = { status?: string; reasons?: (string | Gap)[]; missing_sources?: string[]; missing_reasons?: Record<string, string> }
-export type HistoryAccount = { account_id?: string | null; account_label?: string | null; held_quantity?: number | null; as_of?: string | null }
+export type HistoryAccount = { account_id?: string | null; account_label?: string | null; held_quantity?: number | null; as_of?: string | null; quantity_basis?: string | null; missing_reason?: string | null }
 export type HistorySymbol = {
-  symbol: string; company_name: string | null; company_missing_reason?: string | null; account_count: number | null
-  accounts: HistoryAccount[]; round_trip_count: number | null; realized_pl: number | null; known_realized_pl: number | null
+  symbol: string; company_name: string | null; company_missing_reason?: string | null; company_name_source?: string | null; identifier_label?: string | null; account_count: number | null
+  accounts: HistoryAccount[]; round_trip_count: number | null; known_trip_count?: number | null; realized_pl: number | null; known_realized_pl: number | null
   held_now: boolean | null; basis_unknown: boolean; gaps: Gap[]
 }
 export type HistoryStats = {
   times_held: number | null; known_holding_stretches: number | null; round_trip_count: number | null
   win_rate_pct: number | null; realized_pl: number | null; known_realized_pl: number | null
   avg_hold_days: number | null; median_hold_days: number | null; best_trip_pct: number | null; worst_trip_pct: number | null; coverage?: Coverage
+  known_win_rate_pct?: number | null; known_best_trip_pct?: number | null; known_worst_trip_pct?: number | null; known_median_hold_days?: number | null
+  known_priced_trip_count?: number | null; known_return_trip_count?: number | null; known_timed_trip_count?: number | null; excluded_basis_unknown_count?: number | null; known_stats_basis?: string | null
 }
 export type HoldingSegment = {
   start_date?: string | null; end_date?: string | null; start_at?: string | null; end_at?: string | null
@@ -31,7 +33,7 @@ export type HistoryTrip = {
   hold_days: number | null; hold_days_basis?: string | null; basis_unknown?: boolean; basis_reason?: string | null
   source: string | null; provenance?: unknown; gaps?: Gap[]
 }
-export type HistoryDetail = { symbol: string; company_name: string | null; company_missing_reason?: string | null; stats: HistoryStats; account_segments: AccountSegments[]; trips: HistoryTrip[]; gaps: Gap[] }
+export type HistoryDetail = { symbol: string; company_name: string | null; company_missing_reason?: string | null; company_name_source?: string | null; identifier_label?: string | null; stats: HistoryStats; account_segments: AccountSegments[]; trips: HistoryTrip[]; gaps: Gap[] }
 export type HoldingHistoryPayload = {
   schema: 'HoldingHistory@v1'; ok: boolean; as_of: string | null
   range: { start_date: string | null; end_date: string | null; basis?: string; coverage?: Coverage }
@@ -67,6 +69,7 @@ export function decodeHistory(raw: unknown): HoldingHistoryPayload | null {
       && a.segments.every(g => object(g) && ['start_date', 'end_date', 'start_at', 'end_at', 'status', 'source', 'precision'].every(k => textOrNull(g[k])) && (g.gaps == null || gapRows(g.gaps))))
     || !coverageShape(x.detail.stats.coverage) || !Array.isArray(x.detail.trips) || !x.detail.trips.every(t => object(t) && textOrNull(t.account_label) && textOrNull(t.source) && (t.gaps == null || gapRows(t.gaps))) || !gapRows(x.detail.gaps))) return null
   if (object(x.detail) && object(x.detail.stats) && !['times_held', 'known_holding_stretches', 'round_trip_count', 'win_rate_pct', 'realized_pl', 'known_realized_pl', 'avg_hold_days', 'median_hold_days', 'best_trip_pct', 'worst_trip_pct'].every(k => optionalNumber((x.detail as Record<string, unknown> & { stats: Record<string, unknown> }).stats[k]))) return null
+  if (object(x.detail) && object(x.detail.stats) && !['known_win_rate_pct', 'known_best_trip_pct', 'known_worst_trip_pct', 'known_median_hold_days', 'known_priced_trip_count', 'known_return_trip_count', 'known_timed_trip_count', 'excluded_basis_unknown_count'].every(k => { const v = (x.detail as Record<string, unknown> & { stats: Record<string, unknown> }).stats[k]; return v === undefined || optionalNumber(v) })) return null
   if (object(x.detail) && Array.isArray(x.detail.trips) && !x.detail.trips.every(t => object(t) && (t.trade_id === null || typeof t.trade_id === 'string') && ['entry_price', 'exit_price', 'shares', 'realized_pl', 'return_pct', 'hold_days'].every(k => optionalNumber(t[k])))) return null
   return x as unknown as HoldingHistoryPayload
 }
@@ -104,4 +107,17 @@ export function segmentGeometry(range: HoldingHistoryPayload['range'], segment: 
 export function provenanceText(value: unknown): string[] {
   const rows = Array.isArray(value) ? value : object(value) ? [value] : []
   return rows.filter(object).map(r => [r.source, r.table, typeof r.record_id === 'string' ? `Record ${r.record_id}` : null, r.writer, r.observed_at ? `Observed ${dateText(r.observed_at)}` : (r.as_of ? `As of ${dateText(r.as_of)}` : null)].filter(x => typeof x === 'string' && x).join(' · ')).filter(Boolean)
+}
+/** List-card trip count: confirmed count, else the recorded rows with the qualifier, never a bare dash. */
+export function tripCountText(row: Pick<HistorySymbol, 'round_trip_count' | 'known_trip_count'>): string {
+  if (finite(row.round_trip_count)) return `${numberText(row.round_trip_count, 0)} round trip${row.round_trip_count === 1 ? '' : 's'}`
+  if (finite(row.known_trip_count)) return `${numberText(row.known_trip_count, 0)} recorded round trip${row.known_trip_count === 1 ? '' : 's'} (count unconfirmed)`
+  return 'round trips unknown'
+}
+export function accountCountText(n: unknown): string { return finite(n) ? `${numberText(n, 0)} account${n === 1 ? '' : 's'}` : 'accounts unknown' }
+/** Per-account current quantity line for a list card. */
+export function heldText(a: HistoryAccount): string {
+  if (finite(a.held_quantity) && a.held_quantity > 0) return `${numberText(a.held_quantity)} sh`
+  if (a.held_quantity === 0) return a.as_of ? `not held · broker positions ${dateText(a.as_of)}` : 'not held'
+  return `quantity unavailable · ${a.missing_reason ? reasonText(a.missing_reason) : 'not supplied'}`
 }
