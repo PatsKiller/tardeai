@@ -70,8 +70,11 @@ fixture runs do not count toward two trading days of shadow evidence. There is
 no live or notification sender in this runner.
 
 `cio_conflicts` exposes one context for review prompts, daily briefs, Ask answers,
-conviction promotion and digest content. Actual consumer hooks must be applied
-by their owners. A helper alone does not establish DESIGN section 12 completion.
+conviction promotion and digest content. `cio_agent_brief.build_brief` and its
+existing Telegram renderer now read that digest, show recorded reasons and group
+operator items without claiming DECIDED is CLEARED. Ask, review-prompt and actual
+conviction-consumer hooks still require their owners; a helper alone does not
+establish DESIGN section 12 completion.
 The C3 completion owner must provide a real compared-input writer/readback;
 immutable provider artifacts must not be rewritten or given forged authorization.
 Existing PUBLISHED/TTL acquisition closure is not proof of a conflict decision.
