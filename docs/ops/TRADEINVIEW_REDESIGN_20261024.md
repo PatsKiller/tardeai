@@ -29,6 +29,12 @@ currently ignores `stored_only` and can reach providers. A/B/C must be combined
 with that owner-applied hook before rollout. A successful helper fixture is not
 proof that the central HTTP route is installed. No live HTTP request was made.
 
+**Batch-28 integration (coordinator, 2026-10-25):** the owner-integration patch was
+applied unmodified to `scripts/api_v2.py` (base sha256 matched the packet) on
+`release/batch-28-tradeinview-20261025`; the packet JSON status records it, and
+`test_central_api_routes_reach_stored_projections_and_never_the_legacy_provider`
+exercises both routes and the stored-only Replay delegation through `api_v2.handle`.
+
 ```mermaid
 flowchart LR
   S[Stored round trips and linked closed copies] --> C[Source normalization]

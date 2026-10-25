@@ -635,3 +635,25 @@ def test_journey_never_invents_broker_or_table_provenance_when_origin_is_absent(
         assert facts['fills']['missing_reason'] is None
     schema_check({**payload,'schema':'TradeJourneys@v1','ok':True,'as_of':NOW.isoformat(),
         'provider_calls':0,'writes':0,'read_only':True,'gaps':[]})
+
+
+def test_central_api_routes_reach_stored_projections_and_never_the_legacy_provider(monkeypatch):
+    """Batch-28 coordinator: the owner-integration patch is applied in scripts/api_v2.py."""
+    import types
+    import api_v2
+    provider=types.SimpleNamespace(trade_chart=lambda *_a,**_kw:pytest.fail('legacy provider reached'))
+    monkeypatch.setitem(sys.modules,'ohlc_charts',provider)
+    data=replay_snapshot()
+    monkeypatch.setattr(src,'collect_snapshot',lambda **kw:deepcopy(data))
+    status,calendar=api_v2.handle('/api/v3/data-broker/trade-calendar',method='GET',body=None,query={'month':['2026-11']})
+    assert status==200 and calendar['schema']=='TradeCalendar@v1'
+    status,history=api_v2.handle('/api/v3/data-broker/holding-history',method='GET',body=None,query={'symbol':['TSTA'],'range':['all']})
+    assert status==200 and history['schema']=='HoldingHistory@v1'
+    status,bad=api_v2.handle('/api/v3/data-broker/trade-calendar',method='GET',body=None,query={'month':['bad']})
+    assert status==400 and bad['ok'] is False
+    status,wrapped=api_v2.handle('/api/v2/trade-chart',method='GET',body=None,
+                                 query={'trade_id':['rt:fixture-ledger-trip'],'stored_only':['1'],'interval':['1D']})
+    assert status==200 and wrapped['data']['schema']=='TradeReplay@v1'
+    assert wrapped['data']['kind']=='candles' and wrapped['data']['provider_calls']==0
+    status,missing=api_v2.handle('/api/v2/trade-chart',method='GET',body=None,query={'stored_only':['1']})
+    assert status==200 and missing['data']['ok'] is False

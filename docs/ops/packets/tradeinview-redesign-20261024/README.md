@@ -20,7 +20,8 @@ The existing API module exports:
 - `get_replay(query)` for exact `trade_id`, `interval=1D`, `stored_only=1`.
 
 [The W3-owned central routing patch](api_v2-owner-integration.patch) is supplied
-for normal source-owner integration. It has **not** been applied by A. The
+for normal source-owner integration. It was not applied by A; the batch-28
+coordinator applied it unmodified (see the packet JSON status). The
 stored-only branch must precede legacy `ohlc_charts` import/provider hierarchy.
 The helpers' schema passes do not establish that the central HTTP route is
 installed. Do not roll out B/C without the combined route patch.
