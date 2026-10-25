@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,10 +18,86 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.lib.cron_outage_watchdog import evaluate, identity, instant, iso  # noqa: E402
+from scripts.lib.cron_outage_watchdog import evaluate, identity, instant, iso, job_key  # noqa: E402
 
 LATEST = "data/runtime/cron_outage_watchdog_latest.json"
 STATE = "data/runtime/cron_outage_watchdog_state.json"
+ACKS = "data/runtime/cron_outage_watchdog_refusal_acks.jsonl"
+#: Written every 20 min by lane crontab-snapshot-for-health-agent; a file read, never `crontab -l`.
+CRONTAB_SNAPSHOT = "data/runtime/crontab_snapshot.txt"
+#: Code/config that names the locks of n8n-dispatched and nested (wrapper-script) jobs.
+CENSUS_SOURCES = ("config/n8n_run_allowlist.json", "config/lane_registry.json", "config/pipelines/*.json",
+                  "scripts/*.sh", "scripts/**/*.sh")
+_LOCK_TOKEN = re.compile(r"([A-Za-z0-9_.\-]+)\.lock(?:\.dryrun)?(?![A-Za-z0-9_])")
+_CRON_WRAPPER = re.compile(r"cron_wrapper\.sh\s+[\"']?([A-Za-z0-9_.\-]+)")
+
+
+def job_census(texts: list[str]) -> set[str]:
+    """Wrapper job ids a registered schedule can produce: lock basenames and cron_wrapper names."""
+    out = set()
+    for text in texts:
+        out |= {job_key(m.group(1)) for m in _LOCK_TOKEN.finditer(text)}
+        out |= {job_key(m.group(1)) for m in _CRON_WRAPPER.finditer(text)}
+    return out
+
+
+def registered_jobs(state_root: Path, root: Path = ROOT) -> tuple[set[str] | None, list[str]]:
+    """Registered job ids from the crontab snapshot plus code-declared locks.
+
+    Without a readable crontab snapshot the census is unknown (None): every refusal
+    then stays attributed and alerting. Only uncommented crontab lines count.
+    """
+    gaps = []
+    try:
+        snapshot = read_text(state_root / CRONTAB_SNAPSHOT, 4 * 1024 * 1024)
+    except (OSError, ValueError):
+        return None, ["crontab_snapshot_unavailable"]
+    try:
+        if datetime.now(timezone.utc).timestamp() - (state_root / CRONTAB_SNAPSHOT).stat().st_mtime > 2 * 3600:
+            gaps.append("crontab_snapshot_stale")
+    except OSError:
+        gaps.append("crontab_snapshot_stale")
+    texts = ["\n".join(line for line in snapshot.splitlines() if line.strip() and not line.lstrip().startswith("#"))]
+    for pattern in CENSUS_SOURCES:
+        for path in sorted(root.glob(pattern)):
+            try:
+                texts.append(read_text(path, 16 * 1024 * 1024))
+            except (OSError, ValueError):
+                gaps.append("census_source_unreadable:" + str(path.relative_to(root)))
+    return job_census(texts), gaps
+
+
+def read_text(path: Path, max_bytes: int) -> str:
+    with path.open("rb") as stream:
+        raw = stream.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise ValueError("oversized observation")
+    return raw.decode("utf-8", errors="replace")
+
+
+def read_acks(state_root: Path) -> tuple[dict[str, dict], list[str]]:
+    """Operator acknowledgements of stale refusals, keyed by refusal key (append-only JSONL)."""
+    path = state_root / ACKS
+    try:
+        text = read_text(path, 2 * 1024 * 1024)
+    except FileNotFoundError:
+        return {}, []
+    except (OSError, ValueError):
+        return {}, ["refusal_acks_unreadable"]
+    acks, gaps = {}, []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            gaps.append("refusal_acks_malformed_line")
+            continue
+        if (isinstance(row, dict) and isinstance(row.get("key"), str) and row["key"]
+                and isinstance(row.get("acknowledged_by"), str) and row["acknowledged_by"].strip()
+                and isinstance(row.get("reason"), str) and row["reason"].strip() and instant(row.get("acknowledged_at"))):
+            acks[row["key"]] = row
+        else:
+            gaps.append("refusal_acks_malformed_line")
+    return acks, sorted(set(gaps))
 
 
 def bind_components(registry: dict, cfg: dict) -> dict:
@@ -89,6 +166,9 @@ def collect(registry: dict, state_root: Path) -> dict:
     for lane in registry.get("lanes", []):
         signal = lane.get("output_signal") or {}
         key = signal.get("key")
+        # Only ACTIVE lanes are evaluated; a paused/retired/never-scheduled lane's absent log or
+        # receipt is expected, not monitor blindness (it was 30 of 46 collection gaps 2026-10-24).
+        active = lane.get("state") == "ACTIVE"
         if signal.get("kind") == "file_mtime" and str(signal.get("path") or "").endswith(".log"):
             # The journal itself can be refused/immutable. An explicit UTC
             # refusal on the wrapper's original stderr is still an observation;
@@ -113,26 +193,60 @@ def collect(registry: dict, state_root: Path) -> dict:
                                 and event.get("event_type") == "refused" and instant(event.get("ts"))):
                             events.append(event)
                 except OSError:
-                    errors.append(f"{identity(lane)}:fallback_log_unavailable")
-        if signal.get("kind") != "json_key" or key not in {"ok_at", "last_success_at", "finished_at"}:
+                    if active:
+                        errors.append(f"{identity(lane)}:fallback_log_unavailable")
+        # A JSON receipt is read when declared (json_key) or when a file_mtime signal names a
+        # .json receipt: its explicit success fields count, its mtime never does.
+        json_receipt = signal.get("kind") == "json_key" or (
+            signal.get("kind") == "file_mtime" and str(signal.get("path") or "").endswith(".json"))
+        if not active or not json_receipt:
             continue
+        declared = signal.get("kind") == "json_key"
         path = (base / str(signal.get("path") or "")).resolve()
         if not path.is_relative_to(base / "data") and not path.is_relative_to(base / "logs"):
-            errors.append(f"{identity(lane)}:receipt_path_not_admitted")
+            if declared:
+                errors.append(f"{identity(lane)}:receipt_path_not_admitted")
             continue
         try:
             receipt = read_json(path)
         except (OSError, ValueError):
-            errors.append(f"{identity(lane)}:receipt_unavailable")
+            if declared:
+                errors.append(f"{identity(lane)}:receipt_unavailable")
             continue
-        if receipt.get("dry_run") is True or receipt.get("mode") in {"dry_run", "dry-run", "shadow", "preflight"}:
+        found = receipt_success(receipt, key if declared else None)
+        if found:
+            successes[identity(lane)] = [{"at": iso(found[0]), "validated_success": True, "source": found[1]}]
+    jobs, census_gaps = registered_jobs(state_root)
+    errors += census_gaps
+    return {"events": events, "successes": successes, "collection_gaps": sorted(set(errors)),
+            "registered_job_ids": sorted(jobs) if jobs is not None else None}
+
+
+#: Receipt times that are only success with an explicit `ok: true` beside them.
+OK_FLAG_TIME_KEYS = ("ended_at", "completed_at", "as_of")
+
+
+def receipt_success(receipt: dict, key: str | None) -> tuple[datetime, str] | None:
+    """(time, source) when a receipt itself says its run succeeded; never a file timestamp.
+
+    ok_at / last_success_at are success by name; finished_at needs RUN_DONE + exit 0 or
+    ok:true; any other declared key (or, for an undeclared .json receipt, ended_at /
+    completed_at / as_of) needs an explicit boolean `ok: true` in the same receipt.
+    """
+    if receipt.get("dry_run") is True or receipt.get("mode") in {"dry_run", "dry-run", "shadow", "preflight"}:
+        return None
+    keys = [key] if key else ["ok_at", "last_success_at", "finished_at", *OK_FLAG_TIME_KEYS]
+    for name in keys:
+        at = instant(receipt.get(name))
+        if at is None:
             continue
-        if key == "finished_at" and not (receipt.get("state") == "RUN_DONE" and receipt.get("exit_code") == 0):
-            continue
-        at = instant(receipt.get(key))
-        if at:
-            successes[identity(lane)] = [{"at": iso(at), "validated_success": True, "source": key}]
-    return {"events": events, "successes": successes, "collection_gaps": sorted(set(errors))}
+        if name in {"ok_at", "last_success_at"}:
+            return at, name
+        if name == "finished_at" and receipt.get("state") == "RUN_DONE" and receipt.get("exit_code") == 0:
+            return at, name
+        if receipt.get("ok") is True:
+            return at, name + "+ok"
+    return None
 
 
 def atomic_json(path: Path, value: dict):
@@ -216,7 +330,14 @@ def main() -> int:
     parser.add_argument("--run", action="store_true", help="write operational state; operator installation only")
     parser.add_argument("--dry-run", action="store_true", help="explicit read-only default")
     parser.add_argument("--send-alerts", action="store_true", help="host P1 chokepoint; requires --run")
+    parser.add_argument("--ack-refusal", metavar="KEY", help="acknowledge one stale refusal by its key (operator); "
+                        "previews the ack record unless --apply-ack")
+    parser.add_argument("--ack-by", help="who acknowledges (required with --ack-refusal)")
+    parser.add_argument("--ack-reason", help="why the refusal is stale (required with --ack-refusal)")
+    parser.add_argument("--apply-ack", action="store_true", help="append the ack record to " + ACKS)
     args = parser.parse_args()
+    if args.ack_refusal:
+        return acknowledge(args)
     if args.send_alerts and not args.run:
         parser.error("--send-alerts requires --run")
     if args.dry_run and args.run:
@@ -240,10 +361,14 @@ def main() -> int:
             prior = read_json(args.state_root / STATE)
         except (OSError, ValueError):
             prior = {}
+    acks, ack_gaps = read_acks(args.state_root)
+    census = snapshot.get("registered_job_ids")
     report = evaluate(registry, snapshot.get("events") or [], snapshot.get("successes") or {}, now=now,
                       grace_seconds=int(cfg.get("grace_seconds", 120)),
-                      previous_refusal_keys=set(prior.get("delivered_refusal_keys") or []), trading_day=is_trading_day)
+                      previous_refusal_keys=set(prior.get("delivered_refusal_keys") or []), trading_day=is_trading_day,
+                      registered_jobs=set(census) if isinstance(census, list) else None, acknowledged=acks)
     report["mode"] = "monitor" if args.run else "dry_run"
+    snapshot = {**snapshot, "collection_gaps": sorted(set((snapshot.get("collection_gaps") or []) + ack_gaps))}
     report = monitor_findings(report, snapshot)
     report["notification"] = {"status": "NOT_REQUESTED", "delivered": False}
     if args.send_alerts:
@@ -260,6 +385,42 @@ def main() -> int:
         atomic_json(args.state_root / LATEST, report)
     print(json.dumps(report, indent=2))
     return 1 if report["status"] == "CRIT" else 0
+
+
+def acknowledge(args) -> int:
+    """Operator acknowledgement of one stale refusal: preview by default, append-only with --apply-ack.
+
+    Only a refusal key present in the current journal observation can be acknowledged; the
+    journal itself is never edited. An ack silences that one refusal event, not its job.
+    """
+    if not (args.ack_by and args.ack_by.strip() and args.ack_reason and args.ack_reason.strip()):
+        print(json.dumps({"ok": False, "reason": "ack_requires_by_and_reason"}))
+        return 2
+    if args.run or args.send_alerts or args.snapshot or args.at:
+        print(json.dumps({"ok": False, "reason": "ack_is_its_own_mode"}))
+        return 2
+    registry = read_json(args.registry, 8 * 1024 * 1024)
+    events = collect(registry, args.state_root)["events"]
+    match = [e for e in events if e.get("event_type") == "refused"
+             and args.ack_refusal in {str(e.get("event_id") or ""), str(e.get("capture_key") or "")}]
+    if not match:
+        print(json.dumps({"ok": False, "reason": "refusal_key_not_in_current_journal_window", "key": args.ack_refusal}))
+        return 1
+    event = match[0]
+    record = {"key": args.ack_refusal, "job_id": event.get("job_id") or event.get("component"),
+              "refusal_at": event.get("ts"), "reason": args.ack_reason.strip(), "acknowledged_by": args.ack_by.strip(),
+              "acknowledged_at": iso(datetime.now(timezone.utc))}
+    if not args.apply_ack:
+        print(json.dumps({"ok": True, "mode": "preview", "would_append": str(args.state_root / ACKS), "record": record}))
+        return 0
+    path = args.state_root / ACKS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    print(json.dumps({"ok": True, "mode": "applied", "appended": str(path), "record": record}))
+    return 0
 
 
 if __name__ == "__main__":

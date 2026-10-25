@@ -64,10 +64,16 @@ def evidence_context(doc: Mapping[str, Any], now: datetime, *, applying: bool = 
         raise ValueError("evidence_coordination_shape")
     if any(not isinstance(p, dict) for p in data["processes"] + data["prs"]):
         raise ValueError("evidence_records_shape")
+    opaque = [p for p in data["processes"] if p.get("opaque") is True]
+    if applying and opaque:
+        # A process whose cwd/fds the kernel hides from this user may reference a candidate.
+        # Its absence is unproven, so it can support a quoted preview, never a removal.
+        raise ValueError("evidence_opaque_processes")
     refs = [(key, json.dumps(data[key])) for key in ("units", "pointers")]
     refs.append(("cron", data["cron"]))
     return {"now": now, "cwds": {p.get("cwd") for p in data["processes"] if p.get("cwd")},
-            "refs": refs, "snapshot": data, "evidence_sha256": digest(doc), "offline": doc.get("offline") is not False}
+            "refs": refs, "snapshot": data, "evidence_sha256": digest(doc), "offline": doc.get("offline") is not False,
+            "opaque_processes": opaque}
 
 
 def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None) -> tuple[float | None, str | None]:
