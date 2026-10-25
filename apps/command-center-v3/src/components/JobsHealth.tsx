@@ -4,6 +4,8 @@ import { useApi } from '../hooks/useApi'
 import ConflictLine from './conflicts/ConflictLine'
 import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
+import CountTile from './CountTile'
+import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
 export interface JobHealthRow {
@@ -13,7 +15,7 @@ export interface JobHealthRow {
 }
 export interface JobsHealthWire {
   schema: string; as_of: string; rows: JobHealthRow[]; total: number; offset: number; limit: number; has_more: boolean
-  summary: Record<string, number>; coverage_gaps: string[]; incident_count: number
+  summary: JobsSummary & Record<string, unknown>; coverage_gaps: string[]; incident_count: number
   data_errors?: { section: ConflictSection | null; unavailable_reason: string | null }
   monitor: { observed_at: string | null; status: string; cause: string | null; notification?: { status?: string; delivered?: boolean } | null }
 }
@@ -55,11 +57,10 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
     </div>
     {error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Jobs could not be read: {error}. {data ? 'The last observation remains visible below.' : 'Execution health is not measured.'}</div>}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
-      {metrics.map(([key, label, t]) => <div key={key} style={{ ...panel, borderColor: toneVars(t).border, background: toneVars(t).bg }}>
-        <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{label}</div>
-        <strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl, color: toneVars(t).color }}>{data?.summary[key] ?? '—'}</strong>
-      </div>)}
-      <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused} / ${data.summary.retired}` : '—'}</strong></div>
+      {metrics.map(([key, label, t]) => <CountTile key={key} testId={`jobs-tile-${key}`} label={label} tone={t} style={{ padding: 14 }}
+        count={key === 'missed' ? jobsMissed(data?.summary) : jobsCount(data?.summary, key)} />)}
+      <CountTile testId="jobs-tile-not-measured" label="Not measured" tone="warning" style={{ padding: 14 }} count={jobsNotMeasured(data?.summary)} />
+      <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused ?? '—'} / ${data.summary.retired ?? '—'}` : '—'}</strong></div>
     </div>
     {data?.monitor.cause && <div role="status" style={{ ...panel, borderColor: toneVars('warning').border, color: TOKENS.warning }}>{data.monitor.cause}</div>}
     <section aria-label="Data errors" style={{ ...panel, display: 'grid', gap: 8 }}>
