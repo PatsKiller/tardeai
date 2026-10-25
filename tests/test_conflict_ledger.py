@@ -84,7 +84,7 @@ def test_never_auto_and_fact_safety_not_decidable(tmp_path):
 
 
 @pytest.mark.parametrize("patch", [{"reason": ""}, {"evidence_refs": []}, {"actor_kind": "agent"},
-    {"expires_at": NOW.isoformat()}, {"expires_at": "2026-10-25"}])
+    {"expires_at": NOW.isoformat()}, {"expires_at": "2026-10-25"}, {"chosen_side": "UNMAPPED"}])
 def test_incomplete_or_expired_decision_refuses_before_append(tmp_path, patch):
     st = ledger(tmp_path)
     st.reconcile(SUBJECT, [conflict()], at=NOW, apply=True)
@@ -134,3 +134,32 @@ def test_cio_promotion_requires_current_decision_and_missing_ledger_is_a_gap(tmp
     st.transition(KEY, "decided", at=NOW, decision=decision(), apply=True)
     assert not context_for(tmp_path, "guid", now=NOW)["blocks_promotion"]
     assert context_for(tmp_path, "guid", now=NOW + timedelta(days=8))["blocks_promotion"]
+
+
+def test_enabled_pg_mirror_uses_parameterized_idempotent_insert_and_acks_once(tmp_path):
+    from unittest.mock import Mock
+    from scripts.lib.conflicts.ledger import postgres_sink
+    connection = Mock()
+    factory = Mock(return_value=connection)
+    st = ConflictLedger(tmp_path, memory_writer=lambda event: True, pg_writer=postgres_sink(factory), pg_enabled=True)
+    st.reconcile(SUBJECT, [conflict()], at=NOW, apply=True)
+    st.reconcile(SUBJECT, [conflict()], at=NOW, apply=True)
+    assert factory.call_count == 1
+    sql, params = connection.cursor.return_value.execute.call_args.args
+    assert "ON CONFLICT(event_id) DO NOTHING" in sql
+    assert params[0] == st.events()[0]["event_id"] and json.loads(params[-1])["schema"] == "ConflictEvent@v1"
+    connection.commit.assert_called_once()
+    connection.close.assert_called_once()
+
+
+def test_pg_mirror_failure_keeps_event_durable_for_retry(tmp_path):
+    from unittest.mock import Mock
+    from scripts.lib.conflicts.ledger import postgres_sink
+    connection = Mock()
+    connection.cursor.return_value.execute.side_effect = RuntimeError("fixture failure")
+    st = ConflictLedger(tmp_path, memory_writer=lambda event: True,
+                        pg_writer=postgres_sink(lambda: connection), pg_enabled=True)
+    with pytest.raises(RuntimeError, match="pg pending"):
+        st.reconcile(SUBJECT, [conflict()], at=NOW, apply=True)
+    assert len(st.events()) == 1
+    connection.rollback.assert_called_once()

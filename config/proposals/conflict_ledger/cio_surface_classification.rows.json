@@ -6,12 +6,11 @@
     "reason": "Append-only state transitions carry both sides and per-change CIO memory lineage; operator history is shown by selected conflict detail.",
     "owner_hint": "scripts/lib/conflicts/ledger.py",
     "record_edge": {
-      "route": "/api/v3/conflicts",
+      "route": "/api/v3/conflicts/{key}",
       "path": [
-        "records",
         "history"
       ],
-      "reader": "lib/conflicts/ledger.py::list_records",
+      "reader": "lib/conflicts/ledger.py::ConflictLedger.records",
       "writer": "lib/conflicts/ledger.py::ConflictLedger._append",
       "store": "conflict_events.jsonl"
     },

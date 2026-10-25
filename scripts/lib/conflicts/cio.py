@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from .adapters import timestamp
-from .ledger import ACTIVE, list_records
+from .ledger import ACTIVE, ConflictLedger, list_records
 
 
 def memory_writer(root):
@@ -53,11 +53,18 @@ def context_for(root, security_guid, *, now=None):
 
 def digest(root, *, now=None):
     now = now or datetime.now(timezone.utc)
-    records = list_records(root, limit=200)["records"]
+    if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
+        return {"waiting_on_operator": [], "decided": [], "groups": [],
+                "gap": {"reason": "conflict ledger not yet produced"}}
+    try:
+        records = list(ConflictLedger(root).records().values())
+    except (OSError, ValueError):
+        return {"waiting_on_operator": [], "decided": [], "groups": [],
+                "gap": {"reason": "conflict ledger unavailable or invalid"}}
     return {"waiting_on_operator": [r for r in records if r.get("kind") == "NEEDS_OPERATOR" and r["state"] in ACTIVE],
             "decided": [r for r in records if r.get("decision") and timestamp(r["decision"].get("at")) and
                         timedelta(0) <= now - timestamp(r["decision"]["at"]) <= timedelta(days=1)],
-            "groups": _groups([r for r in records if r["state"] in ACTIVE])}
+            "groups": _groups([r for r in records if r["state"] in ACTIVE]), "gap": None}
 
 
 def _groups(records):

@@ -5,10 +5,11 @@
     "tests/test_conflict_ledger.py",
     "tests/test_conflict_api.py",
     "tests/test_conflict_review.py",
-    "tests/test_conflict_runner.py"
+    "tests/test_conflict_runner.py",
+    "tests/test_cio_agent_brief.py"
   ],
   "anchor": "CONFLICTS_LEDGER_20261024",
   "comment": [
-    "ANCHOR: CONFLICTS_LEDGER_20261024 — lifecycle identity/expiry/readback plus write-free dry-run and real shadow reports."
+    "ANCHOR: CONFLICTS_LEDGER_20261024 — lifecycle, identity/expiry/readback, shadow reports and actual CIO brief content."
   ]
 }

@@ -209,11 +209,15 @@ class ConflictLedger:
                     raise ValueError("CIO may decide only stance owner reviews")
                 if decision.get("actor_kind") not in {"cio", "operator"}:
                     raise ValueError("unknown decision actor")
+                if record["subject"]["kind"] == "security" and record.get("kind") == "CONFLICT":
+                    from .profiles.vocabulary import posture
+                    if posture(decision.get("chosen_side")) is None:
+                        raise ValueError("decision requires a known stance")
                 if record["subject"]["kind"] in {"metric", "job"}:
                     raise ValueError("numeric/schedule defects require source repair, never a chosen number")
             return {"event": event, "key": key, "subject": record["subject"], "at": _iso(at),
                     "finding": record["finding"],
-                    **({"decision": deepcopy(decision)} if decision else {}),
+                    **({"decision": {**deepcopy(decision), "at": _iso(at)}} if decision else {}),
                     **({"request_id": review_request_id} if review_request_id else {})}
         if not apply:
             return plan()
