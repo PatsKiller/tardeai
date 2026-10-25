@@ -963,6 +963,78 @@ def _policy_inputs(root) -> dict:
     return {"fields": fields}
 
 
+STOP_DOMAIN = "broker_stops"
+_ET = ZoneInfo("America/New_York")
+
+
+def stop_freshness_contract(registry_path: Path | None = None) -> dict | None:
+    """{'open_h', 'closed_h'} for observed broker stops from config/data_source_authority.json, else None."""
+    path = registry_path or Path(__file__).resolve().parents[2] / "config" / "data_source_authority.json"
+    try:
+        registry = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for group in ("domains", "proposed_domains"):
+        for dom in registry.get(group) or []:
+            if isinstance(dom, dict) and dom.get("domain") == STOP_DOMAIN:
+                try:
+                    return {"open_h": float(dom["stale_after_hours"]), "closed_h": float(dom["stale_after_hours_closed"])}
+                except (KeyError, TypeError, ValueError):
+                    return None
+    return None
+
+
+def _market_open(now: datetime) -> bool:
+    t = now.astimezone(_ET)
+    if t.weekday() >= 5 or not ((9, 30) <= (t.hour, t.minute) < (16, 0)):
+        return False
+    try:
+        from scripts.market_session import is_trading_day
+    except Exception:  # noqa: BLE001 - holiday calendar optional; weekday hours still apply
+        return True
+    try:
+        return bool(is_trading_day(t))
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _et_label(at: datetime) -> str:
+    return at.astimezone(_ET).strftime("%a %b %d %H:%M ET").replace(" 0", " ")
+
+
+def stop_clock(positions, now, *, broker_available=True, contract=None) -> dict:
+    """The stop section's clock comes from broker observations only, never a planned stops.json level.
+
+    Stale uses the broker_stops freshness contract: the open-session window while the market is open, the closed
+    window otherwise (weekends do not page). A stale read keeps its counts but names their age in a gap.
+    """
+    times = [_timestamp(p.get("stop_captured_at")) for p in positions
+             if p.get("stop_source") == "broker_resting" and p.get("stop_captured_at")]
+    times = [t for t in times if t is not None]
+    at = min(times) if times else None
+    meta = _evidence("stop_last_known (broker reads) > stops.json, per account+symbol", at, now,
+                     reason="persisted broker stop observations unavailable" if not broker_available else None)
+    meta["last_broker_read_at"] = meta["as_of"]
+    meta["last_broker_read_label"] = _et_label(at) if at else None
+    if not broker_available:
+        return meta
+    if at is None:
+        meta["stale"] = True
+        meta["gap"] = {"reason": "No broker stop read is recorded for current holdings."}
+        return meta
+    contract = contract if contract is not None else stop_freshness_contract()
+    if contract is None:
+        meta["gap"] = {"reason": "Stop freshness threshold unavailable (data_source_authority broker_stops)."}
+        return meta
+    limit = contract["open_h"] if _market_open(now) else contract["closed_h"]
+    meta["stale_after_hours"] = limit
+    meta["stale"] = meta["age_hours"] is None or meta["age_hours"] < 0 or meta["age_hours"] > limit
+    if meta["stale"]:
+        meta["gap"] = {"reason": f"Stop data is {int(meta['age_hours'] or 0)} h old — counts from the last broker stop "
+                                 f"read on {meta['last_broker_read_label']}."}
+    return meta
+
+
 def do_now_for(positions, approvals, *, now=None) -> dict:
     """Existing Home queue ordering over the shared CIO display facts only."""
     from .data_broker.home_do_now import item, merge, sort_items
@@ -972,7 +1044,8 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
         if p.get("broker_protected") or (_number(p.get("market_value")) or 0) < 100:
             continue
         state = p.get("stop_state")
-        reason = "Stop awaiting activation" if state == "pending_activation" else "No active broker stop observed"
+        reason = ("Stop awaiting activation" if state == "pending_activation"
+                  else "Stop filled · awaiting holdings sync" if state == "filled" else "No active broker stop observed")
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
@@ -1022,13 +1095,11 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                       "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")} for p in positions]
-    stop_times = [p.get("stop_captured_at") for p in positions if p.get("stop_captured_at")]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
              "nearest": None, "awaiting_fill": [],
-             **_evidence("stop_last_known > stops.json, per account+symbol", min(stop_times) if stop_times else None,
-                         now, reason="persisted broker stop observations unavailable" if broker is None else None)}
+             **stop_clock(positions, now, broker_available=broker is not None, contract=inputs.get("stop_freshness"))}
     if broker is None:
         for key in ("active_count", "pending_count", "filled_count", "unprotected_count"):
             stops[key] = None
@@ -1071,6 +1142,12 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             if distance <= 0:
                 stops["awaiting_fill"].append({"symbol": p["symbol"], "account_id": p["account_id"], "stop_price": sp,
                                                "reason": "mark at or below observed stop; fill not yet confirmed"})
+    # A broker stop that FILLED while the position is still in holdings: the sale is not yet in the holdings sync.
+    stops["filled_awaiting_sync"] = [
+        {"symbol": p["symbol"], "account_id": p["account_id"], "account_label": p.get("account_label"),
+         "stop_price": p.get("stop_price"), "captured_at": p.get("stop_captured_at"),
+         "reason": "stop filled · awaiting holdings sync"}
+        for p in counted_positions if p["stop_state"] == "filled"] if broker is not None else []
     stops["nearest"] = min(distances, key=lambda r: abs(r["distance_pct"]), default=None)
     stops["awaiting_fill_count"] = len(stops["awaiting_fill"])
     companies = inputs.get("companies")
