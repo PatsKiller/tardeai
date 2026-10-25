@@ -12,6 +12,7 @@ import hashlib
 import math
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .account_display import canonical_key, account_label, location_facts
 
@@ -48,6 +49,37 @@ def _sum_known(rows, key) -> float | None:
     return round(sum(values), 2) if all(v is not None for v in values) else None
 
 
+def _holdings_clock(value, source_field) -> dict:
+    """Normalize the holdings writer's explicit ET format; never infer a zone.
+
+    Legacy ``... ET`` means America/New_York, including the date's DST offset.
+    Other naive values, invalid values and ambiguous DST wall times stay gaps.
+    """
+    result = {"source_field": source_field, "raw": value, "as_of": None,
+              "timezone": None, "gap": None}
+    try:
+        explicit_et = isinstance(value, str) and value.endswith(" ET")
+        text = value[:-3] if explicit_et else value
+        dt = text if isinstance(text, datetime) else datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+        if explicit_et:
+            if dt.tzinfo:
+                raise ValueError("conflicting offset and ET suffix")
+            zone = ZoneInfo("America/New_York")
+            a, b = dt.replace(tzinfo=zone, fold=0), dt.replace(tzinfo=zone, fold=1)
+            if a.utcoffset() != b.utcoffset():
+                raise ValueError("ambiguous or nonexistent ET wall time")
+            dt = a
+            result["timezone"] = "America/New_York (explicit legacy ET suffix)"
+        elif dt.tzinfo is None:
+            raise ValueError("holdings clock requires an explicit timezone")
+        else:
+            result["timezone"] = "explicit UTC offset"
+        result["as_of"] = dt.isoformat()
+    except (TypeError, ValueError) as exc:
+        result["gap"] = {"reason": "holdings clock unavailable" if value in (None, "") else str(exc)}
+    return result
+
+
 def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     """One holdings aggregate for every display, including all account rows.
 
@@ -69,7 +101,13 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     total = _sum_known(rows, "market_value") if rows else None
     cash = _sum_known([r for r in rows if r["is_cash"]], "market_value") if rows else None
     day = _sum_known(rows, "day_change") if rows else None
-    at = holdings_doc.get("last_repriced") or holdings_doc.get("generated_at") or holdings_doc.get("as_of")
+    position_field = "positions_built_at" if holdings_doc.get("positions_built_at") else "data_as_of"
+    clocks = {"positions": _holdings_clock(holdings_doc.get(position_field), position_field),
+              "valuation": _holdings_clock(holdings_doc.get("generated_at"), "generated_at"),
+              "quote": _holdings_clock(holdings_doc.get("last_repriced"), "last_repriced")}
+    field = next((f for f in ("last_repriced", "generated_at", "as_of") if holdings_doc.get(f)), "as_of")
+    aggregate_clock = _holdings_clock(holdings_doc.get(field), field)
+    at = aggregate_clock["as_of"]
     noncash = [r for r in rows if not r["is_cash"] and not r.get("is_loan")]
     held = [r for r in noncash if (_number(r.get("shares", r.get("quantity"))) or 0) > 0]
     counted = [r for r in held if (_number(r.get("market_value")) or 0) >= 100]
@@ -79,7 +117,8 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     for account in sorted({r["account_id"] for r in rows}):
         group = [r for r in rows if r["account_id"] == account]
         summary = summaries.get(account) or {}
-        dates = [_timestamp(r.get("broker_position_as_of_at") or r.get("broker_position_as_of") or r.get("as_of")) for r in group]
+        dates = [_timestamp(_holdings_clock(r.get("broker_position_as_of_at") or r.get("broker_position_as_of") or r.get("as_of"),
+                                           "broker_position_as_of_at/broker_position_as_of/as_of")["as_of"]) for r in group]
         dates = [d for d in dates if d]
         accounts.append({"account_id": account, "account_label": account_label(account),
                          "total_usd": _sum_known(group, "market_value"),
@@ -89,9 +128,11 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
                          "as_of": min(dates).isoformat() if dates else None})
     reason = "holdings unavailable" if not rows else (
         "holding value or day P&L missing" if total is None or day is None else None)
+    reason = reason or (aggregate_clock["gap"] or {}).get("reason")
     return {"total_usd": total, "cash_usd": cash, "day_pl_usd": day,
-            "positions_as_of": holdings_doc.get("positions_built_at") or holdings_doc.get("data_as_of"),
-            "valuation_as_of": holdings_doc.get("generated_at"), "quote_as_of": holdings_doc.get("last_repriced"),
+            "positions_as_of": clocks["positions"]["as_of"],
+            "valuation_as_of": clocks["valuation"]["as_of"], "quote_as_of": clocks["quote"]["as_of"],
+            "clock_provenance": clocks,
             "quote_source": holdings_doc.get("reprice_source"),
             "day_pl_pct": round(day / (total - day) * 100, 3)
             if total is not None and day is not None and total - day > 0 else None,
@@ -672,6 +713,7 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
             "position_counts": portfolio.get("position_counts"), "paper_position_count": None,
             "positions": positions, "stops": {f"{p['account_id']}:{p['symbol']}": p for p in stops["rows"]},
             "positions_basis": "holdings_live", "positions_as_of": portfolio.get("positions_as_of"),
+            "clock_provenance": portfolio.get("clock_provenance"),
             "stop_health": {"protected_count": stops["active_count"], "pending_count": stops["pending_count"],
                             "filled_count": stops["filled_count"], "unprotected_count": stops["unprotected_count"]},
             "correlation": [], "escalation": {}, "source": "cio_truth", "truth": {k: portfolio[k] for k in
@@ -686,7 +728,8 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     out.update(portfolio_value=p["total_usd"], total_cash=p["cash_usd"], today_change=p["day_pl_usd"],
                today_pct=p["day_pl_pct"], position_count=p["position_count"], position_counts=p["position_counts"],
                pending_approvals=doc["approvals"]["total"], approval_counts=doc["approvals"],
-               paper=doc["paper"], truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
+               paper=doc["paper"], clock_provenance=p.get("clock_provenance"),
+               truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
     out["derived_total_value"] = p["total_usd"]
     pricing = out.setdefault("pricing", {})
     pricing.update(canonical_total_value=p["total_usd"], derived_total_value=p["total_usd"],
@@ -764,6 +807,9 @@ def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     p = doc["portfolio"]
     out.update(holdings=rows, count=len(rows), position_count=p["position_count"], total_value=p["total_usd"],
                total_cash=p["cash_usd"], today_change=p["day_pl_usd"], position_counts=p["position_counts"],
+               positions_as_of=p["positions_as_of"], valuation_as_of=p["valuation_as_of"],
+               quote_as_of=p["quote_as_of"], last_repriced=p["quote_as_of"], generated_at=p["valuation_as_of"],
+               clock_provenance=p.get("clock_provenance"),
                truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
     return out
 

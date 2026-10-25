@@ -38,12 +38,19 @@ def check(root: Path, now: datetime) -> dict:
     for row in risk["positions"]:
         other = by_key[row["account_id"], row["symbol"]]
         assert row["stop_price"] == other["stop_price"] and row["stop_state"] == other["stop_state"]
+    clocks = document["portfolio"]["clock_provenance"]
+    for name, clock in clocks.items():
+        if clock["raw"] is not None:
+            assert clock["as_of"] or clock["gap"], f"{name} clock silently lost"
+        if clock["as_of"]:
+            assert datetime.fromisoformat(clock["as_of"]).utcoffset() is not None, f"{name} clock lacks offset"
     assert before == fingerprint(root), "resolver modified the copied input tree"
     outputs = {"overview": header, "holdings": holdings, "risk": risk,
                "scorecard": scorecard, "observability": observations}
     return {"ok": True, "as_of": now.isoformat(), "source_files": before,
             "holdings_rows": len(holdings["holdings"]), "position_count": risk["position_count"],
             "company_records": len(document["companies"]["by_guid"]), "writes": 0,
+            "clock_provenance": clocks,
             "response_bytes": {name: len(json.dumps(value, default=str).encode()) for name, value in outputs.items()},
             "gaps": {name: section.get("gap") for name, section in document.items() if isinstance(section, dict) and section.get("gap")}}
 
