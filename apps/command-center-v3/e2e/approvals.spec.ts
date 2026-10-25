@@ -31,6 +31,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await page.setViewportSize({ width, height })
     await page.clock.install({ time: new Date('2032-04-12T14:00:00Z') })
     const requests: string[] = [], forbidden: string[] = [], errors: string[] = [], read = new Set<string>()
+    let approvedReadMarkers: string[] = []
     const decisions: unknown[] = [], feedback: unknown[] = [], questions: Record<string, unknown>[] = []
     page.on('pageerror', error => errors.push(error.message))
     const tap = async (target: Locator) => {
@@ -71,7 +72,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
         if (url.pathname.endsWith('/read')) { expect(body.document_sha).toBe(documentSha); if (body.phase === 'read') read.add(body.change_id); return respond(body) }
         if (url.pathname.endsWith('/decide')) {
           expect(body.document_sha).toBe(documentSha); expect(body.review_id).toBe('fixture-review')
-          if (body.decision === 'APPROVE') expect(read.size).toBe(changes.length)
+          if (body.decision === 'APPROVE') { expect(read.size).toBe(changes.length); approvedReadMarkers = [...read] }
           const result = { ...body, actor: 'tailnet:operator@example.test', at: '2032-04-12T14:01:00Z', item_id: 'policy:42' }
           decisions.push(result); return respond(result)
         }
@@ -155,6 +156,6 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     expect(forbidden).toEqual([]); expect(errors).toEqual([])
     fs.writeFileSync(testInfo.outputPath(`viewport-proof-${width}.json`), JSON.stringify({ width, height, sourceHashes, requests,
       forbidden, errors, decisions: decisions.length, feedback: feedback.length, questions: questions.length,
-      readMarkers: [...read], proof: 'Real browser taps, viewport bounds, actual W11 components; synthetic intercepted APIs only.' }, null, 2))
+      readMarkers: approvedReadMarkers, proof: 'Real browser taps, viewport bounds, actual W11 components; synthetic intercepted APIs only.' }, null, 2))
   })
 }
