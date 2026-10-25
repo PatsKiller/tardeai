@@ -129,6 +129,13 @@ def collect(base_url: str) -> dict[str, Any]:
         checks.append({"check": "runs", "status": "FAIL", "detail": str(exc)})
         state = "DEGRADED"
 
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot
+    from lib.anthropic_routing import state_root
+    anthropic = anthropic_snapshot(state_root())
+    checks.append({"check": "anthropic_provider", "status": "FAIL" if anthropic["p1_continuous_failure"] else "PASS",
+                   "provider_state": anthropic["status"], "provider": anthropic})
+    if anthropic["p1_continuous_failure"]:
+        state = "DEGRADED"
     mode = "SCHEDULED" if installed else "MANUAL_DISPATCH_ONLY"
     return {
         "contract": "agent-runtime-health-v1",

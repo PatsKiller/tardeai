@@ -270,6 +270,10 @@ def main() -> int:
         print(f"[provider-health] ledger query failed: {e}", file=sys.stderr)
         return 2
 
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, due_notes
+    from lib.anthropic_transport import load_policy as anthropic_policy
+    _anthropic_policy = anthropic_policy()
+    anthropic = anthropic_snapshot(PROJECT_ROOT, policy=_anthropic_policy)
     findings = evaluate(rows, min_calls=args.min_calls, fail_rate=args.fail_rate)
     # A lane that failed earlier in the window but is answering again is reported
     # everywhere below and paged nowhere: the operator already fixed it.
@@ -328,6 +332,7 @@ def main() -> int:
                         for f in findings
                     ],
                     "stall_findings": stall_rows,
+                    "anthropic": anthropic,
                 },
                 indent=2,
             )
@@ -348,8 +353,10 @@ def main() -> int:
             )
 
     stall_critical = any(s.severity == STALL_CRITICAL for s in live_stalls)
-    critical = any(f.severity == "CRITICAL" for f in live) or stall_critical
+    critical = any(f.severity == "CRITICAL" for f in live) or stall_critical or anthropic["p1_continuous_failure"]
     heartbeat = {
+        "anthropic": anthropic,
+        "digest_line": anthropic["digest_line"],
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "window_hours": args.hours,
         "calls_examined": len(rows),
@@ -374,6 +381,15 @@ def main() -> int:
     }
     if not args.dry_run:
         _write_heartbeat(heartbeat)
+        # Use the existing notification-intent transport and durable dedupe state.
+        _notes_state = _load_state()
+        for _note in due_notes(anthropic, _anthropic_policy):
+            _note_key = "anthropic:" + _anthropic_policy["promotion_id"] + ":" + _note["key"]
+            if _notes_state.get(_note_key) and (_note["priority"] != "P1" or time.time() - float(_notes_state[_note_key]) < DEDUPE_SECONDS):
+                continue
+            if _deliver(_note["message"], _note["priority"], heartbeat, [_note_key]):
+                _notes_state[_note_key] = time.time()
+                _save_state(_notes_state)
     if live and not args.dry_run:
         now = time.time()
         state = _load_state()

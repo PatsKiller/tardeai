@@ -7,6 +7,7 @@ import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import SpendPanel from '../components/SpendPanel'
+import AnthropicCreditPanel from '../components/AnthropicCreditPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
 import { BB, RAIL } from '../lib/watchTokens'
 import './OpsEvidencePages.css'
@@ -155,7 +156,7 @@ export default function ConsumptionHub() {
       <LlmRoutingModal open={routingOpen} onClose={() => setRoutingOpen(false)} onSaved={load} />
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 10 }}>
         Track <b style={{ color: TEXT }}>subscription usage</b> for Grok and ChatGPT,
-        plus <b style={{ color: 'var(--ai-color)' }}>DeepSeek</b> metered API (Flash / Pro).
+        plus Anthropic promotional API and <b style={{ color: 'var(--ai-color)' }}>DeepSeek</b> metered API (Flash / Pro).
         Paid costs are shown in USD below. Relative usage units measure text volume and are not dollars.
         <b>Manual</b> mode blocks automatic calls; <b>Automated</b> allows scheduled calls.
       </p>
@@ -166,6 +167,7 @@ export default function ConsumptionHub() {
       </div>
 
       {/* Real paid spend: provider · model · process · peak/off-peak (operator ask 2026-09-14) */}
+      <AnthropicCreditPanel status={overview?.anthropic} />
       <SpendPanel />
 
       {/* OAuth lane status */}

@@ -1,0 +1,98 @@
+{
+  "schema": "AnthropicCreditPolicy@v1",
+  "enabled": true,
+  "promotion_id": "operator-promo-20261025",
+  "credit_usd": "200",
+  "total_cap_usd": "190",
+  "daily_cap_usd": "10",
+  "starts_at": "2026-10-25T00:00:00Z",
+  "expires_at": "2026-11-16T00:00:00Z",
+  "approved_by": "operator 2026-10-25; REQUIREMENTS.md sections 2-4",
+  "provider_order": [
+    "anthropic",
+    "grok",
+    "chatgpt",
+    "deepseek"
+  ],
+  "models": {
+    "bulk": "claude-haiku-5-5",
+    "standard": "claude-sonnet-5-5",
+    "high": "claude-sonnet-5-5",
+    "highest": "claude-opus-5-5"
+  },
+  "policy_tiers": {
+    "FAST": "bulk",
+    "FAST_THINK": "standard",
+    "PRO": "standard",
+    "PRO_THINK": "high",
+    "PRO_MAX": "highest"
+  },
+  "per_call_caps_usd": {
+    "bulk": "0.10",
+    "standard": "0.25",
+    "high": "0.50",
+    "highest": "0.50"
+  },
+  "retry": {
+    "max_attempts": 2,
+    "max_delay_seconds": 2
+  },
+  "input_framing_margin_tokens": 4096,
+  "prompt_cache_ttl": "5m",
+  "batch_mode": "explicit_asynchronous_caller_only",
+  "excluded_processes": {
+    "grok_stop_review": "provider-pinned protected stop review; unchanged",
+    "stop_drift_alert": "protected stop path; unchanged",
+    "broker_cloud_oversight": "broker path; unchanged",
+    "grok_execution_review": "protected execution path; unchanged",
+    "holding_protection_advisor": "protected holding/stop path; unchanged",
+    "holding_protection_advisor_batch": "protected holding/stop path; unchanged",
+    "deepseek_flash_operator_smoke": "must probe the named provider",
+    "oauth_lane_keepalive": "must probe OAuth providers"
+  },
+  "pricing": {
+    "claude-haiku-5-5": {
+      "input": "0.10",
+      "output": "0.50",
+      "cache_read": "0.01",
+      "cache_write_5m": "0.125",
+      "cache_write_1h": "0.20",
+      "long_context_threshold": 100000,
+      "long_context": {
+        "input": "0.50",
+        "output": "2.50",
+        "cache_read": "0.05",
+        "cache_write_5m": "0.625",
+        "cache_write_1h": "1"
+      },
+      "batch_multiplier": "0.5"
+    },
+    "claude-sonnet-5-5": {
+      "input": "2",
+      "output": "10",
+      "cache_read": "0.10",
+      "cache_write_5m": "2.50",
+      "cache_write_1h": "4",
+      "batch_multiplier": "0.5"
+    },
+    "claude-opus-5-5": {
+      "input": "4",
+      "output": "20",
+      "cache_read": "0.20",
+      "cache_write_5m": "5",
+      "cache_write_1h": "8",
+      "batch_multiplier": "0.5"
+    }
+  },
+  "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "models_source": "https://platform.claude.com/docs/en/models/overview",
+  "pricing_verified_at": "2026-10-25",
+  "pacing_timezone": "UTC",
+  "credit_is_promotional": true,
+  "threshold_notes": [
+    50,
+    80
+  ],
+  "expiry_notice_days": 3,
+  "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner."
+}

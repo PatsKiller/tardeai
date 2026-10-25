@@ -1480,7 +1480,8 @@ _TRANSPORT_OVERRIDES: dict[str, Any] = {}
 
 def enabled_transport_providers() -> frozenset[str]:
     """DeepSeek plus every OAuth lane this host enabled (CIO_BRIDGE_OAUTH_TRANSPORTS). Read per call."""
-    return BRIDGE_TRANSPORT_PROVIDERS | oauth_transport.enabled_oauth_providers()
+    promotional = frozenset({"anthropic"}) if os.environ.get("ANTHROPIC_API_KEY") else frozenset()
+    return BRIDGE_TRANSPORT_PROVIDERS | oauth_transport.enabled_oauth_providers() | promotional
 
 
 def set_transport_override(provider: str, transport: Any | None) -> None:
@@ -1499,6 +1500,9 @@ def get_transport(provider: str) -> Any:
         return MockProvider.instance()
     if provider in oauth_transport.OAUTH_PROVIDERS:
         return oauth_transport.OAuthProxyTransport.for_provider(provider)
+    if provider == "anthropic":
+        from lib.anthropic_routing import transport
+        return transport()
     return RealProvider.instance()
 
 
@@ -1707,6 +1711,9 @@ def escalation_reason(response: dict[str, Any], reg_row: dict[str, Any] | None) 
 
 def _metered_cost_usd(model_id: str | None, usage: dict[str, Any] | None) -> float | None:
     try:
+        if (usage or {}).get("anthropic_usage"):
+            from lib.anthropic_transport import price_usage, load_policy
+            return float(price_usage(usage["anthropic_usage"], load_policy()["pricing"][model_id]))
         import lib.llm_model_registry as lmr2
 
         return lmr2.estimate_usd_cost(
@@ -1747,6 +1754,10 @@ def route_plan(
 
     reasoning_tier "high" on an n8n_oauth_first row puts the row's reasoning_lane first (DeepSeek reasoning), the
     row's own lanes (OAuth first) after it as the fallback."""
+    from lib import anthropic_routing as promo
+    if cfg and promo.eligible(process_id, cfg) and policy_id == "default":
+        return promo.configured_plan(process_id, cfg, policy,
+                                     enabled=enabled_transport_providers(), model_for_provider=_lane_model_id)
     decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
     start = str(decision.get("lane_chosen") or "primary")
     first_provider = str(policy.get("provider") or "deepseek")
@@ -1861,6 +1872,7 @@ def walk_routes(
     request_id: str,
     use_circuits: bool = True,
     output_check: Any = None,
+    funding: Any = None,
 ) -> dict[str, Any]:
     """Try each lane in order until one serves. Never retries a lane inside one call; a 429 holds that provider
     until its Retry-After; the whole walk shares one wall-clock budget. Returns response / served / receipts /
@@ -1896,7 +1908,22 @@ def walk_routes(
                 # A paid attempt may already be billed; never pay twice for one call.
                 receipts.append(_receipt(cand, "paid_after_billable_attempt"))
                 continue
-            transport = get_transport(provider)
+            if funding is not None:
+                try:
+                    funding.authorize_candidate(cand)
+                except Exception as exc:
+                    receipts.append(_receipt(cand, "funding_refused", detail=type(exc).__name__))
+                    last_error = exc
+                    continue
+            try:
+                transport = get_transport(provider)
+            except Exception as exc:
+                if funding is None:
+                    raise
+                funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                receipts.append(_receipt(cand, "transport_unavailable", detail=type(exc).__name__))
+                last_error = exc
+                continue
             kwargs: dict[str, Any] = {
                 "tools": tools,
                 "tool_choice": tool_choice,
@@ -1907,18 +1934,41 @@ def walk_routes(
                 "reasoning_effort": cand.get("reasoning_effort", reasoning_effort),
                 "client_request_id": request_id,
             }
+            if funding is not None:
+                kwargs["max_tokens"] = min(int(max_tokens), int(funding.cfg["max_output_tokens"]))
+            if provider == "anthropic" and funding is not None:
+                kwargs.update(process_id=funding.process_id,
+                              process_cap=funding.cfg["daily_cost_cap_usd"],
+                              max_input_tokens=funding.cfg["max_input_tokens"],
+                              cost_ceiling_usd=funding.cost_ceiling,
+                              credit_tier=cand.get("credit_tier"), deadline_s=remaining)
             if isinstance(transport, oauth_transport.OAuthProxyTransport):
                 kwargs["deadline_s"] = remaining
             _CALL_LATENCY_BUDGET_S.set(remaining)
             slot = provider_semaphore(provider, policy_id)
             t_attempt = _monotonic()
-            slot.acquire()
+            if funding is not None:
+                if not slot.acquire(timeout=max(0.0, remaining)):
+                    receipts.append(_receipt(cand, "deadline_exhausted", detail="provider capacity deadline"))
+                    continue
+                remaining = max(0.0, remaining - (_monotonic() - t_attempt))
+                _CALL_LATENCY_BUDGET_S.set(remaining)
+                if "deadline_s" in kwargs:
+                    kwargs["deadline_s"] = remaining
+                if remaining <= 0:
+                    slot.release()
+                    receipts.append(_receipt(cand, "deadline_exhausted"))
+                    continue
+            else:
+                slot.acquire()
             try:
                 response = transport.generate(messages, cand.get("model_id"), **kwargs)
             except Exception as exc:  # noqa: BLE001 -- every failure becomes a receipt, then the next lane
+                if provider == "anthropic" and funding is not None:
+                    funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
                 kind, status, retry_after = _attempt_failure_kind(exc)
                 sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
-                billable = provider not in oauth_transport.OAUTH_PROVIDERS and sent
+                billable = provider not in oauth_transport.OAUTH_PROVIDERS and provider != "anthropic" and sent
                 billable_seen = billable_seen or billable
                 if use_circuits or is_stall_failure(kind, status, exc):
                     PROVIDER_CIRCUITS.failure(provider, kind, retry_after)
@@ -1939,6 +1989,8 @@ def walk_routes(
                     )
                 )
                 last_error = exc
+                if getattr(exc, "code", "") in {"INPUT_LIMIT_EXCEEDED", "GOVERNANCE_UNAVAILABLE"}:
+                    break
                 continue
             finally:
                 slot.release()
@@ -1947,7 +1999,7 @@ def walk_routes(
             refused = output_check(response) if output_check is not None else None
             if refused is not None:
                 oauth = provider in oauth_transport.OAUTH_PROVIDERS
-                billable_seen = billable_seen or not oauth
+                billable_seen = billable_seen or (not oauth and provider != "anthropic")
                 receipts.append(
                     _receipt(
                         cand,
@@ -2372,7 +2424,10 @@ def execute_governed_call(
         )
 
     # ── Step 3: Model policy resolution (server-side) ──────────────────
-    policy = resolve_model_policy(process_id, routing_policy=selected_policy_id)
+    from lib import anthropic_routing as promo
+    _promotion = selected_policy_id == "default" and promo.eligible(process_id, cfg)
+    policy = (promo.selected_policy(process_id, cfg, POLICY_RESOLUTION, reasoning_tier=reasoning_tier)
+              if _promotion else resolve_model_policy(process_id, routing_policy=selected_policy_id))
     if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
         routing_box["decision"] = policy["routing_decision"]
     if not isinstance(policy, dict) or policy.get("missing_process"):
@@ -2405,21 +2460,22 @@ def execute_governed_call(
 
     # §23.4 decision 2 (n8n rows: Grok -> ChatGPT -> DeepSeek): walk past lanes with no live transport.
     # Mock mode walks too, so a mock receipt names the provider the live path would use.
-    policy = transport_failover_policy(process_id, selected_policy_id, policy, ds_pols)
+    if not _promotion:
+        policy = transport_failover_policy(process_id, selected_policy_id, policy, ds_pols)
     model_id = policy["model_id"]
     requested_policy = policy.get("requested_policy", "PRO")
     if isinstance(policy.get("routing_decision"), dict):
         routing_box["decision"] = policy["routing_decision"]
 
-    _walks = row_walks_routes(process_id, selected_policy_id)
+    _walks = _promotion or row_walks_routes(process_id, selected_policy_id)
     # n8n OAuth-first profile (operator decision 2026-10-15): output fallback, reasoning tier, one escalation.
-    _oauth_first = _walks and row_profile(process_id, selected_policy_id) == OAUTH_FIRST_PROFILE
+    _oauth_first = _promotion or (_walks and row_profile(process_id, selected_policy_id) == OAUTH_FIRST_PROFILE)
     _reg_row = agent_gate.registry_row(process_id) if _oauth_first else None
     _tier = effective_reasoning_tier(_reg_row, reasoning_tier) if _oauth_first else "standard"
     if _oauth_first and isinstance(routing_box.get("decision"), dict):
         routing_box["decision"]["route_profile"] = OAUTH_FIRST_PROFILE
         routing_box["decision"]["reasoning_tier"] = _tier
-    if _tier == "high":
+    if _tier == "high" and not _promotion:
         _rcand, _rwhy = reasoning_lane_candidate(process_id, selected_policy_id, ds_pols)
         if _rcand is not None:
             # The reasoning lane is the projected (and cap-checked) lane; the OAuth lanes follow it as fallback.
@@ -2449,6 +2505,7 @@ def execute_governed_call(
     if (
         BIND_MODE == "canary"
         and _lane_provider not in BRIDGE_TRANSPORT_PROVIDERS
+        and not _promotion
         and not (_walks and _lane_provider in enabled_transport_providers())
     ):
         # OAuth transports serve only rows that opt in to the walk (transport_failover); others keep this refusal.
@@ -2485,29 +2542,33 @@ def execute_governed_call(
 
     # Validate caps exist
     try:
-        crm.validate_paid_cap_config(cfg, require_global=True)
+        crm.validate_paid_cap_config(cfg, require_global=not _promotion)
     except RuntimeError as e:
         return _error("COST_CONFIGURATION_INVALID", str(e), status=500)
 
-    worst_case = crm.projected_max_cost_usd(
-        model_id=model_id,
-        max_input_tokens=cfg.get("max_input_tokens") or 32000,
-        max_output_tokens=max_tokens,
-    )
-    # Caps count actual spend (operator decision 2026-09-14): project what this process's calls
-    # have actually cost, not the 32k-token worst case that made a $0.50 cap refuse on phantom money.
-    try:
-        calibration = lc.calibrated_projected_usd(process_id, worst_case)
-    except Exception as exc:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
-        calibration = {"projected_usd": worst_case, "basis": f"worst_case_calibration_error:{type(exc).__name__}"}
-    projected = float(calibration["projected_usd"])
+    if _promotion:
+        # The adapter reserves exact worst-case credit after CountTokens; no paid hold yet.
+        projected = 0.0
+    else:
+        worst_case = crm.projected_max_cost_usd(
+            model_id=model_id,
+            max_input_tokens=cfg.get("max_input_tokens") or 32000,
+            max_output_tokens=max_tokens,
+        )
+        # Caps count actual spend (operator decision 2026-09-14): project what this process's calls
+        # have actually cost, not the 32k-token worst case that made a $0.50 cap refuse on phantom money.
+        try:
+            calibration = lc.calibrated_projected_usd(process_id, worst_case)
+        except Exception as exc:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
+            calibration = {"projected_usd": worst_case, "basis": f"worst_case_calibration_error:{type(exc).__name__}"}
+        projected = float(calibration["projected_usd"])
 
     try:
         gcap = float(GLOBAL_DAILY_USD_CAP) if GLOBAL_DAILY_USD_CAP not in (None, "") else None
     except (TypeError, ValueError):
         gcap = None
 
-    cap_check = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=gcap)
+    cap_check = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=None if _promotion else gcap)
     if not cap_check.get("allow"):
         return _error(
             "COST_CAP_EXCEEDED",
@@ -2536,9 +2597,10 @@ def execute_governed_call(
             projected,
             model_id=model_id,
             process_config=cfg,
-            global_cap=gcap,
+            global_cap=None if _promotion else gcap,
             metadata={
                 "bridge": "cio_governed",
+                **({"funding_source": "anthropic_promotional_credit", "paid_component_usd": 0} if _promotion else {}),
                 "request_id": rid,
                 "policy": requested_policy,
             },
@@ -2561,6 +2623,8 @@ def execute_governed_call(
         log.exception("reservation failed for %s", process_id)
         return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}", status=500)
 
+    _funding = (promo.FundingContext(process_id, cfg, reservation_id, global_cap=gcap,
+                                     cost_ceiling=policy.get("cost_ceiling_usd")) if _promotion else None)
     # Real provider calls get a durable side-effect identity before dispatch.
     # Mock calls intentionally remain isolated from the production journal.
     provider_journal = None
@@ -2641,7 +2705,8 @@ def execute_governed_call(
             def cost_attribution(**_kw):
                 yield {}
 
-        with cost_attribution(
+        from contextlib import nullcontext
+        with (promo.funding_context(_funding) if _funding is not None else nullcontext()), cost_attribution(
             source_service="cio_governed_model_bridge",
             source_process=process_id,
             source_lane=requested_policy,
@@ -2662,6 +2727,7 @@ def execute_governed_call(
                 request_id=rid,
                 use_circuits=_walks,
                 output_check=_output_check if _oauth_first else None,
+                **({"funding": _funding} if _funding is not None else {}),
             )
     except Exception as exc:  # noqa: BLE001 -- the walk itself failing is a provider failure, typed below
         walk["last_error"] = exc
@@ -2679,7 +2745,8 @@ def execute_governed_call(
             and not attempted
             and (getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
         )
-        lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
+        lc.settle_reservation(reservation_id, float(_funding.projected) if _funding is not None else None,
+                              ok=False, billable_attempt=sent or bool(_funding and _funding.projected))
         if e is not None or attempted:
             provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
             _trip_circuit(f"provider_failure:{type(e).__name__ if e else 'none'}:{provider_name}")
@@ -2732,7 +2799,7 @@ def execute_governed_call(
         if isinstance(routing_box.get("decision"), dict):
             routing_box["decision"]["served_lane"] = served.get("lane")
             routing_box["decision"]["served_provider"] = served_provider
-    if served_provider in oauth_transport.OAUTH_PROVIDERS:
+    if _promotion or served_provider in oauth_transport.OAUTH_PROVIDERS:
         # The OAuth proxies name the model they served; the DeepSeek model id was only the cost projection.
         model_id = str(served.get("model_id") or response.get("model") or model_id)
 
@@ -2761,7 +2828,9 @@ def execute_governed_call(
     usage = response.get("usage") or {}
     _oauth_served = served_provider in oauth_transport.OAUTH_PROVIDERS
     cost_basis = "provider_usage_x_registry_snapshot"
-    if _oauth_served:
+    if served_provider == "anthropic":
+        actual_cost = response.get("_tradeai", {}).get("estimated_cost_usd")
+    elif _oauth_served:
         # Free OAuth subscription lane: no metered price. Cost is "unknown" on the receipt; the reservation
         # settles at its projection (conservative) so the daily cap never under-counts.
         actual_cost = None
@@ -2797,6 +2866,11 @@ def execute_governed_call(
         actual_cost = _rejected_paid
         cost_basis = "metered_rejected_paid_attempt_plus_free_oauth"
 
+    _paid_actual = actual_cost if served_provider == "deepseek" else 0.0
+    if _funding is not None:
+        _paid = _funding.paid_projection if _paid_actual is None else promo.amount(_paid_actual)
+        _funding.reprice(_funding.credit_total, _paid)
+        actual_cost = float(_funding.credit_total + _paid)
     try:
         lc.settle_reservation(
             reservation_id,
@@ -2804,6 +2878,7 @@ def execute_governed_call(
             ok=True,
             billable_attempt=True,
             projected_fallback=projected,
+            **({"paid_component_usd": float(_paid)} if _funding is not None else {}),
         )
     except Exception as e:
         _trip_circuit(f"settlement_failure:{type(e).__name__}")
@@ -2886,7 +2961,7 @@ def execute_governed_call(
     # A schema-valid OAuth answer that declares low confidence / a typed escalation flag is re-asked ONCE on the
     # reasoning lane (DeepSeek), inside the caps; otherwise the OAuth answer stands, flagged why.
     escalation: dict[str, Any] | None = None
-    if _oauth_first and served_provider in oauth_transport.OAUTH_PROVIDERS:
+    if _oauth_first and not _promotion and served_provider in oauth_transport.OAUTH_PROVIDERS:
         _why = escalation_reason(response, _reg_row)
         if _why:
             escalation = escalate_once(
