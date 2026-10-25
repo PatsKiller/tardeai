@@ -2,9 +2,11 @@
   "schema": "CiGate@v1",
   "name": "operator_approvals_20261024",
   "files": [
-    "tests/test_operator_approvals_20261024.py"
+    "tests/test_operator_approvals_20261024.py",
+    "tests/test_governance_cc_auth_identity_20261025.py"
   ],
   "comment": [
-    "W11 boards19-21 exact-document operator review authority and ledger safety."
+    "W11 boards19-21 exact-document operator review authority and ledger safety.",
+    "2026-10-25: governance reads see the gate principal (lib.cc_auth), not a scripts.lib twin."
   ]
 }

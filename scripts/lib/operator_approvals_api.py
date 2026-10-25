@@ -362,7 +362,12 @@ def instant(value) -> str | None:
 
 
 def default_ctx() -> Ctx:
-    from scripts.lib import cc_auth
+    # The server gate sets the request principal on ``lib.cc_auth``. ``scripts.lib.cc_auth`` is a separate module
+    # object with its own thread-local, so importing it first made every governance GET a 403 for the operator.
+    try:
+        from lib import cc_auth  # type: ignore
+    except ImportError:  # pragma: no cover - imported without scripts/ on sys.path
+        from scripts.lib import cc_auth  # type: ignore
     from scripts.lib.approval_package import governance_dir
     cfg = cc_auth.load_config()
 
