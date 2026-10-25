@@ -2106,6 +2106,16 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
       .catch(() => { /* keep last state; no fake success */ })
   }, [])
 
+  // Inside the desk frame the tabs sit below the source clocks; after a tab tap on a phone bring the
+  // tabs and the selected panel into view so the tap visibly changes the page (mobile-first standard 1).
+  const tabsRef = useRef<HTMLElement>(null)
+  const tabTapped = useRef(false)
+  useEffect(() => {
+    if (!tabTapped.current) return
+    tabTapped.current = false
+    const el = tabsRef.current
+    if (el && el.getBoundingClientRect().top > window.innerHeight * 0.3) el.scrollIntoView({ block: 'start' })
+  }, [tab])
   const selectTab = (t: Tab, sub?: string) => {
     setTab(t)
     const next = new URLSearchParams(sp)
@@ -2149,14 +2159,14 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
       <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}.cio-mandate-form{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}.cio-mandate-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}@media(max-width:820px){.cio-mandate-form,.cio-mandate-row{grid-template-columns:minmax(0,1fr)}.cio-mandate-form>*{min-width:0}}`}</style>
       {(tab === 'overview' || tab === 'capital-policy') && pageTruth && <W7Conflicts section={pageTruth.conflicts} title="CIO findings" />}
-      <nav className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
+      <nav ref={tabsRef} className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap', scrollMarginTop: 8 }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
           <button
             key={t}
             type="button"
             role="tab"
             aria-selected={tab === t}
-            onClick={() => selectTab(t)}
+            onClick={() => { tabTapped.current = t !== tab; selectTab(t) }}
             style={{
               padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)',
               background: tab === t ? 'var(--accent-dim)' : 'var(--bg2)',

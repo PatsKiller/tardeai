@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
@@ -81,6 +81,16 @@ export type DeskPageProps = {
 /** No page facts are computed here: callers supply source timestamps and decisions. */
 export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, children }: DeskPageProps) {
   const [active, setTab] = useDeskTab(tabs, defaultTab, tabAliases)
+  // On a phone the source clocks and decisions sit between the tabs and the content; after a tab tap,
+  // bring the selected content into view so the tap visibly does something (mobile-first standard 1).
+  const contentRef = useRef<HTMLDivElement>(null)
+  const tapped = useRef(false)
+  useEffect(() => {
+    if (!tapped.current) return
+    tapped.current = false
+    const el = contentRef.current
+    if (el && el.getBoundingClientRect().top > window.innerHeight * 0.5) el.scrollIntoView({ block: 'start' })
+  }, [active])
   const [now, setNow] = useState(Date.now)
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
   const laneIds = [...new Set(sources.flatMap(source => source.laneIds ?? []))].sort()
@@ -93,7 +103,7 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
     <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
       <p style={{ margin: '6px 0 0', color: BB.text3, fontSize: TYPE.md }}>{purpose}</p></header>
     {tabs.length > 0 && <nav aria-label={`${title} views`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={active === tab.id} onClick={() => setTab(tab.id)} style={{
+      {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={active === tab.id} onClick={() => { tapped.current = tab.id !== active; setTab(tab.id) }} style={{
         minHeight: 44, minWidth: 44, padding: '8px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontSize: TYPE.base,
         border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
       }}>{tab.label}</button>)}
@@ -134,6 +144,6 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
       </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
     </section>
-    <div>{typeof children === 'function' ? children(active) : children}</div>
+    <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{typeof children === 'function' ? children(active) : children}</div>
   </div>
 }
