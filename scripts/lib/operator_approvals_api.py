@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote
 
 from scripts.lib import operator_approvals as core
 
@@ -266,7 +267,8 @@ def _default_sources(root: Path) -> dict:
 
     def conflicts():
         from scripts.lib.conflicts.api import approval_rows
-        projected = approval_rows(root=root, limit=200)
+        # W10's default resolves the registered durable state tree, not this immutable code artifact.
+        projected = approval_rows(limit=200)
         if projected.get("gap") or projected.get("total") is None:
             raise core.Refused("CONFLICT_SOURCE_UNAVAILABLE", 503)
         if projected["total"] > len(projected["rows"]):
@@ -279,9 +281,10 @@ def _default_sources(root: Path) -> dict:
             code_sha = _git(root, "rev-parse", "HEAD").strip()
             doc = core.document(raw["text"], source_sha=code_sha,
                                 version=str(raw.get("version")) + ":" + str(raw.get("source_sha")))
-            rows.append(core.item(ident="conflict:" + row["id"], kind="CONFLICT", title=row["title"],
+            rows.append(core.item(ident="conflict:" + core.digest(row["id"])[:32], kind="CONFLICT", title=row["title"],
                                   proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
-                                  source="conflicts", governed_href=row.get("governed_href")))
+                                  source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
+                                  source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
     def missing():
