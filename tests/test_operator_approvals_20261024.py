@@ -292,3 +292,17 @@ def test_financial_adapter_accepts_real_database_clock_types_without_losing_queu
     assert result["gap"] is None and result["rows"][0]["created_at"] == NOW.isoformat()
     assert "action_queue:7" in result["rows"][0]["source_refs"]
     assert "12.34" in result["rows"][0]["document"]["text"]
+
+
+def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
+    import json
+    doc = c.document("A proposed rule.", source_sha=SHA)
+    ident = doc["changes"][0]["id"]
+    notes = {"head_sha": SHA, "annotations": {ident: {"plain": "You review the proposal.", "reason": "A prior change lacked review."}}}
+    pr = {"body": "```approval-reader-notes\n" + json.dumps(notes) + "\n```"}
+    annotations = api.reader_annotations(pr, doc)
+    updated = c.document("A proposed rule.", source_sha=SHA, annotations=annotations)
+    assert updated["changes"][0]["plain"] == "You review the proposal."
+    assert updated["document_sha"] != doc["document_sha"]
+    notes["head_sha"] = "b" * 40
+    assert api.reader_annotations({"body": "```approval-reader-notes\n" + json.dumps(notes) + "\n```"}, doc) == {}
