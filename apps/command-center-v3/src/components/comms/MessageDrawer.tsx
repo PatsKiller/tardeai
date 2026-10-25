@@ -117,7 +117,7 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
             <span style={{ fontSize: 15, fontWeight: 800, color: st.color }}>{alertType(e?.headline || e?.short_summary, syms)}</span>
             <span style={{ flex: 1 }} />
             <span style={{ fontSize: 12, color: MUTED }}>{ttlLabel(e?.ttl_remaining_s, e?.legal_hold)}</span>
-            <button type="button" onClick={onClose} aria-label="Close" style={{ fontSize: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer', padding: '3px 10px', borderRadius: RADIUS.sm }}>Close ✕</button>
+            <button type="button" autoFocus onClick={onClose} aria-label="Back to messages" style={{ minHeight: 44, minWidth: 44, fontSize: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer', padding: '3px 10px', borderRadius: RADIUS.sm }}>Back</button>
           </div>
           {e?.actionable && e?.action_hint && <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginTop: 4 }}>▶ {e.action_hint}</div>}
           <div style={{ marginTop: 6 }}><ItemBadges e={e || {}} />{acked && <span style={{ fontSize: 11, color: 'var(--success-color)', marginLeft: 6 }}>✓ acknowledged{e?.acknowledged_by ? ` by ${e.acknowledged_by}` : ''}</span>}{e?.legal_hold && <span style={{ fontSize: 11, color: 'var(--info-color)', marginLeft: 6 }}>📌 kept until released</span>}</div>

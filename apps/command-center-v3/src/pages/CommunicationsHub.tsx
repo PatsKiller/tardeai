@@ -82,8 +82,12 @@ function dirLabel(d?: string | null): string {
 
 export default function CommunicationsHub() {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<Tab>('events')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [sp, setSp] = useSearchParams()
+  const rawTab = (sp.get('tab') || 'events').toLowerCase()
+  const tab: Tab = (['events', 'deliveries', 'subjects', 'retention', 'agents'] as const).includes(rawTab as Tab) ? rawTab as Tab : 'events'
+  const setTab = (next: Tab) => setSp(p => { p.set('tab', next); return p })
+  const selectedId = sp.get('event')
+  const setSelectedId = (id: string | null) => setSp(p => { if (id) p.set('event', id); else p.delete('event'); return p })
   const [subjectFilter, setSubjectFilter] = useState('')
   const [severityFilter, setSeverityFilter] = useState('')
   const [dirFilter, setDirFilter] = useState('')
@@ -109,13 +113,15 @@ export default function CommunicationsHub() {
     }
     return `/api/v2/communications/events?${q.toString()}`
   }, [subjectFilter, hubFilters, sort, order, offset])
-  const { data: boardPayload, refetch: refetchBoard } = useApi<any>('/api/v2/communications/board?limit=5', 60_000)
+  const { data: boardPayload, refetch: refetchBoard } = useApi<any>('/api/v2/communications/board?limit=5', 60_000, { enabled: tab === 'events' })
 
   const { data: health, loading: healthLoading } = useApi<any>('/api/v2/communications/health', 60_000)
-  const { data: eventsPayload, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useApi<any>(eventsPath, 30_000)
+  const { data: retentionPayload, loading: retentionLoading, error: retentionError } = useApi<any>('/api/v2/communications/retention-summary', 60_000, { enabled: tab === 'retention' })
+  const { data: eventsPayload, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useApi<any>(eventsPath, 30_000, { enabled: tab === 'events' })
   const { data: deliveriesPayload, loading: deliveriesLoading } = useApi<any>(
     '/api/v2/communications/deliveries?limit=500',
     60_000,
+    { enabled: tab === 'deliveries' },
   )
   // Delivery health counts come from a server-side aggregate over the whole table, never from the 500-row sample
   // above (review 2026-10-18, N3); a missing / failed / old answer is UNAVAILABLE / STALE, never zero.
@@ -126,16 +132,18 @@ export default function CommunicationsHub() {
   const { data: subjectsPayload, loading: subjectsLoading } = useApi<any>(
     '/api/v2/communications/subjects?limit=50',
     60_000,
+    { enabled: tab === 'subjects' },
   )
   const { data: agentsPayload, loading: agentsLoading } = useApi<any>(
     '/api/v2/communications/agents?limit=200',
     60_000,
+    { enabled: tab === 'agents' },
   )
   const detailPath = selectedId
     ? `/api/v2/communications/events/${encodeURIComponent(selectedId)}`
     : ''
   const { data: detailPayload } = useApi<any>(detailPath || '/api/v2/communications/health', 0, {
-    enabled: Boolean(selectedId),
+    enabled: tab === 'events' && Boolean(selectedId),
   })
 
   const events: any[] = eventsPayload?.events || []
@@ -146,12 +154,9 @@ export default function CommunicationsHub() {
     setHubFilters(rest); setSort(so || 'priority_score'); setOrder(or || 'desc'); setOffset(0); setPicked(new Set())
   }
   // ?preset=attention|reward|reentry|risk|expiring|recent — Home "Review now" lands on the matching view.
-  const [sp] = useSearchParams()
   const presetParam = sp.get('preset')
   // ?event=<id> opens one message; ?q=<ticker or text> filters the feed (advice-digest links, 2026-10-08).
-  const eventParam = sp.get('event')
   const qParam = sp.get('q')
-  useEffect(() => { if (eventParam) setSelectedId(eventParam) }, [eventParam])
   useEffect(() => {
     if (qParam) { setHubFilters((p) => ({ ...p, q: qParam })); setOffset(0) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,18 +190,7 @@ export default function CommunicationsHub() {
   const healthKnown = deliveryHealth.state === 'OK' || deliveryHealth.state === 'STALE'
   const countText = (n: number | null) => (n == null ? '—' : String(n))
 
-  // P2 — retention rollup from the visible window, by class × knowledge status.
-  const retentionCounts = useMemo(() => {
-    const byClass: Record<string, number> = {}
-    const byKnowledge: Record<string, number> = {}
-    for (const e of events) {
-      const rc = e.retention_class || 'unknown'
-      byClass[rc] = (byClass[rc] || 0) + 1
-      const ks = e.knowledge_status || 'none'
-      byKnowledge[ks] = (byKnowledge[ks] || 0) + 1
-    }
-    return { byClass, byKnowledge }
-  }, [events])
+  const retentionCounts: { byClass: Record<string, number>; byKnowledge: Record<string, number> } = retentionPayload?.status === 'ok' ? retentionPayload : { byClass: {}, byKnowledge: {} }
 
   // P2 — client-side filters (server already handles subject_key; severity /
   // direction / free-text are applied over the loaded window).
@@ -216,7 +210,8 @@ export default function CommunicationsHub() {
   }, [events, severityFilter, dirFilter, textFilter])
 
   return (
-    <div style={{ maxWidth: 1280 }}>
+    <div className="w2-comms" style={{ maxWidth: 1280 }}>
+      <style>{`@media(max-width:820px){.w2-comms button,.w2-comms select,.w2-comms input{min-height:44px;min-width:44px}.w2-comms [data-testid="comms-drawer"]{width:100%!important;border-left:0!important}.w2-comms table{table-layout:fixed;width:100%}.w2-comms td{overflow-wrap:anywhere}}`}</style>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Communications</div>
@@ -627,6 +622,7 @@ export default function CommunicationsHub() {
 
       {tab === 'retention' && (
         <div className="cc-panel" style={hubPanel(terminalUi)}>
+          {retentionError && <div role="status" style={{ color: AMBER }}>Latest retention read failed. Displayed counts are retained from the last successful response.</div>}
           <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
             Retention · TTL by category
           </div>
@@ -636,9 +632,9 @@ export default function CommunicationsHub() {
             (scripts/comms_lifecycle.py) archives it to jsonl.gz and removes it. A newer message on the same symbol or topic
             supersedes older ones. Use "Keep" in the feed to hold a message past its TTL.
           </p>
-          {hubMode && (
+          {retentionPayload?.categories && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8, marginBottom: 12 }}>
-              {(eventsPayload?.categories || []).map((c: any) => (
+              {(retentionPayload.categories || []).map((c: any) => (
                 <div key={c.id} style={{ border: `1px solid ${BORDER}`, borderLeft: `3px solid ${CATEGORY_COLOR[c.id] || BORDER}`, padding: 6, fontSize: 10 }}>
                   <div style={{ color: TEXT, fontWeight: 700 }}>{c.label}</div>
                   <div style={{ color: MUTED }}>TTL {c.ttl_hours >= 48 ? `${c.ttl_hours / 24}d` : `${c.ttl_hours}h`}</div>
@@ -648,7 +644,7 @@ export default function CommunicationsHub() {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginBottom: 12 }}>
             {Object.keys(retentionCounts.byClass).length === 0 && (
-              <div style={{ fontSize: 10, color: MUTED }}>No events in current projection.</div>
+              <div style={{ fontSize: 10, color: MUTED }}>{retentionLoading ? 'Loading retained message counts…' : retentionError || retentionPayload?.status !== 'ok' ? 'Retained message counts unavailable.' : 'No retained messages.'}</div>
             )}
             {Object.entries(retentionCounts.byClass).map(([k, n]) => (
               <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm }}>

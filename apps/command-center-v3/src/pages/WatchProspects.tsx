@@ -1,3 +1,4 @@
+import ListPager, { useListOffset } from '../components/ListPager'
 /** Watch — your prospects, in the order you should look at them (Gate 3 mockup, operator directive 2026-10-22).
  *
  *  Reads ONE projection: GET /api/v3/data-broker/watch-prospects (scripts/lib/data_broker/watch_prospects.py) — the
@@ -278,11 +279,14 @@ function AlertsBody({ t, now }: { t: TiedAlerts; now: Date }) {
 export default function WatchProspects() {
   const [params, setParams] = useSearchParams()
   const pq = positionQuery(params)
-  const { data: raw, loading, error, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-prospects', pq), 120_000)
+  const paging = useListOffset(JSON.stringify(pq) + (params.get('lane') || 'actionable'))
+  const requestedLane = params.get('lane') || 'actionable'
+  const { data: raw, loading, error, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-prospects', { ...pq, lane: requestedLane, offset: String(paging.offset), limit: '25' }), 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const p: ProspectsPayload | null = useMemo(() => unwrap(raw), [raw])
   const lane = (LANE_ORDER.includes(params.get('lane') as LaneId) ? params.get('lane') : 'actionable') as LaneId
-  const [sel, setSel] = useState<string | null>(params.get('symbol'))
+  const sel = params.get('symbol')
+  const setSel = (symbol: string | null) => setParams(p => { if (symbol) p.set('symbol', symbol); else p.delete('symbol'); return p })
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
@@ -292,6 +296,7 @@ export default function WatchProspects() {
   const now = new Date()
 
   const pickLane = (id: LaneId) => {
+    paging.reset()
     const next = new URLSearchParams(params)
     next.set('lane', id)
     setParams(next, { replace: true })
@@ -372,7 +377,8 @@ export default function WatchProspects() {
       </div>
 
       <PositionFilterBar specs={(p as any).position_filters} facets={(p as any).position_facets} testId="prospects-position-filters" />
-      <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Prospects filters, sorts and facet counts apply to shown lane rows. Rows below each lane cap are retained and have not been evaluated by these controls. My Watchlist evaluates every name in your list.</div>
+      <ListPager page={(p as any).pagination} previous={paging.previous} next={paging.next} busy={loading} gap={(current as any)?.payload_gap} />
+      <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Filters, sorts and facet counts cover the curated prospect window across all pages. Names below each lane cap remain listed as overflow. My Watchlist evaluates every name in your list.</div>
 
       {toast && <div role="status" style={{ ...chipStyle('success', 'soft', 'md'), alignSelf: 'flex-start' }}>{toast}</div>}
 
@@ -381,7 +387,7 @@ export default function WatchProspects() {
           <div className="watch-record-table watch-card-list">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 16px', flexWrap: 'wrap', gap: 6, borderBottom: `1px solid ${TOKENS.border}` }}>
               <h2 style={{ margin: 0, fontSize: TYPE.md + 2 }} data-testid="watch-list-title">
-                {current?.label} · {(p as any).counts?.filtered ? 'filtered shown ' : ''}{current?.count ?? 0}{current && current.items.length < current.count ? ` (top ${current.items.length} shown)` : ''}
+                {current?.label} · {(p as any).counts?.filtered ? 'filtered ' : ''}{current?.count ?? 0}{current && current.items.length < current.count ? ` (${current.items.length} on this page)` : ''}
               </h2>
               <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }} title={p.curation?.sort_order}>sorted by conviction, then priority</span>
             </div>
@@ -403,7 +409,7 @@ export default function WatchProspects() {
         </section>
 
         {selected && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
-          <button type="button" onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Close record</button>
+          <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
           <Detail r={selected} onAskCio={askCio} cioMsg={cioMsg} />
         </aside>}
       </div>
