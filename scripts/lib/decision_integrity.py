@@ -151,7 +151,7 @@ def classify_wash(
       (Rev. Rul. 2008-5: an IRA repurchase disallows the loss permanently) — is a wash-sale risk.
     * Sell exists but lots/gain unknown → UNVERIFIED: conservative review state; no legal conclusion.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or _wash.today_ny()      # the New York date, not the UTC date
     sell_dt = _dt(last_taxable_sell_date)
     return _wash.classify(last_taxable_sell_date=sell_dt.date() if sell_dt else None, realized_gain=realized_gain,
                           evidence=evidence, acquisitions_within_30d=acquisitions_within_30d, today=today,

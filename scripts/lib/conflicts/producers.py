@@ -108,9 +108,14 @@ def wash_inputs(windows: dict[str, dict], *, now: datetime) -> dict[str, Input]:
         value = wash_sale.RESOLVER_VALUE.get(w.get("kind"), "UNKNOWN")
         sale = _aware(w.get("sell_date"))
         detail = (f"wash window through {w.get('until')} — taxable sale {w.get('sell_date')} in {w.get('account')}"
-                  if w.get("gated") else f"no wash window ({w.get('label')})")
+                  + ("; replacement purchases inside the 61-day window already wash the loss" if w.get("loss_washed")
+                     else "") if w.get("gated") else f"no wash window ({w.get('label')})")
         out[sym] = Input("wash_sale", value, min(sale, now) if sale else now, role="gate", account=None, detail=detail,
                          metadata={"accounts_gated": "all", "wash_kind": w.get("kind"), "until": w.get("until"),
+                                   "loss_washed": w.get("loss_washed", False), "wash_status": w.get("wash_status"),
+                                   "matched_quantity": w.get("matched_quantity"),
+                                   "ira_permanent_quantity": w.get("ira_permanent_quantity"), "scope": w.get("scope"),
+                                   "replacements": w.get("replacements") or [],
                                    "sale_date": w.get("sell_date"), "sale_account": w.get("account"),
                                    "realized_gain": w.get("realized_gain"), "label": w.get("label")})
     return out

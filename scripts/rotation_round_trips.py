@@ -135,6 +135,20 @@ def _price_and_sma50(symbol: str, prices: dict, enrich: dict):
     return px, above50
 
 
+def _exit_trade_date(cur, sym, acct, advised_at, detected_at):
+    """The exit fill's trade date (the wash window runs from the SALE date, not from when the exit was detected or
+    confirmed): the same first Sell after the advisory that detect_fills() matches; detected_at only as a fallback."""
+    try:
+        cur.execute("""SELECT trade_date FROM trade_transactions
+                       WHERE symbol=%s AND account=%s AND action='Sell' AND trade_date >= %s
+                       ORDER BY trade_date LIMIT 1""", (sym, acct, wash_sale.as_date(advised_at)))
+        row = cur.fetchone()
+        day = wash_sale.as_date(row[0] if isinstance(row, (tuple, list)) else (row or {}).get("trade_date")) if row else None
+    except Exception:
+        day = None
+    return day or wash_sale.as_date(detected_at)
+
+
 def evaluate(cur, sector_states: dict, prices: dict, enrich: dict) -> list:
     """Nightly: open round-trips → rollback_open when any condition is met.
     Returns render rows for the 'Stepped out — watching' panel."""
@@ -171,13 +185,15 @@ def evaluate(cur, sector_states: dict, prices: dict, enrich: dict) -> list:
         # A known GAIN opens no wash window; unknown basis is treated as a potential loss (conservative).
         if (wash_sale.account_taxable(acct) and status in ("stepped_out", "rollback_open") and detected_at
                 and not (loss_known and not is_loss)):
-            days_left = wash_sale.days_left(detected_at, now)
+            sale_day = _exit_trade_date(cur, sym, acct, advised_at, detected_at)
+            days_left = wash_sale.days_left(sale_day, now)
             if days_left > 0:
-                wash = {"days_left": days_left, "until": wash_sale.window_until(detected_at).isoformat(),
+                wash = {"days_left": days_left, "until": wash_sale.window_until(sale_day).isoformat(),
+                        "sale_date": sale_day.isoformat(),
                         "loss_known": bool(loss_known), "is_loss": bool(is_loss),
                         "line": (f"wash-sale window: {days_left}d remain — repurchase in ANY account "
-                                 f"(incl. IRAs — permanently) through {wash_sale.window_until(detected_at)} "
-                                 "disallows a loss"
+                                 f"(incl. IRAs — permanently) through {wash_sale.window_until(sale_day)} "
+                                 f"disallows a loss ({wash_sale.SCOPE_NOTE})"
                                  + ("" if loss_known else " · basis n/a (Cost Basis export pending) — treat as potential loss")
                                  + " · verify with your tax context (route: Alex)")}
         vs_exit = (round((px - float(exit_px)) / float(exit_px) * 100, 1)

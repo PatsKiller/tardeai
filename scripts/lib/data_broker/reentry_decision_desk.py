@@ -86,9 +86,9 @@ def _wash_evidence(db_query: Callable, symbols: list[str], wash_until: dict[str,
     acquisitions (any account) inside ±WASH_DAYS of the deciding sell. Read-only; abstains (UNVERIFIED) when lots
     are insufficient."""
     try:
-        from scripts.lib.wash_sale import symbol_window
+        from scripts.lib.wash_sale import symbol_window, today_ny
     except ImportError:  # scripts/ (not the repo root) on sys.path
-        from lib.wash_sale import symbol_window  # type: ignore
+        from lib.wash_sale import symbol_window, today_ny  # type: ignore
 
     rows = db_query(
         """SELECT upper(symbol) AS symbol, trade_date, trade_time, action, quantity, price, amount, fees, account
@@ -100,7 +100,7 @@ def _wash_evidence(db_query: Callable, symbols: list[str], wash_until: dict[str,
     by_sym: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         by_sym.setdefault(str(r.get("symbol") or "").upper(), []).append(dict(r))
-    today = datetime.now(timezone.utc).date()
+    today = today_ny()          # the New York date; the UTC date is already "tomorrow" on weekday evenings
     out: dict[str, dict[str, Any]] = {}
     for sym in symbols:
         window = symbol_window(by_sym.get(sym) or [], today=today)
@@ -649,6 +649,14 @@ def build_decision_desk(
             wash_evidence = {}
 
     today = datetime.now(timezone.utc).date().isoformat()
+    try:  # the wash window compares New York trade dates
+        try:
+            from scripts.lib.wash_sale import today_ny as _today_ny
+        except ImportError:  # scripts/ on sys.path
+            from lib.wash_sale import today_ny as _today_ny  # type: ignore
+        wash_today = _today_ny().isoformat()
+    except Exception:
+        wash_today = today
     rows_out: list[dict[str, Any]] = []
     for sym in symbols:
         batch_q = price_batch.get(sym) or {}
@@ -677,7 +685,7 @@ def build_decision_desk(
         entry_high = _f(plan.get("entry_zone_high"))
         stop = _f(plan.get("stop_price"))
         target = _f(plan.get("target_price"))
-        wash_blocked = bool(wash_until.get(sym) and wash_until[sym] >= today)
+        wash_blocked = bool(wash_until.get(sym) and wash_until[sym] >= wash_today)
 
         intel = derive_intel_state(
             price=price,

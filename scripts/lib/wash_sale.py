@@ -8,8 +8,9 @@ now takes its constants and date arithmetic from here.
 The rule (IRC §1091; Rev. Rul. 2008-5 for IRAs):
   * Only a sale at a LOSS in a TAXABLE account opens a wash window. An IRA/Roth sale has no deductible loss.
   * The window is calendar days: an acquisition of the same security from ``sale - 30`` through ``sale + 30``
-    (both inclusive) washes the loss. Going forward a sale on day S gates buys through S+30 inclusive;
-    the first clear day is S+31.
+    (both inclusive, the 61-day window) washes the loss — purchases in the 30 days BEFORE the sale count too
+    (``replacement_purchases``; the lots the sale itself disposed of do not). Going forward a sale on day S gates
+    buys through S+30 inclusive; the first clear day is S+31.
   * The gate applies to buys in ALL accounts, IRAs included (an IRA repurchase disallows the loss permanently).
   * Stances are per symbol; the gate is per account and every account is gated.
   * A taxable sale whose gain cannot be computed is UNVERIFIED — treated as an unknown gate, never as clear.
@@ -66,13 +67,33 @@ def as_date(value: Any) -> Optional[date]:
         return None
 
 
+#: Opening a short / writing an option is not a disposal of owned shares; closing one is not an acquisition.
+_SHORT_OPEN = ("sell short", "short sale", "sell to open", "sold short")
+_SHORT_CLOSE = ("buy to cover", "buy to close")
+
+
 def is_sale(action: Any) -> bool:
     act = str(action or "").strip().lower()
+    if any(act.startswith(k) for k in _SHORT_OPEN):
+        return False
     return act in SALE_ACTIONS or act.startswith("sell")
 
 
 def is_acquisition(action: Any) -> bool:
-    return str(action or "").strip().lower().startswith("buy")
+    """A purchase of shares: buys and dividend reinvestments (a DRIP purchase is an acquisition for §1091)."""
+    act = str(action or "").strip().lower()
+    if any(act.startswith(k) for k in _SHORT_CLOSE):
+        return False
+    return act.startswith("buy") or "reinvest" in act
+
+
+def today_ny(now: Any = None) -> date:
+    """The New York calendar date (never the UTC date: evenings ET are already 'tomorrow' in UTC)."""
+    return as_date(now or datetime.now(timezone.utc))
+
+
+FIFO_NOTE = "FIFO_FROM_TRADE_TRANSACTIONS — verify with your tax context"
+SCOPE_NOTE = "same symbol only; substantially identical securities (other share classes, options) are not checked"
 
 
 def account_taxable(account: Any) -> bool:
@@ -121,15 +142,21 @@ def days_left(sale: Any, today: Any, *, days: int = WASH_DAYS) -> int:
 
 def classify(*, last_taxable_sell_date: Any, realized_gain: Optional[float], evidence: str = "",
              acquisitions_within_30d: Iterable[Mapping[str, Any]] = (), today: Optional[date] = None,
-             hold_days: int = WASH_DAYS) -> dict[str, Any]:
+             hold_days: int = WASH_DAYS, sold_quantity: Optional[float] = None,
+             replacements: Optional[Iterable[Mapping[str, Any]]] = None) -> dict[str, Any]:
     """Label one taxable sell honestly (the former decision_integrity.classify_wash body).
 
     * no sell, or the sell is outside its window → NONE
     * GAIN → HOUSE_HOLD_NO_LOSS: the house re-entry hold (``hold_days``) applies; the wash-sale rule does not
     * LOSS → WASH_SALE_RISK_LOSS through sale + WASH_DAYS (statutory, independent of the house hold)
     * gain unknown → UNVERIFIED through sale + WASH_DAYS (conservative; no legal conclusion)
+
+    When ``replacements`` (from ``replacement_purchases``) and ``sold_quantity`` are given for a LOSS, the shares
+    already bought back are matched oldest first: ``wash_status`` LIKELY_WASHED (matched quantity), IRA_PERMANENT
+    when part of the match is in a non-taxable account (that part of the loss is lost for good), else OPEN_RISK.
+    The forward gate (kind WASH_SALE_RISK_LOSS through sale + 30) is kept either way.
     """
-    today = as_date(today) or datetime.now(timezone.utc).date()
+    today = as_date(today) or today_ny()
     sell = as_date(last_taxable_sell_date)
     if sell is None:
         return {"kind": KIND_NONE, "hold_until": None, "realized_gain": None,
@@ -141,22 +168,60 @@ def classify(*, last_taxable_sell_date: Any, realized_gain: Optional[float], evi
                 "label": "taxable sell outside the hold window", "legal_conclusion": None}
     acq = [dict(a) for a in acquisitions_within_30d if a]
     base = {"hold_until": hold_until, "sell_date": sell.isoformat(), "realized_gain": realized_gain,
-            "evidence": evidence or None, "acquisitions_within_30d": acq}
+            "evidence": evidence or None, "acquisitions_within_30d": acq,
+            "evidence_note": FIFO_NOTE if evidence == "FIFO_FROM_TRADE_TRANSACTIONS" else None,
+            "scope": SCOPE_NOTE}
+    basis_note = f" Basis: {FIFO_NOTE}." if evidence == "FIFO_FROM_TRADE_TRANSACTIONS" else ""
     if realized_gain is None:
         return {**base, "kind": KIND_UNVERIFIED,
                 "label": f"taxable sell {sell.isoformat()}; lot basis not on file — "
-                         f"house hold to {hold_until}; wash-sale status UNVERIFIED",
+                         f"house hold to {hold_until}; wash-sale status UNVERIFIED ({SCOPE_NOTE}). "
+                         "Verify with your tax advisor.",
                 "legal_conclusion": None}
     if realized_gain >= 0:
         return {**base, "kind": KIND_HOUSE_HOLD_GAIN,
                 "label": f"house {days}-day re-entry hold to {hold_until} after a taxable sell at a "
-                         f"GAIN (+${realized_gain:,.2f}); no wash-sale rule applies to a gain",
+                         f"GAIN (+${realized_gain:,.2f}); no wash-sale rule applies to a gain.{basis_note}",
                 "legal_conclusion": "NOT_A_WASH_SALE"}
-    return {**base, "kind": KIND_WASH_RISK,
+    match = match_replacements(sold_quantity, replacements) if replacements is not None else None
+    if match and match["matched_quantity"] > 0:
+        ira = match["ira_permanent_quantity"]
+        label = (f"Taxable loss sale on {sell.isoformat()} (a loss of ${-realized_gain:,.2f}): "
+                 f"{match['matched_quantity']:g} of the "
+                 f"{sold_quantity:g} shares sold were already bought back within 30 days before or after the sale, so "
+                 f"that part of the loss is likely disallowed (added to the new shares' cost basis)"
+                 + (f"; {ira:g} of them were bought in an IRA, where the disallowed loss is lost permanently" if ira else "")
+                 + f". Buying more in any account (IRA included) through {hold_until} would wash more of it "
+                 f"({SCOPE_NOTE}).{basis_note} Verify with your tax advisor.")
+        return {**base, **match, "kind": KIND_WASH_RISK, "wash_status": "IRA_PERMANENT" if ira else "LIKELY_WASHED",
+                "label": label, "legal_conclusion": "WASH_SALE_RISK"}
+    return {**base, **(match or {}), "kind": KIND_WASH_RISK, "wash_status": "OPEN_RISK",
             "label": f"taxable LOSS sale {sell.isoformat()} (${realized_gain:,.2f}); a repurchase "
                      f"through {hold_until} in any account (IRA included) risks permanent disallowance"
-                     + (f"; {len(acq)} acquisition(s) already inside the window" if acq else ""),
+                     + (f"; {len(acq)} acquisition(s) already inside the window" if acq else "")
+                     + f" ({SCOPE_NOTE}).{basis_note} Verify with your tax advisor.",
             "legal_conclusion": "WASH_SALE_RISK"}
+
+
+def match_replacements(sold_quantity: Optional[float], replacements: Optional[Iterable[Mapping[str, Any]]]) -> dict:
+    """Match replacement purchases to the shares sold, oldest first, capped at the sold quantity."""
+    remaining = float(sold_quantity or 0.0)
+    matched = ira = 0.0
+    used = []
+    for r in sorted((dict(x) for x in replacements or []), key=lambda r: str(r.get("trade_date") or "")):
+        if remaining <= 1e-9:
+            break
+        take = min(remaining, float(r.get("quantity") or 0.0))
+        if take <= 0:
+            continue
+        remaining -= take
+        matched += take
+        taxable = account_taxable(r.get("account"))
+        if not taxable:
+            ira += take
+        used.append({**r, "matched_quantity": round(take, 6), "permanent": not taxable})
+    return {"matched_quantity": round(matched, 6), "ira_permanent_quantity": round(ira, 6),
+            "matched_replacements": used}
 
 
 def fifo_realized_gain(transactions: Iterable[Mapping[str, Any]], *, sell_date: Any = None) -> dict[str, Any]:
@@ -177,10 +242,10 @@ def fifo_realized_gain(transactions: Iterable[Mapping[str, Any]], *, sell_date: 
         act = str(r.get("action") or "").lower()
         qty = _f(r.get("quantity")) or 0.0
         px = _f(r.get("price"))
-        if act.startswith("buy") and qty > 0 and px is not None:
+        if is_acquisition(act) and qty > 0 and px is not None:
             lots.append([qty, px])
             continue
-        if not (act.startswith("sell") or act in ("sold",)) or qty <= 0 or px is None:
+        if not ((act.startswith("sell") and is_sale(act)) or act in ("sold",)) or qty <= 0 or px is None:
             continue
         if sell_date is not None and str(r.get("trade_date") or "")[:10] != str(sell_date)[:10]:
             # consume lots for earlier sells so later ones see the right basis
@@ -224,6 +289,60 @@ def _row_date(row: Mapping[str, Any]) -> Optional[date]:
     return as_date(row.get("trade_date"))
 
 
+def replacement_purchases(rows: list[Mapping[str, Any]], sale_row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Purchases that wash a loss sale: the full 61-day window, ``sale - 30`` through ``sale + 30`` (IRC §1091).
+
+    ``rows`` are every account's rows for the security, sorted by (trade_date, trade_time); ``sale_row`` is one of
+    them. In the sale's own account, shares bought before the sale count only while they are still held after it
+    (FIFO): the lots the sale itself disposed of are not replacements. Buys after the sale (same account, same day
+    included when later in the sort) and buys in any OTHER account (IRAs included) inside the window count in full.
+    """
+    sale_d = _row_date(sale_row)
+    if sale_d is None:
+        return []
+    lo, hi = sale_d - timedelta(days=WASH_DAYS), sale_d + timedelta(days=WASH_DAYS)
+    account = str(sale_row.get("account") or "")
+    out: list[dict[str, Any]] = []
+    lots: list[list[Any]] = []            # [qty, date] in the sale account, FIFO
+    after = False
+    for r in rows:
+        d = _row_date(r)
+        same = str(r.get("account") or "") == account
+        if r is sale_row:
+            qty = _f(r.get("quantity")) or 0.0
+            while qty > 1e-9 and lots:
+                take = min(qty, lots[0][0])
+                lots[0][0] -= take
+                qty -= take
+                if lots[0][0] <= 1e-9:
+                    lots.pop(0)
+            for q, ld in lots:
+                if ld and lo <= ld <= sale_d and q > 1e-9:
+                    out.append({"account": account, "trade_date": ld.isoformat(), "quantity": round(q, 6),
+                                "when": "before_sale"})
+            after = True
+            continue
+        if same and not after:
+            qty = _f(r.get("quantity")) or 0.0
+            if is_acquisition(r.get("action")) and qty > 0:
+                lots.append([qty, d])
+            elif is_sale(r.get("action")) and qty > 0:
+                while qty > 1e-9 and lots:
+                    take = min(qty, lots[0][0])
+                    lots[0][0] -= take
+                    qty -= take
+                    if lots[0][0] <= 1e-9:
+                        lots.pop(0)
+            continue
+        if not is_acquisition(r.get("action")) or d is None or not lo <= d <= hi:
+            continue
+        # Same account after the sale, or any other account inside the window.
+        when = "after_sale" if same or d > sale_d else "before_sale" if d < sale_d else "same_day"
+        out.append({"account": str(r.get("account") or ""), "trade_date": d.isoformat(),
+                    "quantity": _f(r.get("quantity")), "when": when})
+    return out
+
+
 def symbol_window(transactions: Iterable[Mapping[str, Any]], *, today: Any) -> dict[str, Any]:
     """The canonical wash window for ONE security from its trade_transactions rows (every account).
 
@@ -232,7 +351,7 @@ def symbol_window(transactions: Iterable[Mapping[str, Any]], *, today: Any) -> d
     gain → UNVERIFIED; else GAIN → HOUSE_HOLD_NO_LOSS; no taxable sale inside the window → NONE.
     ``house_hold_until`` is the desk's house hold (latest taxable sell + 30, gain or loss) for callers that keep it.
     """
-    today_d = as_date(today) or datetime.now(timezone.utc).date()
+    today_d = as_date(today) or today_ny()
     rows = sorted((dict(r) for r in transactions if r), key=lambda r: (str(r.get("trade_date") or ""),
                                                                        str(r.get("trade_time") or "")))
     by_account: dict[str, list[dict[str, Any]]] = {}
@@ -249,7 +368,7 @@ def symbol_window(transactions: Iterable[Mapping[str, Any]], *, today: Any) -> d
             gain = fifo_realized_gain(txs, sell_date=d.isoformat())
             sales.append({"account": account, "sale_date": d, "realized_gain": gain.get("realized_gain"),
                           "evidence": gain.get("evidence"), "quantity": _f(r.get("quantity")),
-                          "price": _f(r.get("price"))})
+                          "price": _f(r.get("price")), "_row": r})
     if not sales:
         return {"schema": SCHEMA, "kind": KIND_NONE, "gated": False, "until": None, "house_hold_until": None,
                 "sales": [], "acquisitions_within_30d": [], "label": "no taxable sell in window"}
@@ -260,13 +379,24 @@ def symbol_window(transactions: Iterable[Mapping[str, Any]], *, today: Any) -> d
     acq = [{"trade_date": d.isoformat(), "account": r.get("account"), "quantity": _f(r.get("quantity")),
             "price": _f(r.get("price"))}
            for r in rows if is_acquisition(r.get("action")) and (d := _row_date(r)) and lo <= d <= hi]
+    # The 61-day rule: purchases in the 30 days BEFORE the loss sale wash it as well as purchases after it.
+    replacements = replacement_purchases(rows, pick["_row"]) if pick in losses or pick in unknown else []
     out = classify(last_taxable_sell_date=pick["sale_date"], realized_gain=pick["realized_gain"],
-                   evidence=str(pick["evidence"] or ""), acquisitions_within_30d=acq, today=today_d)
+                   evidence=str(pick["evidence"] or ""), acquisitions_within_30d=acq, today=today_d,
+                   sold_quantity=pick["quantity"], replacements=replacements if pick in losses else None)
     latest = max(s["sale_date"] for s in sales)
-    return {"schema": SCHEMA, **out, "gated": out["kind"] in (KIND_WASH_RISK, KIND_UNVERIFIED),
-            "until": out.get("hold_until") if out["kind"] in (KIND_WASH_RISK, KIND_UNVERIFIED) else None,
+    washed = out["kind"] == KIND_WASH_RISK and out.get("wash_status") in ("LIKELY_WASHED", "IRA_PERMANENT")
+    # The forward gate lasts until the LAST loss or unknown-basis taxable sale's window closes.
+    gate_until = max((window_until(s["sale_date"]) for s in losses + unknown), default=None)
+    gated = out["kind"] in (KIND_WASH_RISK, KIND_UNVERIFIED)
+    if gated and gate_until and gate_until.isoformat() > str(out.get("hold_until")):
+        out["label"] += f" Another taxable sale keeps the buy window open through {gate_until.isoformat()}."
+    return {"schema": SCHEMA, **out, "gated": gated,
+            "until": gate_until.isoformat() if gated and gate_until else None,
             "house_hold_until": window_until(latest).isoformat(), "account": pick["account"],
-            "sales": [{**s, "sale_date": s["sale_date"].isoformat()} for s in sales]}
+            "replacements": replacements, "loss_washed": washed,
+            "sales": [{k: v for k, v in {**s, "sale_date": s["sale_date"].isoformat()}.items() if k != "_row"}
+                      for s in sales]}
 
 
 def windows_from_transactions(transactions: Iterable[Mapping[str, Any]], *, today: Any) -> dict[str, dict[str, Any]]:
