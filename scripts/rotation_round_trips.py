@@ -15,7 +15,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WASH_DAYS = 31
+try:  # the ONE wash-sale implementation (EXCEPTIONS_MATRIX R9)
+    from lib import wash_sale  # scripts/ on sys.path (how this script and its tests run)
+except ImportError:
+    from scripts.lib import wash_sale  # type: ignore
+#: Statutory 30 calendar days after the sale, inclusive (the old 31 counted elapsed days from the trade-date
+#: midnight; the canonical module counts calendar dates, so the countdown is unchanged).
+WASH_DAYS = wash_sale.WASH_DAYS
 EXPIRE_DAYS = 60
 
 
@@ -162,13 +168,16 @@ def evaluate(cur, sector_states: dict, prices: dict, enrich: dict) -> list:
                            rollback_opened_at=now() WHERE id=%s""", (rid,))
             status = "rollback_open"
         wash = None
-        if acct == "schwab_taxable" and status in ("stepped_out", "rollback_open") and detected_at:
-            days_left = WASH_DAYS - (now - detected_at).days
+        # A known GAIN opens no wash window; unknown basis is treated as a potential loss (conservative).
+        if (wash_sale.account_taxable(acct) and status in ("stepped_out", "rollback_open") and detected_at
+                and not (loss_known and not is_loss)):
+            days_left = wash_sale.days_left(detected_at, now)
             if days_left > 0:
-                wash = {"days_left": days_left,
+                wash = {"days_left": days_left, "until": wash_sale.window_until(detected_at).isoformat(),
                         "loss_known": bool(loss_known), "is_loss": bool(is_loss),
                         "line": (f"wash-sale window: {days_left}d remain — repurchase in ANY account "
-                                 f"(incl. IRAs — permanently) before day {WASH_DAYS} disallows a loss"
+                                 f"(incl. IRAs — permanently) through {wash_sale.window_until(detected_at)} "
+                                 "disallows a loss"
                                  + ("" if loss_known else " · basis n/a (Cost Basis export pending) — treat as potential loss")
                                  + " · verify with your tax context (route: Alex)")}
         vs_exit = (round((px - float(exit_px)) / float(exit_px) * 100, 1)

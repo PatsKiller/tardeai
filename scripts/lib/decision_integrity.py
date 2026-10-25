@@ -35,6 +35,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping, Optional
 
+try:
+    from scripts.lib import wash_sale as _wash
+except ImportError:  # scripts/ (not the repo root) on sys.path
+    from lib import wash_sale as _wash  # type: ignore
+
 SCHEMA = "DecisionIntegrity@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
@@ -72,10 +77,10 @@ HOUSE_WASH_HOLD_DAYS = int(os.environ.get("TRADEAI_HOUSE_WASH_HOLD_DAYS", "30"))
 DUST_SHARES = float(os.environ.get("TRADEAI_HELD_DUST_SHARES", "1.0"))
 WEEKEND_HOLD_HOURS = float(os.environ.get("TRADEAI_QUOTE_WEEKEND_HOLD_HOURS", "72"))
 
-WASH_NONE = "NONE"
-WASH_HOUSE_HOLD_GAIN = "HOUSE_HOLD_NO_LOSS"        # taxable sell at a GAIN: house hold only
-WASH_SALE_RISK = "WASH_SALE_RISK_LOSS"             # taxable sell at a LOSS inside ±30d
-WASH_UNVERIFIED = "UNVERIFIED"                     # a taxable sell exists, lots unknown
+WASH_NONE = _wash.KIND_NONE
+WASH_HOUSE_HOLD_GAIN = _wash.KIND_HOUSE_HOLD_GAIN  # taxable sell at a GAIN: house hold only
+WASH_SALE_RISK = _wash.KIND_WASH_RISK              # taxable sell at a LOSS inside ±30d
+WASH_UNVERIFIED = _wash.KIND_UNVERIFIED            # a taxable sell exists, lots unknown
 
 
 def _f(v: Any) -> Optional[float]:
@@ -122,65 +127,8 @@ def quote_age_label(as_of: Any, *, now: Optional[datetime] = None) -> str:
 
 # ── tax evidence ─────────────────────────────────────────────────────────────
 
-def fifo_realized_gain(transactions: Iterable[Mapping[str, Any]], *, sell_date: Any = None) -> dict[str, Any]:
-    """FIFO realized gain for the LAST sell (or the sell on ``sell_date``) in one
-    account/symbol series of trade_transactions rows.
-
-    Rows: trade_date, action (Buy/Sell…), quantity, price, amount (signed),
-    fees. Deterministic; abstains (``evidence="INSUFFICIENT_LOTS"``) when the
-    sold quantity exceeds the lots the rows can account for.
-    """
-    rows = sorted(
-        (dict(r) for r in transactions if r),
-        key=lambda r: (str(r.get("trade_date") or ""), str(r.get("trade_time") or "")),
-    )
-    lots: list[list[float]] = []          # [qty, price]
-    last: Optional[dict[str, Any]] = None
-    for r in rows:
-        act = str(r.get("action") or "").lower()
-        qty = _f(r.get("quantity")) or 0.0
-        px = _f(r.get("price"))
-        if act.startswith("buy") and qty > 0 and px is not None:
-            lots.append([qty, px])
-            continue
-        if not (act.startswith("sell") or act in ("sold",)) or qty <= 0 or px is None:
-            continue
-        if sell_date is not None and str(r.get("trade_date") or "")[:10] != str(sell_date)[:10]:
-            # consume lots for earlier sells so later ones see the right basis
-            remaining = qty
-            while remaining > 1e-9 and lots:
-                take = min(remaining, lots[0][0])
-                lots[0][0] -= take
-                remaining -= take
-                if lots[0][0] <= 1e-9:
-                    lots.pop(0)
-            continue
-        remaining = qty
-        basis = 0.0
-        matched = 0.0
-        while remaining > 1e-9 and lots:
-            take = min(remaining, lots[0][0])
-            basis += take * lots[0][1]
-            lots[0][0] -= take
-            remaining -= take
-            matched += take
-            if lots[0][0] <= 1e-9:
-                lots.pop(0)
-        proceeds = qty * px - (_f(r.get("fees")) or 0.0)
-        last = {
-            "trade_date": str(r.get("trade_date") or "")[:10],
-            "quantity": qty,
-            "price": px,
-            "proceeds": round(proceeds, 2),
-            "matched_quantity": round(matched, 4),
-            "basis": round(basis, 2),
-            "realized_gain": round(proceeds - basis, 2) if remaining <= 1e-9 else None,
-            "evidence": "FIFO_FROM_TRADE_TRANSACTIONS" if remaining <= 1e-9 else "INSUFFICIENT_LOTS",
-            "unmatched_quantity": round(remaining, 4),
-        }
-        if sell_date is not None:
-            break
-    return last or {"evidence": "NO_SELL", "realized_gain": None}
+# FIFO realized gain moved to the ONE wash-sale implementation (scripts/lib/wash_sale.py, 2026-10-25), re-exported.
+fifo_realized_gain = _wash.fifo_realized_gain
 
 
 def classify_wash(
@@ -192,48 +140,22 @@ def classify_wash(
     today: Optional[date] = None,
     hold_days: int = HOUSE_WASH_HOLD_DAYS,
 ) -> dict[str, Any]:
-    """Label a recent taxable sell honestly.
+    """Label a recent taxable sell honestly — delegates to the ONE wash-sale implementation
+    (scripts/lib/wash_sale.classify, EXCEPTIONS_MATRIX R9).
 
     * No taxable sell inside the hold window → NONE.
-    * Sell at a verified GAIN → HOUSE_HOLD_NO_LOSS: the house's 30-day re-entry
-      hold applies as policy; the wash-sale rule (which only disallows LOSSES)
-      does not. Never phrase this as "wash blocked".
-    * Sell at a verified LOSS → WASH_SALE_RISK_LOSS: any acquisition of the same
-      or substantially identical security within 30 days before/after — in ANY
-      account, IRA included (Rev. Rul. 2008-5: an IRA repurchase disallows the
-      loss permanently) — is a wash-sale risk. Named acquisitions are listed.
-    * Sell exists but lots/gain unknown → UNVERIFIED: conservative review state;
-      no legal conclusion is asserted either way.
+    * Sell at a verified GAIN → HOUSE_HOLD_NO_LOSS: the house's re-entry hold (``hold_days``) applies as
+      policy; the wash-sale rule (which only disallows LOSSES) does not. Never phrase this as "wash blocked".
+    * Sell at a verified LOSS → WASH_SALE_RISK_LOSS through sale + 30 calendar days (statutory): any
+      acquisition of the same or substantially identical security — in ANY account, IRA included
+      (Rev. Rul. 2008-5: an IRA repurchase disallows the loss permanently) — is a wash-sale risk.
+    * Sell exists but lots/gain unknown → UNVERIFIED: conservative review state; no legal conclusion.
     """
     today = today or datetime.now(timezone.utc).date()
     sell_dt = _dt(last_taxable_sell_date)
-    if sell_dt is None:
-        return {"kind": WASH_NONE, "hold_until": None, "realized_gain": None,
-                "label": "no taxable sell in window", "legal_conclusion": None}
-    hold_until = (sell_dt.date() + timedelta(days=hold_days)).isoformat()
-    in_window = sell_dt.date() + timedelta(days=hold_days) >= today
-    if not in_window:
-        return {"kind": WASH_NONE, "hold_until": hold_until, "realized_gain": realized_gain,
-                "label": "taxable sell outside the hold window", "legal_conclusion": None}
-    acq = [dict(a) for a in acquisitions_within_30d if a]
-    base = {"hold_until": hold_until, "sell_date": sell_dt.date().isoformat(),
-            "realized_gain": realized_gain, "evidence": evidence or None,
-            "acquisitions_within_30d": acq}
-    if realized_gain is None:
-        return {**base, "kind": WASH_UNVERIFIED,
-                "label": f"taxable sell {sell_dt.date().isoformat()}; lot basis not on file — "
-                         f"house hold to {hold_until}; wash-sale status UNVERIFIED",
-                "legal_conclusion": None}
-    if realized_gain >= 0:
-        return {**base, "kind": WASH_HOUSE_HOLD_GAIN,
-                "label": f"house 30-day re-entry hold to {hold_until} after a taxable sell at a "
-                         f"GAIN (+${realized_gain:,.2f}); no wash-sale rule applies to a gain",
-                "legal_conclusion": "NOT_A_WASH_SALE"}
-    return {**base, "kind": WASH_SALE_RISK,
-            "label": f"taxable LOSS sale {sell_dt.date().isoformat()} (${realized_gain:,.2f}); a repurchase "
-                     f"before {hold_until} in any account (IRA included) risks permanent disallowance"
-                     + (f"; {len(acq)} acquisition(s) already inside the window" if acq else ""),
-            "legal_conclusion": "WASH_SALE_RISK"}
+    return _wash.classify(last_taxable_sell_date=sell_dt.date() if sell_dt else None, realized_gain=realized_gain,
+                          evidence=evidence, acquisitions_within_30d=acquisitions_within_30d, today=today,
+                          hold_days=hold_days)
 
 
 # ── order semantics ──────────────────────────────────────────────────────────
