@@ -75,3 +75,15 @@ change IDs to `{plain, reason}`. Only current change IDs and bounded strings
 are accepted. Old-head or malformed notes are ignored. The document fingerprint
 includes these notes, so edited explanations reset the review too. Missing notes
 remain an explicit gap; no model invents the author’s reason during a GET.
+
+## Release layout
+
+Served artifacts have no `.git`. The reader uses that artifact’s own full source
+stamps through `runtime_identity` with environment/current-link fallbacks
+disabled. Immutable blob reads use the existing canonical repository explicitly;
+Git never searches a release’s parents. Policy history is anchored to the
+artifact commit, so a canonical checkout that has moved ahead cannot change the
+policy being read. Disagreeing stamps or deployed wording are refused without
+repair. A read-only check against the actual CURRENT release matched its 624,051
+policy characters and exact source identity; isolated real-Git tests also cover
+ahead checkouts, malicious environment overrides and artifact mismatch.
