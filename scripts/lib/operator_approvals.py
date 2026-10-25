@@ -123,7 +123,7 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
     if kind not in KINDS or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", ident):
         raise Refused("INVALID_SOURCE_ITEM", 503)
     # Only known local UI destinations; source text never supplies an executable command or arbitrary URL.
-    href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio")) and not governed_href.startswith("//") else None
+    href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio", "/conflicts/rules?proposal=")) and not governed_href.startswith("//") else None
     return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
             "created_at": created_at, "document": doc, "source": source, "pr": pr,
             "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
