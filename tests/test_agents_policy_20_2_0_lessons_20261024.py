@@ -48,7 +48,10 @@ def test_section_28_10_conflict_engine_rules_cite_causes():
 
 def test_section_28_11_transition_exceptions_name_replacement_and_sunset():
     s = AGENTS.index("\n## 28.11 ")
-    sec = AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    end = AGENTS.index("\n---\n\n# Version history", s)
+    if "\n## 28.12 " in AGENTS[s:end]:  # 20.3.0 (§28.12) follows §28.11
+        end = AGENTS.index("\n## 28.12 ", s)
+    sec = AGENTS[s:end]
     bullets = re.split(r"\n- ", sec)[1:]
     assert len(bullets) == 6 and all("*Cause (§20):" in b for b in bullets)
     assert "2026-12-31" in sec and "No exception allows anything §0, §2 or §17 forbids" in sec
