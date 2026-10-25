@@ -14,6 +14,30 @@ from typing import Any
 # Existing + new projections. Keep paths stable; UI and other apps discover from here.
 PROJECTIONS: list[dict[str, Any]] = [
     {
+        "id": "trade_calendar", "module": "lib.data_broker.trade_calendar",
+        "entrypoints": ["get_calendar", "build_calendar"],
+        "http": ["GET /api/v3/data-broker/trade-calendar"], "domain": "trade_journal",
+        "contract_version": "TradeCalendar@v1", "read_only": True, "provider_calls": 0,
+        "description": "Explicit ET month; exact-linked closed-trip deduplication, server totals, bounded event/day pages and recorded event provenance. Missing sources qualify totals.",
+        "consumers": ["TradeInView Calendar"],
+    },
+    {
+        "id": "holding_history", "module": "lib.data_broker.holding_history",
+        "entrypoints": ["get_history", "build_history"],
+        "http": ["GET /api/v3/data-broker/holding-history"], "domain": "trade_journal",
+        "contract_version": "HoldingHistory@v1", "read_only": True, "provider_calls": 0,
+        "description": "All available or explicit-range closed trips, recorded account membership and holding observations. Unknown basis, unlinked source overlaps and sync/holding-transition gaps remain explicit.",
+        "consumers": ["TradeInView Holding history"],
+    },
+    {
+        "id": "trade_replay", "module": "lib.data_broker.trade_replay",
+        "entrypoints": ["get_replay", "build_replay"],
+        "http": ["GET /api/v2/trade-chart?stored_only=1&trade_id="], "domain": "trade_journal",
+        "contract_version": "TradeReplay@v1", "read_only": True, "provider_calls": 0,
+        "description": "Recorded trade identity, stored daily OHLC/closes only, timestamp-qualified fill/stop/CIO annotations and server-labelled available-session MFE/MAE proxies. No provider fallback.",
+        "consumers": ["TradeInView Replay"],
+    },
+    {
         "id": "active_trader_microstructure",
         "module": "lib.data_broker.microstructure",
         "entrypoints": ["latest", "book", "tape", "quote", "bars", "live_symbols"],

@@ -230,6 +230,7 @@ def test_open_position_with_mark_at_the_stop_is_stop_likely_filled_not_confirmed
     c = tj.classify_exit(closed=False, entry_ref=25.64, exit_ref=None, path=path, mark_ref=26.02,
                          mark_at="2026-10-22T20:30:06+00:00")
     assert c["kind"] == "stop_likely_filled" and c["confirmed"] is False
+    assert c["label"] == "Awaiting fill" and tj.EXIT_TONE["stop_likely_filled"] == "info"
     assert tj.classify_exit(closed=False, entry_ref=25.64, exit_ref=None, path=path, mark_ref=27.05)["kind"] == "open"
 
 

@@ -1,0 +1,82 @@
+name: tradeinview-redesign-fixture
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/tradeinview-redesign-fixture.yml'
+      - 'apps/command-center-v3/src/pages/TradeInViewPage.tsx'
+      - 'apps/command-center-v3/src/pages/TradeJourney.tsx'
+      - 'apps/command-center-v3/src/pages/JournalHub.tsx'
+      - 'apps/command-center-v3/src/components/TradeReplayChart.tsx'
+      - 'apps/command-center-v3/src/components/tradeinview/**'
+      - 'apps/command-center-v3/src/lib/tradeInViewModel*'
+      - 'apps/command-center-v3/src/lib/tradeJourneyModel*'
+      - 'apps/command-center-v3/src/lib/replayTrade*'
+      - 'apps/command-center-v3/src/fixtures/tradeJourneys.fixture.ts'
+      - 'apps/command-center-v3/e2e/trade*'
+      - 'apps/command-center-v3/e2e/fixtures/tradeinviewRedesign.fixture.json'
+      - 'apps/command-center-v3/src/lib/holdingHistoryModel*'
+      - 'tests/test_tradeinview_redesign_fixture_20261025.py'
+      - 'scripts/lib/data_broker/trade_calendar.py'
+      - 'scripts/lib/data_broker/trade_replay.py'
+      - 'scripts/lib/data_broker/trade_journey.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tradeinview-redesign-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tradeinview-proof:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Actual components on pinned backend-builder outputs, all requests intercepted
+        run: node e2e/tradeinview-redesign.fixture.mjs e2e/fixtures/tradeinviewRedesign.fixture.json "$RUNNER_TEMP/tradeinview-proof"
+      - name: Journey phone tap, focused sheet and browser history proof
+        run: node --experimental-strip-types e2e/trade-journey-mobile.fixture.mjs "$RUNNER_TEMP/tradeinview-proof/journey-mobile"
+      - name: Integrated phone History sheet to stored Replay and Back, all requests intercepted
+        run: npx playwright test e2e/tradeinview-history-integration.spec.ts --project=chromium --workers=1 --reporter=line
+      - name: Batch-28 gaps phone taps (Awaiting fill wording, closed-win compare) at 412 and 390
+        run: npx playwright test e2e/tradeinview-gaps-b28.spec.ts --project=chromium --workers=1 --reporter=line
+      - name: Existing actual-App Journey and legacy navigation regression on static assets
+        env:
+          TIV_FIXTURE_ENV: ${{ runner.temp }}/tradeinview-empty-env
+        run: |
+          mkdir -p "$TIV_FIXTURE_ENV"
+          node --input-type=module <<'JS'
+          import {preview} from 'vite';
+          import {spawn} from 'node:child_process';
+          const p=await preview({configFile:false,envDir:process.env.TIV_FIXTURE_ENV,base:'/v3/',preview:{host:'127.0.0.1',port:0,strictPort:true,proxy:{}}});
+          try {
+            const code=await new Promise((resolve,reject)=>{
+              const child=spawn(process.execPath,['node_modules/@playwright/test/cli.js','test','e2e/trade-journey.spec.ts','--project=chromium','--reporter=line'],{stdio:'inherit',env:{...process.env,PLAYWRIGHT_BASE_URL:'http://127.0.0.1:'+p.httpServer.address().port}});
+              child.on('error',reject);child.on('exit',code=>resolve(code));
+            });
+            process.exitCode=code;
+          } finally { await new Promise(resolve=>p.httpServer.close(resolve)); }
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tradeinview-redesign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/tradeinview-proof/
+            apps/command-center-v3/test-results/
+          if-no-files-found: error
