@@ -1798,6 +1798,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) |
+| `docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md` | Batch 27: ops pages on the desk frame, Jobs tab everywhere, Watch Resolve end to end |
 | `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md` | Bitemporal Memory Substrate v2 — deploy receipt |
 | `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment |
