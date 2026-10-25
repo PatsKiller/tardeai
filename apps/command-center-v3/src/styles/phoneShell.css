@@ -1,0 +1,11 @@
+/* Phone shell scrolls as ONE page (operator phone screenshots 2026-10-25).
+   The shell was a fixed 100vh column: banners + metric strip + Ask the CIO bar sat OUTSIDE the scrolling <main>,
+   so on a phone that chrome (~40% of a 412x915 screen) never left the screen and page content scrolled under its
+   bottom edge, clipping the first tab row (Ops Controls "Jobs / n8n lanes / Flags"). At phone widths the document
+   scrolls instead: the chrome scrolls away with the page and every page title and tab row is reachable.
+   Nothing is hidden or removed; desktop (>820px) keeps the fixed shell. !important beats the inline shell styles. */
+@media (max-width: 820px) {
+  .app-shell { height: auto !important; min-height: 100dvh; }
+  .app-shell > .app-body { flex: 0 0 auto !important; overflow: visible !important; min-height: 0; }
+  .app-shell .app-main { overflow: visible !important; flex: 0 0 auto !important; }
+}
