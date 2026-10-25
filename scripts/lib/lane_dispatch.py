@@ -981,6 +981,14 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
         return False, f"bad_watch_block:{e.detail}"
     if watch.stay_behind:
         return False, "stay_behind"
+    if "broker_read_step" in row:
+        try:
+            from lib import n8n_broker_read_shadow as read_shadow
+        except ImportError:
+            from scripts.lib import n8n_broker_read_shadow as read_shadow
+
+        problem = read_shadow.row_problem(row, load_run_allowlist_entries().get(str(row.get("lane_id"))))
+        return (False, problem) if problem else (True, "eligible:broker_read_shadow_27_1")
     all_hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
     lift = exempt | (CUTOVER_SOFT_TOKENS if directive else frozenset())
     hits = [h for h in all_hits if h[0] not in lift]
