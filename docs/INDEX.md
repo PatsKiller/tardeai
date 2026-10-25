@@ -1963,6 +1963,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
 | `docs/ops/CONFLICT_ENGINE.md` | Conflict engine (W10 PR 1) |
 | `docs/ops/CONFLICT_LEDGER.md` | Conflict ledger, operator API and CIO integration |
+| `docs/ops/CONFLICT_RULE_PROPOSALS.md` | Conflict rule proposals — unmatched conflicts, AI-proposed rules, operator approval |
 | `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
