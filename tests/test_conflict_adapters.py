@@ -76,7 +76,7 @@ def test_w1_filled_stop_while_still_held_needs_operator_and_named_account():
 def test_count_difference_of_one_is_not_rounding_noise():
     fs = evaluate_inputs(numeric_inputs("position_count", {"source": "W1", "value": 12, "as_of": AT},
         [{"source": "header", "value": 13, "as_of": AT}], unit="count"), now=NOW)
-    assert [f.kind for f in fs] == ["CONFLICT"]
+    assert [f.kind for f in fs] == ["DATA_ERROR"] and fs[0].tier == 1
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), True, None])
@@ -90,7 +90,7 @@ def test_schedule_adapter_preserves_registry_and_observation():
     b = schedule_inputs("lane", {"source": "lane_registry", "state": "RETIRED", "as_of": AT},
                         [{"source": "crontab", "state": "ACTIVE", "as_of": AT}])
     fs = evaluate_inputs(b, now=NOW)
-    assert fs[0].action == "notify_operator" and fs[0].rule == "U7"
+    assert fs[0].action == "notify_operator" and fs[0].rule == "T1"
     section = findings_section(fs)
     assert section["findings"][0]["key"] == "job:lane:U7:crontab"
     assert section["headline"] and section["gap"] is None

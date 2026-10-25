@@ -23,8 +23,10 @@ canonical value/source/as_of/subject_id, context.held and persisted protection i
 Unknown holdings or missing confirmed identity produces DATA_ERROR. It never joins by
 ticker or derives ownership from an opportunity label. `security_inputs` accepts
 already joined Watch review, synthesis, Trade AI and re-entry rows. Producer clocks
-are preserved. Invalid identity, missing/naive/future time, nonfinite numbers,
-unknown roles and unknown vocabulary produce DATA_ERROR before reference evaluation.
+are preserved. Invalid identity, naive/unreadable/future time, nonfinite numbers,
+unknown roles and unknown vocabulary produce DATA_ERROR. Missing material time
+is stale and blocks positive stances. Numeric and schedule mismatches are T1
+DATA_ERROR incidents for source repair, never owner judgments that choose a fact.
 Counts compare exactly; money uses the reference absolute dollar tolerance and zero
 relative tolerance. A filled stop with a still-held canonical position freezes
 stance evaluation as an ownership DATA_ERROR; this changes no stop behavior.
