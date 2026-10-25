@@ -192,6 +192,44 @@ the action's meaning, plus the factor and any sudo-window linkage), shown in a n
 is not OK has a reason; a store that is not migrated names the missing tables and the migration to apply. The page no
 longer prints "NOT_MIGRATED — no reason given".
 
+## 6b. Toggles: switches for what used to be `.env` edits (2026-10-25)
+
+Operator 2026-10-25 (verbatim): "this should have just been a toggle to turn on/off on the control ops." Branch
+`feat/ops-controls-toggles-20261025`. Tests: `tests/test_ops_controls_toggles_20261025.py` (CI gate
+`OPS_CONTROLS_TOGGLES_20261025`), `src/lib/opsToggles.test.ts` (in `npm run build`),
+`e2e/ops-controls-toggles.spec.ts` (Playwright, 412 and 390 px, mocked routes).
+
+**What the Toggles tab shows** (`/v3/system/ops-controls?tab=toggles`): text-message failure alerts (`ENABLE_SMS`
+on/off, the `OPERATOR_SMS_EMAIL` address validated as `<10 digits>@<known carrier gateway>`, "Send test text…"), the
+communications gateway mode (`COMMS_GATEWAY_MODE` OFF / CANARY / ACTIVE, with what the incident notifier's last run
+recorded, "Send test email…"), and one live/dry switch per n8n lane (`TRADEAI_N8N_RELAY_LIVE_LANES`). Each shows the
+value consumers read now, where it comes from (set here / server `.env` / default) and who changed it last and when.
+On a phone every flow is a full-screen sheet and every target is at least 44 px.
+
+**How a change happens:** unchanged from §1–§4. The SMS and gateway switches are `setting.set` / `setting.unset` on
+three catalog entries; the lane switches are `n8n_live_list.add` / `.remove` (the applier backs up the live-list file
+and restarts `tradeai-n8n-run-relay.service` and the coordination gateway). All are risky: preview, then a passkey
+and the typed phrase (phrase only inside an open sudo window), then the host applier. Agents are refused on every
+route, including `/test-send`.
+
+**Design choice — a projection, not a write into `.env`.** The settings' source of truth is `operator_settings`
+(§27.2: Postgres, written only by the applier, history per change: who, when, old → new, request). Consumers do not
+read Postgres; the cron lines source the primary checkout's `.env` (`set -a; . ./.env`), which also holds every
+credential and is sourced by nearly every job. Rewriting it from a web-triggered process would put every secret and
+every cron job behind one line edit. Instead the applier writes a small non-secret JSON projection
+(`~/trade-ai-releases/persistent-state/data/ops/operator_settings_env.json`, 0600, atomic, read back) after each
+applied change, and consumers read it at call time through `scripts/lib/ops_env_overlay.py`:
+projection > process environment (`.env`) > the consumer's default. No restart and no re-source is needed; an absent
+or unreadable projection leaves every consumer exactly as before. Wired consumers:
+`scripts/lib/comms/mode.resolve_mode` (every gateway send, including the incident notifier's email mirror), and,
+through `ops_env_overlay.sync_environ()` which `resolve_mode` calls, `scripts/alerting.send_sms` (PR #2105 reads
+`ENABLE_SMS` / `OPERATOR_SMS_EMAIL` from the environment). The overlay only ever names the three managed keys,
+restores the environment's own value when a setting is unset, and never changes a name it did not set.
+
+**Activation after merge and promotion:** restart `tradeai-ops-applier.service` (it must run the new core to write
+the projection) and `portfolio-server` (page and API). The first applied toggle creates the projection. Until then
+every consumer reads `.env` as today.
+
 ## 7. Telegram
 
 The applier and the handler queue one host comms intent per change (`config/host_comms_intent_routes.json`: domain

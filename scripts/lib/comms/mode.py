@@ -29,15 +29,31 @@ def resolve_mode(*, refresh: bool = False) -> tuple[str, str]:
     with _lock:
         if not refresh and _cache["mode"] is not None:
             return _cache["mode"], _cache["why"]
+        # Ops -> Controls toggle (2026-10-25): the operator setting comms.gateway_mode, projected by the host applier,
+        # wins over the environment; absent or unreadable, the environment applies exactly as before. The sync also
+        # carries the operator's SMS settings into this process for the gateway's sms adapter.
+        projected = _sync_operator_overlay()
         raw = (os.getenv(ENV_VAR) or "").strip().upper()
+        source = "ops_setting:comms.gateway_mode" if ENV_VAR in projected else f"env:{ENV_VAR}"
         if not raw:
             mode, why = MODE_OFF, "default_off"
         elif raw in VALID_MODES:
-            mode, why = raw, f"env:{ENV_VAR}"
+            mode, why = raw, source
         else:
             mode, why = MODE_OFF, f"env_invalid_value:{raw[:24]}"
         _cache["mode"], _cache["why"] = mode, why
         return mode, why
+
+
+def _sync_operator_overlay() -> dict:
+    try:
+        from scripts.lib import ops_env_overlay
+    except Exception:  # noqa: BLE001 — served layouts with only scripts/ on the path
+        try:
+            from lib import ops_env_overlay  # type: ignore
+        except Exception:  # noqa: BLE001 — no overlay module: the environment alone decides, as before
+            return {}
+    return ops_env_overlay.sync_environ()
 
 
 def get_gateway_mode(*, refresh: bool = False) -> str:

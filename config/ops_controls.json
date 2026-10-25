@@ -59,6 +59,15 @@
     "kind": "ops_controls_change",
     "ledger": "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
   },
+  "settings_projection": {
+    "_comment": "Ops -> Controls toggles (2026-10-25). After every applied setting change the host applier rewrites this non-secret file from operator_settings for catalog entries that name an env_key (scripts/lib/ops_env_overlay.py). Consumers read it at call time: projection > process environment (.env) > default. Absent = the environment applies, as before. Derived copy of the operator_settings domain (config/data_source_authority.json).",
+    "file": "~/trade-ai-releases/persistent-state/data/ops/operator_settings_env.json"
+  },
+  "toggles": {
+    "_comment": "Ops -> Controls Toggles tab (2026-10-25): test sends go through the communications gateway (send_via_gateway), never a direct provider call; one per channel per cooldown. The notifier receipt is read-only evidence of the mode the real consumer saw.",
+    "test_send_cooldown_s": 60,
+    "notifier_receipt": "~/trade-ai-releases/persistent-state/data/runtime/incident_notifier_last.json"
+  },
   "settings_catalog": [
     {
       "key": "active_trader_alerts.min_buy_ratio",
@@ -101,6 +110,68 @@
       "default_source": "scripts/lib/ops_controls_sudo.py DEFAULT_MINUTES (hard ceiling HARD_MAX_MINUTES = 120)",
       "consumer": "scripts/lib/ops_controls_sudo.py",
       "wired": true
+    },
+    {
+      "key": "comms.sms.enabled",
+      "label": "Text-message alerts (SMS) on",
+      "type": "bool",
+      "default": false,
+      "default_source": "scripts/alerting.py send_sms: off unless ENABLE_SMS=true (PR #2105)",
+      "env_key": "ENABLE_SMS",
+      "group": "sms",
+      "consumer": "scripts/alerting.py send_sms via the comms gateway sms channel (scripts/lib/comms/channel_adapters.py)",
+      "wired": true,
+      "warning": "texts go out only through the communications gateway, so the gateway mode must also be CANARY or ACTIVE"
+    },
+    {
+      "key": "comms.sms.operator_email",
+      "label": "Text-message address (carrier email-to-SMS)",
+      "type": "string",
+      "validator": "sms_gateway_email",
+      "allowed_domains": [
+        "msg.fi.google.com",
+        "vtext.com",
+        "vzwpix.com",
+        "tmomail.net",
+        "txt.att.net",
+        "mms.att.net",
+        "messaging.sprintpcs.com",
+        "vmobl.com",
+        "sms.myboostmobile.com",
+        "sms.cricketwireless.net",
+        "mymetropcs.com",
+        "email.uscc.net",
+        "text.republicwireless.com",
+        "mailmymobile.net",
+        "sms.mycricket.com",
+        "msg.telus.com",
+        "txt.bell.ca",
+        "pcs.rogers.com"
+      ],
+      "mask": "phone",
+      "default": null,
+      "default_source": "OPERATOR_SMS_EMAIL in the environment (.env), if any",
+      "env_key": "OPERATOR_SMS_EMAIL",
+      "group": "sms",
+      "consumer": "scripts/alerting.py send_sms (PR #2105)",
+      "wired": true
+    },
+    {
+      "key": "comms.gateway_mode",
+      "label": "Communications gateway delivery mode (email and SMS copies)",
+      "type": "enum",
+      "choices": [
+        "OFF",
+        "CANARY",
+        "ACTIVE"
+      ],
+      "default": "OFF",
+      "default_source": "scripts/lib/comms/mode.py: COMMS_GATEWAY_MODE from the environment, OFF when unset",
+      "env_key": "COMMS_GATEWAY_MODE",
+      "group": "gateway",
+      "consumer": "scripts/lib/comms/mode.py (every gateway send; the incident notifier email mirror)",
+      "wired": true,
+      "warning": "applies to every process that resolves the gateway mode: CANARY or ACTIVE lets gateway email and SMS deliver; Telegram stays on its class allowlists (COMMS_GATEWAY_CANARY_CLASSES / COMMS_GATEWAY_ACTIVE_CLASSES)"
     }
   ]
 }

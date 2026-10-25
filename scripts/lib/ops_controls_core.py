@@ -369,6 +369,12 @@ class Hosts:
         return expand((self.cfg.get("n8n_ledger") or {}).get(
             "file", "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"))
 
+    @property
+    def settings_projection_path(self) -> Path:
+        """The env projection of operator settings (scripts/lib/ops_env_overlay.py); written by the applier only."""
+        return expand((self.cfg.get("settings_projection") or {}).get(
+            "file", "~/trade-ai-releases/persistent-state/data/ops/operator_settings_env.json"))
+
     def restart_units(self) -> list[dict]:
         out = []
         for unit in self.cfg["live_list"].get("restart_units") or []:
@@ -536,6 +542,32 @@ def catalog_entry(cfg: dict, key: str) -> dict:
     raise OpsError("SETTING_UNKNOWN", f"{key} is not in config/ops_controls.json settings_catalog", 400)
 
 
+SMS_EMAIL_RE = re.compile(r"^(\d{10})@([a-z0-9-]+(\.[a-z0-9-]+)+)$")
+
+
+def _sms_gateway_email(entry: Mapping[str, Any], raw: str) -> str:
+    """``<10 digits>@<known carrier email-to-SMS domain>`` (Ops -> Controls toggles, 2026-10-25). Lower-cased."""
+    v = raw.strip().lower()
+    m = SMS_EMAIL_RE.fullmatch(v)
+    if not m:
+        raise OpsError("SETTING_VALUE_INVALID", f"{entry.get('key')} must be 10 digits @ a carrier gateway domain, "
+                                                "e.g. 5551234567@msg.fi.google.com", 400)
+    allowed = [str(d).lower() for d in entry.get("allowed_domains") or []]
+    if m.group(2) not in allowed:
+        raise OpsError("SETTING_VALUE_INVALID", f"{m.group(2)} is not a known carrier gateway domain; known: "
+                                                + ", ".join(allowed), 400)
+    return v
+
+
+def mask_value(entry: Mapping[str, Any], value: Any) -> Any:
+    """Display form of a setting value. ``mask: phone`` keeps the last 4 digits and the domain. Never a secret here:
+    a catalog entry whose env_key looks like a secret is refused by ops_env_overlay.render."""
+    if entry.get("mask") == "phone" and isinstance(value, str) and "@" in value:
+        local, dom = value.split("@", 1)
+        return ("•" * max(0, len(local) - 4)) + local[-4:] + "@" + dom
+    return value
+
+
 def coerce_setting(entry: Mapping[str, Any], value: Any) -> Any:
     t = entry.get("type")
     try:
@@ -561,6 +593,8 @@ def coerce_setting(entry: Mapping[str, Any], value: Any) -> Any:
             v = str(value)
             if len(v) > 500:
                 raise ValueError
+            if entry.get("validator") == "sms_gateway_email":
+                v = _sms_gateway_email(entry, v)
         else:
             raise ValueError
     except (TypeError, ValueError) as exc:
@@ -671,20 +705,29 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
         digest = sha256_text(canonical({"key": key, "active": cur_active, "value": cur_val}))
         warnings = [] if entry.get("wired") else [
             f"no consumer reads {key} from operator_settings yet (wired: false); the value is stored, not used"]
+        if entry.get("warning"):
+            warnings.append(str(entry["warning"]))
+        if entry.get("env_key"):
+            warnings.append(f"replaces {entry['env_key']} from the environment (.env) for every consumer at its next "
+                            f"call; no restart (projection {hosts.settings_projection_path})")
+        mv = lambda x: mask_value(entry, x)  # noqa: E731 — display only; the payload keeps the real value
         if kind == "setting.set":
             val = coerce_setting(entry, p.get("value"))
             if cur_active and cur_val == val:
-                raise OpsError("NO_CHANGE", f"{key} is already {val!r}", 409)
+                raise OpsError("NO_CHANGE", f"{key} is already {mv(val)!r}", 409)
             undo = ({"kind": "setting.set", "params": {"key": key, "value": cur_val}} if cur_active
                     else {"kind": "setting.unset", "params": {"key": key}})
-            return Plan(kind, {"key": key, "value": val}, f"set {key} = {val!r} (default {entry.get('default')!r})",
-                        cur_val if cur_active else None, val, digest, diff=[f"- {cur_val!r}", f"+ {val!r}"],
-                        warnings=warnings, undo=undo,
+            return Plan(kind, {"key": key, "value": val},
+                        f"set {key} = {mv(val)!r} (default {entry.get('default')!r})",
+                        mv(cur_val) if cur_active else None, mv(val), digest,
+                        diff=[f"- {mv(cur_val)!r}", f"+ {mv(val)!r}"], warnings=warnings, undo=undo,
                         payload={"value": val, "active": True, "expect": {"active": cur_active, "value": cur_val}})
         if not cur_active:
             raise OpsError("NO_CHANGE", f"{key} is not set (the repository default applies)", 409)
-        return Plan(kind, {"key": key}, f"unset {key} (back to the repository default {entry.get('default')!r})",
-                    cur_val, None, digest, diff=[f"- {cur_val!r}", f"+ (default {entry.get('default')!r})"],
+        back = (f"the environment's {entry['env_key']}, else {entry.get('default')!r}" if entry.get("env_key")
+                else f"the repository default {entry.get('default')!r}")
+        return Plan(kind, {"key": key}, f"unset {key} (back to {back})",
+                    mv(cur_val), None, digest, diff=[f"- {mv(cur_val)!r}", f"+ (default: {back})"],
                     warnings=warnings, undo={"kind": "setting.set", "params": {"key": key, "value": cur_val}},
                     payload={"value": None, "active": False, "expect": {"active": True, "value": cur_val}})
 
@@ -770,6 +813,25 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
     raise OpsError("KIND_NOT_SUPPORTED", kind, 409)
 
 
+def write_settings_projection(hosts: Hosts, store: Any) -> dict:
+    """Re-render the env projection from every active operator setting whose catalog entry names an env_key, write it
+    atomically, read it back. Applier only. Returns {"ok", "path", "values" (masked), "error"}."""
+    from scripts.lib import ops_env_overlay as OV
+
+    path = hosts.settings_projection_path
+    catalog = hosts.cfg.get("settings_catalog") or []
+    try:
+        doc = OV.render(store.settings_all(), catalog, now=hosts.clock())
+        OV.write_projection(path, doc)
+        back = OV.read_projection(path)
+        ok = back["state"] == "OK" and back["values"] == doc["values"]
+    except Exception as exc:  # noqa: BLE001 — reported on the result; the stored setting stands
+        return {"ok": False, "path": str(path), "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    by_env = {e.get("env_key"): e for e in catalog if e.get("env_key")}
+    shown = {k: mask_value(by_env.get(k) or {}, v) for k, v in doc["values"].items()}
+    return {"ok": ok, "path": str(path), "values": shown, "error": None if ok else "read-back mismatch"}
+
+
 # ── apply (host applier only, plus the two CC-executed safe kinds) ─────────────────────────────────────────────────
 
 
@@ -829,6 +891,13 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
             not plan.payload["active"] or cur.get("value") == plan.payload["value"])
         res["backup_ref"] = f"operator_settings_history#{row.get('seq')}"
         res["verify"] = {"read_back_matches": ok}
+        if catalog_entry(hosts.cfg, key).get("env_key"):
+            proj = write_settings_projection(hosts, store)
+            res["verify"]["projection"] = proj
+            ok = ok and proj.get("ok") is True
+            if not proj.get("ok"):
+                res["detail"] = ("the setting is stored but the env projection was not written; consumers still "
+                                 f"read the old value ({proj.get('error')})")
         res["outcome"] = "APPLIED" if ok else "FAILED"
         return res
 
