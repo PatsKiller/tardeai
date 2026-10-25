@@ -1,9 +1,12 @@
-"""AGENTS.md 21.0.0 §28.15 item 8: grant-free pushes for approved plans, and toolchain runs are never ``deps``.
+"""AGENTS.md 21.0.0 §28.15 item 8: grant-free pushes ONLY via ``bin/agent-push <branch>``; toolchains are not deps.
 
-Hermetic: every test builds a temp bare ``origin`` and a clone, a fake claim board, a fake handoffs directory, a fake
-push-budget file, a temp approval ledger and audit log, and HOME pointed at the temp dir. Nothing reads or writes
-the real ledger, guard log, claim board or budget. The hook under test is the tracked ``.cursor/hooks/guard-shell.sh``
-run as Cursor runs it (JSON on stdin, verdict JSON on stdout).
+Hermetic. Each test builds a temp guard tree (copies of .cursor/hooks, bin/agent-push, the train policy and the push
+budget module, plus a ``guard_push_free.config.json`` pointing every path into the temp dir and ``gh`` at a fake), a
+temp bare canonical remote and a clone whose main carries AGENTS.md, a tracked ``.githooks/pre-push`` and
+``bin/agent-push``. Nothing reads or writes the real ledger, guard log, claim board, handoffs or budget.
+
+Reviewer exploits from PR #2148 reviews 1 (X1-X11, deps) and 2 (H1-H3, M1-M3, L1-L2) are regression tests here:
+every one must be refused.
 """
 
 from __future__ import annotations
@@ -20,14 +23,34 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOKS = ROOT / ".cursor" / "hooks"
-CHECKER = HOOKS / "guard_push_free.py"
 BRANCH = "feat/item8-demo-20261025"
+SESSION = "s-demo-20261025"
 CLAIM_ID = "20261025T120000Z-claude-0a1b2c3d"
+COORD_ID = "20261025T110000Z-claude-0c0c0c0c"
+OK_COMMENT = "https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-111"
+OTHER_COMMENT = "https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-222"
 
-pytestmark = pytest.mark.skipif(shutil.which("jq") is None or shutil.which("git") is None, reason="needs jq + git")
+pytestmark = pytest.mark.skipif(shutil.which("jq") is None or not Path("/usr/bin/git").exists(),
+                                reason="needs jq + /usr/bin/git")
 
+PREPUSH = """#!/bin/sh
+# test pre-push: refuses unless authorized, records what it saw
+d="$(git rev-parse --git-common-dir)"
+echo "auth=${TRADEAI_REMOTE_PUSH_AUTHORIZED:-} grantfree=${TRADEAI_GRANT_FREE:-} consume=${TRADEAI_GUARD_CONSUME:-} \
+skip=${TRADEAI_SKIP_SECRETS_SCAN:-}" >> "$d/prepush-ran"
+cat >> "$d/prepush-ran"
+[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-}" = "1" ] || exit 1
+"""
 
-# --------------------------------------------------------------------------- AGENTS.md states
+FAKE_GH = """#!/bin/sh
+case "$2" in
+  */comments/111) echo '{"user":{"login":"PatsKiller"},"html_url":"https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-111"}' ;;
+  */comments/222) echo '{"user":{"login":"someone-else"},"html_url":"https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-222"}' ;;
+  */comments/333) echo '{"user":{"login":"PatsKiller"},"html_url":"https://github.com/PatsKiller/tardeai/pull/9#issuecomment-333"}' ;;
+  *) exit 1 ;;
+esac
+"""
+
 
 def agents_md(version: str = "21.0.0", header: str = "ACTIVE", row: str = "ACTIVE") -> str:
     return (
@@ -38,9 +61,6 @@ def agents_md(version: str = "21.0.0", header: str = "ACTIVE", row: str = "ACTIV
         "| Version | Date | Status | Class | Summary | Ratification |\n|---|---|---|---|---|---|\n"
         f"| {version} | 2026-10-25 | {row} | MAJOR | item 8 | ratified |\n"
     )
-
-
-# --------------------------------------------------------------------------- fixture
 
 
 def _now() -> str:
@@ -59,24 +79,39 @@ class Env:
         self.claims.mkdir(parents=True)
         self.handoffs = tmp / "coordination" / "handoffs"
         self.handoffs.mkdir()
+        self.decisions = tmp / "operator_decisions.jsonl"
         self.budget = tmp / "budget" / "tradeai-push-budget.v2.json"
         self.budget.parent.mkdir()
         self.origin = tmp / "origin.git"
         self.repo = tmp / "work"
+        # trusted guard tree copy
+        self.tree = tmp / "guardtree"
+        shutil.copytree(HOOKS, self.tree / ".cursor" / "hooks", ignore=shutil.ignore_patterns("__pycache__"))
+        (self.tree / "bin").mkdir()
+        shutil.copy2(ROOT / "bin" / "agent-push", self.tree / "bin" / "agent-push")
+        (self.tree / "config").mkdir()
+        shutil.copy2(ROOT / "config" / "release_train_policy.json", self.tree / "config" / "release_train_policy.json")
+        (self.tree / "scripts" / "lib").mkdir(parents=True)
+        for f in ("__init__.py", "tradeai_push_budget.py"):
+            shutil.copy2(ROOT / "scripts" / "lib" / f, self.tree / "scripts" / "lib" / f)
+        self.gh = tmp / "fake-gh"
+        self.gh.write_text(FAKE_GH)
+        self.gh.chmod(0o755)
+        self.cfg = {
+            "canonical_url": str(self.origin), "comment_repo": "PatsKiller/tardeai", "gh": str(self.gh),
+            "claims_dir": str(self.claims), "handoffs_dir": str(self.handoffs), "decisions_path": str(self.decisions),
+            "approvals_dir": str(self.adir), "audit_log": str(self.audit), "budget_path": str(self.budget),
+        }
+        self.write_cfg()
         self.env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": str(self.home),
-            "TMPDIR": str(tmp),
-            "GUARD_APPROVALS_DIR": str(self.adir),
-            "GUARD_AUDIT_LOG": str(self.audit),
-            "TRADEAI_AGENT_CLAIMS_DIR": str(self.claims),
-            "TRADEAI_COORDINATION_HANDOFFS_DIR": str(self.handoffs),
-            "TRADEAI_PUSH_BUDGET_PATH": str(self.budget),
-            "TRADEAI_STATE_ROOT": str(tmp / "state"),
-            "CURSOR_PROJECT_DIR": str(tmp),
+            "PATH": "/usr/bin:/bin", "HOME": str(self.home), "TMPDIR": str(tmp),
+            "GUARD_APPROVALS_DIR": str(self.adir), "GUARD_AUDIT_LOG": str(self.audit), "CURSOR_PROJECT_DIR": str(tmp),
         }
         subprocess.run([sys.executable, str(HOOKS / "guard_ledger.py"), "init"], env=self.env, check=True,
                        capture_output=True)
+
+    def write_cfg(self) -> None:
+        (self.tree / ".cursor" / "hooks" / "guard_push_free.config.json").write_text(json.dumps(self.cfg))
 
     def git(self, *args: str, cwd: Path | None = None, check: bool = True) -> str:
         cp = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
@@ -91,6 +126,11 @@ class Env:
         self.git("init", "-q", str(self.repo), cwd=self.tmp)
         if agents is not None:
             (self.repo / "AGENTS.md").write_text(agents)
+        (self.repo / ".githooks").mkdir()
+        (self.repo / ".githooks" / "pre-push").write_text(PREPUSH)
+        (self.repo / ".githooks" / "pre-push").chmod(0o755)
+        (self.repo / "bin").mkdir()
+        shutil.copy2(ROOT / "bin" / "agent-push", self.repo / "bin" / "agent-push")
         (self.repo / "README").write_text("x\n")
         self.git("add", "-A")
         self.git("commit", "-qm", "seed")
@@ -99,56 +139,72 @@ class Env:
         self.git("checkout", "-qb", BRANCH)
         self.commit("work 1")
 
-    def commit(self, msg: str) -> str:
-        (self.repo / "f.txt").write_text(msg + "\n")
+    def commit(self, msg: str, path: str = "f.txt") -> str:
+        p = self.repo / path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(msg + "\n")
         self.git("add", "-A")
         self.git("commit", "-qm", msg)
         return self.git("rev-parse", "HEAD")
 
-    def claim(self, *, note: str = "Operator-approval: tracker item 12 (operator 2026-10-25)", branch: str = BRANCH,
-              heartbeat: str | None = None, worklog: str | None = None, claim_id: str = CLAIM_ID) -> None:
+    def claim(self, *, note: str = f"Operator-approval: {OK_COMMENT}", branch: str = BRANCH, session: str = SESSION,
+              heartbeat: str | None = None, worklog: str | None = None, claim_id: str = CLAIM_ID,
+              paths: list | None = None) -> None:
         doc = {"schema": "AgentClaim@v1", "claim_id": claim_id, "agent": "claude-code", "vendor": "claude",
-               "session": "s-demo", "branch": branch, "paths": ["scripts/x.py"], "status": "active",
+               "session": session, "branch": branch, "paths": paths or ["scripts/x.py"], "status": "active",
                "task": "demo", "note": note, "started_at": heartbeat or _now(), "heartbeat_at": heartbeat or _now()}
         (self.claims / f"{claim_id}.json").write_text(json.dumps(doc))
         if worklog is not None:
             (self.claims / f"{claim_id}.worklog.md").write_text(worklog)
+
+    def coordinator(self, session: str = "coord-20261025") -> None:
+        self.claim(note="coordinator", branch="main", session=session, claim_id=COORD_ID,
+                   paths=["coordination/COORDINATOR"])
 
     def set_budget_count(self, n: int, branch: str = BRANCH) -> None:
         key = f"{self.budget.resolve().parent}#{branch}"
         self.budget.write_text(json.dumps({"schema": "TradeAIPushBudget@v2",
                                            "counters": {key: {"branch": branch, "authorized_push_count": n}}}))
 
-    def hook(self, cmd: str, cwd: Path | None = None, hooks_dir: Path = HOOKS) -> dict:
-        payload = {"command": cmd, "cwd": str(cwd or self.repo), "hook_event_name": "beforeShellExecution"}
-        p = subprocess.run(["bash", str(hooks_dir / "guard-shell.sh")], input=json.dumps(payload), env=self.env,
-                           capture_output=True, text=True, cwd=str(self.tmp))
-        return json.loads(p.stdout.strip().splitlines()[-1])
-
-    def check(self, cmd: str, cwd: Path | None = None) -> dict:
-        p = subprocess.run([sys.executable, "-I", str(CHECKER), "check", "--command", cmd, "--cwd",
-                            str(cwd or self.repo)], env=self.env, capture_output=True, text=True)
+    def checker(self, mode: str = "push", branch: str = BRANCH, session: str | None = SESSION,
+                extra_env: dict | None = None) -> dict:
+        args = [str(self.tree / ".cursor" / "hooks" / "guard_push_free.py"), mode, "--repo", str(self.repo),
+                f"--branch={branch}", "--cwd", str(self.repo)]
+        if session:
+            args += ["--session", session]
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home), **(extra_env or {})}
+        p = subprocess.run(["/usr/bin/python3", "-I", *args], env=env, capture_output=True, text=True)
         out = json.loads(p.stdout.strip().splitlines()[-1])
         assert (p.returncode == 0) == bool(out.get("allow")), out
         return out
 
-    def audit_events(self, event: str = "grant-free-push") -> list[dict]:
+    def hook(self, cmd: str, cwd: Path | None = None) -> dict:
+        payload = {"command": cmd, "cwd": str(cwd or self.repo), "hook_event_name": "beforeShellExecution"}
+        p = subprocess.run(["bash", str(self.tree / ".cursor" / "hooks" / "guard-shell.sh")],
+                           input=json.dumps(payload), env=self.env, capture_output=True, text=True, cwd=str(self.tmp))
+        return json.loads(p.stdout.strip().splitlines()[-1])
+
+    def events(self, prefix: str = "grant-free") -> list[dict]:
         if not self.audit.exists():
             return []
         rows = [json.loads(x) for x in self.audit.read_text().splitlines() if x.strip()]
-        return [r for r in rows if r.get("event") == event]
+        return [r for r in rows if str(r.get("event") or "").startswith(prefix)]
 
-    def grant(self, uses: int = 3) -> None:
+    def remote_sha(self, ref: str) -> str:
+        out = self.git("ls-remote", str(self.origin), ref, cwd=self.tmp)
+        return out.split("\t")[0] if out else ""
+
+    def main_sha(self) -> str:
+        return self.git("rev-parse", "main", cwd=self.origin)
+
+    def prepush_log(self) -> str:
+        p = self.repo / ".git" / "prepush-ran"
+        return p.read_text() if p.exists() else ""
+
+    def grant(self, uses: int = 3, reason: str = f"push {BRANCH}") -> None:
         subprocess.run([sys.executable, str(HOOKS / "guard_ledger.py"), "grant", "--tier", "git-push",
                         "--expires", str(int(datetime.now(timezone.utc).timestamp()) + 1800),
-                        "--uses", str(uses), "--reason", f"push {BRANCH}"], env=self.env, check=True,
-                       capture_output=True)
-
-    def uses_left(self) -> int:
-        out = subprocess.run([sys.executable, str(HOOKS / "guard_ledger.py"), "list"], env=self.env,
-                             capture_output=True, text=True, check=True).stdout
-        rec = (json.loads(out).get("active") or {}).get("git-push") or {}
-        return int(rec.get("uses") or rec.get("uses_left") or 0)
+                        "--uses", str(uses), "--reason", reason], env=self.env, check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -158,349 +214,345 @@ def E(tmp_path: Path) -> Env:
     return e
 
 
-PUSH = f"TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin {BRANCH}"
-
-
 def _allowed(v: dict) -> bool:
     return v.get("permission") == "allow"
 
 
-# --------------------------------------------------------------------------- allow paths
+def _refused(E: Env, out: dict, needle: str = "") -> None:
+    assert not out["allow"], out
+    if needle:
+        assert needle in out["reason"], out["reason"]
+    assert [e for e in E.events() if e.get("event") == "grant-free-push"] == []
 
 
-def test_claim_note_approval_allows_and_records(E):
+# =========================================================================== allow
+
+
+def test_claim_path_pushes_runs_prepush_and_chains_audit(E):
     E.claim()
-    v = E.hook(PUSH)
-    assert _allowed(v), v
-    assert "GRANT-FREE PUSH" in v["user_message"]
-    ev = E.audit_events()
-    assert len(ev) == 1
+    before_main = E.main_sha()
+    out = E.checker()
+    assert out["allow"] and out["outcome"] == "pushed", out
     head = E.git("rev-parse", "HEAD")
-    assert ev[0]["branch"] == BRANCH and ev[0]["head"] == head and ev[0]["tier"] == "git-push"
-    assert ev[0]["approval_ref"].startswith("tracker item 12")
-    assert ev[0]["plan"]["source"] == "claim" and ev[0]["plan"]["claim_id"] == CLAIM_ID
-    assert ev[0]["ff"] == "new-branch" and ev[0]["policy"]["version"] == "21.0.0"
+    assert E.remote_sha(f"refs/heads/{BRANCH}") == head and E.main_sha() == before_main
+    log = E.prepush_log()
+    assert "auth=1 grantfree=1 consume=0 skip=" in log and f"refs/heads/{BRANCH}" in log  # L1, pre-push ran
+    intent, done = E.events()
+    assert intent["event"] == "grant-free-push-intent" and done["event"] == "grant-free-push"
+    assert done["outcome"] == "pushed" and done["head"] == head and done["pusher_session"] == SESSION
+    assert done["approval_ref"] == OK_COMMENT and done["plan"]["approval_author"] == "PatsKiller"
+    assert done["refspec"] == f"{head}:refs/heads/{BRANCH}" and done["cwd"] == str(E.repo)
+    assert intent["chain_prev"] == "genesis" and done["chain_prev"] == intent["chain_hash"]  # M3 hash chain
+    assert (E.adir / "grant_free_chain.head").read_text().strip() == done["chain_hash"]
 
 
-def test_worklog_plan_approval_allows(E):
-    E.claim(note="working", worklog="# Worklog\n\n## Goal\n\ndemo\n\n## Plan\n\n- Operator-approval: PR #2128 item 8\n")
-    out = E.check(PUSH)
-    assert out["allow"] and out["plan"]["where"] == "worklog plan" and out["approval_ref"] == "PR #2128 item 8"
-
-
-def test_handoff_file_naming_branch_allows(E):
-    (E.handoffs / "batch-20261025").mkdir()
-    (E.handoffs / "batch-20261025" / "CURSOR_ASSIGNMENT.md").write_text(f"Do page 3 on branch `{BRANCH}`.\n")
-    out = E.check(PUSH)
-    assert out["allow"] and out["plan"]["source"] == "handoff"
-    assert out["approval_ref"] == "handoff:batch-20261025/CURSOR_ASSIGNMENT.md"
-
-
-def test_handoff_naming_live_claim_id_allows(E):
-    E.claim(note="no approval line here")
-    (E.handoffs / "TASK.md").write_text(f"Assigned: claim {CLAIM_ID}.\nOperator-approval: tracker 7\n")
-    out = E.check(PUSH)
-    assert out["allow"] and out["plan"]["names"] == CLAIM_ID and "tracker 7" in out["approval_ref"]
-
-
-def test_fast_forward_of_existing_remote_branch_allows(E):
-    E.claim()
-    E.git("push", "-q", "origin", BRANCH)
+def test_fast_forward_second_push_and_worklog_plan(E):
+    E.claim(note="working", worklog=f"## Goal\n\nx\n\n## Plan\n\n- Operator-approval: {OK_COMMENT}\n")
+    assert E.checker()["allow"]
     E.commit("work 2")
-    out = E.check(PUSH)
-    assert out["allow"] and out["ff"] == "fast-forward" and out["remote_head"]
+    out = E.checker()
+    assert out["allow"], out
+    assert E.events()[-1]["ff"] == "fast-forward"
+
+
+def test_operator_decision_ledger_ref(E):
+    E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0001-demo",
+                                       "actor": "PatsKiller", "item_id": "plan-1"}) + "\n")
+    E.claim(note="Operator-approval: operator-decision:req-0001-demo")
+    assert E.checker()["allow"]
+
+
+def test_coordinator_handoff_path(E):
+    E.coordinator()
+    (E.handoffs / "batch-1").mkdir()
+    (E.handoffs / "batch-1" / "TASK.md").write_text(
+        f"Do the page.\nAssigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {OK_COMMENT}\n")
+    out = E.checker(session=None)
+    assert out["allow"], out
+    assert E.events()[-1]["plan"]["source"] == "handoff"
+
+
+def test_hook_admits_strict_agent_push_form(E):
+    E.claim()
+    v = E.hook(f"bin/agent-push {BRANCH}")
+    assert _allowed(v) and "GRANT-FREE PUSH admitted" in v["user_message"], v
+    assert E.remote_sha(f"refs/heads/{BRANCH}") == ""  # admission only; the wrapper pushes
+
+
+# =========================================================================== raw shell pushes keep the grant path
 
 
 @pytest.mark.parametrize("cmd", [
-    "cd {repo} && TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin HEAD 2>&1 | tail -3",
-    f"git add -A && git commit -qm 'a && b' ; git push origin HEAD:{BRANCH}",
-    f"git -C {{repo}} push origin refs/heads/{BRANCH}",
-    "git push",
-    "git push -uq origin",
+    f"git push origin {BRANCH} ; echo a#b ; git push -f origin HEAD:main",                       # X1
+    "git push", "git push origin", f"git push origin {BRANCH}",                                  # X2
+    "git config remote.origin.push +HEAD:refs/heads/main && git push origin",                    # X2b
+    "true || cd /tmp/decoy && git push origin HEAD",                                             # X4
+    "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.push GIT_CONFIG_VALUE_0=+HEAD:refs/heads/main"
+    " && git push origin",                                                                       # X5
+    f"/tmp/evil/git push origin {BRANCH}",                                                       # X6
+    f"TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin {BRANCH}",
+    f"git -C /x push origin {BRANCH}",
+    f"true || cd /x && bin/agent-push {BRANCH}",                                                 # X4 via wrapper
+    f"bin/agent-push {BRANCH} && git push -f origin main",
+    f"bin/agent-push -u origin {BRANCH}",
+    f"PATH=/evil:$PATH bin/agent-push {BRANCH}",
+    f"x;evil/bin/agent-push {BRANCH}",
 ])
-def test_command_shapes_allowed(E, cmd):
+def test_raw_and_compound_pushes_need_a_grant(E, cmd):
     E.claim()
-    E.git("push", "-q", "-u", "origin", BRANCH)
-    E.commit("work 2")
-    v = E.hook(cmd.replace("{repo}", str(E.repo)), cwd=E.tmp if "{repo}" in cmd else E.repo)
-    assert _allowed(v), v
+    v = E.hook(cmd)
+    assert v["permission"] == "deny", (cmd, v)
 
 
-def test_grant_free_path_does_not_consume_an_existing_grant(E):
-    E.claim()
-    E.grant(uses=3)
-    before = E.uses_left()
-    assert _allowed(E.hook(PUSH))
-    assert E.uses_left() == before
-
-
-def test_agent_push_wrapper_pushes_grant_free(E):
-    E.claim()
-    p = subprocess.run(["bash", str(ROOT / "bin" / "agent-push"), "-u", "origin", BRANCH], cwd=str(E.repo),
-                       env=E.env, capture_output=True, text=True)
-    assert p.returncode == 0, p.stderr
-    assert E.git("rev-parse", BRANCH, cwd=E.origin) == E.git("rev-parse", "HEAD")
-    assert E.audit_events()[0]["command"].startswith("bin/agent-push")
-
-
-def test_agent_push_wrapper_refuses_force(E):
-    E.claim()
-    p = subprocess.run(["bash", str(ROOT / "bin" / "agent-push"), "--force", "origin", BRANCH], cwd=str(E.repo),
-                       env=E.env, capture_output=True, text=True)
-    assert p.returncode == 1 and "force" in p.stderr
-    assert E.git("ls-remote", "origin", f"refs/heads/{BRANCH}") == ""
-
-
-# --------------------------------------------------------------------------- refusals: policy
-
-
-@pytest.mark.parametrize("agents", [
-    agents_md("20.3.0"),
-    agents_md("21.0.0", header="PROPOSED"),
-    agents_md("21.0.0", row="PROPOSED"),
-    None,
-    "no control block",
+@pytest.mark.parametrize("cmd", [
+    "export GIT_DIR=/x/.git", "export TRADEAI_SKIP_SECRETS_SCAN=1", "unset TRADEAI_PUSH_BUDGET_PATH",
+    "declare -x GIT_CONFIG_COUNT=1", "env GIT_CONFIG_COUNT=1 bash", "set -a; export TRADEAI_REMOTE_PUSH_OVERRIDE=1",
 ])
-def test_policy_not_active_refuses(tmp_path, agents):
+def test_h2_env_manipulation_is_push_scope(E, cmd):
+    assert E.hook(cmd)["permission"] == "deny"
+
+
+def test_h1_modified_worktree_wrapper_not_admitted(E):
+    E.claim()
+    w = E.repo / "bin" / "agent-push"
+    w.write_text(w.read_text() + "\n# tampered\n")
+    v = E.hook(f"bin/agent-push {BRANCH}")
+    assert v["permission"] == "deny" and "byte-identical" in v["agent_message"]
+
+
+def test_x6_wrapper_elsewhere_not_identical(E, tmp_path):
+    E.claim()
+    evil = tmp_path / "evil" / "bin"
+    evil.mkdir(parents=True)
+    (evil / "agent-push").write_text("#!/bin/sh\ngit push -f origin HEAD:main\n")
+    assert E.hook(f"{evil}/agent-push {BRANCH}")["permission"] == "deny"
+
+
+def test_grant_path_unchanged_for_raw_push(E):
+    E.grant(uses=2, reason="override force main")
+    v = E.hook("git push --force origin main")
+    assert _allowed(v) and "AUTO-ACCEPTED" in v["user_message"]
+    assert E.events() == []
+
+
+# =========================================================================== checker refusals
+
+
+@pytest.mark.parametrize("var,val", [
+    ("GIT_CONFIG_COUNT", "1"), ("GIT_DIR", "/x"), ("TRADEAI_AGENT_CLAIMS_DIR", "/x"),
+    ("TRADEAI_SKIP_SECRETS_SCAN", "1"), ("TRADEAI_REMOTE_PUSH_OVERRIDE", "1"), ("GUARD_AUDIT_LOG", "/x"),
+    ("PYTHONPATH", "/x"), ("LD_PRELOAD", "/x"), ("BASH_ENV", "/x"),
+])
+def test_x7_h2_env_overrides_refused_by_checker(E, var, val):
+    E.claim()
+    _refused(E, E.checker(extra_env={var: val}), "environment overrides")
+
+
+@pytest.mark.parametrize("var", ["GIT_CONFIG_COUNT", "TRADEAI_AGENT_CLAIMS_DIR", "TRADEAI_SKIP_SECRETS_SCAN"])
+def test_x7_wrapper_refuses_env_before_anything(E, var):
+    E.claim()
+    env = dict(E.env, **{var: "1"})
+    p = subprocess.run(["bash", str(E.repo / "bin" / "agent-push"), BRANCH], cwd=str(E.repo), env=env,
+                       capture_output=True, text=True)
+    assert p.returncode == 1 and "environment overrides" in p.stderr
+    assert E.remote_sha(f"refs/heads/{BRANCH}") == ""
+
+
+def test_wrapper_other_args_take_the_grant_path(E):
+    p = subprocess.run(["bash", str(E.tree / "bin" / "agent-push"), "-u", "origin", BRANCH], cwd=str(E.repo),
+                       env=E.env, capture_output=True, text=True)
+    assert p.returncode == 1 and "No active git-push grant" in p.stderr
+
+
+@pytest.mark.parametrize("key,val", [
+    ("remote.origin.push", "+HEAD:refs/heads/main"),                          # X2
+    ("remote.origin.mirror", "true"),                                         # X3
+    ("remote.origin.receivepack", "git-receive-pack --evil"),                 # X10
+    ("push.followTags", "true"),                                              # X10
+    ("push.recurseSubmodules", "on-demand"), ("push.pushOption", "x"),        # X10
+    ("core.hooksPath", "/dev/null"),                                          # X9
+    ("url./tmp/fake.git.insteadOf", "{origin}"),                              # M1
+    ("url./tmp/fake.git.pushInsteadOf", "{origin}"),                          # M1
+    ("core.sshCommand", "evil"), ("credential.helper", "!evil"), ("http.proxy", "http://evil"),
+    ("include.path", "/tmp/evil.cfg"),
+])
+def test_hijacking_repo_config_refused(E, key, val):
+    E.claim()
+    E.git("config", key, val.replace("{origin}", str(E.origin)))
+    _refused(E, E.checker())
+    assert E.remote_sha(f"refs/heads/{BRANCH}") == ""
+
+
+def test_x8_url_pushurl_split_refused(tmp_path):
+    e = Env(tmp_path)
+    e.build(agents=agents_md("20.3.0"))
+    e.claim()
+    fake = tmp_path / "fake.git"
+    e.git("init", "--bare", "-q", str(fake), cwd=tmp_path)
+    e.git("config", "remote.origin.pushurl", str(e.origin))
+    e.git("config", "remote.origin.url", str(fake))
+    _refused(e, e.checker(), "canonical")
+
+
+def test_origin_pointing_elsewhere_refused(E, tmp_path):
+    E.claim()
+    fake = tmp_path / "fake.git"
+    E.git("init", "--bare", "-q", str(fake), cwd=tmp_path)
+    E.git("remote", "set-url", "origin", str(fake))
+    _refused(E, E.checker(), "canonical")
+
+
+@pytest.mark.parametrize("agents", [agents_md("20.3.0"), agents_md(header="PROPOSED"), agents_md(row="PROPOSED"),
+                                    None, "no control block"])
+def test_policy_not_active_refused(tmp_path, agents):
     e = Env(tmp_path)
     e.build(agents=agents)
     e.claim()
-    out = e.check(PUSH)
-    assert not out["allow"] and "AGENTS.md" in out["reason"]
-    v = e.hook(PUSH)
-    assert v["permission"] == "deny" and "Grant-free push" in v["agent_message"]
-    assert e.audit_events() == []
+    _refused(e, e.checker(), "AGENTS.md")
 
 
 def test_local_origin_main_cannot_fake_ratification(tmp_path):
     e = Env(tmp_path)
     e.build(agents=agents_md("20.3.0"))
     e.claim()
-    # An agent forges a local origin/main with a ratified AGENTS.md; the remote main is still 20.3.0.
     e.git("checkout", "-qb", "fake", "main")
     (e.repo / "AGENTS.md").write_text(agents_md())
     e.git("commit", "-qam", "fake ratification")
     e.git("update-ref", "refs/remotes/origin/main", "HEAD")
     e.git("checkout", "-q", BRANCH)
-    assert not e.check(PUSH)["allow"]
+    _refused(e, e.checker())
 
 
-def test_remote_main_not_fetched_refuses(E):
+def test_remote_main_not_fetched_refused(E):
     E.claim()
     other = E.tmp / "other"
     E.git("clone", "-q", str(E.origin), str(other), cwd=E.tmp)
     (other / "AGENTS.md").write_text(agents_md("21.0.1"))
     E.git("commit", "-qam", "bump", cwd=other)
-    E.git("push", "-q", "origin", "main", cwd=other)
-    out = E.check(PUSH)
-    assert not out["allow"] and "git fetch origin main" in out["reason"]
-    E.git("fetch", "-q", "origin", "main")
-    assert E.check(PUSH)["allow"]
+    E.git("push", "-q", "--no-verify", "origin", "main", cwd=other)
+    _refused(E, E.checker(), "git fetch origin main")
 
 
-# --------------------------------------------------------------------------- refusals: ref and flags
-
-
-@pytest.mark.parametrize("cmd", [
-    "git push origin main", "git push origin HEAD:main", "git push origin HEAD:refs/heads/main",
-    "git push origin HEAD:master", "git push origin HEAD:release/2026-10-25", "git push origin HEAD:train/w1",
-    "git push origin HEAD:Main", "git push origin HEAD:refs/tags/v1", "git push origin v1",
-])
-def test_protected_or_non_branch_destination_refuses(E, cmd):
-    E.claim(branch="main")
-    E.claim(branch=BRANCH, claim_id="20261025T120001Z-claude-0a1b2c3e")
-    E.git("tag", "v1")
-    out = E.check(cmd)
-    assert not out["allow"], out
-    assert E.hook(cmd)["permission"] == "deny"
-
-
-@pytest.mark.parametrize("flag", [
-    "-f", "--force", "--force-with-lease", f"--force-with-lease={BRANCH}", "--force-if-includes", "-uf",
-    "--delete", "-d", "--mirror", "--all", "--tags", "--follow-tags", "--prune", "--no-verify", "-o ci.skip",
-    "--push-option=x", "--repo=origin", "--receive-pack=x", "--signed", "--unknown-flag",
-])
-def test_force_delete_and_unknown_flags_refuse(E, flag):
+def test_x9_modified_prepush_refused(E):
     E.claim()
-    cmd = f"git push {flag} origin {BRANCH}"
-    assert not E.check(cmd)["allow"]
-    v = E.hook(cmd)
-    assert v["permission"] == "deny" and E.audit_events() == []
+    (E.repo / ".githooks" / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    E.git("commit", "-qam", "neuter pre-push")
+    _refused(E, E.checker(), "pre-push")
 
 
-@pytest.mark.parametrize("refspec", [f"+{BRANCH}", f":{BRANCH}", f"{BRANCH} other/branch-x"])
-def test_plus_refspec_delete_refspec_and_multiple_refs_refuse(E, refspec):
+@pytest.mark.parametrize("branch", ["main", "master", "release/x-2026", "train/w1-abc", "Main", "feat/a..b",
+                                    "feat/x.lock", "feat", "refs/heads/feat/x", "feat/x:main", "-f", "feat/$(id)",
+                                    "feat/x y", "a/b/c-d"])
+def test_branch_name_refused(E, branch):
+    E.claim(branch=branch)
+    _refused(E, E.checker(branch=branch))
+
+
+def test_non_fast_forward_refused(E):
     E.claim()
-    assert not E.check(f"git push origin {refspec}")["allow"]
-
-
-def test_non_fast_forward_refuses(E):
-    E.claim()
-    E.git("push", "-q", "origin", BRANCH)
+    assert E.checker()["allow"]
     E.git("reset", "-q", "--hard", "HEAD~1")
     E.commit("divergent")
-    out = E.check(PUSH)
-    assert not out["allow"] and "not a fast-forward" in out["reason"]
+    assert not E.checker()["allow"]
+    assert len([e for e in E.events() if e.get("event") == "grant-free-push"]) == 1
 
 
-def test_remote_branch_not_local_refuses(E):
+def test_h3iii_broker_paths_refused(E):
     E.claim()
-    E.git("push", "-q", "origin", BRANCH)
-    other = E.tmp / "other"
-    E.git("clone", "-q", "-b", BRANCH, str(E.origin), str(other), cwd=E.tmp)
-    (other / "g.txt").write_text("g\n")
-    E.git("add", "-A", cwd=other)
-    E.git("commit", "-qm", "elsewhere", cwd=other)
-    E.git("push", "-q", "origin", BRANCH, cwd=other)
-    assert not E.check(PUSH)["allow"]
+    E.commit("broker", path="scripts/brokers/x.py")
+    _refused(E, E.checker(), "broker")
 
 
-@pytest.mark.parametrize("cmd", [
-    f"git push upstream {BRANCH}",
-    f"git push https://example.invalid/x.git {BRANCH}",
-    f"git -c remote.origin.url=/x push origin {BRANCH}",
-    f"git --git-dir=/x/.git push origin {BRANCH}",
-    f"GIT_DIR=/x/.git git push origin {BRANCH}",
-    f"TRADEAI_REMOTE_PUSH_OVERRIDE=1 git push origin {BRANCH}",
-    f"env TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push origin {BRANCH}",
-    f"timeout 60 git push origin {BRANCH}",
-    f"git push origin {BRANCH} && git push -f origin main",
-    f"git push origin {BRANCH}; git push origin {BRANCH}",
-    "git push origin $(git branch --show-current)",
-    "git push origin `git branch --show-current`",
-    "git push origin $BRANCH",
-    "git push origin feat/*",
-    f"git push origin {BRANCH} &",
-    f"(git push origin {BRANCH})",
-    f'git push origin {BRANCH} "&&" --force',
-    f"git push origin {BRANCH}\ngit push -f origin main",
-    f"git push origin {BRANCH} > /tmp/x",
-    "cd $HOME && git push",
-    "pushd /x && git push",
-])
-def test_unsafe_command_shapes_refuse(E, cmd):
+def test_budget_exhausted_refused(E):
     E.claim()
-    out = E.check(cmd)
-    assert not out["allow"], (cmd, out)
-
-
-@pytest.mark.parametrize("other", [
-    "sudo true", "rm -rf build", "crontab -l", "git reset --hard HEAD~1", "systemctl --user restart x.service",
-    "npm ci", "psql -c 'DELETE FROM t'",
-])
-def test_guarded_companion_segment_refuses(E, other):
-    E.claim()
-    v = E.hook(f"{other} && {PUSH}") if not other.startswith("git reset") else E.hook(f"{PUSH} && {other}")
-    assert not _allowed(v), (other, v)
-    assert E.audit_events() == []
-
-
-def test_detached_head_without_refspec_refuses(E):
-    E.claim()
-    E.git("checkout", "-q", "--detach")
-    assert not E.check("git push origin")["allow"]
-
-
-def test_matching_push_default_refuses(E):
-    E.claim()
-    E.git("config", "push.default", "matching")
-    assert not E.check("git push")["allow"]
-
-
-# --------------------------------------------------------------------------- refusals: plan and budget
-
-
-def test_no_claim_and_no_handoff_refuses(E):
-    out = E.check(PUSH)
-    assert not out["allow"] and "no approved plan" in out["reason"]
-
-
-@pytest.mark.parametrize("note", ["working on it", "Operator-approval: <ref>", "Operator-approval: TBD",
-                                  "Operator-approval:"])
-def test_claim_without_real_approval_refuses(E, note):
-    E.claim(note=note)
-    assert not E.check(PUSH)["allow"]
-
-
-def test_stale_claim_refuses(E):
-    E.claim(heartbeat="2026-01-01T00:00:00Z")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_claim_on_other_branch_refuses(E):
-    E.claim(branch="feat/someone-else-20261025")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_approval_outside_goal_and_plan_sections_refuses(E):
-    E.claim(note="x", worklog="## Goal\n\ndemo\n\n## Decisions\n\n- Operator-approval: relayed by another agent\n")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_handoff_substring_is_not_a_match(E):
-    (E.handoffs / "T.md").write_text(f"see docs {BRANCH}-v2 and origin{BRANCH}x\n")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_handoff_evidence_below_batch_level_is_not_read(E):
-    deep = E.handoffs / "batch" / "evidence"
-    deep.mkdir(parents=True)
-    (deep / "NOTE.md").write_text(f"branch {BRANCH}\n")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_handoff_progress_log_is_not_a_task_file(E):
-    (E.handoffs / "PROGRESS_LOG.md").write_text(f"10:00 merged {BRANCH}\n")
-    assert not E.check(PUSH)["allow"]
-
-
-def test_handoff_symlink_is_ignored(E, tmp_path):
-    outside = tmp_path / "outside.md"
-    outside.write_text(f"branch {BRANCH}\n")
-    (E.handoffs / "link.md").symlink_to(outside)
-    assert not E.check(PUSH)["allow"]
-
-
-def test_push_budget_exhausted_refuses(E):
-    E.claim()
-    E.set_budget_count(1)
-    assert E.check(PUSH)["allow"]
     E.set_budget_count(50)
-    out = E.check(PUSH)
-    assert not out["allow"] and "push budget" in out["reason"]
+    _refused(E, E.checker(), "push budget")
 
 
-# --------------------------------------------------------------------------- fail closed
-
-
-def test_missing_checker_falls_back_to_grant_path(E, tmp_path):
-    hooks = tmp_path / "hookcopy" / ".cursor" / "hooks"
-    hooks.mkdir(parents=True)
-    for f in ("guard-shell.sh", "guard-lib.sh", "guard_ledger.py"):
-        shutil.copy2(HOOKS / f, hooks / f)
+def test_m2_audit_failure_refuses_before_push(E):
     E.claim()
-    v = E.hook(PUSH, hooks_dir=hooks)
-    assert v["permission"] == "deny" and "not installed" in v["agent_message"]
+    E.audit.mkdir()  # the log path is a directory: the intent line cannot be written
+    out = E.checker()
+    assert not out["allow"] and "guard log write failed" in out["reason"]
+    assert E.remote_sha(f"refs/heads/{BRANCH}") == ""
 
 
-def test_guard_tree_without_lib_refuses(E, tmp_path):
-    hooks = tmp_path / "hookcopy" / ".cursor" / "hooks"
-    hooks.mkdir(parents=True)
-    for f in ("guard-shell.sh", "guard-lib.sh", "guard_ledger.py", "guard_push_free.py"):
-        shutil.copy2(HOOKS / f, hooks / f)
-    E.claim()
-    v = E.hook(PUSH, hooks_dir=hooks)
-    assert v["permission"] == "deny" and "internal error" in v["agent_message"]
+# --------------------------------------------------------------------------- approval evidence
 
 
-def test_without_grant_free_conditions_grant_path_unchanged(E):
-    E.grant(uses=2)
-    v = E.hook("git push --force origin main")
-    assert _allowed(v) and "AUTO-ACCEPTED" in v["user_message"]  # today's behaviour: the operator's grant decides
-    assert E.audit_events() == []
+@pytest.mark.parametrize("note", [
+    "Operator-approval: yes", "Operator-approval: <ref>", "Operator-approval: tracker item 12 (operator said so)",
+    f"Operator-approval: {OTHER_COMMENT}",                                    # comment not by the operator
+    "Operator-approval: https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-333",  # wrong PR number
+    "Operator-approval: https://github.com/evil/tardeai/pull/1#issuecomment-111",            # other repo
+    "Operator-approval: https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-999",   # gh fails
+    "Operator-approval: operator-decision:req-missing-1", "working on it",
+])
+def test_x11b_claim_approval_must_resolve(E, note):
+    E.claim(note=note)
+    _refused(E, E.checker())
 
 
-# --------------------------------------------------------------------------- (b) deps classification
+def test_decision_by_non_operator_refused(E):
+    E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0002-demo",
+                                       "actor": "some-agent"}) + "\n")
+    E.claim(note="Operator-approval: operator-decision:req-0002-demo")
+    _refused(E, E.checker())
+
+
+def test_h3i_claim_of_another_session_refused(E):
+    E.claim(session="someone-else-20261025")
+    _refused(E, E.checker(), "no live claim")
+    _refused(E, E.checker(session=None))
+
+
+def test_stale_claim_refused(E):
+    E.claim(heartbeat="2026-01-01T00:00:00Z")
+    _refused(E, E.checker())
+
+
+def test_approval_outside_goal_plan_refused(E):
+    E.claim(note="x", worklog=f"## Goal\n\nx\n\n## Decisions\n\n- Operator-approval: {OK_COMMENT}\n")
+    _refused(E, E.checker())
+
+
+@pytest.mark.parametrize("name,body", [
+    ("notes.md", f"Do NOT push {BRANCH}; operator rejected it.\n"),                               # X11 mention
+    ("T.md", f"Assigned-branch: {BRANCH}\nOperator-approval: {OK_COMMENT}\n"),                    # no Assigned-by
+    ("T.md", f"Assigned-branch: {BRANCH}\nAssigned-by: not-a-coordinator\nOperator-approval: {OK_COMMENT}\n"),
+    ("T.md", f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: yes\n"),
+    ("T.json", f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {OK_COMMENT}\n"),
+    ("PROGRESS_LOG.md", f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {OK_COMMENT}\n"),
+    ("T.md", f"Assigned-branch: {BRANCH}-v2\nAssigned-by: coord-20261025\nOperator-approval: {OK_COMMENT}\n"),
+])
+def test_h3ii_handoff_must_be_structured_coordinator_assignment(E, name, body):
+    E.coordinator()
+    (E.handoffs / name).write_text(body)
+    _refused(E, E.checker(session=None))
+
+
+def test_handoff_too_deep_or_symlink_or_group_writable_refused(E, tmp_path):
+    E.coordinator()
+    body = f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {OK_COMMENT}\n"
+    deep = E.handoffs / "b" / "evidence"
+    deep.mkdir(parents=True)
+    (deep / "T.md").write_text(body)
+    outside = tmp_path / "outside.md"
+    outside.write_text(body)
+    (E.handoffs / "link.md").symlink_to(outside)
+    gw = E.handoffs / "gw.md"
+    gw.write_text(body)
+    gw.chmod(0o664)
+    _refused(E, E.checker(session=None))
+
+
+def test_handoff_writes_are_guarded():
+    assert _classify("echo x > ~/trade-ai-releases/persistent-state/data/coordination/handoffs/T.md") == "release-write"
+    assert _classify("cp a.md data/coordination/handoffs/T.md") == "release-write"
+    assert _classify_path("/home/u/repo/data/coordination/handoffs/T.md") == "release-write"
+
+
+# =========================================================================== (b) deps classification
 
 
 def _classify(cmd: str) -> str:
@@ -522,41 +574,45 @@ def _classify_path(path: str) -> str:
     "pytest", "pytest -q tests/test_x.py", "python3 -m pytest -x", "ruff check scripts", "ruff format --check .",
     "tsc --noEmit", "npx tsc -p apps/command-center-v3", "vite build", "npx vite build", "node scripts/x.mjs",
     "node --test", "npm run build && npx playwright test && pytest -q", "cat package-lock.json",
-    "npm ls", "npm outdated",
+    "npm ls", "npm outdated", "yarn build", "uv run pytest", "npx tsc -p apps/x --noEmit",
+    "git commit -m 'npm i fix'", 'git commit -m "pip install x"', "gh pr create --title 'npm ci in CI' --body 'x'",
 ])
 def test_toolchain_runs_are_not_deps(cmd):
     assert _classify(cmd) == "none", cmd
 
 
 @pytest.mark.parametrize("cmd", [
-    "npm ci", "npm i", "npm install", "npm install vite@5", "npm i -D vite", "npm --prefix apps/x ci",
+    "npm ci", "npm i", "npm install", "npm install vite@5", "npm i -D vite", "npm --prefix apps/x ci", "npm --prefix web ci",
     "cd apps/x && npm ci && npm run build", "npm uninstall x", "npm rm x", "npm update", "npm upgrade",
-    "npm audit fix", "npm dedupe", "pnpm add x", "pnpm install", "yarn add x", "pip install x", "pip3 install -U x",
+    "npm audit fix", "npm dedupe", "npm it", "npm install-test", "npm exec some-pkg",
+    "pnpm add x", "pnpm install", "pnpm i", "yarn", "yarn add x", "yarn install", "yarn && npm run build",
+    "bun add left-pad", "bun install", "bun i", "corepack prepare pnpm@9 --activate", "corepack enable",
+    "npx --yes some-installer", "npx -y create-x", "npx --package=x y", "npx -q -y x", "conda install x", "mamba install x",
+    "pip install x", "pip install -e .", "pip3 install -U x", "python -m pip install x",
     "python3 -m pip install -r requirements.txt", "pip uninstall -y x", "uv pip install x", "uv sync", "uv add x",
-    "poetry add x", "apt install jq", "apt-get install -y jq", "npx playwright install chromium",
-    "npx playwright install-deps", "sed -i s/a/b/ apps/x/package-lock.json", "echo {} > package-lock.json",
-    "cp /x/yarn.lock yarn.lock", "rm uv.lock",
+    "uv run --with requests python x.py", "pipx run x", "pipx install x", "poetry add x", "apt install jq",
+    "apt-get install -y jq", "npx playwright install chromium", "npx playwright install-deps",
+    "sed -i s/a/b/ apps/x/package-lock.json", "echo {} > package-lock.json", "cp /x/yarn.lock yarn.lock", "rm uv.lock",
+    'git commit -m "$(npm install x)"',
 ])
 def test_installs_and_lockfile_edits_are_deps(cmd):
     assert _classify(cmd) == "deps", cmd
 
 
 @pytest.mark.parametrize("path", ["apps/command-center-v3/package-lock.json", "yarn.lock", "x/pnpm-lock.yaml",
-                                  "poetry.lock", "uv.lock", "Pipfile.lock"])
+                                  "poetry.lock", "uv.lock", "Pipfile.lock", "bun.lockb"])
 def test_lockfile_writes_are_deps(path):
     assert _classify_path(path) == "deps"
 
 
 @pytest.mark.parametrize("cmd", ["git -C /x push --force origin main", "git -c a=b push", "git --no-pager push",
-                                 "git push", "git reset --hard", "git -C /x rebase main"])
-def test_git_global_options_still_classify_git_push(cmd):
+                                 "git push", "git reset --hard", "git -C /x rebase main", "bin/agent-push feat/x-1",
+                                 "~/wt/bin/agent-push -u origin HEAD"])
+def test_push_shapes_classify_git_push(cmd):
     assert _classify(cmd) == "git-push"
 
 
-# --------------------------------------------------------------------------- reuse parity
-
-
-def test_vendored_policy_reader_agrees_with_hands_off_policy():
+def test_policy_reader_matches_hands_off_policy_when_present():
     sys.path.insert(0, str(HOOKS))
     import importlib
 
@@ -567,18 +623,7 @@ def test_vendored_policy_reader_agrees_with_hands_off_policy():
         pytest.skip("scripts/lib/hands_off_policy.py not on this tree yet (PRs #2115/#2118/#2125)")
     for text in (agents_md(), agents_md("20.3.0"), agents_md("22.1.0"), agents_md(header="PROPOSED"),
                  agents_md(row="PROPOSED"), agents_md(header="ACTIVE (MAJOR)"), "", None):
-        def gate(st):  # what check_policy() acts on: ACTIVE and at least 21.0.0
-            ver = gpf._semver(st.get("version"))
-            return bool(st.get("active")) and ver is not None and ver >= gpf.MIN_POLICY
-
-        assert gate(gpf._vendored_policy_state(text, "t")) == gate(hop.policy_state_from_text(text)), text
-    for t in ("Operator-approval: x", "- [x] Operator-approval: `PR #1`", "Operator-approval: <ref>", "none"):
-        assert hop.approval_ref(t) == _vendored_approval(gpf, t)
-
-
-def _vendored_approval(gpf, text):
-    for m in gpf._APPROVAL_RE.finditer(text or ""):
-        ref = (m.group("ref") or "").strip().strip("`").strip()
-        if ref and not gpf._PLACEHOLDER.match(ref):
-            return ref[:300]
-    return None
+        st = hop.policy_state_from_text(text)
+        ver = gpf._semver(st.get("version"))
+        assert gpf.policy_state_from_text(text)["active"] == (bool(st["active"]) and ver is not None
+                                                              and ver >= gpf.MIN_POLICY), text

@@ -1,33 +1,73 @@
-#!/usr/bin/env bash
-# Push when the operator has granted git-push in the Cursor approval ledger, or -- AGENTS.md 21.0.0 §28.15 item 8 --
-# when the push is a fast-forward of an approved plan's feature branch within the push budget (no grant needed).
+#!/bin/bash -p
+# bin/agent-push — two routes.
 #
-#   bin/guard grant git-push --for 30m --uses 10 --reason "overnight run"
-#   bin/agent-push -u origin HEAD
+# 1. Grant-free (AGENTS.md 21.0.0 §28.15 item 8):   bin/agent-push <feature-branch>
+#    Exactly one argument, a strict branch name. The environment is refused if it carries GIT_*, TRADEAI_*,
+#    GUARD_*, PYTHON*, LD_* or BASH_ENV/ENV/CDPATH, then cleared (env -i). The checker that decides and performs the
+#    push is the TRUSTED guard tree's .cursor/hooks/guard_push_free.py — the tree ~/.cursor/hooks.json names, found
+#    through the passwd home, never $HOME and never this worktree. It pushes <sha>:refs/heads/<branch> to the
+#    pinned canonical URL, fast-forward only, after a dry run, and records hash-chained lines in the guard log.
+#    The Cursor shell guard admits this form only when this file is byte-identical to the guard tree's copy.
 #
-# Sets TRADEAI_REMOTE_PUSH_AUTHORIZED for the pre-push hook. The hook also
-# peeks the ledger directly, so plain ``git push`` works once a grant exists.
+# 2. Operator grant (unchanged):   bin/guard grant git-push --for 30m --uses 10 --reason "..."
+#                                  bin/agent-push -u origin HEAD
+#    Any other argument list. Sets TRADEAI_REMOTE_PUSH_AUTHORIZED for the pre-push hook.
 set -euo pipefail
+PATH=/usr/bin:/bin
+
+BRANCH_RE='^[a-z][a-z0-9-]{1,19}/[A-Za-z0-9][A-Za-z0-9._-]{2,120}$'
+if [[ $# -eq 1 && "$1" =~ $BRANCH_RE ]]; then
+  bad="$(compgen -e | /usr/bin/grep -E '^(GIT_|TRADEAI_|GUARD_|PYTHON|LD_)|^(BASH_ENV|ENV|CDPATH)$' || true)"
+  if [[ -n "$bad" ]]; then
+    echo "agent-push: grant-free push refused: environment overrides set: $(echo $bad)" >&2
+    echo "agent-push: unset them, or ask the operator for a git-push grant." >&2
+    exit 1
+  fi
+  session="${AGENT_CLAIM_SESSION:-}"
+  self="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}")"
+  top="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/git -C "${self%/*}" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "agent-push: grant-free push refused: $self is not inside a git work tree" >&2; exit 1; }
+  home="$(/usr/bin/getent passwd "$(/usr/bin/id -u)" | /usr/bin/cut -d: -f6)"
+  checker="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/python3 -I -c '
+import json, os, stat, sys
+try:
+    cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+    cmds = [h.get("command", "") for h in cfg["hooks"]["beforeShellExecution"]]
+except Exception as exc:
+    sys.exit(f"cannot read {sys.argv[1]}: {type(exc).__name__}")
+for c in cmds:
+    if os.path.isabs(c) and c.endswith("/guard-shell.sh"):
+        p = os.path.join(os.path.dirname(c), "guard_push_free.py")
+        try:
+            st = os.lstat(p)
+        except OSError:
+            sys.exit(f"the trusted guard tree has no {p}")
+        if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o022:
+            sys.exit(f"{p} is not a regular, owner-only-writable file")
+        print(p)
+        sys.exit(0)
+sys.exit("no guard-shell.sh hook in ~/.cursor/hooks.json")
+' "$home/.cursor/hooks.json" 2>&1)" || {
+    echo "agent-push: grant-free push refused: $checker" >&2; exit 1; }
+  args=(push --repo "$top" --branch "$1" --cwd "$PWD")
+  [[ -n "$session" ]] && args+=(--session "$session")
+  out="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$home" LANG=C.UTF-8 /usr/bin/python3 -I "$checker" "${args[@]}")" && rc=0 || rc=$?
+  printf '%s\n' "$out"
+  if [[ $rc -ne 0 ]]; then
+    echo "agent-push: grant-free push refused or failed (see reason above). Raw git push still needs an operator git-push grant." >&2
+  fi
+  exit "$rc"
+fi
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")"
 # shellcheck source=/dev/null
 source "$ROOT/.cursor/hooks/guard-lib.sh"
 
 if ! grant_active git-push; then
-  # AGENTS.md 21.0.0 §28.15 item 8 (a): an approved plan's feature branch, fast-forward, within the budget, needs no
-  # grant. The same checker as the Cursor shell guard; the push is recorded in the guard log.
-  GRANT_FREE_JSON='{}'
-  _out=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-7}" python3 -I "$ROOT/.cursor/hooks/guard_push_free.py" check-args --cwd "$PWD" -- "$@" 2>/dev/null) || true
-  GRANT_FREE_JSON=$(printf '%s\n' "$_out" | awk 'BEGIN{s="{}"} /^[[:space:]]*\{/{s=$0} END{print s}')
-  if [[ "$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
-    grant_free_push_record "bin/agent-push $*"
-    echo "Grant-free push (AGENTS.md §28.15 item 8): $(printf '%s' "$GRANT_FREE_JSON" | jq -r '"\(.branch) @ \(.head[0:12]) under \(.approval_ref)"')" >&2
-    export TRADEAI_REMOTE_PUSH_AUTHORIZED=1
-    exec git push "$@"
-  fi
   echo "No active git-push grant." >&2
-  echo "Grant-free push refused: $(printf '%s' "$GRANT_FREE_JSON" | jq -r '.reason // "checker failed"' 2>/dev/null)" >&2
   echo "Operator: bin/guard grant git-push --for 30m --uses 10 --reason \"...\"" >&2
+  echo "Grant-free route for an approved plan's feature branch: bin/agent-push <branch>  (AGENTS.md §28.15 item 8)" >&2
   echo "Then ask the agent to retry git push." >&2
   exit 1
 fi

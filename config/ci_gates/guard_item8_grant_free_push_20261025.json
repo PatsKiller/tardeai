@@ -5,11 +5,12 @@
     "tests/test_guard_item8_grant_free_push_20261025.py"
   ],
   "comment": [
-    "AGENTS.md 21.0.0 §28.15 item 8 (ratified 2026-10-25, PR #2128). (a) The Cursor shell guard and bin/agent-push let",
-    "a git push run without a git-push grant only when remote main's AGENTS.md is 21.0.0+ ACTIVE, the push is one",
-    "fast-forward ref to a feature branch on origin (never main/master/release/train, never force/delete/mirror),",
-    "a live claim with an Operator-approval line or a coordinator handoff file covers the branch, and the push budget",
-    "has room; each is logged as grant-free-push. (b) npm run / npx playwright test / pytest / ruff / tsc / vite build",
-    "/ node are never deps; installs, npm ci and lockfile edits are."
+    "AGENTS.md 21.0.0 §28.15 item 8 (ratified 2026-10-25, PR #2128), redesigned after two DO-NOT-MERGE reviews of #2148.",
+    "(a) The only grant-free push is `bin/agent-push <branch>`: env refused then cleared, the trusted guard tree's",
+    "guard_push_free.py pushes <sha>:refs/heads/<branch> to the pinned canonical URL (fast-forward, dry run first, tracked",
+    "pre-push identical to main's, no hijacking config, no broker paths, within budget) under a resolved operator approval",
+    "(operator-authored PR comment or decision-ledger row) on the pusher's own claim or a coordinator assignment; hash-",
+    "chained guard-log lines. Raw git push keeps the grant path. (b) toolchain runs are never deps; installs are.",
+    "Every reviewer exploit (X1-X11, H1-H3, M1-M3, L1-L2) is a regression test here."
   ]
 }

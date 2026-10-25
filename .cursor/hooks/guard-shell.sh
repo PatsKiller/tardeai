@@ -81,33 +81,35 @@ if ledger_is_corrupt; then
   emit deny "BLOCKED — APPROVAL_LEDGER_CORRUPT ($(ledger_state)). Guarded command refused." \
             "The approval ledger is corrupt. The operator must recover it; do not treat this as authorized."
 fi
-# AGENTS.md 21.0.0 §28.15 item 8 (a): a fast-forward push of an approved plan's feature branch, within the push
-# budget, needs no git-push grant. guard_push_free.py proves every condition (fail closed); every other part of the
-# command must classify unguarded on its own. Anything refused falls through to the grant path below, unchanged.
+# AGENTS.md 21.0.0 §28.15 item 8 (a): the ONLY grant-free push is "bin/agent-push <branch>" — one strict argument,
+# the invoked wrapper byte-identical to this guard tree's bin/agent-push, and this tree's guard_push_free.py check
+# passing (policy, canonical remote, fast-forward, approved plan, budget, broker paths). A raw git push, or any other
+# agent-push form, falls through to the grant path below, unchanged. The wrapper re-checks and pushes itself.
 GRANT_FREE_REASON=""
-if [[ "$tier" == "git-push" ]]; then
+_ap_re='^[[:space:]]*(([A-Za-z0-9._/-]*/)?bin/agent-push)[[:space:]]+([a-z][a-z0-9-]{1,19}/[A-Za-z0-9][A-Za-z0-9._-]{2,120})[[:space:]]*$'
+if [[ "$tier" == "git-push" && "$cmd" =~ $_ap_re ]]; then
   STAGE=grantfree
-  hook_cwd=$(printf '%s' "$input" | jq -r '.cwd // (.workspace_roots // [])[0] // empty' 2>/dev/null)
-  if grant_free_push_check "$cmd" "$hook_cwd"; then
-    _gf_ok=1
-    while IFS= read -r _seg; do
-      [[ -z "$_seg" ]] && continue
-      _st=$(classify_cmd "$_seg")
-      if [[ "$_st" != "none" ]]; then
-        _gf_ok=0; GRANT_FREE_REASON="another part of the command is guarded ($_st): $_seg"; break
-      fi
-    done < <(printf '%s' "$GRANT_FREE_JSON" | jq -r '.other_segments[]?' 2>/dev/null)
-    if [[ "$_gf_ok" -eq 1 ]]; then
-      grant_free_push_record "$cmd"
-      _b=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.branch')
-      _h=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.head[0:12]')
-      _r=$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.approval_ref')
-      _hint=""
-      [[ "$(printf '%s' "$GRANT_FREE_JSON" | jq -r '.env_authorized')" == "true" ]] || \
-        _hint=" The pre-push hook still needs TRADEAI_REMOTE_PUSH_AUTHORIZED=1 on the push (or use bin/agent-push)."
-      emit allow "GRANT-FREE PUSH [git-push] $_b @ $_h under approved plan: $_r (AGENTS.md §28.15 item 8)" \
-        "Fast-forward push of your approved feature branch, recorded in the guard log. Never force, never main/release/train.$_hint"
+  _w="${BASH_REMATCH[1]}"; _b="${BASH_REMATCH[3]}"
+  _cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+  [[ "$_w" == /* ]] || _w="${_cwd:+$_cwd/}$_w"
+  _trusted="$(cd "$HERE/../.." 2>/dev/null && pwd)/bin/agent-push"
+  if [[ "$_w" != /* ]]; then
+    GRANT_FREE_REASON="the hook payload carried no cwd to resolve $_w"
+  elif ! cmp -s -- "$_w" "$_trusted"; then
+    GRANT_FREE_REASON="$_w is not byte-identical to the guard tree's bin/agent-push"
+  elif ! _top=$(env -i PATH=/usr/bin:/bin /usr/bin/git -C "$(dirname "$_w")" rev-parse --show-toplevel 2>/dev/null); then
+    GRANT_FREE_REASON="$_w is not inside a git work tree"
+  else
+    _home=$(getent passwd "$(id -u)" | cut -d: -f6)
+    _gf=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-8}" env -i PATH=/usr/bin:/bin HOME="$_home" LANG=C.UTF-8 \
+          /usr/bin/python3 -I "$HERE/guard_push_free.py" check --repo "$_top" --branch "$_b" 2>/dev/null | tail -1)
+    if [[ "$(printf '%s' "$_gf" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
+      _r=$(printf '%s' "$_gf" | jq -r '.approval_ref')
+      emit allow "GRANT-FREE PUSH admitted: $_b under $_r (AGENTS.md §28.15 item 8). bin/agent-push re-checks, pushes and records it." \
+        "Grant-free fast-forward push of your approved feature branch. Never force, never main/release/train; raw git push still needs a grant."
     fi
+    GRANT_FREE_REASON=$(printf '%s' "$_gf" | jq -r '.reason // empty' 2>/dev/null)
+    [[ -n "$GRANT_FREE_REASON" ]] || GRANT_FREE_REASON="checker failed or timed out"
   fi
   STAGE=grant
 fi
