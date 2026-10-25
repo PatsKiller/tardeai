@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
+import ReadableTime from './ReadableTime'
 
 export type DeskTab = { id: string; label: string }
 export type DeskSource = {
@@ -55,16 +56,23 @@ export function DeskGap({ title, reason, children }: { title: string; reason: st
   </aside>
 }
 
+const FUTURE_SKEW_MS = 5 * 60_000
+
 function clock(value: string | null | undefined, now: number): { text: string; hours?: number; gap?: string } {
   if (!value) return { text: 'update time unavailable', gap: 'The source has no recorded update time.' }
   // A date-only value is not an instant and must not become an invented midnight clock.
   const at = /T.*(?:Z|[+-]\d\d:\d\d)$/.test(value) ? Date.parse(value) : NaN
   if (!Number.isFinite(at)) return { text: 'update time unavailable', gap: 'The source update time is incomplete or invalid.' }
-  if (at > now) return { text: 'update time needs review', gap: 'The source update time is in the future.' }
-  const minutes = Math.floor((now - at) / 60_000)
-  const text = minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`
+  // `now` ticks once a minute, so a stamp written after the last tick is seconds "ahead" of it. Only a
+  // stamp beyond that tick plus clock skew is a future time that needs review.
+  if (at > now + FUTURE_SKEW_MS) return { text: 'update time needs review', gap: 'The source update time is in the future.' }
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000))
+  const text = minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`
   return { text, hours: minutes / 60 }
 }
+
+/** "update time needs review" → "Update time needs review" (no "Updated update time …"). */
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 export type DeskPageProps = {
   title: string
@@ -121,14 +129,14 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
-            <strong>{source.label}</strong><div style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>Updated {age.text}</div>
-            {source.asOf && <time dateTime={source.asOf} style={{ fontSize: TYPE.sm, color: BB.text3, overflowWrap: 'anywhere' }}>{source.asOf}</time>}
+            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
+            {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
             {sourceWriters.length === 0 && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
             {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
               <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>Writer {writer?.state ?? (loading ? 'loading' : 'state unavailable')}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
               <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
-              {writer?.last_success_at && <time dateTime={writer.last_success_at} style={{ color: BB.text3, fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>{writer.last_success_at}</time>}
-              {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured {clock(writer.evidence_as_of, now).text}</div>}
+              {writer?.last_success_at && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
+              {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
               {(writer?.reason || !writer) && <div style={{ color: BB.amber, marginTop: 4 }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
             </div>)}
             {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}

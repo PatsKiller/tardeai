@@ -111,7 +111,7 @@ export default function AskCioBar() {
             </svg>
           </button>
         )}
-        <label title={TOOLTIPS.deep} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: TYPE.sm, color: TOKENS.text[2], whiteSpace: 'nowrap' }}>
+        <label className="ask-deep" data-testid="ask-cio-deep-label" title={TOOLTIPS.deep} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: TYPE.sm, color: TOKENS.text[2], whiteSpace: 'nowrap', cursor: 'pointer' }}>
           <input type="checkbox" data-testid="ask-cio-deep" checked={deep} onChange={e => setDeep(e.target.checked)} disabled={busy} />
           Deep
         </label>
