@@ -79,7 +79,8 @@ export default function ReleaseTrainTab() {
     if (sumF.state === 'LOADING') return { text: '…', tone: 'neutral' as const, title: 'loading' }
     if (sumF.state === 'UNAVAILABLE' || !st) return { text: 'UNAVAILABLE', tone: 'warning' as const, title: f?.reason || sumF.reason || 'controller field missing' }
     const up = String(st).toUpperCase()
-    return { text: up, tone: (up === 'ACTIVE' ? 'success' : 'warning') as const, title: f?.reason || up }
+    const tone = up === 'ACTIVE' ? ('success' as const) : ('warning' as const)
+    return { text: up, tone, title: f?.reason || up }
   })()
   const census = censusFrom(sumApi.data?.census ?? qApi.data?.census, sumApi.data ? sumF : qT, now)
   const history = useMemo(() => historyFrom(eApi.data, eT, now), [eApi.data, eT.state, now])
