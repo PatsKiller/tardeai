@@ -104,6 +104,24 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
+def _measurement(unknown: int, collection_gaps: list) -> dict:
+    """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
+
+    ``missed`` is only countable for jobs whose schedule and run receipts are measured. With unmeasured jobs
+    (or an incomplete collection) a ``missed`` of 0 is not a fact, so readers get ``missed_measured`` False
+    and the reason; ``missed`` itself stays the measured floor for existing readers (platform_health).
+    """
+    reasons = []
+    if unknown:
+        reasons.append(f"{unknown} job{'s' if unknown != 1 else ''} not measured (no run receipt or no measurable "
+                       "schedule), so missed runs among them cannot be counted")
+    if collection_gaps:
+        reasons.append("execution evidence incomplete: " + "; ".join(str(g) for g in collection_gaps[:3]))
+    return {"not_measured": unknown, "missed_measured": not reasons,
+            "gap_reasons": {"missed": " · ".join(reasons) or None,
+                            "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
+
+
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
@@ -193,7 +211,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                           "message": monitor["cause"], "href": "/ops/jobs", "source": "job_execution"})
     return {"schema": SCHEMA, "as_of": W.iso(now), "authority": "READ_ONLY_ADVISORY", "rows": rows,
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
-                    **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")}},
+                    **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
+                    **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
         "monitor": monitor, "incidents": incidents, "incident_count": len(incidents),
         "coverage_gaps": captured.get("collection_gaps") or [],
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
