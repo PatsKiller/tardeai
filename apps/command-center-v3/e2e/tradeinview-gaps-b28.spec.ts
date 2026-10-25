@@ -15,6 +15,7 @@ const fresh = tiv.journeys.fresh
 const awaiting = fresh.journeys.find((j: any) => j.exit_cause.kind === 'stop_likely_filled')
 const REPLAY_TRADE = tiv.replay.bars.trade_id as string
 // Same journeys with every closed trip turned into a realized loss: only open (unrealized) rows could look like wins.
+const ledgerStore = tiv.journeys.ledger_store, noLedger = tiv.journeys.no_ledger
 const noClosedWin = { ...fresh, journeys: fresh.journeys.map((j: any) => j.status === 'closed' ? { ...j, pl: { ...j.pl, amount: -Math.abs(j.pl.amount ?? 1) } } : { ...j, pl: { ...j.pl, amount: 999 } }) }
 let js = '', css = ''
 test.beforeAll(async () => {
@@ -80,6 +81,25 @@ test.describe('phone: batch-28 gaps', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
       await tapTarget(page, page.getByTestId('tj-detail-back'))
       await expect(sheet).toBeHidden()
+      expect(forbidden).toEqual([])
+    })
+
+    test(`Ledger synced chip reads the ledger store clock, labelled, or says Not measured ${viewport.width}`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      let forbidden = await serve(page, ledgerStore)
+      await page.goto(origin + '/v3/journal?tab=journeys')
+      const chip = page.getByTestId('tj-chip-ledger_sync')
+      await chip.scrollIntoViewIfNeeded()
+      await expect(chip).toContainText('Ledger synced 2026-11-04T16:48:02+00:00')
+      await expect(page.getByTestId('tj-chip-ledger_sync-source')).toHaveText(/ledger row write/)
+      await expect(chip).not.toContainText('Not measured')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+      expect(forbidden).toEqual([])
+      await page.unrouteAll({ behavior: 'ignoreErrors' })
+      forbidden = await serve(page, noLedger)
+      await page.goto(origin + '/v3/journal?tab=journeys')
+      await expect(page.getByTestId('tj-chip-ledger_sync')).toContainText('Ledger synced Not measured')
+      await expect(page.getByTestId('tj-chip-ledger_sync-source')).toHaveCount(0)
       expect(forbidden).toEqual([])
     })
 

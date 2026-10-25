@@ -5,6 +5,7 @@
 import { ASK_PATHS, buildAskBody, newRequestId, unwrap } from './askCioModel'
 import type { Thread } from './askCioModel'
 import { publishAskUpdate } from './askCioPresentation'
+import { regroupPath } from './askCioGroups'
 
 export class AskApiError extends Error {
   code: string
@@ -58,4 +59,11 @@ export const ASK_ERROR_TEXT: Record<string, string> = {
 export function askErrorText(e: unknown): string {
   if (e instanceof AskApiError) return ASK_ERROR_TEXT[e.code] ?? e.message
   return e instanceof Error ? e.message : 'Something went wrong.'
+}
+
+/** Operator manual regroup: appends an ask.group_override event (never edits history). */
+export async function regroupQuestion(threadId: string, body: { ask_id: string; group_by: string; group_key: string | null; group_label?: string }): Promise<unknown> {
+  const result = await post<unknown>(regroupPath(threadId), body)
+  publishAskUpdate({ threadId, source: 'mutation' })
+  return result
 }

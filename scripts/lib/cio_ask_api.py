@@ -2,10 +2,12 @@
 
     POST /api/v2/cio/ask                         {question, thread_id?, depth?: quick|deep, client_request_id?}
     GET  /api/v2/cio/asks?limit=                 "My questions": thread summaries, newest first
+         &group_by=security|sector|theme|date|none&q=&channel=   + grouped questions (scripts/lib/cio_ask_groups.py)
     GET  /api/v2/cio/asks/tracked                tracked entities (for Watch / Home / alert flags)
     GET  /api/v2/cio/asks/<thread_id|ask_id>     one thread: turns, answer versions, sources, tracking
     POST /api/v2/cio/asks/<thread_id>/deep       {ask_id?} — request the deep (Phase 9) answer
     POST /api/v2/cio/asks/<thread_id>/untrack    {entity_key}
+    POST /api/v2/cio/asks/<thread_id>/regroup    {ask_id, group_by, group_key|null, group_label?} — ask.group_override
 
 Auth (the Ops Controls convention, ``scripts/lib/ops_controls_api.py``): every route answers only the operator's
 tailnet identity on the serve proxy; agents, n8n and the service token are refused. POSTs re-check same-origin CSRF
@@ -85,7 +87,27 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
     if m == "GET":
         if base == PREFIX_ASKS:
             lim = _int(_first(q.get("limit")), 50)
-            return 200, {"ok": True, "data": {"threads": core.list_threads(deps=deps, limit=lim), "as_of": _now()}}
+            data: dict[str, Any] = {"threads": core.list_threads(deps=deps, limit=lim), "as_of": _now()}
+            gb = _first(q.get("group_by"))
+            if gb is not None:
+                from scripts.lib import cio_ask_groups as groups  # noqa: PLC0415
+
+                channel = _first(q.get("channel")) or None
+                if gb not in groups.GROUP_BYS or (channel is not None and channel not in groups.CHANNELS):
+                    return _err(400, "BAD_GROUPING", f"group_by {'|'.join(groups.GROUP_BYS)}; channel cc|telegram")
+                d = core._deps(deps)
+                threads = d.store.threads() if d else {}
+                events = d.store.events() if d else []
+                data["grouped"] = groups.group_questions(
+                    threads,
+                    group_by=gb,
+                    q=str(_first(q.get("q")) or ""),
+                    channel=channel,
+                    events=events,
+                    facts_for=_facts_reader(ctx),
+                    stance_for=_stance_reader(ctx),
+                )
+            return 200, {"ok": True, "data": data}
         sub = base[len(PREFIX_ASKS) + 1 :]
         if sub == "tracked":
             d = core._deps(deps)
@@ -93,7 +115,13 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
             return 200, {"ok": True, "data": {"tracked": rows, "as_of": _now()}}
         if ID_RE.match(sub):
             t = _thread(core, deps, sub)
-            return (200, {"ok": True, "data": {"thread": t}}) if t else _err(404, "NOT_FOUND")
+            if not t:
+                return _err(404, "NOT_FOUND")
+            from scripts.lib import cio_ask_groups as groups  # noqa: PLC0415
+
+            d = core._deps(deps)
+            related = groups.related_from_memory(t, d.store.threads() if d else {})
+            return 200, {"ok": True, "data": {"thread": t, "related_from_memory": related}}
         return _err(404, "NOT_FOUND")
     if m != "POST":
         return _err(405, "METHOD_NOT_ALLOWED")
@@ -129,6 +157,8 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
                 return _err(400, "ENTITY_KEY_REQUIRED")
             r = core.untrack(tid, key, deps=deps)
             return (200, {"ok": True, "data": r}) if r.get("ok") else _err(404, str(r.get("error")))
+        if action == "regroup":
+            return _regroup(core, deps, tid, b)
         if action == "deep":
             t = _thread(core, deps, tid)
             if not t:
@@ -137,6 +167,87 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
             r = core.request_deep(tid, ask_id, deps=deps)
             return (200, {"ok": True, "data": r}) if r.get("ok") else _err(404, str(r.get("error")))
     return _err(404, "NOT_FOUND")
+
+
+def _regroup(core, deps, tid: str, b: dict) -> tuple[int, dict]:
+    """Append an ``ask.group_override`` event (operator manual regroup). Never edits an earlier event."""
+    from scripts.lib import cio_ask_groups as groups  # noqa: PLC0415
+    from scripts.lib.cio_ask_store import event_id_for  # noqa: PLC0415
+
+    d = core._deps(deps)
+    t = d.store.thread(tid) if d else None
+    if not t:
+        return _err(404, "NOT_FOUND")
+    ask_id, gb, key = b.get("ask_id"), b.get("group_by"), b.get("group_key")
+    if not (isinstance(ask_id, str) and any(turn.get("ask_id") == ask_id for turn in t["turns"])):
+        return _err(400, "ASK_NOT_IN_THREAD")
+    if gb not in groups.GROUP_BYS or gb == "none":
+        return _err(400, "BAD_GROUPING", "security|sector|theme|date")
+    if key is not None and not (isinstance(key, str) and 0 < len(key) <= 200):
+        return _err(400, "BAD_GROUP_KEY")
+    label = b.get("group_label")
+    label = str(label)[:120] if isinstance(label, str) and label.strip() else None
+    at = _now()
+    ev, _created = d.store.append(
+        "ask.group_override",
+        {"thread_id": tid, "ask_id": ask_id, "group_by": gb, "group_key": key, "group_label": label, "by": "operator"},
+        event_id=event_id_for("ask.group_override", ask_id, gb, key or "", at),
+    )
+    return 200, {"ok": True, "data": {"override": ev}}
+
+
+def _facts_reader(ctx: Ctx):
+    """security entity -> C1 company facts (GUID-bound CIO record). Injected readers win (tests, fixtures)."""
+    injected = getattr(ctx.deps, "facts_for", None) if ctx.deps is not None else None
+    if injected is not None:
+        return injected
+    cache: dict[str, Any] = {}
+
+    def read(entity: dict) -> dict:
+        guid = entity.get("security_guid")
+        if not guid:
+            return {}
+        try:
+            if "snapshot" not in cache:
+                from scripts.lib.data_broker.cio_company_facts import load_snapshot  # noqa: PLC0415
+
+                cache["snapshot"] = load_snapshot()
+            from scripts.lib.data_broker.cio_company_facts import for_security  # noqa: PLC0415
+
+            return for_security(cache["snapshot"], str(entity.get("symbol") or ""), guid)["company_facts"]
+        except Exception:  # noqa: BLE001 — a missing record is an "Unclassified" group, never a guess
+            return {}
+
+    return read
+
+
+def _stance_reader(ctx: Ctx):
+    """symbols -> {SYM: {stance, conviction, as_of, source}} from the CIO prospect store, only when it is live."""
+    injected = getattr(ctx.deps, "stance_for", None) if ctx.deps is not None else None
+    if injected is not None:
+        return injected
+
+    def read(symbols: list[str]) -> dict[str, dict]:
+        try:
+            from scripts.lib.data_broker.trade_journey import _cio_prospects  # noqa: PLC0415
+
+            rows, status = _cio_prospects(symbols)
+        except Exception:  # noqa: BLE001
+            rows, status = None, "error"
+        if rows is None:
+            why = f"CIO prospect store not live ({status})"
+            return {s: {"missing_reason": why} for s in symbols}
+        return {
+            s: {
+                "stance": r.get("stance"),
+                "conviction": r.get("conviction"),
+                "as_of": r.get("evidence_at") or r.get("updated_at"),
+                "source": "cio_prospect",
+            }
+            for s, r in rows.items()
+        }
+
+    return read
 
 
 def _thread(core, deps, ident: str) -> Optional[dict]:

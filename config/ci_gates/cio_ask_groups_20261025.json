@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_groups_20261025",
+  "files": [
+    "tests/test_cio_ask_groups_20261025.py"
+  ],
+  "comment": [
+    "My questions grouping (Screen 5): group_by security|sector|theme|date|none from resolved GUIDs, C1 company facts and config/thesis.json; ask.group_override events (append-only); related-from-memory only from persisted answer recall refs.",
+    "Synthetic tmp_path ask ledger; no host store, live server or model call. Committed browser fixture e2e/fixtures/myQuestionsGroups.fixture.json is builder output; staleness fails the gate."
+  ]
+}

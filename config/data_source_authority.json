@@ -3890,7 +3890,8 @@
       "readers": [
         "Open Trades",
         "Re-entry",
-        "Home"
+        "Home",
+        "TradeInView (Journeys entry fills; Ledger synced chip = max(created_at) of schwab_api rows, read-only, scripts/lib/data_broker/trade_journey.py)"
       ],
       "derived_copies": [
         {

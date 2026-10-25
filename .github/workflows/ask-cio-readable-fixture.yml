@@ -10,6 +10,10 @@ on:
       - 'apps/command-center-v3/src/lib/askCio*'
       - 'apps/command-center-v3/e2e/ask-cio-readable.fixture.mjs'
       - 'apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json'
+      - 'apps/command-center-v3/e2e/my-questions-groups.spec.ts'
+      - 'apps/command-center-v3/e2e/fixtures/myQuestionsGroups.fixture.json'
+      - 'scripts/lib/cio_ask_groups.py'
+      - 'scripts/lib/cio_ask_api.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,6 +43,10 @@ jobs:
       - run: npm run build
       - name: Canonical copied-ledger answer, delayed completion and identity proof
         run: node e2e/ask-cio-readable.fixture.mjs e2e/fixtures/askCioReadable.fixture.json "$RUNNER_TEMP/ask-readable-proof"
+      - name: My questions grouping, phone taps at 412/390 and screenshots of every grouping (all requests intercepted)
+        env:
+          MQ_SCREENSHOT_DIR: ${{ runner.temp }}/ask-readable-proof/my-questions
+        run: npx playwright test e2e/my-questions-groups.spec.ts --project=chromium --workers=1 --reporter=line
       - uses: actions/upload-artifact@v4
         if: always()
         with:

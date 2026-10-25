@@ -366,7 +366,7 @@ export default function TradeJourney({ payload, loading, error, embedded = false
 
       <div role="group" aria-label="Data freshness" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {(p.freshness_chips || []).map(ch => (
-          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{ch.value ?? ch.missing_reason ?? 'Sync evidence unavailable'}</Chip>
+          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}${ch.source ? `\nsource: ${ch.source}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{ch.value ?? ch.missing_reason ?? 'Sync evidence unavailable'}{ch.at && ch.source_label ? <span data-testid={`tj-chip-${ch.key}-source`}>&nbsp;· {ch.source_label}</span> : null}</Chip>
         ))}
         {!p.freshness_chips && <span className="tradeinview-gap" style={{ fontSize: TYPE.base }}>Freshness receipt fields unavailable — sync times are not inferred from fill or stop observations.</span>}
       </div>

@@ -36,6 +36,8 @@ EVENT_KINDS = (
     "ask.reanswer_skipped",
     "ask.channel_link",
     "ask.cost",
+    # Operator manual regroup on "My questions" (scripts/lib/cio_ask_groups.py): an event, never a history edit.
+    "ask.group_override",
 )
 
 
