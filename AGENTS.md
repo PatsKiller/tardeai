@@ -7187,12 +7187,69 @@ Rulebook enforcement audit lists the open ones weekly. No exception allows anyth
   approved boards (desks, pages, ownership map, TradeInView, Watch) count as approved mockups. *Cause (§20): §28.9 change control
   and shared-infra rules; the approvals already exist.*
 
+
+## 28.12 Delivery lifecycle — claim to verified release (20.3.0, PROPOSED)
+
+**Status: PROPOSED (MINOR).** Drafted 2026-10-25 at the operator's request, verbatim: "The objective to the lifecycle is
+multiple agents can read the agents.md, see how to design and deliver their stuff and queue. We have all of the testers
+that's testing everything and it's deployed, tested. Any failures I need to be emailed, notified, and texted." Binding
+once the operator ratifies (§20 token `APPROVE_AGENTS_POLICY_20_3_0 <pr> <head_sha>`). It is the one ordered path from
+claim to verified release; steps 1–8 point at the rules that already bind, steps 9–10 add two obligations (post-release
+verification and failure paging). It removes nothing and does not touch §0, §2, §17 or role authority.
+
+- **1 Claim.** `scripts/agent_claim.py status`, then `next`/`take` or `claim` with the task id `DSN-<date>-<slug>-P<n>-T<m>`;
+  check open PRs and branches on the same files first; keep the worklog (§28.3, §28.3a, §28.3b). *Cause (§20): §28.3 —
+  two vendors built the same fix in parallel, 2026-10-22.*
+- **2 Design.** Anything beyond a fix gets `docs/designs/<id>.md` and operator approval (§17). A PR that removes or hides a
+  page, nav entry, route, tab, panel or widget links an operator-approved mockup (§28.9). *Cause (§20): §28.9 —
+  TradeInView hid Calendar P/L and Replay without approval.*
+- **3 Build.** In a worktree off fresh `origin/main` (`git worktree add -b <branch> ~/wt-<slug> origin/main`), never in
+  the primary tree; `TMPDIR=$HOME/.cache/agent-tmp/<task>` and pytest `--basetemp` on disk, never `/tmp` (§28.2); no
+  agent traffic to the live server 04:00–16:15 ET on a market day (§28.8); `MBI_BEHAVIOR = 0`. *Cause (§20): 2026-10-25
+  04:07–04:18 ET agent test runs filled the `/tmp` tmpfs and cron lock writes failed (ENOSPC).*
+- **4 Test.** Unit tests registered in a `config/ci_gates/*.json` record (§8A); senders, brokers and live stores stubbed
+  (§24.6); UI changes carry tap tests at the 412 and 390 px viewports, a list opens its detail as a full-screen sheet;
+  shared infrastructure carries a real-layout proof run on a temp `PROJECT_ROOT`, never the live journal (§28.9); a
+  dry run is quoted for anything that writes, sends or schedules (§0 rule 7). *Cause (§20): the operator works from a
+  phone; 2026-10-25 a real-layout proof run on the live root wrote to the production journal and raised a CRIT.*
+- **5 PR.** Title carries the task id; shared infrastructure is titled `[shared-infra]`, ships alone and its body has a
+  `Real-layout proof:` line (§28.9); `Depends-on: #N` for a stack; body via `--body-file`; push only with
+  `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` inside the push budget (§0 rule 4). The PR is the agent's last remote act (§25.1).
+  *Cause (§20): §28.9 — d5f51dbef rode a mixed batch and stopped ~30 cron jobs for two days.*
+- **6 CI green.** `cio-hardening`, `agent-governance`, `release-readiness` and `ci-gate` are `success` on the head SHA;
+  a unit whose tests all skip fails; local green is not CI green. *Cause (§20): §25.2 qualifying evidence; 2026-09-22 a
+  locally green PR failed CI.*
+- **7 Queue.** `config/release_train_policy.json` classifies every open PR: `eligible` rides the next enabled window
+  automatically; `needs_operator` waits for the operator's word; `held` needs a grant and the manual path; `blocked`
+  (the train's own code) is manual only. Shared infrastructure rides alone. Agents never merge or release (§25.1).
+  *Cause (§20): §25.1 — 30 open PRs, 18 conflicting, no single release owner (2026-10-21 census).*
+- **8 Release.** Only in an enabled window of the policy and the armed host delegation (§25.2, §25.3); the manual path
+  (`scripts/cio_phase2_exact_main_deploy.sh` under a `release-write` grant naming the SHA or PR, §24.8) stays the
+  operator's. Merged is not deployed and deployed is not proven. *Cause (§20): 2026-09-22 the desk ran three days on a
+  stale release.*
+- **9 Verify after every release.** `scripts/post_release_tester.py` sees each release in the deploy receipt history and
+  runs the post-promote API checks at once (health ok, `/v3/cio` 200, served `BUILD_SHA` equals the released SHA, the
+  release wrapper preflight when admitted); a light browser sweep (`scripts/site_sweep.sh`, top routes at 412 and 390,
+  only the "broken" detectors: console errors, uncaught exceptions, HTTP 4xx/5xx other than expected refusals, route
+  crash, load over 15 s) outside the §28.8 window and under the 1.3 GB memory gate, deferred otherwise; and a nightly
+  full sweep at 21:30 ET when memory allows. A release counts as verified only by its PASSED receipt (§0 rule 8).
+  *Cause (§20): operator 2026-10-25, "it's deployed, tested"; no check ran after a release unless an agent remembered.*
+- **10 Failures page the operator.** `scripts/delivery_failure_alerts.py` sends an immediate P1, never the digest, by
+  Telegram (`send_telegram`), email and SMS (the communications gateway; SMS once its keys are configured) when: main
+  CI is red after a merge; a live train ends FAILED_PRE_MERGE, MERGED_NOT_LIVE, ROLLED_BACK, ROLLBACK_FAILED or
+  STOPPED; a live, non-drill request is REFUSED or FAILED; the STOP latch is set; a manual promote or rollback fails; the
+  post-release tester fails; the nightly sweep finds broken pages; or a release-train request timer misses its slot.
+  One line plus a link to System → Releases & schedules, deduped per incident, rate limited. The owning agent fixes
+  forward with a new PR through this same path; nobody reverts by hand or pushes `main`. *Cause (§20): operator
+  2026-10-25, "Any failures I need to be emailed, notified, and texted."*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 20.3.0 | 2026-10-25 | PROPOSED | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | Awaiting the operator's `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. |
 | 20.2.0 | 2026-10-24 | ACTIVE | MINOR | §28.9 + §28.10 + §28.11 (transition for work in action) added: conflicts resolved only by the conflict engine under the operator-approved rulebook (agreement/superseded never flag, gates not conflicts, owner decides with a reason, CIO always informed, safety never automatic); no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **RATIFIED** by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
 | 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1` (operator, PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit on #2013's branch, which set the header block to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-23. |

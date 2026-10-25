@@ -70,8 +70,20 @@ def _s288(text: str = AGENTS) -> str:
     return m.group(0)
 
 
+def pre_20_3_0(text: str) -> str:
+    """20.3.0 adds only §28.12 and its row (PROPOSED: no header or banner change); a ratified 20.3.0 adds a banner."""
+    if "**20.3.0 is " in text:
+        b = text.index("**20.3.0 is ")
+        text = text[:b] + text[text.index("**20.2.0 is ", b):]
+    if "\n## 28.12 " in text:
+        s = text.index("\n## 28.12 ")
+        text = text[:s] + text[text.index("\n---\n\n# Version history", s):]
+    return re.sub(r"^\| 20\.3\.0 \|.*\n", "", text, count=1, flags=re.M)
+
+
 def pre_20_2_0(text: str) -> str:
     """Later amendments taken out first: 20.2.0 adds only §28.9 and its row (PROPOSED: no header or banner change)."""
+    text = pre_20_3_0(text)
     if "**20.2.0 is " in text:
         b = text.index("**20.2.0 is ")
         text = text[:b] + text[text.index("**20.1.0 is ACTIVE", b):]
