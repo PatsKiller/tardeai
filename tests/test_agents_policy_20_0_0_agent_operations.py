@@ -346,9 +346,21 @@ def redo_20_0_0(text: str) -> str:
     return text
 
 
+#: header of the 21.0.0-ACTIVE tip (a91e0806c), restored by pre_22_0_0 after stripping 22.0.0
+_PRE_22_HEADER = {
+    "Policy-Version": "21.0.0",
+    "Status": "ACTIVE",
+    "Effective-Date": "2026-10-25",
+    "Last-Reviewed": "2026-10-25T16:35:00-04:00",
+    "Supersedes": "20.3.0",
+}
+
+
 def pre_22_0_0(text: str) -> str:
-    """Strip the 22.0.0 soft-adds (banner, §17 paragraph, §25.3 bullet, history row) so older
-    digest pins stay stable after ratification. Idempotent: absent soft-adds are a no-op."""
+    """Strip the 22.0.0 soft-adds (banner, §17 paragraph, §25.3 bullet, history row) and restore the
+    21.0.0-ACTIVE header so older digest / STATE.check pins stay stable after ratification.
+    Idempotent: absent soft-adds are a no-op; header rewrite only runs when a 22.0.0 row was present."""
+    had_22 = bool(re.search(r"^\| 22\.0\.0 \|", text, re.M)) or "**22.0.0 is " in text
     for marker in ("**22.0.0 is ACTIVE", "**22.0.0 is PROPOSED"):
         if marker in text:
             b = text.index(marker)
@@ -371,7 +383,17 @@ def pre_22_0_0(text: str) -> str:
         "  Run now on Command Center via MAJOR amendment; keep the CLI as fallback.*\n"
     )
     text = text.replace(s25, "", 1)
-    return re.sub(r"^\| 22\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
+    text = re.sub(r"^\| 22\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
+    if had_22:
+        for k, v in _PRE_22_HEADER.items():
+            text = re.sub(
+                rf"^({re.escape(k)}:\s+).*$",
+                lambda m, v=v: m.group(1) + v,
+                text,
+                count=1,
+                flags=re.M,
+            )
+    return text
 
 
 def undo_20_0_0(text: str) -> str:
