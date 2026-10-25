@@ -16,7 +16,7 @@ for (const width of [1440, 412, 390]) {
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('below its stop')
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('99 positions')
     await expect(page.getByTestId('do-now-item')).toHaveCount(7)
-    await expect(page.getByRole('link', { name: /Release train/ })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /Release train/ })).toHaveAttribute('href', '/v3/system/releases')
     await expect(page.getByTestId('home-pulse').getByRole('link').last()).toHaveAttribute('href', '/v3/system/releases')
     await expect(page.getByTestId('home-do-now-page')).toContainText('Do-now as of Mar 10')
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('2031-03-10T')
