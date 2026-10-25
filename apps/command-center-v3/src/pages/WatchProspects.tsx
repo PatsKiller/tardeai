@@ -36,7 +36,7 @@ import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
   alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
-  roundTripPath, withQuery, type ListRow,
+  roundTripPath, withQuery, askCioReview, type ListRow,
 } from '../lib/watchListsModel'
 
 const panel: CSSProperties = {
@@ -62,8 +62,39 @@ function soldDisplayName(r: ListRow): string {
 
 /** Preserve the backend envelope; a missing producer is an explicit gap, never an empty result. */
 export function conflictSection(row: ProspectRow): ConflictSection {
-  return (row as ProspectRow & {conflict_section?: ConflictSection}).conflict_section
-    ?? {findings: [], headline: null, gap: {reason: 'engine result not supplied for this security'}}
+  const r = row as ProspectRow & {conflict_section?: ConflictSection; conflict_section_gap?: {reason?: string} | null}
+  // W2's server read names why a section is missing (conflict_section_gap); show that reason, not a generic one.
+  return r.conflict_section
+    ?? {findings: [], headline: null, gap: {reason: r.conflict_section_gap?.reason || 'engine result not supplied for this security'}}
+}
+
+/** AGENTS §28.11 transition: until the conflict engine (W10) supplies a section, the existing Watch producer's
+ *  flags stay visible with the existing review request. Shown only when the engine section is a gap; never mixed
+ *  with, or used to classify, engine findings. */
+export function legacyConflicts(row: ProspectRow) {
+  const section = conflictSection(row)
+  return !section.headline && section.gap ? row.conflicts || [] : []
+}
+
+function LegacyConflictFlags({ r }: { r: ProspectRow }) {
+  const [msg, setMsg] = useState('')
+  const flags = legacyConflicts(r)
+  if (!flags.length) return null
+  const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
+  return <div data-testid="watch-legacy-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>
+    {flags.map((c, i) => <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
+      <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
+      <div><b>{String(c.a?.value ?? '—')}</b> · {c.a?.source || '—'} · {when(c.a?.at ?? null)}</div>
+      <div><b>{String(c.b?.value ?? '—')}</b> · {c.b?.source || '—'} · {when(c.b?.at ?? null)}</div>
+    </div>)}
+    <button type="button" data-testid="watch-ask-cio" className="mobile-detail-primary"
+      onClick={async () => { setMsg('Queuing…'); setMsg(await askCioReview(r.symbol, `Watch conflict: ${flags.map(x => x.summary).join(' | ')}`)) }}
+      style={{ ...chipStyle('warning', 'outline', 'md'), cursor: 'pointer', minHeight: 44, width: '100%' }}>
+      Ask the CIO to review
+    </button>
+    {msg && <span role="status" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{msg}</span>}
+  </div>
 }
 
 export function WatchConflictDetail({row, onBack, onRefresh}: {row: ProspectRow; onBack?: () => void; onRefresh?: () => void}) {
@@ -100,7 +131,7 @@ export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: Pros
   }
   return (
     <button type="button" title={a.reason} style={style} onClick={() => onStep(row)} data-testid="watch-step" data-step={a.kind}>
-      {a.kind === 'resolve_conflict' ? conflictSection(row).headline ? 'Resolve conflict' : 'View record' : a.label}
+      {a.kind === 'resolve_conflict' ? conflictSection(row).headline || legacyConflicts(row).length ? 'Resolve conflict' : 'View record' : a.label}
     </button>
   )
 }
@@ -187,6 +218,7 @@ export function Detail({ r, onOpenConflict }: { r: ProspectRow | null; onAskCio?
       <section aria-label="What disagrees">
         <h2 tabIndex={-1} data-detail-focus style={{fontSize: TYPE.lg}}>What disagrees</h2>
         <ConflictLine section={conflictSection(r)} onOpen={onOpenConflict ?? sheet.open} />
+        <LegacyConflictFlags r={r} />
       </section>
       {sheet.key && !onOpenConflict && <WatchConflictDetail row={r} onBack={sheet.close} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-same-record">
