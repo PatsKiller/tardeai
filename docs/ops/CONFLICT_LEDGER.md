@@ -75,6 +75,14 @@ existing Telegram renderer now read that digest, show recorded reasons and group
 operator items without claiming DECIDED is CLEARED. Ask, review-prompt and actual
 conviction-consumer hooks still require their owners; a helper alone does not
 establish DESIGN section 12 completion.
+`ask_context_rows(root, security_guid)` supplies current read-only recall context;
+the proposed minimal Ask owner patch and exact-base SHA manifest are
+`config/proposals/conflict_ledger/ask_owner_hook.patch` and
+`ask_owner_hook.manifest.json`. They target frozen Ask head `87a6d1d0fbf168a804792782f4eb4d97edc6cefd`
+and must be applied by its owner after the frozen W10 dependency is public. Three
+hermetic proposal tests verify GUID binding, named gaps and no poll writes; the
+owner must also run the Ask affected and pending/provider-spy regressions. The
+actual Ask source files are unchanged here.
 The C3 completion owner must provide a real compared-input writer/readback;
 immutable provider artifacts must not be rewritten or given forged authorization.
 Existing PUBLISHED/TTL acquisition closure is not proof of a conflict decision.
