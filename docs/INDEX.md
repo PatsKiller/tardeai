@@ -1032,9 +1032,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
+| `docs/designs/DSN-20261024-tradeinview-history.md` | Holding history source and evidence |
 | `docs/designs/DSN-20261024-w8-legacy-carryforward.md` | Worker A six-lane carry-forward |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
-| `docs/designs/DSN-20261024-tradeinview-history.md` | Holding history source and evidence |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
