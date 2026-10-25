@@ -102,7 +102,8 @@ if [[ "$tier" == "git-push" && "$cmd" =~ $_ap_re ]]; then
   else
     _home=$(getent passwd "$(id -u)" | cut -d: -f6)
     _gf=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-8}" env -i PATH=/usr/bin:/bin HOME="$_home" LANG=C.UTF-8 \
-          /usr/bin/python3 -I "$HERE/guard_push_free.py" check --repo "$_top" --branch "$_b" 2>/dev/null | tail -1)
+          /usr/bin/python3 -I "$HERE/guard_push_free.py" check --repo "$_top" --branch "$_b" \
+          ${GUARD_PUSH_FREE_TEST_CONFIG:+--test-config "$GUARD_PUSH_FREE_TEST_CONFIG"} 2>/dev/null | tail -1)
     if [[ "$(printf '%s' "$_gf" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
       _r=$(printf '%s' "$_gf" | jq -r '.approval_ref')
       emit allow "GRANT-FREE PUSH admitted: $_b under $_r (AGENTS.md §28.15 item 8). bin/agent-push re-checks, pushes and records it." \

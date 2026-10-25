@@ -239,7 +239,13 @@ cmd_revoke() {
 }
 
 cmd_doctor() {
-  _ledger doctor
+  local rc=0
+  _ledger doctor || rc=$?
+  # AGENTS.md §28.15 item 8: the grant-free push events form a hash chain; recompute it against the stored head.
+  if [[ -f "$_GUARD_HOOKS/guard_push_free.py" ]]; then
+    python3 -I "$_GUARD_HOOKS/guard_push_free.py" verify-chain || rc=$?
+  fi
+  return "$rc"
 }
 
 cmd_log() {

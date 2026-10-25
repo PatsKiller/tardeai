@@ -15,8 +15,8 @@ Design (after two adversarial reviews of PR #2148, both DO-NOT-MERGE on the shel
   names, found through the passwd home, never ``$HOME`` or the agent's worktree), which re-checks everything and
   performs the push itself with pinned arguments.
 * Trust: this module imports only from the guard tree it lives in (``python3 -I``). Configuration is never read
-  from the environment; ``guard_push_free.config.json`` beside this file (trusted tree) is the only override, and it
-  exists for hermetic tests.
+  from the environment or from a file beside this module; ``--test-config <path>`` is the hermetic-test seam, and
+  neither bin/agent-push nor the shell guard passes it in production.
 * Fail closed: any error, missing file, unresolvable approval or failed audit write is a refusal (rc 1). The caller
   falls back to the operator's grant path, unchanged.
 
@@ -29,8 +29,9 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
     include/includeIf, credential.*, http.*, core.sshCommand, core.gitProxy, a foreign core.hooksPath).
  4. Policy: ``git ls-remote <canonical URL>`` main is in the local object store and its AGENTS.md is 21.0.0+
     ACTIVE (header version, header status, that version's history row).
- 5. The tracked ``.githooks/pre-push`` in the worktree is byte-identical to remote main's; the push runs it
-    (``core.hooksPath`` pinned), so the budget count and the secrets scan happen.
+ 5. The tracked pre-push and everything it executes from the worktree (``PREPUSH_CLOSURE``) are byte-identical to
+    remote main's, and no module in its import path shadows the stdlib; the push runs it (``core.hooksPath``
+    pinned), so the budget count and the secrets scan happen.
  6. Fast-forward: remote branch absent or its ls-remote sha is an ancestor of the local sha; confirmed by a
     ``--dry-run --porcelain`` push that must report exactly one ref, new or fast-forward.
  7. No path in ``merge-base(main)..head`` matches the train's ``broker_active_trader`` globs.
@@ -42,9 +43,15 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
         owned by this user, not group/other-writable) with the exact lines ``Assigned-branch: <branch>``,
         ``Assigned-by: <session>`` (a claim on ``coordination/COORDINATOR`` held by that session) and
         ``Operator-approval: <ref>``;
-    and in both cases ``<ref>`` RESOLVES to an operator-authored record: a GitHub comment URL on the canonical repo
-    whose author is the operator login (``gh api``), or ``operator-decision:<request_id>`` naming an ``APPROVE``
-    row by an operator actor in ``data/governance/operator_decisions.jsonl``.
+    and in both cases ``<ref>`` RESOLVES to a GitHub comment on the canonical repo whose author is the operator
+    login (``gh api``) and which is not a policy ratification (``APPROVE_AGENTS_POLICY_...``). On the claim path the
+    comment must also be bound to the branch: on the PR whose head is the branch, or naming the branch. The
+    coordinator claim must be live or stale (not done). Decision-ledger rows are not accepted until they are signed.
+
+    The pusher's session (``AGENT_CLAIM_SESSION``) is self-declared and therefore ADVISORY: it only selects which
+    claim is consulted. It cannot widen anything -- the push can only fast-forward that claim's own feature branch,
+    and only under an operator comment bound to that branch -- so spoofing it gains another agent's already-approved
+    fast-forward at most. Binding it to a process identity (pid/tty) is not possible today: claims record neither.
 10. Audit: a hash-chained ``grant-free-push-intent`` line is written BEFORE the push (failure refuses) and a
     ``grant-free-push`` outcome line after it.
 
@@ -71,7 +78,10 @@ MIN_POLICY = (21, 0, 0)
 MIN_POLICY_TEXT = "21.0.0"
 HOOKS_DIR = Path(__file__).resolve().parent
 TRUSTED_ROOT = HOOKS_DIR.parents[1]
-CONFIG_PATH = HOOKS_DIR / "guard_push_free.config.json"
+#: Test seam only: read when the caller passes ``--test-config <path>`` (the wrapper and the shell guard never do in
+#: production; the shell guard forwards GUARD_PUSH_FREE_TEST_CONFIG from ITS OWN environment, which agents cannot
+#: set). A file planted beside this module is ignored.
+TEST_CONFIG: Optional[Path] = None
 GIT = "/usr/bin/git"
 SAFE_PATH = "/usr/bin:/bin"
 
@@ -90,20 +100,17 @@ COMMENT_URL_RE = re.compile(
     r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)/(?:pull|issues)/(?P<num>\d+)"
     r"#issuecomment-(?P<id>\d+)$"
 )
-DECISION_RE = re.compile(r"^operator-decision:(?P<id>[A-Za-z0-9_-]{8,80})$")
 _SECTION = re.compile(r"^##\s+(?P<name>.+?)\s*$", re.MULTILINE)
 
 DEFAULTS: dict[str, Any] = {
     "canonical_url": "https://github.com/PatsKiller/tardeai",
     "operator_login": "PatsKiller",
-    "operator_actors": ["PatsKiller"],
     "comment_repo": None,  # default: owner/repo of canonical_url
     "gh": "/usr/bin/gh",
     "credential_helper": "!/usr/bin/gh auth git-credential",
     "state_root": None,  # default: <passwd home>/trade-ai-releases/persistent-state
     "claims_dir": None,
     "handoffs_dir": None,
-    "decisions_path": None,
     "approvals_dir": None,  # default: <passwd home>/.cursor/approvals
     "audit_log": None,  # default: <passwd home>/logs/cursor-agent-audit.jsonl
     "budget_path": None,  # default: the push-budget module's own (git common dir)
@@ -126,16 +133,15 @@ def passwd_home() -> Path:
 
 def load_config() -> dict[str, Any]:
     cfg = dict(DEFAULTS)
-    if CONFIG_PATH.exists():
+    if TEST_CONFIG is not None:
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+            cfg.update(json.loads(TEST_CONFIG.read_text(encoding="utf-8")))
         except (OSError, ValueError) as exc:
-            raise Refused(f"unreadable {CONFIG_PATH.name}: {exc}") from None
+            raise Refused(f"unreadable test config {TEST_CONFIG}: {exc}") from None
     home = passwd_home()
     state = Path(cfg["state_root"] or home / "trade-ai-releases" / "persistent-state")
     cfg["claims_dir"] = Path(cfg["claims_dir"] or state / "data" / "coordination" / "claims")
     cfg["handoffs_dir"] = Path(cfg["handoffs_dir"] or state / "data" / "coordination" / "handoffs")
-    cfg["decisions_path"] = Path(cfg["decisions_path"] or state / "data" / "governance" / "operator_decisions.jsonl")
     cfg["approvals_dir"] = Path(cfg["approvals_dir"] or home / ".cursor" / "approvals")
     cfg["audit_log"] = Path(cfg["audit_log"] or home / "logs" / "cursor-agent-audit.jsonl")
     return cfg
@@ -232,8 +238,8 @@ def check_remote_config(repo: Path, canonical: str) -> None:
             raise Refused(f"{scope} config core.hooksPath={val} would skip the tracked pre-push hook")
 
 
-def ls_remote(repo: Path, url: str, branch: str, timeout: float) -> dict[str, str]:
-    cp = _git(repo, "ls-remote", url, "refs/heads/main", f"refs/heads/{branch}", timeout=timeout)
+def ls_remote(repo: Path, url: str, branch: str, timeout: float, pins: tuple[str, ...]) -> dict[str, str]:
+    cp = _git(repo, "ls-remote", url, "refs/heads/main", f"refs/heads/{branch}", timeout=timeout, pins=pins)
     if cp.returncode != 0:
         raise Refused(f"git ls-remote {url} failed rc={cp.returncode}")
     out = {}
@@ -257,14 +263,55 @@ def check_policy(repo: Path, main_sha: str) -> dict[str, Any]:
     return st
 
 
+#: What the tracked pre-push hook executes or imports from the WORKTREE (it runs with PYTHONPATH=<repo root>). Each must
+#: be byte-identical to remote main's (present or absent alike), so a branch cannot neuter its own budget count or
+#: secrets scan. Missing on main but present here, or the reverse, refuses.
+PREPUSH_CLOSURE = (
+    ".githooks/pre-push",
+    "scripts/check_no_secrets.py",
+    "scripts/lib/tradeai_push_budget.py",
+    "scripts/lib/guard_push_auth.py",
+    "scripts/lib/__init__.py",
+    "scripts/__init__.py",
+    ".cursor/hooks/guard_ledger.py",
+)
+#: Directories the pre-push's Python puts on sys.path (repo root via PYTHONPATH and scripts/lib/__init__.py; the hooks
+#: dir via guard_push_auth). A module there named like a stdlib module, or sitecustomize/usercustomize, would run in
+#: the hook; it must match main exactly.
+SHADOW_DIRS = ("", "scripts", "scripts/lib", ".cursor/hooks")
+_SHADOW_EXTRA = frozenset({"sitecustomize", "usercustomize"})
+
+
+def _main_blob(repo: Path, main_sha: str, rel: str) -> Optional[str]:
+    return _out(repo, "rev-parse", "--verify", "--quiet", f"{main_sha}:{rel}")
+
+
 def check_prepush(repo: Path, main_sha: str) -> None:
-    hook = repo / ".githooks" / "pre-push"
-    if not hook.is_file() or hook.is_symlink():
-        raise Refused("the tracked .githooks/pre-push is missing")
-    want = _out(repo, "rev-parse", f"{main_sha}:.githooks/pre-push")
-    have = _out(repo, "hash-object", str(hook))
-    if not want or want != have:
-        raise Refused(".githooks/pre-push differs from remote main's; the push budget and secrets scan must run")
+    for rel in PREPUSH_CLOSURE:
+        p = repo / rel
+        want = _main_blob(repo, main_sha, rel)
+        if p.is_symlink():
+            raise Refused(f"{rel} is a symlink; the pre-push closure must match remote main")
+        have = _out(repo, "hash-object", "--no-filters", str(p)) if p.exists() else None
+        if rel == ".githooks/pre-push" and not want:
+            raise Refused("remote main has no .githooks/pre-push")
+        if want != have:
+            raise Refused(f"{rel} differs from remote main's; the pre-push budget count and secrets scan must run "
+                          f"unmodified")
+    stdlib = set(getattr(sys, "stdlib_module_names", ())) | _SHADOW_EXTRA
+    for d in SHADOW_DIRS:
+        base = repo / d if d else repo
+        if not base.is_dir():
+            continue
+        for e in base.iterdir():
+            name = e.name[:-3] if e.name.endswith(".py") else e.name
+            if name not in stdlib or not (e.name.endswith(".py") or (e / "__init__.py").exists()):
+                continue
+            rel = f"{d}/{e.name}" if d else e.name
+            want = _main_blob(repo, main_sha, rel)
+            have = _out(repo, "hash-object", "--no-filters", str(e)) if e.is_file() and not e.is_symlink() else None
+            if e.is_dir() or want != have:
+                raise Refused(f"{rel} would shadow the stdlib module {name!r} inside the pre-push hook")
 
 
 def check_fast_forward(repo: Path, remote_sha: Optional[str], local_sha: str) -> str:
@@ -387,8 +434,30 @@ def approval_ref(text: Optional[str]) -> Optional[str]:
     return refs[0] if refs else None
 
 
-def resolve_approval(ref: Optional[str], cfg: dict[str, Any]) -> dict[str, str]:
-    """``ref`` must name an operator-authored record; anything else (``yes``, prose, a relay) is refused."""
+def _gh_api(cfg: dict[str, Any], path: str) -> dict[str, Any]:
+    try:
+        cp = subprocess.run([str(cfg["gh"]), "api", path], capture_output=True, text=True,
+                            timeout=float(cfg["gh_timeout"]), check=False, env=_clean_env())
+        doc = json.loads(cp.stdout) if cp.returncode == 0 else {}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        doc = {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _names_branch(text: str, branch: str) -> bool:
+    return re.search(r"(?<![A-Za-z0-9._/-])" + re.escape(branch) + r"(?![A-Za-z0-9_/-]|\.[A-Za-z0-9_])",
+                     text or "") is not None
+
+
+def resolve_approval(ref: Optional[str], cfg: dict[str, Any], *, branch: str, bind_branch: bool) -> dict[str, str]:
+    """``ref`` must be a GitHub comment by the operator on the canonical repo; anything else is refused.
+
+    A policy ratification comment (body ``APPROVE_AGENTS_POLICY_...``) never approves a push. With ``bind_branch``
+    (the claim path) the comment must be on the PR whose head branch is ``branch``, or its body must name ``branch``;
+    the handoff path is bound by the coordinator's ``Assigned-branch`` line instead.
+
+    Not accepted (follow-up): operator-decision ledger rows. They are unsigned today, so any same-uid write could
+    forge one; they become acceptable when rows carry the operator's passkey identity."""
     if not ref:
         raise Refused("no Operator-approval line")
     # The record is the first token; agent_claim.py appends "  _(added <ts>)_" to worklog plan steps.
@@ -399,35 +468,32 @@ def resolve_approval(ref: Optional[str], cfg: dict[str, Any]) -> dict[str, str]:
         want = str(cfg.get("comment_repo") or (f"{canon.group(1)}/{canon.group(2)}" if canon else ""))
         if not want or f"{m.group('owner')}/{m.group('repo')}" != want:
             raise Refused(f"approval comment {ref} is not on the canonical repository")
-        try:
-            cp = subprocess.run([str(cfg["gh"]), "api", f"repos/{m.group('owner')}/{m.group('repo')}/issues/comments/"
-                                 f"{m.group('id')}"], capture_output=True, text=True, timeout=float(cfg["gh_timeout"]),
-                                check=False, env=_clean_env())
-            doc = json.loads(cp.stdout) if cp.returncode == 0 else {}
-        except (OSError, subprocess.SubprocessError, ValueError):
-            doc = {}
+        doc = _gh_api(cfg, f"repos/{m.group('owner')}/{m.group('repo')}/issues/comments/{m.group('id')}")
         login = str(((doc.get("user") or {}).get("login")) or "")
         html = str(doc.get("html_url") or "")
+        body = str(doc.get("body") or "")
         if login != cfg["operator_login"]:
             raise Refused(f"approval comment {m.group('id')} is not authored by the operator (got {login or 'none'})")
         if not html.endswith(f"/{m.group('num')}#issuecomment-{m.group('id')}"):
             raise Refused(f"approval comment {m.group('id')} does not belong to #{m.group('num')}")
-        return {"kind": "github_comment", "ref": ref, "author": login, "comment_id": m.group("id")}
-    m = DECISION_RE.match(ref)
-    if m:
-        path = Path(cfg["decisions_path"])
-        try:
-            rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
-        except (OSError, ValueError):
-            raise Refused(f"operator decision ledger {path} is unreadable") from None
-        for r in rows:
-            if (isinstance(r, dict) and r.get("event") == "DECIDED" and r.get("decision") == "APPROVE"
-                    and r.get("request_id") == m.group("id") and r.get("actor") in cfg["operator_actors"]):
-                return {"kind": "operator_decision", "ref": ref, "author": str(r.get("actor")),
-                        "item_id": str(r.get("item_id") or "")}
-        raise Refused(f"no APPROVE decision by an operator actor with request_id {m.group('id')}")
-    raise Refused(f"Operator-approval {ref!r} does not resolve: use a GitHub comment URL by the operator or "
-                  f"operator-decision:<request_id>")
+        if body.lstrip().startswith("APPROVE_AGENTS_POLICY_"):
+            raise Refused(f"comment {m.group('id')} ratifies a policy; it does not approve a push")
+        bound = "assignment"
+        if bind_branch:
+            head = ""
+            if "/pull/" in ref:
+                pr = _gh_api(cfg, f"repos/{m.group('owner')}/{m.group('repo')}/pulls/{m.group('num')}")
+                head = str(((pr.get("head") or {}).get("ref")) or "")
+            if head == branch:
+                bound = "pr-head"
+            elif _names_branch(body, branch):
+                bound = "comment-names-branch"
+            else:
+                raise Refused(f"approval comment {m.group('id')} is not bound to {branch}: #{m.group('num')} head is "
+                              f"{head or 'unknown'} and the comment does not name the branch")
+        return {"kind": "github_comment", "ref": ref, "author": login, "comment_id": m.group("id"), "bound": bound}
+    raise Refused(f"Operator-approval {ref!r} does not resolve: it must be the URL of a GitHub comment by the operator "
+                  f"on the canonical repository")
 
 
 def _parse_ts(v: Any) -> Optional[datetime]:
@@ -492,7 +558,7 @@ def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], cla
         refs = approval_refs(str(r.get("note") or "")) + approval_refs(plan)
         for ref in refs or [None]:
             try:
-                res = resolve_approval(ref, cfg)
+                res = resolve_approval(ref, cfg, branch=branch, bind_branch=True)
             except Refused as exc:
                 last = exc
                 continue
@@ -511,7 +577,7 @@ def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict]) -> di
     root = Path(cfg["handoffs_dir"])
     if not root.is_dir():
         raise Refused("no handoffs directory")
-    coordinators = {str(r.get("session") or "") for r in claims if r["_state"] in ("live", "stale", "done")
+    coordinators = {str(r.get("session") or "") for r in claims if r["_state"] in ("live", "stale")
                     and COORDINATOR_PATH in [str(p).strip().strip("/") for p in (r.get("paths") or [])]}
     coordinators.discard("")
     uid = os.getuid()
@@ -537,7 +603,7 @@ def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict]) -> di
             last = Refused(f"handoff {rel}: Assigned-by {by!r} is not a session holding {COORDINATOR_PATH}")
             continue
         try:
-            res = resolve_approval(approval_ref(text), cfg)
+            res = resolve_approval(approval_ref(text), cfg, branch=branch, bind_branch=False)
         except Refused as exc:
             last = Refused(f"handoff {rel}: {exc}")
             continue
@@ -653,7 +719,8 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
         raise Refused(f"no local branch {branch}")
     canonical = str(cfg["canonical_url"])
     check_remote_config(repo, canonical)
-    refs = ls_remote(repo, canonical, branch, float(cfg["ls_remote_timeout"]))
+    pins = push_pins(repo, canonical, cfg)
+    refs = ls_remote(repo, canonical, branch, float(cfg["ls_remote_timeout"]), pins)
     main_sha = refs.get("refs/heads/main")
     if not main_sha:
         raise Refused("the canonical remote has no main")
@@ -665,7 +732,6 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     budget = check_budget(repo, branch, cfg)
     plan = find_plan(branch, session, cfg, bind_session=bind_session)
     refspec = f"{local_sha}:refs/heads/{branch}"
-    pins = push_pins(repo, canonical, cfg)
     dry = _git(repo, "push", "--dry-run", "--porcelain", "--no-verify", "--no-follow-tags", "--no-signed",
                "--recurse-submodules=no", canonical, refspec, pins=pins, timeout=float(cfg["ls_remote_timeout"]))
     if dry.returncode != 0:
@@ -702,14 +768,54 @@ def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, A
             "stderr": cp.stderr.strip()[-2000:]}
 
 
+def verify_chain(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Recompute the grant-free hash chain in the guard log and compare it with the stored chain head."""
+    log, head = Path(cfg["audit_log"]), Path(cfg["approvals_dir"]) / "grant_free_chain.head"
+    prev, n, bad = "genesis", 0, []
+    if log.exists():
+        with log.open(encoding="utf-8", errors="replace") as fh:
+            for lineno, line in enumerate(fh, 1):
+                if '"chain_hash"' not in line or '"grant-free-push' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    bad.append(f"line {lineno}: unparseable")
+                    continue
+                got = rec.pop("chain_hash", "")
+                rec.pop("event_id", None)
+                if rec.get("chain_prev") != prev:
+                    bad.append(f"line {lineno}: chain_prev {str(rec.get('chain_prev'))[:12]} != {prev[:12]}")
+                want = hashlib.sha256((str(rec.get("chain_prev")) + json.dumps(rec, sort_keys=True)).encode()).hexdigest()
+                if want != got:
+                    bad.append(f"line {lineno}: chain_hash does not match its content")
+                prev, n = got, n + 1
+    stored = head.read_text(encoding="utf-8").strip() if head.exists() else "genesis"
+    if stored != prev:
+        bad.append(f"chain head {stored[:12]} != last logged {prev[:12]}")
+    return {"schema": "GuardGrantFreeChain@v1", "ok": not bad, "events": n, "head": prev, "problems": bad[:50]}
+
+
 def main(argv: Optional[list[str]] = None) -> int:
+    global TEST_CONFIG
     ap = argparse.ArgumentParser(description="grant-free push check/push (AGENTS.md §28.15 item 8)")
-    ap.add_argument("mode", choices=("check", "push"))
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--branch", required=True)
+    ap.add_argument("mode", choices=("check", "push", "verify-chain"))
+    ap.add_argument("--repo")
+    ap.add_argument("--branch")
+    ap.add_argument("--test-config", default=None, help="hermetic tests only")
     ap.add_argument("--session", default=None)
     ap.add_argument("--cwd", default="")
     a = ap.parse_args(argv)
+    TEST_CONFIG = Path(a.test_config) if a.test_config else None
+    if a.mode == "verify-chain":
+        try:
+            out = verify_chain(load_config())
+        except Refused as exc:
+            out = {"ok": False, "problems": [str(exc)]}
+        print(json.dumps(out, sort_keys=True))
+        return 0 if out.get("ok") else 1
+    if not a.repo or not a.branch:
+        ap.error("--repo and --branch are required")
     try:
         refuse_dirty_env()
         ev = evaluate(a.repo, a.branch, a.session, bind_session=(a.mode == "push"))

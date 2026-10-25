@@ -27,8 +27,15 @@ BRANCH = "feat/item8-demo-20261025"
 SESSION = "s-demo-20261025"
 CLAIM_ID = "20261025T120000Z-claude-0a1b2c3d"
 COORD_ID = "20261025T110000Z-claude-0c0c0c0c"
-OK_COMMENT = "https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-111"
-OTHER_COMMENT = "https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-222"
+GH = "https://github.com/PatsKiller/tardeai"
+OK_COMMENT = f"{GH}/pull/2148#issuecomment-111"          # operator, on the PR whose head is BRANCH
+OTHER_COMMENT = f"{GH}/pull/2148#issuecomment-222"       # not the operator
+RATIFY_COMMENT = f"{GH}/pull/2128#issuecomment-444"      # operator's APPROVE_AGENTS_POLICY_ ratification
+NAMES_COMMENT = f"{GH}/pull/7#issuecomment-555"          # operator, other PR, body names BRANCH
+UNBOUND_COMMENT = f"{GH}/pull/7#issuecomment-666"        # operator, other PR, does not name BRANCH
+
+CLOSURE_STUBS = ("scripts/check_no_secrets.py", "scripts/lib/tradeai_push_budget.py", "scripts/lib/guard_push_auth.py",
+                 "scripts/lib/__init__.py", ".cursor/hooks/guard_ledger.py")
 
 pytestmark = pytest.mark.skipif(shutil.which("jq") is None or not Path("/usr/bin/git").exists(),
                                 reason="needs jq + /usr/bin/git")
@@ -43,10 +50,17 @@ cat >> "$d/prepush-ran"
 """
 
 FAKE_GH = """#!/bin/sh
+U=https://github.com/PatsKiller/tardeai
 case "$2" in
-  */comments/111) echo '{"user":{"login":"PatsKiller"},"html_url":"https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-111"}' ;;
-  */comments/222) echo '{"user":{"login":"someone-else"},"html_url":"https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-222"}' ;;
-  */comments/333) echo '{"user":{"login":"PatsKiller"},"html_url":"https://github.com/PatsKiller/tardeai/pull/9#issuecomment-333"}' ;;
+  */comments/111) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/2148#issuecomment-111\\",\\"body\\":\\"go ahead\\"}" ;;
+  */comments/222) echo "{\\"user\\":{\\"login\\":\\"someone-else\\"},\\"html_url\\":\\"$U/pull/2148#issuecomment-222\\",\\"body\\":\\"ok\\"}" ;;
+  */comments/333) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/9#issuecomment-333\\",\\"body\\":\\"ok\\"}" ;;
+  */comments/444) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/2128#issuecomment-444\\",\\"body\\":\\"APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b\\"}" ;;
+  */comments/555) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/7#issuecomment-555\\",\\"body\\":\\"approve feat/item8-demo-20261025 too\\"}" ;;
+  */comments/666) echo "{\\"user\\":{\\"login\\":\\"PatsKiller\\"},\\"html_url\\":\\"$U/pull/7#issuecomment-666\\",\\"body\\":\\"approved\\"}" ;;
+  */pulls/2148) echo '{"head":{"ref":"feat/item8-demo-20261025"}}' ;;
+  */pulls/2128) echo '{"head":{"ref":"docs/agents-20-4-0-hands-off-20261025"}}' ;;
+  */pulls/7) echo '{"head":{"ref":"feat/other-20261025"}}' ;;
   *) exit 1 ;;
 esac
 """
@@ -99,19 +113,21 @@ class Env:
         self.gh.chmod(0o755)
         self.cfg = {
             "canonical_url": str(self.origin), "comment_repo": "PatsKiller/tardeai", "gh": str(self.gh),
-            "claims_dir": str(self.claims), "handoffs_dir": str(self.handoffs), "decisions_path": str(self.decisions),
+            "claims_dir": str(self.claims), "handoffs_dir": str(self.handoffs),
             "approvals_dir": str(self.adir), "audit_log": str(self.audit), "budget_path": str(self.budget),
         }
         self.write_cfg()
         self.env = {
             "PATH": "/usr/bin:/bin", "HOME": str(self.home), "TMPDIR": str(tmp),
             "GUARD_APPROVALS_DIR": str(self.adir), "GUARD_AUDIT_LOG": str(self.audit), "CURSOR_PROJECT_DIR": str(tmp),
+            "GUARD_PUSH_FREE_TEST_CONFIG": str(self.cfg_path),  # the hook's own (Cursor's) environment
         }
         subprocess.run([sys.executable, str(HOOKS / "guard_ledger.py"), "init"], env=self.env, check=True,
                        capture_output=True)
 
     def write_cfg(self) -> None:
-        (self.tree / ".cursor" / "hooks" / "guard_push_free.config.json").write_text(json.dumps(self.cfg))
+        self.cfg_path = self.tmp / "guard_push_free.test-config.json"
+        self.cfg_path.write_text(json.dumps(self.cfg))
 
     def git(self, *args: str, cwd: Path | None = None, check: bool = True) -> str:
         cp = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
@@ -132,6 +148,9 @@ class Env:
         (self.repo / "bin").mkdir()
         shutil.copy2(ROOT / "bin" / "agent-push", self.repo / "bin" / "agent-push")
         (self.repo / "README").write_text("x\n")
+        for rel in CLOSURE_STUBS:  # what the tracked pre-push executes; identical on main and the branch
+            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / rel).write_text(f"# stub {rel}\n")
         self.git("add", "-A")
         self.git("commit", "-qm", "seed")
         self.git("remote", "add", "origin", str(self.origin))
@@ -167,9 +186,11 @@ class Env:
                                            "counters": {key: {"branch": branch, "authorized_push_count": n}}}))
 
     def checker(self, mode: str = "push", branch: str = BRANCH, session: str | None = SESSION,
-                extra_env: dict | None = None) -> dict:
+                extra_env: dict | None = None, test_config: bool = True) -> dict:
         args = [str(self.tree / ".cursor" / "hooks" / "guard_push_free.py"), mode, "--repo", str(self.repo),
                 f"--branch={branch}", "--cwd", str(self.repo)]
+        if test_config:
+            args += ["--test-config", str(self.cfg_path)]
         if session:
             args += ["--session", session]
         env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home), **(extra_env or {})}
@@ -177,6 +198,11 @@ class Env:
         out = json.loads(p.stdout.strip().splitlines()[-1])
         assert (p.returncode == 0) == bool(out.get("allow")), out
         return out
+
+    def checker_raw(self, args: list) -> dict:
+        p = subprocess.run(["/usr/bin/python3", "-I", str(self.tree / ".cursor" / "hooks" / "guard_push_free.py"), *args],
+                           env={"PATH": "/usr/bin:/bin", "HOME": str(self.home)}, capture_output=True, text=True)
+        return json.loads(p.stdout.strip().splitlines()[-1])
 
     def hook(self, cmd: str, cwd: Path | None = None) -> dict:
         payload = {"command": cmd, "cwd": str(cwd or self.repo), "hook_event_name": "beforeShellExecution"}
@@ -257,13 +283,6 @@ def test_fast_forward_second_push_and_worklog_plan(E):
 
 def test_unresolvable_note_falls_back_to_resolvable_plan_line(E):
     E.claim(note="Operator-approval: prose only", worklog=f"## Plan\n\n- [ ] Operator-approval: {OK_COMMENT}  _(added 2026-10-25T21:36:18Z)_\n")
-    assert E.checker()["allow"]
-
-
-def test_operator_decision_ledger_ref(E):
-    E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0001-demo",
-                                       "actor": "PatsKiller", "item_id": "plan-1"}) + "\n")
-    E.claim(note="Operator-approval: operator-decision:req-0001-demo")
     assert E.checker()["allow"]
 
 
@@ -488,21 +507,98 @@ def test_m2_audit_failure_refuses_before_push(E):
 @pytest.mark.parametrize("note", [
     "Operator-approval: yes", "Operator-approval: <ref>", "Operator-approval: tracker item 12 (operator said so)",
     f"Operator-approval: {OTHER_COMMENT}",                                    # comment not by the operator
-    "Operator-approval: https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-333",  # wrong PR number
+    "Operator-approval: https://github.com/PatsKiller/tardeai/pull/2148#issuecomment-333",  # wrong PR number
     "Operator-approval: https://github.com/evil/tardeai/pull/1#issuecomment-111",            # other repo
     "Operator-approval: https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-999",   # gh fails
-    "Operator-approval: operator-decision:req-missing-1", "working on it",
+    "Operator-approval: operator-decision:req-missing-1", "working on it", f"Operator-approval: {RATIFY_COMMENT}",
+    f"Operator-approval: {UNBOUND_COMMENT}",
 ])
 def test_x11b_claim_approval_must_resolve(E, note):
     E.claim(note=note)
     _refused(E, E.checker())
 
 
-def test_decision_by_non_operator_refused(E):
-    E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0002-demo",
-                                       "actor": "some-agent"}) + "\n")
-    E.claim(note="Operator-approval: operator-decision:req-0002-demo")
-    _refused(E, E.checker())
+def test_f2_operator_decision_ledger_not_accepted(E):
+    E.decisions.write_text(json.dumps({"event": "DECIDED", "decision": "APPROVE", "request_id": "req-0001-demo",
+                                       "actor": "PatsKiller", "item_id": BRANCH}) + "\n")
+    E.claim(note="Operator-approval: operator-decision:req-0001-demo")
+    _refused(E, E.checker(), "does not resolve")
+
+
+@pytest.mark.parametrize("ref,ok", [(NAMES_COMMENT, True), (UNBOUND_COMMENT, False), (RATIFY_COMMENT, False)])
+def test_f1_claim_comment_must_bind_to_branch(E, ref, ok):
+    E.claim(note=f"Operator-approval: {ref}")
+    out = E.checker()
+    assert out["allow"] is ok, out
+    if ok:
+        assert E.events()[-1]["plan"]["approval_bound"] == "comment-names-branch"
+    else:
+        assert ("not bound" in out["reason"]) or ("ratifies a policy" in out["reason"]), out
+
+
+@pytest.mark.parametrize("ref,ok", [(UNBOUND_COMMENT, True), (RATIFY_COMMENT, False), (OTHER_COMMENT, False)])
+def test_f1_handoff_binds_by_assignment_but_never_a_ratification(E, ref, ok):
+    E.coordinator()
+    (E.handoffs / "T.md").write_text(
+        f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {ref}\n")
+    out = E.checker(session=None)
+    assert out["allow"] is ok, out
+    if ref == RATIFY_COMMENT:
+        assert "ratifies a policy" in out["reason"]
+
+
+def test_f1_done_coordinator_claim_does_not_assign(E):
+    E.coordinator()
+    doc = json.loads((E.claims / f"{COORD_ID}.json").read_text())
+    doc["status"] = "done"
+    (E.claims / f"{COORD_ID}.json").write_text(json.dumps(doc))
+    (E.handoffs / "T.md").write_text(
+        f"Assigned-branch: {BRANCH}\nAssigned-by: coord-20261025\nOperator-approval: {UNBOUND_COMMENT}\n")
+    _refused(E, E.checker(session=None), "COORDINATOR")
+
+
+@pytest.mark.parametrize("rel,content,commit", [
+    ("scripts/check_no_secrets.py", "import sys; sys.exit(0)\n", True),
+    ("scripts/lib/tradeai_push_budget.py", "def count_for(b): return 0\n", True),
+    ("scripts/lib/guard_push_auth.py", "x = 1\n", False),
+    (".cursor/hooks/guard_ledger.py", "x = 1\n", False),
+    ("scripts/__init__.py", "import os\n", False),
+    ("scripts/lib/json.py", "raise SystemExit(0)\n", False),
+    ("sitecustomize.py", "import os\n", False),
+    ("subprocess.py", "x = 1\n", True),
+    (".cursor/hooks/uuid.py", "x = 1\n", False),
+])
+def test_f3_prepush_closure_and_stdlib_shadowing_refused(E, rel, content, commit):
+    E.claim()
+    p = E.repo / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+    if commit:
+        E.git("add", "-A")
+        E.git("commit", "-qm", f"touch {rel}")
+    _refused(E, E.checker(), rel)
+
+
+def test_n5_config_beside_module_is_ignored(E, tmp_path):
+    E.claim()
+    planted = E.tree / ".cursor" / "hooks" / "guard_push_free.config.json"
+    planted.write_text(json.dumps(E.cfg))
+    out = E.checker(test_config=False)  # production defaults: canonical github URL, so this origin is refused
+    _refused(E, out, "canonical")
+
+
+def test_chain_verifier(E):
+    E.claim()
+    assert E.checker()["allow"]
+    E.commit("work 2")
+    assert E.checker()["allow"]
+    v = E.checker_raw(["verify-chain", "--test-config", str(E.cfg_path)])
+    assert v["ok"] and v["events"] == 4, v
+    lines = E.audit.read_text().splitlines()
+    lines[1] = lines[1].replace('"outcome":"pushed"', '"outcome":"forged"')
+    E.audit.write_text("\n".join(lines) + "\n")
+    v = E.checker_raw(["verify-chain", "--test-config", str(E.cfg_path)])
+    assert not v["ok"] and any("does not match" in x for x in v["problems"]), v
 
 
 def test_h3i_claim_of_another_session_refused(E):
@@ -549,6 +645,12 @@ def test_handoff_too_deep_or_symlink_or_group_writable_refused(E, tmp_path):
     gw.write_text(body)
     gw.chmod(0o664)
     _refused(E, E.checker(session=None))
+
+
+@pytest.mark.parametrize("cmd", ["cp x ~/.cursor/hooks.json", "echo x > .cursor/hooks/guard-lib.sh",
+                                 "sed -i s/a/b/ /r/.cursor/hooks/guard-shell.sh", "chmod 777 .cursor/hooks/guard-lib.sh"])
+def test_n5_shell_writes_to_the_guard_are_guard_config(cmd):
+    assert _classify(cmd) == "guard-config"
 
 
 def test_handoff_writes_are_guarded():
@@ -612,7 +714,8 @@ def test_lockfile_writes_are_deps(path):
 
 @pytest.mark.parametrize("cmd", ["git -C /x push --force origin main", "git -c a=b push", "git --no-pager push",
                                  "git push", "git reset --hard", "git -C /x rebase main", "bin/agent-push feat/x-1",
-                                 "~/wt/bin/agent-push -u origin HEAD"])
+                                 "~/wt/bin/agent-push -u origin HEAD",
+                                 "python3 ~/x/.cursor/hooks/guard_push_free.py push --test-config /tmp/c.json"])
 def test_push_shapes_classify_git_push(cmd):
     assert _classify(cmd) == "git-push"
 

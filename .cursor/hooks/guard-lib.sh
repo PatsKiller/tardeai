@@ -57,6 +57,9 @@ classify_cmd() {
   # AGENTS.md 21.0.0 §28.15 item 8: every bin/agent-push invocation is a push; guard-shell.sh admits only the strict
   # grant-free form "bin/agent-push <branch>" (identical wrapper + trusted checker), everything else needs a grant.
   [[ "$cmd" =~ (^|[^[:alnum:]_.-])agent-push([^[:alnum:]_.-]|$) ]] && { echo git-push; return; }
+  [[ "$cmd" =~ guard_push_free ]] && { echo git-push; return; }
+  # Shell writes to the guard itself (hooks, hooks.json) are guard-config, like Write-tool edits (classify_path).
+  [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|truncate|install|ln|chmod|sed[[:space:]]+-i)[^|]*\.cursor/(hooks|hooks\.json) ]] && { echo guard-config; return; }
   # Exporting, declaring or unsetting GIT_* / TRADEAI_* changes what a later push does (GIT_CONFIG_*, GIT_DIR,
   # TRADEAI_SKIP_SECRETS_SCAN, TRADEAI_REMOTE_PUSH_OVERRIDE): treated as a push-scope operation.
   local _envre='(^|[;&|(`[:space:]])(export|declare|typeset|set|unset|env|readonly|local)[[:space:]][^;&|]*(GIT_|TRADEAI_)'
