@@ -212,7 +212,7 @@ def test_fast_forward_of_existing_remote_branch_allows(E):
 
 
 @pytest.mark.parametrize("cmd", [
-    f"cd {{repo}} && TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin HEAD 2>&1 | tail -3",
+    "cd {repo} && TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin HEAD 2>&1 | tail -3",
     f"git add -A && git commit -qm 'a && b' ; git push origin HEAD:{BRANCH}",
     f"git -C {{repo}} push origin refs/heads/{BRANCH}",
     "git push",
@@ -366,7 +366,7 @@ def test_remote_branch_not_local_refuses(E):
     f"timeout 60 git push origin {BRANCH}",
     f"git push origin {BRANCH} && git push -f origin main",
     f"git push origin {BRANCH}; git push origin {BRANCH}",
-    f"git push origin $(git branch --show-current)",
+    "git push origin $(git branch --show-current)",
     "git push origin `git branch --show-current`",
     "git push origin $BRANCH",
     "git push origin feat/*",
@@ -439,6 +439,18 @@ def test_approval_outside_goal_and_plan_sections_refuses(E):
 
 def test_handoff_substring_is_not_a_match(E):
     (E.handoffs / "T.md").write_text(f"see docs {BRANCH}-v2 and origin{BRANCH}x\n")
+    assert not E.check(PUSH)["allow"]
+
+
+def test_handoff_evidence_below_batch_level_is_not_read(E):
+    deep = E.handoffs / "batch" / "evidence"
+    deep.mkdir(parents=True)
+    (deep / "NOTE.md").write_text(f"branch {BRANCH}\n")
+    assert not E.check(PUSH)["allow"]
+
+
+def test_handoff_progress_log_is_not_a_task_file(E):
+    (E.handoffs / "PROGRESS_LOG.md").write_text(f"10:00 merged {BRANCH}\n")
     assert not E.check(PUSH)["allow"]
 
 

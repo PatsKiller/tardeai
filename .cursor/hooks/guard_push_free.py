@@ -19,7 +19,8 @@ A push is grant-free only when ALL of these hold (otherwise the caller keeps tod
      <local sha>`` holds, with the remote sha from ``git ls-remote``.
   5. The branch is covered by an approved plan: a LIVE claim on the claim board for that branch whose note, or whose
      worklog Goal/Plan section, carries an ``Operator-approval: <ref>`` line; or a coordinator task file under
-     ``data/coordination/handoffs/`` that names the branch (or a live claim's id on that branch).
+     ``data/coordination/handoffs/`` (top level or one batch directory down) that names the branch (or a live
+     claim's id on that branch).
   6. Within the per-branch push budget (``scripts/lib/tradeai_push_budget.py``; the pre-push hook still enforces it).
 
 TRUST. Every module this file imports comes from the tree this hook file lives in (the installed guardrails tree),
@@ -507,7 +508,7 @@ def claim_approval(branch: str) -> Optional[dict[str, str]]:
     return None
 
 
-def handoff_approval(branch: str, *, max_files: int = 3000, max_bytes: int = 2_000_000) -> Optional[dict[str, str]]:
+def handoff_approval(branch: str, *, max_files: int = 2000, max_bytes: int = 1_000_000) -> Optional[dict[str, str]]:
     root = handoffs_dir()
     if not root.is_dir():
         return None
@@ -517,12 +518,14 @@ def handoff_approval(branch: str, *, max_files: int = 3000, max_bytes: int = 2_0
     pats = [(t, _branch_token_re(t)) for t in tokens]
     seen = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        depth = len(Path(dirpath).relative_to(root).parts)
-        if depth >= 3:
+        # Task files live at handoffs/<file> or handoffs/<batch>/<file>; deeper levels are evidence (screenshots,
+        # packets: 1.4 GB on 2026-10-25) and are never read.
+        if len(Path(dirpath).relative_to(root).parts) >= 1:
             dirnames[:] = []
+        dirnames.sort()
         for fn in sorted(filenames):
-            if not fn.endswith((".md", ".json", ".txt", ".yaml", ".yml")):
-                continue
+            if not fn.endswith((".md", ".json", ".txt", ".yaml", ".yml")) or "log" in fn.lower():
+                continue  # a progress/worklog names branches as history, not as an assignment
             p = Path(dirpath) / fn
             seen += 1
             if seen > max_files:
