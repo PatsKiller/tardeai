@@ -34246,8 +34246,28 @@ def _hermes_promotion_review():
     }
 
 
-def _hermes_pipeline_quality():
-    """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings."""
+_HERMES_FINDING_COLS = """id, hermes_agent_name, finding_type, severity, LEFT(description, 300) AS description,
+               evidence_json, recommended_action, status, created_at"""
+# Same "closed" set the Hermes quality spot-check uses client-side (status lower-cased).
+_HERMES_FINDING_CLOSED = ("resolved", "closed", "archived")
+
+
+def _hermes_pipeline_quality(query=None):
+    """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings.
+
+    ``?limit=N`` (memory 2026-10-25): the full list is ~31.6k findings / 15.7 MB of JSON and ~80 MB of Python per
+    request; the Hermes page shows the newest 10 findings and the newest 8 open ones plus the counts. With ``limit``
+    the response carries ``findings`` (newest N), ``open_findings`` (newest N not resolved/closed/archived),
+    ``total`` and ``open_count`` — all computed in Postgres. Without ``limit`` the full payload is unchanged."""
+    raw = (query or {}).get("limit")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    if raw not in (None, ""):
+        try:
+            limit = max(1, min(200, int(str(raw))))
+        except ValueError:
+            limit = 10
+        return _hermes_pipeline_quality_page(limit)
     findings = (
         _db_query("""
         SELECT id, hermes_agent_name, finding_type, severity, LEFT(description, 300) AS description,
@@ -34261,6 +34281,45 @@ def _hermes_pipeline_quality():
         "ok": True,
         "findings": [{k: _json_clean(v) for k, v in f.items()} for f in findings],
         "total": len(findings),
+        "advisory_notice": "Pipeline Quality — Hermes Advisory Only — Not Execution",
+    }
+
+
+def _hermes_pipeline_quality_page(limit: int):
+    counts = (
+        _db_query(
+            """SELECT count(*) AS total,
+                      count(*) FILTER (WHERE lower(coalesce(status, '')) <> ALL(%s)) AS open_count
+                 FROM hermes_validation_findings WHERE source='hermes'""",
+            (list(_HERMES_FINDING_CLOSED),),
+            fetch="one",
+        )
+        or {}
+    )
+    newest = (
+        _db_query(
+            f"SELECT {_HERMES_FINDING_COLS} FROM hermes_validation_findings WHERE source='hermes' "
+            "ORDER BY created_at DESC LIMIT %s",
+            (limit,),
+        )
+        or []
+    )
+    open_rows = (
+        _db_query(
+            f"SELECT {_HERMES_FINDING_COLS} FROM hermes_validation_findings WHERE source='hermes' "
+            "AND lower(coalesce(status, '')) <> ALL(%s) ORDER BY created_at DESC LIMIT %s",
+            (list(_HERMES_FINDING_CLOSED), limit),
+        )
+        or []
+    )
+    clean = lambda rows: [{k: _json_clean(v) for k, v in f.items()} for f in rows]  # noqa: E731
+    return {
+        "ok": True,
+        "findings": clean(newest),
+        "open_findings": clean(open_rows),
+        "total": int(counts.get("total") or 0),
+        "open_count": int(counts.get("open_count") or 0),
+        "limit": limit,
         "advisory_notice": "Pipeline Quality — Hermes Advisory Only — Not Execution",
     }
 
@@ -37009,7 +37068,47 @@ def _two_way_curation_health_body(query=None):
 
 
 def _watch_directives(query=None):
-    """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
+    """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only).
+
+    ``?offset=&limit=`` (2026-10-25): the Watchpool asks for 50 rows at a time and pages with ListPager, but the
+    handler ignored the window and sent all ~1.2k directives (1.29 MB). With ``limit`` the ``directives`` list is
+    that window plus ``pagination``; every other field (counts, hits, desk suggestions) is unchanged. Without
+    ``limit`` (Watchlist hub, Hermes panel) the response is unchanged."""
+    out = _watch_directives_all(query)
+    q = query or {}
+    raw_limit = q.get("limit")
+    if isinstance(raw_limit, list):
+        raw_limit = raw_limit[0] if raw_limit else None
+    if raw_limit in (None, "") or not isinstance(out, dict) or not isinstance(out.get("directives"), list):
+        return out
+    raw_offset = q.get("offset")
+    if isinstance(raw_offset, list):
+        raw_offset = raw_offset[0] if raw_offset else None
+    try:
+        limit = max(1, min(500, int(str(raw_limit))))
+        offset = max(0, int(str(raw_offset or 0)))
+    except ValueError:
+        return out
+    rows = out["directives"]
+    total = len(rows)
+    window = rows[offset : offset + limit]
+    end = offset + len(window)
+    return {
+        **out,
+        "directives": window,
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "returned": len(window),
+            "next_offset": end if window and end < total else None,
+            "has_more": end < total,
+        },
+    }
+
+
+def _watch_directives_all(query=None):
+    """All directives (the unpaged body of ``_watch_directives``)."""
     directives = (
         _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
                               last_serviced_at, created_at, spec, created_by, rationale, ttl_days,
@@ -49113,7 +49212,7 @@ ROUTES = {
     "/api/v2/hermes/external-research": _hermes_external_research,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
-    "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
+    "/api/v2/hermes/pipeline-quality": lambda q=None: _hermes_pipeline_quality(q),
     "/api/v2/hermes/research-critique": lambda q: _hermes_research_critique(q),
     "/api/v2/hermes/maturity-dashboard": lambda: _hermes_maturity_dashboard(),
     "/api/v2/hermes/holdings-lifecycle": lambda q: _hermes_holdings_lifecycle(q),
