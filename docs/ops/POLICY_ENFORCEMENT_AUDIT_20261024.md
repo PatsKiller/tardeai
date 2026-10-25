@@ -71,3 +71,9 @@ unknown process refusal, exact event identity, stale test evidence, contention,
 receipt/attempt output, retry dedupe, redaction/cap routing, mock refusal and
 fabricated model citations. All model calls in tests are injected fakes. No test
 or agent run spends money, changes a live queue or applies a finding.
+
+The runner also supports packed release trees without `.git`: source identity
+is bound to the artifact’s own stamps, policy history to that exact commit, and
+blob reads to the explicitly selected canonical repository. Artifact text must
+match the committed policy; a checkout moving ahead or an environment override
+cannot change the policy being audited.

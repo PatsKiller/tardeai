@@ -28,8 +28,8 @@ MAX_INPUT_CHARS = 12000
 
 
 def git(root: Path, *args: str) -> str:
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=True, timeout=5)
-    return result.stdout.decode("utf-8")
+    from scripts.lib.operator_approvals_api import _git
+    return _git(root, *args)
 
 
 def audit_identity(policy: dict, *, trigger: str, now: datetime, amendment_sha: str | None = None,
@@ -174,8 +174,12 @@ def review_findings(policy: dict, measured: dict, evidence: list[dict], *, audit
 
 def run(*, root: Path, state_root: Path, trigger: str, now: datetime, apply: bool = False, llm_review: bool = False,
         amendment_sha: str | None = None, amendment_version: str | None = None, generate=None, sanitise=None) -> dict:
-    sha = git(root, "log", "-1", "--format=%H", "--", "AGENTS.md").strip()
+    sha = git(root, "log", "-1", "--format=%H", git(root, "rev-parse", "HEAD").strip(), "--", "AGENTS.md").strip()
     text = git(root, "show", f"{sha}:AGENTS.md")
+    if not (root / ".git").exists():
+        deployed = root / "AGENTS.md"
+        if not deployed.is_file() or deployed.read_text() != text:
+            raise core.Refused("RELEASE_POLICY_CONTENT_MISMATCH", 503)
     policy = core.policy_projection(text, source_sha=sha) | {"text": text}
     key = audit_identity(policy, trigger=trigger, now=now, amendment_sha=amendment_sha, amendment_version=amendment_version)
     mapping = json.loads((root / "config/policy_enforcement_map.json").read_text())

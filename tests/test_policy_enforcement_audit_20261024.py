@@ -18,6 +18,7 @@ TEXT = "Policy-Version: 20.2.0\n\n# 0 · Rules\n\nNever route around a denial."
 def isolated(tmp_path, monkeypatch):
     root, state = tmp_path / "source", tmp_path / "state"
     (root / "config").mkdir(parents=True)
+    (root / "AGENTS.md").write_text(TEXT)
     (root / "config/policy_enforcement_map.json").write_text(json.dumps({"rules": [{"anchor": "Never route", "tests": ["tests/missing.py"], "runtime_files": [], "ci_gates": []}]}))
     registry = {"domains": [{"domain": "operator_decisions", "store": {"file": "governance/operator_decisions.jsonl"},
                              "writer": c.WRITER, "approval": {"approved_by": "operator", "approved_on": "2032-04-12", "reference": "fixture only"}}]}
