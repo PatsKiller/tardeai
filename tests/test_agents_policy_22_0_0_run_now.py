@@ -1,7 +1,7 @@
-"""AGENTS.md 22.0.0 (PROPOSED, MAJOR): Ops → Controls may force a live canary Run now.
+"""AGENTS.md 22.0.0 (ACTIVE, MAJOR): Ops → Controls may force a live canary Run now.
 
-Pins the PROPOSED amendment text. Header stays at the last ACTIVE version until ratification.
-§0 / §2 / adapters are unchanged; the §25.3 soft-add keeps the 17.0.0 CLI pin wording.
+Pins the ACTIVE amendment text after ratification. §0 / §2 / adapters are unchanged;
+the §25.3 soft-add keeps the 17.0.0 CLI pin wording.
 """
 from __future__ import annotations
 
@@ -22,18 +22,17 @@ def _section_25_3() -> str:
     return AGENTS[start:end]
 
 
-def test_header_stays_prior_active_while_22_is_proposed():
-    """While PROPOSED, Policy-Version stays the last ACTIVE; 22.0.0 is not the header."""
+def test_header_is_22_0_0_active():
     hdr = _header_block()
     m = re.search(r"^Policy-Version:\s*(\S+)", hdr, re.M)
-    assert m, "missing Policy-Version"
-    assert m.group(1) != "22.0.0"
+    assert m and m.group(1) == "22.0.0", hdr[:200]
     assert re.search(r"^Status:\s*ACTIVE\b", hdr, re.M), hdr[:200]
-    assert "22.0.0 is PROPOSED" in AGENTS[:20000]
+    assert re.search(r"^Supersedes:\s*21\.0\.0\b", hdr, re.M), hdr[:200]
+    assert "22.0.0 is ACTIVE" in AGENTS[:20000]
+    assert "22.0.0 is PROPOSED" not in AGENTS
 
 
-
-def test_version_history_one_proposed_row_with_token():
+def test_version_history_one_active_row_with_token():
     rows = re.findall(
         r"^\| 22\.0\.0 \| 2026-10-25 \| (PROPOSED|ACTIVE[^|]*) \| MAJOR \|(.*)$",
         AGENTS,
@@ -41,9 +40,9 @@ def test_version_history_one_proposed_row_with_token():
     )
     assert len(rows) == 1, rows
     status, rest = rows[0]
-    assert status == "PROPOSED" or "APPROVE_AGENTS_POLICY_22_0_0" in rest
+    assert status.startswith("ACTIVE"), status
     assert "release_train.run_now" in rest
-    assert "APPROVE_AGENTS_POLICY_22_0_0" in rest or status == "PROPOSED"
+    assert "APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1" in rest
 
 
 def test_section_25_3_adds_ops_controls_run_now_without_dropping_cli_pin():
@@ -62,8 +61,8 @@ def test_section_17_lists_run_now_as_operator_only():
     assert "Release train Run now (22.0.0" in AGENTS or "forcing a live canary train from Ops → Controls" in AGENTS
 
 
-def test_banner_names_major_and_2128_numbering():
+def test_banner_names_major_and_ratification():
     banner = AGENTS[:12000]
-    assert "22.0.0 is PROPOSED (MAJOR)" in banner
+    assert "22.0.0 is ACTIVE (MAJOR)" in banner
+    assert "APPROVE_AGENTS_POLICY_22_0_0 2149" in banner
     assert "#2128" in banner or "21.0.0" in banner
-    assert "settled at ratification" in banner.lower() or "settled at ratification" in AGENTS.lower()

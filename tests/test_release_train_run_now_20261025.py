@@ -1,7 +1,8 @@
 """Hermetic tests for Ops Controls Run now bridge (scripts/lib/release_train_run_now.py).
 
-POLICY_NOT_ACTIVE until AGENTS 22.0.0 is ACTIVE. Phrase, market-hours, and lifecycle chamber math
-are pure. No broker, no live controller mutation.
+AGENTS 22.0.0 is ACTIVE: policy_gate on the live AGENTS.md is ACTIVE. Phrase, market-hours,
+and lifecycle chamber math are pure. No broker, no live controller mutation. A PROPOSED fixture
+still refuses POLICY_NOT_ACTIVE.
 """
 from __future__ import annotations
 
@@ -44,16 +45,29 @@ def test_market_hours_open(when, expected):
     assert RN.market_hours_open(when) is expected
 
 
-def test_policy_gate_on_live_agents_is_not_active_while_22_proposed():
+def test_policy_gate_on_live_agents_is_active_after_22_ratified():
     st = RN.policy_gate(ROOT / "AGENTS.md")
+    assert st["state"] == "ACTIVE"
+    assert RN.require_policy_active(ROOT / "AGENTS.md")["state"] == "ACTIVE"
+
+
+def test_policy_gate_refuses_proposed_fixture(tmp_path):
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text(
+        "# AGENTS.md\n\n| 21.0.0 | 2026-10-25 | ACTIVE | MAJOR | prior |\n"
+        "| 22.0.0 | 2026-10-25 | PROPOSED | MAJOR | run now |\n"
+        "release_train.run_now\n",
+        encoding="utf-8",
+    )
+    st = RN.policy_gate(agents)
     assert st["state"] != "ACTIVE"
     with pytest.raises(OpsError) as ei:
-        RN.require_policy_active(ROOT / "AGENTS.md")
+        RN.require_policy_active(agents)
     assert ei.value.code == "POLICY_NOT_ACTIVE"
 
 
-def test_readiness_blocks_while_policy_proposed(monkeypatch):
-    """readiness never mutates; while 22.0.0 is PROPOSED, allowed is False with POLICY_NOT_ACTIVE."""
+def test_readiness_blocks_while_controller_build_only(monkeypatch):
+    """readiness never mutates; BUILD_ONLY still refuses even when policy is ACTIVE."""
     monkeypatch.setattr(RN, "TRAIN_CONTROLLER_STATUS", "BUILD_ONLY")
     monkeypatch.setattr(RN, "forced_canary_policy", lambda: {
         "operator_forced_off_window": True, "slots": ["1800"],
@@ -61,7 +75,8 @@ def test_readiness_blocks_while_policy_proposed(monkeypatch):
     out = RN.readiness(agents_path=ROOT / "AGENTS.md", now=datetime(2026, 10, 25, 20, 0, tzinfo=TZ))
     assert out["kind"] == RN.KIND
     assert out["allowed"] is False
-    assert out["block_reason"] and "POLICY_NOT_ACTIVE" in out["block_reason"]
+    assert out["block_reason"]
+    assert "POLICY_NOT_ACTIVE" not in out["block_reason"]
     assert out["phrase_example"].startswith("RUN NOW EPOCH")
 
 

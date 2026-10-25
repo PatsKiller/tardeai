@@ -1,4 +1,4 @@
-"""Ops → Controls bridge for a live canary Run now (AGENTS.md 22.0.0 PROPOSED).
+"""Ops → Controls bridge for a live canary Run now (AGENTS.md 22.0.0 ACTIVE).
 
 Sets ``TrainConfig.forced_confirmed=True`` after an Ops Controls passkey + typed phrase proof, then runs the
 controller. Does not edit ``release_train_controller`` (claimed elsewhere): the CLI path stays TTY-only; this module

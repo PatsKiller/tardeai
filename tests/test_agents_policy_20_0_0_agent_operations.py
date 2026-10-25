@@ -347,11 +347,13 @@ def redo_20_0_0(text: str) -> str:
 
 
 def pre_22_0_0(text: str) -> str:
-    """Strip the 22.0.0 PROPOSED soft-adds (banner, §17 paragraph, §25.3 bullet, history row) so older
-    digest pins stay stable until ratification. Idempotent: absent soft-adds are a no-op."""
-    if "**22.0.0 is PROPOSED" in text:
-        b = text.index("**22.0.0 is PROPOSED")
-        text = text[:b] + text[text.index("**21.0.0 is ", b):]
+    """Strip the 22.0.0 soft-adds (banner, §17 paragraph, §25.3 bullet, history row) so older
+    digest pins stay stable after ratification. Idempotent: absent soft-adds are a no-op."""
+    for marker in ("**22.0.0 is ACTIVE", "**22.0.0 is PROPOSED"):
+        if marker in text:
+            b = text.index(marker)
+            text = text[:b] + text[text.index("**21.0.0 is ", b):]
+            break
     s17 = (
         "**Release train Run now (22.0.0, §25.3):** forcing a live canary train from Ops → Controls\n"
         "(`release_train.run_now`). Binding only once AGENTS.md 22.0.0 is ACTIVE; until then the host CLI is the only live\n"
