@@ -68,7 +68,7 @@ class Finding:
     sides: list = field(default_factory=list)
     key: str = ""
     owner: str = "source owner"
-    next_run: str = "next registered producer run"
+    next_run: str = "Not measured"
     never_auto: bool = False
     tier: int = 4
 
