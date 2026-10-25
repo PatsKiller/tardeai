@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_solo_shared_infra_20261025",
+  "files": [
+    "tests/test_release_train_solo_shared_infra_20261025.py"
+  ],
+  "anchor": "RELEASE_TRAIN_SOLO_SHARED_INFRA_20261025",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_SOLO_SHARED_INFRA_20261025 — AGENTS.md 20.4.0 hands-off delivery: a needs_operator",
+    "shared-infra PR rides ALONE (one member, never mixed) when 20.4.0 is ACTIVE in the train's own tree",
+    "(scripts/lib/hands_off_policy.py; no flag) and: [shared-infra] title, shared-infra-review success on the head,",
+    "Real-layout proof: line, coordinator Adversarial-review: MERGE receipt bound to the head and a coordinator claim,",
+    "every path in config/release_train_solo_shared_infra.json allow_globs and none denied (deny wins). batch_first",
+    "precedence. Solo verify adds n8n allowlist (refused {}), lane registry (no new violation), watchdog dry run (no",
+    "new CRIT); failure -> rollback + STOP latch + quarantine + P1. Hermetic: controller test world under tmp_path."
+  ]
+}
