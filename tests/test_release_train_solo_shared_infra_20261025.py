@@ -347,3 +347,58 @@ def test_dry_run_previews_the_solo_checks(tmp_path):
     code, rec = c.run()
     assert rec["outcome"] == "DRY_RUN_COMPLETE", rec["steps"]
     assert any("solo shared-infra" in s for s in rec["steps"])
+
+
+# ── classifier follow-ups from the first live train (rt-20261025-1500-461185) ───────────────────────────
+
+from scripts.lib import release_train_classify as RTC  # noqa: E402
+
+POLICY = RTC.load_policy()
+
+
+def classify(paths, semantic=None, rdeps=None):
+    change = {"paths": [{"path": p, "status": "M"} for p in paths], "head_sha": "d" * 40,
+              "semantic_config": semantic or {}}
+    return RTC.classify_change(change, POLICY, tiers=None, impact_map={"rdeps": rdeps or {}})
+
+
+def test_closure_blocks_what_a_protected_module_imports_not_what_imports_it():
+    # rdeps[x] = the files that import x. release_window imports foo -> changing foo changes the verifier: blocked.
+    dep = classify(["scripts/lib/foo_helper.py"], rdeps={"scripts/lib/foo_helper.py": ["scripts/release_window.py"]})
+    assert dep["class"] == "blocked"
+    assert any(r["rule"] == "import_closure" and "release_window.py" in r["detail"] for r in dep["reasons"])
+    # bar imports release_window -> changing bar cannot change the verifier: not blocked by the closure.
+    user = classify(["scripts/lib/bar_user.py"], rdeps={"scripts/release_window.py": ["scripts/lib/bar_user.py"]})
+    assert user["class"] == "eligible", user["reasons"]
+
+
+@pytest.mark.parametrize("keys, cls", [
+    (["scripts.build"], "eligible"),
+    (["scripts.test:e2e", "scripts.build"], "eligible"),
+    (["dependencies.react"], "held"),
+    (["scripts.build", "version"], "held"),
+    (["$"], "held"),
+    (None, "held"),
+])
+def test_cc_package_json_is_eligible_only_for_script_list_changes(keys, cls):
+    p = "apps/command-center-v3/package.json"
+    out = classify([p], semantic=({p: keys} if keys is not None else {}))
+    assert out["class"] == cls, out["reasons"]
+    if cls == "held":
+        assert any(r["rule"] == "semantic_key_not_allowlisted" for r in out["reasons"])
+
+
+@pytest.mark.parametrize("path", ["apps/command-center-v3/e2e-live/site-sweep.ts", "scripts/site_sweep.sh"])
+def test_live_e2e_and_site_sweep_are_the_tests_class(path):
+    assert classify([path])["class"] == "eligible"
+
+
+@pytest.mark.parametrize("path", ["scripts/alerting.py", "scripts/lib/comms/channel_adapters.py"])
+def test_comms_channel_code_is_in_the_solo_shared_infra_set(path):
+    assert SOLO.path_findings([path], CFG, is_protected=T.is_protected) == []
+
+
+def test_broker_and_train_self_stay_out_after_the_follow_ups():
+    assert classify(["scripts/brokers/schwab_client.py"])["class"] == "held"
+    assert classify(["scripts/release_window.py"])["class"] == "blocked"
+    assert RTC.validate_policy(POLICY) == []

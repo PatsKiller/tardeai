@@ -160,6 +160,10 @@ def validate_policy(p: Any) -> list[str]:
     sc = p["semantic_config"]
     if sc.get("unknown_keys_class") not in ("held", "blocked"):
         errs.append("semantic_config.unknown_keys_class must be held or blocked")
+    ka = sc.get("key_allowlists", {})
+    if not isinstance(ka, Mapping) or not all(isinstance(v, list) and v and all(isinstance(x, str) and x for x in v)
+                                              for v in ka.values()):
+        errs.append("semantic_config.key_allowlists must map a path to a non-empty list of top-level keys")
     if p["import_closure"].get("unavailable_class") not in ("held", "blocked"):
         errs.append("import_closure.unavailable_class must be held or blocked")
     for g in p["generated"]:
@@ -371,7 +375,21 @@ def classify_change(change: Mapping[str, Any], policy: Mapping[str, Any], *,
         for name in names:
             cls, hits = base_class(name, policy, tiers)
             reasons.extend(hits)
-            if cls == "unknown" and gen is None:
+            allow_keys = (sc.get("key_allowlists") or {}).get(name)
+            if cls == "unknown" and gen is None and isinstance(allow_keys, list):
+                # A manifest whose change is confined to named top-level keys (e.g. the Command Center package.json
+                # "scripts" -- the build / test lists): eligible; any other key (dependencies, version, a new file
+                # "$") is held. Compared against base by semantic_config_diff; unknown keys are held.
+                keys = list(semantic.get(name) or []) if name in semantic else []
+                outside = [k for k in keys if str(k).split(".", 1)[0] not in allow_keys]
+                if keys and not outside:
+                    cls = "eligible"
+                else:
+                    cls = sc.get("unknown_keys_class", "held")
+                    reasons.append(_reason("semantic_key_not_allowlisted", cls, name,
+                                           "keys outside " + "/".join(allow_keys) + ": "
+                                           + (", ".join(outside[:6]) if keys else "unknown (no key diff)")))
+            elif cls == "unknown" and gen is None:
                 if name in semantic and name in (sc.get("eligible_paths") or []):
                     cls = "eligible"
                 else:

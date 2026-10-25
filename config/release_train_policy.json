@@ -1,6 +1,6 @@
 {
   "schema": "ReleaseTrainPolicy@v1",
-  "policy_version": "2026-10-25.2",
+  "policy_version": "2026-10-25.3",
   "as_of": "2026-10-25",
   "status": "ACTIVE",
   "armed": true,
@@ -196,7 +196,9 @@
     "tests/**",
     "scripts/**/*.py",
     "apps/command-center-v3/src/**",
-    "apps/command-center-v3/e2e/**"
+    "apps/command-center-v3/e2e/**",
+    "apps/command-center-v3/e2e-live/**",
+    "scripts/site_sweep.sh"
   ],
   "deletions": {
     "class": "needs_operator",
@@ -212,6 +214,10 @@
     "eligible_paths": [
       "config/host_comms_intent_routes.json"
     ],
+    "key_allowlists": {
+      "apps/command-center-v3/package.json": ["scripts"]
+    },
+    "key_allowlists_note": "2026-10-25 (first live train rt-20261025-1500-461185 held #2108 as unknown_risk on package.json): a change confined to the listed top-level keys (the Command Center build / test lists under scripts) is eligible; any other key (dependencies, devDependencies, version) or an unreadable key diff is held.",
     "protected_key_segment_patterns": [
       "live",
       "live_*",

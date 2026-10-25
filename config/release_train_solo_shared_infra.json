@@ -40,6 +40,11 @@
     "scripts/market_day_gate.sh",
     "scripts/non_trading_hours_gate.sh",
     "scripts/llm_priority_guard.sh",
+    "scripts/alerting.py",
+    "scripts/lib/comms/**",
+    "scripts/*comms_gateway*.py",
+    "scripts/lib/*comms_gateway*.py",
+    "scripts/lib/*comms_channel*.py",
     "tests/**",
     "docs/**"
   ],

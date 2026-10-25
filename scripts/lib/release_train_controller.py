@@ -1029,6 +1029,34 @@ def check_evidence(runs: list[dict], sha: str, required: tuple = REQUIRED_CHECKS
             "collected_at": utc_iso(now), "required": list(required)}
 
 
+#: The census's own pass/fail vocabulary (scripts/pr_hygiene_audit.py CHECK_PASS / CHECK_FAIL), for the live re-census.
+CENSUS_CHECK_PASS = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
+CENSUS_CHECK_FAIL = frozenset({"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR",
+                               "STALE"})
+
+
+def live_required_status(runs: list[dict], sha: str, required: tuple = REQUIRED_CHECKS) -> str:
+    """The census verdict (pr_hygiene_audit.required_checks_status semantics) from live check runs on exactly
+    ``sha`` from a trusted app, latest run per name: PASS only when every required context passed; FAIL when any
+    failed; else PENDING (missing or in flight)."""
+    latest: dict[str, dict] = {}
+    for r in runs or []:
+        if not isinstance(r, dict) or r.get("name") not in required or r.get("head_sha") != sha:
+            continue
+        if r.get("app") not in TRUSTED_CHECK_APPS:
+            continue
+        prev = latest.get(r["name"])
+        if prev is None or int(r.get("id") or 0) > int(prev.get("id") or 0):
+            latest[r["name"]] = r
+    states = {n: (str(r.get("conclusion") or "").upper() if r.get("status") == "completed" else "PENDING")
+              for n, r in latest.items()}
+    if any(states.get(n) in CENSUS_CHECK_FAIL for n in required):
+        return "FAIL"
+    if all(states.get(n) in CENSUS_CHECK_PASS for n in required):
+        return "PASS"
+    return "PENDING"
+
+
 def evidence_verdict(ev: dict, required: tuple = REQUIRED_CHECKS) -> tuple[str, list[str]]:
     """GREEN only when every required check's latest trusted run on the SHA is completed/success. Missing or in
     flight is PENDING; neutral, skipped, cancelled, stale, timed_out or failure is RED. Never "not failure"."""
@@ -1796,6 +1824,7 @@ class TrainController:
         self.solo_verify: Callable[[Path, Path], dict] = lambda new, prev: SOLO.verify_release(
             new, prev, python=str(getattr(self.host, "python", "python3")), env=self.env)
         self.train_kind: str = SOLO.TRAIN_KIND_BATCH
+        self.recensused: list[int] = []
         self.solo_verdict: Optional[dict] = None
         self.inject: Optional[str] = None
         self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
@@ -2404,7 +2433,7 @@ class TrainController:
         ordered = self._solo_select(ordered, solo_pool, excluded, classifier, rec)
         self.tstate["select_excluded"] = {str(k): v for k, v in excluded.items()}
         rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()},
-                            "train_kind": self.train_kind,
+                            "train_kind": self.train_kind, "recensused": list(self.recensused),
                             "next_batch": [e.pr for e in snap.entries
                                            if isinstance((e.census.get("pipeline") or {}).get("next_batch"), int)]}
         self.say(f"select: {len(ordered)} eligible {[e.pr for e in ordered]}; {len(excluded)} not riding")
@@ -2561,20 +2590,38 @@ class TrainController:
             # FAIL recorded for an older head is not applied, the head has moved since the census).
             return "CHECKS_FAILING:" + ",".join(str(x) for x in (rc.get("failed") or [])[:4])
         if e.census.get("green_required"):
-            # D7: the census-first source rides only PRs whose required checks the census saw PASS on this exact head
-            # (a next-batch PR too). Pending, unknown, no census row, or a verdict for an older head: not this train.
+            # D7: the census-first source rides only PRs whose required checks are PASS on this exact head (a
+            # next-batch PR too). 2026-10-25 (first live train rt-20261025-1500-461185 skipped 6 PRs opened after the
+            # T-20 census and 4 whose CI finished after it): when the census has no PASS for this exact head (no row,
+            # pending, unknown, or an older head), the selection re-reads the head's required checks live (GitHub GET,
+            # census semantics) instead of skipping it; a census FAIL on this head is never re-read (above).
+            why = None
             if not isinstance(rc, dict):
-                return "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
-            status = str(rc.get("status") or "UNKNOWN").upper()
-            if status != "PASS":
-                return f"NOT_GREEN_ON_HEAD:{status}"
-            if rc.get("head") != e.head_sha:
-                return f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
+                why = "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
+            elif str(rc.get("status") or "UNKNOWN").upper() != "PASS":
+                why = f"NOT_GREEN_ON_HEAD:{str(rc.get('status') or 'UNKNOWN').upper()}"
+            elif rc.get("head") != e.head_sha:
+                why = f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
+            if why is not None:
+                live = self._recensus(e)
+                if live != "PASS":
+                    return f"{why};RECENSUS_{live}"
+                self.recensused.append(e.pr)
         if e.files is not None:
             bad = [f for f in e.files if is_protected(f)]
             if bad:
                 return f"BLOCKED_SELF_MODIFICATION:{bad[:3]}"
         return None
+
+    def _recensus(self, e: QueueEntry) -> str:
+        """The census verdict for ``e``'s exact head, read live: PASS / PENDING / FAIL / STACKED / UNREADABLE."""
+        if (e.base_ref or "main") != "main":
+            return "STACKED"
+        try:
+            runs = self.github.check_runs(e.head_sha)
+        except (RuntimeError, ValueError):
+            return "UNREADABLE"
+        return live_required_status(runs, e.head_sha)
 
     def _freeze(self, w: TrainWindow, members: list[QueueEntry], dv: RD.DelegationVerdict, rec: dict) -> dict:
         base = self.github.main_head()
