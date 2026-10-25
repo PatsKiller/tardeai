@@ -1,3 +1,4 @@
+import ListPager, { useListOffset } from '../components/ListPager'
 /** Watch › My Watchlist (default tab) — the operator's own names (operator 2026-10-23: "I don't see stuff that I had
  *  starred that I was watching ... where is my traditional watch list").
  *
@@ -11,8 +12,11 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watchProspectsModel'
-import { armedBySymbol, askCioReview, positionQuery, unwrapAny, withQuery, type ListRow } from '../lib/watchListsModel'
-import { Detail, Row } from './WatchProspects'
+import { armedBySymbol, positionQuery, unwrapAny, withQuery, type ListRow } from '../lib/watchListsModel'
+import { Detail, Row, WatchConflictDetail, conflictSection } from './WatchProspects'
+import {useConflictSheet} from '../components/conflicts/ConflictSheet'
+import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
+import './W9Mobile.css'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { AddSymbolBox, MINE_TIPS, RemoveButton } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
@@ -32,28 +36,37 @@ const KINDS: [string, string, string][] = [
 export default function WatchMyList() {
   const [sp, setSp] = useSearchParams()
   const pq = positionQuery(sp)
-  const { data: raw, loading, error, stale: snapshotStale, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', pq), 120_000)
+  const paging = useListOffset(JSON.stringify(pq) + (sp.get('mine') || ''))
+  const { data: raw, loading, error, stale: snapshotStale, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', { ...pq, mine: sp.get('mine') || '', view: 'mine', offset: String(paging.offset), limit: '25' }), 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const c = useMemo(() => unwrapAny<any>(raw), [raw])
   const armed = useMemo(() => armedBySymbol(alertsRaw), [alertsRaw])
-  const [sel, setSel] = useState<string | null>(null)
+  const detail = useMobilePageDetail('symbol')
+  const sheet = useConflictSheet()
+  const sel = detail.id
+  const setSel = (symbol: string | null) => symbol ? detail.open(symbol) : detail.close()
+  const openConflict = (row: ProspectRow, key = conflictSection(row).findings[0]?.key) => {
+    if (!key) {detail.open(row.symbol); return}
+    const next = new URLSearchParams(sp); next.set('symbol', row.symbol); next.set('conflict', key)
+    setSp(next, {state: {w9DetailOpened: true}})
+  }
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
   const [toast, setToast] = useState('')
-  const [cioMsg, setCioMsg] = useState('')
   const kind = sp.get('mine') || ''
   const mw = c?.my_watchlist
   const refreshUnavailable = snapshotStale || Boolean(error)
   const rows: ListRow[] = (mw?.rows || []).filter((r: ListRow) => !kind || (kind === 'starred' ? r.starred : (r.membership || []).some(m => m.kind === kind)))
   const selected = rows.find(r => r.symbol === sel) || null
   const onStep = (r: ProspectRow) => {
+    if (r.next_action.kind === 'resolve_conflict') {openConflict(r); return}
     setSel(r.symbol)
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
   }
   const changed = (m: string) => { setToast(m); refetch() }
   if (!c) {
-    return <div data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    return <div className="w9-page" data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <AddSymbolBox onAdded={changed} />
       <div style={{ ...panel, padding: 16, color: TOKENS.text[2] }}>
         {loading ? 'Loading your watchlist…' : `Your watchlist is unavailable${error ? ` — ${String(error)}` : ''}.`}
@@ -62,11 +75,16 @@ export default function WatchMyList() {
     </div>
   }
   const srcCount = (k: string) => (mw?.sources?.[k]?.count ?? 0)
-  const kindCount = (k: string) => k === '' ? (mw?.rows || []).length : k === 'starred' ? (mw?.rows || []).filter((r: ListRow) => r.starred).length
-    : (mw?.rows || []).filter((r: ListRow) => (r.membership || []).some(m => m.kind === k)).length
+  // Server counts cover the full filtered list (W2). A response without paging carries the complete list,
+  // so its rows can be counted exactly; a paged response without kind_counts stays unknown ('—').
+  const completeRows: ListRow[] | null = mw && !mw.pagination && Array.isArray(mw.rows) ? mw.rows : null
+  const rowCount = (k: string) => completeRows == null ? null : k === '' ? completeRows.length
+    : k === 'starred' ? completeRows.filter(r => r.starred).length
+      : completeRows.filter(r => (r.membership || []).some(m => m.kind === k)).length
+  const kindCount = (k: string) => mw?.kind_counts?.[k || 'all'] ?? (k === '' ? mw?.count : null) ?? rowCount(k) ?? '—'
   const failed = Object.entries(mw?.sources || {}).filter(([, v]: any) => v?.status !== 'ok')
   return (
-    <div data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
+    <div className="w9-page" data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
       <AddSymbolBox onAdded={changed} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         <span style={{ fontSize: TYPE.base + 1, color: TOKENS.text[1] }}
@@ -76,8 +94,8 @@ export default function WatchMyList() {
         </span>
         {KINDS.map(([k, l, tip]) => (
           <button key={k || 'all'} type="button" aria-pressed={kind === k} data-testid={`mine-kind-${k || 'all'}`}
-            title={`${tip} Narrows this list in the browser (${k ? srcCount(k) : (mw?.unfiltered_count ?? 0)} from the source).`}
-            onClick={() => { const n = new URLSearchParams(sp); if (k) n.set('mine', k); else n.delete('mine'); setSp(n, { replace: true }) }}
+            title={`${tip} Filters your complete list on the server (${k ? srcCount(k) : (mw?.unfiltered_count ?? 0)} from the source).`}
+            onClick={() => { paging.reset(); const n = new URLSearchParams(sp); if (k) n.set('mine', k); else n.delete('mine'); setSp(n, { replace: true }) }}
             style={{ ...chipStyle(kind === k ? 'info' : 'neutral', kind === k ? 'soft' : 'outline', 'sm'), cursor: 'pointer' }}>
             {l} <b>{kindCount(k)}</b>
           </button>
@@ -90,6 +108,7 @@ export default function WatchMyList() {
       {refreshUnavailable && <div role="status" data-testid="watch-market-refresh-warning" style={{ color: TOKENS.warning, fontSize: TYPE.base }}>
         Refresh unavailable — showing the last successful snapshot. Values and observation times have not been refreshed.
       </div>}
+      <ListPager page={mw?.pagination} previous={paging.previous} next={paging.next} busy={loading} gap={mw?.payload_gap} />
       <div className="watch-card-list-viewport">
         <section className="watch-record-panel" aria-label="My Watchlist" style={{ minWidth: 0 }}>
           <div className="watch-record-table watch-card-list">
@@ -97,16 +116,20 @@ export default function WatchMyList() {
             {rows.length === 0 && <div data-testid="mine-empty" style={{ padding: 12, color: TOKENS.text[2] }}>{(mw?.filters && Object.keys(mw.filters).length) || kind ? `None of your names match these filters. ${MINE_TIPS.empty}` : MINE_TIPS.empty}</div>}
             {rows.map(r => (
               <div key={r.symbol} className="watch-my-list-market-record" data-testid="mine-row" data-symbol={r.symbol}>
-                <Row r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0}
+                <Row r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict} alerts={armed[r.symbol] || 0}
                   retained={refreshUnavailable} onAlert={r => setAlertFor(r)} onMineChanged={changed} extra={<RemoveButton symbol={r.symbol} onChanged={changed} />} />
               </div>
             ))}
           </div>
         </section>
-        {selected && <aside className="watch-card-detail" aria-label="Record" style={panel}>
-          <button type="button" onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Close record</button>
-          <Detail r={selected} cioMsg={cioMsg} onAskCio={async r => { setCioMsg('Queuing…'); setCioMsg(await askCioReview(r.symbol, `Watch conflict: ${r.conflicts.map(x => x.summary).join(' | ')}`)) }} />
+        {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Record" style={panel}>
+          <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
+          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
+        {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · watch record`} onBack={detail.close}>
+          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+        </MobileDetailSheet>}
+        {selected && sheet.key && <WatchConflictDetail row={selected} onBack={sheet.close} onRefresh={refetch} />}
       </div>
       {proposeFor && <WatchlistProposeModal seed={proposeFor} onClose={() => setProposeFor(null)}
         onProposed={res => { setToast(res.message || `${res.symbol} queued as proposal #${res.proposal_id}`); refetch() }} />}

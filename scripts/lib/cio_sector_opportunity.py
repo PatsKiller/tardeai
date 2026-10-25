@@ -297,6 +297,11 @@ def normalize_sector_row(row: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not sector:
         return None
 
+    # Canonical momentum rows always use the same 20/60-session definition as
+    # Watch and Defense. Legacy rotation-ladder inputs keep their explicit rank.
+    if "rs60" in row:
+        from lib.sector_signals import normalize_signal_row
+        row = normalize_signal_row(row)
     state = str(row.get("state") or "").upper().strip() or None
     if state and state not in SECTOR_STATES:
         state = None
@@ -318,7 +323,7 @@ def normalize_sector_row(row: dict[str, Any]) -> Optional[dict[str, Any]]:
         rs_score = None
 
     # Derive state when absent: prefer rs20+slope (momentum), else rotation RS.
-    if state is None:
+    if state is None and "rs60" not in row:
         if rs20 is not None and slope is not None:
             state = classify_state(rs20, slope)
         elif rs_score is not None:
@@ -342,6 +347,8 @@ def normalize_sector_row(row: dict[str, Any]) -> Optional[dict[str, Any]]:
         "etf": str(row.get("etf") or "").upper() or None,
         "state": state,
         "rs20": rs20,
+        "rs60": _num(row.get("rs60")),
+        "cio_posture": row.get("cio_posture"),
         "slope": slope,
         "rs5": _num(row.get("rs5")),
         "rs_score": rs_score,
@@ -694,7 +701,10 @@ def fetch_sector_opportunity_inputs(
                ORDER BY book_pct DESC NULLS LAST""",
             fetch="all",
         )
-        sector_rows = [dict(r) for r in (rows or []) if r.get("sector")]
+        from lib.data_broker.sector_momentum import get_sector_signals
+        signals = get_sector_signals(executor)["sectors"]
+        sector_rows = [{**dict(r), **signals.get(str(r.get("etf") or "").upper(), {})}
+                       for r in (rows or []) if r.get("sector")]
     except Exception:
         sector_rows = []
 

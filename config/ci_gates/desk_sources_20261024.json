@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "desk_sources_20261024",
+  "files": [
+    "tests/test_desk_sources_20261024.py"
+  ],
+  "comment": [
+    "Source clocks: registry intent, validated successful-run evidence, unknown gaps and bounded read-only projection."
+  ]
+}

@@ -25,8 +25,8 @@ export default function ActiveTraderHub({ onDrill }: { onDrill?: (c: DrillContex
   const setTab = (t: SubTab) => setParams(p => { p.set('tab', t); return p; }, { replace: true });
 
   const { data: pq } = useApi<any>('/api/v3/active-trader/permission-queue', 5_000, { enabled: tab === 'Review' });
-  const { data: atSetups } = useApi<any>('/api/v3/active-trader/scalp/setups', 60_000);
   const [strategiesOpen, setStrategiesOpen] = useState(false);
+  const { data: atSetups } = useApi<any>('/api/v3/active-trader/scalp/setups', 60_000, { enabled: tab === 'Setups' || (tab === 'Review' && strategiesOpen) });
 
   const es = pq?.engine_status;
   const statusPill = useMemo(() => {
@@ -43,7 +43,7 @@ export default function ActiveTraderHub({ onDrill }: { onDrill?: (c: DrillContex
           {SUBTABS.map(t => (
             <button key={t} type="button" onClick={() => setTab(t)}
               style={{
-                padding: '7px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                padding: '7px 16px', minHeight: 44, minWidth: 44, borderRadius: 8, cursor: 'pointer', fontSize: 13,
                 fontWeight: t === tab ? 700 : 500,
                 border: '1px solid var(--border)',
                 color: t === tab ? 'var(--text0)' : 'var(--text2)',
@@ -56,7 +56,7 @@ export default function ActiveTraderHub({ onDrill }: { onDrill?: (c: DrillContex
         )}
       </div>
 
-      <SharedMomentumCandidates />
+      {tab === 'Review' && <SharedMomentumCandidates />}
 
       {tab === 'Review' && (
         <>

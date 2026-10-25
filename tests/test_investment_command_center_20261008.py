@@ -94,7 +94,7 @@ def test_implausible_upside_is_not_scored_and_flagged():
 
 @pytest.mark.parametrize("pos,kw,typ,stance", [
     ({"owned": True, "weight_pct": 3.0}, {}, "add_on", "ADD"),
-    ({"owned": True, "weight_pct": 14.0}, {}, "exit_candidate", "TRIM"),
+    ({"owned": True, "weight_pct": 14.0, "asset_type": "stock"}, {}, "exit_candidate", "TRIM"),
     ({}, {"reentry_state": "NEAR ENTRY"}, "re_entry", "RE_ENTER"),
     ({}, {}, "new_position", "WATCH"),
 ])

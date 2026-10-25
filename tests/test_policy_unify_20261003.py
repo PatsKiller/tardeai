@@ -86,13 +86,14 @@ def test_confirmed_needs_only_the_fields_code_reads(tmp_path):
         ratify_policy_field(name, value, store_path=store)
     policy = build_operator_investment_policy(store_path=store, repo_root=ROOT)
     assert policy["status"] == "CONFIRMED"
-    assert policy["confirmed_field_count"] == policy["required_field_count"] == 6
+    assert policy["confirmed_field_count"] == policy["required_field_count"] == 5
+    assert policy["fields"]["concentration_hierarchy"]["status"] == "SUPERSEDED_BY_IPS"
     assert "growth_objective" in policy["optional_missing_fields"]
 
 
 def test_twelve_percent_is_consistent_everywhere():
     ips = json.loads((ROOT / "config" / "investment_policy_statement.json").read_text())
-    assert ips["constraints"]["max_single_position_pct"] == 12.0
+    assert ips["constraints"]["concentration_policy"]["limits_pct"]["single_stock"] == 12.0
     desk = (ROOT / "config" / "advisory_desk.yaml").read_text()
     assert re.search(r"max single position\s+12%", desk)
     assert cp.MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT == 12.0

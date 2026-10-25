@@ -283,6 +283,10 @@ def _cond_holds(cond: dict[str, Any], c: dict[str, Any]) -> bool:
             return False
         if k == "min_weight_pct" and (c.get("weight_pct") or 0) < float(v):
             return False
+        if k == "above_concentration_limit":
+            weight, cap = c.get("weight_pct"), c.get("concentration_limit_pct")
+            if weight is None or cap is None or (weight > cap) is not bool(v):
+                return False
         if k == "reentry_or_recently_sold" and bool(c.get("reentry_or_recently_sold")) is not bool(v):
             return False
         if k == "min_coverage" and (c.get("coverage") or 0) < float(v):
@@ -345,6 +349,10 @@ def classify(ctx: dict[str, Any], conv: Optional[float], rr: dict[str, Any], cov
     recent = bool(ctx.get("reentry_state")) or bool(pc.get("recently_sold"))
     c = {"held": held, "conviction": conv, "rr": rr.get("rr"), "weight_pct": _f(pc.get("weight_pct")),
          "reentry_or_recently_sold": recent, "coverage": coverage}
+    from ..ips_policy import concentration_for_position
+    concentration = concentration_for_position({**(ctx.get("profile") or {}), **pc}, weight_pct=c["weight_pct"],
+                                               evidence=ctx.get("fund_holdings_evidence"))
+    c["concentration_limit_pct"] = concentration["limit_pct"] if not concentration["gap"] else None
     sc = cfg.get("stance") or {}
     stance = "HOLD" if held else "WATCH"
     for name, key in (("EXIT", "exit_if"), ("TRIM", "trim_if"), ("ADD", "add_if"), ("RE_ENTER", "re_enter_if")):
@@ -363,6 +371,7 @@ def classify(ctx: dict[str, Any], conv: Optional[float], rr: dict[str, Any], cov
                                     rr=f"{rr['rr']:.1f}" if rr.get("rr") is not None else "n/a",
                                     w=f"{c['weight_pct']:.1f}" if c["weight_pct"] is not None else "n/a")
     out = {"type": typ, "stance": stance, "stance_rationale": why, "position_status": status,
+           "concentration_policy": concentration,
            "technical_condition": technical_condition(ctx),
            "cap_band": cap_band(_f((ctx.get("profile") or {}).get("market_cap_usd")))}
     conflict = position_conflict(pc)

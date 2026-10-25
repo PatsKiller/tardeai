@@ -1034,7 +1034,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
 | `docs/designs/DSN-20261024-tradeinview-history.md` | Holding history source and evidence |
+| `docs/designs/DSN-20261024-w1-cio-truth.md` | DSN-20261024-w1-cio-truth.md |
+| `docs/designs/DSN-20261024-w1-r13-policy.md` | DSN-20261024-w1-r13-policy.md |
 | `docs/designs/DSN-20261024-w8-legacy-carryforward.md` | Worker A six-lane carry-forward |
+| `docs/designs/DSN-20261024-w9-nonops-pages.md` | DSN-20261024-w9-nonops-pages.md |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
@@ -1952,6 +1955,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) |
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
+| `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
+| `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
 | `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |
@@ -1959,6 +1964,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
 | `docs/ops/DESKS_B_REDESIGN_20261024.md` | Desks B: approved boards 5–11 |
+| `docs/ops/DESKS_REDESIGN_20261024.md` | Restored desks: shared frame (board 0) |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
@@ -2076,8 +2082,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
 | `docs/ops/SETUP_READINESS_SHARED_VERDICT_2026-10-23.md` | SetupReadiness@v1 — one "driven by / ready / missing" verdict (2026-10-23) |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
+| `docs/ops/SITE_FIX_W1_20261024.md` | W1 CIO truth and consistency |
+| `docs/ops/SITE_FIX_W2_20261024.md` | W2: payload budgets, paging and lazy reads |
 | `docs/ops/SITE_SYSTEM_TAB_REQUESTS_20261024.md` | SITE: System tab requests and URL state |
 | `docs/ops/SITE_VALIDATION_2026-10-23_53aa1b619.md` | Command Center v3 site validation: 2026-10-22/23 (f7c1e96cb → 0f5bf2453 → 53aa1b619) |
+| `docs/ops/SITE_W9_PAGES_20261024.md` | W9 page fixes and shared phone details — 2026-10-24 |
 | `docs/ops/STALE_N8N_SET_REBUILD_20261024.md` | Worker A non-config carryforward |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
@@ -2104,6 +2113,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
+| `docs/ops/W3_SIGNALS_20261024.md` | W3: sector strength and triggered-only pullback proposals |
+| `docs/ops/W7_DESKS_REDESIGN_20261024.md` | W7 page redesign field trace |
 | `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |

@@ -1,0 +1,15 @@
+import {conflictSource, conflictTime, conflictValue, reviewPresentation} from './watchConflictPresentation.ts'
+function equal(actual: unknown, expected: unknown) { if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${JSON.stringify(actual)} !== ${JSON.stringify(expected)}`) }
+equal(reviewPresentation(null).state, 'unknown')
+equal(reviewPresentation({state: 'UNDER_REVIEW'}).pending, true)
+equal(reviewPresentation({state: 'DECIDED'}).state, 'decided')
+equal(reviewPresentation({state: 'DECIDED'}).pending, true)
+equal(reviewPresentation({state: 'CONFLICT_RESOLVED'}).state, 'unknown')
+equal(reviewPresentation({state: 'CLEARED'}).state, 'cleared')
+equal(reviewPresentation({state: 'REOPENED'}).state, 'reopened')
+equal(reviewPresentation({state: 'SUPERSEDED'}).state, 'superseded')
+equal(conflictSource({source: 'cio_instrument_record', value: 'HOLD'}), 'CIO record')
+equal(conflictValue('RE_ENTER'), 'RE ENTER')
+equal(conflictValue(null), 'Not recorded')
+equal(conflictTime('2026-10-24'), '2026-10-24 · time not recorded')
+console.log('Watch conflict evidence/decision presentation checks passed')

@@ -220,15 +220,22 @@ def test_market_movers_scope_truth_labels(hermetic_root, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 4. Union proof: both lanes' edits are present in the SAME source file
+# 4. Union proof: both lanes survive the assembled API and owned handler
 # ---------------------------------------------------------------------------
 
-def test_both_lane_edits_present_in_same_source():
+def test_both_lane_edits_present_in_assembled_api():
     src = Path(api_v2.__file__).read_text()
     # Lane B markers
     assert "valuation_supplement_cache.json" in src
     assert "val_from_supp" in src
     # Lane C markers
     assert "internals_scope" in src
-    assert "quarantine_stale_rows" in src
-    assert "recommendation_eligible" in src
+    # W3 moved the sector handler to its owned module. Check the actual adapter,
+    # then the implementation, so dead text in api_v2 cannot satisfy the guard.
+    import inspect
+    from lib import sectors_monitor
+    adapter = inspect.getsource(api_v2._sectors_monitor)
+    assert "from lib.sectors_monitor import monitor" in adapter
+    handler = Path(sectors_monitor.__file__).read_text()
+    assert "quarantine_stale_rows" in handler
+    assert "recommendation_eligible" in handler

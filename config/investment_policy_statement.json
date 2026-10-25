@@ -79,10 +79,29 @@
 
   "constraints": {
     "prohibited_instruments": ["leveraged_etfs", "inverse_etfs_held_overnight", "crypto", "penny_stocks_under_1"],
-    "max_single_position_pct": 12.0,
-    "critical_single_position_pct": 15.0,
-    "_critical_single_position_pct_note": "Derived key, not a new limit: the severe tier above max_single_position_pct, preserving the pre-existing 15% severe/critical split in the specialist shadow. Added with operator approval 2026-10-09 ~18:05 ET (\"Okay to everything except extending the scout to closing\"); existing values unchanged.",
-    "max_sector_concentration_pct": 25.0,
+    "concentration_policy": {
+      "approval_ref": "operator-2026-10-24-Addendum3-R13",
+      "as_of": "2026-10-24",
+      "limits_pct": {
+        "broad_diversified_fund": 25.0,
+        "narrow_thematic_fund": 12.0,
+        "single_stock": 12.0,
+        "leveraged_inverse_fund": 5.0,
+        "lookthrough_company": 12.0,
+        "lookthrough_sector": 25.0
+      },
+      "near_limit_fraction": 0.9,
+      "fund_classification": {
+        "broad_min_holdings": 50,
+        "broad_largest_holding_lt_pct": 10.0,
+        "narrow_holdings_lt": 30,
+        "narrow_top10_gt_pct": 50.0,
+        "midrange_class": "narrow_thematic_fund"
+      },
+      "unknown_classification": "gap_never_infer_from_sample_length",
+      "scope": "whole_portfolio",
+      "_approval": "Operator2026-10-24 Addendum3: diversifiedfunds not subject to single-name cap; sourceonly, no orders/stops/rebalance."
+    },
     "max_portfolio_heat_pct": 2.0,
     "min_market_cap": 300000000,
     "require_stop_on_entry": true,

@@ -295,7 +295,7 @@ def test_fetch_sector_opportunity_inputs_fails_soft():
     assert inputs["candidates"] == []
 
 
-def test_build_synthesis_from_executor():
+def test_build_synthesis_from_executor_missing_horizon_is_not_an_opportunity():
     def fake_exec(sql, params=None, fetch=None):
         sql_u = sql.upper()
         if "SECTOR_MOMENTUM_STATE" in sql_u:
@@ -309,8 +309,8 @@ def test_build_synthesis_from_executor():
         return None
 
     result = so.build_synthesis_from_executor(fake_exec, capital_usd=20000.0)
-    assert result["opportunity_count"] == 1
-    assert result["opportunities"][0]["sector"] == "Energy"
+    assert result["opportunity_count"] == 0
+    assert result["opportunities"] == []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

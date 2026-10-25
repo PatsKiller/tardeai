@@ -1285,6 +1285,20 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Internal bridge readback proving an Ask the CIO model call was settled in the LLM consumption ledger at its actual provider cost (cio_governed_model_bridge._ask_settlement_receipt). The operator sees the spend through LLM Spend (the ledger itself) and the Ask thread's ask.cost event; this receipt is engineering proof of settlement, not CIO reasoning, evidence or a decision.",
       "owner_hint": "scripts/lib/cio_governed_model_bridge.py::_ask_settlement_receipt"
+    },
+    {
+      "name": "route:/api/v3/cio/scorecard",
+      "kind": "route",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "Approved board 17 (desks-redesign 2026-10-24, one CIO status model): CIO Overview now renders 'Is the CIO working?' from GET /api/v2/cio/pages cio_status.evaluations (scripts/lib/w7_pages.py -> cio_truth.status_for), which reads these same scorecard tiles via get_cio_scorecard(materialized_only=True). No Command Center caller of this route remains after W7 (batch 26); confirm zero :7777 access-log hits before removing it.",
+      "owner_hint": "scripts/api_v3_cio.py::get_cio_scorecard route"
+    },
+    {
+      "name": "schema:CIOScorecard@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "Envelope of /api/v3/cio/scorecard only. Its tiles are operator-visible through cio_truth.status_for -> /api/v2/cio/pages cio_status.evaluations on CIO Overview (approved board 17); the standalone envelope retires with that route.",
+      "owner_hint": "scripts/lib/cio_scorecard.py::build_scorecard"
     }
   ]
 }

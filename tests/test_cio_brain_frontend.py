@@ -16,14 +16,26 @@ def test_cio_overview_is_default_scorecard_landing() -> None:
     assert "'cio-brain': 'overview'" in tabs
     assert "'cio-now': 'decisions'" in tabs
     assert "resolveCioHubTab" in hub
-    assert "CioScorecardStrip" in hub
-    assert "CioJudgmentBand" in hub
     assert "CioEvidenceModal" in hub
     assert 'data-testid="cio-overview"' in hub
     assert 'data-testid="cio-scorecard-strip"' in strip
     assert 'data-testid="cio-judgment-band"' in judgment
     assert 'data-testid="cio-evidence-modal"' in modal
-    assert "/api/v3/cio/scorecard" in hub
+    # Approved board 17 (desks-redesign 2026-10-24): the Overview landing is ONE status model,
+    # "Is the CIO working?", replacing the Observability and Scorecard panels that disagreed. It
+    # renders cio_truth.status_for (served on /api/v2/cio/pages as cio_status), which evaluates the
+    # same scorecard tiles, so the scorecard measurements stay on the landing.
+    overview = hub[hub.index('data-testid="cio-overview"'):]
+    overview = overview[:overview.index("{tab === 'decisions'")]
+    assert "<W7CioStatus data={pageTruth} />" in overview
+    assert "useW7Pages(tab === 'overview'" in hub
+    panels = (ROOT / "apps/command-center-v3/src/components/W7PagePanels.tsx").read_text(encoding="utf-8")
+    assert 'title="Is the CIO working?" testId="cio-single-status"' in panels
+    assert "useApi<any>('/api/v2/cio/pages'" in panels
+    truth = (ROOT / "scripts/lib/cio_truth.py").read_text(encoding="utf-8")
+    status = truth[truth.index("def status_for("):truth.index("def apply_status_evaluations(")]
+    assert "get_cio_scorecard(root=Path(root), materialized_only=True)" in status
+    assert 'scorecard.get("tiles")' in status
 
 
 def test_cio_brain_panel_bands_still_present_for_evidence_deep_view() -> None:

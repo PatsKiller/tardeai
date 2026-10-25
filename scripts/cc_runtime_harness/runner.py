@@ -39,7 +39,8 @@ CORE_API_PATHS = [
     "/api/v2/hermes/health",
     "/api/v2/market-movers",
     "/api/v2/paper-trade-readiness",
-    "/api/v2/system/metrics-history",
+    # /api/v2/system/metrics-history left this list with the old Home equity curve: approved
+    # board 14 (desks-redesign 2026-10-24) has no curve, and no page requests it any more.
     "/api/health",
     "/v3/build-meta.json",
 ]

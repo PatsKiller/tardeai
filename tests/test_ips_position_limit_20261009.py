@@ -42,20 +42,20 @@ class TestSharedHelper(unittest.TestCase):
             self.assertEqual(ips_policy.ips_max_position_pct(d), 12.0)
             self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
 
-    def test_missing_config_falls_back_strict_with_warning(self) -> None:
+    def test_missing_config_has_no_invented_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = _cfg(tmp, None)
             with self.assertLogs(ips_policy.log, level=logging.WARNING) as cm:
-                self.assertEqual(ips_policy.ips_max_position_pct(d), 8.0)
-                self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
-            self.assertTrue(any("stricter fallback" in m for m in cm.output))
+                self.assertIsNone(ips_policy.ips_max_position_pct(d))
+                self.assertIsNone(ips_policy.ips_critical_position_pct(d))
+            self.assertTrue(any("unknown" in m for m in cm.output))
 
     def test_invalid_values_fall_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = _cfg(tmp, {"max_single_position_pct": "x", "critical_single_position_pct": 0})
             with self.assertLogs(ips_policy.log, level=logging.WARNING):
-                self.assertEqual(ips_policy.ips_max_position_pct(d), 8.0)
-                self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
+                self.assertIsNone(ips_policy.ips_max_position_pct(d))
+                self.assertIsNone(ips_policy.ips_critical_position_pct(d))
 
     def test_critical_never_below_max(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -64,7 +64,7 @@ class TestSharedHelper(unittest.TestCase):
 
     def test_repo_config_values(self) -> None:
         self.assertEqual(ips_policy.ips_max_position_pct(), 12.0)
-        self.assertEqual(ips_policy.ips_critical_position_pct(), 15.0)
+        self.assertEqual(ips_policy.ips_critical_position_pct(), 12.0)
 
     def test_advisory_desk_wrapper_delegates(self) -> None:
         from lib.data_broker import advisory_desk as ad
@@ -74,11 +74,21 @@ class TestSharedHelper(unittest.TestCase):
 
 
 class TestAdvisoryDeskOverweight(unittest.TestCase):
+    @staticmethod
+    def _measurement(pct: float, ips: float) -> dict:
+        return {"status": "breach" if pct > ips else "ok", "limit_pct": ips,
+                "weight_pct": pct, "classification_label": "Single stock", "gap": None}
+
     def _opinion(self, pct: float, ips: float = 12.0) -> dict:
         from lib.data_broker import advisory_desk as ad
-        with patch.object(ad, "ips_max_position_pct", return_value=ips):
+        # Compatibility mock supports the old consumer; the canonical measured
+        # contract supports W6's separately owned source adoption.
+        with patch.object(ad, "ips_max_position_pct", return_value=ips), \
+                patch.object(ad, "_concentration_for_advisory", create=True,
+                             return_value=self._measurement(pct, ips)):
             return ad._derive_holding_opinion(
-                {"symbol": "SCHD", "market_value": 130_000, "portfolio_pct": pct,
+                {"symbol": "SPCX", "security_guid": "fixture-stock", "asset_type": "stock",
+                 "market_value": 130_000, "portfolio_pct": pct,
                  "gain_loss_pct": 5.0, "cost_basis": 1000.0, "bucket": ""},
                 1_000_000.0, risk_positions={}, tax_lots={}, portfolio_heat_pct=None,
             )
@@ -100,9 +110,12 @@ class TestAdvisoryDeskOverweight(unittest.TestCase):
     def test_flag_agrees_with_validator(self) -> None:
         from lib.data_broker import advisory_desk as ad
         o = self._opinion(13.5)
-        row = {"symbol": "SCHD", "verdict": o["verdict"], "confidence": 0.5, "market_value": 1.0,
+        row = {"symbol": "SPCX", "security_guid": "fixture-stock", "asset_type": "stock",
+               "verdict": o["verdict"], "confidence": 0.5, "market_value": 1.0,
                "weight_pct": 13.5, "source": "holdings", "risk_signals": o["risk_signals"]}
-        with patch.object(ad, "ips_max_position_pct", return_value=12.0):
+        with patch.object(ad, "ips_max_position_pct", return_value=12.0), \
+                patch.object(ad, "_concentration_for_advisory", create=True,
+                             return_value=self._measurement(13.5, 12.0)):
             errs = ad.validate_advisory_output({"ok": True, "data": {"metadata": {}, "rows": [row]}})
         self.assertEqual([e for e in errs if "exceeds IPS max" in e], [])
 
