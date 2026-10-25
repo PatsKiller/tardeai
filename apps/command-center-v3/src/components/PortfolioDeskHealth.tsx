@@ -10,6 +10,8 @@ export interface PortfolioDeskHealthProps {
   brokerStopReadOk: string[]
   unverifiedAccounts: string[]
   liveStopsDegraded: boolean
+  /** Page view read the stored stop model (no live broker read): say so instead of "not verified yet". */
+  storedOnly?: boolean
   brokerStopsFetchedAt: string | null
   placementCount: number
   verificationCount: number
@@ -34,7 +36,7 @@ const PURPLE = 'var(--text1)'
 export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
   const {
     holdingsCount, viewTotalLabel, brokerStopReadOk, unverifiedAccounts,
-    liveStopsDegraded, brokerStopsFetchedAt, placementCount, verificationCount, priceStamp,
+    liveStopsDegraded, storedOnly, brokerStopsFetchedAt, placementCount, verificationCount, priceStamp,
     onExportCsv, onOpenStopAudit,
   } = props
   const [meta, setMeta] = useState<BuildMeta | null>(null)
@@ -51,15 +53,17 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
 
   const readOkN = brokerStopReadOk?.length ?? 0
   const unverN = unverifiedAccounts?.length ?? 0
-  const stopsTone = liveStopsDegraded || unverN > 0 ? AMBER : readOkN > 0 ? GREEN : MUTED
-  const stopsLabel = liveStopsDegraded
+  const stopsTone = storedOnly || liveStopsDegraded || unverN > 0 ? AMBER : readOkN > 0 ? GREEN : MUTED
+  const stopsLabel = storedOnly
+    ? 'Broker stops: last known (stored)'
+    : liveStopsDegraded
     ? 'Broker stops: DEGRADED / UNVERIFIABLE'
     : readOkN > 0
       ? `Broker stops: OK ${readOkN} acct${readOkN === 1 ? '' : 's'}${unverN ? ` · ${unverN} unverified` : ''}`
       : 'Broker stops: not verified yet'
   const fetchLabel = brokerStopsFetchedAt
-    ? `fetched ${String(brokerStopsFetchedAt).replace('T', ' ').slice(0, 19)}`
-    : 'fetch time unknown'
+    ? `${storedOnly ? 'oldest stored observation' : 'fetched'} ${String(brokerStopsFetchedAt).replace('T', ' ').slice(0, 19)}`
+    : storedOnly ? 'no stored broker stop observation for these holdings' : 'fetch time unknown'
   const sha = meta?.source_commit ? meta.source_commit.slice(0, 12) : null
   const uiVer = meta?.ui_version || (metaErr ? 'build unknown' : '…')
 

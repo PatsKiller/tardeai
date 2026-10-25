@@ -1127,8 +1127,10 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
-    stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
-                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")} for p in positions]
+    stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
+                                         "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")},
+                  # the stored broker order id, so a page can show a resting stop without a live broker read
+                  "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
