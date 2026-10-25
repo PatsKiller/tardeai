@@ -364,3 +364,25 @@ def test_packed_release_stamp_or_policy_disagreement_is_reported_not_repaired(tm
     with pytest.raises(c.Refused, match="RELEASE_POLICY_CONTENT_MISMATCH"):
         api.policy_source(release)
     assert (release / "AGENTS.md").read_text() == "Altered artifact wording"
+
+
+def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(monkeypatch):
+    import sys
+    import types
+    from urllib.parse import urlparse, parse_qs
+    package = types.ModuleType("scripts.lib.conflicts"); package.__path__ = []
+    module = types.ModuleType("scripts.lib.conflicts.api")
+    key = "security:guid:U0:source:Schwab Rollover IRA / Research & ops"
+    def read(**kwargs):
+        assert kwargs == {"limit": 200}  # code artifacts must not replace W10's canonical state root
+        return {"gap": None, "total": 1, "rows": [{"id": key, "title": "Review source disagreement", "proposed_by": "conflict engine",
+            "created_at": NOW.isoformat(), "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
+            "governed_href": "/v3/watch?conflict=" + key}]}
+    module.approval_rows = read
+    monkeypatch.setitem(sys.modules, "scripts.lib.conflicts", package)
+    monkeypatch.setitem(sys.modules, "scripts.lib.conflicts.api", module)
+    row = api._default_sources(Path(__file__).resolve().parents[1])["conflicts"]()[0]
+    assert row["id"].startswith("conflict:") and " " not in row["id"]
+    assert row["decision_mode"] == "GOVERNED_PATH"
+    assert urlparse(row["governed_href"]).path == "/watch"
+    assert parse_qs(urlparse(row["governed_href"]).query)["conflict"] == [key]
