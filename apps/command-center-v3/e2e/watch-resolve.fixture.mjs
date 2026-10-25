@@ -113,6 +113,7 @@ try{
   await page.goBack();await inView(page.getByRole('dialog',{name:'SCHD · recorded conflict'}))
   await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByTestId('watch-row')).toHaveCount(104)
+  await inView(row.getByRole('button',{name:'Resolve conflict',exact:true}))
   await tap(row.getByRole('button',{name:'Resolve conflict',exact:true}))
   state='DECIDED';await page.clock.runFor(15_000)
   await expect(dialog.getByTestId('conflict-record-state')).toHaveText('Decision recorded · awaiting engine re-evaluation')
