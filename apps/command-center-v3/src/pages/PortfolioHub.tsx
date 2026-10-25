@@ -269,12 +269,18 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000, { enabled: needHoldingsDesk })
   const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000, { enabled: needHoldingsDesk })
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000, { enabled: needHoldingsDesk })
-  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000, { enabled: needHoldingsDesk })
+  // Cards + Finviz strips only for the symbols this desk shows (perf 2026-10-25): the universe maps are ~3.3 MB +
+  // 1.7 MB (~1.3 MB gzipped) and the desk reads cardMap[SYM] / fvMap[SYM] for holdings rows only. Both endpoints
+  // filter server-side on ?symbols=; the request waits for holdings so the list is known.
+  const holdingSymbols = useMemo(() => [...new Set(((holdings?.holdings ?? []) as any[])
+    .map(h => String(h?.symbol || '').toUpperCase()).filter(Boolean))].sort().join(','), [holdings])
+  const symbolsQs = `symbols=${encodeURIComponent(holdingSymbols)}`
+  const { data: scards } = useApi<any>(`/api/v2/symbol-cards?${symbolsQs}`, 300_000, { enabled: needHoldingsDesk && !!holdingSymbols })
   // Closed-session resistance, same cache the Re-Entry desk reads, so the level shown
   // beside a holding is the level the rotation gates use — not a second opinion.
   const { data: resistancePref } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000, { enabled: needHoldingsDesk })
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
-  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000, { enabled: needHoldingsDesk })
+  const { data: fvStrip } = useApi<any>(`/api/v2/finviz-strip-map?${symbolsQs}`, 300_000, { enabled: needHoldingsDesk && !!holdingSymbols })
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000, { enabled: needDividends })
   const { data: taxLots, loading: taxLoading, error: taxError } = useApi<any>('/api/v2/tax-lots', 120_000, { enabled: needTax })
