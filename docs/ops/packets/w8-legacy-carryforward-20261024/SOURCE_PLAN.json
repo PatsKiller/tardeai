@@ -1,0 +1,40 @@
+{
+  "source_commit": "8ba33bd6c4612770a71a814874632eaba3b19f6e",
+  "original_base": "ca39056af0b67491310a7267d75e2a0c882bc7d0",
+  "new_cached_base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "target_lanes": [
+    "holdings-drift-monitor",
+    "options-desk-staleness-monitor",
+    "held-exit-coverage-monitor",
+    "options-desk-quote-refresh",
+    "cio-ask-research",
+    "jsonl-archive-rotate"
+  ],
+  "registry_main_rows": 678,
+  "required_recent_rows": [
+    "cio-prospect-shadow",
+    "cio-company-facts-populate"
+  ],
+  "planned_shapes": {
+    "five_runnable_source_entries": "shadow + dry_run, live_arg=null; no activation",
+    "options-desk-quote-refresh": "NEVER_SCHEDULED/kindnone, no operative allowlist/dispatch, shadow candidate only",
+    "jsonl_archive_health": "REVIEWED with explicit operator2026-10-24 legacy-pr-carryforward.md reference; activation distinct"
+  },
+  "scope_limit": "six health contracts only; old schwab-position-sync extra contract reserved for W12 separate per-lane source",
+  "unaffected_claims": "Normal earlier-owner transfers required; no override or other session impersonation",
+  "initial_W8_source_frozen": "369de012149e2737001fc5ef47f66d39f8404140",
+  "operative_baseline": {
+    "lane_registry.json": {
+      "rows": 678,
+      "section_sha256": "60fc105820bc7401d4d7d5613eeb7d81785943f99819d40b469192037a3b0b56"
+    },
+    "n8n_run_allowlist.json": {
+      "rows": 134,
+      "section_sha256": "74fbdc62bc65b2a8fa39c4b622c3638390cbb38183fbcb2b5a3b21273af839c0"
+    },
+    "n8n_health_contracts.json": {
+      "rows": 158,
+      "section_sha256": "d8e059c67044323511da7ce94ebf8b17ab8d293a5dd8f66df861fb43541e1179"
+    }
+  }
+}
