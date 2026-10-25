@@ -6,19 +6,23 @@ lane can reuse the SAME logic (AGENTS.md §13.5: one implementation; the operato
 reaches the market-quote provider and broker transport (a dispatched lane may not import those, §23.14).
 ``reentry_decision_desk`` re-exports every name below, so its callers and behaviour are unchanged.
 
-Pure: no I/O, no imports beyond the standard library. No LLM on this path.
+Pure: no I/O, no imports beyond the standard library and the stdlib-only wash-sale module. No LLM on this path.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
 
+try:  # the ONE wash-sale implementation (EXCEPTIONS_MATRIX R9); stdlib-only at import
+    from scripts.lib.wash_sale import WASH_DAYS
+except ImportError:  # scripts/ (not the repo root) on sys.path
+    from lib.wash_sale import WASH_DAYS  # type: ignore
+
 STALE_HOURS = 96
 NEAR_PCT = 3.0
 RSI_READY_LOW = 40.0
 RSI_READY_HIGH = 70.0
 RSI_OVERSOLD = 30.0
-WASH_DAYS = 30
 
 
 def _age_hours(as_of: str | None) -> float | None:

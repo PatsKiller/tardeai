@@ -109,6 +109,21 @@ hook change takes effect only when merged, which happens only after
 AGENTS.md 4.1.0 is ratified. Renaming or re-creating a branch under `n8nmat/` to
 gain budget is routing around a denial (AGENTS.md §0 rail 3) and is forbidden.
 
+Hands-off delivery (AGENTS.md 21.0.0 §28.15 item 1; binding (21.0.0 ACTIVE),
+enforced once the hook change in `scripts/lib/tradeai_push_budget.py`
+is merged; until then the budget above is 2): the per-branch budget is 5
+authorized pushes. Past 5, only the coordinator session (the session keeping
+the day's coordinator worklog, AGENTS.md §28.3, by its AGENT_CLAIM_SESSION) may
+push with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`, and only for a PR linked to an
+operator-approved scope: a claim-board plan carrying an operator approval
+reference, or a PR body line `Operator-approval: <quote or reference>`. Each
+override is logged with that reference (`TRADEAI_REMOTE_PUSH_OVERRIDE_REF`, and
+`agent_claim.py note` in the coordinator worklog). An approval relayed between
+agents never counts (AGENTS.md §28.4). An operator-approved scope, plan or
+execution request is the explicit operator intent of section 16 for the pushes
+that deliver it. Force-push stays forbidden, and renaming or re-creating a branch
+to reset a budget is still routing around a denial (AGENTS.md §0 rail 3).
+
 The following are NOT valid reasons to push:
 
 - "see whether CI passes"
@@ -510,6 +525,17 @@ two-push rule above applies to those branches too. The block message prints the
 effective budget. Renaming a branch to gain budget is routing around a denial
 (AGENTS.md §0 rail 3).
 
+Hands-off delivery (AGENTS.md 21.0.0 §28.15; binding (21.0.0 ACTIVE),
+enforced once the hook change is merged; see section 3): the hook allows pushes 1 through 5 on
+every branch, and the override below is the coordinator session's alone, on a PR
+linked to an operator-approved scope, logged with its approval reference.
+Force-push is never allowed. Under an operator-approved plan or scope (a claim
+plan with an `Operator-approval:` reference, or a coordinator-assigned task file
+under data/coordination/handoffs/), an agent's fast-forward push of its own
+feature branch needs no guard `git-push` grant; the guard records it. Pushes to
+`main` or release branches, force pushes, resets, filter-branch and remote
+branch deletion still need the operator (AGENTS.md §28.15 item 8).
+
 Override (not the normal path; requires explicit operator approval):
 
     TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
@@ -696,6 +722,13 @@ Coding agents keep every rule above: a local commit is the checkpoint, one
 authorized push per tranche, and a PR as their last remote act. An agent
 never pushes `main` or any `train/*` ref, never merges, and never sets
 `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` on the release service's behalf.
+
+Binding (AGENTS.md 21.0.0 ACTIVE, §28.15 items 2, 3 and 7): the
+train also carries solo trains, one PR alone in a window, under the standing
+delegation's `solo` class. Train-self, guard, hook and CI-enforcement PRs ride
+one only with two adversarial reviews and a veto window of at least 3 h, and
+never when they weaken §0, §2 or §17 enforcement. Agents still never merge,
+push `main` or `train/*`, or release.
 
 A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
 next mutation boundary. Clearing it, resuming, widening the train's scope and

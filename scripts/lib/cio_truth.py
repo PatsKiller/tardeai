@@ -154,6 +154,38 @@ _PENDING_STOP_STATES = {"pending_activation", "pending", "awaiting_parent_order"
 _DEAD_STOP_STATES = {"canceled", "cancelled", "rejected", "expired", "replaced", "not_in_read"}
 
 
+# Stop categories for display (board 15 "Stop source"): one per counted position, in the order the desk shows them.
+STOP_CATEGORIES = ("active", "pending_activation", "filled", "unknown", "planned", "none")
+_RESTING_STOP_STATES = ("active", "pending_activation")
+
+
+def _stop_category(p: dict) -> str:
+    state = p.get("stop_state")
+    if state in ("active", "pending_activation", "filled", "unknown"):
+        return state
+    return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
+
+
+def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
+    """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
+
+    Display only. ``loss_at_stop_usd`` stays the active-stop figure; pending stops are reported beside it.
+    """
+    if not broker_available:
+        return {"stop_breakdown": None, "loss_at_resting_stops_usd": None, "resting_heat_pct": None}
+    breakdown = {}
+    for cat in STOP_CATEGORIES:
+        group = [p for p in counted if p.get("stop_category") == cat]
+        breakdown[cat] = {"count": len(group), "value_usd": _sum_known(group, "market_value") if group else 0,
+                          "symbols": [{"symbol": p["symbol"], "account_id": p["account_id"],
+                                       "account_label": p.get("account_label")} for p in group]}
+    resting = [p for p in counted if p.get("stop_category") in _RESTING_STOP_STATES]
+    losses = [p.get("loss_at_resting_stop_usd") for p in resting]
+    loss = round(sum(losses), 2) if all(v is not None for v in losses) else None
+    return {"stop_breakdown": breakdown, "loss_at_resting_stops_usd": loss,
+            "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
+
+
 def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None) -> dict:
     """Display-only stop precedence by canonical account+symbol, including state.
 
@@ -1114,6 +1146,16 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             p["broker_protected"] and price is not None and sp is not None and shares is not None) else None
         if p["broker_protected"]:
             losses.append(p["loss_at_stop_usd"])
+        # Display-only (board 15): a broker stop that is resting but not yet active still has a level the operator
+        # needs to read ("To stop", "Loss at stop"). These fields never count as protection (broker_protected).
+        resting = p.get("stop_source") == "broker_resting" and p.get("stop_state") in _RESTING_STOP_STATES
+        p["resting_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if resting and price and sp else None
+        p["loss_at_resting_stop_usd"] = round(max(0, price-sp) * shares, 2) if (
+            resting and price is not None and sp is not None and shares is not None) else None
+        planned_level = p.get("stop_source") == "planned"
+        p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
+        p["counted"] = any(p is c for c in counted_positions)
+        p["stop_category"] = _stop_category(p)
     protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
     unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
@@ -1123,6 +1165,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
+    position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)
