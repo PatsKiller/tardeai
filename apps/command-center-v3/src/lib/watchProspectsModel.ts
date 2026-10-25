@@ -261,6 +261,29 @@ export function fmtTime(iso: string | null | undefined): string {
   return t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET'
 }
 
+/** A zoned instant in Eastern Time. An unzoned stamp is not labeled UTC. */
+export function etStamp(at: string | null | undefined): string | null {
+  if (!at) return null
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(at.trim())) return 'timezone unavailable'
+  const t = new Date(at)
+  if (Number.isNaN(t.getTime())) return 'timezone unavailable'
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(t) + ' ET'
+}
+
+/** The detail "Next" line. A resolve step is not offered when the conflict check itself is only a gap. */
+export function detailNextLine(action: NextAction, section: { headline?: string | null; findings?: unknown[] | null; gap?: { reason?: string } | string | null }): string {
+  const findings = section.findings || []
+  const gap = section.gap
+  const gapReason = !gap ? '' : typeof gap === 'string' ? gap : (gap.reason || '')
+  if (action.kind === 'resolve_conflict' && !section.headline && findings.length === 0 && gapReason) {
+    return `Conflict check unavailable — ${gapReason}`
+  }
+  if (action.label === '—') return 'nothing until new evidence arrives.'
+  return `${action.label} — ${action.reason}`
+}
+
 export function conflictCount(p: ProspectsPayload): number {
   if (p.conflict_count != null) return p.conflict_count
   return LANE_ORDER.filter(l => l !== 'expired')
@@ -348,15 +371,15 @@ export function reviewStateTone(s: ReviewState | null | undefined): 'success' | 
   return 'neutral'
 }
 
-const shortTime = (at: string | null | undefined) => at ? String(at).slice(0, 16).replace('T', ' ') : null
+const requestTime = (at: string | null | undefined) => at ? (etStamp(at) || 'timezone unavailable') : null
 
 /** One line for the chip; the server label first, the request times after it. Never a silent "already queued". */
 export function reviewStateText(s: ReviewState | null | undefined): string | null {
   if (!s || s.status === 'none') return null
   const parts = [s.label || s.status]
-  if (s.open && s.queued_at) parts.push(`asked ${shortTime(s.queued_at)} UTC`)
-  if (s.open && s.expires_at) parts.push(`expires ${shortTime(s.expires_at)} UTC`)
-  if (s.last_attempt?.at && s.status !== 'queued') parts.push(`last run ${shortTime(s.last_attempt.at)} UTC`)
+  if (s.open && s.queued_at) parts.push(`asked ${requestTime(s.queued_at)}`)
+  if (s.open && s.expires_at) parts.push(`expires ${requestTime(s.expires_at)}`)
+  if (s.last_attempt?.at && s.status !== 'queued') parts.push(`last run ${requestTime(s.last_attempt.at)}`)
   return parts.join(' · ')
 }
 

@@ -1,5 +1,5 @@
 // Pure pinned-clock presentation regression; node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts
-import { levelSourceTag, levelText, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from './watchMarketFactsPresentation.ts'
+import { levelFootnoteTime, levelSourceTag, levelText, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from './watchMarketFactsPresentation.ts'
 import type { WatchMarketField } from './watchListsModel.ts'
 declare const process: { exit(code?: number): never }
 let checks = 0
@@ -44,4 +44,8 @@ eq('known source date has no unknown flag', levelTimeUnknown([{ ...field, as_of:
 eq('missing levels alone have no unknown flag', levelTimeUnknown([{ ...field, value: null, as_of: null }]), false)
 eq('invalid level time remains unknown', levelTimeUnknown([{ ...field, as_of: 'bad', as_of_basis: 'observation timestamp' }]), true)
 eq('invalid closed date remains unknown', levelTimeUnknown([{ ...field, as_of: '2026-02-30', as_of_basis: 'last closed session' }]), true)
+eq('footnote shows a stored instant when the basis is unrecognized', levelFootnoteTime([{ ...field, as_of: '2026-10-23T19:45:00Z', as_of_basis: 'strategy card created_at' }]), 'Oct 23, 3:45 PM ET')
+eq('footnote keeps a date-only session date', levelFootnoteTime([{ ...field, as_of: '2026-10-22', as_of_basis: 'last closed session' }]), '2026-10-22')
+eq('footnote is unknown only when no time is stored', levelFootnoteTime([{ ...field, as_of: null }]), 'time unknown')
+eq('footnote does not hide a known time beside an unknown level', levelFootnoteTime([{ ...field, as_of: '2026-10-23T19:45:00Z' }, { ...field, as_of: null }]), 'Oct 23, 3:45 PM ET')
 console.log(`watchMarketFactsPresentation: ${checks} assertions passed`)
