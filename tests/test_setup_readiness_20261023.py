@@ -51,7 +51,7 @@ def test_saiq_unverified_headline_is_not_ready_and_names_what_is_missing():
     assert (r["passed"], r["required"]) == (4, 5)
     assert r["catalyst"]["status"] == "UNVERIFIED_HEADLINE"
     assert r["catalyst"]["text"].startswith("WISeSat")  # kept, but labelled
-    assert len(r["missing"]) == 1 and r["missing"][0].startswith("verified catalyst: unverified headline")
+    assert len(r["missing"]) == 1 and r["missing"][0].startswith("Verified catalyst: unverified headline")
     assert "Hermes 08:25: no clear catalyst" in r["missing"][0]
     assert "needs 5/5, has 4/5" in r["summary"]
     ids = [d["id"] for d in r["driven_by"]]
@@ -60,8 +60,8 @@ def test_saiq_unverified_headline_is_not_ready_and_names_what_is_missing():
 
 def test_format_readiness_is_two_plain_lines_with_values_and_thresholds():
     lines = mse.format_readiness(mse.setup_readiness(_evidence(_saiq()), hermes=HERMES_NONE))
-    assert lines[0].startswith("Driven by: price 6.64 (1–25) ✓")
-    assert "float 2.21M (≤ 20M) ✓" in lines[0] and "RVOL 12.8x (≥ 5x) ✓" in lines[0]
+    assert lines[0].startswith("Driven by: Price 6.64 (1–25) ✓")
+    assert "Float 2.21M (≤ 20M) ✓" in lines[0] and "RVOL 12.8x (≥ 5x) ✓" in lines[0]
     assert lines[1].startswith("Ready: NO — needs 5/5, has 4/5")
     assert not any(c in "".join(lines) for c in "<>*`[]")
 

@@ -396,13 +396,19 @@ def _safe_line(value):
     return re.sub(r"[<>*_`\[\]]", "", str(value if value is not None else "UNKNOWN")).replace("\n", " ")
 
 
-def format_notification_evidence(evidence, *, include_catalyst=True):
+def format_notification_evidence(evidence, *, include_catalyst=True, hermes=None, veto_reasons=None):
+    """The advisory evidence appendix. Since 2026-10-23 its fact rows are the shared SetupReadiness@v1 lines
+    (``Driven by: …`` / ``Ready: YES|NO — …`` from :func:`setup_readiness`), so an alert and the Trade AI page
+    state the same verdict in the same words, and an unverified headline is labelled, never shown as THE catalyst."""
     if not isinstance(evidence, dict):
         return f"{MARKER}: UNKNOWN — current same-symbol evidence unavailable"
     catalyst = evidence.get("catalyst") or {}
+    readiness = setup_readiness(evidence, hermes=hermes, veto_reasons=veto_reasons)
     lines = [f"{MARKER}: {evidence.get('passed_count', 0)}/5 source facts · {_safe_line(evidence.get('source_name'))}"]
     if include_catalyst:
-        lines.append(f"Catalyst: {_safe_line(catalyst.get('text'))}")
+        verdict = readiness["catalyst"]
+        tag = "" if verdict["status"] == "VERIFIED" or not catalyst.get("text") else "UNVERIFIED headline — "
+        lines.append(f"Catalyst: {tag}{_safe_line(catalyst.get('text'))}")
         lines.append(
             f"Source: {_safe_line(catalyst.get('source'))} · {_safe_line(catalyst.get('verification_status'))}"
         )
@@ -410,16 +416,7 @@ def format_notification_evidence(evidence, *, include_catalyst=True):
             f"Published: {_safe_line(catalyst.get('published_at'))} · observed {_safe_line(catalyst.get('observed_at'))}"
         )
         lines.append(f"Catalyst session: {_safe_line(catalyst.get('publication_state'))} · recency not measured")
-    for pillar in evidence.get("pillars") or []:
-        threshold = pillar.get("threshold") or {}
-        rule = (
-            "verified + sourced/current"
-            if pillar.get("id") == "catalyst"
-            else ", ".join(f"{k} {v}" for k, v in threshold.items() if k != "unit")
-        )
-        lines.append(
-            f"{_safe_line(pillar.get('label'))}: {_safe_line(pillar.get('status'))} · {_safe_line(pillar.get('value'))} ({rule})"
-        )
+    lines.extend(format_readiness(readiness))
     scout = evidence.get("social_scout") or {}
     if scout.get("reported_count") is not None:
         lines.append(f"SocialScout: {scout['reported_count']}/5 reported upstream (different definition)")
@@ -718,7 +715,7 @@ def _fmt_rule(pillar):
     return ", ".join(f"{k} {v}" for k, v in t.items() if k != "unit") or "—"
 
 
-_PILLAR_SHORT = {"price": "price", "float": "float", "rvol": "RVOL", "gap": "gap", "catalyst": "verified catalyst"}
+_PILLAR_SHORT = {"price": "Price", "float": "Float", "rvol": "RVOL", "gap": "Gap", "catalyst": "Verified catalyst"}
 
 
 def setup_readiness(evidence, *, hermes=None, veto_reasons=None):
@@ -754,7 +751,7 @@ def setup_readiness(evidence, *, hermes=None, veto_reasons=None):
         if status == "PASSED":
             continue
         if pid == "catalyst":
-            missing.append(f"verified catalyst: {cat['label']}" + (f" — {cat['reason']}" if cat["reason"] else ""))
+            missing.append(f"Verified catalyst: {cat['label']}" + (f" — {cat['reason']}" if cat["reason"] else ""))
         elif status == "FAILED":
             missing.append(f"{name} {item['value_text']} fails {rule}")
         else:

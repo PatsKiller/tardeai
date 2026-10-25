@@ -127,13 +127,26 @@ def _broker(status, **kw):
 def test_catalyst_from_trade_ai_scan_first():
     t = {"decision": "GO", "setup_evidence": {"catalyst": {"text": "FDA approval", "source": "news"}}}
     line = ma.catalyst_line("ABCD", t, DAY, broker_fn=_broker("FOUND", summary="ignored"))
-    assert line == "catalyst: FDA approval · news"
+    # 2026-10-23: an unverified scan headline is labelled (lib.momentum_setup_evidence.catalyst_verdict).
+    assert line.startswith("catalyst: UNVERIFIED headline — FDA approval · news (")
+    t["setup_evidence"]["catalyst"]["verification_status"] = "SOURCE_VERIFIED"
+    assert ma.catalyst_line("ABCD", t, DAY, broker_fn=_broker("FOUND", summary="ignored")) == "catalyst: FDA approval · news"
+
+
+def test_saiq_unverified_scan_headline_names_scan_and_hermes_verdicts():
+    t = {"decision": "MANUAL_REVIEW", "catalyst": "WISeSat.Space and SEALSQ Advance Satellite Cybersecurity",
+         "catalyst_source": "yahoo_finance", "catalyst_verified": False, "catalyst_confidence": 0.0}
+    line = ma.catalyst_line("SAIQ", t, DAY, broker_fn=_broker("NONE_FOUND", researched_at=f"{DAY}T08:25:52"))
+    assert line.startswith("catalyst: UNVERIFIED headline — WISeSat")
+    assert "scan marked it NOT verified (yahoo_finance, confidence 0)" in line
+    assert "Hermes 08:25: no clear catalyst" in line
 
 
 def test_catalyst_falls_back_to_earlier_scan_row_of_the_day():
     t = {"decision": "MANUAL_REVIEW", "setup_evidence": {"catalyst": {"text": None}},
          "day_catalyst": {"text": "Nasdaq notice", "source": "finviz"}}
-    assert ma.catalyst_line("NCPL", t, DAY, broker_fn=_broker("NOT_RESEARCHED")) == "catalyst: Nasdaq notice · finviz"
+    line = ma.catalyst_line("NCPL", t, DAY, broker_fn=_broker("NOT_RESEARCHED"))
+    assert line.startswith("catalyst: UNVERIFIED headline — Nasdaq notice · finviz (no source verification reported")
 
 
 def test_catalyst_from_hermes_research_via_broker():
