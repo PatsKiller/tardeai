@@ -20,7 +20,7 @@ def _mod(tmp_path, monkeypatch):
     import lib.advisory_desk_schedule as m
     m = importlib.reload(m)
     m._SYSTEMD_CACHE.update({"at": 0.0, "iso": None})
-    monkeypatch.setattr(m, "_systemd_next_iso", lambda: None)
+    monkeypatch.setattr(m, "_systemd_timer_state", lambda: {"state": "DISABLED", "reason": "Timer disabled.", "unit_file_state": "disabled", "active_state": "inactive", "next_run_at": None})
     return m
 
 
@@ -63,20 +63,22 @@ def test_january_is_est(tmp_path, monkeypatch):
     assert nxt.date().isoformat() == "2026-01-16"
 
 
-def test_schedule_payload_calendar_source(tmp_path, monkeypatch):
+def test_schedule_payload_disabled_timer_has_no_calendar_fallback(tmp_path, monkeypatch):
     m = _mod(tmp_path, monkeypatch)
     payload = m.schedule_payload(datetime(2026, 8, 19, 8, 0, tzinfo=m.ET))
-    assert payload["source"] == "calendar"
+    assert payload["source"] == "systemd"
+    assert payload["schedule_state"] == "DISABLED"
     assert payload["cadence"] == "weekdays 09:15 America/New_York"
     assert payload["authority"] == "READ_ONLY_ADVISORY"
     assert payload["financial_action"] is False
-    assert "09:15" in payload["next_run_et"]
+    assert payload["next_run_et"] is None
+    assert payload["next_run_at"] is None
 
 
 def test_schedule_payload_prefers_systemd(tmp_path, monkeypatch):
     m = _mod(tmp_path, monkeypatch)
     iso = datetime(2026, 8, 20, 13, 15, tzinfo=timezone.utc).isoformat()
-    monkeypatch.setattr(m, "_systemd_next_iso", lambda: iso)
+    monkeypatch.setattr(m, "_systemd_timer_state", lambda: {"state": "SCHEDULED", "reason": None, "unit_file_state": "enabled", "active_state": "active", "next_run_at": iso})
     payload = m.schedule_payload(datetime(2026, 8, 19, 20, 0, tzinfo=m.ET))
     assert payload["source"] == "systemd"
     assert payload["next_run_et"].startswith("Thu 2026-08-20 09:15")

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_escalation_link_20261024",
+  "files": [
+    "tests/test_watch_escalation_link_20261024.py"
+  ],
+  "anchor": "WATCH_ESCALATION_LINK_20261024",
+  "comment": [
+    "Actual escalation sender uses current My Watchlist route, one encoded query, preserved message metadata; isolated AST sender fake, no job/DB/model/send calls."
+  ]
+}

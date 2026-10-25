@@ -1026,10 +1026,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
 | `docs/designs/DSN-20261024-ask-cio-readable.md` | Ask CIO canonical answers and completion |
 | `docs/designs/DSN-20261024-ask-tracking.md` | Canonical tracking truth |
+| `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
+| `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -1772,6 +1774,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ACCOUNT_LABELS_2026-10-23.md` | Account names on every position and trade row (2026-10-23) |
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
+| `docs/ops/ADVISORY_SCHEDULE_TRUTH_20261024.md` | Advisory schedule: advertise observed fires only |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
@@ -1788,6 +1791,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment |
 | `docs/ops/C1_CIO_COMPANY_FACTS_20261024.md` | C1: shared CIO company facts on My Watchlist and Prospects |
+| `docs/ops/C1_COMPANY_CATALYST_FIX_20261024.md` | C1: stored catalysts and short registered company names |
 | `docs/ops/C1_COMPANY_FACTS_POPULATION_20261024.md` | C1 company-facts population: source delivery and production-copy proof |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 |
@@ -1949,6 +1953,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET |
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
+| `docs/ops/DESKS_B_REDESIGN_20261024.md` | Desks B: approved boards 5–11 |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
@@ -2088,6 +2093,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
+| `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
 | `docs/ops/WATCH_MY_LIST_MARKET_FACTS_20261024.md` | WP-29: My Watchlist stored market facts |
@@ -2181,6 +2187,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/agents-21-20261023-wp16/README.md` | WP-16: proposed AGENTS 21.0.0 operator package |
 | `docs/ops/packets/agents-21-20261023-wp16/operator-pr-body.md` | WP-16 operator policy proposal |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
+| `docs/ops/packets/c1-company-catalyst-20261024/REMAINING_CATALYST_GAPS.md` | Remaining catalyst gaps |
 | `docs/ops/packets/c1-company-population-20261024/RUNBOOK.md` | C1 company-facts population operator packet |
 | `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
 | `docs/ops/packets/cio-ask-process-20261024/README.md` | Ask-CIO process: source and operator handoff |

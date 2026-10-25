@@ -269,7 +269,7 @@ def test_fix5_no_evidence_omits_the_unknown_line():
 
 def test_fix5_trade_ai_block_with_passed_rows_stays():
     out = _enrich(_snapshot([]))
-    assert "source facts · TRADEAI" in out and "PASSED" in out
+    assert "source facts · TRADEAI" in out and "Driven by: " in out and "✓" in out
 
 
 def test_fix5_formatter_and_gate_semantics_unchanged():

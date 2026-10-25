@@ -60,6 +60,7 @@ def write_result(root, result, start):
                                   'produced_count': result.get('produced_count', 0),
                                   **{k: result.get(k) for k in ('reason', 'created', 'updated', 'unchanged', 'gaps', 'identity_gaps', 'pg_sync', 'quality_status')},
                                   'watch_coverage': (result.get('after') or {}).get('my_watchlist'),
+                                  'catalyst_sources': result.get('catalyst_sources'),
                                   'judgment_writes': 0, 'prospect_promotions': 0})
 
 

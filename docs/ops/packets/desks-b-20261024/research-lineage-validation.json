@@ -1,0 +1,18 @@
+{
+  "as_of": "2026-10-24T22:57:11.780447+00:00",
+  "scope": "Board 6 data only; no live UI or deployment proof",
+  "base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "checks": {
+    "affected_psycopg2_hidden": "22 passed",
+    "completeness_payload_registry_and_affected_psycopg2_hidden": "65 passed before final slim-list field-hardening; affected 22 rerun after",
+    "dark_contracts_fail_on_new": "PASS",
+    "retention_fail_on_new": "PASS",
+    "test_coverage_fail_on_new": "PASS",
+    "test_host_paths_fail_on_new": "PASS",
+    "lane_registry_check": "PASS; no registry writes",
+    "docs_index": "PASS",
+    "npm_run_build": "PASS; 1547 modules; existing bundle-size advisory"
+  },
+  "fixtures": "tests/test_desks_b_20261024.py: pinned2026-10-24T22:00Z evidence and explicit missing-source fixture",
+  "ui_dependency": "W5 DeskPage frame must land before W6 page implementation"
+}
