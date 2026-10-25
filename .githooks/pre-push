@@ -65,39 +65,61 @@ guard_grant_id="$(jget "$guard_meta" grant_id)"
 # Budget decision per pushed branch, counted per (git common dir, branch) so a new worktree or a
 # branch switch cannot reset it. A guard grant no longer lifts the cap by itself (2026-10-21): only
 # a grant whose reason says "override", or the operator's TRADEAI_REMOTE_PUSH_OVERRIDE=1, does.
+# Hands-off delivery (AGENTS.md 20.4.0, read from origin/main:AGENTS.md; inert until ACTIVE): budget 5,
+# the coordinator's override with an Operator-approval: reference, every used override logged, and no
+# override ever authorizes a force push (scripts/lib/tradeai_push_budget.py hook_decision).
 decision="$(AUTHORIZED="$authorized" ENV_OVERRIDE="$env_override" GUARD_OK="$guard_ok" GUARD_REASON="$guard_reason" python3 - <<'PY'
 import os, json, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
-from scripts.lib.tradeai_push_budget import decide_push, pushed_branches
-d = decide_push(
-    pushed_branches(os.environ.get("PUSH_REFS", "")),
+from scripts.lib.tradeai_push_budget import hook_decision
+d = hook_decision(
+    os.environ.get("PUSH_REFS", ""),
     authorized=os.environ.get("AUTHORIZED") == "1",
     env_override=os.environ.get("ENV_OVERRIDE") == "1",
     grant_reason=os.environ.get("GUARD_REASON") if os.environ.get("GUARD_OK") == "1" else None,
 )
-print(json.dumps({**d, "guard_grant": os.environ.get("GUARD_OK") == "1"}))
+print(json.dumps({**d, "guard_grant": os.environ.get("GUARD_OK") == "1"}, default=str))
 PY
 )"
+export PUSH_DECISION="$decision"
 
 reason="$(jget "$decision" reason)"
 allow="$(jget "$decision" allow)"
 count="$(jget "$decision" state_count)"
 budget="$(jget "$decision" budget)"
 blocked_branch="$(jget "$decision" branch)"
+hands_off="$(jget "$decision" hands_off)"
+coord_why="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]).get("coordinator") or {}; print(c.get("why") or "")' "$decision")"
 
 if [[ "$allow" != "True" ]]; then
-  if [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
+  if [[ "$reason" == "FORCE_PUSH_REFUSED" ]]; then
+    force_lines="$(python3 -c 'import json,sys; print("\n".join("  - " + f["branch"] + ": " + f["why"] for f in json.loads(sys.argv[1]).get("force") or []))' "$decision")"
+    cat >&2 <<EOF
+REMOTE PUSH BLOCKED (force push refused).
+
+${force_lines}
+
+No override -- the operator's, a grant's or the coordinator's -- authorizes rewriting or deleting a
+remote branch (AI_WORK_POLICY.md; AGENTS.md 20.4.0 hands-off delivery). Fetch, then push a fast-forward:
+add a commit on top of the remote tip instead of rewriting it.
+EOF
+  elif [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
     cat >&2 <<EOF
 REMOTE PUSH BLOCKED (push budget).
 
 This tranche (branch '${blocked_branch}') already used ${count} authorized remote push(es).
 Effective budget for this branch is ${budget}.
 Default budget is 2 (4 for n8nmat/* until 2026-10-12T23:59:59-04:00, AGENTS.md §23.13).
+Hands-off delivery (AGENTS.md 20.4.0 ACTIVE on origin/main: ${hands_off}) raises it to 5.
 The count is per branch across every worktree of this repository; a guard git-push grant
 lifts it only when the grant's reason says "override".
 Any push beyond the effective budget requires explicit operator approval:
 
     TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+Under AGENTS.md 20.4.0 the COORDINATOR may set that override without a fresh interactive approval
+only with TRADEAI_COORDINATOR_SESSION naming its live coordinator claim and an "Operator-approval:"
+reference in the PR body or its claim plan.${coord_why:+ Coordinator check: ${coord_why}}
 
 See AI_WORK_POLICY.md §3 and §17. Renaming a branch to gain budget is routing around a denial. Do not use the override as the normal path.
 EOF
@@ -128,7 +150,10 @@ EOF
   exit 1
 fi
 
-echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count)."
+echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count budget=$budget hands_off=$hands_off)."
+if [[ "$reason" == "OVERRIDE" ]]; then
+  echo "Push budget override used (source=$(jget "$decision" override_source)); it is logged.${coord_why:+ Coordinator check: ${coord_why}}"
+fi
 if [[ "$guard_ok" == "1" ]]; then
   echo "Cursor git-push grant active: $guard_reason"
 fi
@@ -167,10 +192,28 @@ fi
 python3 - <<'PY'
 import os, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
-from scripts.lib.tradeai_push_budget import record_authorized_push, parse_push_refs, pushed_branches
+import json
+from scripts.lib.tradeai_push_budget import record_authorized_push, parse_push_refs, pushed_branches, log_override
 shas = {r["branch"]: r["local_sha"] for r in parse_push_refs(os.environ.get("PUSH_REFS", ""))}
 for branch in pushed_branches(os.environ.get("PUSH_REFS", "")):
     record_authorized_push(branch, sha=shas.get(branch))
+# Every USED override is logged (AGENTS.md 20.4.0 hands-off delivery): who, which source, which approval ref.
+d = json.loads(os.environ.get("PUSH_DECISION") or "{}")
+if d.get("override_used"):
+    coord = d.get("coordinator") or {}
+    log_override({
+        "branches": [{"branch": b["branch"], "count_before": b["state_count"], "budget": b["budget"],
+                      "sha": shas.get(b["branch"])} for b in d.get("branches") or [] if b.get("reason") == "OVERRIDE"],
+        "source": d.get("override_source"),
+        "hands_off": bool(d.get("hands_off")),
+        "coordinator_session": coord.get("session"),
+        "coordinator_claim": coord.get("coordinator_claim"),
+        "coordinator_ok": bool(coord.get("ok")),
+        "coordinator_why": coord.get("why"),
+        "approvals": coord.get("approvals") or {},
+        "agent_claim_session": os.environ.get("AGENT_CLAIM_SESSION") or None,
+        "guard_grant": bool(d.get("guard_grant")),
+    })
 PY
 
 exit 0
