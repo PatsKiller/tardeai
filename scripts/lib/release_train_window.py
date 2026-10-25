@@ -44,6 +44,7 @@ QUERY_KEYS = V.QUERY_KEYS
 READINESS_SCHEMA, WINDOW_VIEW_SCHEMA = V.READINESS_SCHEMA, V.WINDOW_VIEW_SCHEMA
 TRAIN_WINDOW_RECEIPT, TRAIN_WINDOW_REQUEST = V.TRAIN_WINDOW_RECEIPT, V.TRAIN_WINDOW_REQUEST
 lane_for_slot, load_config, validate_config = V.lane_for_slot, V.load_config, V.validate_config
+DAYS, day_name = V.DAYS, V.day_name
 request_id_for, tick_kind, window_id, window_start = V.request_id_for, V.tick_kind, V.window_id, V.window_start
 validate_receipt, validate_request, schema_errors = V.validate_receipt, V.validate_request, V.schema_errors
 
@@ -110,7 +111,8 @@ def host_snapshot(
         "armed": isinstance(pol, Mapping) and pol.get("armed") is True,
         "shadow_enabled": bool((cfg.get("shadow") or {}).get("enabled") is True),
         "delegation_state": dstate,
-        "window_enabled": V.policy_window(pol, slot)["enabled"],
+        # The policy owns the day-of-week schedule (2026-10-25): enabled for THIS window's local day only.
+        "window_enabled": V.policy_window(pol, slot, V.day_name(V.window_start(slot, now, cfg)))["enabled"],
         "policy_version": (
             str(pol.get("policy_version"))[:64]
             if isinstance(pol, Mapping) and pol.get("policy_version") is not None

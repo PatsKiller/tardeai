@@ -63,7 +63,8 @@ def controller(tmp_path, host=None):
     c.host = host or FakeHost(tmp_path)
     c.live = True
     c.train_id = "rt-20261024-1800-fixture"
-    c.tstate, c.event_errors, c.steps = {}, [], []
+    # _select's unreleased-on-main gate (review F2/B2) classified CURRENT ("f" * 40)...main before _promote runs.
+    c.tstate, c.event_errors, c.steps = {"base_unreleased_from": "f" * 40}, [], []
     c.events = t.MemoryEventSink()
     c.epoch_at_claim = 0
     c.env = {}

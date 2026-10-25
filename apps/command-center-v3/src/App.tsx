@@ -43,9 +43,11 @@ import JobsPage from './pages/JobsPage'
 import OpsDeskFrame from './components/OpsDeskFrame'
 import JobsHealth from './components/JobsHealth'
 import AskCioBar from './components/AskCioBar'
+import './styles/phoneShell.css'
 import MyQuestions from './pages/MyQuestions'
 import ApprovalsHub from './pages/ApprovalsHub'
 import PolicyHub from './pages/PolicyHub'
+import ConflictRules from './pages/ConflictRules'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
@@ -290,6 +292,7 @@ function Shell() {
             <Route path="approvals" element={<RouteErrorBoundary route="/v3/approvals"><ApprovalsHub /></RouteErrorBoundary>} />
             <Route path="approvals/:id" element={<RouteErrorBoundary route="/v3/approvals/:id"><ApprovalsHub /></RouteErrorBoundary>} />
             <Route path="policy" element={<RouteErrorBoundary route="/v3/policy"><PolicyHub /></RouteErrorBoundary>} />
+            <Route path="conflicts/rules" element={<RouteErrorBoundary route="/v3/conflicts/rules"><ConflictRules /></RouteErrorBoundary>} />
             <Route path="system/ops-controls" element={<RouteErrorBoundary route="/v3/system/ops-controls"><OpsControlsPage /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}
             <Route path="control-plane" element={<RouteErrorBoundary route="/v3/control-plane"><><SurfaceModeBanner route="/v3/control-plane" /><ControlPlaneHub /></></RouteErrorBoundary>} />

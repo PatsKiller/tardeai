@@ -154,6 +154,38 @@ _PENDING_STOP_STATES = {"pending_activation", "pending", "awaiting_parent_order"
 _DEAD_STOP_STATES = {"canceled", "cancelled", "rejected", "expired", "replaced", "not_in_read"}
 
 
+# Stop categories for display (board 15 "Stop source"): one per counted position, in the order the desk shows them.
+STOP_CATEGORIES = ("active", "pending_activation", "filled", "unknown", "planned", "none")
+_RESTING_STOP_STATES = ("active", "pending_activation")
+
+
+def _stop_category(p: dict) -> str:
+    state = p.get("stop_state")
+    if state in ("active", "pending_activation", "filled", "unknown"):
+        return state
+    return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
+
+
+def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
+    """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
+
+    Display only. ``loss_at_stop_usd`` stays the active-stop figure; pending stops are reported beside it.
+    """
+    if not broker_available:
+        return {"stop_breakdown": None, "loss_at_resting_stops_usd": None, "resting_heat_pct": None}
+    breakdown = {}
+    for cat in STOP_CATEGORIES:
+        group = [p for p in counted if p.get("stop_category") == cat]
+        breakdown[cat] = {"count": len(group), "value_usd": _sum_known(group, "market_value") if group else 0,
+                          "symbols": [{"symbol": p["symbol"], "account_id": p["account_id"],
+                                       "account_label": p.get("account_label")} for p in group]}
+    resting = [p for p in counted if p.get("stop_category") in _RESTING_STOP_STATES]
+    losses = [p.get("loss_at_resting_stop_usd") for p in resting]
+    loss = round(sum(losses), 2) if all(v is not None for v in losses) else None
+    return {"stop_breakdown": breakdown, "loss_at_resting_stops_usd": loss,
+            "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
+
+
 def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None) -> dict:
     """Display-only stop precedence by canonical account+symbol, including state.
 
@@ -422,7 +454,7 @@ def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dic
         rows = _query_rows(db_query, """
             SELECT 'actions' AS kind, COUNT(*) AS count, NULL::text AS account FROM action_queue WHERE status='pending'
             UNION ALL SELECT 'decisions', COUNT(*), NULL::text FROM john_decision_queue WHERE status='pending_john'
-            UNION ALL SELECT 'proposals', COUNT(*), COALESCE(target_account,account)
+            UNION ALL SELECT 'proposals', COUNT(*), COALESCE(target_account,final_account,proposed_account)
                       FROM paper_trade_proposals WHERE status='PENDING' GROUP BY 3
             UNION ALL SELECT 'options', COUNT(*), NULL::text FROM options_approval_queue WHERE status='pending'
         """)
@@ -457,7 +489,8 @@ def financial_queue_items(*, db_query=None, now=None, limit=200) -> dict:
                          "FROM action_queue WHERE status='pending' ORDER BY id LIMIT %s"),
         "john_decision_queue": ("decisions", "SELECT id,category,title,status,created_at,provenance "
                                 "FROM john_decision_queue WHERE status='pending_john' ORDER BY id LIMIT %s"),
-        "paper_trade_proposals": ("proposals", "SELECT id,symbol,account,target_account,status,created_at "
+        "paper_trade_proposals": ("proposals", "SELECT id,symbol,COALESCE(target_account,final_account,proposed_account) AS account,"
+                                  "target_account,status,created_at "
                                   "FROM paper_trade_proposals WHERE status='PENDING' ORDER BY id LIMIT %s"),
         "options_approval_queue": ("options", "SELECT id,proposal_id,symbol,status,created_at "
                                   "FROM options_approval_queue WHERE status='pending' ORDER BY id LIMIT %s"),
@@ -963,6 +996,78 @@ def _policy_inputs(root) -> dict:
     return {"fields": fields}
 
 
+STOP_DOMAIN = "broker_stops"
+_ET = ZoneInfo("America/New_York")
+
+
+def stop_freshness_contract(registry_path: Path | None = None) -> dict | None:
+    """{'open_h', 'closed_h'} for observed broker stops from config/data_source_authority.json, else None."""
+    path = registry_path or Path(__file__).resolve().parents[2] / "config" / "data_source_authority.json"
+    try:
+        registry = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for group in ("domains", "proposed_domains"):
+        for dom in registry.get(group) or []:
+            if isinstance(dom, dict) and dom.get("domain") == STOP_DOMAIN:
+                try:
+                    return {"open_h": float(dom["stale_after_hours"]), "closed_h": float(dom["stale_after_hours_closed"])}
+                except (KeyError, TypeError, ValueError):
+                    return None
+    return None
+
+
+def _market_open(now: datetime) -> bool:
+    t = now.astimezone(_ET)
+    if t.weekday() >= 5 or not ((9, 30) <= (t.hour, t.minute) < (16, 0)):
+        return False
+    try:
+        from scripts.market_session import is_trading_day
+    except Exception:  # noqa: BLE001 - holiday calendar optional; weekday hours still apply
+        return True
+    try:
+        return bool(is_trading_day(t))
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _et_label(at: datetime) -> str:
+    return at.astimezone(_ET).strftime("%a %b %d %H:%M ET").replace(" 0", " ")
+
+
+def stop_clock(positions, now, *, broker_available=True, contract=None) -> dict:
+    """The stop section's clock comes from broker observations only, never a planned stops.json level.
+
+    Stale uses the broker_stops freshness contract: the open-session window while the market is open, the closed
+    window otherwise (weekends do not page). A stale read keeps its counts but names their age in a gap.
+    """
+    times = [_timestamp(p.get("stop_captured_at")) for p in positions
+             if p.get("stop_source") == "broker_resting" and p.get("stop_captured_at")]
+    times = [t for t in times if t is not None]
+    at = min(times) if times else None
+    meta = _evidence("stop_last_known (broker reads) > stops.json, per account+symbol", at, now,
+                     reason="persisted broker stop observations unavailable" if not broker_available else None)
+    meta["last_broker_read_at"] = meta["as_of"]
+    meta["last_broker_read_label"] = _et_label(at) if at else None
+    if not broker_available:
+        return meta
+    if at is None:
+        meta["stale"] = True
+        meta["gap"] = {"reason": "No broker stop read is recorded for current holdings."}
+        return meta
+    contract = contract if contract is not None else stop_freshness_contract()
+    if contract is None:
+        meta["gap"] = {"reason": "Stop freshness threshold unavailable (data_source_authority broker_stops)."}
+        return meta
+    limit = contract["open_h"] if _market_open(now) else contract["closed_h"]
+    meta["stale_after_hours"] = limit
+    meta["stale"] = meta["age_hours"] is None or meta["age_hours"] < 0 or meta["age_hours"] > limit
+    if meta["stale"]:
+        meta["gap"] = {"reason": f"Stop data is {int(meta['age_hours'] or 0)} h old — counts from the last broker stop "
+                                 f"read on {meta['last_broker_read_label']}."}
+    return meta
+
+
 def do_now_for(positions, approvals, *, now=None) -> dict:
     """Existing Home queue ordering over the shared CIO display facts only."""
     from .data_broker.home_do_now import item, merge, sort_items
@@ -972,7 +1077,8 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
         if p.get("broker_protected") or (_number(p.get("market_value")) or 0) < 100:
             continue
         state = p.get("stop_state")
-        reason = "Stop awaiting activation" if state == "pending_activation" else "No active broker stop observed"
+        reason = ("Stop awaiting activation" if state == "pending_activation"
+                  else "Stop filled · awaiting holdings sync" if state == "filled" else "No active broker stop observed")
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
@@ -1022,13 +1128,11 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                       "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")} for p in positions]
-    stop_times = [p.get("stop_captured_at") for p in positions if p.get("stop_captured_at")]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
              "nearest": None, "awaiting_fill": [],
-             **_evidence("stop_last_known > stops.json, per account+symbol", min(stop_times) if stop_times else None,
-                         now, reason="persisted broker stop observations unavailable" if broker is None else None)}
+             **stop_clock(positions, now, broker_available=broker is not None, contract=inputs.get("stop_freshness"))}
     if broker is None:
         for key in ("active_count", "pending_count", "filled_count", "unprotected_count"):
             stops[key] = None
@@ -1042,6 +1146,16 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             p["broker_protected"] and price is not None and sp is not None and shares is not None) else None
         if p["broker_protected"]:
             losses.append(p["loss_at_stop_usd"])
+        # Display-only (board 15): a broker stop that is resting but not yet active still has a level the operator
+        # needs to read ("To stop", "Loss at stop"). These fields never count as protection (broker_protected).
+        resting = p.get("stop_source") == "broker_resting" and p.get("stop_state") in _RESTING_STOP_STATES
+        p["resting_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if resting and price and sp else None
+        p["loss_at_resting_stop_usd"] = round(max(0, price-sp) * shares, 2) if (
+            resting and price is not None and sp is not None and shares is not None) else None
+        planned_level = p.get("stop_source") == "planned"
+        p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
+        p["counted"] = any(p is c for c in counted_positions)
+        p["stop_category"] = _stop_category(p)
     protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
     unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
@@ -1051,6 +1165,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
+    position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)
@@ -1071,6 +1186,12 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             if distance <= 0:
                 stops["awaiting_fill"].append({"symbol": p["symbol"], "account_id": p["account_id"], "stop_price": sp,
                                                "reason": "mark at or below observed stop; fill not yet confirmed"})
+    # A broker stop that FILLED while the position is still in holdings: the sale is not yet in the holdings sync.
+    stops["filled_awaiting_sync"] = [
+        {"symbol": p["symbol"], "account_id": p["account_id"], "account_label": p.get("account_label"),
+         "stop_price": p.get("stop_price"), "captured_at": p.get("stop_captured_at"),
+         "reason": "stop filled · awaiting holdings sync"}
+        for p in counted_positions if p["stop_state"] == "filled"] if broker is not None else []
     stops["nearest"] = min(distances, key=lambda r: abs(r["distance_pct"]), default=None)
     stops["awaiting_fill_count"] = len(stops["awaiting_fill"])
     companies = inputs.get("companies")

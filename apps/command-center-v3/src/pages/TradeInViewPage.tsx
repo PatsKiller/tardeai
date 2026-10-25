@@ -7,6 +7,7 @@ import TradeJourney from './TradeJourney'
 import TradeCalendar from '../components/tradeinview/TradeCalendar'
 import TradeReplayPage from '../components/tradeinview/TradeReplayPage'
 import HoldingHistory from '../components/tradeinview/HoldingHistory'
+import ReadableTime from '../components/ReadableTime'
 import { useApi } from '../hooks/useApi'
 import { FONT, TOKENS, TYPE } from '../lib/designTokens'
 import { API_LIST, TOOLTIPS, unwrap } from '../lib/tradeJourneyModel'
@@ -36,7 +37,7 @@ export default function TradeInViewPage({ onDrill }: { onDrill: (ctx: DrillConte
       const next = e.key === 'Home' ? 0 : e.key === 'End' ? TRADE_TABS.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + TRADE_TABS.length) % TRADE_TABS.length
       choose(TRADE_TABS[next][0]); document.getElementById(`trade-tab-${TRADE_TABS[next][0]}`)?.focus()
     }}>{label}</button>)}</nav>
-    {api.stale && (tab === 'journeys' || tab === 'replay') && <div role="status" style={{ color: TOKENS.warning }}>Journeys refresh unavailable — last successful snapshot collected {payload?.as_of || 'at an unknown time'}.</div>}
+    {api.stale && (tab === 'journeys' || tab === 'replay') && <div role="status" style={{ color: TOKENS.warning }}>Journeys refresh unavailable — last successful snapshot collected <ReadableTime value={payload?.as_of} fallback="at an unknown time" />.</div>}
     {TRADE_TABS.map(([panel]) => <div key={panel} role="tabpanel" id={`trade-panel-${panel}`} aria-labelledby={`trade-tab-${panel}`} hidden={tab !== panel}>
       {tab === panel && <>
       {tab === 'journeys' && <TradeJourney payload={payload} loading={api.loading} error={api.error} embedded />}

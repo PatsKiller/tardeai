@@ -104,6 +104,8 @@ MIN_GRANT_REMAINING_S = 15 * 60
 # Policy switches. A grant naming more than one window (a daily or standing grant) is outside AGENTS §24.8
 # ("one grant per release") until the amendment in the packet is ratified; flipping this is that PR's job.
 MULTI_WINDOW_GRANT_STATUS = "PROPOSED"
+#: Release-train window slots (== scripts/lib/release_train_window_view.SLOTS; pinned by tests/test_release_train_n8n_20261021.py).
+TRAIN_SLOTS = ("1800", "0000", "0600", "0800", "1200", "0300", "0900", "1500", "2100")
 
 # Environment that would weaken a deploy gate. Value set = values allowed (empty = must be unset).
 GUARDED_ENV: dict[str, frozenset[str]] = {
@@ -941,7 +943,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                                 "(refused with --live)")
             # Arming finding 8: an operator-forced off-window CANARY run. Host CLI only (TTY + typed phrase when
             # --live); needs the delegation phase "canary" and the policy canary flag; overrides only the timing.
-            t.add_argument("--force-window", choices=["1800", "0000", "0600", "0800"], default=None)
+            t.add_argument("--force-window", choices=list(TRAIN_SLOTS), default=None)
             t.add_argument("--operator-forced", action="store_true")
             t.add_argument("--operator-ref", default=None)
             t.add_argument("--forced-n", type=int, default=None)
@@ -961,7 +963,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     st = sub.add_parser("train-shadow-tick", help="Phase 5: force one SHADOW tick per window through the request "
                                                   "lane's code and wait for the installed claimer's receipts; dry run "
                                                   "unless --apply; never live")
-    st.add_argument("--window", choices=["all", "1800", "0000", "0600", "0800"], default="all")
+    st.add_argument("--window", choices=["all", *TRAIN_SLOTS], default="all")
     st.add_argument("--apply", action="store_true", help="append the shadow request(s) and wait for the receipt(s)")
     st.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
                     help="one simulated failure per request (shadow only), recorded in injected_failures")

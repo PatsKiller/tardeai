@@ -47,6 +47,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
 | Operator document reviews, decisions and rule feedback | **operator_decisions** | PROPOSED | `governance/operator_decisions.jsonl` (file) | `scripts/lib/operator_approvals.py` | host: operator document review · n8n never-list → host | Read the current exact source document before every ledger append; text or commit drift invalidates the review. | Approvals Center, Rulebook, CIO approval truth projection, agents (read only) |
 | Site-wide conflict lifecycle | **conflict_ledger** | PROPOSED | `data/conflicts/conflict_events.jsonl` (file) | `scripts/lib/conflicts/ledger.py` | n8n_shadow_then_live: conflict-resolver | 30 min while scheduled; no produced evidence means a gap | Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest |
+| AI-proposed conflict rules and operator-approved rulebook amendments | **conflict_rule_proposals** | PROPOSED | `data/conflicts/rule_proposals.jsonl` (file) | `scripts/lib/conflicts/proposals.py` | n8n_shadow_then_live: conflict-rule-proposals | a pending proposal is announced once (grouped P2); no produced evidence means a gap | Conflict rules page, Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision), GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook) |
 
 ## Entity by entity
 
@@ -411,6 +412,23 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Copy | Role | How | Page/API files reading it (measured) |
 |---|---|---|---|
 | `conflict_events` (table) | derived | gated PG dual write only after operator migration; immutable event_id idempotency | — |
+
+### Conflict rule proposals and rulebook amendments — `conflict_rule_proposals` (PROPOSED)
+
+**Operator decision (§17):** Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts.
+
+- **Facts:** unmatched conflict pattern, AI rule proposal, operator proposal decision, rulebook amendment
+- **Store of record:** `data/conflicts/rule_proposals.jsonl` (file)
+- **Single writer:** `scripts/lib/conflicts/proposals.py`
+- **Cadence:** conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions · stale after 24 h
+- **Freshness SLA:** a pending proposal is announced once (grouped P2); no produced evidence means a gap
+- **Refresh lane:** n8n_shadow_then_live: conflict-rule-proposals — schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)
+- **Read path (projection):** `scripts.lib.conflicts.proposals.collection`
+- **Readers:** Conflict rules page, Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision), GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook)
+
+| Copy | Role | How | Page/API files reading it (measured) |
+|---|---|---|---|
+| `data/conflicts/rulebook_amendments.jsonl` (file) | derived | hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten | — |
 
 ## Field level
 

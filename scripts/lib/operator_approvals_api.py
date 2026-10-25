@@ -287,6 +287,33 @@ def _default_sources(root: Path) -> dict:
                                   source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
+    def conflict_rule_proposals():
+        # W10 AI-proposed conflict rules (docs/ops/CONFLICT_RULE_PROPOSALS.md). Read-only: the queue links to the
+        # proposal sheet on /conflicts/rules, which owns Approve / Edit then approve / Reject (single channel).
+        from scripts.lib.conflicts import proposals as rule_proposals
+        data = rule_proposals.collection(rule_proposals.default_root(), status="PENDING", limit=200)
+        if data["total"] > len(data["proposals"]):
+            raise core.Refused("RULE_PROPOSAL_SOURCE_TRUNCATED", 503)
+        code_sha, out = _git(root, "rev-parse", "HEAD").strip(), []
+        for proposal in data["proposals"]:
+            ident = str(proposal.get("proposal_id") or "")
+            if proposal.get("status") != "PENDING" or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", ident):
+                raise core.Refused("RULE_PROPOSAL_SOURCE_INVALID", 503)
+            public = {k: proposal.get(k) for k in ("proposal_id", "revision", "summary", "plain_rule", "tier", "never_auto",
+                                                   "never_auto_implications", "proposed_resolution", "risks",
+                                                   "machine_form", "created_at")}
+            provider = (proposal.get("model") or {}).get("provider")
+            out.append(core.item(ident="rule-proposal:" + ident, kind="CONFLICT",
+                                 title="Proposed conflict rule: " + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
+                                 proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
+                                 created_at=proposal.get("created_at"), source="conflict_rule_proposals",
+                                 doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
+                                                   source_sha=code_sha,
+                                                   version=f"revision {proposal.get('revision')} · {proposal.get('tier') or 'tier not supplied'}"),
+                                 governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
+                                 source_refs=["rule_proposals.jsonl:" + ident]))
+        return out
+
     def missing():
         raise core.Refused("EXACT_SOURCE_ADAPTER_PENDING", 503)
 
@@ -310,7 +337,7 @@ def _default_sources(root: Path) -> dict:
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
-    return {"packages": packages, "conflicts": conflicts, "policy_prs": policy_prs,
+    return {"packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": policy_prs,
             "guard_requests": guard_requests, "design_decisions": designs, "financial_queues": financial}
 
 
@@ -335,7 +362,12 @@ def instant(value) -> str | None:
 
 
 def default_ctx() -> Ctx:
-    from scripts.lib import cc_auth
+    # The server gate sets the request principal on ``lib.cc_auth``. ``scripts.lib.cc_auth`` is a separate module
+    # object with its own thread-local, so importing it first made every governance GET a 403 for the operator.
+    try:
+        from lib import cc_auth  # type: ignore
+    except ImportError:  # pragma: no cover - imported without scripts/ on sys.path
+        from scripts.lib import cc_auth  # type: ignore
     from scripts.lib.approval_package import governance_dir
     cfg = cc_auth.load_config()
 

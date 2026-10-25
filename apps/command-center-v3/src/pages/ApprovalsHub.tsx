@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import DeskPage, { DeskGap, useDeskTab } from '../components/DeskPage'
 import AmendmentReader from '../components/AmendmentReader'
-import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalQueue } from '../lib/operatorApprovals'
+import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
   { id: 'SPEND', label: 'Spending caps' }, { id: 'ACTIVATE', label: 'Activations' }, { id: 'DESIGN', label: 'Designs' },
   { id: 'CONFLICT', label: 'Conflicts' }, { id: 'FINANCIAL', label: 'Trade reviews' }, { id: 'history', label: 'Decision history' }]
+
+/** W10 AI-proposed conflict rule: the server only emits this local, allow-listed destination. */
+const isRuleProposal = (item: ApprovalItem) => item.source === 'conflict_rule_proposals' && !!item.governed_href?.startsWith('/conflicts/rules?proposal=')
 
 export default function ApprovalsHub() {
   const { id } = useParams()
@@ -37,9 +40,13 @@ function Queue() {
         </article>) : <p>No recorded decisions were returned.</p>}</section> : <div className="columns">
           <section className="panel" aria-label="Waiting approvals">
             {data.items.filter(item => active === 'waiting' || item.kind === active).map(item => <article className="queue-row" key={item.id}>
-              <span className="badge">{KIND_LABEL[item.kind] ?? item.kind}</span><div><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p></div>
+              <span className="badge">{isRuleProposal(item) ? 'AI rule proposal' : KIND_LABEL[item.kind] ?? item.kind}</span><div><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p></div>
               <span>{item.proposed_by ?? 'Proposer not recorded'}</span><span className="muted">{waitingSince(item.created_at)}</span>
-              <Link className="primary" to={`/approvals/${encodeURIComponent(item.id)}`}>Read &amp; decide</Link>
+              {isRuleProposal(item)
+                // Rule proposals are decided only on the conflict rules page (single approval channel). Opening the
+                // sheet from here marks the history entry so its ← Back returns to this queue.
+                ? <Link className="primary" data-testid="approvals-rule-proposal-link" to={item.governed_href!} state={{ w9DetailOpened: true }}>Review proposal →</Link>
+                : <Link className="primary" to={`/approvals/${encodeURIComponent(item.id)}`}>Read &amp; decide</Link>}
             </article>)}
             {!data.items.some(item => active === 'waiting' || item.kind === active) && <p>No items in this view. {data.complete ? '' : 'Some sources are still unavailable.'}</p>}
             <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
@@ -50,6 +57,7 @@ function Queue() {
               <Link className="primary" to="/approvals?tab=history">Full decision history</Link></section>
             <section className="panel"><h2>Notify me</h2><p className="muted">Approval notification delivery and its schedule have not been verified yet.</p></section>
             <section className="panel"><h2>Rulebook</h2><p>Read the rules, ask questions, and propose changes.</p><Link className="primary" to="/policy">Open Rulebook</Link></section>
+            <section className="panel"><h2>Conflict rules</h2><p>How disagreements between sources are decided, and AI-proposed rules waiting for you.</p><Link className="primary" to="/conflicts/rules">How conflicts are decided →</Link></section>
           </aside>
         </div>}
       </>}

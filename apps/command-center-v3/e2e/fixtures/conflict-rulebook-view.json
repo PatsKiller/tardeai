@@ -1,0 +1,1012 @@
+{
+ "schema": "ConflictRulebookView@v1",
+ "rulebook": {
+  "status": "PROPOSED",
+  "version": 2,
+  "approval": null,
+  "live_enabled": false,
+  "matrix_sha256": "e40e97179386206cf04ac568dff8a36b90922befcabe407403a200a3575d73c9",
+  "matrix_check": {
+   "verified": true,
+   "reason": null
+  },
+  "rulebook_sha256": "d3a5c94fe2de2f1101ebb837f7c48dddb78dbab785cb9cc726c375a11bf9df21",
+  "source": "coordinator conflict-resolution-20261024/reference, 2026-10-24",
+  "engine_version": "ConflictEngine@v1-matrix-draft",
+  "matrix_source": "coordination/handoffs/conflict-resolution-20261024/EXCEPTIONS_MATRIX.md"
+ },
+ "text_gap": null,
+ "tiers": [
+  {
+   "id": "T0",
+   "name": "Hard safety",
+   "means": "Kill switch, risk-gate halts, AUTO BLOCKED / live gate, MBI. These are gates, never conflicts, and are never resolvable by anyone's opinion.",
+   "example": "The kill switch is engaged: every buy is blocked even if the CIO says ADD."
+  },
+  {
+   "id": "T1",
+   "name": "Facts",
+   "means": "Identity (GUID), broker positions, pending orders and stop state, wash windows, earnings dates. A disagreement is a DATA ERROR: both values are shown, the source is fixed, and nobody picks a winner.",
+   "example": "The broker shows 0 shares but the Watch row says held: ownership data error, both values shown."
+  },
+  {
+   "id": "T2",
+   "name": "Policy",
+   "means": "Investment Policy Statement limits, read from one config key.",
+   "example": "A position over its concentration limit blocks ADD until there is headroom."
+  },
+  {
+   "id": "T3",
+   "name": "Deterministic checks",
+   "means": "Trade AI DETERMINISTIC_FAIL / BLOCKED / STALE / DATA_UNAVAILABLE and entry-state BLOCKED. They act as gates on go-actions.",
+   "example": "Trade AI is STALE on QCOM: the go-action shows 'Unknown: Trade AI data' until it re-runs."
+  },
+  {
+   "id": "T4",
+   "name": "Judgment",
+   "means": "Opinions, in this order: your recorded decision > the CIO's recorded decision > the curator stance > LLM and desk opinions (synthesis, review, defense, advisory, Hermes, analyst, Ask, rotation, signals).",
+   "example": "Desk synthesis says AVOID, the CIO record says RE_ENTER: a real conflict the CIO decides with a reason."
+  }
+ ],
+ "t4_order": [
+  {
+   "key": "operator_decision",
+   "rank": 4,
+   "label": "Your recorded decision"
+  },
+  {
+   "key": "cio_decision",
+   "rank": 5,
+   "label": "CIO recorded decision"
+  },
+  {
+   "key": "curator",
+   "rank": 6,
+   "label": "Curator stance"
+  },
+  {
+   "key": "opinion",
+   "rank": 7,
+   "label": "LLM and desk opinions"
+  }
+ ],
+ "rules": [
+  {
+   "id": "R1",
+   "title": "Freshness",
+   "means": "A side's age is the age of its oldest material input, not the time the job ran. A side older than its source limit is superseded (refresh it), not a conflict.",
+   "example": "An 8-day-old daily synthesis disagrees with today's CIO record: SUPERSEDED, the synthesis is asked to refresh.",
+   "clears": "The producer rewrites the compared input with fresh evidence.",
+   "owner": "The producer of the stale input",
+   "limits_from": "security_stance.supersede_days",
+   "exact_text": "R1 freshness (modified): a side's age = its OLDEST MATERIAL INPUT (inputs_as_of), not its run time. Superseded when older than min(14 d, 2× its cadence): review 7 d · synthesis 14 d · curator 2 trading days · plan 7 d · quote per §7A. Refresh is queued only to a producer that writes the compared input.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "def material_at",
+      "found": true
+     },
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"SUPERSEDED\", \"R1\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_source_age_not_canonical_delta_drives_superseded",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_missing_material_time_is_stale_not_a_silent_agreement",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R3",
+   "title": "Trade AI checks gate go-actions",
+   "means": "Any Trade AI state other than the clear states blocks go-actions, including ADD on a held name. The label says 'Blocked: <check>' or 'Unknown: <data>'. A trade-state AVOID is an opinion (T4), not a gate.",
+   "example": "FATN: Trade AI BLOCKED, the CIO says ADD: the card shows 'Blocked: Trade AI check' and no buy is offered.",
+   "clears": "The Trade AI check passes on its next run.",
+   "owner": "Trade AI (deterministic checks)",
+   "limits_from": "security_stance.trade_go_clear",
+   "exact_text": "R3 gates widened: any Trade AI state other than READY/WAIT/MANAGING gates go-actions, held ADD included; label \"Blocked: <check>\" or \"Unknown: <data>\"; trade-state AVOID is judgment (T4), not a gate.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "finding(\"GATE\", \"R3\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_t3_widened_trade_states_gate_even_held_add",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_trade_states_that_do_not_gate",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R4",
+   "title": "Real conflicts get a recorded decision",
+   "means": "A real conflict is decided by its owner and written to the decision store for that security: the sides, the decision, the reason, what clears it and when the decision expires.",
+   "example": "DT: CIO RE_ENTER vs desk AVOID. The CIO records 'RE_ENTER — earnings beat outweighs desk caution, expires in 30 days'.",
+   "clears": "The engine re-checks every side after the decision; the flag clears only when the sources agree.",
+   "owner": "The CIO for stance; you for protection, policy, money mismatches and flapping",
+   "exact_text": "R4 real conflict → owner decision in the new decision store (per GUID: sides, decision, reason, clears_when, expiry) — §17 store, operator-approved 2026-10-24 as part of the engine ledger.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/ledger.py",
+      "match": "class ConflictLedger",
+      "found": true
+     },
+     {
+      "path": "scripts/lib/conflicts/api.py",
+      "match": "deciding = tail.endswith(\"/decision\")",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_api.py",
+      "name": "test_operator_identity_csrf_revision_and_explicit_activation",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_ledger.py",
+      "name": "test_decision_does_not_clear_until_actual_sources_agree",
+      "found": true
+     }
+    ],
+    "gap_note": "The decision writer is not activated on the live API (POST answers CONFLICT_WRITER_NOT_ACTIVATED until the operator activates it)."
+   }
+  },
+  {
+   "id": "R5",
+   "title": "Every flag says how it clears",
+   "means": "Every flag shows what clears it, who owns it and when the next check runs.",
+   "example": "'Blocked: IPS headroom — clears when exposure falls below the limit · owner: you · next run: 16:20 ET'.",
+   "clears": "Not a flag itself: it is the contract every flag meets.",
+   "owner": "The conflict engine",
+   "exact_text": "R5 every flag: clears_when + owner + next_run.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/engine.py",
+      "match": "next_run: str",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_every_flag_has_owner_clear_condition_and_next_run",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R6",
+   "title": "Position-aware action scale",
+   "means": "Actions are placed on a scale that depends on whether you hold the name. Neighbouring steps agree (with a strength note); two or more steps apart, or opposite directions, is a conflict.",
+   "example": "Held: CIO HOLD vs desk TRIM are one step apart: agreement. CIO ADD vs desk EXIT: conflict.",
+   "clears": "Not a flag when the actions agree; a conflict clears when the owner decides and the sources agree.",
+   "owner": "The CIO",
+   "limits_from": "security_stance.ordinal",
+   "exact_text": "R2→R6 position-aware ordinal scale: held ADD > HOLD > TRIM > EXIT; not held BUY/RE_ENTER > WATCH ≡ AVOID ≡ SELL. Adjacent step = agreement with a strength note; ≥ 2 steps or crossing direction (ADD vs TRIM/EXIT) = conflict.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/vocabulary.py",
+      "match": "def ordinal",
+      "found": true
+     },
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"AGREEMENT\", \"R6\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_e1_e22_position_aware_ordinal",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R7",
+   "title": "No CIO stance",
+   "means": "A name with no CIO stance shows 'No CIO stance' (HOLD if held, WATCH if not), blocks go-actions, queues a review to a working producer and shows its age.",
+   "example": "24 My Watchlist rows had no stance: each shows 'No CIO stance — WATCH by default' and no buy button.",
+   "clears": "The CIO records a stance.",
+   "owner": "The CIO",
+   "exact_text": "R7 missing stance (30 rows, 24 on My Watchlist): \"No CIO stance\" (HOLD if held, WATCH if not), blocks go-actions, review queued to a working producer, visible age.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "finding(\"GATE\", \"R7\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_missing_stance_blocks_go_and_queues_working_compared_input_producer",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R7b",
+   "title": "CIO stance too old",
+   "means": "CIO stance age is counted in trading days, so weekends never cause false alarms. Past the first limit, positive actions wait; past the second, the stance needs a refresh.",
+   "example": "The CIO stance on QCOM is 3 trading days old: ADD waits for a fresh review; HOLD still shows.",
+   "clears": "The CIO refreshes the stance from fresh evidence.",
+   "owner": "The CIO",
+   "limits_from": "security_stance.canonical_max_age_trading_days, security_stance.refresh_after_trading_days",
+   "exact_text": "R7b stance staleness in TRADING hours: > 2 trading days gates positives; > 10 → needs refresh (no weekend false alarms).",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "def trading_age",
+      "found": true
+     },
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "finding(\"GATE\", \"R7b\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_oldest_material_input_beats_fresh_run_time",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_weekend_and_holiday_are_not_trading_age",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R8",
+   "title": "One shared vocabulary",
+   "means": "Every source's label is mapped through one shared vocabulary. A label nobody mapped is shown as a data error, never guessed.",
+   "example": "A desk writes 'ADD_ON_PULLBACK': DATA ERROR 'Unmapped stance', the source must use the shared vocabulary.",
+   "clears": "The source uses a mapped label.",
+   "owner": "The source owner",
+   "limits_from": "security_stance.unmapped_labels",
+   "exact_text": "R8 vocabulary: one shared map (also used by cio_prospect_builder.posture); unmapped labels (ADD_ON_PULLBACK, RESEARCH_MORE, MORE_RESEARCH, INSUFFICIENT_DATA, \"HOLD / MONITOR\", BUY_READY, NO_ACTION, DEFER, SELL_TAXABLE) = visible DATA_ERROR.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/vocabulary.py",
+      "match": "def posture",
+      "found": true
+     },
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"DATA_ERROR\", \"R8\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_unmapped_labels_are_visible_errors",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R9",
+   "title": "Stances per symbol, gates per account; wash windows everywhere",
+   "means": "Opinions are about the symbol; gates are about an account. A wash window from any taxable loss sale blocks buys in every account, because an IRA buy permanently disallows the loss.",
+   "example": "You sold SCHG at a loss in the taxable account: a buy in the Roth IRA is blocked until the wash window ends.",
+   "clears": "The wash window ends.",
+   "owner": "Canonical wash window (fact)",
+   "exact_text": "R9 stances per symbol, gates per account; a wash window from any taxable LOSS sale gates buys in ALL accounts (an IRA buy permanently disallows the loss); ONE wash-sale implementation (4 disagree today).",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "finding(\"GATE\", \"R9\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_wash_loss_window_applies_across_ira_and_taxable_accounts",
+      "found": true
+     }
+    ],
+    "gap_note": "The engine rule is implemented. Matrix prerequisite 4 (one wash-sale implementation across the site) is tracked separately; this page does not verify it."
+   }
+  },
+  {
+   "id": "R10",
+   "title": "Options are not equity stances",
+   "means": "An option outcome is never read as a stance on the stock. The engine only cross-checks the two when they contradict each other.",
+   "example": "You hold a long call while the equity stance is EXIT: that contradiction goes to you.",
+   "clears": "The owners record the cross-instrument decision.",
+   "owner": "You",
+   "exact_text": "R10 instrument scope: option outcomes are never equity stances; cross-instrument check only on contradictions (long call vs EXIT).",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"NEEDS_OPERATOR\", \"R10\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_option_equity_scope_is_separate_except_contradiction",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_adapters.py",
+      "name": "test_option_contradiction_reaches_scope_rule_without_equity_vocabulary_error",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R11",
+   "title": "Three or more sides",
+   "means": "When three or more sources disagree, there is one flag listing every side. The display defaults by precedence, a recorded decision is required, and there is no majority vote.",
+   "example": "SCHG: CIO HOLD, desk TRIM, advisory ADD: one flag with all three sides; the CIO decides.",
+   "clears": "The owner records one decision with a reason and the sources agree.",
+   "owner": "The CIO (you when an operator or CIO side is in the split)",
+   "exact_text": "R11 N-way splits: one flag listing all sides; display default by precedence; recorded decision required; no majority vote.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "f\"{pre}:R11\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_held_exit_vs_add_requires_operator_and_all_n_way_sides_are_kept",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R12",
+   "title": "Broker position first",
+   "means": "A pending fill freezes evaluation for that name. If a stance disagrees with a fill, that is an ownership data error.",
+   "example": "A stop is awaiting fill on SPCX: no stance is judged until positions and the fill reconcile.",
+   "clears": "Positions and the pending fill reconcile.",
+   "owner": "Canonical positions owner",
+   "exact_text": "R12 broker/position fact first: a pending fill freezes evaluation for that name; stance-vs-fill mismatch = ownership DATA_ERROR.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"Pending fill — stance evaluation frozen\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_pending_fill_freezes_judgments_and_never_becomes_resolvable",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R13",
+   "title": "Concentration headroom",
+   "means": "ADD waits for headroom under the Investment Policy Statement limit for that kind of holding. Diversified funds have their own fund-level limit (operator decision 2026-10-24). Missing fund holdings are a gap, never assumed to be zero.",
+   "example": "A single stock above its limit: ADD needs your decision. A broad fund near its limit shows a near-limit warning.",
+   "clears": "Exposure falls below the limit, or you decide.",
+   "owner": "You (policy)",
+   "limits_from": "investment_policy_statement.constraints.concentration_policy",
+   "exact_text": "R13 ADD gated by IPS headroom (12% single name; one key; today 12/15/8 disagree); diversified funds (SCHD) get a fund-level rule — operator decision needed. [Operator decision 2026-10-24: broad diversified funds are not held to the single-name cap; limits live in config/investment_policy_statement.json as the one source.]",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"Blocked: IPS headroom\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_r13_consumes_w1_class_specific_policy_without_local_default",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_r13_missing_fund_coverage_never_means_zero_exposure",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R14",
+   "title": "Failed model output is not an opinion",
+   "means": "A failed or partial model answer is not an opinion: it is never a side and never clears a flag.",
+   "example": "The watch-review worker errors on a model id: its empty answer is ignored, the old flag stays.",
+   "clears": "Not a flag: the failed output is simply excluded.",
+   "owner": "The model job owner",
+   "exact_text": "R14 failed/partial model output = no opinion; never a side; never clears a flag.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "item.metadata.get(\"quality\", \"complete\") != \"complete\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_trade_avoid_is_judgment_and_failed_partial_outputs_are_no_opinions",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_ledger.py",
+      "name": "test_missing_producer_or_failed_opinion_never_clears",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R15",
+   "title": "Hysteresis (no flip-flopping)",
+   "means": "A decision holds until a side changes its action or its conviction moves by the set number of points. A new flag needs the set number of consecutive runs before it shows.",
+   "example": "Conviction wobbles 69 → 71 → 70 over three runs: one flag, not three.",
+   "clears": "A side changes action or conviction moves past the threshold.",
+   "owner": "The conflict engine",
+   "limits_from": "hysteresis",
+   "exact_text": "R15 hysteresis: a resolution holds until a side changes ACTION or conviction moves ±5; a new flag needs 2 consecutive runs.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"Recorded resolution still holds\"",
+      "found": true
+     },
+     {
+      "path": "scripts/conflict_resolver.py",
+      "match": "\"R15\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_hysteresis_requires_two_runs_and_small_conviction_noise_keeps_decision",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_runner.py",
+      "name": "test_two_distinct_runs_needed_and_duplicate_attempt_cannot_create_second_vote",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "R16",
+   "title": "Unresolved identity blocks everything",
+   "means": "If the security's identity is unresolved, every action is blocked. Sources are joined by GUID only, never by ticker text.",
+   "example": "GLAS identity is UNRESOLVED: no action is offered until the GUID is confirmed.",
+   "clears": "The identity owner confirms the GUID.",
+   "owner": "Identity registry owner",
+   "exact_text": "R16 unresolved identity gates every action (GLAS actionable while UNRESOLVED today); sides join by GUID only.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "\"Identity unresolved — every action is blocked\"",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_safety_and_identity_beat_recorded_operator_judgment",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "EXPIRED",
+   "title": "Expired and unwatched rows",
+   "means": "A name you no longer watch, or a row that expired, never flags. It is archived, not deleted.",
+   "example": "You removed AXTI from My Watchlist: its old disagreement no longer shows anywhere.",
+   "clears": "Not a flag.",
+   "owner": "The conflict engine",
+   "exact_text": "Expired/unwatched rows never flag (archived, not deleted).",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "item.metadata.get(\"paper\")",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_paper_signals_escalation_counts_and_archived_names_never_vote",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "TIMESTAMPS",
+   "title": "Timestamps",
+   "means": "A time without a timezone, or one that cannot be read, is a data error. A missing time counts as stale, never as fresh.",
+   "example": "A desk row stamped '2026-10-24 09:30' with no zone: DATA ERROR, the producer must stamp a real time.",
+   "clears": "The source corrects its evidence timestamp.",
+   "owner": "The source owner",
+   "exact_text": "Naive/unparseable timestamps = DATA_ERROR; missing time = stale.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "invalid material time",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_naive_and_unreadable_material_times_are_data_errors",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_adapters.py",
+      "name": "test_invalid_canonical_time_is_data_error_without_judgment",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "ESCALATIONS",
+   "title": "Agent escalations",
+   "means": "When agents disagree inside one synthesis, that lowers the synthesis's confidence. It is not a disagreement between sources.",
+   "example": "TSLA '6 agent conflicts' inside a synthesis: shown as low confidence, not as six conflict flags.",
+   "clears": "Not a flag.",
+   "owner": "The synthesis producer",
+   "exact_text": "Agent escalations (TSLA \"6 agent conflicts\") are intra-synthesis confidence, not a cross-source conflict.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "item.metadata.get(\"intra_synthesis\")",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_adapters.py",
+      "name": "test_failed_paper_and_intra_synthesis_inputs_do_not_become_data_error_sides",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  },
+  {
+   "id": "PAPER",
+   "title": "Paper trades and your decisions",
+   "means": "Paper signals and paper positions are never sides. Your decisions carry a reason and an expiry, and never override hard safety (T0) or facts (T1).",
+   "example": "You record ADD on a name while the kill switch is on: the decision is kept, the kill switch still blocks.",
+   "clears": "Not a flag.",
+   "owner": "You",
+   "exact_text": "Paper signals/positions are never sides. Operator decisions carry reason + expiry and never override T0/T1.",
+   "coverage": {
+    "status": "IMPLEMENTED",
+    "code": [
+     {
+      "path": "scripts/lib/conflicts/profiles/security.py",
+      "match": "T4 operator > recorded CIO > curator > opinions",
+      "found": true
+     }
+    ],
+    "tests": [
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_safety_and_identity_beat_recorded_operator_judgment",
+      "found": true
+     },
+     {
+      "path": "tests/test_conflict_rulebook.py",
+      "name": "test_paper_signals_escalation_counts_and_archived_names_never_vote",
+      "found": true
+     }
+    ],
+    "gap_note": null
+   }
+  }
+ ],
+ "coverage_summary": {
+  "implemented": 20,
+  "missing": 0,
+  "total": 20
+ },
+ "never_auto": [
+  {
+   "id": "safety",
+   "label": "Hard safety gates (T0): kill switch, risk-gate halts, live gate"
+  },
+  {
+   "id": "protection",
+   "label": "Stop and protection state on a held name"
+  },
+  {
+   "id": "policy",
+   "label": "Policy breach against ADD"
+  },
+  {
+   "id": "money_mismatch",
+   "label": "Money figures that disagree between pages"
+  },
+  {
+   "id": "schedule_state",
+   "label": "Job schedule disagreements (registry vs crontab vs n8n)"
+  },
+  {
+   "id": "flapping",
+   "label": "The same conflict reopening again and again"
+  },
+  {
+   "id": "ownership",
+   "label": "Ownership and position disagreements"
+  },
+  {
+   "id": "pending_fill",
+   "label": "Stop-state or pending-fill mismatches"
+  },
+  {
+   "id": "wash_window",
+   "label": "Wash-sale windows"
+  },
+  {
+   "id": "cross_instrument",
+   "label": "Option vs stock contradictions"
+  },
+  {
+   "id": "nway_recorded_split",
+   "label": "Three-way or wider splits that include you or the CIO"
+  },
+  {
+   "id": "held_exit_vs_add",
+   "label": "A held name with SELL/EXIT on one side and ADD on the other"
+  }
+ ],
+ "never_auto_matrix_text": "T0 gates · identity mismatches · ownership/position disagreements · stop-state or pending-fill mismatches · held name with SELL/EXIT vs ADD · policy breach vs ADD · wash windows · cross-instrument contradictions · ≥3-way splits including an operator/CIO side.",
+ "action_scale": {
+  "held": [
+   {
+    "step": 0,
+    "primary": "ADD",
+    "labels": [
+     "ADD",
+     "BUY",
+     "ACCUMULATE",
+     "RE_ENTER",
+     "REENTER",
+     "ENTER",
+     "GO",
+     "NEAR_ENTRY",
+     "READY",
+     "ENTRY_NEAR",
+     "BUY_SETUP",
+     "STRONG_BUY",
+     "LONG"
+    ]
+   },
+   {
+    "step": 1,
+    "primary": "HOLD",
+    "labels": [
+     "HOLD",
+     "KEEP",
+     "MAINTAIN",
+     "WATCH",
+     "WAIT",
+     "MONITOR",
+     "NEUTRAL",
+     "NOT_YET"
+    ]
+   },
+   {
+    "step": 2,
+    "primary": "TRIM",
+    "labels": [
+     "AVOID",
+     "PASS",
+     "NO_GO",
+     "NOGO",
+     "TRIM",
+     "REDUCE",
+     "TRIM_REVIEW"
+    ]
+   },
+   {
+    "step": 3,
+    "primary": "EXIT",
+    "labels": [
+     "SELL",
+     "EXIT",
+     "EXIT_REVIEW",
+     "INVALIDATED"
+    ]
+   }
+  ],
+  "not_held": [
+   {
+    "step": 0,
+    "primary": "Buy family (BUY, RE_ENTER, ADD…)",
+    "labels": [
+     "ADD",
+     "BUY",
+     "ACCUMULATE",
+     "RE_ENTER",
+     "REENTER",
+     "ENTER",
+     "GO",
+     "NEAR_ENTRY",
+     "READY",
+     "ENTRY_NEAR",
+     "BUY_SETUP",
+     "STRONG_BUY",
+     "LONG"
+    ]
+   },
+   {
+    "step": 1,
+    "primary": "Stay out (WATCH ≡ AVOID ≡ SELL)",
+    "labels": [
+     "HOLD",
+     "KEEP",
+     "MAINTAIN",
+     "WATCH",
+     "AVOID",
+     "PASS",
+     "NO_GO",
+     "NOGO",
+     "WAIT",
+     "MONITOR",
+     "NEUTRAL",
+     "NOT_YET",
+     "TRIM",
+     "SELL",
+     "EXIT",
+     "REDUCE",
+     "TRIM_REVIEW",
+     "EXIT_REVIEW",
+     "INVALIDATED"
+    ]
+   }
+  ],
+  "text": {
+   "held": "You hold it: ADD > HOLD > TRIM > EXIT.",
+   "not_held": "You don't hold it: a buy family action, or stay out (WATCH, AVOID and SELL all mean stay out).",
+   "rule": "Neighbouring steps agree (strength note). Two or more steps apart, or opposite directions (ADD vs TRIM/EXIT), is a conflict."
+  }
+ },
+ "thresholds": {
+  "supersede_days": {
+   "watchlist CIO review": 7,
+   "watchlist_final_synthesis": 14,
+   "plan": 7,
+   "agent_escalation": 2,
+   "advisory_desk": 2,
+   "analyst_consensus": 14
+  },
+  "default_supersede_days": 14,
+  "canonical_max_age_trading_days": 2,
+  "refresh_after_trading_days": 10,
+  "trade_go_clear": [
+   "READY",
+   "WAIT",
+   "MANAGING"
+  ],
+  "unmapped_labels": [
+   "ADD_ON_PULLBACK",
+   "RESEARCH_MORE",
+   "MORE_RESEARCH",
+   "INSUFFICIENT_DATA",
+   "HOLD / MONITOR",
+   "BUY_READY",
+   "NO_ACTION",
+   "DEFER",
+   "SELL_TAXABLE"
+  ],
+  "hysteresis": {
+   "consecutive_runs": 2,
+   "conviction_delta": 5
+  },
+  "flap_limit": 3,
+  "flap_window_days": 7
+ },
+ "concentration": {
+  "rows": [
+   {
+    "key": "broad_diversified_fund",
+    "label": "Broad diversified fund",
+    "limit_pct": 25.0,
+    "near_limit_pct": 22.5,
+    "detection": "≥ 50 holdings and largest holding < 10%"
+   },
+   {
+    "key": "narrow_thematic_fund",
+    "label": "Narrow or thematic fund",
+    "limit_pct": 12.0,
+    "near_limit_pct": 10.8,
+    "detection": "< 30 holdings or top-10 weight > 50%"
+   },
+   {
+    "key": "single_stock",
+    "label": "Single stock",
+    "limit_pct": 12.0,
+    "near_limit_pct": 10.8,
+    "detection": null
+   },
+   {
+    "key": "leveraged_inverse_fund",
+    "label": "Leveraged or inverse fund",
+    "limit_pct": 5.0,
+    "near_limit_pct": 4.5,
+    "detection": "From fund metadata"
+   },
+   {
+    "key": "lookthrough_company",
+    "label": "One company, direct + through funds",
+    "limit_pct": 12.0,
+    "near_limit_pct": 10.8,
+    "detection": "Portfolio › Look-through"
+   },
+   {
+    "key": "lookthrough_sector",
+    "label": "One sector, direct + through funds",
+    "limit_pct": 25.0,
+    "near_limit_pct": 22.5,
+    "detection": "Portfolio › Look-through"
+   }
+  ],
+  "near_limit_fraction": 0.9,
+  "midrange_note": "Funds with 30–49 holdings are treated as Narrow or thematic fund unless you class them.",
+  "scope": "whole_portfolio",
+  "approval_ref": "operator-2026-10-24-Addendum3-R13",
+  "as_of": "2026-10-24",
+  "unknown_classification": "gap_never_infer_from_sample_length",
+  "source": "config/investment_policy_statement.json constraints.concentration_policy",
+  "gap": null
+ },
+ "lifecycle": {
+  "states": [
+   {
+    "state": "OPEN",
+    "means": "The engine found a real conflict, gate, data error or operator item.",
+    "who": "Conflict engine opens it; the owner is named on the flag"
+   },
+   {
+    "state": "UNDER_REVIEW",
+    "means": "A review was queued to the owner (the CIO for stances).",
+    "who": "The CIO review worker"
+   },
+   {
+    "state": "DECIDED",
+    "means": "The owner recorded a decision with a reason and an expiry.",
+    "who": "The CIO, or you for protection, policy, money and flapping items"
+   },
+   {
+    "state": "CLEARED",
+    "means": "On its next run the engine re-checked every side and the sources agree.",
+    "who": "Conflict engine"
+   },
+   {
+    "state": "SUPERSEDED",
+    "means": "Newer evidence replaced one side; nothing to decide.",
+    "who": "Conflict engine"
+   },
+   {
+    "state": "REOPENED",
+    "means": "A side changed again after it cleared or was decided.",
+    "who": "Conflict engine; repeated reopening goes to you"
+   }
+  ],
+  "active_states": [
+   "DECIDED",
+   "OPEN",
+   "REOPENED",
+   "UNDER_REVIEW"
+  ],
+  "terminal_states": [
+   "CLEARED",
+   "SUPERSEDED"
+  ],
+  "cadence_design": "Designed cadence (DESIGN.md §8): n8n lane conflict-resolver every 15 minutes in market hours, plus 16:20 ET and 07:30 ET; dry-run, then 2 trading days of shadow, then live.",
+  "last_run": null
+ },
+ "live": {
+  "by_kind": {},
+  "by_state": {},
+  "open_total": null,
+  "gap": {
+   "reason": "conflict ledger not yet produced"
+  }
+ }
+}

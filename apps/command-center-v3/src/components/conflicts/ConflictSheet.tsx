@@ -49,6 +49,7 @@ export function ConflictFacts({finding}: {finding: ConflictFinding}) {
     </div>)}
     <div><b>Why it needs attention:</b> {finding.summary}</div>
     <div data-testid="conflict-rule"><b>Rule that decides it:</b> {conflictRule(finding.rule)}</div>
+    <Link data-testid="conflict-rules-link" to={`/conflicts/rules${finding.rule ? `?rule=${encodeURIComponent(finding.rule)}` : ''}`} style={{display: 'inline-flex', alignItems: 'center', minHeight: 44, color: TOKENS.info}}>How conflicts are decided →</Link>
     <div><b>What clears it:</b> {finding.clears_when || 'The engine did not supply a clearing condition.'}</div>
     <div><b>Owner:</b> {finding.owner || 'Not supplied by the engine'}</div>
     <div><b>Next run:</b> {finding.next_run ? Number.isFinite(Date.parse(finding.next_run)) ? conflictTime(finding.next_run) : finding.next_run : 'Not supplied by the engine'}</div>
