@@ -57,7 +57,7 @@ export type Journey = {
   re_entry: ReEntry; conflicts: Conflict[]; conviction_now: number | null; stance_now: string | null
   rank_now: number | null; stage: string | null; chart?: Chart | null; security_guid?: string | null; identity_status?: string
 }
-export type Chip = { key: string; label: string; value: string | null; tone: Tone; at: string | null; tip: string; source?: string | null; missing_reason?: string | null; last_closing_fill_at?: string | null; ledger_synced_at?: string | null }
+export type Chip = { key: string; label: string; value: string | null; tone: Tone; at: string | null; tip: string; source?: string | null; source_label?: string | null; missing_reason?: string | null; last_closing_fill_at?: string | null; ledger_synced_at?: string | null }
 export type JourneysPayload = {
   schema: string; as_of: string; interim: boolean; source_label: string
   source: { kind: string; cio_prospect_status: string; reads: string[] }

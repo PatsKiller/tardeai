@@ -51,11 +51,15 @@ STOPS = {"TSTA": [{"stop_price": 40, "status": "WORKING", "captured_at": "2026-1
          "TSTB": [{"stop_price": 18, "status": "WORKING", "captured_at": "2026-11-04T16:30:00Z", "account": ACCOUNT}]}
 
 
-def _journeys(ingest_at: str, stop_at: str) -> dict:
+def _journeys(ingest_at: str | None, stop_at: str, ledger_at: str | None = None) -> dict:
+    """ingest_at=None: no ingest run receipt (today's reality); the chip then reads the ledger store clock."""
     payload = tj.build_trade_journeys(deepcopy(TRADES), inputs={"stops": deepcopy(STOPS), "days": 30}, now=NOW)
     trust = {"trades_at": "2026-11-02T15:25:00Z", "redesign_inputs": {
         "holdings_written_at": "2026-11-04T16:55:00Z",
-        "ingest_receipt": {"status": "ok", "document": {"status": "ok", "finished_at": ingest_at}},
+        "ledger_store": ({"written_at": ledger_at, "rows": 4, "source": tj.LEDGER_STORE_SOURCE} if ledger_at
+                         else {"written_at": None, "reason": "transaction ledger store has no schwab_api rows"}),
+        "ingest_receipt": ({"status": "ok", "document": {"status": "ok", "finished_at": ingest_at}} if ingest_at
+                           else {"status": "missing"}),
         "stop_health_receipt": {"status": "ok", "document": {"status": "ok", "finished_at": stop_at}},
         "registry": {"status": "ok", "document": {"lanes": []}}}}
     return tj._add_redesign_fields(payload, trust, NOW)
@@ -96,7 +100,9 @@ def compose() -> dict:
                         "tests/test_tradeinview_redesign_fixture_20261025.py. Not production data.",
             "clock": NOW.isoformat(),
             "journeys": {"fresh": _journeys("2026-11-04T16:45:00Z", "2026-11-04T16:50:00Z"),
-                         "stale": _journeys("2026-11-01T16:45:00Z", "2026-11-01T16:00:00Z")},
+                         "stale": _journeys("2026-11-01T16:45:00Z", "2026-11-01T16:00:00Z"),
+                         "ledger_store": _journeys(None, "2026-11-04T16:50:00Z", "2026-11-04T16:48:02+00:00"),
+                         "no_ledger": _journeys(None, "2026-11-04T16:50:00Z")},
             "calendar": {"populated": cal.build_calendar(populated, month, now=NOW),
                          "empty": cal.build_calendar(base.snapshot(), month, now=NOW),
                          "missing": cal.build_calendar(missing, month, now=NOW)},
@@ -137,3 +143,11 @@ def test_fixture_covers_every_browser_state_and_validates_against_the_projection
     wins = [j for j in doc["journeys"]["fresh"]["journeys"]
             if j["trade_id"] != "rt:fixture-ledger-trip" and (j["pl"]["amount"] or 0) > 0]
     assert [j["trade_id"] for j in wins] == ["rt:fixture-ledger-trip-2"]  # the only Compare partner has stored bars
+
+
+def test_ledger_chip_variants_store_clock_and_truly_absent():
+    doc = compose()["journeys"]
+    chip = {c["key"]: c for c in doc["ledger_store"]["freshness_chips"]}["ledger_sync"]
+    assert chip["at"] == "2026-11-04T16:48:02+00:00" and chip["source_label"] == "ledger row write"
+    absent = {c["key"]: c for c in doc["no_ledger"]["freshness_chips"]}["ledger_sync"]
+    assert absent["value"] == "Not measured" and "no schwab_api rows" in absent["missing_reason"]

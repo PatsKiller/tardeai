@@ -686,3 +686,75 @@ def test_stdlib_schema_validator_covers_every_keyword_and_rejects_defects():
     assert ts.schema_errors({'s':'a'},schema)
     with pytest.raises(AssertionError):
         ts.validate({'schema':'not-a-projection'})
+
+
+# ── Ledger synced chip from the transaction ledger store (no ingest receipt is written) ──────────────────────
+
+def _ledger_payload(store, receipt=None, now=NOW):
+    row=journeys.build_journey({'trade_id':'open:schwab_roth_ira:TSTA','symbol':'TSTA','account':'schwab_roth',
+        'status':'open','fill_qty':11,'entry_ref':41,'mark_ref':42,'mark_at':'2026-11-04T16:59:00Z'},now=now)
+    trust={'holdings_written_at':'2026-11-04T16:55:00Z','ingest_receipt':receipt or {'status':'missing'},
+           'stop_health_receipt':{'status':'missing'},'registry':{'status':'ok','document':{'lanes':[]}}}
+    if store is not None:
+        trust['ledger_store']=store
+    out=journeys._add_redesign_fields({'journeys':[row],'counts':{'open':1,'closed':0}},
+                                      {'trades_at':None,'redesign_inputs':trust},now)
+    return {c['key']:c for c in out['freshness_chips']}['ledger_sync']
+
+
+def test_ledger_store_clock_reads_newest_schwab_api_row_write_only():
+    seen=[]
+    def db(sql,params=None,fetch='all'):
+        seen.append(sql); return [{'written_at':'2026-11-04T16:48:02+00:00','newest_trade_date':'2026-11-04','rows':812}]
+    clock=journeys._ledger_store_clock(db)
+    assert clock=={'written_at':'2026-11-04T16:48:02+00:00','newest_trade_date':'2026-11-04','rows':812,
+                   'source':'trade_transactions newest schwab_api row write (created_at)'}
+    assert len(seen)==1 and seen[0].lstrip().upper().startswith('SELECT')
+    assert "import_source = 'schwab_api'" in seen[0] and 'trade_transactions' in seen[0]
+    import re
+    for verb in ('INSERT','UPDATE','DELETE','ALTER','CREATE','DROP','TRUNCATE'):
+        assert not re.search(rf'\\b{verb}\\b',seen[0].upper())
+
+
+def test_ledger_store_clock_absent_empty_or_unreadable_says_why():
+    assert journeys._ledger_store_clock(None)['written_at'] is None
+    assert 'no schwab_api rows' in journeys._ledger_store_clock(lambda *a,**k:[{'written_at':None,'newest_trade_date':None,'rows':0}])['reason']
+    def boom(*a,**k): raise RuntimeError('relation "trade_transactions" does not exist')
+    bad=journeys._ledger_store_clock(boom)
+    assert bad['written_at'] is None and 'unreadable' in bad['reason'] and 'does not exist' in bad['reason']
+
+
+def test_ledger_chip_uses_store_clock_labelled_with_its_source_when_no_receipt():
+    chip=_ledger_payload({'written_at':'2026-11-04T16:48:02+00:00','rows':3,
+                          'source':'trade_transactions newest schwab_api row write (created_at)'})
+    assert chip['at']=='2026-11-04T16:48:02+00:00' and chip['value']==chip['at']
+    assert chip['source']=='trade_transactions newest schwab_api row write (created_at)'
+    assert chip['source_label']=='ledger row write' and chip['missing_reason'] is None
+    assert 'not an ingest run receipt' in chip['tip']
+    assert chip['value']!='Not measured'
+
+
+def test_ledger_chip_not_measured_only_when_store_truly_absent():
+    for store,why in (({'written_at':None,'reason':'transaction ledger store unavailable (no database reader)'},'unavailable'),
+                      ({'written_at':None,'reason':'transaction ledger store has no schwab_api rows'},'no schwab_api rows'),
+                      (None,'successful run receipt unavailable')):
+        chip=_ledger_payload(store)
+        assert chip['at'] is None and chip['value']=='Not measured' and why in chip['missing_reason']
+    future=_ledger_payload({'written_at':'2027-01-01T00:00:00+00:00','rows':1})
+    assert future['at'] is None and 'future' in future['missing_reason']
+
+
+def test_ledger_chip_prefers_a_successful_run_receipt_and_says_so():
+    chip=_ledger_payload({'written_at':'2026-11-04T16:48:02+00:00','rows':3},
+                         receipt={'status':'ok','document':{'status':'ok','finished_at':'2026-11-04T16:50:00Z'}})
+    assert chip['at']=='2026-11-04T16:50:00+00:00' and chip['source_label']=='run receipt'
+
+
+def test_ledger_chip_warns_past_the_registered_bound_in_market_hours(monkeypatch):
+    import lib.cio_market_aware_freshness as mkt
+    monkeypatch.setattr(mkt,'market_is_open',lambda now: True)
+    bound=journeys._ledger_stale_hours()
+    assert bound and bound>0   # registered on the transactions domain in data_source_authority.json
+    old=(NOW-__import__('datetime').timedelta(hours=bound+1)).isoformat()
+    assert _ledger_payload({'written_at':old,'rows':1})['tone']=='warning'
+    assert _ledger_payload({'written_at':NOW.isoformat(),'rows':1})['tone']=='success'
