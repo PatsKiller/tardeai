@@ -346,8 +346,35 @@ def redo_20_0_0(text: str) -> str:
     return text
 
 
+def pre_22_0_0(text: str) -> str:
+    """Strip the 22.0.0 PROPOSED soft-adds (banner, §17 paragraph, §25.3 bullet, history row) so older
+    digest pins stay stable until ratification. Idempotent: absent soft-adds are a no-op."""
+    if "**22.0.0 is PROPOSED" in text:
+        b = text.index("**22.0.0 is PROPOSED")
+        text = text[:b] + text[text.index("**21.0.0 is ", b):]
+    s17 = (
+        "**Release train Run now (22.0.0, §25.3):** forcing a live canary train from Ops → Controls\n"
+        "(`release_train.run_now`). Binding only once AGENTS.md 22.0.0 is ACTIVE; until then the host CLI is the only live\n"
+        "force path. Agents never force one.\n\n"
+    )
+    text = text.replace(s17, "", 1)
+    s25 = (
+        "- **Ops → Controls Run now (22.0.0, `release_train.run_now`) — binding only once AGENTS.md 22.0.0 is ACTIVE.**\n"
+        "  Once ACTIVE, the operator may force the same live canary path from Ops → Controls kind `release_train.run_now`\n"
+        "  with a WebAuthn passkey (always fresh) and the typed phrase `RUN NOW EPOCH n WINDOW HHMM` (epoch and window from\n"
+        "  the control view). The applier sets `forced_confirmed=True` after that proof and runs the controller; every other\n"
+        "  §25.3 gate stays (canary phase, capability, lock, STOP, merge freeze, CI on the candidate SHA, not 09:30–16:00 ET,\n"
+        "  `OPERATOR_FORCED_LIVE` receipt). Agents still never force one. Until 22.0.0 is ACTIVE the kind refuses with\n"
+        "  `POLICY_NOT_ACTIVE` and the host CLI remains the only live force path. *Cause (§20): operator plan 2026-10-25 —\n"
+        "  Run now on Command Center via MAJOR amendment; keep the CLI as fallback.*\n"
+    )
+    text = text.replace(s25, "", 1)
+    return re.sub(r"^\| 22\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
+
+
 def undo_20_0_0(text: str) -> str:
     """The text with the eight 20.0.0 ratifying clause edits reversed (each must be present exactly once)."""
+    text = pre_22_0_0(text)
     for i, (old, new) in reversed(list(enumerate(EDITS))):
         if i == 3:
             text = _c8(text, False)
@@ -359,6 +386,7 @@ def undo_20_0_0(text: str) -> str:
 def pre_20_0_0(text: str) -> str:
     """For the older policy tests' pins: the AGENTS.md text as it was before the 20.0.0 ratifying edit. Unchanged
     while 20.0.0 is PROPOSED; once the 20.0.0 row is ACTIVE, the nine clause edits are undone."""
+    text = pre_22_0_0(text)
     if re.search(r"^\| 20\.0\.0 \| 2026-10-22 \| ACTIVE", text, re.M):
         return undo_20_0_0(text)
     return text
@@ -516,7 +544,8 @@ def test_changing_sections_differ_only_by_the_quoted_clauses_and_only_at_ratific
 
 
 def test_post_ratification_digests_are_pinned_in_advance():
-    ratified = AGENTS if _ratified() else redo_20_0_0(AGENTS)
+    base = pre_22_0_0(AGENTS)
+    ratified = base if _ratified() else redo_20_0_0(base)
     for name in CHANGING:
         assert h(_section(ratified, name)) == SECTION_RATIFIED_SHA256[name], name
     assert undo_20_0_0(ratified) == pre_20_0_0(AGENTS)

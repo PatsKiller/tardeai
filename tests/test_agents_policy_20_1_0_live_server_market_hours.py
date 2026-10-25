@@ -72,6 +72,9 @@ def _s288(text: str = AGENTS) -> str:
 
 def pre_21_0_0(text: str) -> str:
     """21.0.0 adds only §28.13–§28.15 and its row (PROPOSED: no header or banner change; AI_WORK_POLICY.md is not pinned here)."""
+    from tests.test_agents_policy_20_0_0_agent_operations import pre_22_0_0
+
+    text = pre_22_0_0(text)
     if "**21.0.0 is " in text:
         b = text.index("**21.0.0 is ")
         text = text[:b] + text[text.index("**20.3.0 is ", b):]
