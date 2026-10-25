@@ -75,7 +75,13 @@ export default function WatchMyList() {
     </div>
   }
   const srcCount = (k: string) => (mw?.sources?.[k]?.count ?? 0)
-  const kindCount = (k: string) => mw?.kind_counts?.[k || 'all'] ?? (k === '' ? mw?.count : null) ?? '—'
+  // Server counts cover the full filtered list (W2). A response without paging carries the complete list,
+  // so its rows can be counted exactly; a paged response without kind_counts stays unknown ('—').
+  const completeRows: ListRow[] | null = mw && !mw.pagination && Array.isArray(mw.rows) ? mw.rows : null
+  const rowCount = (k: string) => completeRows == null ? null : k === '' ? completeRows.length
+    : k === 'starred' ? completeRows.filter(r => r.starred).length
+      : completeRows.filter(r => (r.membership || []).some(m => m.kind === k)).length
+  const kindCount = (k: string) => mw?.kind_counts?.[k || 'all'] ?? (k === '' ? mw?.count : null) ?? rowCount(k) ?? '—'
   const failed = Object.entries(mw?.sources || {}).filter(([, v]: any) => v?.status !== 'ok')
   return (
     <div className="w9-page" data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
