@@ -17,7 +17,7 @@ def get_data_errors(root: Path, *, provider=None) -> dict:
             return {"section": None, "unavailable_reason": "Conflict data is unavailable: the canonical reader is not installed"}
     try:
         section = provider(root=root)
-    except (OSError, ValueError, RuntimeError, TypeError):
+    except (OSError, ValueError, RuntimeError, TypeError, ImportError):
         return {"section": None, "unavailable_reason": "Conflict data could not be read from its canonical source"}
     if not isinstance(section, dict) or not {"findings", "headline", "gap"} <= section.keys():
         return {"section": None, "unavailable_reason": "Conflict data is unavailable: the canonical section is incomplete"}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w4_conflict_native_20261024",
+  "files": [
+    "tests/test_w4_conflict_native_20261024.py"
+  ],
+  "comment": [
+    "W4 native canonical producer integration on disposable fixture roots; no poll writes or local conflict classification."
+  ]
+}

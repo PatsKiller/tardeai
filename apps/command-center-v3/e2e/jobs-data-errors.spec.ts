@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 test.use({ hasTouch: true })
 
 // UI contract fixtures only. These inputs do not classify conflicts or prove the policy golden.
@@ -116,5 +117,56 @@ for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-he
     expect(methods.every(method => method === 'GET')).toBeTruthy()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
     if (process.env.W4_SCREENSHOT_DIR) await page.screenshot({path: path.join(process.env.W4_SCREENSHOT_DIR, `impl-16-dataerror-${state}-${width}.png`), fullPage: true})
+  })
+}
+
+// Actual native reader output over a frozen engine and disposable ledger; no policy golden claim.
+for (const width of [1440, 412, 390]) {
+  test(`Jobs native canonical DATA_ERROR fixture ${width}`, async ({page}) => {
+    const native = JSON.parse(readFileSync(path.resolve('e2e/fixtures/w4-native-conflict.fixture.json'), 'utf8'))
+    const height = width === 412 ? 915 : width === 390 ? 844 : 1000
+    await page.setViewportSize({width, height})
+    const reads: string[] = []
+    await page.route('**/api/**', route => {
+      const request = route.request(), url = new URL(request.url())
+      expect(request.method()).toBe('GET')
+      if (url.port === '7777') throw new Error('Live API traffic is forbidden')
+      if (url.pathname === '/api/v2/jobs-health') return route.fulfill({status: 200,
+        json: {...jobs, data_errors: {section: native.section, unavailable_reason: null}}})
+      if (url.pathname === `/api/v3/conflicts/${encodeURIComponent(native.record.key)}`) {
+        reads.push(url.pathname)
+        return route.fulfill({status: 200, json: native.record})
+      }
+      throw new Error(`Unexpected API path ${url.pathname}`)
+    })
+    await page.goto(process.env.W4_JOBS_FIXTURE_PATH || '/v3/ops/jobs')
+    const line = page.getByTestId('conflict-line')
+    await expect(line).toContainText(native.section.headline)
+    expect(reads).toHaveLength(0)
+    if (width < 820) await line.tap(); else await line.click()
+    const sheet = page.getByRole('dialog', {name: 'Job data error'})
+    await expect(sheet).toBeInViewport()
+    await expect(sheet.getByTestId('conflict-record-state')).toHaveAttribute('data-state', 'OPEN')
+    await expect(sheet).toContainText(native.record.summary)
+    await expect(sheet).toContainText(native.record.clears_when)
+    await expect(sheet).toContainText(native.record.owner)
+    await expect(sheet).toContainText(native.record.next_run)
+    await expect(sheet).toContainText('Finding opened')
+    await expect(sheet.getByRole('button', {name: /resolve|choose|apply/i})).toHaveCount(0)
+    expect(reads).toHaveLength(1)
+    if (width < 820) {
+      const box = await sheet.boundingBox()
+      expect(box?.x).toBe(0); expect(box?.y).toBe(0); expect(box?.width).toBe(width); expect(box?.height).toBe(height)
+    }
+    if (process.env.W4_SCREENSHOT_DIR) await page.screenshot({path: path.join(process.env.W4_SCREENSHOT_DIR, `impl-16-native-dataerror-detail-${width}.png`), fullPage: true})
+    await page.goBack()
+    await expect(sheet).toHaveCount(0)
+    if (width < 820) await line.tap(); else await line.click()
+    const back = sheet.getByRole('button', {name: '← Back', exact: true})
+    expect((await back.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    if (width < 820) await back.tap(); else await back.click()
+    await expect(sheet).toHaveCount(0)
+    await expect(line).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   })
 }

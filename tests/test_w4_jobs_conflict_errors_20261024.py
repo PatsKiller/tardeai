@@ -65,7 +65,7 @@ def test_missing_engine_is_a_gap_and_never_zero_or_clear(tmp_path, monkeypatch, 
     assert "total" not in result and "headline" not in result
 
 
-@pytest.mark.parametrize("error", [OSError("private-path"), ValueError("private-value"), RuntimeError("private-receipt"), TypeError("bad-contract")])
+@pytest.mark.parametrize("error", [OSError("private-path"), ValueError("private-value"), RuntimeError("private-receipt"), TypeError("bad-contract"), ImportError("missing-profile")])
 def test_reader_failure_is_visible_without_exposing_exception_details(tmp_path, error):
     def provider(**kwargs):
         raise error
