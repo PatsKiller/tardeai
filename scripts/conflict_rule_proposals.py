@@ -37,9 +37,21 @@ NO_CONSUMER_REASON = ("lane script; its receipt data/runtime/conflict-rule-propo
                       "health and its proposals by GET /api/v3/conflicts/proposals")
 
 
-def _deferral(process_id):
-    from lib import llm_deferral
-    return llm_deferral.evaluate(process_id)
+class _Deferral:
+    def __init__(self, defer, reason, run_after=None):
+        self.defer, self.reason, self.run_after = defer, reason, run_after
+
+
+def _deferral(process_id, now=None):
+    """lib/llm_deferral's `standard` tier, without importing it (its db_adapter import pulls broker modules into
+    this lane's closure; tests/test_lane_transitive_capabilities_20261015.py). Same switch (LLM_DEFER_OFFPEAK) and
+    the same window (deepseek_offpeak.is_scheduled_deepseek_window): when armed, paid fallback waits for off-peak."""
+    if os.environ.get("LLM_DEFER_OFFPEAK", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return _Deferral(False, "DEFERRAL_DISABLED")
+    from lib.deepseek_offpeak import is_scheduled_deepseek_window
+    if is_scheduled_deepseek_window(now):
+        return _Deferral(False, "IN_OFFPEAK_WINDOW")
+    return _Deferral(True, "OUTSIDE_OFFPEAK_WINDOW")
 
 
 def main(argv=None) -> int:

@@ -433,3 +433,15 @@ def test_notify_route_fits_the_closed_host_intent_taxonomy():
     from scripts.lib.n8n_fabric_store import DOMAINS, KIND_RE, PRODUCER_RE
     notify = P.load_config()["notify"]
     assert notify["domain"] in DOMAINS and KIND_RE.fullmatch(notify["kind"]) and PRODUCER_RE.fullmatch(notify["producer"])
+
+
+def test_cli_deferral_mirrors_the_standard_tier_without_db_imports(monkeypatch):
+    from scripts import conflict_rule_proposals as CLI
+    monkeypatch.delenv("LLM_DEFER_OFFPEAK", raising=False)
+    assert CLI._deferral("conflict_rule_proposal").defer is False
+    monkeypatch.setenv("LLM_DEFER_OFFPEAK", "1")
+    import lib.deepseek_offpeak as off
+    monkeypatch.setattr(off, "is_scheduled_deepseek_window", lambda now=None: False)
+    assert CLI._deferral("conflict_rule_proposal").defer is True
+    monkeypatch.setattr(off, "is_scheduled_deepseek_window", lambda now=None: True)
+    assert CLI._deferral("conflict_rule_proposal").defer is False
