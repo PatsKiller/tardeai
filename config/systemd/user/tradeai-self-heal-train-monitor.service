@@ -1,7 +1,7 @@
-# PROPOSAL ONLY until the operator installs it (AGENTS.md section 17: a new production schedule is an operator
-# decision). Requires a served release (CURRENT) that contains scripts/self_heal_train_monitor.py (PR #2129).
+# Installed by the release itself: scripts/install_staged_units.py (config/staged_user_units.json, PR #2134) after a
+# --dry-run of the monitor succeeded; no operator step. Requires CURRENT to contain scripts/self_heal_train_monitor.py.
 # Host timer, independent of n8n: the monitor must not depend on what it monitors. It runs SHADOW (detect, log,
-# propose; nothing executed or sent) until AGENTS.md 20.4.0 is ACTIVE with section 28.14 ACTIVE.
+# propose; nothing executed or sent) until AGENTS.md 21.0.0 is ACTIVE with section 28.14 ACTIVE.
 # A missed run is caught by the cron outage watchdog (lane self-heal-train-monitor, heartbeat ok_at).
 
 [Unit]

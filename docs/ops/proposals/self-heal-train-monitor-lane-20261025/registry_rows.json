@@ -15,7 +15,7 @@
       "expected_cadence_hours": 0.1,
       "state": "PAUSED",
       "state_since": "<install date>",
-      "state_reason": "PROPOSED, NOT INSTALLED. Host systemd timer independent of n8n (the monitor must not depend on what it monitors). Reads main CI of main HEAD (gh GET), release-train outcomes/receipts, post-release tester and nightly sweep receipts; one fix per failure signature; deterministic remediations first; Claude Code fixer hand-off; append-only data/self_heal/fix_log.jsonl. SHADOW until AGENTS.md 20.4.0 with section 28.14 is ACTIVE. Flip to ACTIVE when the operator installs the timer.",
+      "state_reason": "PROPOSED, NOT INSTALLED. Host systemd timer independent of n8n (the monitor must not depend on what it monitors). Reads main CI of main HEAD (gh GET), release-train outcomes/receipts, post-release tester and nightly sweep receipts; one fix per failure signature; deterministic remediations first; Claude Code fixer hand-off; append-only data/self_heal/fix_log.jsonl. SHADOW until AGENTS.md 21.0.0 section 28.14 is ACTIVE. Installed by the release's staged-units step (config/staged_user_units.json); flip to ACTIVE in the same follow-up that applies this row.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/self-heal-train-monitor_last.json",
@@ -41,7 +41,7 @@
         },
         "expected_cadence_hours": 1.0
       },
-      "why": "Weekends are the heaviest release days; the never-installed weekday cron line (40 9-18 * * 1-5) would leave them uncovered. State stays PAUSED until the operator installs the timer and issues the git-push grant naming self-heal-fixer."
+      "why": "Weekends are the heaviest release days; the never-installed weekday cron line (40 9-18 * * 1-5) would leave them uncovered. Armed only by AGENTS.md 21.0.0 section 28.14 ACTIVE (no guard grant); installed by the release's staged-units step."
     }
   ]
 }

@@ -1,23 +1,24 @@
-# Self-heal train monitor: lane registration proposal (2026-10-25)
+# Self-heal train monitor: lane registration (2026-10-25)
 
-Code: PR #2129 (`scripts/self_heal_train_monitor.py`, `docs/ops/SELF_HEAL_TRAIN_FIXER.md`). This folder and its PR
-add the host units, the fix-log store registrations and the lane rows. Nothing is installed by merging.
+Code: PR #2129 (`scripts/self_heal_train_monitor.py`, `docs/ops/SELF_HEAL_TRAIN_FIXER.md`). This folder and PR #2131
+add the host units, the fix-log store registrations and the lane rows. Nothing here needs an operator act
+(coordinator relay of the operator, 2026-10-25: no operator acts).
 
-Operator steps, in order:
+How each piece lands:
 
-1. Merge PR #2129, and release it, so that `CURRENT` contains the monitor.
-2. Merge `registry_rows.json` into `config/lane_registry.json`, then re-pin
-   `docs/ops/packets/disk-standing-apply-20261024`. The registry is sha-pinned. It is currently claimed by the
-   watchdog-activation PR. When the row exists, the cron outage watchdog measures the heartbeat `ok_at` every 5
-   minutes.
-3. Install the timer, which needs an operator scheduler grant:
-   `systemctl --user link ~/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-self-heal-train-monitor.{service,timer}`,
-   then `systemctl --user enable --now tradeai-self-heal-train-monitor.timer`. Flip the row to ACTIVE. The monitor
-   runs SHADOW until AGENTS.md 20.4.0 is ACTIVE with section 28.14 ACTIVE.
-4. Arm the fixer. Install `tradeai-self-heal-fixer.timer` the same way, and issue
-   `bin/guard grant git-push --reason 'self-heal-fixer ...'`. Both are operator acts.
+1. **Arming.** AGENTS.md 21.0.0 §28.14 (PR #2128) becoming ACTIVE arms both lanes. There is no guard grant. Until
+   then the monitor runs SHADOW and the fixer is "not armed".
+2. **Timers.** The release installs them. The groups `self-heal-train-monitor` and `self-heal-fixer` in
+   `config/staged_user_units.json` (follow-up to PR #2134) are installed by `scripts/install_staged_units.py` at
+   `cio_phase2_exact_main_deploy.sh` promote. That step runs a `--dry-run` first, archives replaced copies, runs
+   `enable --now`, and reads back is-active and the heartbeat.
+3. **Lane rows.** Once PR #2134 lands (it re-pins the disk packet), a follow-up PR merges `registry_rows.json` into
+   `config/lane_registry.json` and re-pins `docs/ops/packets/disk-standing-apply-20261024`. The cron outage watchdog
+   then measures the monitor's heartbeat `ok_at` every 5 minutes.
 
 Dry run, which writes nothing:
 `.venv/bin/python scripts/self_heal_train_monitor.py`
 
-Kill switch: `touch ~/trade-ai-releases/persistent-state/data/self_heal/MONITOR_DISABLED`.
+Kill switches:
+- `~/trade-ai-releases/persistent-state/data/self_heal/MONITOR_DISABLED` stops both lanes.
+- `~/trade-ai-releases/persistent-state/data/self_heal/FIXER_DISABLED` stops the fixer only.

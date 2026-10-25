@@ -1,7 +1,7 @@
-# PROPOSAL ONLY until the operator installs it. Replaces the never-installed cron line of lane self-heal-fixer
-# (registry PAUSED, "40 9-18 * * 1-5") so the fixer also runs on weekends, when the release train is busiest.
-# The fixer stays DISARMED until a guard git-push grant whose reason names self-heal-fixer is active, and opens PRs
-# only once AGENTS.md section 28.14 (or 24.11) is ACTIVE at origin/main. It never merges or deploys.
+# Installed by the release (staged units, config/staged_user_units.json). Replaces the never-installed cron line of
+# lane self-heal-fixer (registry PAUSED, "40 9-18 * * 1-5") so the fixer also runs on weekends, when the release train
+# is busiest. Arming is AGENTS.md 21.0.0 section 28.14 being ACTIVE at origin/main (no guard grant); until then every
+# cycle is "not armed" and runs no model. Kill switch: data/self_heal/FIXER_DISABLED. It never merges or deploys.
 
 [Unit]
 Description=Trade AI self-heal Claude Code fixer (one fix job per cycle; budget reserved up front)

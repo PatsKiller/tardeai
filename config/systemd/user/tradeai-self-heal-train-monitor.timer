@@ -1,10 +1,12 @@
-# PROPOSAL ONLY until the operator installs it. Every 5 minutes, every day (weekends are the heaviest release days).
+# Installed by the release (staged units). Every 5 minutes, every day (weekends are the heaviest release days).
+# OnActiveSec starts the cadence when the timer is enabled mid-uptime (OnBootSec alone would already have passed).
 
 [Unit]
 Description=Trade AI self-heal train monitor every 5 minutes
 
 [Timer]
 OnBootSec=3min
+OnActiveSec=1min
 OnUnitActiveSec=5min
 AccuracySec=30s
 Persistent=true
