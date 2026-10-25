@@ -719,6 +719,75 @@ def build_context(rules: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     return {"now": now, "cwds": process_cwds(rules["_proc_root"]), "refs": reference_texts(rules)}
 
 
+_UNIT_SUFFIXES = (".service", ".timer", ".path", ".socket", ".target", ".mount", ".slice", ".scope")
+_UNIT_NAME = re.compile(r"^[A-Za-z0-9:_.@\\-]+$")
+
+
+def _dropin_unit(path: Path) -> Optional[str]:
+    """`<unit>.d` drop-in directory name → unit name, else None (only these may be sealed)."""
+    name = path.name
+    if not name.endswith(".d"):
+        return None
+    unit = name[:-2]
+    return unit if unit.endswith(_UNIT_SUFFIXES) and _UNIT_NAME.match(unit) else None
+
+
+def _sealed_dropin_evidence(path: Path, root: Path, home: Path, runner) -> dict:
+    """Text for an unlistable drop-in directory, from the unit systemd actually loaded.
+
+    `systemctl show` is a read-only manager query; it never starts, reloads or enables.
+    It is admitted only when the manager proves the on-disk drop-ins equal what it
+    loaded (NeedDaemonReload=no, LoadState=loaded) and every drop-in it loaded from
+    this directory is a `.conf` file directly inside it. Anything else fails closed.
+    """
+    unit = _dropin_unit(path)
+    scope = ["--user"] if root == home or home in root.parents else []
+    command = ["systemctl", *scope, "show", "--no-pager", unit]
+    proc = runner(command, capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0 or not proc.stdout:
+        raise ValueError("sealed_dropin_unreadable:" + str(path))
+    props = {}
+    for line in proc.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key not in props:
+            props[key] = value
+    if props.get("LoadState") != "loaded" or props.get("NeedDaemonReload") != "no":
+        raise ValueError("sealed_dropin_not_loaded_or_stale:" + str(path))
+    loaded = [Path(p) for p in (props.get("DropInPaths") or "").split()]
+    if not any(p.parent == path for p in loaded):
+        # An unreadable directory with nothing loaded from it is not provably empty.
+        raise ValueError("sealed_dropin_not_loaded:" + str(path))
+    if any(p.parent == path and p.suffix != ".conf" for p in loaded):
+        raise ValueError("sealed_dropin_unexpected:" + str(path))
+    return {"path": str(path), "text": proc.stdout, "source": "systemctl_show_loaded_unit", "unit": unit,
+            "command": command}
+
+
+def _process_exited(process: Path) -> bool:
+    try:
+        status = (process / "status").read_text(errors="replace")
+    except FileNotFoundError:
+        return not process.exists()
+    state = next((line.split(":", 1)[1].split() for line in status.splitlines() if line.startswith("State:")), [])
+    return bool(state) and state[0] in ("Z", "X")
+
+
+def _opaque_process(process: Path) -> Optional[dict]:
+    """Identity of a process whose references this user cannot read; None if it exited."""
+    try:
+        status = (process / "status").read_text(errors="replace")
+    except FileNotFoundError:
+        if process.exists():
+            raise ValueError("process_reference_unknown")
+        return None
+    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    uids = (fields.get("Uid") or "").split()
+    if len(uids) < 2 or not all(u.isdigit() for u in uids):
+        raise ValueError("process_identity_unknown")
+    return {"pid": process.name, "opaque": True, "uid": int(uids[1]), "own_uid": int(uids[1]) == os.geteuid(),
+            "comm": (fields.get("Name") or "").strip()[:64]}
+
+
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
     """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
 
@@ -734,8 +803,9 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
         try:
             data = fn()
             entry = {"complete": True, "captured_at": now.isoformat(), "data": data, "sha256": SR.digest(data)}
-        except (OSError, ValueError, subprocess.SubprocessError):
-            entry = {"complete": False, "captured_at": now.isoformat(), "reason": key + "_unavailable"}
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            entry = {"complete": False, "captured_at": now.isoformat(), "reason": key + "_unavailable",
+                     "detail": (type(exc).__name__ + ":" + str(exc))[:300]}
         doc["sources"][key] = entry
 
     def cron():
@@ -753,11 +823,25 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
         for root in rules["_unit_dirs"]:
             if not root.exists():
                 continue
-            for parent, _, names in os.walk(root, onerror=lambda exc: (_ for _ in ()).throw(exc)):
+            sealed: list[Path] = []
+
+            def walk_error(exc, root=root, sealed=sealed):
+                # A root-owned 0700 drop-in directory (e.g. /etc/systemd/system/<unit>.d) cannot be
+                # listed by this user. Its text is still known exactly from the loaded unit; any
+                # other walk error stays fatal (unknown references never prove absence).
+                path = Path(getattr(exc, "filename", "") or "")
+                if isinstance(exc, PermissionError) and path != root and _dropin_unit(path):
+                    sealed.append(path)
+                    return
+                raise exc
+
+            for parent, _, names in os.walk(root, onerror=walk_error):
                 for name in names:
                     path = Path(parent) / name
                     if path.suffix in (".service", ".timer", ".conf", ".path", ".socket", ".target"):
                         out.append({"path": str(path), "text": path.read_text()})
+            for path in sealed:
+                out.append(_sealed_dropin_evidence(path, root, rules["_home"], runner))
         return out
 
     def processes():
@@ -765,6 +849,7 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
         for process in rules["_proc_root"].iterdir():
             if not process.name.isdigit():
                 continue
+            cwd = None
             try:
                 cwd = os.readlink(process / "cwd")
                 fds = []
@@ -777,9 +862,17 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
                         pass  # a closed fd is no longer a live reference
                 out.append({"pid": process.name, "cwd": cwd, "fds": fds})
             except FileNotFoundError:
-                # Only disappearance of the PROCESS itself proves it exited.
-                if process.exists():
+                # Only disappearance of the PROCESS itself, or a zombie (exited, awaiting its
+                # parent's wait(); the kernel has already released its cwd and every fd), proves it exited.
+                if process.exists() and not _process_exited(process):
                     raise ValueError("process_reference_unknown")
+            except PermissionError:
+                # Another user's (or a non-dumpable) process: the kernel denies cwd/fd reads to this
+                # user. It is recorded as OPAQUE, never as "no references": a preview lists it, and
+                # apply refuses while any opaque process exists (SR.evidence_context applying=True).
+                opaque = _opaque_process(process)
+                if opaque is not None:
+                    out.append(opaque | ({"cwd": cwd} if cwd else {}))
         return out
 
     def coordination():
@@ -996,7 +1089,20 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
             "reference_sources": list(SR.SOURCES), "process_cwds": len(ctx["cwds"]), "items": items,
             "excluded": excluded, "report_only": [], "totals": totals(items, excluded, []),
             "per_rule": SR.per_rule(items), "protected_excluded_bytes": sum(r.get("size_bytes") or 0 for r in excluded),
-            "protected_excluded_unmeasured": sum(r.get("size_bytes") is None for r in excluded)}
+            "protected_excluded_unmeasured": sum(r.get("size_bytes") is None for r in excluded),
+            "opaque_processes": _opaque_summary(ctx.get("opaque_processes") or []),
+            "apply_admissible": not ctx["offline"] and not ctx.get("opaque_processes")}
+
+
+def _opaque_summary(opaque: list) -> Optional[dict]:
+    if not opaque:
+        return None
+    by_uid: dict[str, int] = {}
+    for p in opaque:
+        by_uid[str(p.get("uid"))] = by_uid.get(str(p.get("uid")), 0) + 1
+    return {"count": len(opaque), "by_uid": dict(sorted(by_uid.items(), key=lambda kv: -kv[1])),
+            "own_uid": sorted({str(p.get("comm")) for p in opaque if p.get("own_uid")}),
+            "effect": "preview only: apply refuses (evidence_opaque_processes) while any process is opaque"}
 
 
 def _item_id(path: str) -> str:
@@ -1086,6 +1192,10 @@ def human_summary(m: Mapping[str, Any], top_n: int) -> str:
         f"CANDIDATES {t['candidates']}  reclaimable {t['reclaimable_gb']} GB"
         f"  (unmeasured {t['unmeasured_candidates']})",
     ]
+    opaque = m.get("opaque_processes")
+    if opaque:
+        lines[2:2] = [f"OPAQUE PROCESSES {opaque['count']} (cwd/fds not readable by this user; by uid {opaque['by_uid']};"
+                      f" own uid: {', '.join(opaque['own_uid']) or 'none'}) -> {opaque['effect']}"]
     for k, v in sorted(t["by_kind"].items()):
         lines.append(f"  {k:<28} {v['count']:>5}  {_gb(v['bytes']):>8.2f} GB")
     lines += ["", f"LARGEST {top_n} CANDIDATES"]
@@ -1603,7 +1713,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         err = None
     if a.dry_run:
         if m is None:
-            print(json.dumps({"dry_run": True, "ok": False, "error": err}))
+            out = {"dry_run": True, "ok": False, "error": err}
+            missing = (err or "").partition(":")[2]
+            source = ((evidence or {}).get("sources") or {}).get(missing) if a.standing and isinstance(evidence, dict) else None
+            if isinstance(source, dict) and source.get("detail"):
+                out["detail"] = source["detail"]  # which evidence was unavailable, so the operator can act
+            print(json.dumps(out))
             return 1
         R.dry_run_report(
             LANE_ID,
