@@ -11,6 +11,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import FX from './fixtures/accountLabels.fixture.json' with { type: 'json' }
+import W7 from './fixtures/w7Pages.fixture.json' with { type: 'json' }
 
 const SHOTS = process.env.ACCTLABEL_SHOTS || path.join(os.homedir(), '.cache', 'rtc', 'acctlabel')
 fs.mkdirSync(SHOTS, { recursive: true })
@@ -26,11 +27,24 @@ const overview = () => ({
   today_by_account: {},
 })
 
+// Home and Risk (approved boards 14/15) read one CIO truth document, /api/v2/cio/pages. Positions and
+// Do-now items carry the server's account display name (W1 cio_truth); the page renders it as given.
+const cioPages = () => {
+  const payload: any = structuredClone((W7 as any).payload)
+  payload.positions.rows = FX.risk_positions.map((p: any) => ({ symbol: p.symbol, account_id: p.account_id, account_label: p.account_label,
+    market_value: p.market_value, stop_price: p.stop_price, stop_source: p.has_stop ? 'broker' : 'none', stop_state: p.has_stop ? 'active' : 'none',
+    price: p.current_price, loss_at_stop_usd: null }))
+  payload.do_now.items = FX.risk_positions.filter((p: any) => p.symbol === 'SPCX').map((p: any) => ({ id: `spcx-${p.account_id}`, symbol: 'SPCX',
+    title: 'Review protection', reason: 'No active broker stop', account_label: p.account_label, href: '/risk?symbol=SPCX', cta: 'Review' }))
+  return payload
+}
+
 async function fixtures(page: Page) {
   await page.route('**/api/**', route => {
     const p = new URL(route.request().url()).pathname
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     if (p === '/api/v2/overview') return json(overview())
+    if (p === '/api/v2/cio/pages') return json({ ok: true, data: cioPages() })
     if (p === '/api/v2/risk') return json({ positions: FX.risk_positions, position_count: 4, pct_protected: 50, total_risk_dollars: 22840, stops: {} })
     if (p === '/api/v2/journal') return json({ trades: FX.journal_trades, trade_count: 2 })
     if (p === '/api/v2/automated-trade-journal') return json({ trades: [] })
@@ -48,50 +62,37 @@ for (const width of [1440, 412]) {
   test.describe(`at ${width}px`, () => {
     test.use({ viewport: { width, height: width > 600 ? 1000 : 900 } })
 
-    test(`Home movers: SPCX is one row "2 accounts" that expands per account; footer sums unchanged (${width})`, async ({ page }) => {
+    // Board 14 (desks-redesign 2026-10-24) removed the movers card from Home ("the header already carries
+    // the numbers; Home never repeats them"). The operator rule — a name on every position row, never an
+    // account number — is asserted on Home's own rows, the CIO-ranked Do-now list.
+    test(`Home Do now: each SPCX row names its account (${width})`, async ({ page }) => {
       const errors: string[] = []
       page.on('pageerror', e => errors.push(e.message))
       await fixtures(page)
       await page.goto('/v3/')
-      const card = page.getByTestId('home-movers')
+      const card = page.getByTestId('home-do-now')
       await expect(card).toBeVisible()
-      const spcx = card.locator('[data-testid="mover-group"][data-symbol="SPCX"]')
-      await expect(spcx).toHaveCount(1)
-      await expect(spcx).toHaveAttribute('data-multi', 'true')
-      await expect(spcx.getByTestId('accounts-badge')).toHaveText('2 accounts')
-      await expect(spcx).toContainText('+$1,995')
-      // single-account rows name their account
-      await expect(card.locator('[data-symbol="V"]').getByTestId('account-chip')).toHaveText('Schwab Roth IRA')
-      await expect(card.locator('[data-symbol="SCHD"]').getByTestId('account-chip')).toHaveText('Schwab Rollover IRA')
-      await expect(card).toContainText('Shown +$154 · rest of the book −$117 · day +$37')
-      await card.scrollIntoViewIfNeeded()
-      await shot(page, `home-movers-collapsed-${width}.png`)
-      await spcx.getByTestId('mover-expand').click()
-      const parts = spcx.getByTestId('mover-account-row')
-      await expect(parts).toHaveCount(2)
-      await expect(parts.nth(0)).toContainText('Schwab Rollover IRA')
-      await expect(parts.nth(0)).toContainText('+$1,488')
-      await expect(parts.nth(1)).toContainText('Schwab Individual')
-      await expect(parts.nth(1)).toContainText('+$507')
-      await expect(card).toContainText('Shown +$154 · rest of the book −$117 · day +$37')
+      await expect(page.getByTestId('home-movers')).toHaveCount(0)
+      await expect(card).toContainText('Schwab Rollover IRA')
+      await expect(card).toContainText('Schwab Individual')
       expect(await card.innerText()).not.toMatch(NUMBER_LEAK)
-      await card.screenshot({ path: path.join(SHOTS, `home-movers-expanded-${width}.png`) })
+      await card.scrollIntoViewIfNeeded()
+      await shot(page, `home-do-now-${width}.png`)
       expect(errors).toEqual([])
     })
 
-    test(`Risk: each SPCX chip names its account (${width})`, async ({ page }) => {
+    test(`Risk: each SPCX position row names its account (${width})`, async ({ page }) => {
       const errors: string[] = []
       page.on('pageerror', e => errors.push(e.message))
       await fixtures(page)
       await page.goto('/v3/risk')
-      const spcx = page.locator('[data-account] >> text=SPCX →')
+      // Board 15: one positions table, one row per account holding (the per-symbol chips were retired).
+      const spcx = page.locator('article.w7-position-row').filter({ hasText: 'SPCX' })
       await expect(spcx).toHaveCount(2)
-      const chips = page.locator('span[data-account]').filter({ hasText: 'SPCX' }).getByTestId('account-chip')
-      await expect(chips).toHaveText(['Schwab Rollover IRA', 'Schwab Individual'])
-      // risk bars / heatmap: one cell per account for a symbol held in two accounts
-      await expect(page.getByText('SPCX · Schwab Individual')).not.toHaveCount(0)
+      await expect(spcx.nth(0)).toContainText('Schwab Rollover IRA')
+      await expect(spcx.nth(1)).toContainText('Schwab Individual')
       expect(await page.locator('body').innerText()).not.toMatch(NUMBER_LEAK)
-      await page.locator('span[data-account]').filter({ hasText: 'SPCX' }).first().scrollIntoViewIfNeeded()
+      await spcx.first().scrollIntoViewIfNeeded()
       await shot(page, `risk-${width}.png`)
       expect(errors).toEqual([])
     })
