@@ -1,0 +1,13 @@
+.ops-evidence-page { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.ops-evidence-page button, .ops-evidence-page select, .ops-evidence-page input { min-height: 44px; min-width: 44px; }
+.ops-evidence-page a { display: inline-flex; align-items: center; min-height: 44px; }
+.ops-evidence-page .ops-evidence-table td { overflow-wrap: anywhere; }
+@media (max-width: 820px) {
+  .ops-evidence-page .ops-evidence-table, .ops-evidence-page .ops-evidence-table tbody { display: block; width: 100%; }
+  .ops-evidence-page .ops-evidence-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .ops-evidence-page .ops-evidence-table tr { display: block; margin: 8px 0; padding: 8px; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+  .ops-evidence-page .ops-evidence-table td { display: block; padding: 8px !important; min-width: 0; white-space: normal !important; text-align: left !important; border: 0 !important; }
+  .ops-evidence-page .ops-evidence-table td::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--text-2); font-size: var(--font-sm); }
+  .ops-evidence-page .ops-evidence-table td[data-empty] { display: block; }
+  .ops-evidence-page .ops-evidence-table td > * { min-width: 0; max-width: 100%; }
+}
