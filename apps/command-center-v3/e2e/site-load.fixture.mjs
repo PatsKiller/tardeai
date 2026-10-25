@@ -80,6 +80,8 @@ function response(u,request){
   if(p==='/api/v2/watchpool'){const all=Array.from({length:120},(_,i)=>({id:i+1,symbol:`FX${i}`,strategy_id:'fixture strategy',current_status:i%2?'EXPIRED':'ACTIVE',origin_system:'fixture',bucket:'review'})),status=q.get('status')||'all',pg=pageOf(status==='all'?all:all.filter(r=>r.current_status===status),q,50);return {rows:pg.items,count:120,by_status:{ACTIVE:60,EXPIRED:60},pagination:pg.pagination}}
   if(p==='/api/v2/watch/directives/detail')return {directive:{id:7,label:'Fixture watch',kind:'ticker',status:'active',created_at:clock},hit_timeline_90d:[],alpha_events:[],children:[]}
   if(p==='/api/v2/watch/two-way-curation'||p==='/api/v2/watch/directives/merge-plan'||p==='/api/v2/screener-finds/candidates')return {}
+  // Active Trader's motion strip (pre-existing read); the UI fails closed on an unavailable snapshot.
+  if(p==='/api/v3/active-trader/motion')return {status:'unavailable',reason:'fixture: no motion snapshot'}
   unexpected.push(`GET ${p}`);return {ok:false,error:'Unregistered fixture read'}
 }
 try{
@@ -111,16 +113,16 @@ try{
     flows.push({width,page:'active',detail:true,browser_back:true,filter:true,primary_action:'observation history',inactive_poll_stopped:true})
     await page.goto(`${origin}/v3/communications?tab=events`);await page.locator('[data-feed-card]').first().waitFor()
     await tap(page.locator('[data-feed-card]').first());const drawer=page.getByTestId('comms-drawer');await visible(drawer);await shot('comms-detail')
-    await tap(drawer.getByRole('button',{name:'Acknowledge',exact:true}));await visible(page.getByText('Confirm: Acknowledge — 1 message',{exact:true}));await page.getByRole('button',{name:'Cancel',exact:true}).click()
+    await tap(drawer.getByTestId('comms-drawer-actions').getByRole('button',{name:/^Acknowledge /}));await visible(page.getByText('Confirm: Acknowledge — 1 message',{exact:true}));await page.getByRole('button',{name:'Cancel',exact:true}).click()
     await tap(drawer.getByRole('button',{name:'Back to messages',exact:true}));await expect(drawer).toHaveCount(0)
     await tap(page.getByRole('button',{name:'Retention',exact:true}));await expect(page.getByText('1300',{exact:true}).first()).toBeVisible();const commStart=traffic.length;await page.clock.runFor(65_100);await page.waitForLoadState('networkidle');assert(!traffic.slice(commStart).some(r=>['/api/v2/communications/events','/api/v2/communications/deliveries','/api/v2/communications/agents'].includes(r.path)));await shot('comms-retention')
     flows.push({width,page:'comms',detail:true,back:true,filter:'URL tab',primary_action:'acknowledge opens confirmation',inactive_poll_stopped:true})
     for(const name of ['prospects','mine','suggests']){
       await page.goto(`${origin}/v3/${name}`)
       const open=page.locator('.watch-card-company button[title^="Open the "]').first();await open.waitFor();await tap(open)
-      const detail=page.locator('.watch-card-detail:visible');await visible(detail);await shot(`${name}-detail`)
+      const detail=page.locator('.watch-card-detail:visible, [role="dialog"].mobile-detail-sheet:visible');await expect(detail).toBeVisible();await visible(width<820?detail:detail.locator('[data-testid="watch-detail"] > div').first());await shot(`${name}-detail`)
       const review=detail.getByTestId('watch-ask-cio'),hadReview=await review.count();if(hadReview){await tap(review);await expect(detail).toContainText(/queued|already/i)}
-      await page.goBack();if(width<820)await expect(page.locator('.watch-card-detail:visible')).toHaveCount(0)
+      await page.goBack();if(width<820)await expect(page.locator('.watch-card-detail:visible, [role="dialog"].mobile-detail-sheet:visible')).toHaveCount(0)
       if(name==='prospects'){const lane=page.getByTestId('watch-lane-forming');await tap(lane);await expect(lane).toHaveAttribute('aria-pressed','true')}
       if(name==='mine'){await tap(page.getByTestId('mine-kind-starred'));await expect(page.getByTestId('mine-kind-starred')).toHaveAttribute('aria-pressed','true')}
       if(name==='suggests'){const select=page.locator('select').first();await select.selectOption('10');await expect(select).toHaveValue('10')}
