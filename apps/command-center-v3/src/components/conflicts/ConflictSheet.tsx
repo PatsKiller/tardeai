@@ -16,7 +16,7 @@ export type ConflictFinding = {
 }
 export type ConflictSection = {
   findings: ConflictFinding[]; headline: string | null; gap: {reason?: string; [key: string]: unknown} | null
-  source?: string; as_of?: string | null; stale?: boolean
+  source?: string; as_of?: string | null; stale?: boolean | null
 }
 export type ConflictDecision = {
   schema: 'ConflictDecision@v1'; actor_kind: string; actor?: string; chosen_side: string; reason: string
