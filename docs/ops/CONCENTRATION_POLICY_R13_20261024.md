@@ -52,6 +52,14 @@ removed from current alert authority. W10 should use `policy_for_security` for
 remain engine-owned. W6 owns Advisory adoption. No additional conflict endpoint
 or classifier is created here.
 
+The mandate profile projection also reads this IPS policy. Its retired
+`concentration_hierarchy` row is read-only, with the former profile value labelled
+historical. A valid IPS removes that row from required/optional missing fields
+and from current concentration conflict authority; it does not confirm or write
+a profile event. Other mandate fields retain their confirmation rules. Missing
+IPS stays a named policy gap and cannot reactivate an old confirmed profile cap.
+The projection's content hash includes the canonical concentration policy.
+
 Validation uses deterministic fixtures, hidden-psycopg2 affected suites, the
 four no-new-debt ratchets, lane registry, CIO completeness, docs inventory and
 the native frontend build. A private copied-state composition checks unchanged

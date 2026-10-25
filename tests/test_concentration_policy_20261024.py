@@ -167,3 +167,32 @@ def test_named_risk_default_reads_ips_and_preserves_safe_float(monkeypatch):
     assert risk_gate.concentration_default_fraction() is None
     assert risk_gate._safe_float({"value": 3}) == 3
     assert risk_gate._safe_float(2) == 2
+
+
+def test_profile_projection_delegates_concentration_without_requiring_or_writing_a_duplicate(tmp_path):
+    from scripts.lib.cio_operator_investment_policy import build_operator_investment_policy, ratify_policy_field
+    store = tmp_path / "profile.jsonl"
+    ratify_policy_field("concentration_hierarchy", {"max_single_position_pct": 8}, store_path=str(store))
+    before = store.read_bytes()
+    result = build_operator_investment_policy(store_path=str(store), repo_root=ROOT)
+    field = result["fields"]["concentration_hierarchy"]
+    assert field["read_only"] is True and field["required"] is False
+    assert field["operator_confirmed"] is False and field["value"] is None
+    assert field["historical_profile_value"] == {"max_single_position_pct": 8}
+    assert field["status"] == "SUPERSEDED_BY_IPS" and field["managed_by"] == result["concentration_policy"]["source"]
+    assert "concentration_hierarchy" not in result["missing_fields"] + result["optional_missing_fields"]
+    assert "max_single_position_pct" not in {c["field"] for c in result["legacy_conflicts"]}
+    assert store.read_bytes() == before
+
+
+def test_missing_ips_cannot_reactivate_an_old_confirmed_profile_cap(tmp_path):
+    from scripts.lib.cio_operator_investment_policy import build_operator_investment_policy, ratify_policy_field
+    store = tmp_path / "profile.jsonl"
+    ratify_policy_field("concentration_hierarchy", {"max_single_position_pct": 8}, store_path=str(store))
+    before = store.read_bytes()
+    result = build_operator_investment_policy(store_path=str(store), repo_root=tmp_path)
+    field = result["fields"]["concentration_hierarchy"]
+    assert field["read_only"] is True and field["required"] is True
+    assert field["value"] is None and field["gap"] and not field["operator_confirmed"]
+    assert "concentration_hierarchy" in result["missing_fields"]
+    assert store.read_bytes() == before
