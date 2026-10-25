@@ -50,6 +50,10 @@ try:  # Command Center auth policy (config/cc_auth.yaml) — also owns the liste
     from lib import cc_auth as _cc_auth  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import cc_auth as _cc_auth  # noqa: E402
+try:  # return freed heap to the OS when the server goes idle (lib/malloc_relief.py, 2026-10-25)
+    from lib import malloc_relief as _malloc_relief  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import malloc_relief as _malloc_relief  # noqa: E402
 # Historical port is the fallback only when cc_auth.yaml failed to load (cc_auth then fails closed).
 PORT = _cc_auth.load_config().service_port or 7777
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
@@ -2863,56 +2867,64 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
     def process_request_thread(self, request, client_address):
-        # Bound hung client I/O so dead Tailscale peers release slots
+        # 2026-10-25 (portfolio-server memory): bracket every request so the thread that finishes the
+        # last in-flight request returns freed heap to the OS (lib/malloc_relief.py, rate-limited).
+        _malloc_relief.note_request_start()
         try:
-            request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
-        except Exception:
-            pass
-        path = _peek_http_path(request)
-        if _sem_exempt_path(path):
+            # Bound hung client I/O so dead Tailscale peers release slots
             try:
-                super().process_request_thread(request, client_address)
+                request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
             except Exception:
+                pass
+            path = _peek_http_path(request)
+            if _sem_exempt_path(path):
                 try:
-                    request.close()
+                    super().process_request_thread(request, client_address)
                 except Exception:
-                    pass
-            return
-        acquired = False
-        try:
-            acquired = self._sem.acquire(timeout=self._sem_timeout)
-            if not acquired:
-                # Fail fast — browser useApi will retry; better than wedging 300 CLOSE-WAIT threads
-                try:
-                    body = b'{"ok":false,"error":"server_busy","retry_after_sec":2}'
-                    resp = (
-                        b"HTTP/1.1 503 Service Unavailable\r\n"
-                        b"Content-Type: application/json\r\n"
-                        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
-                        b"Connection: close\r\n"
-                        b"Retry-After: 2\r\n"
-                        b"\r\n" + body
-                    )
-                    request.sendall(resp)
-                except Exception:
-                    pass
-                try:
-                    request.close()
-                except Exception:
-                    pass
+                    try:
+                        request.close()
+                    except Exception:
+                        pass
                 return
-            _t0 = time.monotonic()
+            acquired = False
             try:
-                super().process_request_thread(request, client_address)
-            finally:
-                _log_slow_request(path, time.monotonic() - _t0)
-        finally:
-            if acquired:
+                acquired = self._sem.acquire(timeout=self._sem_timeout)
+                if not acquired:
+                    # Fail fast — browser useApi will retry; better than wedging 300 CLOSE-WAIT threads
+                    try:
+                        body = b'{"ok":false,"error":"server_busy","retry_after_sec":2}'
+                        resp = (
+                            b"HTTP/1.1 503 Service Unavailable\r\n"
+                            b"Content-Type: application/json\r\n"
+                            b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                            b"Connection: close\r\n"
+                            b"Retry-After: 2\r\n"
+                            b"\r\n" + body
+                        )
+                        request.sendall(resp)
+                    except Exception:
+                        pass
+                    try:
+                        request.close()
+                    except Exception:
+                        pass
+                    return
+                _t0 = time.monotonic()
                 try:
-                    self._sem.release()
-                except Exception:
-                    pass
-
+                    super().process_request_thread(request, client_address)
+                finally:
+                    _log_slow_request(path, time.monotonic() - _t0)
+            finally:
+                if acquired:
+                    try:
+                        self._sem.release()
+                    except Exception:
+                        pass
+        finally:
+            try:
+                _malloc_relief.note_request_end()
+            except Exception:
+                pass
 
 class ServeProxyUnixHTTPServer(ReusableHTTPServer):
     """ReusableHTTPServer on an AF_UNIX socket (cc_auth serve_proxy, transport: unix).
