@@ -1755,7 +1755,7 @@ def route_plan(
     reasoning_tier "high" on an n8n_oauth_first row puts the row's reasoning_lane first (DeepSeek reasoning), the
     row's own lanes (OAuth first) after it as the fallback."""
     from lib import anthropic_routing as promo
-    if cfg and promo.eligible(process_id, cfg) and policy_id == "default":
+    if cfg and promo.eligible(process_id, cfg) and policy_id == "default" and (policy.get("routing_decision") or {}).get("route_profile") == "anthropic_promotional_first":
         return promo.configured_plan(process_id, cfg, policy,
                                      enabled=enabled_transport_providers(), model_for_provider=_lane_model_id)
     decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
@@ -2425,7 +2425,7 @@ def execute_governed_call(
 
     # ── Step 3: Model policy resolution (server-side) ──────────────────
     from lib import anthropic_routing as promo
-    _promotion = selected_policy_id == "default" and promo.eligible(process_id, cfg)
+    _promotion = selected_policy_id == "default" and promo.active(process_id, cfg)
     policy = (promo.selected_policy(process_id, cfg, POLICY_RESOLUTION, reasoning_tier=reasoning_tier)
               if _promotion else resolve_model_policy(process_id, routing_policy=selected_policy_id))
     if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
@@ -2473,7 +2473,7 @@ def execute_governed_call(
     _reg_row = agent_gate.registry_row(process_id) if _oauth_first else None
     _tier = effective_reasoning_tier(_reg_row, reasoning_tier) if _oauth_first else "standard"
     if _oauth_first and isinstance(routing_box.get("decision"), dict):
-        routing_box["decision"]["route_profile"] = OAUTH_FIRST_PROFILE
+        routing_box["decision"]["route_profile"] = "anthropic_promotional_first" if _promotion else OAUTH_FIRST_PROFILE
         routing_box["decision"]["reasoning_tier"] = _tier
     if _tier == "high" and not _promotion:
         _rcand, _rwhy = reasoning_lane_candidate(process_id, selected_policy_id, ds_pols)
@@ -2540,18 +2540,23 @@ def execute_governed_call(
     # ── Step 5: Cost cap checks ────────────────────────────────────────
     import lib.consumption_run_manual as crm
 
+    # Operator questions retain their pre-provider global-cap admission.
+    from lib.governed_process_routes import OPERATOR_INTENT_PROCESS_IDS
+    _caller_bound = _promotion and process_id in OPERATOR_INTENT_PROCESS_IDS
     # Validate caps exist
     try:
-        crm.validate_paid_cap_config(cfg, require_global=not _promotion)
+        crm.validate_paid_cap_config(cfg, require_global=not _promotion or _caller_bound)
     except RuntimeError as e:
         return _error("COST_CONFIGURATION_INVALID", str(e), status=500)
 
-    if _promotion:
+    if _promotion and not _caller_bound:
         # The adapter reserves exact worst-case credit after CountTokens; no paid hold yet.
         projected = 0.0
     else:
+        # Operator questions retain their original pre-provider process/question/global admission.
+        _admission_model = resolve_model_policy(process_id, routing_policy=selected_policy_id)["model_id"] if _caller_bound else model_id
         worst_case = crm.projected_max_cost_usd(
-            model_id=model_id,
+            model_id=_admission_model,
             max_input_tokens=cfg.get("max_input_tokens") or 32000,
             max_output_tokens=max_tokens,
         )
@@ -2568,7 +2573,7 @@ def execute_governed_call(
     except (TypeError, ValueError):
         gcap = None
 
-    cap_check = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=None if _promotion else gcap)
+    cap_check = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=None if _promotion and not _caller_bound else gcap)
     if not cap_check.get("allow"):
         return _error(
             "COST_CAP_EXCEEDED",
@@ -2745,8 +2750,12 @@ def execute_governed_call(
             and not attempted
             and (getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
         )
-        lc.settle_reservation(reservation_id, float(_funding.projected) if _funding is not None else None,
-                              ok=False, billable_attempt=sent or bool(_funding and _funding.projected))
+        if _funding is not None:
+            failure_cost, paid_failure = _funding.failure_cost(paid_billable=bool(walk.get("billable_seen")))
+            lc.settle_reservation(reservation_id, float(failure_cost), ok=False,
+                                  billable_attempt=bool(failure_cost), paid_component_usd=float(paid_failure))
+        else:
+            lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
         if e is not None or attempted:
             provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
             _trip_circuit(f"provider_failure:{type(e).__name__ if e else 'none'}:{provider_name}")
@@ -2961,7 +2970,7 @@ def execute_governed_call(
     # A schema-valid OAuth answer that declares low confidence / a typed escalation flag is re-asked ONCE on the
     # reasoning lane (DeepSeek), inside the caps; otherwise the OAuth answer stands, flagged why.
     escalation: dict[str, Any] | None = None
-    if _oauth_first and not _promotion and served_provider in oauth_transport.OAUTH_PROVIDERS:
+    if _oauth_first and served_provider in oauth_transport.OAUTH_PROVIDERS:
         _why = escalation_reason(response, _reg_row)
         if _why:
             escalation = escalate_once(

@@ -11,6 +11,20 @@ import pytest
 NOW = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
 
 
+
+@pytest.fixture(autouse=True)
+def activated_fixture_promotion(monkeypatch, tmp_path):
+    """Transport fixtures explicitly activate synthetic credit; shipping policy remains disabled."""
+    monkeypatch.setenv("PROJECT_ROOT", str(tmp_path))
+    for namespace in ("scripts.lib", "lib"):
+        for name in ("anthropic_transport", "anthropic_routing"):
+            module = importlib.import_module(f"{namespace}.{name}")
+            real = module.load_policy
+            def load(root=module.ROOT, _real=real):
+                return dict(_real(root), enabled=True)
+            monkeypatch.setattr(module, "load_policy", load)
+
+
 def modules():
     return (importlib.import_module("scripts.lib.anthropic_credit"),
             importlib.import_module("scripts.lib.anthropic_transport"))
@@ -56,10 +70,12 @@ def test_total_cap_expiry_and_pending_previous_day_are_binding(tmp_path):
         credit.CreditBook(tmp_path / "expiry", policy()).reserve("expired", "x", Decimal("0.01"), tier="bulk", now=later)
     day = credit.CreditBook(tmp_path / "days", policy(daily_cap_usd="0.10"))
     day.reserve("held", "x", Decimal("0.10"), tier="bulk", now=NOW)
-    with pytest.raises(credit.CreditDenied, match="PAUSED_TODAY"):
-        day.reserve("next", "x", Decimal("0.01"), tier="bulk", now=NOW + timedelta(days=1))
+    # A prior-day uncertain hold stays against TOTAL, never against every later UTC day.
+    assert day.snapshot(now=NOW + timedelta(days=1))["reserved_usd"] == "0.10"
+    day.reserve("next-day", "x", Decimal("0.01"), tier="bulk", now=NOW + timedelta(days=1))
     day.settle("held", Decimal("0.04"), now=NOW + timedelta(days=1))
-    day.reserve("next", "x", Decimal("0.06"), tier="bulk", now=NOW + timedelta(days=1))
+    day.settle("next-day", Decimal("0.01"), now=NOW + timedelta(days=1))
+    day.reserve("next", "x", Decimal("0.05"), tier="bulk", now=NOW + timedelta(days=1))
 
 
 def test_corrupt_journal_and_changed_policy_refuse_instead_of_resetting(tmp_path):
@@ -123,7 +139,7 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     root = Path(__file__).resolve().parents[1]
     p = json.loads((root / "config/anthropic_credit_policy.json").read_text())
     assert p["total_cap_usd"] == "190" and p["daily_cap_usd"] == "10"
-    assert set(p["models"].values()) == {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
+    assert set(p["models"].values()) == {"claude-opus-5-5", "claude-haiku-5-5"}
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 
 
@@ -184,12 +200,12 @@ def test_http_failures_release_or_hold_and_only_billing_exhausts(tmp_path, statu
     snap = book.snapshot(now=NOW)
     assert snap['status'] == expected
     assert len(calls) == (3 if status in (429,529) else 2)
-    assert (Decimal(snap['reserved_usd']) > 0) == (status >= 500)
+    assert (Decimal(snap['reserved_usd']) > 0) == (status >= 500 and status != 529)
 
 
-def test_ambiguous_overload_then_success_keeps_whole_authorization(tmp_path):
+def test_ambiguous_server_error_then_success_keeps_whole_authorization(tmp_path):
     client, book, _, _, settles, events = adapter_fixture(tmp_path,
-        [(529, {'error': {'type': 'overloaded_error'}}, {}), response()])
+        [(500, {'error': {'type': 'api_error'}}, {}), response()])
     invoke(client)
     assert events and settles == [None]
     assert Decimal(book.snapshot(now=NOW)['reserved_usd']) > events[0][2]
@@ -290,8 +306,8 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
     rows,total=report(tmp_path,observed)
     assert len(rows)==90
-    assert len([r for r in rows if r['new'].startswith('anthropic')])==81
-    assert total==Decimal('0.7226378')
+    assert len([r for r in rows if r['new'].startswith('anthropic')])==67
+    assert total==Decimal('5.050121')
     assert before=={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
 
 
@@ -328,8 +344,8 @@ def test_abort_or_invalid_http_decode_keeps_possibly_billable_hold(tmp_path,fail
     assert Decimal(book.snapshot(now=NOW)['reserved_usd'])>0
 
 
-def test_overloaded_then_success_records_the_ambiguous_attempt_separately(tmp_path):
-    client,book,*_=adapter_fixture(tmp_path,[(529,{'error':{'type':'overloaded_error'}},{}),response()])
+def test_server_error_then_success_records_the_ambiguous_attempt_separately(tmp_path):
+    client,book,*_=adapter_fixture(tmp_path,[(500,{'error':{'type':'api_error'}},{}),response()])
     observed=[]
     def record(model,code):observed.append((model,code));return True
     client.record_attempt=record

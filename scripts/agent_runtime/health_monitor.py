@@ -129,12 +129,17 @@ def collect(base_url: str) -> dict[str, Any]:
         checks.append({"check": "runs", "status": "FAIL", "detail": str(exc)})
         state = "DEGRADED"
 
-    from lib.anthropic_monitoring import snapshot as anthropic_snapshot
-    from lib.anthropic_routing import state_root
-    anthropic = anthropic_snapshot(state_root())
-    checks.append({"check": "anthropic_provider", "status": "FAIL" if anthropic["p1_continuous_failure"] else "PASS",
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot
+    try:
+        from lib.anthropic_routing import state_root
+        anthropic = anthropic_snapshot(state_root())
+    except Exception:
+        anthropic = unavailable_snapshot()
+    anthropic_check = ("FAIL" if anthropic["p1_continuous_failure"] else "WARN"
+                       if anthropic["status"] in {"UNAVAILABLE", "DEGRADED", "PAUSED_TODAY", "EXHAUSTED"} else "PASS")
+    checks.append({"check": "anthropic_provider", "status": anthropic_check,
                    "provider_state": anthropic["status"], "provider": anthropic})
-    if anthropic["p1_continuous_failure"]:
+    if anthropic_check != "PASS":
         state = "DEGRADED"
     mode = "SCHEDULED" if installed else "MANUAL_DISPATCH_ONLY"
     return {

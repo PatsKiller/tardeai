@@ -1,15 +1,15 @@
-# Anthropic-first local build report
+# Anthropic-first review correction
 
-Base: 7a17113afedc552a645493972dee46c0ba51a2dd.
-Branch: work/DSN-20261025-anthropic-first-P1-T1.
-Status: implementation checkpoint; **not live / no merge / no remote publication**.
+PR #2181; branch `work/DSN-20261025-anthropic-first-P1-T1`. No merge, release or real provider call by the worker.
 
-The caller inventory was reported before implementation. See ../../ANTHROPIC_FIRST_20261025.md and dry-run-table.md for population, bypasses, measured cost and bounds.
+The correction implements both independent reviews and retains the coordinator's partial credit/transport work after testing. Shipping activation is disabled. Opus 5.5 is the operator-selected general/high model; eleven named bulk processes use Haiku. Fable is excluded. Original route lanes, independent provider identities, manual/question/process/request/paid-cap authority and off-peak paid deferral remain intact. Credit total $190, UTC daily $10 and all per-call ceilings remain unchanged.
 
-The new canonical CI gate is config/ci_gates/anthropic_first_20261025.json. Final selected CI-parity run at fb2f083e9adff23ef89ee9e3e4b071d4f8d0ccd0: **263 passed**, psycopg2 hidden, existing Pydantic-2 virtualenv. All four new test files are in the canonical CI gate. The 56 new core tests also pass with system Python/hidden psycopg2. No dependency was installed.
+Credit/transport fixes cover typed refusals and free fallback, 429/529 nonbilling, uncertain total holds with reservation-day pacing, non-growing expiry-boundary settlement, paid-vs-promotional components, bounded accounting cooldown, append-only operator reset, model thinking settings and idempotent batch collection. Interruptions after a batch collection claim retain their hold for reconciliation rather than allowing another ledger emission.
 
-Frontend build passed; its source tree is identical to this tested head. Ruff 0.16.2, host-path, coverage and line-ending checks pass (zero new violations). Contract validation and lane-registry schema validation pass. Server caller maps and all nine excluded registry rows are semantically unchanged. See verification.json for exact limits. This was selected CI-parity coverage; the socket-backed test was OS-refused and GitHub CI was not run.
+Monitoring is cached, exception-contained and based on non-secret configuration presence. Billing P1 is one-shot per promotion; auth alone repeats under the existing window. UNAVAILABLE/stuck-pause P2, empty-digest silence, per-model today/7d usage, fallback-reason detail and private corrected fixtures are implemented. Platform health and Jobs display the shared projection. Needs-action probe/rule are tested but the one-line `api_v2.py` registration awaits its active owner; see OWNER_HANDOFF.md.
 
-Outstanding acceptance: active-owner monitoring handoffs; source-admission review; operator-permitted 412/390 browser and loopback proof; key delivery; post-release real canaries/readback. Do not label the branch production-ready from unit tests.
+Verification checkpoint: the earlier 150-test regression set passed with psycopg2 hidden; the integrated edge-case checkpoint passed 184 tests. Further accounting-boundary changes are included and final combined/native-profile and UI verification must be recorded in verification.json before publication. Prior 263-test proof belongs to the earlier source head, not this correction.
 
-The fixture runner uses no server and aborts all network. Its first launch was OS-refused; no screenshot exists. Do not substitute a rendered mockup for browser proof.
+Current Sonnet 5.5 cache-read price is $0.10/MTok in the official pricing page and announcement fetched 2026-10-25; review A's $0.20 correction was not applied. Current dry-run proposal: 67 eligible processes (56 Opus,11 Haiku),23 unchanged; observed-subset token comparison $5.050121/day. Full-day volume/cost is NOT_MEASURED.
+
+Browser/phone execution and screenshots remain NOT_VERIFIED after sandbox refusal; no alternate browser, live server or synthetic screenshot substitution was used. Exact-head GitHub CI and live key-org/tier/forced-exhaustion canaries are not yet proved. Keep the correction unmerged pending those applicable decisions and owner handoffs.

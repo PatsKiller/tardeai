@@ -5,7 +5,9 @@ reported by stable codes, not by echoing vendor bodies, headers or prompt text.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
+from functools import wraps
 from decimal import Decimal
 import json
 import os
@@ -99,7 +101,12 @@ def _http(method: str, path: str, payload: dict | None, *, key: str, timeout: fl
 
 
 def _failure(status: int, body: dict) -> str:
-    error = body.get("error") or {}
+    if status == 429:
+        return "RATE_LIMITED"
+    if status == 529:
+        return "OVERLOADED"
+    error = body.get("error")
+    error = error if isinstance(error, dict) else {}
     kind = str(error.get("type") or "").lower()
     message = str(error.get("message") or "").lower()
     if status == 402 or kind in {"billing_error", "insufficient_credit", "insufficient_quota"}:
@@ -108,9 +115,48 @@ def _failure(status: int, body: dict) -> str:
         return "BILLING_ERROR"
     if status in (401, 403):
         return "AUTH_FAILURE"
-    if status == 429:
-        return "RATE_LIMITED"
-    return "OVERLOADED" if status >= 500 else "INVALID_RESPONSE"
+    return "OVERLOADED" if status >= 500 or kind == "overloaded_error" else "INVALID_RESPONSE"
+
+
+def _credit_refusals(method: Callable) -> Callable:
+    """Keep journal/configuration refusals on the provider fallback contract."""
+    @wraps(method)
+    def call(*args, **kwargs):
+        try:
+            return method(*args, **kwargs)
+        except CreditDenied as exc:
+            raise AnthropicError(exc.reason) from exc
+    return call
+
+
+def _governance_code(exc: RuntimeError) -> str:
+    code = getattr(exc, "reason", None) or str(exc).split(":", 1)[0].strip()
+    return code if isinstance(code, str) and re.fullmatch(r"[A-Z][A-Z0-9_]*", code) else "GOVERNANCE_UNAVAILABLE"
+
+
+def _reasoning_settings(model: str, thinking: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply the current per-model controls in the verified policy snapshot.
+
+    Opus 5.5 always uses adaptive thinking; ordinary calls use low effort.
+    Haiku permits disabled thinking, and Sonnet uses between_tools for ordinary
+    calls. Explicit THINK tiers use adaptive thinking with high effort.
+    """
+    enabled = thinking == "enabled"
+    mode = "adaptive" if enabled or model == "claude-opus-5-5" else (
+        "between_tools" if model == "claude-sonnet-5-5" else "disabled")
+    settings = {"thinking": {"type": mode}, "output_config": {"effort": "high" if enabled else "low"}}
+    try:
+        configured = policy.get("thinking_controls", {}).get(model, {}).get("enabled" if enabled else "disabled")
+        if configured is not None:
+            if (not isinstance(configured, dict) or not isinstance(configured.get("thinking"), dict)
+                    or not isinstance(configured.get("output_config"), dict)):
+                raise AnthropicError("CREDIT_CONFIGURATION_INVALID")
+            settings = deepcopy(configured)
+        if model == "claude-opus-5-5":
+            settings["thinking"] = {"type": "adaptive"}
+        return settings
+    except (AttributeError, KeyError, TypeError) as exc:
+        raise AnthropicError("CREDIT_CONFIGURATION_INVALID") from exc
 
 
 class AnthropicTransport:
@@ -132,8 +178,21 @@ class AnthropicTransport:
         model = (payload or {}).get("model")
         if not model:
             model = (((payload or {}).get("requests") or [{}])[0].get("params") or {}).get("model")
-        if self.record_attempt is None or self.record_attempt(str(model or "unknown"), code) is not True:
+        try:
+            recorded = self.record_attempt is not None and self.record_attempt(str(model or "unknown"), code) is True
+        except Exception:
+            recorded = False
+        if not recorded:
             self.book.record_failure("accounting_unavailable", now=self.now())
+
+    def _meter_usage(self, model: str, usage: dict, actual: Decimal, provider_id: str | None) -> None:
+        try:
+            recorded = self.record_usage is not None and self.record_usage(model, usage, actual, provider_id) is True
+        except Exception:
+            recorded = False
+        if not recorded:
+            self.book.record_failure("accounting_unavailable", now=self.now())
+            raise AnthropicError("ACCOUNTING_UNAVAILABLE", request_sent=True, possibly_billable=True)
 
     def _send(self, method: str, path: str, payload: dict | None, *, deadline: float) -> tuple[dict, bool]:
         key = str(self.env.get("ANTHROPIC_API_KEY") or "").strip()
@@ -150,9 +209,12 @@ class AnthropicTransport:
                 status, body, headers = self.request(method, path, payload, key=key, timeout=remaining)
             except AnthropicError as exc:
                 self.book.record_failure("timeout" if exc.code == "TIMEOUT" else "invalid_response", now=self.now())
-                if exc.possibly_billable:
+                billable = method == "POST" and path in {"/v1/messages", "/v1/messages/batches"}
+                current_ambiguous = billable and exc.possibly_billable
+                if current_ambiguous:
                     self._unknown_attempt(payload, exc.code)
-                    exc.attempt_recorded = True
+                exc.possibly_billable = ambiguous or current_ambiguous
+                exc.attempt_recorded = exc.possibly_billable
                 raise
             except Exception as exc:
                 # A malformed/aborted provider response can follow billable work.
@@ -163,6 +225,8 @@ class AnthropicTransport:
                 failure = AnthropicError("INVALID_RESPONSE", request_sent=True, possibly_billable=billable)
                 failure.attempt_recorded = billable
                 raise failure from exc
+            if not isinstance(body, dict) and not 200 <= status < 300:
+                body = {}
             if not isinstance(body, dict):
                 billable = method == "POST" and path in {"/v1/messages", "/v1/messages/batches"}
                 if billable:
@@ -174,7 +238,12 @@ class AnthropicTransport:
             if 200 <= status < 300:
                 return body, ambiguous
             code = _failure(status, body)
-            if path in {"/v1/messages", "/v1/messages/batches"} and method == "POST" and status >= 500:
+            # 529 / overloaded_error and 429 are refused before generation: not billed,
+            # so the hold is released. Other 5xx stay ambiguous (possibly billed).
+            error = body.get("error")
+            error = error if isinstance(error, dict) else {}
+            overloaded = status == 529 or str(error.get("type") or "").lower() == "overloaded_error"
+            if path in {"/v1/messages", "/v1/messages/batches"} and method == "POST" and status >= 500 and not overloaded:
                 ambiguous = True
                 self._unknown_attempt(payload, code)
             if code in {"BILLING_ERROR", "AUTH_FAILURE", "RATE_LIMITED", "OVERLOADED"}:
@@ -182,7 +251,7 @@ class AnthropicTransport:
             if code in {"RATE_LIMITED", "OVERLOADED"} and number + 1 < attempts:
                 try:
                     delay = float(headers.get("retry-after", 0))
-                except (TypeError, ValueError):
+                except (AttributeError, TypeError, ValueError):
                     delay = 0
                 delay = max(0, delay)
                 if delay <= float(retry.get("max_delay_seconds", 2)) and delay < deadline - self.monotonic():
@@ -222,11 +291,10 @@ class AnthropicTransport:
         if system:
             system[-1]["cache_control"] = {"type": "ephemeral"}
             payload["system"] = system
-        if thinking == "enabled":
-            payload["thinking"] = {"type": "adaptive"}
-            payload["output_config"] = {"effort": "high"}
+        payload.update(_reasoning_settings(model, thinking, self.policy))
         return payload
 
+    @_credit_refusals
     def generate(self, messages: list[dict], model: str | None, *, max_tokens: int = 2048,
                  client_request_id: str, thinking: str = "disabled", tools: list | None = None,
                  deadline_s: float = 90, process_id: str = "unregistered", process_cap: Decimal | None = None,
@@ -246,9 +314,13 @@ class AnthropicTransport:
         prices = self._prices(model)
         payload = self._payload(messages, model, max_tokens, thinking)
         deadline = self.monotonic() + max(0, float(deadline_s))
-        if self.book.snapshot(now=self.now())["status"] != "OK":
-            raise AnthropicError(self.book.snapshot(now=self.now())["status"])
-        token_payload = {k: v for k, v in payload.items() if k != "max_tokens"}
+        try:
+            status = self.book.snapshot(now=self.now())["status"]
+        except CreditDenied as exc:
+            raise AnthropicError(exc.reason) from exc
+        if status != "OK":
+            raise AnthropicError(status)
+        token_payload = {k: v for k, v in payload.items() if k not in {"max_tokens", "output_config"}}
         count_response, _ = self._send("POST", "/v1/messages/count_tokens", token_payload, deadline=deadline)
         counted = _count(count_response["input_tokens"])
         if max_input_tokens is not None and counted > int(max_input_tokens):
@@ -271,7 +343,14 @@ class AnthropicTransport:
         result_received = request_started = False
         try:
             if self.reserve_process is not None:
-                self.reserve_process(projected, model)
+                try:
+                    self.reserve_process(projected, model)
+                except AnthropicError:
+                    raise
+                except (CreditDenied, RuntimeError) as exc:
+                    # DB backstop / process-cap / persistence refusal: nothing was sent;
+                    # a typed refusal lets every caller fall through to a free lane.
+                    raise AnthropicError(_governance_code(exc)) from exc
             request_started = True
             body, ambiguous = self._send("POST", "/v1/messages", payload, deadline=deadline)
             result_received = True
@@ -281,15 +360,27 @@ class AnthropicTransport:
             if not isinstance(usage, dict):
                 raise AnthropicError("USAGE_UNKNOWN", request_sent=True, possibly_billable=True)
             actual = price_usage(usage, prices)
-            if self.record_usage is not None and self.record_usage(model, usage, actual, body.get("id")) is not True:
-                self.book.record_failure("accounting_unavailable", now=self.now())
-                raise AnthropicError("ACCOUNTING_UNAVAILABLE", request_sent=True, possibly_billable=True)
-            self.book.settle(client_request_id, None if ambiguous else actual, now=self.now())
+            self._meter_usage(model, usage, actual, body.get("id"))
+            try:
+                self.book.settle(client_request_id, None if ambiguous else actual, now=self.now())
+            except CreditDenied as exc:
+                # Over-reservation is booked at the real amount and pauses the book for
+                # a bounded cooldown; the paid-for answer is still returned.
+                if exc.reason != "CREDIT_OVER_RESERVATION":
+                    failure = AnthropicError(exc.reason, request_sent=True, possibly_billable=True)
+                    failure.attempt_recorded = True
+                    raise failure from exc
             if self.settle_process is not None:
                 self.settle_process(None if ambiguous else actual)
             prompt_total = usage["input_tokens"] + usage.get("cache_read_input_tokens", 0) + usage.get("cache_creation_input_tokens", 0)
             text = "".join(block.get("text", "") for block in body.get("content", [])
                            if block.get("type") == "text")
+            if not text.strip() and body.get("stop_reason") in {"max_tokens", "refusal"}:
+                # Settled above (the credit was spent); the answer is unusable, so the
+                # caller falls through to the next lane.
+                invalid = AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=False)
+                invalid.attempt_recorded = True  # usage already recorded and settled
+                raise invalid
             return {"id": body.get("id"), "model": model,
                     "choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": body.get("stop_reason")}],
                     "usage": {"prompt_tokens": prompt_total, "completion_tokens": usage["output_tokens"],
@@ -311,6 +402,7 @@ class AnthropicTransport:
                 self.settle_process(actual)
             raise
 
+    @_credit_refusals
     def submit_batch(self, messages: list[dict], model: str, *, client_request_id: str,
                      process_id: str, caller_allows_async: bool = False, max_tokens: int = 2048,
                      credit_tier: str = "bulk", max_input_tokens: int,
@@ -330,22 +422,34 @@ class AnthropicTransport:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
         if credit_tier not in {"bulk", "standard"} or self.policy["models"].get(credit_tier) != model:
             raise AnthropicError("BATCH_TIER_UNSUPPORTED")
+        status=self.book.snapshot(now=self.now())["status"]
+        if status!="OK":
+            raise AnthropicError(status)
         prices=self._prices(model)
         payload=self._payload(messages,model,max_tokens,"disabled")
         deadline=self.monotonic()+deadline_s
-        count,_=self._send("POST","/v1/messages/count_tokens",{k:v for k,v in payload.items() if k!="max_tokens"},deadline=deadline)
+        count,_=self._send("POST","/v1/messages/count_tokens",{k:v for k,v in payload.items() if k not in {"max_tokens","output_config"}},deadline=deadline)
         if _count(count["input_tokens"]) > max_input_tokens:
             raise AnthropicError("INPUT_LIMIT_EXCEEDED")
         bounded=max(count["input_tokens"],len(json.dumps(payload,ensure_ascii=False).encode()))+int(self.policy["input_framing_margin_tokens"])
         projected=price_usage({"input_tokens":0,"cache_creation_input_tokens":bounded,"output_tokens":max_tokens},prices,batch=True)
         projected*=int(self.policy["retry"]["max_attempts"])
-        self.book.reserve(client_request_id,process_id,projected,tier=credit_tier,now=self.now(),process_cap=process_cap)
-        sent=False
         try:
-            self.reserve_process(projected,model)
+            self.book.reserve(client_request_id,process_id,projected,tier=credit_tier,now=self.now(),process_cap=process_cap)
+        except CreditDenied as exc:
+            raise AnthropicError(exc.reason) from exc
+        sent=result_received=False
+        try:
+            try:
+                self.reserve_process(projected,model)
+            except AnthropicError:
+                raise
+            except (CreditDenied, RuntimeError) as exc:
+                raise AnthropicError(_governance_code(exc)) from exc
             custom=self.book._key(client_request_id)
             sent=True
             result,ambiguous=self._send("POST","/v1/messages/batches",{"requests":[{"custom_id":custom,"params":payload}]},deadline=deadline)
+            result_received=True
             batch_id=result.get("id","")
             if not re.fullmatch(r"msgbatch_[A-Za-z0-9_-]+",batch_id):
                 raise AnthropicError("INVALID_BATCH_ID",request_sent=True,possibly_billable=True)
@@ -356,13 +460,16 @@ class AnthropicTransport:
             return {"batch_id":batch_id,"client_request_id":client_request_id,"status":"PENDING",
                     "provider":"anthropic","promotional_hold_usd":str(projected)}
         except BaseException as exc:
-            if sent and not getattr(exc, "attempt_recorded", False):
+            actual = None if (result_received or getattr(exc, "possibly_billable", False)
+                              or (sent and not isinstance(exc, AnthropicError))) else Decimal(0)
+            if actual is None and not getattr(exc, "attempt_recorded", False):
                 self._unknown_attempt(payload, getattr(exc, "code", "INTERRUPTED"))
-            self.book.settle(client_request_id,None if sent else Decimal(0),now=self.now())
+            self.book.settle(client_request_id,actual,now=self.now())
             if self.settle_process is not None:
-                self.settle_process(None if sent else Decimal(0))
+                self.settle_process(actual)
             raise
 
+    @_credit_refusals
     def collect_batch(self, batch_id: str, *, client_request_id: str, process_id: str,
                       deadline_s: float = 90) -> dict:
         """Poll/read an admitted batch. Pending/unknown results retain the entire hold."""
@@ -370,13 +477,25 @@ class AnthropicTransport:
             raise AnthropicError("INVALID_BATCH_ID")
         if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
-        with self.book._locked():
-            rows=self.book._read()
-            admitted=[r for r in rows if r["event"]=="batch" and r.get("request")==self.book._key(client_request_id)
-                      and r.get("batch_id")==batch_id and r.get("process_id")==process_id]
+        try:
+            with self.book._locked():
+                rows=self.book._read()
+                admitted=[r for r in self.book._own(rows) if r["event"]=="batch" and r.get("request")==self.book._key(client_request_id)
+                          and r.get("batch_id")==batch_id and r.get("process_id")==process_id]
+                prior=self.book._requests(rows).get(self.book._key(client_request_id)) or {}
+                collection=[r for r in self.book._own(rows) if r["event"] in {"batch_collection_started", "batch_collected"}
+                            and r.get("request")==self.book._key(client_request_id)]
+        except CreditDenied as exc:
+            raise AnthropicError(exc.reason) from exc
         if len(admitted)!=1:
             raise AnthropicError("BATCH_NOT_ADMITTED")
         entry=admitted[0]
+        if prior.get("status")=="settled" or (collection and collection[-1]["event"]=="batch_collected"):
+            return {"batch_id":batch_id,"status":"ALREADY_COLLECTED",
+                    "cost_usd":collection[-1]["actual"] if collection and collection[-1]["event"]=="batch_collected" else prior.get("actual"),
+                    "requires_native_output_validation":True}
+        if collection:
+            raise AnthropicError("BATCH_COLLECTION_UNCERTAIN", request_sent=True, possibly_billable=True)
         deadline=self.monotonic()+deadline_s
         state,_=self._send("GET","/v1/messages/batches/"+batch_id,None,deadline=deadline)
         if state.get("processing_status")!="ended":
@@ -390,10 +509,30 @@ class AnthropicTransport:
             raise AnthropicError("MODEL_MISMATCH",request_sent=True,possibly_billable=True)
         usage=body["usage"]
         cost=price_usage(usage,self._prices(entry["model"]),batch=True)
-        if not self.record_usage(entry["model"],dict(usage,batch=True),cost,body.get("id")):
-            self.book.record_failure("accounting_unavailable",now=self.now())
-            raise AnthropicError("ACCOUNTING_UNAVAILABLE",request_sent=True,possibly_billable=True)
-        self.book.settle(client_request_id,None if entry["ambiguous"] else cost,now=self.now())
+        # Persist the collection claim before the external ledger write. Concurrent
+        # collectors and a restart after an uncertain write never emit a second row.
+        # An interrupted claim retains its total hold and requires reconciliation.
+        with self.book._locked():
+            rows=self.book._read()
+            collection=[r for r in self.book._own(rows) if r["event"] in {"batch_collection_started", "batch_collected"}
+                        and r.get("request")==entry["request"]]
+            prior=self.book._requests(rows).get(entry["request"]) or {}
+            if prior.get("status")=="settled" or (collection and collection[-1]["event"]=="batch_collected"):
+                return {"batch_id":batch_id,"status":"ALREADY_COLLECTED",
+                        "cost_usd":collection[-1]["actual"] if collection and collection[-1]["event"]=="batch_collected" else prior.get("actual"),
+                        "requires_native_output_validation":True}
+            if collection:
+                raise AnthropicError("BATCH_COLLECTION_UNCERTAIN", request_sent=True, possibly_billable=True)
+            self.book._append(rows,"batch_collection_started",self.now(),request=entry["request"],batch_id=batch_id)
+        self._meter_usage(entry["model"],dict(usage,batch=True),cost,body.get("id"))
+        try:
+            self.book.settle(client_request_id,None if entry["ambiguous"] else cost,now=self.now())
+        except CreditDenied as exc:
+            if exc.reason!="CREDIT_OVER_RESERVATION":
+                raise AnthropicError(exc.reason,request_sent=True,possibly_billable=True) from exc
+        with self.book._locked():
+            self.book._append(self.book._read(),"batch_collected",self.now(),request=entry["request"],
+                              batch_id=batch_id,actual=str(cost))
         if self.settle_process is not None:
             self.settle_process(None if entry["ambiguous"] else cost)
         return {"batch_id":batch_id,"status":"SUCCEEDED","message":body,"cost_usd":str(cost),

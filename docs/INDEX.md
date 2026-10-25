@@ -1789,7 +1789,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
-| `docs/ops/ANTHROPIC_FIRST_20261025.md` | Anthropic-first: caller inventory before implementation |
+| `docs/ops/ANTHROPIC_FIRST_20261025.md` | Anthropic-first: routing, review and caller inventory |
 | `docs/ops/APPROVALS_CENTER_20261024.md` | Approvals Center — boards 19–21, 2026-10-24 |
 | `docs/ops/APPROVALS_UI_20261024.md` | Approvals UI — boards 19–21, 2026-10-24 |
 | `docs/ops/ASK_CIO_READABLE_20261024.md` | Ask CIO: readable canonical answers and live completion |
@@ -2230,8 +2230,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/agents-20-2-20261023/operator-pr-body.md` | AGENTS 20.2.0 proposed operator package |
 | `docs/ops/packets/agents-21-20261023-wp16/README.md` | WP-16: proposed AGENTS 21.0.0 operator package |
 | `docs/ops/packets/agents-21-20261023-wp16/operator-pr-body.md` | WP-16 operator policy proposal |
-| `docs/ops/packets/anthropic-first-20261025/BUILD_REPORT.md` | Anthropic-first local build report |
-| `docs/ops/packets/anthropic-first-20261025/OWNER_HANDOFF.md` | Monitoring integration handoffs — not completed |
+| `docs/ops/packets/anthropic-first-20261025/BUILD_REPORT.md` | Anthropic-first review correction |
+| `docs/ops/packets/anthropic-first-20261025/OWNER_HANDOFF.md` | Anthropic review handoff |
 | `docs/ops/packets/anthropic-first-20261025/dry-run-table.md` | dry-run-table.md |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
 | `docs/ops/packets/c1-company-catalyst-20261024/REMAINING_CATALYST_GAPS.md` | Remaining catalyst gaps |

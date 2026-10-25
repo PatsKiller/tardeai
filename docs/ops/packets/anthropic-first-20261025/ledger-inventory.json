@@ -2,7 +2,7 @@
   "observed_at_utc": "2026-10-25T20:33:26.196551+00:00",
   "window_start_utc": "2026-10-25T04:00:00+00:00",
   "timezone": "America/New_York",
-  "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/provider_cost/events.jsonl",
+  "source": "<state-root>/data/runtime/provider_cost/events.jsonl",
   "captured_prefix_bytes": 96240874,
   "prefix_sha256": "5f354316e9851e0a56440644c3b9eaa98f60cd1cc604c7d492033e1103502ee7",
   "first_event": "2026-08-17 23:09:01.453024+00:00",

@@ -1,4 +1,6 @@
 """Real bridge, injected providers/ledger: promotional precedence and native refusals."""
+from tests.test_anthropic_first_20261025 import activated_fixture_promotion  # noqa: F401
+
 import json
 from unittest.mock import MagicMock
 
@@ -67,12 +69,12 @@ def test_real_bridge_adapter_ledger_and_credit_settlement_are_correlated(monkeyp
         usage={'input_tokens':30,'output_tokens':12,'cache_read_input_tokens':2000,'cache_creation_input_tokens':1000}
         def http(method,path,payload,**kwargs):
             if path.endswith('count_tokens'):return 200,{'input_tokens':100},{}
-            return 200,{'id':'fixture-correlated','model':load_policy()['models']['bulk'],
+            return 200,{'id':'fixture-correlated','model':payload['model'],
                 'content':[{'type':'text','text':json.dumps(VALID)}],'usage':usage},{}
         monkeypatch.setattr(promo,'AnthropicTransport',functools.partial(AnthropicTransport,request=http,now=lambda:NOW))
-        result=bridge.execute_governed_call([{'role':'user','content':'synthetic'}],process_id=DIAG)
-        assert result.get('_tradeai',{}).get('governance_pass') is True,result
-        expected=float(price_usage(usage,load_policy()['pricing'][load_policy()['models']['bulk']]))
+        result=bridge.execute_governed_call([{'role':'user','content':'synthetic'}],process_id=DIAG,max_tokens=32)
+        assert result.get('_tradeai',{}).get('governance_pass') is True,json.dumps(result)
+        expected=float(price_usage(usage,load_policy()['pricing'][load_policy()['models']['standard']]))
         assert led['settle'].call_args.args[1]==expected
         events=[json.loads(line) for line in (tmp_path/'data/runtime/provider_cost/events.jsonl').read_text().splitlines()]
         assert len(events)==1 and events[0]['provider']=='anthropic'

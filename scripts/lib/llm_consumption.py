@@ -264,8 +264,6 @@ def _allowed_lanes_from_registry(p: dict) -> list[str]:
             lanes.extend(["pro_think", "deepseek-v4-pro"])
         elif u == "PRO_MAX":
             lanes.extend(["pro_max", "deepseek-v4-pro"])
-    if p.get("anthropic_first") is True:
-        lanes.extend(["anthropic", "grok", "chatgpt"])
     # de-dupe preserve order
     out: list[str] = []
     for x in lanes:
@@ -459,6 +457,10 @@ def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
                 """
                 SELECT COALESCE(SUM(
                     CASE
+                      WHEN metadata_json->>'funding_source' = 'anthropic_promotional_credit' THEN 0
+                      WHEN metadata_json->>'paid_component_usd' IS NOT NULL
+                        AND status IN ('reserved', 'settled')
+                        THEN (metadata_json->>'paid_component_usd')::numeric
                       WHEN status = 'reserved' THEN projected_usd
                       WHEN status = 'settled' THEN COALESCE(actual_usd, projected_usd)
                       ELSE 0
@@ -530,7 +532,7 @@ def recover_stale_reservations(*, max_age_minutes: int = 30, cur=None) -> int:
         SET status='settled',
             actual_usd=COALESCE(actual_usd, projected_usd),
             metadata_json=CASE WHEN metadata_json ? 'promotion_id'
-                THEN metadata_json || jsonb_build_object('funding_settled_at',CURRENT_TIMESTAMP)
+                THEN metadata_json || jsonb_build_object('funding_settled_at',created_at)
                 ELSE metadata_json END
         WHERE status='reserved'
           AND created_at < NOW() - (%s * INTERVAL '1 minute')
@@ -728,7 +730,7 @@ def over_daily_cap(process_id: str, *, extra: int = 0) -> bool:
     return calls_today(process_id) + max(0, int(extra or 0)) >= cap_n
 
 
-def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> dict:
+def should_call(process_id: str, lane: str, *, manual_trigger: bool = False, _anthropic_route: bool = False) -> dict:
     """Decision only — does not call the model. Unknown processes: deny."""
     cfg = get_process_config(process_id)
     lane = (lane or "").strip().lower()
@@ -742,6 +744,9 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> 
                 "process_id": process_id}
     allowed_list = list(cfg.get("allowed_lanes") or [])
     allowed = lane in allowed_list or lane.upper() in {x.upper() for x in allowed_list}
+    if not allowed and _anthropic_route and lane in {"anthropic", "grok", "chatgpt"}:
+        from . import anthropic_routing as promo
+        allowed = promo.eligible(process_id, cfg)
     if not allowed:
         return {
             "allow": False,
@@ -969,7 +974,7 @@ def reprice_reservation(
     """Reauthorize the SAME request slot before switching provider/funding.
 
     Promotional credit does not enlarge the paid global cap. The process cap
-    includes both funding sources. A paid fallback is checked under the original
+    applies independently to promotional and paid spend. A paid fallback is checked under the original
     global lock before any request can reach that provider.
     """
     import math
@@ -1001,8 +1006,8 @@ def reprice_reservation(
             meta = json.loads(meta)
         old_paid = (0.0 if meta.get("funding_source") == "anthropic_promotional_credit"
                     else float(meta.get("paid_component_usd", old)))
-        spent = ledger_paid_usd_today(process_id, cur=cur) - old
-        if spent + projected > float(process_config["daily_cost_cap_usd"]):
+        spent = ledger_paid_usd_today(process_id, cur=cur) - old_paid
+        if spent + paid > float(process_config["daily_cost_cap_usd"]):
             raise RuntimeError("COST_CAP_EXCEEDED: process cap")
         credit = projected - paid
         if credit > 0:
@@ -1014,7 +1019,7 @@ def reprice_reservation(
                     - COALESCE((metadata_json->>'paid_component_usd')::numeric,0),0)),0),
                 COALESCE(SUM(GREATEST((CASE WHEN status='reserved' THEN projected_usd ELSE actual_usd END)
                     - COALESCE((metadata_json->>'paid_component_usd')::numeric,0),0))
-                    FILTER (WHERE status='reserved' OR
+                    FILTER (WHERE
                         (COALESCE((metadata_json->>'funding_settled_at')::timestamptz,created_at) AT TIME ZONE 'UTC')::date
                         = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date),0)
                 FROM llm_cost_reservations WHERE status IN ('reserved','settled')
@@ -1026,9 +1031,12 @@ def reprice_reservation(
                 raise RuntimeError("CREDIT_EXHAUSTED: durable total cap")
             if Decimal(str(used_day)) + addition > Decimal(str(cp["daily_cap_usd"])):
                 raise RuntimeError("CREDIT_PAUSED_TODAY: durable UTC cap")
-            cur.execute("SELECT CURRENT_TIMESTAMP >= %s::timestamptz", (cp["expires_at"],))
-            if cur.fetchone()[0]:
-                raise RuntimeError("CREDIT_EXPIRED: database clock")
+            old_credit = (max(Decimal(0), Decimal(str(old)) - Decimal(str(old_paid)))
+                          if meta.get("promotion_id") == cp["promotion_id"] else Decimal(0))
+            if Decimal(str(projected_usd)) - Decimal(str(paid_component_usd)) > old_credit:
+                cur.execute("SELECT CURRENT_TIMESTAMP >= %s::timestamptz", (cp["expires_at"],))
+                if cur.fetchone()[0]:
+                    raise RuntimeError("CREDIT_EXPIRED: database clock")
             meta["promotion_id"] = cp["promotion_id"]
         if paid > 0:
             if global_cap is None or float(global_cap) <= 0:
@@ -1227,7 +1235,8 @@ def gate_and_generate(
             "fast", "fast_think", "pro", "pro_think", "pro_max"
         ) else lane
 
-    decision = should_call(process_id, lane, manual_trigger=manual_trigger)
+    decision = should_call(process_id, lane, manual_trigger=manual_trigger,
+                           **({"_anthropic_route": True} if _anthropic_route else {}))
     if not decision.get("allow"):
         if decision.get("reason") == "manual_mode":
             raise ManualRequired(process_id, lane, task_summary or summarize_prompt(prompt), prompt[:500])
@@ -1268,7 +1277,7 @@ def gate_and_generate(
 
     from lib import anthropic_routing as promo
     _promo_cfg = get_process_config(process_id)
-    if not _anthropic_route and promo.eligible(process_id, _promo_cfg):
+    if not _anthropic_route and not meta.get("provider_pinned") and model is None and promo.active(process_id, _promo_cfg):
         return promo.generate_in_process(prompt, process_id=process_id, cfg=_promo_cfg, options={
             "task_summary": task_summary, "manual_trigger": manual_trigger, "timeout": timeout,
             "metadata": meta, "operator_confirmed": operator_confirmed, "response_json": response_json,
@@ -1640,10 +1649,14 @@ def overview(*, days: int = 30) -> dict:
     top = [{"process_id": r[0], "process_name": r[1], "calls": int(r[2]),
             "relative_units": float(r[3] or 0), "last_used": str(r[4]) if r[4] else None}
            for r in cur.fetchall()]
-    from .anthropic_monitoring import snapshot as anthropic_snapshot
+    from .anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot
     from .anthropic_routing import state_root
+    try:
+        anthropic = anthropic_snapshot(state_root())
+    except Exception:  # noqa: BLE001 -- additive monitor cannot break the native report
+        anthropic = unavailable_snapshot()
     return {"by_lane": by_lane, "top_processes": top, "generated_at": datetime.now(timezone.utc).isoformat(),
-            "anthropic": anthropic_snapshot(state_root())}
+            "anthropic": anthropic}
 
 
 def list_processes() -> list[dict]:

@@ -1,4 +1,18 @@
-# Anthropic-first: caller inventory before implementation
+# Anthropic-first: routing, review and caller inventory
+
+Current review: PR #2181. The correction keeps the promotion **disabled** until the operator confirms the delivered key belongs to the promotional organization and tier canaries pass. Presence of an existing key is not consent to activate it.
+
+Operator model decision 2026-10-25: general tasks use Opus 5.5, including high reasoning; eleven explicitly listed tagging/classification/summary/triage processes use Haiku 5.5. Fable is excluded. The eligible proposal covers 67 processes (56 Opus, 11 Haiku); 23 provider-pinned, independent-review, protected or legacy-sentinel rows retain their routes. All legacy allowed lanes, process caps, request limits and DeepSeek policies remain unchanged. Missing/unusable credit restores each original route.
+
+At the captured observed subset's token volumes, the revised comparable-token estimate is **$5.050121/day**, against the unchanged $10/UTC-day cap. This is not a full-day forecast: unobserved OAuth usage and model output/thinking volumes remain unmeasured. See the regenerated dry-run table, including no-key/expired behavior.
+
+Review A's Sonnet cache-price finding was rechecked against both [current official pricing](https://platform.claude.com/docs/en/about-claude/pricing) and the [Sonnet 5.5 announcement](https://www.anthropic.com/claude-sonnet-5-5): both currently specify $0.10/MTok, so that value is retained. Opus 5.5 thinking is always adaptive; ordinary work explicitly uses low effort rather than claiming thinking is off.
+
+Completed source corrections include pre-provider Ask question/process/global-cap admission, independent provider identity, credit-refusal fallback, full-UTC-day holds and total retention, bounded accounting pauses and append-only operator reset, one-shot billing notes, silent empty digests, guarded/cached monitoring and per-model/fallback detail. Platform and Jobs integration are implemented. Needs-action probe/rule are implemented, but its API registration is a one-line handoff to the active `api_v2.py` owner; do not claim that inbox integration is live.
+
+Remote PR #2181 is still at the originally reviewed head until the coordinator publishes the correction. No merge, release, key access or provider canary was performed. Browser/tap proof and exact-head GitHub CI remain outstanding.
+
+## Historical caller inventory before implementation
 
 Design-Task: DSN-20261025-anthropic-first-P1-T1
 Source: `7a17113afedc552a645493972dee46c0ba51a2dd`; captured 2026-10-25T20:33:26.196551+00:00.

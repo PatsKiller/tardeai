@@ -1,13 +1,22 @@
 """Durable promotional-credit authorization, separate from provider spend metering.
 
 The append-only journal contains amounts and opaque request identities only. A
-partial/corrupt journal refuses dispatch. Pending amounts survive day boundaries
-and are never released merely because a worker stopped or a response timed out.
+partial/corrupt journal refuses dispatch. Unsettled amounts are never released from
+the TOTAL cap merely because a worker stopped or a response timed out; they count
+toward the UTC daily pace only on the UTC day they were reserved so a few ambiguous attempts cannot
+pause the promotion for good.
+
+Accounting failures (``accounting_unavailable`` / ``over_reservation``) make the
+book UNAVAILABLE only for ``unavailable_cooldown_minutes``. A billing error is
+EXHAUSTED until the operator appends an ``operator_reset`` event
+(``scripts/anthropic_credit_reset.py``); the file is never edited in place.
+Rows of an earlier ``promotion_id`` stay in the verified hash chain and are simply
+not counted, so changing the promotion never makes the journal unreadable.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import fcntl
 import hashlib
@@ -19,6 +28,10 @@ from typing import Any
 
 SCHEMA = "AnthropicCreditAuthorization@v1"
 JOURNAL_REL = "data/runtime/provider_cost/anthropic_credit.jsonl"
+TRANSIENT_FAILURES = frozenset({"accounting_unavailable", "over_reservation"})
+RESET_SCOPES = frozenset({"billing_error", "unavailable", "all"})
+DEFAULT_UNAVAILABLE_COOLDOWN_MINUTES = 30
+MAX_UNAVAILABLE_COOLDOWN_MINUTES = 1440
 
 
 class CreditDenied(RuntimeError):
@@ -47,24 +60,34 @@ def money(value: Decimal) -> str:
 def utc(value: datetime | str) -> datetime:
     if not isinstance(value, (datetime, str)):
         raise CreditDenied("CREDIT_CLOCK_INVALID")
-    dt = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if dt.tzinfo is None:
-        raise CreditDenied("CREDIT_CLOCK_INVALID")
-    return dt.astimezone(timezone.utc)
+    try:
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None or dt.utcoffset() is None:
+            raise ValueError("timezone required")
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise CreditDenied("CREDIT_CLOCK_INVALID") from exc
 
 
 class CreditBook:
     def __init__(self, root: Path, policy: dict[str, Any]):
-        self.root = Path(root)
-        self.path = self.root / JOURNAL_REL
-        self.policy = dict(policy)
-        self.promotion = str(policy["promotion_id"])
-        self.total = amount(policy["total_cap_usd"])
-        self.daily = amount(policy["daily_cap_usd"])
-        self.credit = amount(policy["credit_usd"])
-        self.start, self.expiry = utc(policy["starts_at"]), utc(policy["expires_at"])
-        if not (0 < self.total <= self.credit and 0 < self.daily and self.start < self.expiry):
-            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        try:
+            self.root = Path(root)
+            self.path = self.root / JOURNAL_REL
+            self.policy = dict(policy)
+            self.promotion = policy["promotion_id"]
+            self.total = amount(policy["total_cap_usd"])
+            self.daily = amount(policy["daily_cap_usd"])
+            self.credit = amount(policy["credit_usd"])
+            self.start, self.expiry = utc(policy["starts_at"]), utc(policy["expires_at"])
+            caps = policy["per_call_caps_usd"]
+            if (not isinstance(self.promotion, str) or not self.promotion.strip()
+                    or not isinstance(caps, dict) or not caps
+                    or any(not isinstance(tier, str) or amount(cap) <= 0 for tier, cap in caps.items())
+                    or not (0 < self.total <= self.credit and 0 < self.daily and self.start < self.expiry)):
+                raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        except (CreditDenied, KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
 
     @contextmanager
     def _locked(self):
@@ -75,7 +98,7 @@ class CreditBook:
                 yield
         except CreditDenied:
             raise
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as exc:
             raise CreditDenied("CREDIT_UNAVAILABLE") from exc
 
     def _read(self) -> list[dict[str, Any]]:
@@ -87,16 +110,50 @@ class CreditBook:
             with self.path.open(encoding="utf-8") as handle:
                 for line in handle:
                     row = json.loads(line)
+                    if not isinstance(row, dict):
+                        raise CreditDenied("CREDIT_UNAVAILABLE")
                     checksum = row.pop("checksum")
                     expected = hashlib.sha256(json.dumps(row, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                    # Every row (any promotion) is chain-verified; only this
+                    # promotion's rows are counted (see _own).
                     if (checksum != expected or row["previous"] != previous
-                            or row["schema"] != SCHEMA or row["promotion_id"] != self.promotion
+                            or row["schema"] != SCHEMA or not isinstance(row.get("promotion_id"), str)
                             or row["sequence"] != len(rows) + 1):
                         raise CreditDenied("CREDIT_UNAVAILABLE")
+                    if (not isinstance(row.get("event"), str)
+                            or not isinstance(row.get("at"), str)
+                            or not isinstance(row.get("sequence"), int)
+                            or isinstance(row["sequence"], bool)):
+                        raise CreditDenied("CREDIT_UNAVAILABLE")
+                    try:
+                        utc(row["at"])
+                        event = row["event"]
+                        if event in {"reserve", "settle", "uncertain", "batch", "batch_collection_started", "batch_collected"}:
+                            if not isinstance(row.get("request"), str) or not row["request"]:
+                                raise CreditDenied("CREDIT_UNAVAILABLE")
+                        if event == "reserve":
+                            amount(row["projected"])
+                            if not isinstance(row.get("process"), str) or not isinstance(row.get("tier"), str):
+                                raise CreditDenied("CREDIT_UNAVAILABLE")
+                        if event in {"batch", "batch_collection_started", "batch_collected"}:
+                            if not isinstance(row.get("batch_id"), str):
+                                raise CreditDenied("CREDIT_UNAVAILABLE")
+                        if event == "batch":
+                            if (not isinstance(row.get("model"), str) or not isinstance(row.get("process_id"), str)
+                                    or not isinstance(row.get("ambiguous"), bool)):
+                                raise CreditDenied("CREDIT_UNAVAILABLE")
+                        if event in {"settle", "batch_collected"}:
+                            amount(row["actual"])
+                        if event in {"failure", "fallback"} and not isinstance(row.get("reason"), str):
+                            raise CreditDenied("CREDIT_UNAVAILABLE")
+                        if event == "operator_reset" and row.get("scope") not in RESET_SCOPES:
+                            raise CreditDenied("CREDIT_UNAVAILABLE")
+                    except CreditDenied as exc:
+                        raise CreditDenied("CREDIT_UNAVAILABLE") from exc
                     previous = checksum
                     row["checksum"] = checksum
                     rows.append(row)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as exc:
             raise CreditDenied("CREDIT_UNAVAILABLE") from exc
         return rows
 
@@ -118,10 +175,19 @@ class CreditBook:
         finally:
             os.close(fd)
 
-    @staticmethod
-    def _requests(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    def _own(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [row for row in rows if row.get("promotion_id") == self.promotion]
+
+    def _minutes(self, key: str, default: int) -> float:
+        try:
+            value = amount(self.policy.get(key, default))
+        except CreditDenied:
+            value = Decimal(default)
+        return float(min(Decimal(MAX_UNAVAILABLE_COOLDOWN_MINUTES), value))
+
+    def _requests(self, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         requests: dict[str, dict[str, Any]] = {}
-        for row in rows:
+        for row in self._own(rows):
             event = row["event"]
             if event == "reserve":
                 if row["request"] in requests:
@@ -137,10 +203,18 @@ class CreditBook:
                     request["status"] = "uncertain"
         return requests
 
+    def _resets(self, rows: list[dict[str, Any]], scope: str) -> int:
+        latest = 0
+        for row in self._own(rows):
+            if row["event"] == "operator_reset" and row.get("scope") in {scope, "all"}:
+                latest = row["sequence"]
+        return latest
+
     def _snapshot(self, rows: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
         now = utc(now)
         requests = self._requests(rows)
-        spent = held = today = Decimal(0)
+        own = self._own(rows)
+        spent = held = today = held_today = expired = Decimal(0)
         for row in requests.values():
             if row["status"] == "settled":
                 value = amount(row["actual"])
@@ -148,16 +222,34 @@ class CreditBook:
                 if utc(row["settled_at"]).date() == now.date():
                     today += value
             else:
-                held += amount(row["projected"])
-        failures = [r for r in rows if r["event"] == "failure"]
-        exhausted = any(r.get("reason") == "billing_error" for r in failures)
-        unavailable = any(r.get("reason") in {"accounting_unavailable", "over_reservation"} for r in failures)
+                value = amount(row["projected"])
+                held += value
+                reserved_at = utc(row["at"])
+                # Unsettled holds stay in the TOTAL; they pace only the UTC day they
+                # were reserved on; they never expire within that same UTC day.
+                if reserved_at.date() == now.date():
+                    held_today += value
+                else:
+                    expired += value
+        failures = [r for r in own if r["event"] == "failure"]
+        billing_reset = self._resets(rows, "billing_error")
+        unavailable_reset = self._resets(rows, "unavailable")
+        billing = [r for r in failures if r.get("reason") == "billing_error"
+                   and r["sequence"] > billing_reset]
+        exhausted = bool(billing)
+        cooldown = timedelta(minutes=self._minutes("unavailable_cooldown_minutes", DEFAULT_UNAVAILABLE_COOLDOWN_MINUTES))
+        transient = [r for r in failures if r.get("reason") in TRANSIENT_FAILURES
+                     and r["sequence"] > unavailable_reset]
+        unavailable_until = (max(utc(r["at"]) for r in transient) + cooldown) if transient else None
+        unavailable = unavailable_until is not None and now < unavailable_until
         status = ("EXPIRED" if now >= self.expiry else "DISABLED" if self.policy.get("enabled") is not True or self.policy.get("provider_enabled", True) is not True
                   else "NOT_STARTED" if now < self.start else "UNAVAILABLE" if unavailable
                   else "EXHAUSTED" if exhausted or spent + held >= self.total
-                  else "PAUSED_TODAY" if today + held >= self.daily else "OK")
+                  else "PAUSED_TODAY" if today + held_today >= self.daily else "OK")
+        resets = [r for r in own if r["event"] == "operator_reset"]
         return {"status": status, "promotion_id": self.promotion,
                 "credit_used_usd": money(spent), "reserved_usd": money(held),
+                "reserved_today_usd": money(held_today), "expired_unsettled_usd": money(expired),
                 "today_used_usd": money(today), "total_cap_usd": money(self.total),
                 "daily_cap_usd": money(self.daily),
                 "remaining_budget_usd": money(max(Decimal(0), self.total - spent - held)),
@@ -165,6 +257,10 @@ class CreditBook:
                 "days_to_expiry": max(0, (self.expiry - now).total_seconds() / 86400),
                 "last_fallback_reason": failures[-1]["reason"] if failures else None,
                 "exhausted_reason": "billing_error" if exhausted else None,
+                "billing_error_at": billing[0]["at"] if billing else None,
+                "unavailable_reason": transient[-1]["reason"] if unavailable else None,
+                "unavailable_until": unavailable_until.isoformat() if unavailable else None,
+                "reset_sequence": resets[-1]["sequence"] if resets else 0,
                 "open_reservations": sum(r["status"] != "settled" for r in requests.values()),
                 "settled_calls": sum(r["status"] == "settled" for r in requests.values()),
                 "as_of": now.isoformat(), "expiry": self.expiry.isoformat(),
@@ -178,7 +274,7 @@ class CreditBook:
             with self.path.with_suffix(".lock").open("r") as lock:
                 fcntl.flock(lock, fcntl.LOCK_SH)
                 return self._snapshot(self._read(), now)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as exc:
             raise CreditDenied("CREDIT_UNAVAILABLE") from exc
 
     @staticmethod
@@ -188,7 +284,10 @@ class CreditBook:
     def reserve(self, request_id: str, process_id: str, projected: Decimal, *, tier: str,
                 now: datetime, process_cap: Decimal | None = None) -> str:
         projected = amount(projected)
-        ceiling = amount(self.policy["per_call_caps_usd"][tier])
+        try:
+            ceiling = amount(self.policy["per_call_caps_usd"][tier])
+        except (KeyError, TypeError) as exc:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
         if projected <= 0 or projected > ceiling:
             raise CreditDenied("CREDIT_PER_CALL_CAP")
         key = self._key(request_id)
@@ -202,12 +301,19 @@ class CreditBook:
                 raise CreditDenied("CREDIT_REPLAY_REFUSED")
             if amount(snapshot["credit_used_usd"]) + amount(snapshot["reserved_usd"]) + projected > self.total:
                 raise CreditDenied("EXHAUSTED")
-            if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_usd"]) + projected > self.daily:
+            if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_today_usd"]) + projected > self.daily:
                 raise CreditDenied("PAUSED_TODAY")
             if process_cap is not None:
+                day = utc(now)
+
+                def counts_today(r: dict[str, Any]) -> bool:
+                    if r["status"] == "settled":
+                        return utc(r["settled_at"]).date() == day.date()
+                    at = utc(r["at"])
+                    return at.date() == day.date()
+
                 used = sum((amount(r.get("actual", r["projected"])) for r in requests.values()
-                            if r.get("process") == process_id and
-                            (r["status"] != "settled" or utc(r["settled_at"]).date() == utc(now).date())), Decimal(0))
+                            if r.get("process") == process_id and counts_today(r)), Decimal(0))
                 if used + projected > amount(process_cap):
                     raise CreditDenied("CREDIT_PROCESS_CAP")
             self._append(rows, "reserve", now, request=key, process=process_id,
@@ -231,7 +337,10 @@ class CreditBook:
                 return
             actual = amount(actual)
             if actual > amount(request["projected"]):
+                # Book the real amount so the total stays truthful, then pause
+                # (time-bounded) because the projection under-estimated.
                 self._append(rows, "failure", now, reason="over_reservation")
+                self._append(self._read(), "settle", now, request=key, actual=money(actual))
                 raise CreditDenied("CREDIT_OVER_RESERVATION")
             self._append(rows, "settle", now, request=key, actual=money(actual))
 
@@ -251,3 +360,18 @@ class CreditBook:
         reason = reason if reason in permitted else "PROVIDER_UNAVAILABLE"
         with self._locked():
             self._append(self._read(), "fallback", now, reason=reason)
+
+    def operator_reset(self, scope: str, *, now: datetime, note_code: str = "operator") -> dict[str, Any]:
+        """Append an operator reset; never edits or removes journal rows.
+
+        ``billing_error`` clears a billing-error EXHAUSTED state (after the operator
+        fixed the key/org), ``unavailable`` ends an accounting cooldown early, ``all``
+        does both. Totals, holds and settled spend are unchanged.
+        """
+        if scope not in RESET_SCOPES:
+            raise CreditDenied("CREDIT_RESET_SCOPE_INVALID")
+        code = "".join(ch for ch in str(note_code) if ch.isalnum() or ch in "-_")[:40] or "operator"
+        with self._locked():
+            rows = self._read()
+            self._append(rows, "operator_reset", now, scope=scope, note=code)
+            return self._snapshot(self._read(), now)

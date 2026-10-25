@@ -2,7 +2,7 @@
   "version": 5,
   "default_mode": "manual",
   "lane_policies": {
-    "grok_only": "Grok only \u2014 single lane",
+    "grok_only": "Grok only — single lane",
     "chatgpt_only": "ChatGPT only",
     "either": "Operator picks Grok OR ChatGPT (one is enough)",
     "both_preferred": "Best with both lanes; either alone still useful",
@@ -19,10 +19,7 @@
       "description": "Advisory Desk v1 per-row opinion via governed DeepSeek V4 Flash. READ_ONLY_ADVISORY. No execution. Must route through cio_governed_model_bridge (8766).",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -39,7 +36,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix \u2014 max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED. | 2026-09-14: shared callers split onto their own ids (cio_operator_reply, cio_plan_enrichment, cio_prompt_judge, research_circle_analyzer, hermes_cloud_json, hermes_usefulness_score, cio_hermes_research, hermes_golden_judge); this id now carries the advisory opinion engine only.",
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05→0.20→0.30 and daily_soft_cap 80→200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed — DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000→600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix — max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED. | 2026-09-14: shared callers split onto their own ids (cio_operator_reply, cio_plan_enrichment, cio_prompt_judge, research_circle_analyzer, hermes_cloud_json, hermes_usefulness_score, cio_hermes_research, hermes_golden_judge); this id now carries the advisory opinion engine only.",
       "anthropic_first": true
     },
     {
@@ -51,10 +48,7 @@
       "description": "Advisory Desk v1 one-call desk synthesis (three things today) via governed DeepSeek V4 Pro. READ_ONLY_ADVISORY. No execution. One Pro call per desk run.",
       "allowed_lanes": [
         "pro",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -71,7 +65,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03\u21920.06\u21920.10 \u2014 a single Pro synthesis projects $0.0168 (32000 input \u00d7 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED \u2192 degraded).",
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03→0.06→0.10 — a single Pro synthesis projects $0.0168 (32000 input × 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED → degraded).",
       "anthropic_first": true
     },
     {
@@ -98,12 +92,9 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO complex escalation \u2014 deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
+      "description": "Alex CIO complex escalation — deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
       "allowed_lanes": [
-        "pro_think",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "pro_think"
       ],
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
@@ -138,13 +129,10 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO autonomous advisory synthesis \u2014 platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
+      "description": "Alex CIO autonomous advisory synthesis — platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
       "allowed_lanes": [
         "pro",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -162,7 +150,7 @@
       "circuit_breaker": true,
       "registered_by": "P-1.2A",
       "registered_at": "2026-08-08T13:48:00Z",
-      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02\u21920.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15\u21920.40 / soft 80\u2192100 so a Pro synthesis (~$0.0324/call at 32000\u00d716384) is no longer capped to ~4 calls/day.",
+      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02→0.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15→0.40 / soft 80→100 so a Pro synthesis (~$0.0324/call at 32000×16384) is no longer capped to ~4 calls/day.",
       "anthropic_first": true
     },
     {
@@ -186,15 +174,14 @@
       "name": "Broker Proposal Cloud Oversight",
       "category": "Trading",
       "lane_policy": "both_preferred",
-      "description": "Per-proposal second opinion \u2014 pick Grok, ChatGPT, or both via card buttons"
+      "description": "Per-proposal second opinion — pick Grok, ChatGPT, or both via card buttons"
     },
     {
       "id": "cloud_consensus_verdict",
       "name": "Cloud Consensus Verdict",
       "category": "Trading",
       "lane_policy": "ensemble",
-      "description": "Requires both lanes for CLOUD_APPROVE. RETIRED 2026-10-09 (retire batch 1, inventory cron:L687): the scheduled cloud_consensus_verdict.py --run line is removed; it never wrote a verdict.",
-      "anthropic_first": true
+      "description": "Requires both lanes for CLOUD_APPROVE. RETIRED 2026-10-09 (retire batch 1, inventory cron:L687): the scheduled cloud_consensus_verdict.py --run line is removed; it never wrote a verdict."
     },
     {
       "id": "cloud_review",
@@ -202,8 +189,7 @@
       "category": "Hermes",
       "lane_policy": "both_preferred",
       "default_mode": "automated",
-      "description": "Reviews local LLM output \u2014 auto uses both when available",
-      "anthropic_first": true
+      "description": "Reviews local LLM output — auto uses both when available"
     },
     {
       "id": "deepseek_flash_operator_smoke",
@@ -238,10 +224,7 @@
       "description": "Operator-clicked advisory help in the CIO Capital Policy field manager. The server builds the prompt from the policy projection; the client sends only the field name. Advisory only. Cannot ratify or save policy. No tools. No fallback.",
       "allowed_lanes": [
         "deepseek-flash",
-        "fast",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "fast"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -269,8 +252,7 @@
       "tools_allowed": false,
       "advisory_only": true,
       "reasoning_tier": "standard",
-      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
-      "anthropic_first": true
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "grok_execution_review",
@@ -285,13 +267,10 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Guardian risk critique \u2014 deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
+      "description": "Guardian risk critique — deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -351,9 +330,9 @@
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
+        "deepseek-flash",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -371,7 +350,7 @@
       "circuit_breaker": true,
       "registered_by": "telegram-noise-suppression",
       "registered_at": "2026-08-13T12:00:00Z",
-      "notes": "2026-10-15 (n8n LLM bridge routes batch 3): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_external_research when the n8n run executor binds the llm_route of lane hermes-top20-external-intel / due-diligence-questions (--route child) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept ($0.30 / 600 per day, sync_cio_process_caps). allowed_lanes gains grok + chatgpt so the bridge's OAuth lanes are not skipped (registry_lane_not_allowed); the cron path asks this process only for lane deepseek-flash (hermes_external_researcher.call_governed_deepseek), so the widening reaches no cron call. The cron line's OAuth researcher lanes (codex CLI, xAI proxy) never named this process and are untouched. | 2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 \u2014 the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost).",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 3): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_external_research when the n8n run executor binds the llm_route of lane hermes-top20-external-intel / due-diligence-questions (--route child) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept ($0.30 / 600 per day, sync_cio_process_caps). allowed_lanes gains grok + chatgpt so the bridge's OAuth lanes are not skipped (registry_lane_not_allowed); the cron path asks this process only for lane deepseek-flash (hermes_external_researcher.call_governed_deepseek), so the widening reaches no cron call. The cron line's OAuth researcher lanes (codex CLI, xAI proxy) never named this process and are untouched. | 2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 — the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost).",
       "reasoning_tier": "standard",
       "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
       "anthropic_first": true
@@ -381,7 +360,7 @@
       "name": "Hermes Scalp Post-Trade Review",
       "category": "Trading",
       "lane_policy": "either",
-      "description": "OAuth enrichment \u2014 grok preferred",
+      "description": "OAuth enrichment — grok preferred",
       "anthropic_first": true
     },
     {
@@ -445,7 +424,7 @@
       "name": "Journal Ask",
       "category": "Journal",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -462,10 +441,7 @@
       "description": "Persistent-wake L3 author: forms AgentView claim/reasoning/confidence/falsifier from grounded research. READ_ONLY_ADVISORY; cognition only; MBI_BEHAVIOR=0. Cap closes the 2026-09-11 unregistered-lane defect (five paid organic calls with no llm_process_config row).",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -493,8 +469,7 @@
       "default_mode": "automated",
       "daily_soft_cap": 24,
       "daily_cost_cap_usd": 0.1,
-      "description": "Independent critique of an L3 judgment authored by DeepSeek Flash. lane_policy is grok_only ON PURPOSE: the critic must never be the same provider as the author, and encoding that here means the registry refuses a same-provider critique before any call is made, rather than relying on the caller to check. Read-only advisory; cognition only; MBI_BEHAVIOR=0. Registered 2026-09-11 during L1-L3 closure after the first organic L3 attempt failed with PROCESS_NOT_REGISTERED.",
-      "anthropic_first": true
+      "description": "Independent critique of an L3 judgment authored by DeepSeek Flash. lane_policy is grok_only ON PURPOSE: the critic must never be the same provider as the author, and encoding that here means the registry refuses a same-provider critique before any call is made, rather than relying on the caller to check. Read-only advisory; cognition only; MBI_BEHAVIOR=0. Registered 2026-09-11 during L1-L3 closure after the first organic L3 attempt failed with PROCESS_NOT_REGISTERED."
     },
     {
       "id": "ledger_tax_critique",
@@ -502,13 +477,10 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Ledger tax/account-constraint critique \u2014 deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
+      "description": "Ledger tax/account-constraint critique — deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -542,13 +514,11 @@
       "category": "CIO",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Maria research critique \u2014 deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
+      "description": "Maria research critique — deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
-        "grok",
-        "anthropic",
-        "chatgpt"
+        "grok"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -574,13 +544,10 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Morgan wealth synthesis \u2014 deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
+      "description": "Morgan wealth synthesis — deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -615,8 +582,7 @@
         "reviewer_disagreement",
         "material_risk",
         "unresolved_contradictions"
-      ],
-      "anthropic_first": true
+      ]
     },
     {
       "id": "oauth_lane_keepalive",
@@ -635,21 +601,18 @@
       "allowed_lanes": [
         "grok",
         "chatgpt",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "daily_soft_cap": 300,
       "daily_cost_cap_usd": 0.5,
-      "advisory_only": true,
-      "anthropic_first": true
+      "advisory_only": true
     },
     {
       "id": "paper_trade_advisory",
       "name": "Paper Trade Post-Mortem",
       "category": "Trading",
       "lane_policy": "both_preferred",
-      "description": "Post-mortem on closed paper trades",
-      "anthropic_first": true
+      "description": "Post-mortem on closed paper trades"
     },
     {
       "id": "pipeline_health_diagnosis",
@@ -663,7 +626,7 @@
       ],
       "output_schema": "pipeline_diagnosis.v1",
       "fallback": "DETERMINISTIC_DIAGNOSIS",
-      "description": "Health narrative \u2014 Fast default; deterministic fallback on model failure",
+      "description": "Health narrative — Fast default; deterministic fallback on model failure",
       "anthropic_first": true
     },
     {
@@ -680,15 +643,14 @@
       "registered_at": "2026-09-01T13:17:05.692333+00:00",
       "registered_by": "operator-authorised (grok primary)",
       "last_modified_at": "2026-09-01T13:17:05.692368+00:00",
-      "last_modified_by": "operator-authorised (grok primary)",
-      "anthropic_first": true
+      "last_modified_by": "operator-authorised (grok primary)"
     },
     {
       "id": "portfolio_ask",
       "name": "Portfolio Ask",
       "category": "Portfolio",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -741,9 +703,7 @@
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -760,7 +720,7 @@
       "circuit_breaker": true,
       "registered_by": "P-2-reflective-migration",
       "registered_at": "2026-08-12T21:15:00Z",
-      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day \u2014 far above the event-driven volume these critics actually receive.",
+      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day — far above the event-driven volume these critics actually receive.",
       "anthropic_first": true
     },
     {
@@ -768,24 +728,21 @@
       "name": "Report Grok Editorial",
       "category": "Reports",
       "lane_policy": "grok_only",
-      "description": "Optional Grok polish on exports",
-      "anthropic_first": true
+      "description": "Optional Grok polish on exports"
     },
     {
       "id": "rotation_grok_review",
       "name": "Rotation Grok Review",
       "category": "Rotation",
       "lane_policy": "grok_only",
-      "description": "Inline Grok second opinion on rotation questions",
-      "anthropic_first": true
+      "description": "Inline Grok second opinion on rotation questions"
     },
     {
       "id": "rotation_oversight",
       "name": "Rotation Independent Oversight",
       "category": "Rotation",
       "lane_policy": "ensemble",
-      "description": "Grok + ChatGPT oversight on rotation engine \u2014 run both for full picture",
-      "anthropic_first": true
+      "description": "Grok + ChatGPT oversight on rotation engine — run both for full picture"
     },
     {
       "id": "steph_allocation_review",
@@ -793,14 +750,12 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Steph allocation and wealth planning \u2014 deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
+      "description": "Steph allocation and wealth planning — deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "pro",
         "fast",
         "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -832,7 +787,7 @@
       "name": "Strategy Planner",
       "category": "Strategy",
       "lane_policy": "either",
-      "description": "What-if planning \u2014 Grok default, ChatGPT ok",
+      "description": "What-if planning — Grok default, ChatGPT ok",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -871,8 +826,7 @@
       "description": "Research query, quality, and normalization through governed OAuth; no local generation",
       "allowed_lanes": [
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "daily_soft_cap": 600,
       "daily_cost_cap_usd": 0.25,
@@ -893,8 +847,7 @@
       "description": "scripts/research_intelligence_narrative_enrich.py (RI overnight step 'narrative', --limit 25): a JSON reading narrative for staged/reviewed/promoted hermes_research_intelligence rows, written into evidence_json.narrative. Governed OAuth (grok then chatgpt); no local generation. READ_ONLY_ADVISORY.",
       "allowed_lanes": [
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "daily_soft_cap": 120,
       "daily_cost_cap_usd": 0.1,
@@ -917,8 +870,7 @@
       "description": "scripts/topic_research_synthesizer.py: topic_research briefings (RI overnight topic_synth --max 40 and reground --max 25, the hourly off-hours synth --max 15, the 21:50 reground --max 20). Governed OAuth (grok then chatgpt) via lib.governed_cloud_generation; no local generation. READ_ONLY_ADVISORY.",
       "allowed_lanes": [
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "daily_soft_cap": 600,
       "daily_cost_cap_usd": 0.25,
@@ -949,11 +901,11 @@
       "description": "Governed agent_debate; FAST_THINK allowed for contradiction/reconciliation only (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
+        "deepseek-flash",
         "fast",
         "fast_think",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -982,10 +934,10 @@
       "description": "Governed short extraction/classification (catalyst, sentiment, summary) via deepseek-flash FAST (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
+        "deepseek-flash",
         "fast",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1010,7 +962,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "manual",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
+      "description": "CIO view — Grok primary + ChatGPT reconcile when both run",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "PRO",
@@ -1021,8 +973,7 @@
       "requires_operator_cost_confirmation_for": [
         "PRO_MAX"
       ],
-      "output_schema": "cio_synthesis.v1",
-      "anthropic_first": true
+      "output_schema": "cio_synthesis.v1"
     },
     {
       "id": "watchlist_cio_synthesis_cron",
@@ -1030,7 +981,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "automated",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
+      "description": "CIO view — Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
       "deepseek_default_policy": "FAST_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -1046,8 +997,7 @@
       "allowed_lanes": [
         "grok",
         "chatgpt",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "max_input_tokens": 32000,
       "max_output_tokens": 4000,
@@ -1058,8 +1008,7 @@
       "advisory_only": true,
       "circuit_breaker": true,
       "reasoning_tier": "standard",
-      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
-      "anthropic_first": true
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "grok_stop_review",
@@ -1083,7 +1032,7 @@
       "reasoning_tier": "standard",
       "registered_by": "incident-spcx-resume-20261022",
       "registered_at": "2026-10-22T18:00:00Z",
-      "notes": "2026-10-22 (operator, verbatim: \"yes\" to keeping L497 paused until it is registered with the LLM spend gate, then \"switch on after your fix\"): before this row the script called llm_lane.generate(prompt, lane=\"grok\", timeout=90) with no process_id, so lib.llm_consumption.gate_and_generate never ran: no registration check, no cap check, no llm_consumption_log row. Grok is an external provider (AGENTS.md \u00a72A egress: position, P&L and stop data leave the box), so the binding caps are counts, not dollars: max_stops_per_run 12 (the script clamps --limit to it) and daily_soft_cap 30 calls/day (2 cron runs x 12 + 6 manual), enforced by the script through llm_consumption.over_daily_cap before every call, so a call past the cap is refused with DAILY_CALL_CAP and nothing is sent. Grok OAuth settles $0.00; daily_cost_cap_usd 0.05 exists so the gate's check_cost_cap and the bridge's validate_paid_cap_config have a declared ceiling. allowed_lanes is grok only, so the model chooser (advise/enforce) cannot move it to another lane and should_call refuses any --lane other than grok (POLICY_NOT_ALLOWED). Bridge route: caller advisory_desk task grok_stop_review (CALLER_TASK_PROCESS_MAP and lib/governed_process_routes) with a grok-only routing row (primary, secondary and fallback all grok: the routing schema needs three lanes and none may be another model; on_health_unknown refuse), used only when TRADEAI_LLM_VIA_BRIDGE is set; the cron line calls in-process through the gate. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (\u00a79.2)."
+      "notes": "2026-10-22 (operator, verbatim: \"yes\" to keeping L497 paused until it is registered with the LLM spend gate, then \"switch on after your fix\"): before this row the script called llm_lane.generate(prompt, lane=\"grok\", timeout=90) with no process_id, so lib.llm_consumption.gate_and_generate never ran: no registration check, no cap check, no llm_consumption_log row. Grok is an external provider (AGENTS.md §2A egress: position, P&L and stop data leave the box), so the binding caps are counts, not dollars: max_stops_per_run 12 (the script clamps --limit to it) and daily_soft_cap 30 calls/day (2 cron runs x 12 + 6 manual), enforced by the script through llm_consumption.over_daily_cap before every call, so a call past the cap is refused with DAILY_CALL_CAP and nothing is sent. Grok OAuth settles $0.00; daily_cost_cap_usd 0.05 exists so the gate's check_cost_cap and the bridge's validate_paid_cap_config have a declared ceiling. allowed_lanes is grok only, so the model chooser (advise/enforce) cannot move it to another lane and should_call refuses any --lane other than grok (POLICY_NOT_ALLOWED). Bridge route: caller advisory_desk task grok_stop_review (CALLER_TASK_PROCESS_MAP and lib/governed_process_routes) with a grok-only routing row (primary, secondary and fallback all grok: the routing schema needs three lanes and none may be another model; on_health_unknown refuse), used only when TRADEAI_LLM_VIA_BRIDGE is set; the cron line calls in-process through the gate. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (§9.2)."
     },
     {
       "id": "watchlist_entry_planner",
@@ -1110,10 +1059,10 @@
       "description": "Governed automated Maria-style agent_narrative via exact deepseek-flash (issue #283). Advisory only. No tools. No fallback.",
       "allowed_lanes": [
         "deepseek-flash",
+        "deepseek-flash",
         "fast",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1128,7 +1077,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "watch_narrative.v1",
-      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_maria_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. |  | 2026-08-20: daily_soft_cap 120\u2192240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session.",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_maria_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. |  | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session.",
       "reasoning_tier": "standard",
       "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
       "anthropic_first": true
@@ -1140,7 +1089,7 @@
       "lane_policy": "either",
       "default_mode": "automated",
       "daily_soft_cap": 80,
-      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day",
+      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh — ~30-80 calls/day",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -1174,10 +1123,10 @@
       "description": "Governed sector/risk correlation narratives via exact deepseek-flash (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
+        "deepseek-flash",
         "fast",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1185,7 +1134,7 @@
         "PRO_THINK"
       ],
       "max_input_tokens": 8000,
-      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_risk_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60\u2192220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls \u2248 $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged).",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_risk_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60→220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls ≈ $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
       "max_output_tokens": 800,
       "daily_soft_cap": 220,
       "daily_cost_cap_usd": 1.0,
@@ -1202,13 +1151,13 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed cio_synthesis via exact deepseek-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
+      "description": "Governed cio_synthesis via exact deepseek-flash FAST only — Pro/PRO_* forbidden on this path (issue #283).",
       "allowed_lanes": [
+        "deepseek-flash",
         "deepseek-flash",
         "fast",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1223,7 +1172,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_steph_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-10-09: max_output_tokens 1600\u21923200 \u2014 symbol-thesis synthesis replies (summary + evidence-id lists) were again truncated mid-object (parse:no_json_object, 17 of 315 acquisition runs 2026-10-04..09; HPE/TELO raw replies end mid-sentence). Same remedy as 2026-08-20. daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded; operator asked to fix the thesis job in session. | 2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40\u2192180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls \u2248 $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged).",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_steph_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-10-09: max_output_tokens 1600→3200 — symbol-thesis synthesis replies (summary + evidence-id lists) were again truncated mid-object (parse:no_json_object, 17 of 315 acquisition runs 2026-10-04..09; HPE/TELO raw replies end mid-sentence). Same remedy as 2026-08-20. daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded; operator asked to fix the thesis job in session. | 2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40→180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls ≈ $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
       "reasoning_tier": "standard",
       "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
       "anthropic_first": true
@@ -1240,8 +1189,7 @@
         "fast",
         "fast_think",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1256,7 +1204,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "reasoning_tier": "standard",
-      "notes": "2026-10-22 (operator: fix the options CIO review routing refusal): new caller row per AGENTS.md \u00a79.2 (every caller names itself). The review previously called task cio_synthesis and so ran as watchlist_steph_flash_narrative, whose allowed_lanes exclude fast_think; thesis text containing 'reconcile' escalated the policy to FAST_THINK and llm_consumption.should_call refused POLICY_NOT_ALLOWED (options_theses.jsonl: 28 guids, 26 SPCX + 2 SCHG, 2026-10-05..22; 3 failures -> REVIEW_FAILURE_CAP). Caps from demand: lifecycle max_reviews_per_run 6 and max_review_failures 3 per idea; the desk holds 5 cards today (2026-10-22), so 40 calls/day covers every idea several times. Measured settled Flash cost on the Steph pool $0.0015/call (2026-09-19 note there) -> 40 calls ~ $0.06; the $0.40 cost cap is the binding guard and sits well inside the \u00a712 $2.00/day global cap. default_mode automated: a scheduled desk lane, not an answer to the operator. max_output_tokens 3200 covers the lifecycle's review_max_tokens 2500. Bridge route: caller advisory_desk task options_thesis_cio_review (cio_governed_model_bridge CALLER_TASK_PROCESS_MAP, lib/governed_process_routes) with the n8n_oauth_first routing row, used only when TRADEAI_LLM_VIA_BRIDGE is set; the in-process path stays DeepSeek Flash. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (\u00a79.2).",
+      "notes": "2026-10-22 (operator: fix the options CIO review routing refusal): new caller row per AGENTS.md §9.2 (every caller names itself). The review previously called task cio_synthesis and so ran as watchlist_steph_flash_narrative, whose allowed_lanes exclude fast_think; thesis text containing 'reconcile' escalated the policy to FAST_THINK and llm_consumption.should_call refused POLICY_NOT_ALLOWED (options_theses.jsonl: 28 guids, 26 SPCX + 2 SCHG, 2026-10-05..22; 3 failures -> REVIEW_FAILURE_CAP). Caps from demand: lifecycle max_reviews_per_run 6 and max_review_failures 3 per idea; the desk holds 5 cards today (2026-10-22), so 40 calls/day covers every idea several times. Measured settled Flash cost on the Steph pool $0.0015/call (2026-09-19 note there) -> 40 calls ~ $0.06; the $0.40 cost cap is the binding guard and sits well inside the §12 $2.00/day global cap. default_mode automated: a scheduled desk lane, not an answer to the operator. max_output_tokens 3200 covers the lifecycle's review_max_tokens 2500. Bridge route: caller advisory_desk task options_thesis_cio_review (cio_governed_model_bridge CALLER_TASK_PROCESS_MAP, lib/governed_process_routes) with the n8n_oauth_first routing row, used only when TRADEAI_LLM_VIA_BRIDGE is set; the in-process path stays DeepSeek Flash. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (§9.2).",
       "anthropic_first": true
     },
     {
@@ -1268,10 +1216,7 @@
       "description": "Answers to the operator: Telegram converse polish, operator desk intent + answer, subject Flash. Urgent, operator-requested: exempt from the scheduled-work window. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1302,8 +1247,7 @@
         "fast",
         "deepseek-flash",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1332,10 +1276,7 @@
       "description": "Scores CIO plans for thesis use, synthesis, evidence and tone. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1364,10 +1305,7 @@
       "description": "Context Analyzer verdict per research-circle lap on an operator question (docs/RESEARCH_CIRCLE.md). READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1398,8 +1336,7 @@
         "fast",
         "deepseek-flash",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1428,10 +1365,7 @@
       "description": "hermes_external_feedback_loop.py: rates each external research recommendation 0-1. The 2026-09-06..09 backfill (~31k rows) ran under advisory_desk_opinion; 600/day now bounds a repeat. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1462,8 +1396,7 @@
         "fast",
         "deepseek-flash",
         "grok",
-        "chatgpt",
-        "anthropic"
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1492,10 +1425,7 @@
       "description": "Scores Hermes research candidates against golden references. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1523,10 +1453,7 @@
       "default_mode": "automated",
       "description": "scripts/local_llm.py: local generation is retired, so generate() calls DeepSeek Flash for its 18 importers. Before 2026-09-27 this id was unregistered, every call was refused, and callers silently got an empty string. READ_ONLY_ADVISORY.",
       "allowed_lanes": [
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1555,10 +1482,7 @@
       "description": "Wave 3 item O-W3-3 (pkg-20260928-waves-3-5-cognition-unification-maturity-80f2): adjudicates ResearchContradictionCandidate@v1 pairs into ContradictionVerdict@v1 (LEFT | RIGHT | BOTH_STALE | NOT_A_CONTRADICTION | UNRESOLVED) with a rationale and the evidence refs it relied on. Advisory rows only; the thesis writer stays research_thesis_delta. Runs under the Tier-2 paid-judge policy (tiered_validation.tier2_denial: $2/day cap, off-peak only) in addition to this cap. No tools. No fallback.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash",
-        "anthropic",
-        "grok",
-        "chatgpt"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1575,7 +1499,7 @@
       "circuit_breaker": true,
       "registered_by": "cogx-wave3-t1",
       "registered_at": "2026-09-28T03:05:00Z",
-      "notes": "11 \u00a7B-1: \u2264 $0.50/day inside the $2 Tier-2 cap. ~4k in \u00d7 ~300 out per pair \u2248 $0.001; the lane judges at most 60 pairs/day, newest subjects first (research_contradiction_consumer.digest).",
+      "notes": "11 §B-1: ≤ $0.50/day inside the $2 Tier-2 cap. ~4k in × ~300 out per pair ≈ $0.001; the lane judges at most 60 pairs/day, newest subjects first (research_contradiction_consumer.digest).",
       "anthropic_first": true
     },
     {
@@ -1589,8 +1513,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1631,8 +1554,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1668,13 +1590,12 @@
       "category": "N8nCoordination",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "REMEDIATION_PLAN \u00a76 R1/R2 (operator decisions 2026-10-09 23:38 ET): one diagnosis per open n8n:* SIEM incident, run by scripts/n8n_failure_diagnosis.py through scripts/lib/n8n_model_job.py (template lane_failure_diagnosis.v1, caller n8n_model_job + task type lane_failure_diagnosis). Input: lane metadata, error text and log lines only, scrubbed of secrets and portfolio fields (\u00a72A decision 1). Output validated against lane_failure_diagnosis/v1; action_id is re-checked against config/n8n_remediation_catalogue.json and only deterministic catalogue handlers execute; recommendation NONE; never a send. READ_ONLY_ADVISORY. Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (decision 2), cost_ceiling_usd 0.05 per call.",
+      "description": "REMEDIATION_PLAN §6 R1/R2 (operator decisions 2026-10-09 23:38 ET): one diagnosis per open n8n:* SIEM incident, run by scripts/n8n_failure_diagnosis.py through scripts/lib/n8n_model_job.py (template lane_failure_diagnosis.v1, caller n8n_model_job + task type lane_failure_diagnosis). Input: lane metadata, error text and log lines only, scrubbed of secrets and portfolio fields (§2A decision 1). Output validated against lane_failure_diagnosis/v1; action_id is re-checked against config/n8n_remediation_catalogue.json and only deterministic catalogue handlers execute; recommendation NONE; never a send. READ_ONLY_ADVISORY. Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (decision 2), cost_ceiling_usd 0.05 per call.",
       "allowed_lanes": [
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1695,7 +1616,7 @@
       "offpeak_tier": "critical",
       "registered_by": "n8nmat/llm-self-remediation",
       "registered_at": "2026-10-10T05:00:00Z",
-      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, \u00a723.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (\u00a717).",
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17).",
       "reasoning_tier": "standard",
       "escalate_below_confidence": 0.7,
       "escalate_on_values": {
@@ -1717,8 +1638,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1750,8 +1670,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1783,8 +1702,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1816,8 +1734,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1849,8 +1766,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1882,8 +1798,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1915,8 +1830,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1948,8 +1862,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1981,8 +1894,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -2014,8 +1926,7 @@
         "grok",
         "chatgpt",
         "fast",
-        "deepseek-flash",
-        "anthropic"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -2034,8 +1945,7 @@
       "tools_allowed": false,
       "advisory_only": true,
       "reasoning_tier": "standard",
-      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged.",
-      "anthropic_first": true
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "cio_ask_deep_research",
@@ -2049,8 +1959,7 @@
         "chatgpt",
         "fast",
         "deepseek-flash",
-        "pro_think",
-        "anthropic"
+        "pro_think"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [

@@ -255,6 +255,40 @@ def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str], *,
     return True
 
 
+
+def _publish_anthropic_notes(anthropic: dict, policy: dict, heartbeat: dict) -> None:
+    from lib.anthropic_monitoring import due_notes, note_is_due
+
+    identity = policy.get("promotion_id")
+    if not identity:
+        return
+    state = _load_state()
+    if not isinstance(state, dict):
+        state = {}
+    now = time.time()
+    pause_key = "anthropic:" + identity + ":paused-since"
+    before = dict(state)
+    if anthropic.get("status") == "PAUSED_TODAY":
+        state.setdefault(pause_key, datetime.fromtimestamp(now, timezone.utc).isoformat())
+    else:
+        state.pop(pause_key, None)
+    if state != before:
+        _save_state(state)
+    for note in due_notes(anthropic, policy, paused_since=state.get(pause_key)):
+        key = "anthropic:" + identity + ":" + note["key"]
+        # Billing and all P2 notes are one-shot for this promotion. Only
+        # continuous authentication failure retains the six-hour repeat.
+        if not note_is_due(note, state.get(key), now=now, auth_repeat_seconds=DEDUPE_SECONDS):
+            continue
+        # Stable messages keep notification-intent dedupe independent of changing
+        # daily usage. Durable promotion keys enforce the one-shot lifetime.
+        dedupe_minutes = (max(int(policy.get("milestone_dedupe_minutes", 43200)), 1)
+                          if note.get("repeat_auth") is not True else None)
+        if _deliver(note["message"], note["priority"], heartbeat, [key], dedupe_minutes=dedupe_minutes):
+            state[key] = now
+            _save_state(state)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--hours", type=float, default=DEFAULT_WINDOW_HOURS)
@@ -271,10 +305,15 @@ def main() -> int:
         print(f"[provider-health] ledger query failed: {e}", file=sys.stderr)
         return 2
 
-    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, due_notes
-    from lib.anthropic_transport import load_policy as anthropic_policy
-    _anthropic_policy = anthropic_policy()
-    anthropic = anthropic_snapshot(PROJECT_ROOT, policy=_anthropic_policy)
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot
+    _anthropic_policy = {}
+    try:
+        from lib.anthropic_transport import load_policy as anthropic_policy
+        from lib.anthropic_routing import state_root
+        _anthropic_policy = anthropic_policy()
+        anthropic = anthropic_snapshot(state_root(), policy=_anthropic_policy)
+    except Exception:
+        anthropic = unavailable_snapshot()
     findings = evaluate(rows, min_calls=args.min_calls, fail_rate=args.fail_rate)
     # A lane that failed earlier in the window but is answering again is reported
     # everywhere below and paged nowhere: the operator already fixed it.
@@ -362,7 +401,7 @@ def main() -> int:
         "window_hours": args.hours,
         "calls_examined": len(rows),
         # Stays in OK / WARN / CRITICAL: the bridge's routing selector reads this word.
-        "worst_severity": ("CRITICAL" if critical else "WARN" if (live or live_stalls) else "OK"),
+        "worst_severity": ("CRITICAL" if critical else "WARN" if (live or live_stalls or anthropic["status"] in {"UNAVAILABLE", "DEGRADED", "PAUSED_TODAY", "EXHAUSTED"}) else "OK"),
         "balance": balance,
         "findings": [
             {
@@ -382,16 +421,11 @@ def main() -> int:
     }
     if not args.dry_run:
         _write_heartbeat(heartbeat)
-        # Use the existing notification-intent transport and durable dedupe state.
-        _notes_state = _load_state()
-        for _note in due_notes(anthropic, _anthropic_policy):
-            _note_key = "anthropic:" + _anthropic_policy["promotion_id"] + ":" + _note["key"]
-            if _notes_state.get(_note_key) and (_note["priority"] != "P1" or time.time() - float(_notes_state[_note_key]) < DEDUPE_SECONDS):
-                continue
-            if _deliver(_note["message"], _note["priority"], heartbeat, [_note_key],
-                        dedupe_minutes=int(_anthropic_policy["milestone_dedupe_minutes"]) if _note["priority"] == "P2" else None):
-                _notes_state[_note_key] = time.time()
-                _save_state(_notes_state)
+        # Optional promotional reporting cannot suppress the native provider alerts.
+        try:
+            _publish_anthropic_notes(anthropic, _anthropic_policy, heartbeat)
+        except Exception as exc:
+            print(f"[provider-health] Anthropic notes unavailable: {type(exc).__name__}", file=sys.stderr)
     if live and not args.dry_run:
         now = time.time()
         state = _load_state()

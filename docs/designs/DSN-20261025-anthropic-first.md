@@ -12,3 +12,7 @@ An append-only, locked credit-authorization journal under the existing provider_
 One canonical read-only status projection supplies LLM Spend, provider-health output, agent runtime health and digest. Platform/Jobs/needs-action wiring is pending normal handoff from the active owners named in the build report. Notifications use existing host notification intents with deterministic milestone identities. No new host schedule or workflow activation is authorized. Before a real key/canary the provider is not configured or awaiting observations, never proven healthy.
 
 Proof uses synthetic fixtures, pinned clocks, HTTP spies, isolated journals and a temp PROJECT_ROOT. No credentials, real portfolio fixtures, model calls, live server traffic, merges or releases. The PostgreSQL aggregate census is currently unavailable due to a sandbox Unix-socket refusal; the inventory contains only trusted file-ledger counts and marks complete call volume unmeasured.
+
+## Review and operator model addendum (2026-10-25)
+
+Promotion ships disabled pending verified organization and canaries. General/high calls select Opus 5.5; the explicit bulk-process list selects Haiku 5.5. No Fable. Nonusable promotion returns each original route without changing its allowed lanes or independent provider identity. All caps remain fixed. Opus adaptive thinking is always on; ordinary work uses low effort. See BUILD_REPORT.md and the review correction tests for accounting, refusal and monitoring details.

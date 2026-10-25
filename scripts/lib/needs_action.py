@@ -904,7 +904,27 @@ def rule_macro_calendar(p: Any, now: datetime) -> list[dict]:
     ]
 
 
+def probe_anthropic(root: Any = None) -> dict:
+    from .anthropic_monitoring import snapshot
+    from .anthropic_routing import state_root
+    return snapshot(root or state_root())
+
+
+def rule_anthropic(payload: Any, now: datetime) -> list[dict]:
+    if not isinstance(payload, dict) or not payload.get("status") or payload["status"] == "UNAVAILABLE":
+        raise SourceUnavailable("Anthropic provider/accounting observation unavailable")
+    if payload.get("p1_continuous_failure"):
+        return [item("P1", "Anthropic first choice failing", payload.get("digest_line") or "Review provider evidence",
+                     "/v3/consumption", "anthropic", payload.get("as_of"), {"status": payload["status"]})]
+    if payload["status"] in {"DEGRADED", "PAUSED_TODAY", "EXHAUSTED"}:
+        return [item("P2", f"Anthropic {payload['status'].lower().replace('_', ' ')}",
+                     payload.get("digest_line") or "Review provider credit and fallback evidence",
+                     "/v3/consumption", "anthropic", payload.get("as_of"), {"status": payload["status"]})]
+    return []
+
+
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
+    "anthropic": rule_anthropic,
     "health": rule_health,
     "systemd": rule_systemd,
     "n8n": rule_n8n,
@@ -997,6 +1017,7 @@ def aggregate(
 def _source_where(name: str) -> str:
     return {
         "health": R_HEALTH,
+        "anthropic": "/v3/consumption",
         "systemd": R_SYSTEM_JOBS,
         "n8n": R_COORD,
         "approvals": R_COORD,

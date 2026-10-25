@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .anthropic_credit import CreditBook, amount
+from .anthropic_credit import CreditBook, CreditDenied, amount
 from .anthropic_transport import AnthropicTransport, load_policy
 
 
@@ -25,6 +25,23 @@ def eligible(process_id: str, cfg: dict[str, Any], *, policy: dict | None = None
                 and process_id not in policy.get("excluded_processes", {}))
 
 
+def active(process_id: str, cfg: dict[str, Any], *, policy=None, env=None, now=None, root=None) -> bool:
+    """Select the promotion only while it is usable; otherwise preserve the caller's original route.
+
+    This is a read-only check. Reservation revalidates it atomically before dispatch.
+    """
+    try:
+        policy = load_policy() if policy is None else policy
+        if not eligible(process_id, cfg, policy=policy) or not credit_admitted(cfg):
+            return False
+        env = {"ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY"))} if env is None else env
+        if policy.get("enabled") is not True or not policy.get("provider_enabled", True) or not env.get("ANTHROPIC_API_KEY"):
+            return False
+        return CreditBook(root or state_root(), policy).snapshot(now=now or datetime.now(timezone.utc))["status"] == "OK"
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def credit_admitted(cfg: dict) -> bool:
     """Paid/promotional dispatch requires existing declared request and USD caps.
 
@@ -37,12 +54,14 @@ def credit_admitted(cfg: dict) -> bool:
         return False
 
 
-def tier_for(logical_policy: str, reasoning_tier: str = "standard", *, policy: dict | None = None) -> str:
+def tier_for(logical_policy: str, reasoning_tier: str = "standard", *, policy: dict | None = None, process_id: str | None = None) -> str:
     policy = load_policy() if policy is None else policy
     if str(logical_policy).upper() == "PRO_MAX":
         return "highest"
     if reasoning_tier == "high":
         return "high"
+    if str(logical_policy).upper() == "FAST" and process_id in policy.get("bulk_processes", []):
+        return "bulk"
     return policy["policy_tiers"][str(logical_policy).upper()]
 
 
@@ -57,7 +76,7 @@ def selected_policy(process_id: str, cfg: dict, resolution: dict, *, reasoning_t
     if high and "PRO_THINK" in allowed:
         name = "PRO_THINK"
     resolved = dict(resolution[name])
-    tier = tier_for(name, "high" if high else "standard")
+    tier = tier_for(name, "high" if high else "standard", process_id=process_id)
     policy = load_policy()
     resolved.update(provider="anthropic", model_id=policy["models"][tier], requested_policy=name,
                     credit_tier=tier, **{k: row[k] for k in ("cost_ceiling_usd", "latency_budget_ms", "health_gate") if k in row})
@@ -73,7 +92,7 @@ def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set 
     policy = load_policy() if policy is None else policy
     env = {"ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY"))} if env is None else env
     logical = selected.get("requested_policy", "FAST")
-    tier = selected.get("credit_tier") or tier_for(logical)
+    tier = selected.get("credit_tier") or tier_for(logical, process_id=process_id)
     now = now or datetime.now(timezone.utc)
     expiry = datetime.fromisoformat(policy["expires_at"].replace("Z", "+00:00"))
     plan = []
@@ -93,8 +112,7 @@ def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set 
             model = model_for_provider(provider, logical)
             if provider not in enabled:
                 skip = "no_transport"
-        if provider not in cfg.get("allowed_lanes", []) and provider != "deepseek":
-            skip = "registry_lane_not_allowed"
+        # The promotional provider order is an overlay, not a permanent expansion of legacy lanes.
         plan.append({"lane": "promotion" if provider == "anthropic" else provider,
                      "provider": provider, "policy_name": logical, "model_id": model,
                      "thinking": selected.get("thinking", "disabled"),
@@ -164,11 +182,19 @@ class FundingContext:
         if actual is not None:
             self.credit_total, self.credit_unknown = actual, False
 
+    def failure_cost(self, *, paid_billable: bool) -> tuple[Decimal, Decimal]:
+        """Settle confirmed/uncertain credit plus only a dispatched, possibly-billable paid attempt.
+
+        The last authorization projection may have been released after 429/529 or refused before send.
+        """
+        paid = self.paid_projection if paid_billable else Decimal(0)
+        return self.credit_total + paid, paid
+
     @staticmethod
     def record_fallback(reason: str) -> None:
         try:
             CreditBook(state_root(), load_policy()).record_fallback(reason, now=datetime.now(timezone.utc))
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
             pass  # Corrupt/unavailable credit must not prevent a governed free fallback.
 
     def authorize_candidate(self, candidate: dict) -> None:
@@ -204,11 +230,17 @@ def transport() -> AnthropicTransport:
         from .anthropic_transport import AnthropicError
         raise AnthropicError("GOVERNANCE_UNAVAILABLE")
     from .anthropic_transport import AnthropicError
-    provider = json.loads((ROOT / "config/llm_model_registry.json").read_text())["providers"]["anthropic"]
-    if provider.get("kill_switch") or provider.get("enabled") is not True:
-        raise AnthropicError("PROVIDER_DISABLED")
-    allowed_models = {row["model_id"] for row in provider["models"].values() if row.get("enabled") is True}
-    return AnthropicTransport(book=CreditBook(state_root(), load_policy()), allowed_models=allowed_models,
+    try:
+        provider = json.loads((ROOT / "config/llm_model_registry.json").read_text())["providers"]["anthropic"]
+        if provider.get("kill_switch") or provider.get("enabled") is not True:
+            raise AnthropicError("PROVIDER_DISABLED")
+        allowed_models = {row["model_id"] for row in provider["models"].values() if row.get("enabled") is True}
+        book = CreditBook(state_root(), load_policy())
+    except AnthropicError:
+        raise
+    except (CreditDenied, OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise AnthropicError(getattr(exc, "reason", "CREDIT_UNAVAILABLE")) from exc
+    return AnthropicTransport(book=book, allowed_models=allowed_models,
                               reserve_process=context.reserve_anthropic,
                               record_usage=context.record_usage, record_attempt=context.record_attempt,
                               settle_process=context.finish_anthropic)
@@ -265,6 +297,14 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
             last = exc
             receipts.append({"provider": provider, "outcome": getattr(exc, "code", "provider_failure")})
         except RuntimeError as exc:
+            if provider == "anthropic" and (isinstance(exc, CreditDenied) or str(exc).startswith((
+                    "CREDIT_", "COST_CAP_EXCEEDED", "COST_CEILING_EXCEEDED", "COST_CONFIGURATION_INVALID",
+                    "COST_PERSISTENCE_UNAVAILABLE", "ANTHROPIC_"))):
+                code = getattr(exc, "reason", None) or str(exc).split(":", 1)[0]
+                FundingContext.record_fallback(code)
+                last = exc
+                receipts.append({"provider": provider, "outcome": code})
+                continue
             # Only the named OAuth-unavailable condition is a provider refusal.
             # Registration, memory, output and paid authority refusals remain terminal.
             if provider in {"grok", "chatgpt"} and "OAuth lane unavailable" in str(exc):

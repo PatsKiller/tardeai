@@ -1,4 +1,6 @@
 """In-process entry authority/fallback, isolated from DB/network/dotenv."""
+from tests.test_anthropic_first_20261025 import activated_fixture_promotion  # noqa: F401
+
 from unittest.mock import MagicMock
 import sys
 import types
@@ -12,6 +14,8 @@ def test_cloud_helper_does_not_require_an_oauth_lane_before_promotion(monkeypatc
     from scripts.lib import governed_cloud_generation as cloud
     from scripts.lib import llm_consumption as lc
     monkeypatch.setattr(cloud,'via_bridge',lambda:False)
+    from scripts.lib import anthropic_routing as promo
+    monkeypatch.setattr(promo,'active',lambda *a,**k:True)
     cfg={'registered':True,'anthropic_first':True,'allowed_lanes':['fast','anthropic','grok','chatgpt']}
     monkeypatch.setattr(lc,'_registry_process',lambda _:cfg)
     monkeypatch.setattr(lc,'get_process_config',lambda _:cfg)

@@ -24,7 +24,7 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
     rows=[];total=Decimal(0)
     for process in registry['processes']:
         pid=process['id'];row=routes[pid];old=row['primary'];logical=old['policy']
-        tier='high' if process.get('reasoning_tier')=='high' else credit['policy_tiers'][logical]
+        tier='high' if process.get('reasoning_tier')=='high' else ('bulk' if logical=='FAST' and pid in credit.get('bulk_processes',[]) else credit['policy_tiers'][logical])
         eligible=process.get('anthropic_first') is True and pid not in credit['excluded_processes']
         new=credit['models'][tier] if eligible else 'unchanged'
         observed=observations.get('by_registered_process',{}).get(pid)
@@ -40,7 +40,7 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
             old_model='proxy-selected (not pinned in routing row)'
         rows.append({'process':pid,'old':old['provider']+' / '+old_model,
                      'new':('anthropic / '+new) if eligible else 'EXCLUDED / unchanged',
-                     'tier':tier,'admission':'DECLARED_USD_REQUEST_CAPS' if process.get('daily_cost_cap_usd') and process.get('daily_soft_cap') else 'DB_BUDGET_NOT_MEASURED','observed_calls':observed['events'] if observed else 'NOT_MEASURED',
+                     'no_key_or_expired':'unchanged / '+old['provider'],'currently_enabled':bool(credit.get('enabled')),'tier':tier,'admission':'DECLARED_USD_REQUEST_CAPS' if process.get('daily_cost_cap_usd') and process.get('daily_soft_cap') else 'DB_BUDGET_NOT_MEASURED','observed_calls':observed['events'] if observed else 'NOT_MEASURED',
                      'comparable_token_usd':str(cost) if cost is not None else 'NOT_MEASURED'})
     return rows,total
 
@@ -51,10 +51,11 @@ def main():
     ap.add_argument('--observations',type=Path,required=True)
     args=ap.parse_args()
     rows,total=report(args.project_root,json.loads(args.observations.read_text()))
-    print('| Process | Old provider / model | New provider / model | Tier | Budget admission | Observed calls | Comparable-token USD |')
-    print('|---|---|---|---|---|---:|---:|')
-    for row in rows: print('| '+' | '.join(str(row[k]) for k in ('process','old','new','tier','admission','observed_calls','comparable_token_usd'))+' |')
-    print(f'\nObserved-subset comparable-token estimate: ${total:.8f} against $10/day. Full-day cost: NOT_MEASURED.')
+    print('| Process | Old provider / model | New provider / model | No key / expired | Tier | Budget admission | Observed calls | Comparable-token USD |')
+    print('|---|---|---|---|---|---|---:|---:|')
+    for row in rows: print('| '+' | '.join(str(row[k]) for k in ('process','old','new','no_key_or_expired','tier','admission','observed_calls','comparable_token_usd'))+' |')
+    credit=json.loads((args.project_root/'config/anthropic_credit_policy.json').read_text())
+    print(f'\nObserved-subset comparable-token estimate: ${total:.8f} against ${credit["daily_cap_usd"]}/day. Full-day cost: NOT_MEASURED.')
     print('Assumes usable key/credit, identical observed input/output volumes and no cache savings; no dispatch. Provider output/thinking and unobserved OAuth calls can change actual spend. UTC pacing differs from captured ET-day census.')
 
 

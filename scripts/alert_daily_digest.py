@@ -68,9 +68,16 @@ def _build_message() -> str | None:
     if new_n + ongoing_n + recovered_n + suppressed_n == 0 and total:
         new_n = total
 
-    from lib.anthropic_monitoring import snapshot as anthropic_snapshot
-    from lib.anthropic_routing import state_root
-    anthropic = anthropic_snapshot(state_root())
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot, digest_noteworthy
+    try:
+        from lib.anthropic_routing import state_root
+        anthropic = anthropic_snapshot(state_root())
+    except Exception:
+        anthropic = unavailable_snapshot()
+    # Preserve the quiet empty-day behavior unless this provider has material
+    # evidence. No key, expired/disabled promotions and unused credit stay quiet.
+    if total == 0 and new_n == 0 and recovered_n == 0 and not digest_noteworthy(anthropic):
+        return None
 
     lines = [
         "🗞 Alert Digest",

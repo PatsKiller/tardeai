@@ -37,7 +37,7 @@ def generate_cloud(
     process_id: str,
     task_summary: str,
     timeout: float = 90,
-    lanes: Iterable[str] = DEFAULT_LANES,
+    lanes: Iterable[str] | None = None,
     max_tokens: int = 2048,
     response_json: bool = False,
     manual_trigger: bool = False,
@@ -64,9 +64,10 @@ def generate_cloud(
     from . import llm_consumption as lc
     from . import anthropic_routing as promo
     declared = lc._registry_process(process_id) or {}
-    if declared.get("anthropic_first") is True:
+    pinned_lanes = lanes is not None
+    if not pinned_lanes and declared.get("anthropic_first") is True:
         cfg = lc.get_process_config(process_id)
-        if promo.eligible(process_id, cfg):
+        if promo.active(process_id, cfg):
             # One governed walk, including Anthropic, before the old OAuth-only
             # availability check can incorrectly declare every cloud lane offline.
             allowed = cfg.get("allowed_lanes") or []
@@ -81,7 +82,7 @@ def generate_cloud(
 
     errors: list[str] = []
     attempted = False
-    for lane in lanes:
+    for lane in DEFAULT_LANES if lanes is None else lanes:
         lane_name = str(lane).strip().lower()
         if lane_name == "local":
             raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
@@ -98,6 +99,7 @@ def generate_cloud(
                 max_tokens=max_tokens,
                 response_json=response_json,
                 manual_trigger=manual_trigger is True,
+                **({"metadata": {"provider_pinned": True}} if pinned_lanes else {}),
             )
             if text and str(text).strip():
                 return str(text).strip(), lane_name
