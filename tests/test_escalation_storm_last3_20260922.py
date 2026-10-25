@@ -52,6 +52,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -150,10 +151,16 @@ def _split_log_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
 
     served = served_logs / "schwab_ingest.log"
     dev = dev_logs / "schwab_ingest.log"
-    served.write_text("frozen copy from 2026-09-09\n")
-    dev.write_text("the copy the cron actually appends to\n")
-
     now = time.time()
+    # AGENTS.md 28.9 / board 16 (W4): freshness is the last explicit successful completion in the log,
+    # never its write time, so each copy carries a dated exit-zero completion line as its producer writes it.
+    def _done(age_h: float) -> str:
+        at = datetime.fromtimestamp(now - age_h * 3600, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return f"{at} schwab_ingest completed exit_code=0\n"
+
+    served.write_text("frozen copy from 2026-09-09\n" + _done(282.2))
+    dev.write_text("the copy the cron actually appends to\n" + _done(0.2))
+
     os.utime(served, (now - 282.2 * 3600, now - 282.2 * 3600))   # 11.8 days
     os.utime(dev, (now - 0.2 * 3600, now - 0.2 * 3600))          # 12 minutes
     return served_logs, dev_root, served

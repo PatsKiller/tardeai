@@ -29,6 +29,11 @@ from scripts.lib.conflicts.ledger import ConflictLedger, decision_inputs
 from scripts.lib.conflicts.profiles import PROFILES
 from scripts.lib.conflicts.profiles.rulebook import RULEBOOK
 
+# ConflictResolverReceipt@v1 is the shadow comparison report (data/conflicts/reports/<run>.json). Its reader is the
+# operator's two-trading-day shadow review; the lane's LaneRunReceipt@v2 (which names this report as output evidence)
+# is what Jobs & health reads. A programmatic consumer arrives only with the operator's live flip.
+NO_CONSUMER_REASON = "shadow comparison report for the operator's 2-trading-day shadow review; lane receipt carries it"
+
 
 def _bytes(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str, allow_nan=False).encode()

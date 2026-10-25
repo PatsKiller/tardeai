@@ -1299,6 +1299,27 @@
       "classification": "RETIRE_CANDIDATE",
       "reason": "Envelope of /api/v3/cio/scorecard only. Its tiles are operator-visible through cio_truth.status_for -> /api/v2/cio/pages cio_status.evaluations on CIO Overview (approved board 17); the standalone envelope retires with that route.",
       "owner_hint": "scripts/lib/cio_scorecard.py::build_scorecard"
+    },
+    {
+      "name": "schema:ConflictEvent@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "One append-only lifecycle event of data/conflicts/conflict_events.jsonl (opened, review queued, decided, cleared, superseded) with both sides and its CIO-memory delivery; the shared ConflictSheet shows them as the selected conflict's History. Census gap, not a relevance judgment: /api/v3/conflicts is a module delegated from api_v2.handle (scripts/lib/conflicts/api.py, registered batch 27) and the Watch rows carry the section through scripts/lib/site_payload_reads.attach_conflict_sections, neither of which scripts/cio_api_contract_census.py traces (the Ask the CIO API has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_b27_watch_resolve_e2e_20261025.py and apps/command-center-v3/e2e/watch-resolve.fixture.mjs. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/conflicts/ledger.py"
+    },
+    {
+      "name": "schema:ConflictRecord@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The current state of one conflict rebuilt from its events (sides, rule, owner, clears_when, state, revision); Watch, Jobs & health and the shared ConflictSheet render it as the conflict line and the What disagrees section. Census gap, not a relevance judgment: /api/v3/conflicts is a module delegated from api_v2.handle (scripts/lib/conflicts/api.py, registered batch 27) and the Watch rows carry the section through scripts/lib/site_payload_reads.attach_conflict_sections, neither of which scripts/cio_api_contract_census.py traces (the Ask the CIO API has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_b27_watch_resolve_e2e_20261025.py and apps/command-center-v3/e2e/watch-resolve.fixture.mjs. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/conflicts/ledger.py"
+    },
+    {
+      "name": "schema:ConflictDecision@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The owner's recorded decision on a conflict (CIO review completion or operator decision: chosen side, reason, evidence, expiry); the shared ConflictSheet renders it as Recorded decision and the Resolved line. Census gap, not a relevance judgment: /api/v3/conflicts is a module delegated from api_v2.handle (scripts/lib/conflicts/api.py, registered batch 27) and the Watch rows carry the section through scripts/lib/site_payload_reads.attach_conflict_sections, neither of which scripts/cio_api_contract_census.py traces (the Ask the CIO API has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_b27_watch_resolve_e2e_20261025.py and apps/command-center-v3/e2e/watch-resolve.fixture.mjs. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/conflicts/ledger.py"
     }
   ]
 }

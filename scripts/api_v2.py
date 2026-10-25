@@ -48108,9 +48108,9 @@ ROUTES = {
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
-    "/api/v2/health/remediation": lambda: __import__("scripts.lib.health_surface", fromlist=["get_remediation"]).get_remediation(
-        paths=_health_remediation_paths()
-    ),
+    "/api/v2/health/remediation": lambda: __import__(
+        "scripts.lib.health_surface", fromlist=["get_remediation"]
+    ).get_remediation(paths=_health_remediation_paths()),
     "/api/v2/health/ops-autonomy": lambda: _health_ops_autonomy(),
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
