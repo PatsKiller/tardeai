@@ -54,3 +54,7 @@ node node_modules/@playwright/test/cli.js test e2e/home-do-now.spec.ts e2e/home-
 ```
 
 Publication requires the operator: automatic approval review rejected the session's remote push and stated that remote pushes must remain user-controlled despite the explicit authorization. No push workaround, merge or release was attempted. Keep the PR draft until the coordinator can compare the private proof screenshots and inspect the phone taps.
+
+## Home UI workflow correction
+
+The existing `home-board14-ui` workflow silently selected only three protection tests after the old layout spec was archived. It now selects the active Do-now and protection files (12 tests), includes the restored page/model/fixture trigger paths, checks both files exist and uploads the three synthetic viewport screenshots from a temporary artifact directory. Workflow and job names stay stable. Draft runs still skip the full browser job; quick checks are not a full CI acceptance receipt.
