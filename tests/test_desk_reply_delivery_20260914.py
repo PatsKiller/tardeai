@@ -102,10 +102,10 @@ def _answer(ok: bool) -> dict:
     def processor(**kw):
         kw["send_fn"](kw["chat_id"], AXTI_ANSWER)
         return {"handled": True, "reason": "answered"}
-    env = {cpr.FEATURE_FLAG: "1", cpr.CHATS_ENV: "6993102664"}  # hardcode-ok: routing fixture, not a credential
-    return cpr.maybe_answer({"message_id": 51807, "from": {"id": 6993102664}},  # hardcode-ok: routing fixture, not a credential
+    env = {cpr.FEATURE_FLAG: "1", cpr.CHATS_ENV: "900000001"}  # hardcode-ok: routing fixture, not a credential
+    return cpr.maybe_answer({"message_id": 51807, "from": {"id": 900000001}},  # hardcode-ok: routing fixture, not a credential
                             text="Axti swing day trade opinions?",
-                            chat_id="6993102664", token="T", env=env,  # hardcode-ok: routing fixture, not a credential
+                            chat_id="900000001", token="T", env=env,  # hardcode-ok: routing fixture, not a credential
                             transport=_Transport(ok),
                             capture=lambda *a, **k: None, processor=processor)
 

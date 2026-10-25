@@ -1,13 +1,13 @@
 === operator page ===
-🟡 CIO entry — already owned: add decision required: V
+🟡 CIO entry — already owned: add decision required: ZQCE
 Portfolio context: already held — this is not a new position.
 Decision: add here, wait for the preferred entry zone, or hold existing shares.
 Price $367.53 · price is inside the entry zone
 Zone $364.50–$369.00 · stop $357.50 · target $410.00 · R:R ideal 3.57 · current None
 Catalyst: unavailable
 Book: already held
-V already owned: add decision required (131.065 shares)
-Portfolio context: 3.82% of total portfolio · 29.68% of invested assets · IPS limit 8%.
+ZQCE already owned: add decision required (100.5 shares)
+Portfolio context: 3.53% of total portfolio · 25.14% of invested assets · IPS limit 8%.
 This is not a new position. Any purchase would add to existing exposure.
 Decision: add here, wait for the preferred entry zone, or hold existing shares.
 Stock play: $367.53 · zone $364.50–$369.00 · stop $357.50 · target $410.00 · R:R ideal 3.57 · current 4.23
@@ -25,22 +25,22 @@ Per unit — stock: $367.53/share · risk to stop $10.03 · at target +11.6% · 
   vs #1 debit call vertical: $1,574.50/contract · max loss $1,574.50 · BE $380.75 · at target +186%
 Options exposure: 0 open legs · net delta 0.0 sh-equiv
 Book context: currently held — entry would be an add; plan_source=reentry_desk
-CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 29.68% of invested capital.
+CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 25.14% of invested capital.
   options: Prefer the debit call vertical: capped at the 410 target, lower capital per contract.
-  book: Held 131.07 shares already; 3.82% of book vs the 8% IPS limit, 29.68% of invested.
+  book: Held 100.50 shares already; 3.53% of book vs the 8% IPS limit, 25.14% of invested.
   modify: wait for the zone low 364.5; prefer the debit call vertical over stock
 CIO review: UNREVIEWED
-House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.8% of book, 29.7% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.5% of book, 25.1% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
 Path B: Options Hub → View Chain → preflight → per-order 2FA when ARMED. Advisory only — nothing is placed from chat.
 Advisory only. No order is created; you choose and execute through your broker (2FA).
 === CIO desk ===
-Entry state BUY_READY for V.
+Entry state BUY_READY for ZQCE.
 Book: already held
-V already owned: add decision required (131.065 shares)
-Portfolio context: 3.82% of total portfolio · 29.68% of invested assets · IPS limit 8%.
+ZQCE already owned: add decision required (100.5 shares)
+Portfolio context: 3.53% of total portfolio · 25.14% of invested assets · IPS limit 8%.
 This is not a new position. Any purchase would add to existing exposure.
 Decision: add here, wait for the preferred entry zone, or hold existing shares.
-Entry state BUY_READY for V: price $367.53, zone $364.50–$369.00, stop $357.50, target $410.00, R:R ideal 3.57 · current 4.23. Plan source reentry_desk.
+Entry state BUY_READY for ZQCE: price $367.53, zone $364.50–$369.00, stop $357.50, target $410.00, R:R ideal 3.57 · current 4.23. Plan source reentry_desk.
 Thesis: PE 32.10 · Financial Services
 Catalyst: unavailable
 What kills the idea: no hard block recorded
@@ -55,11 +55,11 @@ Per unit — stock: $367.53/share · risk to stop $10.03 · at target +11.6% · 
   vs #1 debit call vertical: $1,574.50/contract · max loss $1,574.50 · BE $380.75 · at target +186%
 Options exposure: 0 open legs · net delta 0.0 sh-equiv
 Book context: currently held — entry would be an add; plan_source=reentry_desk
-CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 29.68% of invested capital.
+CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 25.14% of invested capital.
   options: Prefer the debit call vertical: capped at the 410 target, lower capital per contract.
-  book: Held 131.07 shares already; 3.82% of book vs the 8% IPS limit, 29.68% of invested.
+  book: Held 100.50 shares already; 3.53% of book vs the 8% IPS limit, 25.14% of invested.
   modify: wait for the zone low 364.5; prefer the debit call vertical over stock
 CIO review: UNREVIEWED
-House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.8% of book, 29.7% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.5% of book, 25.1% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
 Path B: Options Hub → View Chain → preflight → per-order 2FA when ARMED. Advisory only — nothing is placed from chat.
 Confirm or refute the equity entry and options alternative (Approve/Reject/Modify) for the operator.

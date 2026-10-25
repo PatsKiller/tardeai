@@ -43,7 +43,7 @@ NOW = datetime(2026, 10, 22, 19, 45, tzinfo=timezone.utc)   # 15:45 ET, market o
 G_NVDA, I_NVDA = "5f0c6a3e-1111-5111-8111-000000000001", "5f0c6a3e-1111-5111-8111-0000000000a1"
 G_ACME, I_ACME = "5f0c6a3e-1111-5111-8111-000000000002", "5f0c6a3e-1111-5111-8111-0000000000a2"
 G_BETA, I_BETA = "5f0c6a3e-1111-5111-8111-000000000003", "5f0c6a3e-1111-5111-8111-0000000000a3"
-IDS = {"NVDA": (G_NVDA, I_NVDA), "ACME": (G_ACME, I_ACME), "BETA": (G_BETA, I_BETA)}
+IDS = {"ZQBY": (G_NVDA, I_NVDA), "ACME": (G_ACME, I_ACME), "BETA": (G_BETA, I_BETA)}
 
 
 def _identity(sym: str) -> dict:
@@ -128,7 +128,7 @@ def cluster():
         shutil.rmtree(base, ignore_errors=True)  # the throwaway cluster's own temp tree only
 
 
-def _prospect_record(sym="NVDA", stage="held", stance="ADD", **over) -> dict:
+def _prospect_record(sym="ZQBY", stage="held", stance="ADD", **over) -> dict:
     g, i = IDS[sym]
     rec = ir.new_record("HELD", sym)
     rec.update({"security_guid": g, "issuer_guid": i, "subject_guid": g})
@@ -228,7 +228,7 @@ def test_apply_prospect_refuses_behavior_anywhere(bad):
 def test_apply_prospect_rails():
     rec = _prospect_record()
     assert rec["conviction"] == 70.0 and rec["prospect_schema"] == ir.PROSPECT_SCHEMA
-    assert rec["prospect_revision"] == 1 and rec["aliases"]["subject_key"] == "HELD:NVDA"
+    assert rec["prospect_revision"] == 1 and rec["aliases"]["subject_key"] == "HELD:ZQBY"
     with pytest.raises(ir.ProspectInvalid):                       # not a prospect field
         ir.apply_prospect(rec, prospect={"rank_score": 3})
     with pytest.raises(ir.ProspectInvalid):                       # placeholder identity
@@ -299,7 +299,7 @@ def _state(tmp: Path) -> Path:
     rr = {"rr": 4.9, "entry_zone": [218.5, 224.5], "entry_ref": 221.8, "invalidation_level": 213.0}
     (tmp / "data/cio/cio_opportunity_projection.json").write_text(json.dumps({"as_of": "2026-10-22T19:30:00+00:00",
         "items": {
-            "NVDA": {"symbol": "NVDA", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 78.1, "stance": "ADD",
+            "ZQBY": {"symbol": "ZQBY", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 78.1, "stance": "ADD",
                      "type": "add_on", "position_status": "owned", "coverage": 1.0, "rank": 59, "risk_reward": rr,
                      "factors": {"technical": {"score": 71.4}}, "factors_missing": []},
             "ACME": {"symbol": "ACME", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 82.0, "stance": "WATCH",
@@ -309,11 +309,11 @@ def _state(tmp: Path) -> Path:
                       "type": "new_position", "position_status": "not_owned", "risk_reward": {}, "factors": {}}}}))
     (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps({"updated_ts": "2026-10-05T13:27:16+00:00",
         "current": {"symbol_nvda": {"stance": "watch", "thesis_version": "symbol_nvda@v8", "status": "active",
-                                    "linked_symbols": ["NVDA"], "published_ts": "2026-10-05T13:27:16+00:00"}}}))
+                                    "linked_symbols": ["ZQBY"], "published_ts": "2026-10-05T13:27:16+00:00"}}}))
     (tmp / "data/cio/security_research_spine.jsonl").write_text(json.dumps(
-        {"symbol": "NVDA", "as_of": "2026-10-22T19:00:00Z", "thesis": {"stance": "WATCH", "conviction": 0.62}}) + "\n")
+        {"symbol": "ZQBY", "as_of": "2026-10-22T19:00:00Z", "thesis": {"stance": "WATCH", "conviction": 0.62}}) + "\n")
     (tmp / "data/cio/cio_instrument_records.jsonl").write_text(json.dumps(
-        {"subject_key": "WATCH:NVDA", "kind": "WATCH", "updated_ts": "2026-10-21T23:01:16+00:00",
+        {"subject_key": "WATCH:ZQBY", "kind": "WATCH", "updated_ts": "2026-10-21T23:01:16+00:00",
          "next_research_question": "Is the data-center guide credible?"}) + "\n")
     (tmp / "data/runtime/reentry_decision_desk_latest.json").write_text(json.dumps({
         "computed_at": "2026-10-22T19:40:00+00:00",
@@ -321,12 +321,12 @@ def _state(tmp: Path) -> Path:
                   "intel": {"state": "NEAR ENTRY"}, "catalyst": {"verified": True, "confidence": 0.9}}]}))
     (tmp / "data/runtime/hermes_watchlist_lifecycle.json").write_text(json.dumps({
         "updated_at": "2026-10-22T19:37:00+00:00",
-        "symbols": {"NVDA": {"lifecycle_stage": "promoted", "conviction_score": 85.5}}}))
+        "symbols": {"ZQBY": {"lifecycle_stage": "promoted", "conviction_score": 85.5}}}))
     return tmp
 
 
 def _build(tmp: Path, **kw):
-    return B.build(tmp, held_reader=lambda: {"symbols": {"NVDA"}, "source": "test_holdings", "as_of": NOW.isoformat()},
+    return B.build(tmp, held_reader=lambda: {"symbols": {"ZQBY"}, "source": "test_holdings", "as_of": NOW.isoformat()},
                    identity_resolver=_identity, now=NOW, **kw)
 
 
@@ -341,9 +341,9 @@ def test_builder_assembles_one_prospect_per_guid_and_shows_the_nvda_conflicts(tm
     assert _tree(root) == before                                    # writes nothing
     assert doc["writes"] == "none" and doc["store_status"]["mode"] == "inert"
     by = {r["symbol"]: r for r in doc["prospects"]}
-    assert set(by) == {"NVDA", "ACME", "BETA"}
+    assert set(by) == {"ZQBY", "ACME", "BETA"}
     assert [u["symbol"] for u in doc["identity_unresolved"]] == ["GHOST"]   # no placeholder identity
-    nv = by["NVDA"]
+    nv = by["ZQBY"]
     assert nv["security_guid"] == G_NVDA and nv["issuer_guid"] == I_NVDA
     assert nv["stage"] == "held" and nv["stance"] == "ADD"
     fields = sorted(c["field"] for c in nv["conflicts"])
@@ -387,11 +387,11 @@ def test_stance_disagreement_rule():
 def test_compare_against_home_watch_telegram(tmp_path):
     root = _state(tmp_path)
     doc = _build(root)
-    cmp = B.compare(doc, root, watch_top_ideas=["NVDA", "ZZZ"], watch_source="test", now=NOW)
+    cmp = B.compare(doc, root, watch_top_ideas=["ZQBY", "ZZZ"], watch_source="test", now=NOW)
     rows = {r["symbol"]: r for r in cmp["rows"]}
-    assert rows["NVDA"]["watch"]["top_idea_rank"] == 1
-    assert rows["NVDA"]["telegram"]["conviction_line"].startswith("Conviction 78/100")
-    assert not rows["NVDA"]["agrees"] and any(d.startswith("inputs disagree") for d in rows["NVDA"]["differences"])
+    assert rows["ZQBY"]["watch"]["top_idea_rank"] == 1
+    assert rows["ZQBY"]["telegram"]["conviction_line"].startswith("Conviction 78/100")
+    assert not rows["ZQBY"]["agrees"] and any(d.startswith("inputs disagree") for d in rows["ZQBY"]["differences"])
     assert rows["ZZZ"]["shadow"] is None
     assert cmp["surfaces"]["telegram"]["live"] is True
 
@@ -429,7 +429,7 @@ def test_cli_dry_run_writes_nothing_and_write_shadow_writes_the_artifact(tmp_pat
     from scripts import cio_prospect_shadow_build as cli
     root = _state(tmp_path)
     monkeypatch.setattr(B, "load_held", lambda state_root, held_reader=None: {
-        "symbols": {"NVDA"}, "source": "test", "as_of": NOW.isoformat(), "status": "ok"})
+        "symbols": {"ZQBY"}, "source": "test", "as_of": NOW.isoformat(), "status": "ok"})
     real_build = B.build
     monkeypatch.setattr(B, "build", lambda *a, **k: real_build(*a, **{**k, "identity_resolver": _identity}))
     before = _tree(root)
@@ -508,7 +508,7 @@ def test_projection_serves_the_shadow_labelled_and_says_so_on_gap(tmp_path):
     doc = _build(root)
     art = tmp_path / "shadow.json"
     art.write_text(json.dumps(doc))
-    res = cp.get_prospect("NVDA", shadow_base=art, now=NOW, market_closed=False)
+    res = cp.get_prospect("ZQBY", shadow_base=art, now=NOW, market_closed=False)
     assert res["source"]["kind"] == "shadow" and res["source"]["label"].startswith("SHADOW")
     assert "dual_write_flag_off" in res["source"]["store_not_live"]   # row granted (approval E); flag still off
     assert res["stale_after_hours"] == 0.5 and res["stale"] is False
@@ -541,9 +541,9 @@ def test_gate_file_registers_this_test():
     assert "tests/test_cio_prospect_foundation_20261022.py" in doc["files"]
 
 
-# ── 6. position lifecycle on the same record — NAVN worked example (operator 2026-10-22) ──────────────────
+# ── 6. position lifecycle on the same record — ZRYX worked example (operator 2026-10-22) ──────────────────
 
-NAVN = json.loads((ROOT / "tests/fixtures/cio_prospect/navn_20261022.json").read_text())
+ZRYX = json.loads((ROOT / "tests/fixtures/cio_prospect/navn_20261022.json").read_text())
 NAVN_NOW = datetime(2026, 10, 22, 20, 35, tzinfo=timezone.utc)
 
 
@@ -551,26 +551,26 @@ def _navn_state(tmp: Path, *, with_records: bool = True) -> Path:
     (tmp / "data/cio").mkdir(parents=True)
     (tmp / "data/runtime").mkdir(parents=True)
     (tmp / "data/cio/cio_opportunity_projection.json").write_text(json.dumps(
-        {"as_of": NAVN["opportunity_now"]["as_of"], "items": {"NAVN": NAVN["opportunity_now"]}}))
+        {"as_of": ZRYX["opportunity_now"]["as_of"], "items": {"ZRYX": ZRYX["opportunity_now"]}}))
     (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps(
-        {"current": {"symbol_navn": NAVN["thesis"]}}))
+        {"current": {"symbol_zryx": ZRYX["thesis"]}}))
     if with_records:
         (tmp / "data/cio/cio_opportunity_assessments.jsonl").write_text(
-            "".join(json.dumps(v) + "\n" for v in NAVN["assessment_versions"]))
-        (tmp / "data/cio/cio_events.jsonl").write_text(json.dumps(NAVN["entry_signal"]) + "\n")
+            "".join(json.dumps(v) + "\n" for v in ZRYX["assessment_versions"]))
+        (tmp / "data/cio/cio_events.jsonl").write_text(json.dumps(ZRYX["entry_signal"]) + "\n")
     return tmp
 
 
 def _navn_build(tmp: Path, now: datetime = NAVN_NOW, **kw) -> dict:
-    ident = NAVN["identity"]
-    return B.build(tmp, held_reader=lambda: {"symbols": {"NAVN"}, "source": "test_holdings (still lists NAVN)",
-                                             "as_of": NAVN["holdings"]["updated_at"]},
-                   identity_resolver=lambda s: ident if s == "NAVN" else _identity(s), now=now,
-                   captured=NAVN["captured"], **kw)
+    ident = ZRYX["identity"]
+    return B.build(tmp, held_reader=lambda: {"symbols": {"ZRYX"}, "source": "test_holdings (still lists ZRYX)",
+                                             "as_of": ZRYX["holdings"]["updated_at"]},
+                   identity_resolver=lambda s: ident if s == "ZRYX" else _identity(s), now=now,
+                   captured=ZRYX["captured"], **kw)
 
 
 def _navn(doc: dict) -> dict:
-    return next(r for r in doc["prospects"] if r["symbol"] == "NAVN")
+    return next(r for r in doc["prospects"] if r["symbol"] == "ZRYX")
 
 
 def test_navn_origin_is_internal_with_the_surfaces_at_entry(tmp_path):
@@ -578,12 +578,12 @@ def test_navn_origin_is_internal_with_the_surfaces_at_entry(tmp_path):
     o = p["origin"]
     assert o["classification"] == "internal"
     lk = o["linkage"]
-    assert lk["rec_id"] == "entry:evt-cb6ad4a5e735" and lk["link_confidence"] == "window_only"
-    assert lk["distance_pct"] == 2.151 and lk["plan_entry_zone"] == [24.8, 25.1]
-    assert o["at_entry"]["entry_fill_at"] == "2026-10-19T15:01:04+00:00" and o["at_entry"]["entry_fill_price"] == 25.64
+    assert lk["rec_id"] == "entry:evt-5e1f0c0a0001" and lk["link_confidence"] == "window_only"
+    assert lk["distance_pct"] == 2.151 and lk["plan_entry_zone"] == [49.6, 50.2]
+    assert o["at_entry"]["entry_fill_at"] == "2026-10-19T15:01:04+00:00" and o["at_entry"]["entry_fill_price"] == 51.28
     s = {x["surface"].split(" ·")[0].split(" (")[0]: x for x in o["at_entry"]["surfaces"]}
     assert s["Home"]["shown"] and s["Home"]["rank"] == 4 and s["Home"]["conviction"] == 85.6 and s["Home"]["rr"] == 4.81
-    assert s["Home"]["record"].endswith("NAVN:v26")
+    assert s["Home"]["record"].endswith("ZRYX:v26")
     assert s["Telegram"]["text"].startswith("Conviction 86/100 · #4")
     assert s["CIO entry state"]["state"] == "BUY_READY" and s["CIO entry state"]["at"].startswith("2026-10-16T17:40")
 
@@ -591,16 +591,16 @@ def test_navn_origin_is_internal_with_the_surfaces_at_entry(tmp_path):
 def test_navn_lifecycle_stops_excursion_exit_cause_and_pnl(tmp_path):
     p = _navn(_navn_build(_navn_state(tmp_path)))
     life = p["position_lifecycle"]
-    assert life["status"] == "closed" and life["round_trip_key"] == "srt:607228" and life["hold_days"] == 3
+    assert life["status"] == "closed" and life["round_trip_key"] == "srt:900001" and life["hold_days"] == 3
     st = life["observed_stops"]
-    assert [x["stop_price_observed"] for x in st["path"]] == [24.31, 24.59, 24.70, 24.97, 25.51, 25.61, 26.02]
-    assert st["ratchets_up"] == 6 and st["filled"] == 26.02
+    assert [x["stop_price_observed"] for x in st["path"]] == [48.62, 49.18, 49.40, 49.94, 51.02, 51.22, 52.04]
+    assert st["ratchets_up"] == 6 and st["filled"] == 52.04
     assert life["exit_cause"]["class"] == "trailing_ratchet" and life["exit_cause"]["in_profit"] is True
     exc = life["excursion"]
     assert (exc["basis"], exc["mfe_price"], exc["mfe_pct"], exc["mae_price"], exc["mae_pct"]) == (
-        "daily_close", 26.625, 3.84, 25.67, 0.12)
+        "daily_close", 53.25, 3.84, 51.34, 0.12)
     pnl = life["pnl"]
-    assert pnl["net_pnl_usd"] == 189.73 and pnl["pnl_pct"] == 1.48
+    assert pnl["net_pnl_usd"] == 227.68 and pnl["pnl_pct"] == 1.48
     assert pnl["r_on_initial_observed_stop"] == 0.286 and pnl["r_on_plan_invalidation_at_entry"] == 0.218
     assert [c["stance"] for c in life["conviction_while_held"]] == ["ADD"]          # v27: WATCH→ADD, #1, on exit day
 
@@ -612,13 +612,13 @@ def test_navn_stage_review_reentry_and_conflicts(tmp_path):
     assert sorted(c["field"] for c in p["conflicts"]) == ["held", "stance_after_exit"]   # shown, never resolved
     rev = p["post_exit_review"]
     assert rev["noise_vs_trend"]["verdict"] == "noise" and rev["prose"] is None and rev["provenance"] == "D"
-    assert rev["facts"]["giveback_from_peak_pct"] == 2.27 and rev["facts"]["exit_day_close"] == 26.03
+    assert rev["facts"]["giveback_from_peak_pct"] == 2.27 and rev["facts"]["exit_day_close"] == 52.06
     adv = p["reentry_advice"]
     assert adv["classifier"].startswith("reentry_rules.derive_intel_state")
-    assert {a["reference"]: a["level"] for a in adv["alert_levels"]} == {"near_entry": 25.853, "in_zone": 25.1,
-                                                                         "reclaim": 26.02}
+    assert {a["reference"]: a["level"] for a in adv["alert_levels"]} == {"near_entry": 51.706, "in_zone": 50.2,
+                                                                         "reclaim": 52.04}
     assert {c["id"]: c["met"] for c in adv["conditions"]}["conviction_floor"] is True
-    assert adv["one_alert"]["dedupe_key"] == "reentry_near:1b1fd2bf-78cf-5755-bdea-9248cd007907:srt:607228"
+    assert adv["one_alert"]["dedupe_key"] == "reentry_near:5995c15e-37ce-5f98-80cf-a7551bb9faa9:srt:900001"
     assert p["next_action"]["who"] == "operator" and "trailing_ratchet" in p["next_action"]["what"]
     later = _navn(_navn_build(root, now=NAVN_NOW + timedelta(days=3)))
     assert (later["stage"], later["stage_phase"]) == ("re_entry", "re_entry_watch")
@@ -649,7 +649,7 @@ def test_position_view_is_the_same_record(tmp_path):
     doc = _navn_build(_navn_state(tmp_path / "s"))
     art = tmp_path / "shadow.json"
     art.write_text(json.dumps(doc))
-    v = cp.get_position_view("NAVN", shadow_base=art, now=NAVN_NOW, market_closed=True)
+    v = cp.get_position_view("ZRYX", shadow_base=art, now=NAVN_NOW, market_closed=True)
     pos = v["position"]
     assert v["source"]["kind"] == "shadow" and pos["origin"]["classification"] == "internal"
     assert pos["lifecycle"]["exit_cause"]["class"] == "trailing_ratchet" and len(pos["events"]) == 14
@@ -680,8 +680,8 @@ def test_lifecycle_events_append_idempotently_on_the_cluster(cluster, tmp_path):
                                                             dbname="cpx_life"))
     p = _navn(_navn_build(_navn_state(tmp_path)))
     rec = {k: v for k, v in p.items() if k not in ("lifecycle_events", "shadow_rank", "rankable")}
-    row = ir.prospect_row({**rec, "symbols": ["NAVN"], "prospect_revision": 1, "updated_ts": NAVN_NOW.isoformat(),
-                           "subject_key": "HELD:NAVN"})
+    row = ir.prospect_row({**rec, "symbols": ["ZRYX"], "prospect_revision": 1, "updated_ts": NAVN_NOW.isoformat(),
+                           "subject_key": "HELD:ZRYX"})
     res = backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])
     assert res["upserted"] == 1 and res["event_appended"] == 1 + 14
     assert backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])["event_appended"] == 0

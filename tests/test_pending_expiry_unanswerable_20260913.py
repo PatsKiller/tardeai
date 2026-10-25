@@ -58,7 +58,7 @@ INCOMPLETE = {
 #: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
 #: which would break these equality assertions and make an offline test depend
 #: on the host.
-OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+OPERATOR_CHAT = "900000001"  # hardcode-ok: routing fixture, not a credential
 
 
 @pytest.fixture(autouse=True)

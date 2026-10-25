@@ -1,7 +1,7 @@
 """Schwab ledger keeps the direction of transfers (2026-10-06).
 
 schwab_transaction_ingest took abs() of the security leg, so every RECEIVE_AND_DELIVER / share JOURNAL row read as
-an INFLOW (rollover IRA: 21 of 55 transfers were outflows). Lots rebuilt from the ledger over-counted (SCHG 12,000
+an INFLOW (rollover IRA: 21 of 55 transfers were outflows). Lots rebuilt from the ledger over-counted (ZQAV 12,000
 vs the broker's 2,000); with direction kept, 9 lot gaps fell to 3, all explained (broker lot-relief method, one
 pre-ledger fund). Also: requests over a year are split (Schwab refuses > 1 year), and a dry run never pages.
 Fakes only: no network, no database, no broker.
@@ -26,21 +26,21 @@ def _xfer(typ, sym, amount, aid, day="2026-07-17"):
 
 
 def test_transfer_direction_is_kept():
-    rows = si._map_rows("schwab_rollover_ira", [_xfer("RECEIVE_AND_DELIVER", "SCHG", 5000.0, 1),
-                                                _xfer("RECEIVE_AND_DELIVER", "SCHG", -5000.0, 2)])
+    rows = si._map_rows("schwab_rollover_ira", [_xfer("RECEIVE_AND_DELIVER", "ZQAV", 5000.0, 1),
+                                                _xfer("RECEIVE_AND_DELIVER", "ZQAV", -5000.0, 2)])
     assert [(r["action"], r["quantity"]) for r in rows] == [("Security Transfer", 5000.0),
                                                            ("Security Transfer Out", 5000.0)]
 
 
 def test_share_journal_direction_is_kept_and_cash_journal_unchanged():
-    out = si._map_rows("schwab_taxable", [_xfer("JOURNAL", "SPCX", -100.0, 3)])
+    out = si._map_rows("schwab_taxable", [_xfer("JOURNAL", "ZQBL", -100.0, 3)])
     assert out[0]["action"] == "Journaled Shares Out"
     cash = dict(_xfer("JOURNAL", "X", 0, 4), transferItems=[{"instrument": {"assetType": "CURRENCY"}, "amount": 5}])
     assert si._map_rows("schwab_taxable", [cash])[0]["action"] == "Journal"
 
 
 def test_lots_follow_transfers_out():
-    t = lambda i, d, a, q, amt=0.0: {"id": i, "trade_date": d, "account": "schwab_rollover_ira", "symbol": "SCHG",
+    t = lambda i, d, a, q, amt=0.0: {"id": i, "trade_date": d, "account": "schwab_rollover_ira", "symbol": "ZQAV",
                                      "action": a, "quantity": q, "price": 0, "amount": amt, "fees": 0}
     led = [t(1, dt.date(2026, 7, 15), "Buy", 2774, -95000.0), t(2, dt.date(2026, 7, 16), "Security Transfer", 5000),
            t(3, dt.date(2026, 7, 17), "Security Transfer", 5000), t(4, dt.date(2026, 7, 17), "Security Transfer Out", 5000),
@@ -52,13 +52,13 @@ def test_lots_follow_transfers_out():
 
 def test_reconcile_fifo_consumes_transfers_out_without_a_sale():
     import portfolio_reconcile as pr
-    tx = [{"symbol": "V", "action": "Security Transfer", "quantity": 130, "price": 0, "trade_date": "2026-02-24"},
-          {"symbol": "V", "action": "Security Transfer Out", "quantity": 130, "price": 0, "trade_date": "2026-02-24",
+    tx = [{"symbol": "ZQCE", "action": "Security Transfer", "quantity": 390, "price": 0, "trade_date": "2026-02-24"},
+          {"symbol": "ZQCE", "action": "Security Transfer Out", "quantity": 390, "price": 0, "trade_date": "2026-02-24",
            "trade_time": "1"},
-          {"symbol": "V", "action": "Buy", "quantity": 10, "price": 300.0, "trade_date": "2026-03-01"},
-          {"symbol": "V", "action": "Sell", "quantity": 10, "price": 0, "trade_date": "2026-04-01", "dedupe_key": "k"}]
+          {"symbol": "ZQCE", "action": "Buy", "quantity": 30, "price": 300.0, "trade_date": "2026-03-01"},
+          {"symbol": "ZQCE", "action": "Sell", "quantity": 30, "price": 0, "trade_date": "2026-04-01", "dedupe_key": "k"}]
     out = pr.fifo_sell_basis(tx)
-    assert out[("V", "2026-04-01", "k")][0] == 3000.0          # basis known: the transfer-in lot left first
+    assert out[("ZQCE", "2026-04-01", "k")][0] == 9000.0          # basis known: the transfer-in lot left first
 
 
 class _Resp:
@@ -104,7 +104,7 @@ def test_a_dry_run_never_pages():
 def _drip(aid, day, qty, px):
     return {"type": "TRADE", "tradeDate": f"{day}T00:00:00+0000", "netAmount": -round(qty * px, 2), "activityId": aid,
             "orderId": None, "description": "VISA INC CLASS A",
-            "transferItems": [{"instrument": {"assetType": "EQUITY", "symbol": "V"}, "amount": qty, "price": px}]}
+            "transferItems": [{"instrument": {"assetType": "EQUITY", "symbol": "ZQCE"}, "amount": qty, "price": px}]}
 
 
 def test_reinvestments_without_an_order_id_are_not_merged():

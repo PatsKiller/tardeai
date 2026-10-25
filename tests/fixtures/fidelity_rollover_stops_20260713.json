@@ -1,69 +1,69 @@
 {
-  "_comment": "Fidelity Rollover IRA #270135199 (••5199). SnapTrade does NOT sync open GTC stops — update when you place/modify/cancel at Fidelity, then ⟳ Sync Fidelity GTC stops (or cron 10:05+16:05 ET). Audited 2026-07-13 vs Fidelity Activity & Orders.",
+  "_comment": "SYNTHETIC fixture (2026-10-25 privacy cleanup): the shape of a Fidelity rollover-IRA GTC stop registry. Symbols, prices and quantities are fake. SnapTrade does NOT sync open GTC stops — the registry is maintained by hand.",
   "_fidelity_as_of": "2026-07-13T21:52:00-04:00",
-  "account": "fidelity_rollover_ira",
+  "account": "ira_a",
   "stops": [
     {
-      "symbol": "QCOM",
+      "symbol": "ZQAE",
       "order_type": "TRAILING_STOP",
-      "stop_price": 176.62,
+      "stop_price": 146.6,
       "trail_pct": 4,
       "trail_link": "LAST",
-      "qty": 55,
+      "qty": 60,
       "placed_date": "2026-07-13",
       "note": "Fidelity GTC trailing 4% based on Last (replaced prior 7% trail)"
     },
     {
-      "symbol": "ANET",
+      "symbol": "ZQBU",
       "order_type": "TRAILING_STOP",
-      "stop_price": 172.09,
+      "stop_price": 142.84,
       "trail_pct": 5,
       "trail_link": "LAST",
-      "qty": 200,
+      "qty": 150,
       "placed_date": "2026-07-13",
       "note": "Fidelity GTC trailing 5% based on Last (replaced prior 6% trail)"
     },
     {
-      "symbol": "DIVI",
+      "symbol": "ZQAM",
       "order_type": "STOP",
-      "stop_price": 42.0,
-      "qty": 1000,
+      "stop_price": 35.0,
+      "qty": 800,
       "placed_date": "2026-07-13",
       "note": "Fidelity GTC stop loss (Good til Canceled)"
     },
     {
-      "symbol": "CSCO",
+      "symbol": "ZQBX",
       "order_type": "STOP",
-      "stop_price": 115.0,
-      "qty": 100,
+      "stop_price": 95.0,
+      "qty": 120,
       "placed_date": "2026-07-10",
       "note": "Fidelity GTC stop loss (Good til Canceled)"
     },
     {
-      "symbol": "SCHG",
+      "symbol": "ZQAV",
       "order_type": "TRAILING_STOP",
-      "stop_price": 32.6,
+      "stop_price": 27.06,
       "trail_pct": 6,
       "trail_link": "LAST",
-      "qty": 5000,
+      "qty": 4000,
       "placed_date": "2026-07-09",
       "note": "Fidelity GTC trailing 6% based on Last (replaced prior 8% trail)"
     },
     {
-      "symbol": "DXCM",
+      "symbol": "ZQCD",
       "order_type": "TRAILING_STOP",
-      "stop_price": 71.83,
+      "stop_price": 59.62,
       "trail_pct": 6,
       "trail_link": "LAST",
-      "qty": 225,
+      "qty": 250,
       "placed_date": "2026-07-08",
       "note": "Fidelity GTC trailing 6% based on Last"
     },
     {
-      "symbol": "ARKX",
+      "symbol": "ZQAQ",
       "order_type": "STOP",
-      "stop_price": 31.06,
-      "qty": 1000,
+      "stop_price": 25.78,
+      "qty": 800,
       "placed_date": "2026-07-07",
       "note": "Fidelity GTC stop loss (Good til Canceled)"
     }

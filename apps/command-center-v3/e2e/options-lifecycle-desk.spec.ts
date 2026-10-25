@@ -40,7 +40,7 @@ test('act-first order: defend leg, your decision, harvest leg, then data/researc
   const ages = page.getByTestId('options-desk-cost-age')
   await expect(ages).toHaveCount(await rows.count())
   for (const t of await ages.allInnerTexts()) expect(t.trim().length).toBeGreaterThan(0)
-  await expect(rows.filter({ hasText: 'SPCX' }).filter({ hasText: 'Protective put' }).getByTestId('options-desk-cost-age')).toContainText('quote Oct 21 16:00 ET')
+  await expect(rows.filter({ hasText: 'ZQBL' }).filter({ hasText: 'Protective put' }).getByTestId('options-desk-cost-age')).toContainText('quote Oct 21 16:00 ET')
   await expect(rows.first().getByTestId('options-desk-cost-age')).toContainText('monitored')
 
   // Act-first strip: the defend and harvest legs, each a rule and not an order.
@@ -91,9 +91,9 @@ test('?symbol= filters the desk (Open Trades → Protective put ideas) and the f
   await expect(page.getByTestId('options-desk')).toBeVisible({ timeout: 60_000 })
   const rows = page.getByTestId('options-desk-row')
   await expect(rows).toHaveCount(1)
-  await expect(rows.first()).toContainText('XLB')
+  await expect(rows.first()).toContainText('ZQBM')
   await page.getByTestId('options-desk-clear-filters').click()
-  await expect(rows.filter({ hasText: 'SPCX' }).first()).toBeVisible()
+  await expect(rows.filter({ hasText: 'ZQBL' }).first()).toBeVisible()
   expect(writes).toEqual([])
 })
 

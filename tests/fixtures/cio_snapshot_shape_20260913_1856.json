@@ -11,9 +11,9 @@
  "domains": {
   "portfolio": {
    "state": "AVAILABLE",
-   "total_value": 1268141,
-   "total_cost": 586469,
-   "day_change": 3493,
+   "total_value": 783711,
+   "total_cost": 362438,
+   "day_change": 2159,
    "day_change_pct": 0.2762,
    "holdings_count": 30,
    "as_of": "2026-09-13T08:00:24-04:00",
@@ -22,7 +22,7 @@
   "risk": {
    "state": "AVAILABLE",
    "portfolio_heat_pct": 0.08,
-   "total_risk_dollars": 1003,
+   "total_risk_dollars": 620,
    "positions_at_risk": 0,
    "max_drawdown_pct": null,
    "stops_active": 26
@@ -104,7 +104,7 @@
       "rs_score": 50
      },
      {
-      "etf": "XLI",
+      "etf": "ZQBS",
       "name": "Industrials",
       "return_1m": null,
       "return_3m": null,
@@ -114,7 +114,7 @@
       "rs_score": 50
      },
      {
-      "etf": "XLB",
+      "etf": "ZQBL",
       "name": "Materials",
       "return_1m": null,
       "return_3m": null,
@@ -223,22 +223,22 @@
     ],
     "transitions": [
      {
-      "symbol": "RTX",
+      "symbol": "ZQAV",
       "thesis_status": "broken",
       "needs_review": true
      },
      {
-      "symbol": "CACI",
+      "symbol": "ZQAC",
       "thesis_status": "broken",
       "needs_review": true
      },
      {
-      "symbol": "DRS",
+      "symbol": "ZQBI",
       "thesis_status": "broken",
       "needs_review": true
      },
      {
-      "symbol": "KBR",
+      "symbol": "ZQAY",
       "thesis_status": "broken",
       "needs_review": true
      }
@@ -312,7 +312,7 @@
    "primary_objective": "Long-term growth with income generation \u2014 AI/technology sector tilt within diversified framework",
    "target_return_pct": 7.0,
    "max_single_position_pct": 8.0,
-   "active_trading_account": "schwab_taxable"
+   "active_trading_account": "taxable_c"
   },
   "model_portfolio": {
    "state": "AVAILABLE",
@@ -339,7 +339,7 @@
     }
    ],
    "rebalancing_threshold_pct": 4.0,
-   "income_target_usd": 55000,
+   "income_target_usd": 33990,
    "max_single_position_pct": 3.0
   },
   "cost_basis": {
@@ -347,7 +347,7 @@
    "positions_count": 20,
    "loss_positions_count": 8,
    "gain_positions_count": 12,
-   "total_unrealized_pnl": -10584,
+   "total_unrealized_pnl": -6541,
    "reconciled_count": 2,
    "positions": []
   },
@@ -358,20 +358,20 @@
     {
      "symbol": "AGMH",
      "exit_date": "2025-09-19",
-     "realized_pnl": 186.03,
-     "account": "schwab_taxable"
+     "realized_pnl": 114.97,
+     "account": "taxable_c"
     },
     {
      "symbol": "AGMH",
      "exit_date": "2025-09-19",
-     "realized_pnl": -129.9,
-     "account": "schwab_taxable"
+     "realized_pnl": -80.3,
+     "account": "taxable_c"
     },
     {
      "symbol": "LASE",
      "exit_date": "2025-09-18",
-     "realized_pnl": 180.0,
-     "account": "schwab_rollover_ira"
+     "realized_pnl": 111.2,
+     "account": "ira_b"
     }
    ],
    "open_lots_total": 102,
@@ -379,64 +379,64 @@
    "last_updated": "2026-09-11 07:31",
    "all_symbols_traded": [],
    "all_accounts": [
-    "schwab_rollover_ira",
-    "schwab_roth",
-    "schwab_taxable"
+    "ira_b",
+    "roth_a",
+    "taxable_c"
    ]
   },
   "sectors": {
    "state": "AVAILABLE",
-   "total_value": 1268141,
+   "total_value": 783711,
    "sectors": [
     {
      "sector": "Industrials",
-     "value": 85865,
+     "value": 53065,
      "weight_pct": 6.77,
      "position_count": 7,
      "symbols": [
-      "NOC",
-      "RTX",
-      "SPCX",
-      "BAH",
-      "XLI",
-      "XAR",
-      "SPCX"
+      "ZQBC",
+      "ZQAV",
+      "ZQBK",
+      "ZQBE",
+      "ZQBS",
+      "ZQAD",
+      "ZQBK"
      ]
     },
     {
      "sector": "Financial Services",
-     "value": 48723,
+     "value": 30111,
      "weight_pct": 3.84,
      "position_count": 4,
      "symbols": [
-      "PFLT",
-      "CSWC",
-      "V",
-      "V"
+      "ZQAO",
+      "ZQAB",
+      "ZQCD",
+      "ZQCD"
      ]
     },
     {
      "sector": "Technology",
-     "value": 31869,
+     "value": 19695,
      "weight_pct": 2.51,
      "position_count": 2,
      "symbols": [
-      "LDOS",
-      "ARKX"
+      "ZQAR",
+      "ZQAP"
      ]
     },
     {
      "sector": "Basic Materials",
-     "value": 25680,
+     "value": 15870,
      "weight_pct": 2.03,
      "position_count": 1,
      "symbols": [
-      "XLB"
+      "ZQBL"
      ]
     },
     {
      "sector": "Consumer Defensive",
-     "value": 10705,
+     "value": 6616,
      "weight_pct": 0.84,
      "position_count": 1,
      "symbols": [
@@ -449,7 +449,7 @@
      "weight_pct": 0.0,
      "position_count": 1,
      "symbols": [
-      "SRNE"
+      "ZQBV"
      ]
     }
    ],
@@ -482,7 +482,7 @@
   },
   "holdings_detail": {
    "state": "AVAILABLE",
-   "total_value": 1268141,
+   "total_value": 783711,
    "position_count": 30,
    "cash_positions": 4,
    "equity_positions": 26,
@@ -490,30 +490,30 @@
    "positions_as_of": "2026-09-11",
    "positions": [
     {
-     "symbol": "SCHD",
-     "name": "SCHWAB U.S. DIVIDEND EQUITY ETF",
-     "account": "schwab_rollover_ira",
+     "symbol": "ZQCG",
+     "name": "SYNTH U.S. DIVIDEND EQUITY ETF",
+     "account": "ira_b",
      "sector": "",
-     "market_value": 341209,
+     "market_value": 210867,
      "weight_pct": 26.9062,
      "day_change_pct": 0.38,
-     "quantity": 10000.2508,
+     "quantity": 6180.155,
      "current_price": 35.14,
-     "cost_basis": 19,
-     "unrealized_pnl": 341189.51,
+     "cost_basis": 12,
+     "unrealized_pnl": 210855.12,
      "unrealized_pnl_pct": 1790996.17,
      "is_cash": false,
      "asset_type": ""
     },
     {
-     "symbol": "V",
-     "name": "VISA INC CLASS CLASS A",
-     "account": "schwab_roth",
+     "symbol": "ZQCD",
+     "name": "PAYLANE INC CLASS CLASS A",
+     "account": "roth_a",
      "sector": "Financial Services",
-     "market_value": 48258,
+     "market_value": 29823,
      "weight_pct": 3.8054,
      "day_change_pct": 0.88,
-     "quantity": 130.2689,
+     "quantity": 80.5062,
      "current_price": 382.85,
      "cost_basis": null,
      "unrealized_pnl": null,
@@ -522,17 +522,17 @@
      "asset_type": ""
     },
     {
-     "symbol": "SPCX",
-     "name": "SPCX",
-     "account": "schwab_rollover_ira",
+     "symbol": "ZQBK",
+     "name": "ZQBK",
+     "account": "ira_b",
      "sector": "Industrials",
-     "market_value": 45270,
+     "market_value": 27977,
      "weight_pct": 3.5698,
      "day_change_pct": 2.04,
-     "quantity": 300.0,
+     "quantity": 185.4,
      "current_price": 136.46,
-     "cost_basis": 16846,
-     "unrealized_pnl": 28424.22,
+     "cost_basis": 10411,
+     "unrealized_pnl": 17566.17,
      "unrealized_pnl_pct": 168.73,
      "is_cash": false,
      "asset_type": ""
@@ -552,28 +552,28 @@
    ],
    "gap_reason": "holdings_derived_cash_not_verified_broker_buying_power",
    "data": {
-    "total_cash": 710933,
-    "total_buying_power_estimate": 710933,
+    "total_cash": 439357,
+    "total_buying_power_estimate": 439357,
     "cash_positions": [
      {
       "symbol": "CASH",
-      "market_value": 5000,
-      "account": "alpaca_taxable_live"
+      "market_value": 3090,
+      "account": "taxable_a"
      },
      {
       "symbol": "CASH",
-      "market_value": 42712,
-      "account": "schwab_taxable"
+      "market_value": 26396,
+      "account": "taxable_c"
      },
      {
       "symbol": "CASH",
-      "market_value": 1473,
-      "account": "schwab_roth"
+      "market_value": 910,
+      "account": "roth_a"
      },
      {
       "symbol": "CASH",
-      "market_value": 661748,
-      "account": "schwab_rollover_ira"
+      "market_value": 408960,
+      "account": "ira_b"
      }
     ],
     "cash_position_count": 4,
@@ -609,11 +609,11 @@
     },
     "rows": [
      {
-      "symbol": "ARKQ",
+      "symbol": "ZQBM",
       "intel": null
      },
      {
-      "symbol": "KBR",
+      "symbol": "ZQAY",
       "intel": null
      }
     ]
@@ -636,11 +636,11 @@
     },
     "rows": [
      {
-      "symbol": "ARKQ",
+      "symbol": "ZQBM",
       "intel": null
      },
      {
-      "symbol": "KBR",
+      "symbol": "ZQAY",
       "intel": null
      }
     ]

@@ -4,7 +4,7 @@ Operator: "a durable conflict resolution engine that's not just used here, but c
 when there are conflicts."
 
 One engine, many domains. The core knows nothing about stocks, jobs or dollars:
-  Subject   what the inputs are about (kind + id + context), e.g. security:SPCX, metric:portfolio_total, job:catalyst-engine
+  Subject   what the inputs are about (kind + id + context), e.g. security:ZQBL, metric:portfolio_total, job:catalyst-engine
   Input     one producer's claim about the subject: source, value, as_of, role
   Profile   a domain plug-in: how to compare two values (same / compatible / opposite / unknown), freshness limits per
             source, which source is canonical, which roles are gates or never-auto, and the plain-English wording
@@ -40,7 +40,7 @@ SEVERITY_ORDER = {"NEEDS_OPERATOR": 0, "GATE": 1, "CONFLICT": 2, "DATA_ERROR": 3
 class Subject:
     kind: str                      # security | metric | job | position | count | ...
     id: str                        # canonical id (security_guid, metric name, lane_id, ...)
-    label: str                     # what the operator reads (SPCX, "Portfolio total", job name)
+    label: str                     # what the operator reads (ZQBL, "Portfolio total", job name)
     context: dict = field(default_factory=dict)   # profile-specific (held, accounts, unit, ...)
 
 

@@ -1,25 +1,26 @@
 {
  "_provenance": {
   "captured_at": "2026-10-22T20:35Z",
-  "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=NAVN (trade_closed srt:607228; read-only)",
-  "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 24.31\u219224.59\u219224.70\u219224.97\u219225.51\u219225.61\u219226.02, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
-  "bars": "GET /api/v3/opportunities/NAVN chart.bars (ticker_prices.close; daily closes only)",
-  "assessment_versions": "data/cio/cio_opportunity_assessments.jsonl NAVN v25-v27 (trimmed)",
-  "entry_signal": "data/cio/cio_events.jsonl watch.new_signal cio_entry_state NAVN",
-  "opportunity_now": "data/cio/cio_opportunity_projection.json items.NAVN (2026-10-22 20:30Z)",
-  "thesis": "data/cio/cio_theses_projection.json current.symbol_navn",
-  "holdings": "data/portfolios/state/holdings.json NAVN row (updated_at 2026-10-22T20:30:19Z: still lists 500 sh after the 15:59 ET stop fill)",
-  "identity": "identity_carriage.resolve_security_identity('NAVN') (CONFIRMED)"
+  "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=ZRYX (trade_closed srt:900001; read-only)",
+  "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 48.62\u219249.18\u219249.40\u219249.94\u219251.02\u219251.22\u219252.04, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
+  "bars": "GET /api/v3/opportunities/ZRYX chart.bars (ticker_prices.close; daily closes only)",
+  "assessment_versions": "data/cio/cio_opportunity_assessments.jsonl ZRYX v25-v27 (trimmed)",
+  "entry_signal": "data/cio/cio_events.jsonl watch.new_signal cio_entry_state ZRYX",
+  "opportunity_now": "data/cio/cio_opportunity_projection.json items.ZRYX (2026-10-22 20:30Z)",
+  "thesis": "data/cio/cio_theses_projection.json current.symbol_zryx",
+  "holdings": "data/portfolios/state/holdings.json ZRYX row (updated_at 2026-10-22T20:30:19Z: still lists 500 sh after the 15:59 ET stop fill)",
+  "identity": "identity_carriage.resolve_security_identity('ZRYX') (CONFIRMED)",
+  "synthetic": "SYNTHETIC for the public repo: symbol renamed, GUIDs/ids/hashes re-minted, every price x2 (ratios, percents and R values unchanged), share count and P&L changed; dates kept"
  },
  "identity": {
-  "symbol": "NAVN",
-  "security_guid": "1b1fd2bf-78cf-5755-bdea-9248cd007907",
-  "issuer_guid": "95757d71-8dfe-5236-818a-6e846fc71669",
-  "subject_guid": "1b1fd2bf-78cf-5755-bdea-9248cd007907",
+  "symbol": "ZRYX",
+  "security_guid": "5995c15e-37ce-5f98-80cf-a7551bb9faa9",
+  "issuer_guid": "e6a777f1-5e4b-5409-8bbf-ffc8f692c064",
+  "subject_guid": "5995c15e-37ce-5f98-80cf-a7551bb9faa9",
   "identity_status": "CONFIRMED"
  },
  "opportunity_now": {
-  "symbol": "NAVN",
+  "symbol": "ZRYX",
   "as_of": "2026-10-22T20:30:16.494762+00:00",
   "conviction": 86.6,
   "coverage": 0.9,
@@ -28,26 +29,26 @@
   "type": "add_on",
   "position_status": "owned",
   "risk_reward": {
-   "entry_ref": 24.95,
+   "entry_ref": 49.9,
    "entry_source": "entry_plan.suggested_entry",
-   "current_price": 26.02,
+   "current_price": 52.04,
    "entry_zone": [
-    24.8,
-    25.1
+    49.6,
+    50.2
    ],
-   "invalidation_level": 23.9,
+   "invalidation_level": 47.8,
    "invalidation_source": "entry_plan",
    "targets": [
     {
      "label": "T1 (+1R)",
-     "px": 26.0,
+     "px": 52.0,
      "source": "entry_plan",
      "tier": "T1",
      "reward_pct": 4.21
     },
     {
      "label": "T2 (plan target)",
-     "px": 30.0,
+     "px": 60.0,
      "source": "entry_plan",
      "tier": "T2",
      "reward_pct": 20.24,
@@ -55,15 +56,15 @@
     },
     {
      "label": "T3 (runner)",
-     "px": 31.05,
+     "px": 62.1,
      "source": "entry_plan",
      "tier": "T3",
      "reward_pct": 24.45
     }
    ],
-   "risk_per_share": 1.05,
+   "risk_per_share": 2.1,
    "risk_pct": 4.21,
-   "primary_target": 30.0,
+   "primary_target": 60.0,
    "reward_pct": 20.24,
    "rr": 4.81,
    "level_trust": 1.0
@@ -111,14 +112,14 @@
  },
  "assessment_versions": [
   {
-   "symbol": "NAVN",
+   "symbol": "ZRYX",
    "version": 25,
    "written_at": "2026-10-15T19:00:18.759575+00:00",
    "change_reasons": [
     "rank band 59\u219230"
    ],
    "assessment": {
-    "symbol": "NAVN",
+    "symbol": "ZRYX",
     "as_of": "2026-10-15T19:00:17.754601+00:00",
     "conviction": 78.3,
     "coverage": 0.9,
@@ -127,26 +128,26 @@
     "type": "new_position",
     "position_status": "watchlist",
     "risk_reward": {
-     "entry_ref": 21.8,
+     "entry_ref": 43.6,
      "entry_source": "entry_plan.suggested_entry",
-     "current_price": 25.06,
+     "current_price": 50.12,
      "entry_zone": [
-      20.5,
-      23.0
+      41.0,
+      46.0
      ],
-     "invalidation_level": 18.9,
+     "invalidation_level": 37.8,
      "invalidation_source": "entry_plan",
      "targets": [
       {
        "label": "T1 (+1R)",
-       "px": 24.7,
+       "px": 49.4,
        "source": "entry_plan",
        "tier": "T1",
        "reward_pct": 13.3
       },
       {
        "label": "T2 (plan target)",
-       "px": 29.6,
+       "px": 59.2,
        "source": "entry_plan",
        "tier": "T2",
        "reward_pct": 35.78,
@@ -154,15 +155,15 @@
       },
       {
        "label": "T3 (runner)",
-       "px": 32.5,
+       "px": 65.0,
        "source": "entry_plan",
        "tier": "T3",
        "reward_pct": 49.08
       }
      ],
-     "risk_per_share": 2.9,
+     "risk_per_share": 5.8,
      "risk_pct": 13.3,
-     "primary_target": 29.6,
+     "primary_target": 59.2,
      "reward_pct": 35.78,
      "rr": 2.69,
      "level_trust": 1.0
@@ -170,7 +171,7 @@
    }
   },
   {
-   "symbol": "NAVN",
+   "symbol": "ZRYX",
    "version": 26,
    "written_at": "2026-10-16T13:00:13.526566+00:00",
    "change_reasons": [
@@ -181,7 +182,7 @@
     "target level moved"
    ],
    "assessment": {
-    "symbol": "NAVN",
+    "symbol": "ZRYX",
     "as_of": "2026-10-16T13:00:13.029182+00:00",
     "conviction": 85.6,
     "coverage": 0.9,
@@ -190,26 +191,26 @@
     "type": "new_position",
     "position_status": "watchlist",
     "risk_reward": {
-     "entry_ref": 24.95,
+     "entry_ref": 49.9,
      "entry_source": "entry_plan.suggested_entry",
-     "current_price": 25.205,
+     "current_price": 50.41,
      "entry_zone": [
-      24.8,
-      25.1
+      49.6,
+      50.2
      ],
-     "invalidation_level": 23.9,
+     "invalidation_level": 47.8,
      "invalidation_source": "entry_plan",
      "targets": [
       {
        "label": "T1 (+1R)",
-       "px": 26.0,
+       "px": 52.0,
        "source": "entry_plan",
        "tier": "T1",
        "reward_pct": 4.21
       },
       {
        "label": "T2 (plan target)",
-       "px": 30.0,
+       "px": 60.0,
        "source": "entry_plan",
        "tier": "T2",
        "reward_pct": 20.24,
@@ -217,15 +218,15 @@
       },
       {
        "label": "T3 (runner)",
-       "px": 31.05,
+       "px": 62.1,
        "source": "entry_plan",
        "tier": "T3",
        "reward_pct": 24.45
       }
      ],
-     "risk_per_share": 1.05,
+     "risk_per_share": 2.1,
      "risk_pct": 4.21,
-     "primary_target": 30.0,
+     "primary_target": 60.0,
      "reward_pct": 20.24,
      "rr": 4.81,
      "level_trust": 1.0
@@ -233,7 +234,7 @@
    }
   },
   {
-   "symbol": "NAVN",
+   "symbol": "ZRYX",
    "version": 27,
    "written_at": "2026-10-22T15:30:14.607566+00:00",
    "change_reasons": [
@@ -241,7 +242,7 @@
     "type new_position\u2192add_on"
    ],
    "assessment": {
-    "symbol": "NAVN",
+    "symbol": "ZRYX",
     "as_of": "2026-10-22T15:30:13.415547+00:00",
     "conviction": 87.6,
     "coverage": 0.9,
@@ -250,26 +251,26 @@
     "type": "add_on",
     "position_status": "owned",
     "risk_reward": {
-     "entry_ref": 24.95,
+     "entry_ref": 49.9,
      "entry_source": "entry_plan.suggested_entry",
-     "current_price": 27.115,
+     "current_price": 54.23,
      "entry_zone": [
-      24.8,
-      25.1
+      49.6,
+      50.2
      ],
-     "invalidation_level": 23.9,
+     "invalidation_level": 47.8,
      "invalidation_source": "entry_plan",
      "targets": [
       {
        "label": "T1 (+1R)",
-       "px": 26.0,
+       "px": 52.0,
        "source": "entry_plan",
        "tier": "T1",
        "reward_pct": 4.21
       },
       {
        "label": "T2 (plan target)",
-       "px": 30.0,
+       "px": 60.0,
        "source": "entry_plan",
        "tier": "T2",
        "reward_pct": 20.24,
@@ -277,15 +278,15 @@
       },
       {
        "label": "T3 (runner)",
-       "px": 31.05,
+       "px": 62.1,
        "source": "entry_plan",
        "tier": "T3",
        "reward_pct": 24.45
       }
      ],
-     "risk_per_share": 1.05,
+     "risk_per_share": 2.1,
      "risk_pct": 4.21,
-     "primary_target": 30.0,
+     "primary_target": 60.0,
      "reward_pct": 20.24,
      "rr": 4.81,
      "level_trust": 1.0
@@ -294,37 +295,37 @@
   }
  ],
  "entry_signal": {
-  "event_id": "evt-cb6ad4a5e735",
+  "event_id": "evt-5e1f0c0a0001",
   "event_type": "watch.new_signal",
   "timestamp": "2026-10-16T17:40:13.617096+00:00",
   "payload": {
-   "symbol": "NAVN",
+   "symbol": "ZRYX",
    "symbols": [
-    "NAVN"
+    "ZRYX"
    ],
    "signal": "cio_entry_state",
    "state": "BUY_READY",
-   "entry_low": 24.8,
-   "entry_high": 25.1,
-   "price": 24.98,
+   "entry_low": 49.6,
+   "entry_high": 50.2,
+   "price": 49.96,
    "rr": 4.08,
    "market_cap_label": "MID_CAP"
   },
   "source": "cio_entry_state_runner",
   "priority": "MEDIUM",
   "source_event_id": "",
-  "semantic_event_key": "cio_entry:NAVN:BUY_READY:2026-10-16",
-  "prev_hash": "86159c9237f9942ca0b83749d4ef5165201f703e09c23162fc5e4137d9ddc71f",
-  "event_hash": "50a2f52ed0ecda9e4160593c0439d68418c76fab8ab832e1b7c19d55015aaf0a"
+  "semantic_event_key": "cio_entry:ZRYX:BUY_READY:2026-10-16",
+  "prev_hash": "fc3664a94f385c8530a82c0e76c23ab7ba98300924ad1a2b9b6ef533b2ec6c88",
+  "event_hash": "9eb374283a92f5ee510dac2e20145ae5f570149f9fbc3f103df93105f666fca9"
  },
  "thesis": {
   "stance": "",
   "status": "active",
-  "thesis_version": "symbol_navn@v2",
+  "thesis_version": "symbol_zryx@v2",
   "published_ts": "2026-09-16T16:26:54.930037+00:00",
   "updated_ts": "2026-09-16T16:26:54.930037+00:00",
   "linked_symbols": [
-   "NAVN"
+   "ZRYX"
   ]
  },
  "holdings": {
@@ -332,29 +333,29 @@
   "updated_at": "2026-10-22T20:30:19.128488+00:00",
   "holdings": [
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "shares": 500.0
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "shares": 300.0
    }
   ]
  },
  "captured": {
   "_provenance": {
    "captured_at": "2026-10-22T20:35Z",
-   "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=NAVN (trade_closed srt:607228; read-only)",
-   "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 24.31\u219224.59\u219224.70\u219224.97\u219225.51\u219225.61\u219226.02, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
-   "bars": "GET /api/v3/opportunities/NAVN chart.bars (ticker_prices.close; daily closes only)"
+   "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=ZRYX (trade_closed srt:900001; read-only)",
+   "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 48.62\u219249.18\u219249.40\u219249.94\u219251.02\u219251.22\u219252.04, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
+   "bars": "GET /api/v3/opportunities/ZRYX chart.bars (ticker_prices.close; daily closes only)"
   },
   "round_trips": [
    {
-    "round_trip_key": "srt:607228",
-    "account": "schwab_rollover_ira",
-    "symbol": "NAVN",
+    "round_trip_key": "srt:900001",
+    "account": "ira_b",
+    "symbol": "ZRYX",
     "entry_time": "2026-10-19 11:01:04-04",
     "exit_time": "2026-10-22 15:59:21-04",
-    "entry_price": 25.64,
-    "exit_price": 26.02,
-    "net_pnl": 189.73,
+    "entry_price": 51.28,
+    "exit_price": 52.04,
+    "net_pnl": 227.68,
     "classification": "swing",
     "journal_stop": null
    }
@@ -362,358 +363,358 @@
   "fills": [],
   "stop_history": [
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-1",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-1",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 24.31,
+    "stop_price": 48.62,
     "snapshot_at": null,
     "seq": 1
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-2",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-2",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 24.59,
+    "stop_price": 49.18,
     "snapshot_at": null,
     "seq": 2
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-3",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-3",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 24.7,
+    "stop_price": 49.4,
     "snapshot_at": null,
     "seq": 3
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-4",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-4",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 24.97,
+    "stop_price": 49.94,
     "snapshot_at": null,
     "seq": 4
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-5",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-5",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 25.51,
+    "stop_price": 51.02,
     "snapshot_at": null,
     "seq": 5
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-6",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-6",
     "order_type": "STOP",
     "status": "REPLACED",
-    "stop_price": 25.61,
+    "stop_price": 51.22,
     "snapshot_at": null,
     "seq": 6
    },
    {
-    "symbol": "NAVN",
-    "account": "schwab_rollover_ira",
-    "order_id": "navn-stop-7",
+    "symbol": "ZRYX",
+    "account": "ira_b",
+    "order_id": "zryx-stop-7",
     "order_type": "STOP",
     "status": "FILLED",
-    "stop_price": 26.02,
+    "stop_price": 52.04,
     "snapshot_at": null,
     "seq": 7
    }
   ],
   "rec_links": [],
   "bars": {
-   "NAVN": [
+   "ZRYX": [
     {
      "time": "2026-07-20",
-     "close": 27.74
+     "close": 55.48
     },
     {
      "time": "2026-07-21",
-     "close": 26.62
+     "close": 53.24
     },
     {
      "time": "2026-07-22",
-     "close": 23.565
+     "close": 47.13
     },
     {
      "time": "2026-07-23",
-     "close": 22.2
+     "close": 44.4
     },
     {
      "time": "2026-07-24",
-     "close": 23.21
+     "close": 46.42
     },
     {
      "time": "2026-07-27",
-     "close": 25.765
+     "close": 51.53
     },
     {
      "time": "2026-07-28",
-     "close": 26.35
+     "close": 52.7
     },
     {
      "time": "2026-07-29",
-     "close": 26.56
+     "close": 53.12
     },
     {
      "time": "2026-07-30",
-     "close": 26.735
+     "close": 53.47
     },
     {
      "time": "2026-07-31",
-     "close": 26.66
+     "close": 53.32
     },
     {
      "time": "2026-08-03",
-     "close": 27.46
+     "close": 54.92
     },
     {
      "time": "2026-08-04",
-     "close": 27.87
+     "close": 55.74
     },
     {
      "time": "2026-08-05",
-     "close": 27.635
+     "close": 55.27
     },
     {
      "time": "2026-08-06",
-     "close": 27.855
+     "close": 55.71
     },
     {
      "time": "2026-08-07",
-     "close": 29.085
+     "close": 58.17
     },
     {
      "time": "2026-08-08",
-     "close": 29.085
+     "close": 58.17
     },
     {
      "time": "2026-08-10",
-     "close": 28.67
+     "close": 57.34
     },
     {
      "time": "2026-08-11",
-     "close": 28.93
+     "close": 57.86
     },
     {
      "time": "2026-08-12",
-     "close": 28.78
+     "close": 57.56
     },
     {
      "time": "2026-08-13",
-     "close": 29.72
+     "close": 59.44
     },
     {
      "time": "2026-08-14",
-     "close": 29.25
+     "close": 58.5
     },
     {
      "time": "2026-08-17",
-     "close": 28.71
+     "close": 57.42
     },
     {
      "time": "2026-08-18",
-     "close": 29.2
+     "close": 58.4
     },
     {
      "time": "2026-08-19",
-     "close": 29.18
+     "close": 58.36
     },
     {
      "time": "2026-08-20",
-     "close": 28.555
+     "close": 57.11
     },
     {
      "time": "2026-08-21",
-     "close": 29.15
+     "close": 58.3
     },
     {
      "time": "2026-08-24",
-     "close": 29.365
+     "close": 58.73
     },
     {
      "time": "2026-08-25",
-     "close": 29.305
+     "close": 58.61
     },
     {
      "time": "2026-08-26",
-     "close": 29.33
+     "close": 58.66
     },
     {
      "time": "2026-08-27",
-     "close": 30.585
+     "close": 61.17
     },
     {
      "time": "2026-08-28",
-     "close": 28.49
+     "close": 56.98
     },
     {
      "time": "2026-08-31",
-     "close": 29.035
+     "close": 58.07
     },
     {
      "time": "2026-09-01",
-     "close": 27.31
+     "close": 54.62
     },
     {
      "time": "2026-09-02",
-     "close": 26.875
+     "close": 53.75
     },
     {
      "time": "2026-09-03",
-     "close": 27.71
+     "close": 55.42
     },
     {
      "time": "2026-09-04",
-     "close": 27.765
+     "close": 55.53
     },
     {
      "time": "2026-09-07",
-     "close": 27.765
+     "close": 55.53
     },
     {
      "time": "2026-09-08",
-     "close": 26.64
+     "close": 53.28
     },
     {
      "time": "2026-09-09",
-     "close": 25.92
+     "close": 51.84
     },
     {
      "time": "2026-09-10",
-     "close": 20.27
+     "close": 40.54
     },
     {
      "time": "2026-09-11",
-     "close": 21.01
+     "close": 42.02
     },
     {
      "time": "2026-09-14",
-     "close": 21.37
+     "close": 42.74
     },
     {
      "time": "2026-09-15",
-     "close": 22.4
+     "close": 44.8
     },
     {
      "time": "2026-09-16",
-     "close": 22.55
+     "close": 45.1
     },
     {
      "time": "2026-09-17",
-     "close": 22.12
+     "close": 44.24
     },
     {
      "time": "2026-09-18",
-     "close": 21.35
+     "close": 42.7
     },
     {
      "time": "2026-09-21",
-     "close": 21.52
+     "close": 43.04
     },
     {
      "time": "2026-09-22",
-     "close": 20.96
+     "close": 41.92
     },
     {
      "time": "2026-09-23",
-     "close": 19.655
+     "close": 39.31
     },
     {
      "time": "2026-09-24",
-     "close": 19.425
+     "close": 38.85
     },
     {
      "time": "2026-09-25",
-     "close": 19.415
+     "close": 38.83
     },
     {
      "time": "2026-09-28",
-     "close": 19.985
+     "close": 39.97
     },
     {
      "time": "2026-09-29",
-     "close": 20.67
+     "close": 41.34
     },
     {
      "time": "2026-09-30",
-     "close": 21.0
+     "close": 42.0
     },
     {
      "time": "2026-10-01",
-     "close": 21.505
+     "close": 43.01
     },
     {
      "time": "2026-10-02",
-     "close": 21.44
+     "close": 42.88
     },
     {
      "time": "2026-10-05",
-     "close": 21.82
+     "close": 43.64
     },
     {
      "time": "2026-10-06",
-     "close": 21.335
+     "close": 42.67
     },
     {
      "time": "2026-10-07",
-     "close": 22.28
+     "close": 44.56
     },
     {
      "time": "2026-10-08",
-     "close": 23.08
+     "close": 46.16
     },
     {
      "time": "2026-10-09",
-     "close": 23.645
+     "close": 47.29
     },
     {
      "time": "2026-10-12",
-     "close": 23.565
+     "close": 47.13
     },
     {
      "time": "2026-10-13",
-     "close": 23.9
+     "close": 47.8
     },
     {
      "time": "2026-10-14",
-     "close": 24.015
+     "close": 48.03
     },
     {
      "time": "2026-10-15",
-     "close": 25.205
+     "close": 50.41
     },
     {
      "time": "2026-10-16",
-     "close": 25.38
+     "close": 50.76
     },
     {
      "time": "2026-10-19",
-     "close": 25.67
+     "close": 51.34
     },
     {
      "time": "2026-10-20",
-     "close": 26.295
+     "close": 52.59
     },
     {
      "time": "2026-10-21",
-     "close": 26.625
+     "close": 53.25
     },
     {
      "time": "2026-10-22",
-     "close": 26.03
+     "close": 52.06
     }
    ]
   }

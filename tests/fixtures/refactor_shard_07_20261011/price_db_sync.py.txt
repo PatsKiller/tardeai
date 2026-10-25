@@ -33,7 +33,7 @@ from lib.writers.ticker_prices_writer import (  # noqa: E402
 
 # Outlier guard (Stage A, 2026-08-27; audit finding C3): the only prior check
 # on a price write anywhere in this file was `price > 0`. The 2026-07-24-era
-# corrupt-bar incident (NVDA priced at $0.05) was never actually fixed — a
+# corrupt-bar incident (ZQBY priced at $0.05) was never actually fixed — a
 # direct query found the original rows still unscrubbed plus 59 fresh 10x+
 # single-day moves in a trailing 30-day window. A single bad tick reaching
 # ticker_prices feeds Watch, Hermes research, and rebalance/proposal sizing
@@ -211,7 +211,7 @@ def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -
     # Defense Desk: all 11 sector ETFs must stay priced regardless of watchlist/portfolio
     # membership — the sector_momentum_engine dates each row to its own last close, so
     # a missing price feed silently ages sectors (XLRE 24d, XLC 14d as of Aug 6).
-    SECTOR_ETFS = ["XLE","XLB","XLF","XLK","XLI","XLV","XLY","XLC","XLP","XLRE","XLU"]
+    SECTOR_ETFS = ["XLE","ZQBM","XLF","XLK","ZQBT","XLV","XLY","XLC","XLP","XLRE","XLU"]
     for etf in SECTOR_ETFS:
         if etf not in scope:
             scope.append(etf)

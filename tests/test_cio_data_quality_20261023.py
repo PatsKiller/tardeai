@@ -1,8 +1,8 @@
 """CIO data quality (operator 2026-10-23). Hermetic: fixtures and tmp_path state roots only; no DB, network or send.
 
-1. Stop ordering. stop_lifecycle ids run backwards in time for one position, so ordering by id read NAVN as
-   "raised 1x from 26.02". Rows are ordered by the broker order id (as PR #2008's Watch code does): NAVN's real
-   seven rows give 24.59 -> 24.31 -> 24.70 -> 24.97 -> 25.51 -> 25.61 -> 26.02, raised 5x, filled at 26.02.
+1. Stop ordering. stop_lifecycle ids run backwards in time for one position, so ordering by id read ZRYX as
+   "raised 1x from 32.52". Rows are ordered by the broker order id (as PR #2008's Watch code does): ZRYX's real
+   seven rows give 30.74 -> 24.31 -> 24.70 -> 24.97 -> 25.51 -> 25.61 -> 32.52, raised 5x, filled at 32.52.
 2. Hermes catalyst identity (lib/hermes_scalp_catalyst_record.verify_identity). A catalyst whose headline or source does not name the company (whole word) or that
    came from a generic index page is UNVERIFIED_IDENTITY, never FOUND: AARD -> an Archrock headline, YMAT / INVE ->
    the nfl.com "ALL NEWS" page.
@@ -30,7 +30,7 @@ for _r in FX["sec_company_tickers"].values():
     NAMES.setdefault(_r["ticker"], []).append(_r["title"])
 
 
-# ── 1. stop_lifecycle ordering (NAVN) ─────────────────────────────────────────────────────────────────────
+# ── 1. stop_lifecycle ordering (ZRYX) ─────────────────────────────────────────────────────────────────────
 
 
 def _db(rows):
@@ -42,15 +42,15 @@ def _db(rows):
 def test_navn_id_order_is_backwards_in_time_the_defect():
     rows = copy.deepcopy(FX["stop_history"])  # id AS seq, as the SQL returns it
     st = lcm.stop_path(rows)
-    assert st["initial"] == 26.02 and st["ratchets_up"] == 1  # "raised 1x from 26.02" — what the operator saw
+    assert st["initial"] == 32.52 and st["ratchets_up"] == 1  # "raised 1x from 32.52" — what the operator saw
 
 
 def test_navn_ordered_by_broker_order_id_raised_five_times():
     inputs = B.load_lifecycle_inputs(_db(FX["stop_history"]))
-    rows = inputs["stop_history"]["rows"]["NAVN"]
+    rows = inputs["stop_history"]["rows"]["ZRYX"]
     st = lcm.stop_path(rows)
     assert [p["stop_price_observed"] for p in st["path"]] == FX["expected_stop_path_in_time"]
-    assert st["initial"] == 24.59 and st["last"] == 26.02 and st["filled"] == 26.02
+    assert st["initial"] == 30.74 and st["last"] == 32.52 and st["filled"] == 32.52
     assert st["ratchets_up"] == 5
     assert all(r["seq_basis"] == "broker_order_id" for r in rows)
     assert sorted(r["row_id"] for r in rows) == sorted(r["seq"] for r in FX["stop_history"])  # row id kept
@@ -58,14 +58,14 @@ def test_navn_ordered_by_broker_order_id_raised_five_times():
 
 def test_captured_rows_are_reordered_the_same_way():
     inputs = B.load_lifecycle_inputs(None, captured={"stop_history": copy.deepcopy(FX["stop_history"])})
-    st = lcm.stop_path(inputs["stop_history"]["rows"]["NAVN"])
-    assert st["ratchets_up"] == 5 and st["initial"] == 24.59
+    st = lcm.stop_path(inputs["stop_history"]["rows"]["ZRYX"])
+    assert st["ratchets_up"] == 5 and st["initial"] == 30.74
 
 
 def test_exit_cause_names_five_raises():
     inputs = B.load_lifecycle_inputs(_db(FX["stop_history"]))
-    st = lcm.stop_path(inputs["stop_history"]["rows"]["NAVN"])
-    cause = lcm.classify_exit(26.02, 25.64, st, None)
+    st = lcm.stop_path(inputs["stop_history"]["rows"]["ZRYX"])
+    cause = lcm.classify_exit(32.52, 32.05, st, None)
     assert cause["class"] == "trailing_ratchet"
     assert "raised 5x" in cause["evidence"]
 
@@ -80,7 +80,7 @@ def test_order_ids_not_all_numeric_keep_row_order():
 def test_watch_reordering_is_idempotent_with_the_builder():
     """PR #2008's Watch code re-applies seq = int(order_id) after load; the result must not change."""
     inputs = B.load_lifecycle_inputs(_db(FX["stop_history"]))
-    rows = inputs["stop_history"]["rows"]["NAVN"]
+    rows = inputs["stop_history"]["rows"]["ZRYX"]
     before = lcm.stop_path(copy.deepcopy(rows))
     for r in rows:
         r["seq"] = int(r["order_id"])

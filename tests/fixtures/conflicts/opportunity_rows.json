@@ -1,121 +1,121 @@
 {
   "provenance": {
-    "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
-    "sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+    "path": "synthetic (derived from a host-private CIO opportunity projection capture)",
+    "sha256": "synthetic-no-source-fingerprint",
     "selection": "exact fields only; no synthetic GUID assigned",
     "capture_time_status": "NOT_RECORDED",
     "source_as_of": "2026-10-23T20:30:11.972482+00:00"
   },
   "items": {
-    "FATN": {
-      "symbol": "FATN",
+    "ZRAX": {
+      "symbol": "ZRAX",
       "as_of": "2026-10-23T20:30:10.683808+00:00",
-      "conviction": 76.5,
+      "conviction": 75.0,
       "stance": "RE_ENTER",
       "position_status": "recently_sold"
     },
-    "ANET": {
-      "symbol": "ANET",
+    "ZQBU": {
+      "symbol": "ZQBU",
       "as_of": "2026-10-23T20:30:10.608532+00:00",
-      "conviction": 73.9,
+      "conviction": 75.0,
       "stance": "RE_ENTER",
       "position_status": "recently_sold"
     },
-    "SMCI": {
-      "symbol": "SMCI",
+    "ZRBX": {
+      "symbol": "ZRBX",
       "as_of": "2026-10-23T20:30:10.752686+00:00",
-      "conviction": 71.7,
+      "conviction": 70.0,
       "stance": "RE_ENTER",
       "position_status": "recently_sold"
     },
-    "DXCM": {
-      "symbol": "DXCM",
+    "ZQCD": {
+      "symbol": "ZQCD",
       "as_of": "2026-10-23T20:30:10.677303+00:00",
-      "conviction": 69.1,
+      "conviction": 70.0,
       "stance": "WATCH",
       "position_status": "recently_sold"
     },
-    "QCOM": {
-      "symbol": "QCOM",
+    "ZQAE": {
+      "symbol": "ZQAE",
       "as_of": "2026-10-23T20:30:10.742319+00:00",
-      "conviction": 73.3,
+      "conviction": 75.0,
       "stance": "RE_ENTER",
       "position_status": "recently_sold"
     },
-    "BAH": {
-      "symbol": "BAH",
+    "ZQBF": {
+      "symbol": "ZQBF",
       "as_of": "2026-10-23T20:30:10.624660+00:00",
-      "conviction": 72.9,
+      "conviction": 75.0,
       "stance": "ADD",
       "position_status": "owned"
     },
-    "LDOS": {
-      "symbol": "LDOS",
+    "ZQAS": {
+      "symbol": "ZQAS",
       "as_of": "2026-10-23T20:30:10.715554+00:00",
-      "conviction": 77.3,
+      "conviction": 75.0,
       "stance": "ADD",
       "position_status": "owned"
     },
-    "SPCX": {
-      "symbol": "SPCX",
+    "ZQBL": {
+      "symbol": "ZQBL",
       "as_of": "2026-10-23T20:30:10.754965+00:00",
-      "conviction": 73.3,
+      "conviction": 75.0,
       "stance": "ADD",
       "position_status": "owned"
     },
-    "AXTI": {
-      "symbol": "AXTI",
+    "ZRCX": {
+      "symbol": "ZRCX",
       "as_of": "2026-10-23T20:30:10.623134+00:00",
-      "conviction": 61.3,
+      "conviction": 60.0,
       "stance": "WATCH",
       "position_status": "recently_sold"
     },
-    "AXON": {
-      "symbol": "AXON",
+    "ZRDX": {
+      "symbol": "ZRDX",
       "as_of": "2026-10-23T20:30:10.622696+00:00",
-      "conviction": 75.1,
+      "conviction": 75.0,
       "stance": "WATCH",
       "position_status": "not_owned"
     },
-    "PSQ": {
-      "symbol": "PSQ",
+    "ZREX": {
+      "symbol": "ZREX",
       "as_of": "2026-10-23T20:30:10.740971+00:00",
-      "conviction": 52.2,
+      "conviction": 50.0,
       "stance": "WATCH",
       "position_status": "watchlist"
     },
-    "GEV": {
-      "symbol": "GEV",
+    "ZRFX": {
+      "symbol": "ZRFX",
       "as_of": "2026-10-23T20:30:10.692159+00:00",
-      "conviction": 66.4,
+      "conviction": 65.0,
       "stance": "WATCH",
       "position_status": "watchlist"
     },
-    "MDLN": {
-      "symbol": "MDLN",
+    "ZRGX": {
+      "symbol": "ZRGX",
       "as_of": "2026-10-23T20:30:10.721401+00:00",
-      "conviction": 74.2,
+      "conviction": 75.0,
       "stance": "WATCH",
       "position_status": "not_owned"
     },
-    "ISRG": {
-      "symbol": "ISRG",
+    "ZRHX": {
+      "symbol": "ZRHX",
       "as_of": "2026-10-23T20:30:10.708789+00:00",
-      "conviction": 64.9,
+      "conviction": 65.0,
       "stance": "WATCH",
       "position_status": "not_owned"
     },
-    "DT": {
-      "symbol": "DT",
+    "ZRIX": {
+      "symbol": "ZRIX",
       "as_of": "2026-10-23T20:30:10.676359+00:00",
-      "conviction": 77.6,
+      "conviction": 80.0,
       "stance": "RE_ENTER",
       "position_status": "recently_sold"
     },
-    "SCHD": {
-      "symbol": "SCHD",
+    "ZQCH": {
+      "symbol": "ZQCH",
       "as_of": "2026-10-23T20:30:10.748957+00:00",
-      "conviction": 61.1,
+      "conviction": 60.0,
       "stance": "TRIM",
       "position_status": "owned"
     }
