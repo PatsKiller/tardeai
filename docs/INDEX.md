@@ -1029,6 +1029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
+| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
@@ -1986,6 +1987,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
 | `docs/ops/JSONL_ARCHIVE_ROTATION.md` | JSONL archive rotation — the oversized append-only stores |
+| `docs/ops/KEPT_PR2034_REFRESH_20261024.md` | Kept PR2034: isolated refresh and compatibility evidence |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention |
