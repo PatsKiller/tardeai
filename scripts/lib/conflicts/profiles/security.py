@@ -84,7 +84,7 @@ class SecurityStanceProfile:
             value = Finding(kind, rule, summary, clears, action, "operator" if kind == "NEEDS_OPERATOR" else
                             "block" if kind == "GATE" else "warn" if kind in {"DATA_ERROR", "CONFLICT"} else "info",
                             [side(i, self) for i in rows], f"{pre}:{rule}" + (":" + suffix if suffix else ""),
-                            owner=owner, next_run=ctx.get("next_run") or "next registered producer run", never_auto=never)
+                            owner=owner, next_run=ctx.get("next_run") or "Not measured", never_auto=never)
             value.tier = 0 if rule == "T0" else 1 if kind == "DATA_ERROR" or rule in {"T1", "R9", "R12", "R16"} else 2 if rule == "R13" else 3 if rule in {"R3", "R7", "R7b"} else 4
             output.append(value)
             return value
