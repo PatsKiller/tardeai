@@ -1,16 +1,16 @@
 {
   "task": "DSN-20261024-kept-pr2034-refresh-P1-T1",
   "boundary": "LOCAL_SOURCE_FIXTURE; no remote publication, release, flag change or live PostgreSQL verification",
-  "source_merge": "ebb7c44932b6f37b3683450f5df55009183d0b05",
-  "accepted_main": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "source_merge": "57bfb3a02c9d5fe335c4cad430d2e75a38e228fe",
+  "accepted_main": "23e87f15b1e973f4520cedb28c5998036374c55e",
   "remote_pr2034": "a47bb5a17e87401573d24229c4eef17d407aa401",
   "publication_remote_branch": "feat/cio-prospect-writer-20261023",
   "private_local_merge_not_ancestor": "99f3dccae46358c3f92a74a3a9103bc78d6512a2",
   "old_worktree_mutation": "NONE",
   "classification": {
     "accepted_main": {
-      "ref": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
-      "entries": 157,
+      "ref": "23e87f15b1e973f4520cedb28c5998036374c55e",
+      "entries": 158,
       "all_rows_preserved_unchanged": true
     },
     "original_pr": {
@@ -18,9 +18,13 @@
       "entries": 150,
       "all_rows_preserved_unchanged": true
     },
-    "merged_entries": 158,
-    "writer_schema_retained": true,
-    "w11_classifier_matches_main": true
+    "released_w11": {
+      "ref": "12f8d7dc6762a7b52a43b24454dfdc755dc994bd",
+      "entries": 157,
+      "all_rows_preserved_unchanged": true
+    },
+    "merged_entries": 159,
+    "writer_schema_retained": true
   },
   "unchanged_from_accepted_main": [
     "scripts/lib/cio_prospect_builder.py",
@@ -43,62 +47,62 @@
     "scripts/cio_entry_state_runner.py": "1e86e744b6637ec5d9cfc45f4adcc75ea7930b0b5f1adf3df298217cadc9ae63",
     "scripts/cio_opportunity_curator.py": "41a6c228c9e0619a2e88597d0d9abc544b3e25f2bce736ed0c0b49268086a5bc",
     "tests/test_cio_prospect_writer_20261023.py": "8a0e87ec304842ed2a2c885a02ef282667c456bd1df8a53282854493cd562c52",
-    "config/cio_surface_classification.json": "bd10a3982aefd9ca3702c925254b1194f07ab9ed64873e4abee86ed5c9e5aee0",
+    "config/cio_surface_classification.json": "c761f4ce7f5a7789308793befc85b91965b338ac8b7dce7236fb222670be67c4",
     "config/ci_gates/cio_prospect_writer_20261023.json": "0525684ba99f5b3d913d6c412a2fe2ce147798b4f51a92494ef926d28c8dddba",
-    "apps/command-center-v3/package.json": "1b533eb4af10044134d8f0fa72f14424fbd3b3377a86b691b3609b2ad7098790",
+    "apps/command-center-v3/package.json": "6318adc97f32265de1f963ab808895d177c547055a7d2b77b4ecb82f392fdfd9",
     "apps/command-center-v3/package-lock.json": "044d61c448bae21d84b9f6d7f890b0fd2bbfaea4c6315a4ffaceb4a80905e7f6"
   },
   "checks": [
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-affected-tests-final.log",
-      "sha256": "b6bc4b694c154a62a121a14d45a9e319ee09bf01753e487d55caedd9c3928054",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-affected-latest-main.log",
+      "sha256": "697599116f93012cb081d632d3975b28e26998cf8141a23b7d1025bee8e0551f",
       "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q -rs evidence-only,writer,foundation,shadow-readonly,directives-proposals,catalyst-facts,company-facts,population",
       "result": "PASS145;3 explicit PostgreSQL integration skips"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-cio-registry-tests.log",
-      "sha256": "9bb2bbc19366618fd865c7b7c923cc17a5ed51d0db8eceebe8da8f5beef1bdf2",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-cio-registry-latest-main.log",
+      "sha256": "5bca3ee18f3908a081b15434d9a9f1cd767b053c8eae2c400dfcab12639f6d58",
       "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q both strict real-tree CIO checks + tests/test_data_source_authority_20260913.py",
       "result": "PASS34"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-native-build.log",
-      "sha256": "2d7e20979ac7bd483109ab88dd796505038f31f53e55fc6093023c285c1ee82b",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-native-latest-main.log",
+      "sha256": "d02df876c5834a39d92881be644a8b5517f8529ffadc8a8b888f5165fbaf6419",
       "command": "npm run build",
       "result": "PASS; existing Vite bundle-size advisory"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-source-registry.log",
-      "sha256": "3fe201fde79268197bffac5ea9d7ec6443afc3c6b95b7a356a09fc4929d240b9",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-source-registry-latest-main.log",
+      "sha256": "25002d1d4a665aff9194a0c6e0f049e5e55662d9406db0486e51f8acf4273664",
       "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python scripts/check_data_source_authority.py",
       "result": "PASS0 findings;27 proposal warnings"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-docs-index.log",
-      "sha256": "be57b193ce4de67a57d9be9f69866cb63dbfaf62b6268ee2825cd2ef408922ee",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-docs-index-latest-main.log",
+      "sha256": "a83b72ba1d01a7bc7ab513ccd59377430db4d0db1d75a7f4f10b2f37215fe898",
       "command": "python3 scripts/report_docs_inventory.py --write-index / --check-index",
       "result": "PASS"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-dark_contracts.log",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-dark_contracts-latest-main.log",
       "sha256": "e8ed0ef1f3fc2eb2fed9b772a7c435f7fda7db9bf226681923cfdcc5fc9aab82",
       "command": "python3 scripts/check_dark_contracts.py --fail-on-new",
       "result": "PASS0 new"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-retention_policy.log",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-retention_policy-latest-main.log",
       "sha256": "c3663855d1750404e2f1a90498561d1e4e3d80897e5db32d02351bc1932c88f5",
       "command": "python3 scripts/check_retention_policy.py --fail-on-new",
       "result": "PASS0 new"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_coverage.log",
-      "sha256": "1bd0e6a2d9ebd783847bdc758aa5e8216bf2e7f7f9fd5dccf3935e30d1e1c6dd",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_coverage-latest-main.log",
+      "sha256": "d3a950d2d100002ee67d65413013b6639b33fe2494f606526c1a1050053002a5",
       "command": "python3 scripts/check_test_coverage.py --fail-on-new",
       "result": "PASS0 new"
     },
     {
-      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_host_paths.log",
+      "log": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/worker2034-test_host_paths-latest-main.log",
       "sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
       "command": "python3 scripts/check_test_host_paths.py --fail-on-new",
       "result": "PASS0 new"
@@ -108,5 +112,11 @@
   "remaining": [
     "Coordinator/operator fast-forwards the existing PR branch and watches its actual required checks",
     "No new PR creation; no writer enablement or live DB proof in this refresh"
-  ]
+  ],
+  "prior_review": {
+    "accepted_main": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+    "validation_commit": "fe29d8693042e64c791145343d1eac40d8349ed5",
+    "logs_preserved": true
+  },
+  "retest_reason": "Accepted batch24 changed Ask frontend/build tests, routing/tracking and classifications; affected source/tree checks rerun on pinned23e main."
 }

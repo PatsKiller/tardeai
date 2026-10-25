@@ -335,7 +335,7 @@ assembly, so the builder is new. For the position lifecycle (NAVN scope, 2026-10
 ### 11A. The writer — the curator and the entry-state runner call `upsert_prospect` (2026-10-23)
 
 `Status: SOURCE_ONLY in PR #2034; dual-write remains default OFF. Refresh 2026-10-24 against accepted main
-d635873e1 includes C1's fact-only store path. This source refresh does not enable a writer or verify a live database.`
+23e87f15b includes C1's fact-only store path and accepted batch 24. This source refresh does not enable a writer or verify a live database.`
 The historical read-only dry run below used origin/main `98bef2794` plus `feat/cio-prospect-writer-20261023` on
 2026-10-23 ~14:55 ET (files only, no DB session, nothing written); it is not a fresh runtime observation.
 Task `T-20261023-e95684` (split from
