@@ -48963,10 +48963,23 @@ def _site_payload_state_root():
     return state_root()
 
 
-ROUTES.update(_site_bounded_routes(
+# Batch 26 installs only the reads whose every Command Center consumer already pages or
+# reads a summary. Held until their consumers/publishers land (each would otherwise
+# silently show only the first window of rows, or nothing):
+#   /trade-ai/scanner (Trading > Trade AI sorts/filters all rows client-side),
+#   /watch-directives (Hermes panel, Watchlist hub), /hermes/* (W6 pagers),
+#   /broker-proposals + /summary (stored-list publisher is a W8 lane; today only the
+#   legacy handler writes broker_list_cache.json), scheduler-operations paging (W4 UI).
+_SITE_BOUNDED_INSTALLED = frozenset({
+    "/api/v2/trade-ai/candidates",
+    "/api/v2/watchpool",
+    "/api/v2/holdings/live-stops",
+    "/api/v2/communications/retention-summary",
+})
+ROUTES.update({path: handler for path, handler in _site_bounded_routes(
     root=_site_payload_state_root, db_query=_db_query, clean=_json_clean,
     scanner=trade_ai_scanner, evidence_packet=_evidence_packet,
-))
+).items() if path in _SITE_BOUNDED_INSTALLED})
 
 _current_query = {}  # Thread-local would be better; single-threaded server is fine
 
@@ -55316,8 +55329,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return None
                 return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
 
-            from lib.site_payload_reads import scheduler_page
-            return 200, {"ok": True, "data": scheduler_page(_scheduler_projection(db_query=_signal_query), query)}
+            return 200, {"ok": True, "data": _scheduler_projection(db_query=_signal_query)}
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
