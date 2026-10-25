@@ -1036,6 +1036,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/DSN-20261024-w1-cio-truth.md` | DSN-20261024-w1-cio-truth.md |
 | `docs/designs/DSN-20261024-w1-r13-policy.md` | DSN-20261024-w1-r13-policy.md |
+| `docs/designs/DSN-20261024-w9-nonops-pages.md` | DSN-20261024-w9-nonops-pages.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2082,6 +2083,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SITE_SYSTEM_TAB_REQUESTS_20261024.md` | SITE: System tab requests and URL state |
 | `docs/ops/SITE_VALIDATION_2026-10-23_53aa1b619.md` | Command Center v3 site validation: 2026-10-22/23 (f7c1e96cb → 0f5bf2453 → 53aa1b619) |
 | `docs/ops/STALE_N8N_SET_REBUILD_20261024.md` | Worker A non-config carryforward |
+| `docs/ops/SITE_W9_PAGES_20261024.md` | W9 page fixes and shared phone details — 2026-10-24 |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |

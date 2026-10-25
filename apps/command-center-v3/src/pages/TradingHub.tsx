@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 // Trade AI = Opportunities page (Gate 3 Main.dc.html, 2026-10-22); Shared Momentum is its collapsed drawer.
 import TradeAiOpportunities from '../components/tradeai/TradeAiOpportunities'
@@ -61,7 +62,7 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = TRADING_TABS
 
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color
-const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
+const decisionColor = (d?: string) => d === 'GO' ? 'var(--success-color)' : d === 'WAIT' ? 'var(--warning-color)' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : 'var(--danger-color)'
 
 const NY_TZ = 'America/New_York'
 
@@ -225,12 +226,12 @@ function TradingHubDesk({ onDrill }: Props) {
   }
 
   return (
-    <div>
+    <div className="w9-page">
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Trading</div>
           <div style={hubSubtitle(terminalUi)}>
-            Proposals (Path B queue + Path A Entry Desk) · per-order 2FA · AUTO LIVE BLOCKED unless 2FA path · Stop Management on Portfolio
+            Review proposals and manual entries · broker approval requires confirmation · stops are on Portfolio
           </div>
         </div>
         <div className="hub-tabs" role="tablist" aria-label="Trading desk tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
@@ -245,7 +246,7 @@ function TradingHubDesk({ onDrill }: Props) {
             >
               {t}
               {t === 'Proposals' && brokerQueueCount != null && brokerQueueCount > 0 && (
-                <span data-testid="proposals-tab-count" title="Path B broker queue (active entries)" style={{ marginLeft: 6, fontFamily: 'monospace', color: 'var(--warning-color)' }}>{brokerQueueCount}</span>
+                <span data-testid="proposals-tab-count" title="Active broker proposals" style={{ marginLeft: 6, fontFamily: 'monospace', color: 'var(--warning-color)' }}>{brokerQueueCount}</span>
               )}
             </button>
           ))}
@@ -285,10 +286,10 @@ function TradingHubDesk({ onDrill }: Props) {
       {readiness && tab === 'Proposals' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10 }}>
           <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
-          <span style={{ fontWeight: 700, color: '#f59e0b', marginLeft: 8 }}>{readiness.level?.replace(/_/g, ' ')}</span>
+          <span style={{ fontWeight: 700, color: 'var(--warning-color)', marginLeft: 8 }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)', marginLeft: 12 }}>
             {readiness.level === 'P0_NOT_ENOUGH_DATA'
-              ? ' — empirical validation sample still thin; Path B caps are advisory until maturity gates pass.'
+              ? ' — validation sample is still small; proposal limits remain advisory until validation completes.'
               : ' — live route gates reflect current validation tier.'}
           </span>
         </div>
@@ -296,14 +297,14 @@ function TradingHubDesk({ onDrill }: Props) {
       {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), display: 'flex', gap: 20, alignItems: 'center', fontSize: terminalUi ? 9 : 10 }}>
           <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
-          <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
+          <span style={{ fontWeight: 700, color: 'var(--warning-color)' }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)' }}>{readiness.closed_usable}/{readiness.target_2000} trades</span>
           <div style={{ flex: 1, height: 4, background: 'var(--bg2)', borderRadius: 2 }}>
-            <div style={{ width: `${Math.min(100, readiness.pct_to_2000 ?? 0)}%`, height: '100%', background: '#f59e0b', borderRadius: 2, minWidth: 2 }} />
+            <div style={{ width: `${Math.min(100, readiness.pct_to_2000 ?? 0)}%`, height: '100%', background: 'var(--warning-color)', borderRadius: 2, minWidth: 2 }} />
           </div>
           <span
             title={execState?.operator_status_label || ''}
-            style={{ color: execState?.operator_live_via_2fa_allowed ? '#22c55e' : '#f59e0b', fontWeight: 700, fontSize: 9 }}
+            style={{ color: execState?.operator_live_via_2fa_allowed ? 'var(--success-color)' : 'var(--warning-color)', fontWeight: 700, fontSize: 10 }}
           >
             {execState?.operator_live_via_2fa_allowed ? '2FA LIVE ON' : 'AUTO LIVE BLOCKED'}
           </span>
@@ -311,19 +312,19 @@ function TradingHubDesk({ onDrill }: Props) {
       )}
       {tab === 'Proposals' && (
         <div role="tablist" aria-label="Proposals sections" data-testid="proposals-sections" style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          <button type="button" role="tab" aria-selected={section !== 'path-a'} data-testid="proposals-section-path-b" onClick={() => setSection(null)} style={hubTab(section !== 'path-a', terminalUi)}>Path B queue</button>
-          <button type="button" role="tab" aria-selected={section === 'path-a'} data-testid="proposals-section-path-a" onClick={() => setSection('path-a')} style={hubTab(section === 'path-a', terminalUi)}>Path A · Entry Desk</button>
+          <button type="button" role="tab" aria-selected={section !== 'path-a'} data-testid="proposals-section-path-b" onClick={() => setSection(null)} style={hubTab(section !== 'path-a', terminalUi)}>Broker proposals</button>
+          <button type="button" role="tab" aria-selected={section === 'path-a'} data-testid="proposals-section-path-a" onClick={() => setSection('path-a')} style={hubTab(section === 'path-a', terminalUi)}>Manual Entry Desk</button>
         </div>
       )}
       {tab === 'Proposals' && section !== 'path-a' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
-          Path B operator route — P0 validation caps are advisory. <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Auto route (2FA)</span> opens trade review (edit size/risk) before Schwab approval.
+          Broker proposals — validation limits are advisory. <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Auto route (2FA)</span> opens trade review (edit size/risk) before Schwab approval.
         </div>
       )}
       {tab === 'Proposals' && section === 'path-a' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
-          Path A — manual Thinkorswim. Rating, R:R, and exit ladder are <b>deterministic</b> on this tab; watchlist agent maturity shows when DB has it. <b>Stage 2b + Auto route (2FA)</b> are on{' '}
-          <button type="button" onClick={() => setSection(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Path B queue</button>.
+          Manual Thinkorswim entries. Ratings, risk/reward, and exit plans follow fixed rules; available Watch validation appears here. <b>Broker review and approval</b> are on{' '}
+          <button type="button" onClick={() => setSection(null)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--info-color)', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Broker proposals</button>.
         </div>
       )}
 
@@ -337,14 +338,14 @@ function TradingHubDesk({ onDrill }: Props) {
           const errored = !!tradeAiError
           const pending = tradeAiLoading || !errored
           return (
-            <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: `1px solid ${errored ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, padding: 16 }) }}>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: `1px solid ${errored ? 'var(--danger-color)' : 'var(--border)'}`, borderRadius: 10, padding: 16 }) }}>
               <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
-              <div style={{ fontSize: 12, color: errored ? '#ef4444' : 'var(--text3)' }}>
-                {errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai/scanner did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
+              <div style={{ fontSize: 12, color: errored ? 'var(--danger-color)' : 'var(--text3)' }}>
+                {errored ? 'Scanner temporarily unavailable. Retrying every 60 seconds.'
                   : pending ? 'Loading latest scanner run…'
-                  : 'Scanner returned an empty payload — not a missing file. Recheck /api/v2/trade-ai/scanner.'}
+                  : 'Scanner has not supplied a result yet.'}
               </div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai/scanner{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: Momentum scanner{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
             </div>
           )
         }
@@ -385,7 +386,7 @@ function TradingHubDesk({ onDrill }: Props) {
             label: type === 'ALL' ? 'Universe' : type === 'WAIT' ? 'WAIT (screener)' : type,
             syms,
             text: syms.join(','),
-            color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)',
+            color: type === 'GO' ? 'var(--success-color)' : type === 'WAIT' ? 'var(--warning-color)' : 'var(--text2)',
           }
         })
         const doCopy = (type: string, text: string) => {
@@ -395,18 +396,18 @@ function TradingHubDesk({ onDrill }: Props) {
         }
         // Source badge config (parity with v2 Source column)
         const srcCfg: Record<string, { icon: string; color: string; label: string }> = {
-          social: { icon: '💬', color: '#d97706', label: 'Social' },
-          portfolio: { icon: '💼', color: '#6366f1', label: 'Portfolio' },
-          personal_watchlist: { icon: '👤', color: '#6366f1', label: 'Personal' },
-          ai_discovered: { icon: '🤖', color: '#059669', label: 'AI' },
-          ai_watchlist: { icon: '🔍', color: '#059669', label: 'AI Watch' },
-          screener: { icon: '📊', color: '#0891b2', label: 'Finviz' },
+          social: { icon: '💬', color: 'var(--warning-color)', label: 'Social' },
+          portfolio: { icon: '💼', color: 'var(--ai-color)', label: 'Portfolio' },
+          personal_watchlist: { icon: '👤', color: 'var(--ai-color)', label: 'Personal' },
+          ai_discovered: { icon: '🤖', color: 'var(--success-color)', label: 'AI' },
+          ai_watchlist: { icon: '🔍', color: 'var(--success-color)', label: 'AI Watch' },
+          screener: { icon: '📊', color: 'var(--info-color)', label: 'Finviz' },
         }
         const srcBadge = (t: any) => {
           const c = srcCfg[t.source || 'screener'] || srcCfg.screener
           return { ...c, label: t.source === 'social' && t.source_detail ? `Social ${t.source_detail}` : c.label }
         }
-        const pctColor = (v: any) => { const n = parseFloat(v); return isNaN(n) ? 'var(--text3)' : n >= 0 ? '#22c55e' : '#ef4444' }
+        const pctColor = (v: any) => { const n = parseFloat(v); return isNaN(n) ? 'var(--text3)' : n >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }
         const pctText = (v: any) => (v === '' || v == null) ? '—' : `${v}%`
         const pgBtn = (disabled: boolean): CSSProperties => ({
           padding: '3px 9px', fontSize: 10, borderRadius: 5, fontFamily: 'monospace',
@@ -464,12 +465,12 @@ function TradingHubDesk({ onDrill }: Props) {
           ? ` · integrity ${integrity}${integrityReason ? `: ${integrityReason}` : ''}`
           : ''
         const kpis = [
-          { label: 'UNIVERSE GO', value: goN, color: '#22c55e', title: universeScope, filter: 'GO' as TileFilter },
-          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: `${universeScope} · includes social-awareness WAIT (higher than WAIT screener copy)`, filter: 'WAIT' as TileFilter },
-          { label: 'UNIVERSE NO-GO', value: noGoN, color: '#ef4444', title: universeScope, filter: null as TileFilter },
+          { label: 'UNIVERSE GO', value: goN, color: 'var(--success-color)', title: universeScope, filter: 'GO' as TileFilter },
+          { label: 'UNIVERSE WAIT', value: waitN, color: 'var(--warning-color)', title: `${universeScope} · includes social-awareness WAIT (higher than WAIT screener copy)`, filter: 'WAIT' as TileFilter },
+          { label: 'UNIVERSE NO-GO', value: noGoN, color: 'var(--danger-color)', title: universeScope, filter: null as TileFilter },
           { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope, filter: null as TileFilter },
-          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined, filter: null as TileFilter },
-          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined, filter: null as TileFilter },
+          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: 'var(--info-color)', title: undefined as string | undefined, filter: null as TileFilter },
+          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: 'var(--ai-color)', title: undefined as string | undefined, filter: null as TileFilter },
         ]
         const latestRunKpis = [
           { label: 'LATEST RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: `${latestRunScope}${underfillNote}${integrityNote}`, filter: 'GO' as TileFilter },
@@ -688,13 +689,13 @@ function TradingHubDesk({ onDrill }: Props) {
               {copyBoxes.map(b => (
                 <div key={b.type} style={{ flex: 1, padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                    <span style={{ fontSize: 8, color: b.color, fontWeight: 700 }}>{b.label} ({b.syms.length})</span>
+                    <span style={{ fontSize: 10, color: b.color, fontWeight: 700 }}>{b.label} ({b.syms.length})</span>
                     {b.syms.length > 0 && (
                       <button onClick={() => doCopy(b.type, b.text)} style={{
-                        fontSize: 8, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
-                        border: `1px solid ${copied === b.type ? '#22c55e' : 'var(--border)'}`,
+                        fontSize: 10, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
+                        border: `1px solid ${copied === b.type ? 'var(--success-color)' : 'var(--border)'}`,
                         background: copied === b.type ? 'rgba(34,197,94,.12)' : 'var(--bg1)',
-                        color: copied === b.type ? '#22c55e' : 'var(--text2)',
+                        color: copied === b.type ? 'var(--success-color)' : 'var(--text2)',
                       }}>{copied === b.type ? '✓ Copied' : 'Copy'}</button>
                     )}
                   </div>
@@ -709,7 +710,7 @@ function TradingHubDesk({ onDrill }: Props) {
             <div ref={scannerFilterRef} style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {(['ACTIONABLE', 'GO', 'WAIT', 'AWARENESS', 'MANUAL', 'SCOUT'] as const).map(f => {
                 const active = tradeFilter === f
-                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : '#60a5fa'
+                const fc = f === 'GO' ? 'var(--success-color)' : f === 'WAIT' ? 'var(--warning-color)' : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : 'var(--info-color)'
                 const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'AWARENESS' ? awarenessCount : f === 'MANUAL' ? manualCount : f === 'WAIT' ? tickers.filter(isScreenerWaitRow).length : tickers.filter((t: any) => t.decision === f).length
                 const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'AWARENESS' ? 'Social Awareness' : f === 'MANUAL' ? 'Manual' : f
                 return (
@@ -718,7 +719,7 @@ function TradingHubDesk({ onDrill }: Props) {
                 )
               })}
               <div style={{ flex: 1, minWidth: 8 }} />
-              <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Sort
                 <select value={tradeSort} onChange={e => { setTradeSort(e.target.value as ScannerSortMode); setScannerPage(1) }} style={{
                   ...hubFilterSelect(terminalUi), fontFamily: 'monospace', cursor: 'pointer',
@@ -732,7 +733,7 @@ function TradingHubDesk({ onDrill }: Props) {
 
             <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: 1112 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 10, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', alignItems: 'center' }}>
               <span title="Select/clear all rows on this page">
                 <input type="checkbox" aria-label="Select visible page"
                   checked={pageSymbols.length > 0 && pageSymbols.every((s: string) => selectedSyms.includes(String(s).toUpperCase()))}
@@ -745,7 +746,7 @@ function TradingHubDesk({ onDrill }: Props) {
             pageRows.map((t: any, i: number) => {
               const sb = srcBadge(t)
               const social = t.social_sentiment || ''
-              const socialColor = social.includes('Very Bullish') ? '#4ade80' : social.includes('Bullish') ? '#86efac' : social.includes('Bearish') ? '#f87171' : 'var(--text3)'
+              const socialColor = social.includes('Very Bullish') ? 'var(--success-color)' : social.includes('Bullish') ? 'var(--success-color)' : social.includes('Bearish') ? 'var(--danger-color)' : 'var(--text3)'
               const score = t.score ?? 0
               const scout = getSocialScoutPill(t)
               const socialAware = getSocialAwarenessPill(t)
@@ -765,74 +766,74 @@ function TradingHubDesk({ onDrill }: Props) {
                   <input type="checkbox" aria-label={`Select ${sym}`} checked={checked}
                     onChange={() => persistSel(toggleSelectedSymbol(selectedSyms, sym))} style={{ cursor: 'pointer' }} />
                 </span>
-                <span style={{ fontWeight: 700, fontSize: 9, color: socialAware.isAwareness ? 'var(--social-awareness)' : scout.isScout ? 'var(--social-scout)' : isManualLane ? (lowPrice.isLowPrice ? 'var(--low-price)' : squeeze.isSqueeze ? 'var(--squeeze)' : micro.isMicroFloat ? 'var(--micro-float)' : 'var(--runner)') : decisionColor(t.decision) }}>{socialAware.isAwareness ? 'AWARE' : scout.isScout ? 'SCOUT' : isManualLane ? 'MANUAL' : (t.decision || 'NO-GO')}</span>
-                <span title={sb.label} style={{ fontSize: 8, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${sb.color}40`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
+                <span style={{ fontWeight: 700, fontSize: 10, color: socialAware.isAwareness ? 'var(--social-awareness)' : scout.isScout ? 'var(--social-scout)' : isManualLane ? (lowPrice.isLowPrice ? 'var(--low-price)' : squeeze.isSqueeze ? 'var(--squeeze)' : micro.isMicroFloat ? 'var(--micro-float)' : 'var(--runner)') : decisionColor(t.decision) }}>{socialAware.isAwareness ? 'AWARE' : scout.isScout ? 'SCOUT' : isManualLane ? 'MANUAL' : (t.decision || 'NO-GO')}</span>
+                <span title={sb.label} style={{ fontSize: 10, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid color-mix(in srgb, ${sb.color} 25%, transparent)`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CountryFlag symbol={t.symbol} country={t.country} countryName={t.country_name} size={20} />
                 </span>
                 <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
-                  {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
+                  {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 10, color: 'var(--warning-color)', marginLeft: 4 }}>⟳</span>}
                   {socialAware.isAwareness && (
                     <span title={socialAware.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', border: '1px solid var(--social-awareness)', whiteSpace: 'nowrap', cursor: 'help' }}>{socialAware.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', border: '1px solid var(--social-awareness)', whiteSpace: 'nowrap', cursor: 'help' }}>{socialAware.text}</span>
                   )}
                   {scout.isScout && !socialAware.isAwareness && (
                     <span title={scout.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-scout-dim)', color: 'var(--social-scout)', border: '1px solid var(--social-scout)', whiteSpace: 'nowrap', cursor: 'help' }}>{scout.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-scout-dim)', color: 'var(--social-scout)', border: '1px solid var(--social-scout)', whiteSpace: 'nowrap', cursor: 'help' }}>{scout.text}</span>
                   )}
                   {squeeze.isSqueeze && (
                     <span title={squeeze.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--squeeze-dim)', color: 'var(--squeeze)', border: '1px solid var(--squeeze)', whiteSpace: 'nowrap', cursor: 'help' }}>{squeeze.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--squeeze-dim)', color: 'var(--squeeze)', border: '1px solid var(--squeeze)', whiteSpace: 'nowrap', cursor: 'help' }}>{squeeze.text}</span>
                   )}
                   {runner.isRunner && !squeeze.isSqueeze && !micro.isMicroFloat && !lowPrice.isLowPrice && (
                     <span title={runner.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--runner-dim)', color: 'var(--runner)', border: '1px solid var(--runner)', whiteSpace: 'nowrap', cursor: 'help' }}>{runner.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--runner-dim)', color: 'var(--runner)', border: '1px solid var(--runner)', whiteSpace: 'nowrap', cursor: 'help' }}>{runner.text}</span>
                   )}
                   {micro.isMicroFloat && !squeeze.isSqueeze && !lowPrice.isLowPrice && (
                     <span title={micro.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--micro-float-dim)', color: 'var(--micro-float)', border: '1px solid var(--micro-float)', whiteSpace: 'nowrap', cursor: 'help' }}>{micro.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--micro-float-dim)', color: 'var(--micro-float)', border: '1px solid var(--micro-float)', whiteSpace: 'nowrap', cursor: 'help' }}>{micro.text}</span>
                   )}
                   {lowPrice.isLowPrice && !squeeze.isSqueeze && (
                     <span title={lowPrice.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--low-price-dim)', color: 'var(--low-price)', border: '1px solid var(--low-price)', whiteSpace: 'nowrap', cursor: 'help' }}>{lowPrice.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--low-price-dim)', color: 'var(--low-price)', border: '1px solid var(--low-price)', whiteSpace: 'nowrap', cursor: 'help' }}>{lowPrice.text}</span>
                   )}
                   {/* Co-renders with the manual-lane pill: a squeeze that is also a top
                       gainer must show both, otherwise the gainer fact disappears. */}
                   {topGainer.isTopGainer && (
                     <span title={topGainer.tooltip}
-                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--top-gainer-dim)', color: 'var(--top-gainer)', border: `1px solid var(--top-gainer)`, whiteSpace: 'nowrap', cursor: 'help', opacity: t.top_gainer_stale ? 0.7 : 1 }}>{topGainer.text}</span>
+                      style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--top-gainer-dim)', color: 'var(--top-gainer)', border: `1px solid var(--top-gainer)`, whiteSpace: 'nowrap', cursor: 'help', opacity: t.top_gainer_stale ? 0.7 : 1 }}>{topGainer.text}</span>
                   )}
                   {' '}<ProAnalystPill symbol={t.symbol} map={paMap} compact />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <div style={{ width: 24, height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
-                    <div style={{ width: `${Math.min(score, 50) * 2}%`, height: '100%', background: score >= 40 ? '#22c55e' : score >= 30 ? '#f59e0b' : 'var(--text3)' }} />
+                    <div style={{ width: `${Math.min(score, 50) * 2}%`, height: '100%', background: score >= 40 ? 'var(--success-color)' : score >= 30 ? 'var(--warning-color)' : 'var(--text3)' }} />
                   </div>
-                  <span style={{ fontWeight: 600, color: score >= 40 ? '#22c55e' : score >= 30 ? '#f59e0b' : 'var(--text2)' }}>{t.score ?? '—'}</span>
+                  <span style={{ fontWeight: 600, color: score >= 40 ? 'var(--success-color)' : score >= 30 ? 'var(--warning-color)' : 'var(--text2)' }}>{t.score ?? '—'}</span>
                 </div>
-                <span style={{ fontWeight: 600, color: t.grade === 'A' ? '#22c55e' : 'var(--text2)' }}>{t.grade || '—'}</span>
-                <span style={{ color: (t.rvol ?? 0) >= 5 ? '#22c55e' : 'var(--text2)' }}>{t.rvol ? Number(t.rvol).toFixed(1) + 'x' : '—'}</span>
-                <span style={{ color: (t.volume ?? 0) >= 1_000_000 ? '#22c55e' : 'var(--text2)', fontFamily: 'monospace', fontSize: 9 }} title={t.volume ? `${Number(t.volume).toLocaleString()} shares` : undefined}>{fmtVol(t.volume)}</span>
+                <span style={{ fontWeight: 600, color: t.grade === 'A' ? 'var(--success-color)' : 'var(--text2)' }}>{t.grade || '—'}</span>
+                <span style={{ color: (t.rvol ?? 0) >= 5 ? 'var(--success-color)' : 'var(--text2)' }}>{t.rvol ? Number(t.rvol).toFixed(1) + 'x' : '—'}</span>
+                <span style={{ color: (t.volume ?? 0) >= 1_000_000 ? 'var(--success-color)' : 'var(--text2)', fontFamily: 'monospace', fontSize: 10 }} title={t.volume ? `${Number(t.volume).toLocaleString()} shares` : undefined}>{fmtVol(t.volume)}</span>
                 <span style={{ color: 'var(--text2)' }}>{t.price ? `$${Number(t.price).toFixed(2)}` : '—'}</span>
                 <span style={{ color: pctColor(t.change_pct), fontWeight: 600 }}>{pctText(t.change_pct)}</span>
                 <span style={{ color: pctColor(t.gap_pct) }}>{pctText(t.gap_pct)}</span>
                 <span style={{ color: 'var(--text2)' }}>{t.float_m != null && t.float_m !== '' ? `${t.float_m}M` : '—'}</span>
-                <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
+                <span style={{ fontSize: 10, display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
                   <span style={{ fontWeight: 600, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sector || '—'}</span>
-                  {t.vs_sector_pct != null && <span style={{ fontSize: 8, color: t.vs_sector_pct >= 0 ? '#4ade80' : '#f87171' }}>vs {t.sector_etf || 'sector'}: {t.vs_sector_pct >= 0 ? '+' : ''}{t.vs_sector_pct}%</span>}
+                  {t.vs_sector_pct != null && <span style={{ fontSize: 10, color: t.vs_sector_pct >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>vs {t.sector_etf || 'sector'}: {t.vs_sector_pct >= 0 ? '+' : ''}{t.vs_sector_pct}%</span>}
                 </span>
                 {social ? (
-                  <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <span style={{ fontSize: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <span style={{ fontWeight: 600, color: socialColor }}>{social}</span>
-                    {(t.social_reddit || t.social_stocktwits) ? <span style={{ fontSize: 8, color: 'var(--text3)' }}>R:{t.social_reddit || 0} ST:{t.social_stocktwits || 0}{t.social_bullish_pct != null ? ` (${Math.round(t.social_bullish_pct)}% bull)` : ''}</span> : null}
+                    {(t.social_reddit || t.social_stocktwits) ? <span style={{ fontSize: 10, color: 'var(--text3)' }}>R:{t.social_reddit || 0} ST:{t.social_stocktwits || 0}{t.social_bullish_pct != null ? ` (${Math.round(t.social_bullish_pct)}% bull)` : ''}</span> : null}
                   </span>
-                ) : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
-                <span style={{ fontSize: 9, color: t.disqualified ? '#fca5a5' : socialAware.isAwareness ? 'var(--social-awareness)' : t.catalyst_verified === false ? '#f59e0b' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }} title={t.catalyst}>
-                  {t.disqualified && <span style={{ fontSize: 7, background: '#7f1d1d', color: '#fca5a5', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>DQ</span>}
-                  {socialAware.isAwareness && !t.disqualified && <span style={{ fontSize: 7, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>ST</span>}
-                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === false && <span style={{ fontSize: 7, background: '#78350f', color: '#fcd34d', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
-                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === true && <span style={{ fontSize: 7, background: '#052e16', color: '#86efac', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>V</span>}
+                ) : <span style={{ fontSize: 10, color: 'var(--text3)' }}>—</span>}
+                <span style={{ fontSize: 10, color: t.disqualified ? 'var(--danger-color)' : socialAware.isAwareness ? 'var(--social-awareness)' : t.catalyst_verified === false ? 'var(--warning-color)' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }} title={t.catalyst}>
+                  {t.disqualified && <span style={{ fontSize: 10, background: 'var(--danger-bg)', color: 'var(--danger-color)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>DQ</span>}
+                  {socialAware.isAwareness && !t.disqualified && <span style={{ fontSize: 10, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>ST</span>}
+                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === false && <span style={{ fontSize: 10, background: 'var(--warning-bg)', color: 'var(--warning-color)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
+                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === true && <span style={{ fontSize: 10, background: 'var(--success-bg)', color: 'var(--success-color)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>V</span>}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.catalyst || (socialAware.isAwareness ? 'StockTwits pre-market mention' : '—')}</span>
                 </span>
               </div>
@@ -842,13 +843,13 @@ function TradingHubDesk({ onDrill }: Props) {
 
             {/* Pagination — top 30, 10 per page */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+              <span style={{ fontSize: 10, color: 'var(--text3)' }}>
                 {pv.total === 0 ? 'No rows' : `Showing ${pv.from}–${pv.to} of ${pv.total}`} (top 30 · sorted by {sortLabels[tradeSort].toLowerCase()}{tradeFilter !== 'ACTIONABLE' ? ` · ${tradeFilter === 'SCOUT' ? 'Social Scouts' : tradeFilter === 'MANUAL' ? 'Manual' : tradeFilter} filter` : ''})
               </span>
               <div style={{ flex: 1 }} />
               <button onClick={() => setScannerPage(p => Math.max(1, Math.min(p, pv.pageCount) - 1))} disabled={pv.page <= 1} style={pgBtn(pv.page <= 1)}>‹ Previous</button>
               {Array.from({ length: pv.pageCount }, (_, i) => i + 1).map(p => (
-                <button key={p} onClick={() => setScannerPage(p)} style={{ ...pgBtn(false), ...(p === pv.page ? { background: 'rgba(96,165,250,.18)', color: '#60a5fa', borderColor: '#60a5fa', fontWeight: 700 } : {}) }}>{p}</button>
+                <button key={p} onClick={() => setScannerPage(p)} style={{ ...pgBtn(false), ...(p === pv.page ? { background: 'rgba(96,165,250,.18)', color: 'var(--info-color)', borderColor: 'var(--info-color)', fontWeight: 700 } : {}) }}>{p}</button>
               ))}
               <button onClick={() => setScannerPage(p => Math.min(pv.pageCount, Math.min(p, pv.pageCount) + 1))} disabled={pv.page >= pv.pageCount} style={pgBtn(pv.page >= pv.pageCount)}>Next ›</button>
             </div>
@@ -857,10 +858,10 @@ function TradingHubDesk({ onDrill }: Props) {
             <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>Thinkorswim copy list</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{selectedSyms.length} selected</span>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>{selectedSyms.length} selected</span>
                 <div style={{ flex: 1 }} />
                 {(['comma', 'newline', 'space'] as const).map(fmt => (
-                  <button key={fmt} onClick={() => setTosFormat(fmt)} style={{ ...pgBtn(false), ...(tosFormat === fmt ? { background: 'rgba(96,165,250,.18)', color: '#60a5fa', borderColor: '#60a5fa' } : {}) }}>{fmt}</button>
+                  <button key={fmt} onClick={() => setTosFormat(fmt)} style={{ ...pgBtn(false), ...(tosFormat === fmt ? { background: 'rgba(96,165,250,.18)', color: 'var(--info-color)', borderColor: 'var(--info-color)' } : {}) }}>{fmt}</button>
                 ))}
                 <button onClick={() => persistSel(selectSymbols(selectedSyms, pageSymbols))} style={pgBtn(false)}>Select page</button>
                 <button onClick={() => persistSel(deselectSymbols(selectedSyms, pageSymbols))} style={pgBtn(false)}>Clear page</button>
@@ -869,7 +870,7 @@ function TradingHubDesk({ onDrill }: Props) {
                   const done = () => { setTosCopied(true); setTimeout(() => setTosCopied(false), 1500) }
                   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(tosText).then(done).catch(done)
                   else done()
-                }} disabled={selectedSyms.length === 0} style={{ ...pgBtn(selectedSyms.length === 0), background: tosCopied ? 'rgba(34,197,94,.15)' : 'var(--bg1)', color: tosCopied ? '#22c55e' : 'var(--text1)', borderColor: tosCopied ? '#22c55e' : 'var(--border)', fontWeight: 700 }}>
+                }} disabled={selectedSyms.length === 0} style={{ ...pgBtn(selectedSyms.length === 0), background: tosCopied ? 'rgba(34,197,94,.15)' : 'var(--bg1)', color: tosCopied ? 'var(--success-color)' : 'var(--text1)', borderColor: tosCopied ? 'var(--success-color)' : 'var(--border)', fontWeight: 700 }}>
                   {tosCopied ? `✓ Copied ${selectedSyms.length} symbol${selectedSyms.length === 1 ? '' : 's'}` : 'Copy'}
                 </button>
               </div>
@@ -877,29 +878,29 @@ function TradingHubDesk({ onDrill }: Props) {
               <textarea readOnly value={tosText} aria-label="Selected symbols for Thinkorswim"
                 placeholder="Check rows above to build a Thinkorswim symbol list (selection persists across pages)…"
                 style={{ width: '100%', minHeight: 38, resize: 'vertical', boxSizing: 'border-box', fontSize: 11, fontFamily: 'monospace', color: 'var(--text0)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px' }} />
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout, Top Gainer, and Squeeze (MANUAL_REVIEW) symbols can be copied but remain non-auto-tradeable.</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout, Top Gainer, and Squeeze (MANUAL_REVIEW) symbols can be copied but remain non-auto-tradeable.</div>
             </div>
 
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai/scanner (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits with Finviz overlay when cached (still awareness-only, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: Momentum scanner (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits with Finviz overlay when cached (still awareness-only, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
 
             {warriorAudit?.ok && (
               <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--squeeze)' }}>Ross Alignment Audit</span>
-                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>{warriorAudit.since} → {warriorAudit.until}</span>
-                  {warriorAudit.generated_at && <span style={{ fontSize: 8, color: 'var(--text3)' }}>updated {String(warriorAudit.generated_at).slice(0, 16).replace('T', ' ')}</span>}
+                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{warriorAudit.since} → {warriorAudit.until}</span>
+                  {warriorAudit.generated_at && <span style={{ fontSize: 10, color: 'var(--text3)' }}>updated {String(warriorAudit.generated_at).slice(0, 16).replace('T', ' ')}</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, marginBottom: 8 }}>
-                  <span><strong style={{ color: '#60a5fa' }}>{warriorAudit.symbol_recall_pct ?? '—'}%</strong> <span style={{ color: 'var(--text3)' }}>recall</span></span>
-                  <span><strong style={{ color: '#f59e0b' }}>{warriorAudit.go_recall_pct ?? '—'}%</strong> <span style={{ color: 'var(--text3)' }}>GO</span></span>
+                  <span><strong style={{ color: 'var(--info-color)' }}>{warriorAudit.symbol_recall_pct ?? '—'}%</strong> <span style={{ color: 'var(--text3)' }}>recall</span></span>
+                  <span><strong style={{ color: 'var(--warning-color)' }}>{warriorAudit.go_recall_pct ?? '—'}%</strong> <span style={{ color: 'var(--text3)' }}>GO</span></span>
                   <span><strong style={{ color: 'var(--text1)' }}>{warriorAudit.symbol_days ?? '—'}</strong> <span style={{ color: 'var(--text3)' }}>sym-days</span></span>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {(warriorAudit.top_gaps ?? []).map(([k, v]: [string, number]) => (
-                    <span key={k} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text2)' }}>{k.replace(/_MANUAL.*/, '')}: <strong>{v}</strong></span>
+                    <span key={k} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text2)' }}>{k.replace(/_MANUAL.*/, '')}: <strong>{v}</strong></span>
                   ))}
                 </div>
-                <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Weekly Mon AM · awareness goal (not auto-GO Ross names) · /api/v2/warrior-audit/latest</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>Weekly Monday review · discovery coverage</div>
               </div>
             )}
 
@@ -912,14 +913,14 @@ function TradingHubDesk({ onDrill }: Props) {
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
                       {runHistory.slice().reverse().map((r: any, i: number) => (
                         <div key={i} data-run-id={r.run_id ?? ''} title={`${r.run_id ?? 'run unknown'} · ${renderSetupCounts(r.setup_run_summary, {}).counts} · ${r.count_integrity}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-                          <div style={{ width: '100%', height: `${((r.go ?? 0) / runGoMax) * 100}%`, minHeight: (r.go ?? 0) > 0 ? 3 : 0, background: (r.go ?? 0) > 0 ? '#22c55e' : 'var(--border)', borderRadius: '2px 2px 0 0' }} />
-                          <span style={{ fontSize: 7, color: 'var(--text3)', marginTop: 2, whiteSpace: 'nowrap' }}>{r.label}</span>
+                          <div style={{ width: '100%', height: `${((r.go ?? 0) / runGoMax) * 100}%`, minHeight: (r.go ?? 0) > 0 ? 3 : 0, background: (r.go ?? 0) > 0 ? 'var(--success-color)' : 'var(--border)', borderRadius: '2px 2px 0 0' }} />
+                          <span style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, whiteSpace: 'nowrap' }}>{r.label}</span>
                         </div>
                       ))}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                       {runHistory.map((r: any, i: number) => (
-                        <div key={i} data-run-id={r.run_id ?? ''} style={{ fontSize: 9, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text2)' }}>{r.run_id ?? r.label}</span> {renderSetupCounts(r.setup_run_summary, {}).counts} · {r.count_integrity}</div>
+                        <div key={i} data-run-id={r.run_id ?? ''} style={{ fontSize: 10, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text2)' }}>{r.run_id ?? r.label}</span> {renderSetupCounts(r.setup_run_summary, {}).counts} · {r.count_integrity}</div>
                       ))}
                     </div>
                   </>
@@ -931,11 +932,11 @@ function TradingHubDesk({ onDrill }: Props) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
                     {sectorEntries.map(([sec, count]) => (
                       <div key={sec} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ width: 110, fontSize: 9, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec}</span>
+                        <span style={{ width: 110, fontSize: 10, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec}</span>
                         <div style={{ flex: 1, height: 8, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ width: `${((count as number) / sectorMax) * 100}%`, height: '100%', background: '#60a5fa', opacity: 0.7, borderRadius: 3 }} />
+                          <div style={{ width: `${((count as number) / sectorMax) * 100}%`, height: '100%', background: 'var(--info-color)', opacity: 0.7, borderRadius: 3 }} />
                         </div>
-                        <span style={{ width: 28, fontSize: 9, color: 'var(--text1)', textAlign: 'right', fontWeight: 600 }}>{count}</span>
+                        <span style={{ width: 28, fontSize: 10, color: 'var(--text1)', textAlign: 'right', fontWeight: 600 }}>{count}</span>
                       </div>
                     ))}
                   </div>
@@ -958,7 +959,7 @@ function TradingHubDesk({ onDrill }: Props) {
           focusProposalId={urlProposal ? Number(urlProposal) : undefined}
         />
       )}
-      {tab === 'Proposals' && section === 'path-a' && <ManualTosDesk focusSymbol={deepLink.symbol || undefined} />}
+      {tab === 'Proposals' && section === 'path-a' && <div className="w9-entry-desk"><ManualTosDesk focusSymbol={deepLink.symbol || undefined} /></div>}
       {tab === 'Broker Orders' && (
         <div className={terminalUi ? 'cc-panel' : undefined} data-testid="broker-orders-desk-note" style={{ marginBottom: 10, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: 11, color: 'var(--text2)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span>Broker Orders desk — opened from an approval link. Every live order still needs its per-order 2FA.</span>

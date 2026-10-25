@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 import { useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -71,7 +72,7 @@ export default function WatchHub({ onDrill }: Props) {
   }
 
   return (
-    <div data-watch-hub-primary>
+    <div data-watch-hub-primary className="w9-page">
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ ...hubTitle(), margin: 0 }}>
@@ -85,9 +86,9 @@ export default function WatchHub({ onDrill }: Props) {
               : tab === 'Prospects'
               ? 'Every Watch name by stage · yours always listed · conflicts shown, not hidden'
               : tab === 'Intelligence'
-              ? 'Classic Intelligence view · kept for one release · Prospects is the primary Watch view'
+              ? 'Previous research workspace · its filters and history remain available'
               : tab === 'Opportunities'
-                ? 'Research: everything the CIO curator scored, ranked by conviction · System Suggests is its top'
+                ? 'Research names scored by the CIO curator, ranked by conviction'
                 : 'Secondary research lens'}
           </div>
         </div>
@@ -100,7 +101,7 @@ export default function WatchHub({ onDrill }: Props) {
               onClick={() => selectTab(candidate)}
               style={hubTab(tab === candidate, terminalUi)}
               data-testid={`watch-tab-${TAB_SLUG[candidate]}`}
-              title={candidate === 'Intelligence' ? 'The previous Watch Intelligence view, kept for one release.' : TAB_TIPS[TAB_SLUG[candidate]]}
+              title={candidate === 'Intelligence' ? 'The previous research workspace, with its filters and history.' : TAB_TIPS[TAB_SLUG[candidate]] || `Open ${TAB_LABEL[candidate]}`}
             >
               {TAB_LABEL[candidate]}
             </button>

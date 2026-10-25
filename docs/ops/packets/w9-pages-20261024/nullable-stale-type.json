@@ -1,0 +1,14 @@
+{
+  "scope": "Type-only canonical stale:null compatibility correction",
+  "source_sha256": "8f6205476507cf346b322c1615c72cfb8b6a5c2dfebbe3a6410bcd4c77308589",
+  "base_combination": "W9d8908d259 (runtime identical10c6aca97) +fourW2deps6d84c466b",
+  "verification": "Full private-combination TypeScript noEmit and identical emitted JS check pending; prior browser proof retained if emitted code unchanged",
+  "previous_source_sha256": "61d7443a98ea62c86dbf938b7eebdd1d462b3b3b4b1c343df88770e059780ee6",
+  "emitted_js_sha256": "ec702d46f27dbc64f56bad15ab4d6a3f1ba664d9501e2d9e58282b6e90da3767",
+  "emitted_js_byte_identical": true,
+  "typecheck": "PASS full private combined TypeScript noEmit (W2four frozen dependencies6d84c466b)",
+  "prior_browser_proof": "Retained: this correction changes TypeScript compatibility only; prior source hashes remain historical exact hashes.",
+  "as_of": "2026-10-25T00:39:40.942429+00:00",
+  "source_head": "fdb3334ec685eb6f8b3cf7d3b8bdf0f741f83339",
+  "typecheck_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

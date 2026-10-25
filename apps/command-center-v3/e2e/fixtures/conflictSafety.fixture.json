@@ -1,0 +1,62 @@
+{
+  "provenance": {
+    "kind": "synthetic binding-matrix fixture; NOT a31-row live replay",
+    "source_head": "82fff73ec9f88f82ba454ff505294f1173be4f5f",
+    "rulebook_sha256": "afcfbfa1724f519bcd4ce18158d6860cf020e0828f3b9867d1b95dcc411248c3",
+    "clock": "2026-10-23T19:00:00+00:00"
+  },
+  "section": {
+    "findings": [
+      {
+        "schema": "ConflictFinding@v1",
+        "engine": "ConflictEngine@v1-matrix-draft",
+        "kind": "GATE",
+        "rule": "T0",
+        "summary": "Blocked: hard safety",
+        "clears_when": "the operator clears the hard safety gate at its owner",
+        "action": "none",
+        "severity": "block",
+        "sides": [
+          {
+            "source": "hard safety",
+            "value": "ENGAGED",
+            "as_of": "2026-10-23T19:00:00+00:00",
+            "account": null
+          }
+        ],
+        "key": "security:fixture-guid:T0:hard safety",
+        "owner": "operator",
+        "next_run": "next registered producer run",
+        "never_auto": true,
+        "tier": 0
+      },
+      {
+        "schema": "ConflictFinding@v1",
+        "engine": "ConflictEngine@v1-matrix-draft",
+        "kind": "DATA_ERROR",
+        "rule": "T1",
+        "summary": "Sources identify different securities",
+        "clears_when": "the source owner fixes the GUID join",
+        "action": "none",
+        "severity": "warn",
+        "sides": [
+          {
+            "source": "canonical identity",
+            "value": "HOLD",
+            "as_of": "2026-10-23T19:00:00+00:00",
+            "account": null
+          }
+        ],
+        "key": "security:fixture-guid:T1",
+        "owner": "identity owner",
+        "next_run": "next registered producer run",
+        "never_auto": true,
+        "tier": 1
+      }
+    ],
+    "headline": "Blocked: hard safety \u2014 clears when the operator clears the hard safety gate at its owner \u00b7 +1 more",
+    "gap": null
+  },
+  "clock": "2026-10-23T19:00:00+00:00",
+  "acceptance_scope": "Synthetic engine-generated final binding-matrix UI fixture only; not current SCHD judgment, 31-flag golden replay, live review queue or runtime acceptance."
+}

@@ -1,0 +1,35 @@
+{
+  "row_flag": {
+    "input": "row.conflict_section (unchanged envelope)",
+    "writer": "W10 engine / canonical batch adapter; W2 projection owner",
+    "prohibited_in_ui": [
+      "classification",
+      "sort/rethreshold raw C3",
+      "decision POST",
+      "fake queue/clear"
+    ]
+  },
+  "selected_record": {
+    "api": "GET /api/v3/conflicts/{encodeURIComponent(key)}",
+    "schema": "ConflictRecord@v1",
+    "store": "data/conflicts/conflict_events.jsonl",
+    "writer": "W10 conflict ledger governed producers",
+    "cache_guard": "keyed reader, schema/key/history identity validation"
+  },
+  "review_action": {
+    "api": "POST /api/v3/opportunities/{symbol}/review-request",
+    "writer": "existing review owner queue",
+    "identity": "selected record security GUID must match Watch row GUID",
+    "ack": "submitted only; durable progress only from ledger state/history",
+    "runtime_gap": "C3/root actual queue receipt \u2192 ledger hook pending"
+  },
+  "states": {
+    "UNDER_REVIEW": "Review in progress",
+    "DECIDED": "Decision recorded, awaiting engine re-evaluation",
+    "CLEARED": "Cleared by engine"
+  },
+  "fixtures": {
+    "source": "W10 exact synthetic final-matrix R11 and T0/T1 envelopes with source/rulebook provenance",
+    "limit": "not current security judgment,31flag replay or runtime acceptance"
+  }
+}

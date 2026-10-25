@@ -10,10 +10,15 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
 import './WatchLayout.css'
+import './W9Mobile.css'
+import ConflictLine from '../components/conflicts/ConflictLine'
+import ConflictSheet, {useConflictSheet, type ConflictSection} from '../components/conflicts/ConflictSheet'
+import WatchReviewRequest from '../components/watch/WatchConflictPanel'
+import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { WatchCompanyFacts } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
-import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
+import { rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
@@ -55,6 +60,21 @@ function soldDisplayName(r: ListRow): string {
   return key || supplied ? displayAccountName(key, supplied) : ''
 }
 
+/** Preserve the backend envelope; a missing producer is an explicit gap, never an empty result. */
+export function conflictSection(row: ProspectRow): ConflictSection {
+  return (row as ProspectRow & {conflict_section?: ConflictSection}).conflict_section
+    ?? {findings: [], headline: null, gap: {reason: 'engine result not supplied for this security'}}
+}
+
+export function WatchConflictDetail({row, onBack, onRefresh}: {row: ProspectRow; onBack?: () => void; onRefresh?: () => void}) {
+  return <ConflictSheet title={`${row.symbol} · recorded conflict`} section={conflictSection(row)} onBack={onBack}>
+    {(record, refresh) => <>
+      <WatchReviewRequest symbol={row.symbol} securityGuid={row.security_guid} record={record} onRefresh={() => {refresh(); onRefresh?.()}} />
+      <Link className="mobile-detail-primary" to={`/watch/intelligence/${encodeURIComponent(row.symbol)}`} onClick={() => window.scrollTo(0, 0)}>Open evidence →</Link>
+    </>}
+  </ConflictSheet>
+}
+
 function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; height?: number }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, value))
   return (
@@ -70,7 +90,7 @@ export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: Pros
   const t = toneVars(stepTone(a.kind))
   const style: CSSProperties = {
     whiteSpace: 'normal', fontSize: TYPE.base + 1, fontWeight: 600, padding: '8px 12px', borderRadius: RADIUS.md,
-    minHeight: 40, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    minHeight: 44, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     background: t.bg, border: `1px solid ${t.border}`, color: t.color, cursor: 'pointer', textDecoration: 'none',
   }
   if (a.kind === 'none') return <button type="button" disabled style={{ ...style, color: TOKENS.text[2], cursor: 'default' }} title={a.reason}>{a.label === '—' ? 'No action' : a.label || 'No action'}</button>
@@ -80,7 +100,7 @@ export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: Pros
   }
   return (
     <button type="button" title={a.reason} style={style} onClick={() => onStep(row)} data-testid="watch-step" data-step={a.kind}>
-      {a.label}
+      {a.kind === 'resolve_conflict' ? conflictSection(row).headline ? 'Resolve conflict' : 'View record' : a.label}
     </button>
   )
 }
@@ -93,8 +113,9 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
-export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert }: {
+export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert, onOpenConflict }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
+  onOpenConflict?: (row: ProspectRow, key: string) => void
   onMineChanged?: (msg: string) => void; extra?: ReactNode; retained?: boolean; onAlert?: (r: ProspectRow) => void
 }) {
   const lr = r as ListRow
@@ -103,8 +124,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
   const ownership = lr.position_state === 'held' ? 'Held in' : lr.position_state === 'formerly_held'
     ? `Formerly held${lr.last_sell_at ? ` · sold ${String(lr.last_sell_at).slice(5, 10).replace('-', '/')}` : ''} ·` : ''
   const accounts = names.length ? names : ownership ? ['Unlabelled account'] : []
-  const reasons = blockingReasons(lr)
-  const warning = toneVars('warning')
+  const section = conflictSection(r)
   const stanceToneName = ['ADD', 'RE_ENTER', 'RE-ENTER'].includes(String(r.stance || '').toUpperCase()) ? 'info' : toneFromVerdict(r.stance)
   const stance = toneVars(stanceToneName)
   const score = r.conviction != null && Number.isFinite(r.conviction) ? r.conviction : null
@@ -116,16 +136,12 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
   const ownershipNode = ownership ? <>{ownership} <span data-testid="watch-row-account-names" role="group" aria-label={lr.position_state === 'held' ? 'Held accounts' : 'Last sell account'}>
     {accounts.map((name, i) => <AccountChip key={`${accountKeys[i]}-${i}`} account={accountKeys[i]} label={name} compact />)}</span></> : null
   const phoneOwnership = ownership ? <span className="watch-mobile-facts" data-testid="watch-phone-ownership"><span><b>{lr.position_state === 'held' ? 'Held in' : 'Sold in'}</b> {accounts.join(', ')}</span></span> : null
-  return <WatchRecordCard symbol={r.symbol} selected={selected} lane={r.lane} rail={cardRail(lr)}
+  return <WatchRecordCard symbol={r.symbol} selected={selected} lane={r.lane} rail={section.headline ? 'attention' : 'neutral'}
     company={<WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="company" ticker={ticker} ownership={ownershipNode} />}
     setup={<>
       <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
-      {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
-        border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
-        <span>Not actionable: {reasons[0]}</span>
-      </div>}
+      <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
     market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}
@@ -139,7 +155,8 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       <button type="button" onClick={onSelect} style={{ ...chipStyle('neutral', 'outline', 'md'), cursor: 'pointer' }}>View record</button></>} />
 }
 
-export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: ProspectRow) => void; cioMsg: string }) {
+export function Detail({ r, onOpenConflict }: { r: ProspectRow | null; onAskCio?: (r: ProspectRow) => void; cioMsg?: string; onOpenConflict?: (key: string) => void }) {
+  const sheet = useConflictSheet()
   if (!r) return <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a symbol to see its full record and where it appears.</div>
   return (
     <div data-testid="watch-detail" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -167,24 +184,11 @@ export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCi
         ))}
         {r.conviction_missing.length > 0 && <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>Not scored: {r.conviction_missing.join(', ')}</span>}
       </div>
-      {r.conflicts.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-detail-conflicts">
-          <span style={label} title={TOOLTIPS.conflicts}>Conflicts — shown, not resolved</span>
-          {r.conflicts.map((c, i) => (
-            <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
-              <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
-              <div><b>{String(c.a.value)}</b> · {c.a.source || '—'} · {c.a.at ? c.a.at.slice(0, 16).replace('T', ' ') : 'time unknown'}</div>
-              <div><b>{String(c.b.value)}</b> · {c.b.source || '—'} · {c.b.at ? c.b.at.slice(0, 16).replace('T', ' ') : 'time unknown'}</div>
-            </div>
-          ))}
-          <button type="button" onClick={() => onAskCio(r)} data-testid="watch-ask-cio"
-            title="Queues a CIO symbol review (POST /api/v3/opportunities/{symbol}/review-request). It does not change the record."
-            style={{ ...chipStyle('warning', 'outline', 'md'), cursor: 'pointer', alignSelf: 'flex-start', padding: '6px 10px', minHeight: 32 }}>
-            Ask the CIO to review
-          </button>
-          {cioMsg && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{cioMsg}</span>}
-        </div>
-      )}
+      <section aria-label="What disagrees">
+        <h2 tabIndex={-1} data-detail-focus style={{fontSize: TYPE.lg}}>What disagrees</h2>
+        <ConflictLine section={conflictSection(r)} onOpen={onOpenConflict ?? sheet.open} />
+      </section>
+      {sheet.key && !onOpenConflict && <WatchConflictDetail row={r} onBack={sheet.close} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-same-record">
         <span style={label} title={TOOLTIPS.sameRecord}>Same record everywhere</span>
         {r.surfaces.map(s => (
@@ -285,13 +289,19 @@ export default function WatchProspects() {
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const p: ProspectsPayload | null = useMemo(() => unwrap(raw), [raw])
   const lane = (LANE_ORDER.includes(params.get('lane') as LaneId) ? params.get('lane') : 'actionable') as LaneId
-  const sel = params.get('symbol')
-  const setSel = (symbol: string | null) => setParams(p => { if (symbol) p.set('symbol', symbol); else p.delete('symbol'); return p })
+  const detail = useMobilePageDetail('symbol')
+  const sheet = useConflictSheet()
+  const sel = detail.id
+  const setSel = (symbol: string | null) => symbol ? detail.open(symbol) : detail.close()
+  const openConflict = (row: ProspectRow, key = conflictSection(row).findings[0]?.key) => {
+    if (!key) {detail.open(row.symbol); return}
+    const next = new URLSearchParams(params); next.set('symbol', row.symbol); next.set('conflict', key)
+    setParams(next, {state: {w9DetailOpened: true}})
+  }
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
   const [toast, setToast] = useState('')
-  const [cioMsg, setCioMsg] = useState('')
   const tied = useMemo(() => tieAlerts(p, alertsRaw), [p, alertsRaw])
   const now = new Date()
 
@@ -304,7 +314,7 @@ export default function WatchProspects() {
 
   if (!p) {
     return (
-      <div data-testid="watch-prospects" style={{ ...panel, padding: 16, color: TOKENS.text[2] }}>
+      <div className="w9-page" data-testid="watch-prospects" style={{ ...panel, padding: 16, color: TOKENS.text[2] }}>
         {loading ? 'Loading prospects…' : `Prospects unavailable${error ? ` — ${String(error)}` : ''}.`}
         {!loading && <button type="button" onClick={() => refetch()} style={{ marginLeft: 8, ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Retry</button>}
       </div>
@@ -316,27 +326,14 @@ export default function WatchProspects() {
   const selected = allItems.find(r => r.symbol === sel) || null
 
   const onStep = (r: ProspectRow) => {
+    if (r.next_action.kind === 'resolve_conflict') {openConflict(r); return}
     setSel(r.symbol)
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
-    else if (r.next_action.kind === 'resolve_conflict') setCioMsg('')
-  }
-  const askCio = async (r: ProspectRow) => {
-    setCioMsg('Queuing…')
-    try {
-      const res = await fetch(`/api/v3/opportunities/${encodeURIComponent(r.symbol)}/review-request`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: `Watch conflict: ${r.conflicts.map(c => c.summary).join(' | ')}`.slice(0, 240) }),
-      }).then(x => x.json())
-      const d = res?.data ?? res
-      setCioMsg(d?.ok ? (d.already_open ? 'A CIO review is already queued for this symbol.' : 'CIO review queued.') : `Could not queue: ${d?.error || 'error'}`)
-    } catch (e) {
-      setCioMsg(`Could not queue: ${String(e).slice(0, 80)}`)
-    }
   }
 
   return (
-    <div data-testid="watch-prospects" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: TYPE.md, color: TOKENS.text[0] }}>
+    <div className="w9-page" data-testid="watch-prospects" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: TYPE.md, color: TOKENS.text[0] }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ fontSize: TYPE.base + 1, color: TOKENS.text[1], maxWidth: 820 }}>
           Your prospects, in the order you should look at them. One record per security — the same conviction, stage and
@@ -396,7 +393,7 @@ export default function WatchProspects() {
               <div style={{ padding: 16, color: TOKENS.text[2] }}>Nothing in {current?.label ?? 'this lane'} right now.</div>
             )}
             {(current?.items || []).map(r => (
-              <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep}
+              <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict}
                 onAlert={r => setAlertFor(r)} alerts={(tied.bySymbol[r.symbol] || []).length} onMineChanged={m => { setToast(m); refetch() }} />
             ))}
             {current && current.overflow.length > 0 && (
@@ -408,10 +405,14 @@ export default function WatchProspects() {
           </div>
         </section>
 
-        {selected && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
+        {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
           <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
-          <Detail r={selected} onAskCio={askCio} cioMsg={cioMsg} />
+          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
+        {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · prospect record`} onBack={detail.close}>
+          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+        </MobileDetailSheet>}
+        {selected && sheet.key && <WatchConflictDetail row={selected} onBack={sheet.close} onRefresh={refetch} />}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
