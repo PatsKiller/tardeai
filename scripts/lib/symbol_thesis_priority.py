@@ -198,8 +198,10 @@ def review_states(symbols, root: Any = None, *, now: Optional[datetime] = None,
             continue
         done_at = max((a["at"] for a in tries if a["status"] in DONE), default="")
         latest = reqs[-1]
+        horizon = (now - timedelta(days=ttl_days)).isoformat()
         unanswered = [r for r in reqs if str(r["requested_at"]) > done_at]
-        first_open = unanswered[0] if unanswered else None
+        live = [r for r in unanswered if str(r["requested_at"]) >= horizon]  # aged-out asks never date an open request
+        first_open = (live or unanswered or [None])[0]
         try:
             expires = datetime.fromisoformat(str(latest["requested_at"])) + timedelta(days=ttl_days)
         except ValueError:

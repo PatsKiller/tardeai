@@ -91,6 +91,7 @@ def test_review_states_cover_none_queued_blocked_answered_expired(tmp_path):
     t = lambda h: (NOW - timedelta(hours=h)).isoformat()  # noqa: E731
     _write(tmp_path, stp.RELPATH, [
         {"symbol": "FATN", "requested_at": t(30), "source": "operator_opportunity_view", "conflict_key": "k1", "request_id": "rr_1"},
+        {"symbol": "QUE", "requested_at": t(24 * 20), "source": "sec_fundamentals_ingest"},
         {"symbol": "QUE", "requested_at": t(2), "source": "operator_opportunity_view"},
         {"symbol": "DONE", "requested_at": t(30), "source": "cio_opportunity_curator"},
         {"symbol": "OLD", "requested_at": t(24 * 10), "source": "operator_opportunity_view"},
@@ -100,6 +101,7 @@ def test_review_states_cover_none_queued_blocked_answered_expired(tmp_path):
     s = stp.review_states(["fatn", "QUE", "DONE", "OLD", "NEW"], tmp_path, now=NOW)
     assert s["NEW"]["status"] == "none" and s["NEW"]["open"] is False
     assert s["QUE"]["status"] == "queued" and s["QUE"]["label"] == "Queued for the CIO" and s["QUE"]["open"]
+    assert s["QUE"]["queued_at"] == t(2) and s["QUE"]["requested_by"] == "operator_opportunity_view"  # aged-out ask ignored
     f = s["FATN"]
     assert f["status"] == "blocked" and f["open"] and f["attempts_since_request"] == 5
     assert f["label"].startswith("Blocked: waiting for evidence — no contradicting evidence on file yet")
