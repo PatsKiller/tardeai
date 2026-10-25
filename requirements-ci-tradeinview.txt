@@ -1,0 +1,2 @@
+# Test-only Draft 2020-12 validation; existing production requirements unchanged.
+jsonschema==4.19.2
