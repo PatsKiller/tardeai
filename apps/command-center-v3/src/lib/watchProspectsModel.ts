@@ -25,11 +25,29 @@ export type Side = { value: unknown; source: string | null; at: string | null }
 export type Conflict = { kind: string; summary: string; a: Side; b: Side }
 export type Component = { key: string; label: string; value: number | null; weight: number | null; detail?: string | null; source?: string | null }
 export type NextAction = {
-  kind: 'propose' | 'set_alert' | 'protect' | 'resolve_conflict' | 'review_add' | 'decide' | 'open_position' | 'none' | string
+  kind: 'propose' | 'set_alert' | 'protect' | 'resolve_conflict' | 'cio_missing' | 'review_add' | 'decide' | 'open_position' | 'none' | string
   label: string
   reason: string
   href?: string | null
   seed?: Record<string, number | null> | null
+  /** cio_missing: why the canonical CIO view is absent (server text). */
+  gap?: { reason?: string } | null
+}
+/** ReviewRequestState@v1 (scripts/lib/symbol_thesis_priority.review_states): the CIO review request for this symbol,
+ *  read from the priority queue and the acquisition run's recorded outcome. The server writes ``label``. */
+export type ReviewState = {
+  status: 'none' | 'queued' | 'blocked' | 'failed' | 'waiting_budget' | 'answered' | 'expired' | 'unavailable' | string
+  label: string
+  open: boolean
+  queued_at?: string | null
+  requested_by?: string | null
+  expires_at?: string | null
+  queue_position?: number | null
+  queue_length?: number | null
+  attempts_since_request?: number
+  last_attempt?: { status: string; at: string; block_reason?: string | null; reason?: string; remaining_gaps?: string[] } | null
+  conflict_key?: string | null
+  request_id?: string | null
 }
 export type SurfaceRow = { surface: string; value: string; source: string | null; joined: boolean }
 export type ProspectRow = {
@@ -54,6 +72,7 @@ export type ProspectRow = {
   conflicts: Conflict[]
   next_trigger: { label: string; level_ref: number | null; inside: boolean; distance_pct: number | null; observed_by: string | null }
   next_action: NextAction
+  review_state?: ReviewState | null
   price: number | null
   price_as_of?: string | null
   rsi: number | null
@@ -137,6 +156,7 @@ export function stepTone(kind: string): 'success' | 'danger' | 'warning' | 'info
   if (kind === 'propose') return 'success'
   if (kind === 'protect') return 'danger'
   if (kind === 'resolve_conflict') return 'warning'
+  if (kind === 'cio_missing') return 'info'
   if (kind === 'none') return 'neutral'
   return 'info'
 }
@@ -309,4 +329,41 @@ export const TOOLTIPS = {
     + 'Set alert arms an advisory Watch alert; Protect first opens Open Trades.',
   sameRecord: 'What each surface shows for this security. Interim: only the sources this page reads are joined; the others say "not joined" instead of guessing.',
   classic: 'The previous Watch Intelligence view, kept for one release.',
+}
+
+// ── CIO review request (batch 31) ────────────────────────────────────────────
+
+/** next_action kinds that ask the CIO for a review; every one renders an actionable "Ask the CIO to review". */
+export const CIO_REVIEW_KINDS = ['resolve_conflict', 'cio_missing'] as const
+export function asksCio(kind: string | null | undefined): boolean {
+  return (CIO_REVIEW_KINDS as readonly string[]).includes(String(kind || ''))
+}
+
+/** Tone of the request-state chip. */
+export function reviewStateTone(s: ReviewState | null | undefined): 'success' | 'warning' | 'info' | 'neutral' {
+  const status = s?.status
+  if (status === 'answered') return 'success'
+  if (status === 'blocked' || status === 'failed' || status === 'waiting_budget') return 'warning'
+  if (status === 'queued') return 'info'
+  return 'neutral'
+}
+
+const shortTime = (at: string | null | undefined) => at ? String(at).slice(0, 16).replace('T', ' ') : null
+
+/** One line for the chip; the server label first, the request times after it. Never a silent "already queued". */
+export function reviewStateText(s: ReviewState | null | undefined): string | null {
+  if (!s || s.status === 'none') return null
+  const parts = [s.label || s.status]
+  if (s.open && s.queued_at) parts.push(`asked ${shortTime(s.queued_at)} UTC`)
+  if (s.open && s.expires_at) parts.push(`expires ${shortTime(s.expires_at)} UTC`)
+  if (s.last_attempt?.at && s.status !== 'queued') parts.push(`last run ${shortTime(s.last_attempt.at)} UTC`)
+  return parts.join(' · ')
+}
+
+/** The note sent with a request: the flags or the gap, so the CIO sees why it was asked. */
+export function cioReviewNote(r: Pick<ProspectRow, 'conflicts' | 'next_action'>): string {
+  const flags = (r.conflicts || []).map(c => c.summary).filter(Boolean)
+  if (flags.length) return `Watch conflict: ${flags.join(' | ')}`.slice(0, 240)
+  if (r.next_action?.kind === 'cio_missing') return `Watch: no CIO view — ${r.next_action.gap?.reason || r.next_action.reason}`.slice(0, 240)
+  return `Watch: ${r.next_action?.reason || 'review requested'}`.slice(0, 240)
 }

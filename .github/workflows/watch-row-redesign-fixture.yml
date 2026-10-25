@@ -49,6 +49,8 @@ jobs:
         run: node e2e/watch-row-redesign.fixture.mjs "$RUNNER_TEMP/watch-row-redesign"
       - name: Retained original evidence after503/403 without a live server
         run: node e2e/watch-freshness-noise.fixture.mjs "$RUNNER_TEMP/watch-row-redesign"
+      - name: Batch 31 Ask the CIO at 412/390 (no false conflict, actionable row, visible request state)
+        run: node e2e/watch-cio-review.fixture.mjs "$RUNNER_TEMP/watch-row-redesign/cio-review"
       - name: Existing Watch, account-name and source-evidence suites on isolated static assets
         shell: bash
         env:

@@ -18,6 +18,7 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
+import { CioReviewPanel, ReviewStateChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
 import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
@@ -26,7 +27,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
-  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, convictionTone, drawers, headerChips, laneById,
+  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, drawers, headerChips, laneById,
   proposeSeed, stanceLabel, stanceTone, stepTone, tieAlerts, unwrap,
   type LaneId, type ProspectRow, type ProspectsPayload, type TiedAlerts,
 } from '../lib/watchProspectsModel'
@@ -36,7 +37,7 @@ import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
   alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
-  roundTripPath, withQuery, askCioReview, type ListRow,
+  roundTripPath, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
 const panel: CSSProperties = {
@@ -76,8 +77,7 @@ export function legacyConflicts(row: ProspectRow) {
   return !section.headline && section.gap ? row.conflicts || [] : []
 }
 
-function LegacyConflictFlags({ r }: { r: ProspectRow }) {
-  const [msg, setMsg] = useState('')
+function LegacyConflictFlags({ r, cio }: { r: ProspectRow; cio: CioReviewController }) {
   const flags = legacyConflicts(r)
   if (!flags.length) return null
   const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
@@ -88,18 +88,14 @@ function LegacyConflictFlags({ r }: { r: ProspectRow }) {
       <div><b>{String(c.a?.value ?? '—')}</b> · {c.a?.source || '—'} · {when(c.a?.at ?? null)}</div>
       <div><b>{String(c.b?.value ?? '—')}</b> · {c.b?.source || '—'} · {when(c.b?.at ?? null)}</div>
     </div>)}
-    <button type="button" data-testid="watch-ask-cio" className="mobile-detail-primary"
-      onClick={async () => { setMsg('Queuing…'); setMsg(await askCioReview(r.symbol, `Watch conflict: ${flags.map(x => x.summary).join(' | ')}`)) }}
-      style={{ ...chipStyle('warning', 'outline', 'md'), cursor: 'pointer', minHeight: 44, width: '100%' }}>
-      Ask the CIO to review
-    </button>
-    {msg && <span role="status" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{msg}</span>}
+    <CioReviewPanel row={r} cio={cio} />
   </div>
 }
 
 export function WatchConflictDetail({row, onBack, onRefresh}: {row: ProspectRow; onBack?: () => void; onRefresh?: () => void}) {
   return <ConflictSheet title={`${row.symbol} · recorded conflict`} section={conflictSection(row)} onBack={onBack}>
     {(record, refresh) => <>
+      <ReviewStateChip state={currentReviewState(row)} />
       <WatchReviewRequest symbol={row.symbol} securityGuid={row.security_guid} record={record} onRefresh={() => {refresh(); onRefresh?.()}} />
       <Link className="mobile-detail-primary" to={`/watch/intelligence/${encodeURIComponent(row.symbol)}`} onClick={() => window.scrollTo(0, 0)}>Open evidence →</Link>
     </>}
@@ -113,6 +109,16 @@ function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; he
       <span style={{ display: 'block', height, width: `${w}%`, background: toneVars(tone).color }} />
     </span>
   )
+}
+
+/** Row "Ask the CIO to review": an engine finding opens its recorded conflict (whose sheet asks with the finding);
+ *  otherwise the record opens and the request is sent unless one is already open — the record shows the state. */
+export function askFromRow(r: ProspectRow, cio: CioReviewController, openConflict: (row: ProspectRow, key: string) => void,
+  select: (symbol: string) => void) {
+  const key = conflictSection(r).findings[0]?.key
+  if (key) {openConflict(r, key); return}
+  select(r.symbol)
+  if (!currentReviewState(r, cio)?.open) void cio.ask(r)
 }
 
 export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: ProspectRow) => void }) {
@@ -131,7 +137,7 @@ export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: Pros
   }
   return (
     <button type="button" title={a.reason} style={style} onClick={() => onStep(row)} data-testid="watch-step" data-step={a.kind}>
-      {a.kind === 'resolve_conflict' ? conflictSection(row).headline || legacyConflicts(row).length ? 'Resolve conflict' : 'View record' : a.label}
+      {asksCio(a.kind) ? 'Ask the CIO to review' : a.label}
     </button>
   )
 }
@@ -144,8 +150,9 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
-export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert, onOpenConflict }: {
+export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert, onOpenConflict, cio }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
+  cio?: CioReviewController
   onOpenConflict?: (row: ProspectRow, key: string) => void
   onMineChanged?: (msg: string) => void; extra?: ReactNode; retained?: boolean; onAlert?: (r: ProspectRow) => void
 }) {
@@ -183,6 +190,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
         <span>Not actionable: {reasons[0]}</span>
       </div>}
       <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
+      <ReviewStateChip state={currentReviewState(r, cio)} testId="watch-row-review-state" compact />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
     market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}
@@ -196,8 +204,10 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       <button type="button" onClick={onSelect} style={{ ...chipStyle('neutral', 'outline', 'md'), cursor: 'pointer' }}>View record</button></>} />
 }
 
-export function Detail({ r, onOpenConflict }: { r: ProspectRow | null; onAskCio?: (r: ProspectRow) => void; cioMsg?: string; onOpenConflict?: (key: string) => void }) {
+export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | null; onAskCio?: (r: ProspectRow) => void; cioMsg?: string; onOpenConflict?: (key: string) => void; cio?: CioReviewController }) {
   const sheet = useConflictSheet()
+  const own = useCioReview()
+  const cio = shared || own
   if (!r) return <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a symbol to see its full record and where it appears.</div>
   return (
     <div data-testid="watch-detail" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -228,7 +238,7 @@ export function Detail({ r, onOpenConflict }: { r: ProspectRow | null; onAskCio?
       <section aria-label="What disagrees">
         <h2 tabIndex={-1} data-detail-focus style={{fontSize: TYPE.lg}}>What disagrees</h2>
         <ConflictLine section={conflictSection(r)} onOpen={onOpenConflict ?? sheet.open} />
-        <LegacyConflictFlags r={r} />
+        <LegacyConflictFlags r={r} cio={cio} />
       </section>
       {sheet.key && !onOpenConflict && <WatchConflictDetail row={r} onBack={sheet.close} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-same-record">
@@ -247,8 +257,11 @@ export function Detail({ r, onOpenConflict }: { r: ProspectRow | null; onAskCio?
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{r.whats_missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
         </div>
       )}
-      <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
-        <b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}
+      <div data-testid="watch-detail-next" style={{ display: 'grid', gap: 8, fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
+        <span><b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}</span>
+        {/* Never a dead end: a step that asks the CIO always carries the button (the flags block carries it when shown). */}
+        {asksCio(r.next_action.kind) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
+        {!asksCio(r.next_action.kind) && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
       <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
         Evidence {r.evidence_at ? r.evidence_at.slice(0, 16).replace('T', ' ') : '—'} · expires {r.expires_at ? r.expires_at.slice(0, 16).replace('T', ' ') : '—'}
@@ -345,6 +358,7 @@ export default function WatchProspects() {
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
   const [toast, setToast] = useState('')
   const tied = useMemo(() => tieAlerts(p, alertsRaw), [p, alertsRaw])
+  const cio = useCioReview(refetch)
   const now = new Date()
 
   const pickLane = (id: LaneId) => {
@@ -368,7 +382,7 @@ export default function WatchProspects() {
   const selected = allItems.find(r => r.symbol === sel) || null
 
   const onStep = (r: ProspectRow) => {
-    if (r.next_action.kind === 'resolve_conflict') {openConflict(r); return}
+    if (asksCio(r.next_action.kind)) {askFromRow(r, cio, openConflict, setSel); return}
     setSel(r.symbol)
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
@@ -435,7 +449,7 @@ export default function WatchProspects() {
               <div style={{ padding: 16, color: TOKENS.text[2] }}>Nothing in {current?.label ?? 'this lane'} right now.</div>
             )}
             {(current?.items || []).map(r => (
-              <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict}
+              <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} onOpenConflict={openConflict} cio={cio}
                 onAlert={r => setAlertFor(r)} alerts={(tied.bySymbol[r.symbol] || []).length} onMineChanged={m => { setToast(m); refetch() }} />
             ))}
             {current && current.overflow.length > 0 && (
@@ -449,10 +463,10 @@ export default function WatchProspects() {
 
         {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
           <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
-          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+          <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
         {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · prospect record`} onBack={detail.close}>
-          <Detail r={selected} onOpenConflict={key => openConflict(selected, key)} />
+          <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </MobileDetailSheet>}
         {selected && sheet.key && <WatchConflictDetail row={selected} onBack={sheet.close} onRefresh={refetch} />}
       </div>
