@@ -516,23 +516,39 @@ def _live_policy_stop(symbol, price):
         return None
 
 
+def _stored_stops_only(query=None) -> bool:
+    """True when a page view asked for the stored stop read model (``?stops=stored``): no broker read at all.
+
+    Page audit 2026-10-25: page polls of live-stops / llm-coverage / stops-management read Schwab on every cache
+    miss. Pages pass ``stops=stored`` and get the persisted observations (stop_last_known via cio_truth, the
+    stop_lifecycle snapshot); only an explicit operator refresh (``refresh=1``) still reads the broker."""
+    v = (query or {}).get("stops")
+    v = v[0] if isinstance(v, list) and v else v
+    return str(v or "").strip().lower() == "stored"
+
+
 def _stops_management_api(query=None):
     """GET /api/v2/stops/management — aggregation for the Portfolio → Stop Management tab. Joins broker-actual
     stops (stop_lifecycle) + holdings + advisor planned stops + portfolio heat into per-position rows with
     distance (R/ATR/$), alert level (yellow/amber/red), trailing-not-active, and broker/planned divergence.
-    Read-only: no broker calls, no order placement. See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md."""
+    No order placement. ``?stops=stored`` (page views) never reads the broker: the persisted snapshot only.
+    See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md."""
     import time as _t
 
     q = query or {}
-    _force = str(q.get("refresh") or "").lower() in ("1", "true", "yes")
-    if not _force and _t.time() - _STOPS_MGMT_CACHE["ts"] < 90 and _STOPS_MGMT_CACHE["data"]:
-        return {**_STOPS_MGMT_CACHE["data"], "cached": True}
-    out = _stops_management_api_build(q)
-    _STOPS_MGMT_CACHE.update(ts=_t.time(), data=out)
+    _rv = q.get("refresh")
+    _rv = _rv[0] if isinstance(_rv, list) and _rv else _rv
+    _force = str(_rv or "").lower() in ("1", "true", "yes")
+    _stored = _stored_stops_only(q) and not _force
+    _cache = _STOPS_MGMT_STORED_CACHE if _stored else _STOPS_MGMT_CACHE
+    if not _force and _t.time() - _cache["ts"] < 90 and _cache["data"]:
+        return {**_cache["data"], "cached": True}
+    out = _stops_management_api_build(q, stored_only=_stored)
+    _cache.update(ts=_t.time(), data=out)
     return out
 
 
-def _stops_management_api_build(query=None):
+def _stops_management_api_build(query=None, *, stored_only=False):
     q = query or {}
     HEAT_CAP = 5.0
 
@@ -551,9 +567,16 @@ def _stops_management_api_build(query=None):
     # "modify in ToS"). Only fall back to confirmations/snapshots for Schwab when the live read failed
     # (after-hours/degraded). Fidelity has no broker API, so its confirmations always stand.
     _live_read_ok = False
-    _live_stops_meta = {"fetched_at": None, "live_read_ok": False, "error": None, "broker_count": 0}
+    _live_stops_meta = {
+        "fetched_at": None,
+        "live_read_ok": False,
+        "error": None,
+        "broker_count": 0,
+        "stored_only": bool(stored_only),
+    }
     try:
-        ls = _holdings_live_stops() or {}
+        # stored_only (page views): no live read — the persisted snapshot below is the source.
+        ls = {} if stored_only else (_holdings_live_stops() or {})
         _read_status = ls.get("broker_stop_read_status") or {}
         _live_read_ok = bool(not ls.get("error") and ls.get("fetched_at") and not ls.get("degraded"))
         _live_stops_meta = {
@@ -565,6 +588,7 @@ def _stops_management_api_build(query=None):
             "read_status": _read_status,
             "error": ls.get("error"),
             "broker_count": len(ls.get("by_key") or {}),
+            "stored_only": bool(stored_only),
         }
         for _key, bs in (ls.get("by_key") or {}).items():
             sym = str(bs.get("symbol", "")).upper()
@@ -2049,6 +2073,7 @@ def _protective_holding_truth(account_key: str, symbol: str):
 
 _STOP_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
 _STOPS_MGMT_CACHE = {"ts": 0.0, "data": None}
+_STOPS_MGMT_STORED_CACHE = {"ts": 0.0, "data": None}  # ?stops=stored builds (no broker read) never mix with live
 
 
 def _stops_lifecycle_db_snapshot():
@@ -40172,6 +40197,10 @@ def _portfolio_stop_policy_migration(query=None):
     return _json_clean(_json.loads(p.read_text()))
 
 
+class _StoredStopsOnly(Exception):
+    """Internal: skip the live broker overlay for ``?stops=stored`` page reads."""
+
+
 def _portfolio_llm_coverage(query=None):
     """GET /api/v2/portfolio/llm-coverage — per-symbol LLM research provenance (operator request
     2026-06-12: 'LLM name badge so we know which has looked at it'). Sources: hermes internal research
@@ -40380,8 +40409,12 @@ def _portfolio_llm_coverage(query=None):
         }
     # Overlay live Schwab broker protective stops (API source of truth). Trailing orders often have
     # stop_price=null — trail_offset + order_type carry the live protection state for the UI.
+    # ``?stops=stored`` (page views, audit 2026-10-25): no broker read; stops come from the stored read model.
+    _stored = _stored_stops_only(query)
     _broker_fetched_at = None
     try:
+        if _stored:
+            raise _StoredStopsOnly()
         import open_trades_intelligence as _oti
 
         _holdings = _load_json(STATE_DIR / "holdings.json") or {}
@@ -40418,7 +40451,8 @@ def _portfolio_llm_coverage(query=None):
     except Exception:
         pass
     try:
-        _read_ok = sorted(_oti.broker_stop_read_ok())
+        # stored: no live read happened, so no account is verified by one (never a false NO_STOP).
+        _read_ok = [] if _stored else sorted(_oti.broker_stop_read_ok())
     except Exception:
         _read_ok = []
     return _json_clean(

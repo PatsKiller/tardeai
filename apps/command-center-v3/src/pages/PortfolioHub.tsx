@@ -10,6 +10,7 @@ import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from '../components/DetailDrawer'
 import AskAgents from '../components/AskAgents'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
+import { storedStopFor, storedStopsAsOf } from '../lib/storedStops'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import StopManagement from '../components/StopManagement'
 import RedeployPanel from '../components/RedeployPanel'
@@ -266,8 +267,9 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: shareDriftRaw, refetch: refetchShareDrift } = useApi<any>('/api/v2/holdings/share-drift', 60_000, { enabled: needHoldingsDesk })
   const shareDriftItems: ShareDriftItem[] = (shareDriftRaw?.items || shareDriftRaw?.data?.items || []) as ShareDriftItem[]
   const [shareDriftModal, setShareDriftModal] = useState<ShareDriftItem | null>(null)
-  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000, { enabled: needHoldingsDesk })
-  const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000, { enabled: needHoldingsDesk })
+  // Page views never trigger a broker read (page audit 2026-10-25): no live-stops poll, and llm-coverage is
+  // asked for its stored stop model. Resting stops come from the holdings rows (cio_truth stop_last_known).
+  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage?stops=stored', 120_000, { enabled: needHoldingsDesk })
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000, { enabled: needHoldingsDesk })
   // Cards + Finviz strips only for the symbols this desk shows (perf 2026-10-25): the universe maps are ~3.3 MB +
   // 1.7 MB (~1.3 MB gzipped) and the desk reads cardMap[SYM] / fvMap[SYM] for holdings rows only. Both endpoints
@@ -334,25 +336,12 @@ export default function PortfolioHub({ onDrill }: Props) {
   const stopCuration: Record<string, any> = (llmCov as any)?.stop_curation ?? {}
   const monitoredByKey: Record<string, any> = monitoredStops?.by_key ?? {}
   const confirmedByKey: Record<string, any> = (llmCov as any)?.confirmed_stops ?? {}
-  const liveStopsByKey: Record<string, any> = (liveStops as any)?.by_key ?? {}
-  const brokerStopsFetchedAt = (liveStops as any)?.fetched_at ?? (llmCov as any)?.broker_stops_fetched_at ?? null
-  // accounts whose live broker-stop read succeeded — anything else is UNVERIFIABLE, not 'none'.
-  // If live-stops is degraded / errored / missing, do NOT fall back to a stale llm-coverage
-  // read-ok list (that reintroduces false-empty NO_STOP when by_key is empty).
-  const liveStopsDegraded = Boolean(
-    (liveStops as any)?.degraded
-    || (liveStops as any)?.error
-    || (liveStops as any)?.safe_error_code
-    || ((liveStops as any)?.complete === false && Array.isArray((liveStops as any)?.broker_stop_read_ok_accounts)
-      && (liveStops as any).broker_stop_read_ok_accounts.length === 0
-      && Array.isArray((liveStops as any)?.unverified_accounts)
-      && (liveStops as any).unverified_accounts.length > 0),
-  )
-  const brokerStopReadOk: string[] = liveStopsDegraded
-    ? []
-    : ((liveStops as any)?.broker_stop_read_ok_accounts
-      ?? (llmCov as any)?.broker_stop_read_ok_accounts
-      ?? [])
+  // Stored stop model: the age is the oldest stored observation shown. No live read happened on this page view,
+  // so no account counts as verified by one: a position without a stored resting stop is UNVERIFIABLE, never
+  // a false NO_STOP.
+  const brokerStopsFetchedAt = storedStopsAsOf(allHoldings)
+  const liveStopsDegraded = false
+  const brokerStopReadOk: string[] = []
   // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
   // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
@@ -370,7 +359,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       h,
       pr: cash ? undefined : mergeProtection(symU, protection[symU]),
       monitored: cash ? undefined : monitoredByKey[stopKey],
-      confirmedStop: cash ? undefined : mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
+      confirmedStop: cash ? undefined : mergeLiveStop(confirmedByKey[stopKey], storedStopFor(rawH)),
       brokerStopReadOk,
       reportEntry: cash ? undefined : reportMap[symU],
       coverage: cash ? undefined : coverage[symU],
@@ -429,9 +418,7 @@ export default function PortfolioHub({ onDrill }: Props) {
     return { placement, verification }
   }, [terminalRows])
 
-  const unverifiedAccounts: string[] = Array.isArray((liveStops as any)?.unverified_accounts)
-    ? (liveStops as any).unverified_accounts
-    : []
+  const unverifiedAccounts: string[] = []
 
   // Deep-link: ?symbol= / ?account= / ?drawer= / ?drawerTab=stops (Home + Research Intel)
   useEffect(() => {
@@ -528,6 +515,7 @@ export default function PortfolioHub({ onDrill }: Props) {
         unverifiedAccounts={unverifiedAccounts}
         liveStopsDegraded={liveStopsDegraded}
         brokerStopsFetchedAt={brokerStopsFetchedAt}
+        storedOnly
         placementCount={deskCounts.placement}
         verificationCount={deskCounts.verification}
         priceStamp={priceStamp}
