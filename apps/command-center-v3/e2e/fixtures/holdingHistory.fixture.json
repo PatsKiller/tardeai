@@ -1,0 +1,14 @@
+{
+  "source": "SYNTHETIC_MISSING_CAPTURE_ONLY; no mockup financial data",
+  "as_of": "2026-10-24T20:00:00Z",
+  "schema": "HoldingHistory@v1",
+  "ok": false,
+  "range": {"start_date": null, "end_date": null, "basis": "missing test capture", "coverage": {"status": "MISSING", "reasons": ["Fixture holding history capture unavailable"]}},
+  "symbols": [],
+  "detail": null,
+  "account_options": [],
+  "gaps": [{"source": "fixture input", "reason": "Missing capture; no eligible names can be measured"}],
+  "provider_calls": 0,
+  "writes": 0,
+  "read_only": true
+}
