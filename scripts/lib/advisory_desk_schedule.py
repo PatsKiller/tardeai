@@ -55,59 +55,105 @@ def next_weekday_0915_et(now: datetime | None = None) -> datetime:
     return candidate
 
 
-def _systemd_next_iso() -> str | None:
+def _parse_systemd_time(raw: str) -> str | None:
+    """systemctl may render a microsecond count or a human timestamp."""
+    raw = raw.strip()
+    if not raw or raw.lower() in {"0", "n/a", "infinity"}:
+        return None
+    try:
+        if raw.isdigit():
+            return datetime.fromtimestamp(int(raw) / 1_000_000, tz=timezone.utc).isoformat()
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return stamp.astimezone(timezone.utc).isoformat() if stamp.tzinfo else None
+    except (ValueError, OverflowError, OSError):
+        pass
+    try:
+        day, date, clock, zone = raw.split()
+        stamp = datetime.strptime(f"{day} {date} {clock}", "%a %Y-%m-%d %H:%M:%S")
+        if zone in {"UTC", "GMT"}:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        elif zone in {"EST", "EDT"}:
+            stamp = stamp.replace(tzinfo=ET)
+            if stamp.tzname() != zone:
+                return None
+        else:
+            return None
+        return stamp.astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def _systemd_timer_state() -> dict[str, Any]:
+    """Read timer properties only; never starts or enables a unit."""
     now = time.monotonic()
-    if now - float(_SYSTEMD_CACHE.get("at") or 0) < 60:
-        iso = _SYSTEMD_CACHE.get("iso")
-        return str(iso) if iso else None
+    if _SYSTEMD_CACHE.get("state") is not None and now - float(_SYSTEMD_CACHE.get("at") or 0) < 60:
+        return dict(_SYSTEMD_CACHE["state"])
+    props: dict[str, str] = {}
+    error = None
     try:
         out = subprocess.check_output(
-            [
-                "systemctl",
-                "--user",
-                "show",
-                TIMER_UNIT,
-                "-p",
-                "NextElapseUSecRealtime",
-                "--value",
-            ],
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=3,
-        ).strip()
-    except (subprocess.SubprocessError, OSError, FileNotFoundError):
-        _SYSTEMD_CACHE["at"] = now
-        _SYSTEMD_CACHE["iso"] = None
-        return None
-    iso = None
-    if out and out not in ("0", "n/a", "N/A"):
-        try:
-            usec = int(out)
-            if usec > 0:
-                iso = datetime.fromtimestamp(usec / 1_000_000, tz=timezone.utc).isoformat()
-        except ValueError:
-            iso = None
-    _SYSTEMD_CACHE["at"] = now
-    _SYSTEMD_CACHE["iso"] = iso
-    return iso
+            ["systemctl", "--user", "show", TIMER_UNIT,
+             "-p", "LoadState", "-p", "ActiveState", "-p", "UnitFileState",
+             "-p", "NextElapseUSecRealtime"],
+            stderr=subprocess.DEVNULL, text=True, timeout=3,
+        )
+        props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    except (subprocess.SubprocessError, OSError):
+        error = "Timer state could not be observed."
+    load = props.get("LoadState")
+    active = props.get("ActiveState")
+    enabled = props.get("UnitFileState")
+    next_iso = _parse_systemd_time(props.get("NextElapseUSecRealtime", ""))
+    if error:
+        state, reason = "UNKNOWN", error
+    elif load in {"not-found", "error", "bad-setting"}:
+        state, reason = "MISSING", "The opinion session timer is not loaded."
+    elif enabled in {"disabled", "masked", "masked-runtime"}:
+        state, reason = "DISABLED", "The opinion session timer is disabled."
+    elif active != "active":
+        state, reason = "INACTIVE" if active else "UNKNOWN", "The opinion session timer is not active."
+    elif load != "loaded" or not enabled or not next_iso:
+        state, reason = "UNKNOWN", "The timer has no verified next fire."
+    else:
+        state, reason = "SCHEDULED", None
+    result = {"state": state, "reason": reason, "load_state": load,
+              "active_state": active, "unit_file_state": enabled,
+              "next_run_at": next_iso if state == "SCHEDULED" else None,
+              "observed_at": datetime.now(timezone.utc).isoformat()}
+    _SYSTEMD_CACHE.update(at=now, state=result, iso=result["next_run_at"])
+    return dict(result)
+
+
+def _systemd_next_iso() -> str | None:
+    """Compatibility accessor; no calendar fallback for an unobserved fire."""
+    return _systemd_timer_state().get("next_run_at")
 
 
 def schedule_payload(now: datetime | None = None) -> dict[str, Any]:
-    computed = next_weekday_0915_et(now)
-    systemd_iso = _systemd_next_iso()
-    next_iso = systemd_iso or computed.isoformat()
-    try:
-        next_dt = datetime.fromisoformat(next_iso.replace("Z", "+00:00")).astimezone(ET)
-    except ValueError:
-        next_dt = computed
+    timer = _systemd_timer_state()
+    state, reason = timer["state"], timer.get("reason")
+    next_iso = timer.get("next_run_at") if state == "SCHEDULED" else None
+    next_dt = None
+    if next_iso:
+        try:
+            parsed = datetime.fromisoformat(str(next_iso).replace("Z", "+00:00"))
+            observed_now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+            if parsed.tzinfo is None or parsed <= observed_now:
+                raise ValueError("next fire is not in the future")
+            next_dt = parsed.astimezone(ET)
+        except (ValueError, TypeError):
+            state, reason = "UNKNOWN", "The timer has no verified future fire."
     return {
         "cadence": "weekdays 09:15 America/New_York",
-        "timer_unit": TIMER_UNIT,
-        "source": "systemd" if systemd_iso else "calendar",
-        "next_run_at": next_dt.isoformat(),
-        "next_run_et": next_dt.strftime("%a %Y-%m-%d %H:%M %Z"),
-        "authority": "READ_ONLY_ADVISORY",
-        "financial_action": False,
+        "timer_unit": TIMER_UNIT, "source": "systemd",
+        "schedule_state": state, "schedule_reason": reason,
+        "timer_enabled": timer.get("unit_file_state") in {"enabled", "enabled-runtime"}
+        if timer.get("unit_file_state") else None,
+        "timer_active": timer.get("active_state") == "active" if timer.get("active_state") else None,
+        "observed_at": timer.get("observed_at"),
+        "next_run_at": next_dt.isoformat() if next_dt else None,
+        "next_run_et": next_dt.strftime("%a %Y-%m-%d %H:%M %Z") if next_dt else None,
+        "authority": "READ_ONLY_ADVISORY", "financial_action": False,
     }
 
 

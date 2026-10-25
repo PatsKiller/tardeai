@@ -161,7 +161,7 @@ def test_advisory_start_run_now_wave_c_dry_run(tmp_path, monkeypatch):
     import lib.advisory_desk_schedule as m
 
     m = importlib.reload(m)
-    monkeypatch.setattr(m, "_systemd_next_iso", lambda: None)
+    monkeypatch.setattr(m, "_systemd_timer_state", lambda: {"state": "UNKNOWN", "reason": "Fixture timer has no scheduled fire.", "next_run_at": None})
 
     def fake_enqueue(**kw):
         return {

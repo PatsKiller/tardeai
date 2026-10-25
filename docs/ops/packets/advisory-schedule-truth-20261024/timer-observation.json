@@ -1,0 +1,21 @@
+{
+  "observed_at": "2026-10-24T22:59:23.462155+00:00",
+  "command": "systemctl --user show tradeai-advisory-shadow-session.timer -p LoadState -p ActiveState -p UnitFileState -p NextElapseUSecRealtime",
+  "raw_properties": "LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\nNextElapseUSecRealtime=\n",
+  "sha256": "1009d75dd14b7f1e3817af0a18cdea30f973f1406e170cc59caf6a0afa0e4ed2",
+  "replayed_backend_schedule": {
+    "cadence": "weekdays 09:15 America/New_York",
+    "timer_unit": "tradeai-advisory-shadow-session.timer",
+    "source": "systemd",
+    "schedule_state": "DISABLED",
+    "schedule_reason": "The opinion session timer is disabled.",
+    "timer_enabled": false,
+    "timer_active": false,
+    "observed_at": "2026-10-24T22:59:23.462521+00:00",
+    "next_run_at": null,
+    "next_run_et": null,
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false
+  },
+  "writes": "None; read-only unit properties, then copied-output replay"
+}

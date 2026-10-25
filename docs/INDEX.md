@@ -1774,6 +1774,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ACCOUNT_LABELS_2026-10-23.md` | Account names on every position and trade row (2026-10-23) |
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
+| `docs/ops/ADVISORY_SCHEDULE_TRUTH_20261024.md` | Advisory schedule: advertise observed fires only |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
