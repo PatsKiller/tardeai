@@ -212,6 +212,8 @@ if d.get("override_used"):
         "coordinator_why": coord.get("why"),
         "approvals": coord.get("approvals") or {},
         "agent_claim_session": os.environ.get("AGENT_CLAIM_SESSION") or None,
+        # AGENTS.md 21.0.0 §28.15 item 1: the override is logged with its approval reference.
+        "override_ref": os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE_REF") or None,
         "guard_grant": bool(d.get("guard_grant")),
     })
 PY

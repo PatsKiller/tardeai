@@ -57,10 +57,13 @@ INACTIVE = {"active": False, "state": "NOT_ACTIVE", "detail": "test"}
         (agents_md(status="PROPOSED"), False),
         (agents_md(status="ACTIVE", row="PROPOSED"), False),
         (agents_md(version="20.3.0"), False),
-        (agents_md(version="20.5.0", extra_rows="| 20.4.0 | 2026-10-26 | ACTIVE | MINOR | hands-off | x |\n"), True),
-        # A later version without a ratified 20.4.0 row is not hands-off (20.4.0 may have been skipped).
-        (agents_md(version="20.5.0"), False),
-        (agents_md(version="20.5.0", extra_rows="| 20.4.0 | 2026-10-26 | PROPOSED | MINOR | hands-off | x |\n"), False),
+        # Renumbered: the hands-off rules were ratified as 21.0.0 (PR #2128); no | 20.4.0 | row exists.
+        (agents_md(version="21.0.0"), True),
+        (agents_md(version="21.0.0", status="PROPOSED"), False),
+        (agents_md(version="21.0.0", status="ACTIVE", row="PROPOSED"), False),
+        (agents_md(version="20.3.0", status="PROPOSED"), False),
+        # A later version is judged by ITS OWN row; a stale PROPOSED 20.4.0 row elsewhere does not matter.
+        (agents_md(version="21.0.0", extra_rows="| 20.4.0 | 2026-10-26 | PROPOSED | MINOR | hands-off | x |\n"), True),
         ("", False),
         ("no control block", False),
     ],
@@ -323,6 +326,7 @@ def _run(cmd, cwd, env=None, check=False):
         "TRADEAI_AGENT_CLAIMS_DIR",
         "TRADEAI_PUSH_BUDGET_PATH",
         "TRADEAI_PUSH_OVERRIDE_LOG",
+        "TRADEAI_REMOTE_PUSH_OVERRIDE_REF",
     ):
         full.pop(k, None)
     full.update(env or {})
@@ -409,6 +413,7 @@ def test_hook_five_pushes_when_active_then_coordinator_override_logged(tmp_path)
         "TRADEAI_REMOTE_PUSH_OVERRIDE": "1",
         "TRADEAI_COORDINATOR_SESSION": "coord-1",
         "AGENT_CLAIM_SESSION": "coord-1",
+        "TRADEAI_REMOTE_PUSH_OVERRIDE_REF": "operator 2026-10-25 hands-off directive",
     }
     p = _run(["git", "push", "origin", "feat/x"], cwd=src, env=over)
     assert p.returncode == 0, p.stderr
@@ -416,6 +421,7 @@ def test_hook_five_pushes_when_active_then_coordinator_override_logged(tmp_path)
     log = [json.loads(x) for x in (tmp_path / "overrides.jsonl").read_text().splitlines()]
     assert log[-1]["source"] == "coordinator" and log[-1]["coordinator_ok"] is True
     assert log[-1]["approvals"]["feat/x"]["ref"] == "operator 2026-10-25 hands-off directive"
+    assert log[-1]["override_ref"] == "operator 2026-10-25 hands-off directive"  # 21.0.0 §28.15 item 1
     # A force push is refused even for the coordinator with the override.
     _run(["git", "commit", "-q", "--amend", "-m", "rewritten"], cwd=src, check=True)
     forced = _run(["git", "push", "--force", "origin", "feat/x"], cwd=src, env=over)
