@@ -43,13 +43,33 @@ def copy_bundle():
     if not name:
         pytest.skip("private immutable production COPY not supplied; no live-state fallback")
     path = Path(name)
+    bundle, before = load_copy(path)
+    yield bundle
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+
+
+def load_copy(path: Path, expected: str = EXPECTED_SHA):
+    """The pinned immutable COPY, or AssertionError: wrong bytes, or a COPY not captured read-only."""
     before = hashlib.sha256(path.read_bytes()).hexdigest()
-    assert before == EXPECTED_SHA
+    assert before == expected, "COPY bytes differ from the pinned capture"
     bundle = json.loads(path.read_bytes())
     assert bundle["database_read_only"] is True
     assert "PER_QUERY_READONLY" in bundle["snapshot_coherence"]
-    yield bundle
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    return bundle, before
+
+
+def test_copy_loader_refuses_unpinned_or_writable_copies(tmp_path):
+    """Runs on every runner (no COPY needed): the real-tree proof can only ever read the pinned read-only capture."""
+    tampered = tmp_path / "copy.json"
+    tampered.write_text(json.dumps({"database_read_only": True, "snapshot_coherence": "PER_QUERY_READONLY"}))
+    with pytest.raises(AssertionError, match="pinned capture"):
+        load_copy(tampered)
+    digest = hashlib.sha256(tampered.read_bytes()).hexdigest()
+    assert load_copy(tampered, digest)[1] == digest
+    writable = tmp_path / "writable.json"
+    writable.write_text(json.dumps({"database_read_only": False, "snapshot_coherence": "PER_QUERY_READONLY"}))
+    with pytest.raises(AssertionError):
+        load_copy(writable, hashlib.sha256(writable.read_bytes()).hexdigest())
 
 
 @pytest.fixture
