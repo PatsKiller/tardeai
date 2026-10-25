@@ -1,0 +1,245 @@
+{
+  "schema": "F09ReadShadowHandoff@v1",
+  "task_id": "DSN-20261024-f09-reads-P1-T9",
+  "step_id": "options_chain_snapshot",
+  "source": {
+    "main_sha": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+    "harness_commit": "3a7fc9b0fc453da981dbee71ace061db5dd9c2a4",
+    "harness_blob": "a8c9738b0c1ca36b0edfca42a6273a83c4f1cb9e",
+    "host_lane_id": "options-chain-snapshot",
+    "host_row_sha256": "70800c37045649f6d3a03432907e1b56060b6c799aef688e920b142c4a877786",
+    "host_scheduler": {
+      "kind": "cron",
+      "expression": "35 17 * * 1-5 + 0 10 * * 1-5",
+      "match": "scripts/options_chain_snapshot.py\"",
+      "schedules": [
+        "35 17 * * 1-5",
+        "0 10 * * 1-5"
+      ]
+    },
+    "host_output_signal": {
+      "kind": "file_mtime",
+      "path": "data/runtime/hedging_radar_latest.json",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "scripts/options_chain_snapshot.py:28 SNAP hedging radar snapshot; host mtime 2026-10-09T10:00:52"
+    },
+    "shared_host_lock": "/tmp/chain_snapshot.lock",
+    "lock_basis": "Historical tracked F09 staged cron record or incident resume packet; not a current runtime inspection.",
+    "argv_basis": "n8n_broker_read_carveout.READ_LANES step options_chain_snapshot: scripts/options_chain_snapshot.py ",
+    "cadence_basis": "Current main host scheduler expressions, split into exact five-field cron entries"
+  },
+  "registry_row": {
+    "lane_id": "f09-read-options-chain-snapshot",
+    "owner": "execution",
+    "state": "ACTIVE",
+    "broker_read_step": "options_chain_snapshot",
+    "scheduler": {
+      "kind": "n8n",
+      "expression": "dispatcher",
+      "stage": "shadow",
+      "wave": "W5",
+      "cadence": "35 17 * * 1-5",
+      "match": "scripts/n8n_broker_read_shadow.py --step options_chain_snapshot --plan"
+    },
+    "dispatch": {
+      "mode": "dry_run",
+      "cron": [
+        "35 17 * * 1-5",
+        "0 10 * * 1-5"
+      ],
+      "tz": "America/New_York",
+      "wave": "W5",
+      "class": "pipeline",
+      "priority": 2,
+      "retry_policy": "none"
+    },
+    "expected_cadence_hours": 64.42,
+    "output_signal": {
+      "kind": "json_key",
+      "path": "data/runtime/n8n_read_shadow/f09-read-options-chain-snapshot_last.json",
+      "key": "finished_at"
+    },
+    "note": "Offline SHADOW plan only; host cron unchanged. RunReceipt plus captured LaneOutput are the evidence; no lane receipt is written. All live execution refuses. Activation is a separate operator \u00a717 act."
+  },
+  "allowlist_entry": {
+    "lane_id": "f09-read-options-chain-snapshot",
+    "broker_read_step": "options_chain_snapshot",
+    "command": [
+      "$PY",
+      "scripts/options_chain_snapshot.py"
+    ],
+    "lock": "/tmp/chain_snapshot.lock",
+    "lock_kind": "flock",
+    "timeout_s": 5,
+    "dry_run_arg": [],
+    "live_arg": null,
+    "market_gate": false,
+    "output_signal": "data/runtime/n8n_read_shadow/f09-read-options-chain-snapshot_last.json",
+    "env_names": [],
+    "env_allowlist_mode": "enforce",
+    "source": "AGENTS \u00a727.1 READ_LANES step options_chain_snapshot; exact argv from scripts/lib/n8n_broker_read_carveout.py at d635873e1063efb8a9ff8e8ce542654ed2ef7654; SHADOW executor substitutes offline --plan"
+  },
+  "health_contract": {
+    "schema": "N8nHealthContract@v1",
+    "id": "f09-read-options-chain-snapshot",
+    "kind": "lane",
+    "workflow_id": "tradeai-dispatcher",
+    "status": "DRAFT",
+    "target_reason": "stage:shadow",
+    "stage": "shadow",
+    "owner": "execution",
+    "purpose": {
+      "text": "Offline SHADOW plan for Options chain snapshot (market data); zero broker calls and zero state writes.",
+      "business_function": "operations",
+      "source": "AGENTS \u00a727.1/27.4; scripts/n8n_broker_read_shadow.py"
+    },
+    "connects_to": [
+      {
+        "name": "data/runtime/n8n_read_shadow/f09-read-options-chain-snapshot_last.json",
+        "kind": "receipt",
+        "direction": "write",
+        "source": "Executor write_receipt success-only RunReceipt snapshot; finished_at proves offline plan only"
+      },
+      {
+        "name": "n8n relay -> coordination/run -> host n8n_run_executor",
+        "kind": "service",
+        "direction": "calls",
+        "source": "AGENTS \u00a723.3"
+      },
+      {
+        "name": "scripts/n8n_broker_read_shadow.py --step options_chain_snapshot --plan",
+        "kind": "runner",
+        "direction": "calls",
+        "source": "scripts/n8n_run_executor.py build_argv"
+      },
+      {
+        "name": "/tmp/chain_snapshot.lock.dryrun",
+        "kind": "lock",
+        "direction": "read_write",
+        "source": "n8n_run_executor.lock_path_for: disjoint SHADOW lock; does not hold host lock"
+      },
+      {
+        "name": "scripts/options_chain_snapshot.py (planned command only, never imported or executed)",
+        "kind": "runner",
+        "direction": "read",
+        "source": "n8n_broker_read_carveout.READ_LANES"
+      }
+    ],
+    "healthy": [
+      {
+        "check": "offline_plan",
+        "text": "RunReceipt mode dry_run RUN_DONE captures exactly one LaneOutput@v1: produced_count=0 attempted_count=0 empty_reason=dry_run_requires_broker_read."
+      },
+      {
+        "check": "business_state_unchanged",
+        "text": "Underlying business/broker state and host cron are unchanged. The wrapper writes nothing; executor publishes a success-only finalized RunReceipt control snapshot after the wrapper returns. That timestamp proves only an offline plan, never broker freshness."
+      }
+    ],
+    "degraded": [
+      {
+        "check": "slow",
+        "text": "Offline in-process wrapper duration above1second, compared with five recorded tripwire samples; investigate locally, never rerun a broker read."
+      }
+    ],
+    "failed": [
+      {
+        "check": "run_failed",
+        "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED or missing LaneOutput/plan identity."
+      },
+      {
+        "check": "unexpected_write",
+        "text": "any broker call or durable lane-state change is a failure."
+      }
+    ],
+    "baseline": {
+      "basis": "CLASS_DEFAULT_PROVISIONAL",
+      "timeout_s": 5,
+      "duration_degraded_above_s": 1,
+      "freshness_degraded_after_h": 128.84,
+      "freshness_failed_after_h": 193.26,
+      "runs_considered": 5,
+      "computed_on": "2026-10-24",
+      "source": "CLASS_DEFAULT_PROVISIONAL: 5s hard cap and1s slow bound both exceed all five measured offline-plan samples; no broker runtime bound inferred; exact wrapper/admission blobs and samples in offline_timing."
+    },
+    "alerting": {
+      "failed": {
+        "siem_severity": "WARN",
+        "notifier_priority": "P2"
+      },
+      "degraded": {
+        "siem_severity": "INFO",
+        "notifier_priority": "P3"
+      },
+      "routing": "Existing SIEM/incident notifier only; wrapper never sends."
+    },
+    "remediation": {
+      "catalogue_entry": false,
+      "diagnosis_excluded": true,
+      "note": "Operator inspects plan failures; no auto broker rerun."
+    },
+    "evidence": {
+      "verify": [
+        "TRADE_AI_CI=1 python3 -m pytest tests/test_f09_read_shadow_20261024.py -k each_lane_packet",
+        "Read captured RunReceipt stdout/stderr for matching plan and LaneOutput; never use n8n execution status."
+      ],
+      "expected_output_basis": "No live mode available. SHADOW LaneOutput reports zero counts and typed empty reason; dry_run is exempt from durable receipts. Future live admission needs a separate implementation and operator action."
+    },
+    "review_by": "2026-11-07",
+    "review": {
+      "status": "PENDING_OWNER_REVIEW",
+      "prepared_on": "2026-10-24",
+      "prepared_by": "codex-w12",
+      "scope": "Structural machine check only; owner/operator review provenance is required before config admission."
+    },
+    "expected_output": {
+      "schema": "N8nExpectedOutput@v1",
+      "unit": "read_steps",
+      "rule": "min_produced",
+      "min_produced": 1,
+      "window_h": null,
+      "produced_field": "produced_count",
+      "fatal_skip_reasons": [
+        "no_runner",
+        "dependency_unavailable"
+      ],
+      "empty_allowed_reasons": [],
+      "evidence": [
+        {
+          "kind": "receipt_field",
+          "ref": "LaneOutput@v1 produced_count captured in RunReceipt stderr_tail; dry_run exempt from durable lane receipt"
+        }
+      ],
+      "on_violation": {
+        "run_state": "RUN_FAILED",
+        "reason": "empty_output",
+        "notifier_priority": "P2"
+      }
+    }
+  },
+  "activation_blockers": [
+    "Health contract remains DRAFT until actual owner/operator review provenance is recorded; config integration is HELD. Machine structural checks do not certify owner review.",
+    "Separate reviewed per-lane config integration by W8; no source registry changes by W12.",
+    "Operator \u00a717 activation; never activate from this source PR.",
+    "Live implementation is intentionally unavailable; any canary/cutover/live request refuses.",
+    "Durable business receipt, executable live runtime/preconditions and measured live broker timeout are NOT_IMPLEMENTED; only offline control evidence exists."
+  ],
+  "offline_timing": {
+    "scope": "OFFLINE in-process wrapper under preserved F09 no-broker/no-write tripwires; excludes process spawn, dispatcher, broker runtime and live scheduling",
+    "samples_s": [
+      0.001191,
+      0.00162,
+      0.001437,
+      0.001198,
+      0.002255
+    ],
+    "max_s": 0.002255,
+    "runs_considered": 5,
+    "broker_calls": 0,
+    "state_writes": 0,
+    "wrapper_blob": "042056f099ab57a120096954b013f24db3146cdc",
+    "admission_blob": "e058a4a0339e080caa201becfc181cfda9571da8",
+    "timeout_s": 5,
+    "slow_above_s": 1,
+    "basis": "CLASS_DEFAULT_PROVISIONAL: 5s hard cap and1s slow bound both exceed all five measured offline-plan samples; no broker runtime bound inferred"
+  }
+}
