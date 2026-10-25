@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "auth_pages_data_20261025",
+  "files": [
+    "tests/test_cio_truth_approval_columns_20261025.py",
+    "tests/test_desk_sources_receipts_20261025.py"
+  ],
+  "comment": [
+    "2026-10-25 operator screenshots: approval counts query named a missing column; source clocks ignored declared lane run receipts."
+  ]
+}
