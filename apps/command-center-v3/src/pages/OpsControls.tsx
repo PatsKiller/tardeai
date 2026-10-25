@@ -339,7 +339,7 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
       {rt?.run_now?.block_reason ? <p role="status" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }} data-testid="ops-run-now-block">{rt.run_now.block_reason}</p> : null}
-      <p style={muted}>Ratify AGENTS.md 22.0.0 (Run now) at <a href="/v3/policy" data-testid="ops-rulebook-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Rulebook → Policy versions</a> (PR #2117). Until ACTIVE, Run now stays disabled with an explicit reason — never a silent no-op. Host CLI remains the fallback.</p>
+      <p style={muted}>Ratify AGENTS.md 22.0.0 (Run now) at <a href="/v3/policy" data-testid="ops-rulebook-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Rulebook → Policy versions</a> (PR 2117). Until ACTIVE, Run now stays disabled with an explicit reason — never a silent no-op. Host CLI remains the fallback.</p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>

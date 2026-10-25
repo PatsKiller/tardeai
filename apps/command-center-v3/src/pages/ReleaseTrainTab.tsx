@@ -107,7 +107,7 @@ export default function ReleaseTrainTab() {
             Run now on Ops → Controls →
           </Link>
           <Link to="/policy" data-testid="rt-rulebook-link" style={{ color: TOKENS.text[2], fontWeight: 650, textDecoration: 'none' }}>
-            Rulebook (ratify 22.0.0 via #2117 Policy versions) →
+            Rulebook (ratify 22.0.0 via PR 2117 Policy versions) →
           </Link>
         </div>
       </div>
