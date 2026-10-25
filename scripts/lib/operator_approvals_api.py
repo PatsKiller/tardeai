@@ -65,16 +65,29 @@ def git_policy(root: Path = ROOT) -> dict:
 
 
 def _default_sources(root: Path) -> dict:
-    from scripts.lib.approval_board_projection import load_packages
     from scripts.lib import approval_package as packages_core
 
     def packages():
         rows = []
         path = packages_core.ledger_path()
-        if not path.is_file() or not packages_core.Ledger(path).verify_chain()[0]:
+        if not path.is_file() or path.stat().st_size > 2_000_000:
             raise core.Refused("PACKAGE_LEDGER_UNAVAILABLE", 503)
+        records = packages_core.Ledger(path).rows()
+        if len(records) > 10000:
+            raise core.Refused("PACKAGE_LEDGER_BUDGET_EXCEEDED", 503)
+        # Reuse the canonical verifier/fold over one immutable read, with no repeated file reads per package.
+        snapshot = packages_core.Ledger(path)
+        snapshot.rows = lambda: records
+        if not snapshot.verify_chain()[0]:
+            raise core.Refused("PACKAGE_LEDGER_UNAVAILABLE", 503)
+        package_ids = list(dict.fromkeys(r.get("package_id") for r in records if r.get("event") == "PACKAGE_CREATED"))
+        if len(package_ids) > 500:
+            raise core.Refused("PACKAGE_LEDGER_BUDGET_EXCEEDED", 503)
         source_sha = _git(root, "rev-parse", "HEAD").strip()
-        for pkg in load_packages():
+        for package_id in package_ids:
+            pkg = snapshot.package(package_id)
+            if not pkg:
+                continue
             if pkg.get("state") not in ("SUBMITTED", "PARTIAL"):
                 continue
             expires = pkg.get("expires_at")
@@ -199,12 +212,14 @@ def _default_sources(root: Path) -> dict:
         code_sha, out = _git(root, "rev-parse", "HEAD").strip(), []
         for row in result["items"]:
             public = {k: row.get(k) for k in ("title", "kind", "symbol", "account_label", "status", "created_at", "expires_at", "category", "action")}
+            public["created_at"] = instant(row.get("created_at"))
+            public["expires_at"] = instant(row.get("expires_at"))
             ident = "financial:" + row["canonical_entity_id"]
             refs = [f"{ref['source']}:{ref['id']}" for ref in row.get("source_refs", [])
                     if isinstance(ref, dict) and ref.get("source") and ref.get("id") is not None]
             out.append(core.item(ident=ident, kind="FINANCIAL", title=row.get("title") or "Trade review",
-                                 proposed_by=None, created_at=row.get("created_at"), source=row["source"],
-                                 doc=core.document(json.dumps(public, indent=2, ensure_ascii=False), source_sha=code_sha),
+                                 proposed_by=None, created_at=public["created_at"], source=row["source"],
+                                 doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, default=str), source_sha=code_sha),
                                  governed_href="/trading?tab=Proposals" if row["kind"] in ("paper", "broker", "unclassified_proposals") else "/cio",
                                  source_refs=refs + [row["canonical_entity_id"]]))
             out[-1]["financial_kind"] = row["kind"]
@@ -220,6 +235,19 @@ def iso_timestamp(value) -> str | None:
         return core.iso(datetime.fromtimestamp(float(value), tz=timezone.utc))
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def instant(value) -> str | None:
+    """Database datetimes are not JSON strings; naive/date-only clocks remain unknown."""
+    if isinstance(value, datetime):
+        return core.iso(value) if value.tzinfo is not None else None
+    if isinstance(value, str) and "T" in value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return core.iso(parsed) if parsed.tzinfo is not None else None
+        except ValueError:
+            pass
+    return None
 
 
 def default_ctx() -> Ctx:
