@@ -1985,6 +1985,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DOC_INDEX_PR_FLOW_20261024.md` | WP-02 documentation-index conflict correction and proposed PR flow |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
+| `docs/ops/EMERGENCY_MANUAL_PROMOTE.md` | Emergency manual promote |
 | `docs/ops/ENRICHMENT_COVERAGE_AUDIT_2026-10-22.md` | Enrichment-coverage audit — rescoped to the curated Watch (2026-10-22) |
 | `docs/ops/F09_READ_SHADOW_20261024.md` | F09 read lanes at SHADOW |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs |
@@ -2025,6 +2026,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) |
+| `docs/ops/MERGIFY_CUTOVER_CHECKLIST.md` | Mergify cutover checklist (operator) |
+| `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md` | Mergify + host deploy — foundation |
 | `docs/ops/N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023.md` | n8n cutover factory: the effect-claim wrapper, and four canary rows (2026-10-23) |
 | `docs/ops/N8N_MOMENTUM_SCALP_ACTIVATION_20261013.md` | n8n momentum-scalp activation — 2026-10-13 |
 | `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | n8n promotion readiness — 2026-10-22 |
@@ -2284,11 +2287,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/registry-reconcile-audit-20261024/OPERATOR_CAPTURE.md` | Operator-only capture of the missing reconciliation inputs |
 | `docs/ops/packets/registry-reconcile-audit-20261024/README.md` | Registry reconciliation evidence packet |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
-| `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows |
-| `docs/ops/packets/release-train-arming-20261021/README.md` | Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand) |
-| `docs/ops/packets/release-train-canary-arm-20261025/README.md` | Release train: arm the schedule with no per-release grant (2026-10-25) |
+| `docs/ops/packets/release-train-20261021/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
+| `docs/ops/packets/release-train-arming-20261021/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
+| `docs/ops/packets/release-train-canary-arm-20261025/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
 | `docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md` | Proposal: a §23.24 bootstrap exception for arming step F |
-| `docs/ops/packets/release-train-host-trigger-20261023/README.md` | Release train host trigger: request and census timers (2026-10-23) |
+| `docs/ops/packets/release-train-host-trigger-20261023/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) |

@@ -363,26 +363,42 @@ _PRE_24_HEADER = {
     "Supersedes": "21.0.0",
 }
 
-S17_ENTRY_24_0_0 = (
+# PROPOSED soft-add form (while 24.0.0 was PROPOSED) and ACTIVE form (after ratification).
+S17_ENTRY_24_0_0_PROPOSED = (
     "**Mergify deploy (24.0.0, §25.10) — binding only once AGENTS.md 24.0.0 is ACTIVE:** installing or re-permissioning the\n"
     "Mergify GitHub App · arming, pausing or revoking the standing **deploy** (promote-only) delegation · clearing a\n"
     "deploy STOP or resuming the deploy poller · running `scripts/emergency_manual_promote.sh` or setting\n"
     "`TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never promote, never set that env. Until 24.0.0 is ACTIVE the\n"
     "17.0.0 / 22.0.0 release-train §17 items above still govern.\n\n"
 )
+S17_ENTRY_24_0_0_ACTIVE = (
+    "**Mergify deploy (24.0.0, §25.10):** installing or re-permissioning the Mergify GitHub App · arming, pausing or\n"
+    "revoking the standing **deploy** (promote-only) delegation · clearing a deploy STOP or resuming the deploy poller ·\n"
+    "running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never\n"
+    "promote, never set that env. The 17.0.0 / 22.0.0 release-train merge and Run now paths are retired for live use\n"
+    "(§25.10); train libraries may remain for read-only history.\n\n"
+)
+# Back-compat alias used by older strip sites / 4.6.0.
+S17_ENTRY_24_0_0 = S17_ENTRY_24_0_0_PROPOSED
 
 
 def pre_24_0_0(text: str) -> str:
     """Strip 24.0.0 soft-adds (banner, §17 Mergify paragraph, §25.10, history row) and restore the
-    22.0.0-ACTIVE header so older digest / tip pins stay stable while 24.0.0 is PROPOSED."""
+    22.0.0-ACTIVE header so older digest / tip pins stay stable after 24.0.0 is ACTIVE."""
     had_24 = bool(re.search(r"^\| 24\.0\.0 \|", text, re.M)) or "**24.0.0 is " in text
     for marker in ("**24.0.0 is ACTIVE", "**24.0.0 is PROPOSED"):
         if marker in text:
             b = text.index(marker)
             text = text[:b] + text[text.index("**22.0.0 is ", b):]
             break
-    text = text.replace(S17_ENTRY_24_0_0, "", 1)
-    m25 = re.search(r"^## 25\.10 Mergify \+ host deploy.*?(?=^# 26 ·)", text, re.M | re.S)
+    text = text.replace(S17_ENTRY_24_0_0_ACTIVE, "", 1)
+    text = text.replace(S17_ENTRY_24_0_0_PROPOSED, "", 1)
+    # §25.10 sits between 25.9 and the `---` before # 26; strip it but keep that rule.
+    m25 = re.search(
+        r"\n## 25\.10 Mergify \+ host deploy.*?(?=\n---\n\n# 26 ·)",
+        text,
+        re.M | re.S,
+    )
     if m25:
         text = text[: m25.start()] + text[m25.end() :]
     text = re.sub(r"^\| 24\.0\.0 \|.*\n", "", text, count=1, flags=re.M)

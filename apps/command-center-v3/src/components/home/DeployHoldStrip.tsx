@@ -24,8 +24,9 @@ export default function DeployHoldStrip() {
     loading: sumApi.loading,
     error: sumApi.error,
   })
-  const latch = sumApi.data?.stop?.latch ?? '—'
-  const effective = !!sumApi.data?.stop?.effective
+  const stop = sumApi.data?.stop?.value
+  const latch = stop?.state ?? '—'
+  const effective = !!stop?.effective_stop
   return (
     <section data-testid="deploy-hold-strip" aria-label="Deploy hold" style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>

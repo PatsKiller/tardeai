@@ -127,13 +127,22 @@ S17_ENTRY_17_0_0 = (
     "\n"
 )
 
-S17_ENTRY_24_0_0 = (
+# Keep in sync with tests/test_agents_policy_20_0_0_agent_operations.py (PROPOSED + ACTIVE forms).
+S17_ENTRY_24_0_0_PROPOSED = (
     "**Mergify deploy (24.0.0, §25.10) — binding only once AGENTS.md 24.0.0 is ACTIVE:** installing or re-permissioning the\n"
     "Mergify GitHub App · arming, pausing or revoking the standing **deploy** (promote-only) delegation · clearing a\n"
     "deploy STOP or resuming the deploy poller · running `scripts/emergency_manual_promote.sh` or setting\n"
     "`TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never promote, never set that env. Until 24.0.0 is ACTIVE the\n"
     "17.0.0 / 22.0.0 release-train §17 items above still govern.\n\n"
 )
+S17_ENTRY_24_0_0_ACTIVE = (
+    "**Mergify deploy (24.0.0, §25.10):** installing or re-permissioning the Mergify GitHub App · arming, pausing or\n"
+    "revoking the standing **deploy** (promote-only) delegation · clearing a deploy STOP or resuming the deploy poller ·\n"
+    "running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never\n"
+    "promote, never set that env. The 17.0.0 / 22.0.0 release-train merge and Run now paths are retired for live use\n"
+    "(§25.10); train libraries may remain for read-only history.\n\n"
+)
+S17_ENTRY_24_0_0 = S17_ENTRY_24_0_0_PROPOSED
 
 
 def _section(text: str, start: str, end: str) -> str:
@@ -142,7 +151,7 @@ def _section(text: str, start: str, end: str) -> str:
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
-    block = block.replace(S17_ENTRY_24_0_0, "")  # 24.0.0 Mergify §17; see the constant
+    block = block.replace(S17_ENTRY_24_0_0_ACTIVE, "").replace(S17_ENTRY_24_0_0_PROPOSED, "")  # 24.0.0 Mergify §17
     block = block.replace(S17_ENTRY_17_0_0, "")  # 17.0.0's §17 paragraph; see the constant
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
