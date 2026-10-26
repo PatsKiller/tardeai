@@ -247,7 +247,8 @@ def test_run_queue_writes_private_layout_index_and_all_formats(base):
     store.write_universe(base, uni)
     store.enqueue(base, pl.first_build_rows(uni), now=NOW)
     fn = stub_generate(src)
-    out = pl.run_queue(base, src, cfg, limit=5, generate_fn=fn, now_fn=lambda: NOW, log=lambda _m: None)
+    out = pl.run_queue(base, src, cfg, limit=5, generate_fn=fn, now_fn=lambda: NOW, log=lambda _m: None,
+                       batch_enabled=False)  # synchronous path under test (Watch batch: test_prospectus_watch_batch)
     assert out["done"] == ["ZZAA", "ZZBB", "ZZCC"] and out["cost_usd"] == pytest.approx(3 * (0.31 + 0.05))
     assert fn.seen[0] == "prospectus_writer_premium" and fn.seen[-1] == "prospectus_writer"
     vdir = base / "ZZAA" / store.stamp(NOW)
@@ -414,9 +415,22 @@ def test_partial_when_a_key_source_is_missing_and_gap_is_named(base):
             return [] if sym == "ZZCC" else super().bars(sym, days)
     src = NoPrices()
     b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
+    # Quality gate (2026-10-26): no price at all is below minimum coverage → blocked before any model call.
+    from scripts.lib.prospectus.quality_gate import DataBlocked
+    calls = []
+    with pytest.raises(DataBlocked) as err:
+        gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
+                  generate_fn=lambda *a, **k: calls.append(1), now=NOW, version=store.stamp(NOW))
+    assert "no_price" in str(err.value) and calls == []
+    # A key source that is missing but not minimum coverage (the CIO record) still writes a partial report.
+    class NoCio(FakeSources):
+        def cio(self, sym):
+            return {}
+    src = NoCio()
+    b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
     doc = gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
                     generate_fn=stub_generate(src), now=NOW, version=store.stamp(NOW))
-    assert doc["status"] == "partial" and any(g.startswith("price_history: empty") for g in doc["partial_gaps"])
+    assert doc["status"] == "partial" and any(g.startswith("cio_record: empty") for g in doc["partial_gaps"])
     assert "Partial:" in __import__("scripts.lib.prospectus.render", fromlist=["html"]).html(doc)
 
 
