@@ -1788,6 +1788,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ADVISORY_SCHEDULE_TRUTH_20261024.md` | Advisory schedule: advertise observed fires only |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
+| `docs/ops/AGENT_MERGIFY_HANDOFF.md` | Agent handoff — Telegram Approve, Mergify merges |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
 | `docs/ops/ANTHROPIC_FIRST_20261025.md` | Anthropic-first: routing, review and caller inventory |
 | `docs/ops/APPROVALS_CENTER_20261024.md` | Approvals Center — boards 19–21, 2026-10-24 |
