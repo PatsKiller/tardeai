@@ -41,8 +41,8 @@ SCHEMA = "MyHistory@v1"
 LONG_TERM_DAYS = 365          # IRS: held more than one year → long-term
 BIG_MOVE_PCT = 8.0            # same threshold as the holdings cadence trigger (config cadence.triggers.day_move_abs_pct)
 STOP_EXITS = {"hard_stop", "trailing_stop", "stop", "stop_loss", "stopped_out"}
-MAX_EVENTS_PER_WINDOW = 6
-MAX_FACTS = 160
+MAX_EVENTS_PER_WINDOW = 4
+MAX_FACTS = 140
 _LOSS_REENTRY_DAYS = 30
 TRANSFER_ACTIONS = ("transfer", "journal")  # direction is not recorded on these rows; never used for lot dating
 
@@ -206,6 +206,17 @@ def fifo_open_lots(transactions: Iterable[dict]) -> dict[str, dict]:
         elif any(k in act for k in TRANSFER_ACTIONS):
             st["transfers"] += 1
     return out
+
+
+def _money(v: Any) -> str:
+    return "n/a" if _f(v) is None else f"${_f(v):,.2f}"
+
+
+def _n(v: Any) -> str:
+    x = _f(v)
+    if x is None:
+        return "n/a"
+    return f"{int(x):,}" if x.is_integer() else f"{x:,.4g}"
 
 
 def _term(days: Optional[int]) -> Optional[str]:
@@ -456,10 +467,15 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
                     trip["fact_ids"].append(fid)
                 block["tax"]["flags"].append({"trip": n, "kind": "wash_sale", "sale_date": cd.isoformat(),
                                               "replacement_dates": [r.get("trade_date") for r in reps[:6]], "fact": fid})
-        for key, label, unit in (("entry_price", "entry price $", "$"), ("exit_price", "exit price $", "$"),
-                                 ("shares", "shares", ""), ("hold_days", "days held", ""),
-                                 ("realized_usd", "realized P/L $", "$"), ("realized_pct", "realized P/L %", "%"),
-                                 ("r_multiple", "R-multiple (journal)", "")):
+        # one text fact carries the trip's prices, size and hold (its numbers are citable); P/L are value facts
+        parts = [f"bought {trip['entry_date']} at {_money(trip['entry_price'])}", f"sold {trip['exit_date']} at "
+                 f"{_money(trip['exit_price'])}", f"{_n(trip['shares'])} shares", f"held {_n(hold)} days"]
+        if trip["r_multiple"] is not None:
+            parts.append(f"R {_n(trip['r_multiple'])}")
+        fid = facts.add(f"Trip {n} ({name}): entry, exit, size and hold", text=", ".join(parts), source=SRC_TRIP, as_of=cd)
+        if fid:
+            trip["fact_ids"].append(fid)
+        for key, label, unit in (("realized_usd", "realized P/L $", "$"), ("realized_pct", "realized P/L %", "%")):
             fid = facts.add(f"Trip {n} ({name}, {trip['entry_date']} → {trip['exit_date']}): {label}", value=trip[key],
                             unit=unit, source=SRC_TRIP, as_of=cd)
             if fid:

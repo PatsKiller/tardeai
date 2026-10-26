@@ -28,7 +28,7 @@ on the Prospectus page (`MyHistoryBlock.tsx`).
 | Lessons | deterministic statistics: payoff ratio, entry position in the 52-week range vs result, hold length vs result, stop-out rate, re-entries after a loss. Journal lessons from `journal_trade_reviews` |
 | Tax flags | taxable or tax-advantaged by account (`wash_sale.account_taxable`). For a loss sale in a taxable account, the 61-day replacement test (`wash_sale.replacement_purchases`). The window open today comes from `wash_sale.symbol_window` |
 
-Every number is a fact with an F-id (`kind: my_history`, capped at 160 per prospectus; the cap is named in `gaps`).
+Every number is a fact with an F-id (`kind: my_history`, capped at 140 per prospectus; the cap is named in `gaps`).
 The writer is asked for `notes.my_history.{summary, lessons}`. Both are guarded like the prose sections: a sentence
 with an ungrounded number, or one that sizes, orders or stops, is dropped and logged.
 
@@ -47,7 +47,7 @@ Code: `scripts/lib/prospectus/etf_profile.py`; map: `config/prospectus_etf_categ
 - **House scenarios** when there is no analyst target: a ±1σ 12-month lognormal band from the 1-year volatility of
   daily closes. The method is labelled, the probabilities are not assigned, and the footer says it is not an order.
 - **Macro effect column**: OLS of the name's returns on changes in the 10-year yield (daily), CPI (monthly) and VIX
-  (daily), over up to two years of house closes against FRED. A fit is "not reliable" below 120 daily points, 18
+  (daily), over up to two years of house closes against FRED. A fit is "not reliable" below 60 daily points, 18
   monthly points or |t| 2. The effect is the sign of beta times the series' 3-month change.
 
 ## Hooks

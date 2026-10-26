@@ -85,7 +85,7 @@
   },
   "macro": {
     "lookback_days": 760,
-    "min_daily_points": 120,
+    "min_daily_points": 60,
     "min_monthly_points": 18,
     "t_stat_reliable": 2.0
   }

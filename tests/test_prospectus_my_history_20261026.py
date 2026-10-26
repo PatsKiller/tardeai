@@ -464,10 +464,11 @@ def test_macro_sensitivity_effect_column_is_measured_and_labelled():
     b = _etf_bundle()
     macro = b.blocks["macro_sensitivity"]
     sens = macro["sensitivity"]
-    assert set(sens) == {"DGS10", "CPIAUCSL", "VIXCLS"}
+    assert set(sens) == {"DGS10", "T10Y2Y", "CPIAUCSL", "VIXCLS"}
     for row in sens.values():
         assert row["effect"].split(":")[0] in {"headwind", "tailwind", "neutral", "not reliable"}
-        assert row["method"] and "OLS" in row["method"]
+        assert row["n"] == 0 or "OLS" in row["method"]
+    assert sens["T10Y2Y"]["effect"] == "not reliable: FRED T10Y2Y is not in fred_economic_series"
     assert sens["DGS10"]["n"] >= 120 and sens["DGS10"]["beta"] is not None
     assert sens["CPIAUCSL"]["n"] < 120
     blocks = dict(b.blocks)

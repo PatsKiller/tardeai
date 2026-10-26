@@ -32,6 +32,7 @@ from typing import Any, Callable, Optional
 CONFIG_REL = "config/prospectus_etf_categories.json"
 SCENARIO_FOOTER = "Scenario analysis, not an order or a recommendation to trade."
 MACRO_SERIES = {"DGS10": ("rates", "10-year Treasury yield", "daily", 100.0, "bp"),
+                "T10Y2Y": ("curve", "10y–2y Treasury spread", "daily", 100.0, "bp"),
                 "CPIAUCSL": ("inflation", "CPI (month-over-month %)", "monthly", 1.0, "pp of monthly CPI change"),
                 "VIXCLS": ("volatility", "VIX", "daily", 1.0, "VIX point")}
 
@@ -360,12 +361,12 @@ def macro_sensitivity(bundle: Any, sources: Any, bars: list, now: datetime, cats
             by.setdefault(r["series_id"], []).append((str(r["observation_date"])[:10], v))
     s = [(d, c) for d, c in _series(bars) if d >= since.isoformat()]
     closes = dict(s)
-    min_d, min_m = int(spec.get("min_daily_points", 120)), int(spec.get("min_monthly_points", 18))
+    min_d, min_m = int(spec.get("min_daily_points", 60)), int(spec.get("min_monthly_points", 18))
     t_min = float(spec.get("t_stat_reliable", 2.0))
     for sid, (group, label, freq, scale, unit) in MACRO_SERIES.items():
         pts = by.get(sid) or []
         if not pts:
-            out[sid] = {"group": group, "label": label, "reliable": False, "effect": "not reliable: series not in the house",
+            out[sid] = {"group": group, "label": label, "reliable": False, "effect": f"not reliable: FRED {sid} is not in fred_economic_series",
                         "method": None, "n": 0}
             continue
         if freq == "daily":

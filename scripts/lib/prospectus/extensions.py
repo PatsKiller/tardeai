@@ -81,7 +81,7 @@ def finalize(blocks: dict, parsed: dict | None, bundle: Any, log: list[dict]) ->
     effects = macro.setdefault("effects", {})
     for sid, row in sens.items():
         key = row.get("group")
-        if key in ("rates", "inflation") and not effects.get(key) and row.get("effect"):
+        if key in ("rates", "curve", "inflation") and not effects.get(key) and row.get("effect"):
             effects[key] = f"measured — {row['effect']}"
     return blocks
 
