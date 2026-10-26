@@ -3602,7 +3602,11 @@
         "ask thread",
         "ask tracking change",
         "ask channel link",
-        "ask research cost"
+        "ask research cost",
+        "evidence check observation time",
+        "research reservation and actual-usage settlement",
+        "shared memory acknowledgement",
+        "outbox delivery readback"
       ],
       "store": {
         "file": "data/cio/cio_ask_events.jsonl",
@@ -3617,10 +3621,12 @@
       "stale_after_hours": 168,
       "freshness_sla": "appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event",
       "refresh_lane": {
-        "runner": "host",
-        "lane": "cio-ask-reanswer (proposed, shadow)",
+        "runner": "n8n",
+        "lane": "cio-ask-lifecycle",
+        "material_lane": "cio-ask-material-events",
+        "stage": "source_registered_inactive",
         "never_list": false,
-        "note": "the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)"
+        "note": "Operator requests remain event-driven; native hourly evidence checks and five-minute material polling are source-registered but await reviewed contract admission and deployment. Existing question-ledger retention SLA is distinct from the one-hour per-thread evidence-check clock."
       },
       "projection_status": "to_build",
       "readers": [
@@ -3655,7 +3661,16 @@
         "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md §26.2, §7A.",
         "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
       },
-      "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection."
+      "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection.",
+      "lifecycle_contract": {
+        "check_interval_seconds": 3600,
+        "check_grace_seconds": 900,
+        "timezone": "America/New_York",
+        "last_checked_at": "ask.check_finished.checked_at",
+        "last_answer_at": "AskAnswer.produced_at",
+        "writer_unchanged": true,
+        "no_new_authoritative_store": true
+      }
     },
     {
       "domain": "anthropic_promotional_credit",

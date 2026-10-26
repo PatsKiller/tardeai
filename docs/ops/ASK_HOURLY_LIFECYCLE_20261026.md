@@ -68,9 +68,15 @@ no tracked threads, no new events and no due threads.
 ## Admission and verification
 
 Candidate native workflow, health contracts, lane/allowlist rows and process
-registrations are in `packets/ask-hourly-20261026/`. Shared registry owners must
-reconcile additive proposals. Contracts are DRAFT until a reviewer records
-acceptance; lanes remain inactive until staged admission. The legacy read-only
+registrations are in `packets/ask-hourly-20261026/`. The canonical process/routing registries now include the automatic primary and
+three independent critics. The existing manual process keeps its free-fallback
+behavior; the Ask adapter still verifies the actually served provider and never
+counts a fallback as an Opus opinion. All prior registry rows and caps are
+preserved. The two lane contracts received CIO source-owner review against the
+integrated engine, native executor binding and synthetic health proofs. Candidate
+packet files retain their original draft/proposal status for audit; the canonical
+config files hold the reviewed source registrations. Both lanes remain
+NEVER_SCHEDULED at shadow with live_arg:null until staged runtime admission. The legacy read-only
 research dry run is not an accepted replacement for either new schedule.
 
 Tests use synthetic securities, pinned clocks, isolated ledgers, mocked sources,
@@ -85,3 +91,14 @@ Before activation: publish and review this exact head, run required CI, admit th
 process and reviewed contracts, stage bounded native canaries, then retain real
 immutable hourly and material-slot receipts plus canonical consumer readback.
 Only that evidence establishes production acceptance.
+
+
+Local verification completed on 2026-10-26: 312 combined hidden-PostgreSQL tests
+passed before the final packet/config admission additions; 96 focused engine and
+native-binding tests passed after the packet update. The integrated UI build and
+all design/contrast checks passed. The fixture browser passed 12 cases and saved
+23 screenshots, including 1440, 412 and 390 px hourly lifecycle views. No live
+provider or scheduler acceptance is implied by these results. The archived
+scheduler snapshot was used only in reconciler CHECK mode; it is an offline
+structural proof, not a fresh host census. The current host schedules were never
+read or changed in this task.

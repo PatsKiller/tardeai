@@ -541,13 +541,57 @@ def test_queued_delivery_reconciles_native_receipt_without_new_send_or_model(tmp
 def test_queued_earlier_turn_cannot_answer_newer_follow_up(tmp_path):
     calls, reads = [], []
     d = fixture(tmp_path, provider=provider(calls))
-    life.append(d.store, 'ask.check_requested', {'thread_id': TID, 'ask_id': ASK, 'request_id': 'older-turn', 'manual_trigger': True}, key=('older-turn',), now=NOW)
-    life.append(d.store, 'ask.asked', {'thread_id': TID, 'ask_id': 'ask_follow_up', 'question': 'Different follow-up question', 'channel': 'cc'}, key=('followup',), now=NOW)
+    life.append(
+        d.store,
+        "ask.check_requested",
+        {"thread_id": TID, "ask_id": ASK, "request_id": "older-turn", "manual_trigger": True},
+        key=("older-turn",),
+        now=NOW,
+    )
+    life.append(
+        d.store,
+        "ask.asked",
+        {"thread_id": TID, "ask_id": "ask_follow_up", "question": "Different follow-up question", "channel": "cc"},
+        key=("followup",),
+        now=NOW,
+    )
+
     def collect(req):
-        reads.append(req['question'])
-        return evidence(req, 'changed')
+        reads.append(req["question"])
+        return evidence(req, "changed")
+
     result = run(d, events_only=True, collect=collect)
-    assert result['research_count'] == 1
-    assert reads == ['What changed at Example Robotics?']
-    assert calls[0]['context'].request.question == reads[0]
-    assert len(d.store.thread(TID)['turns'][1]['answers']) == 0
+    assert result["research_count"] == 1
+    assert reads == ["What changed at Example Robotics?"]
+    assert calls[0]["context"].request.question == reads[0]
+    assert len(d.store.thread(TID)["turns"][1]["answers"]) == 0
+
+
+def test_canonical_source_admission_keeps_schedules_inactive_and_caps_shared():
+    import json
+    from pathlib import Path
+    from scripts.lib import cio_ask_provider_routes as routes
+
+    root = Path(__file__).resolve().parents[1]
+    registry = json.loads((root / "config/llm_process_registry.json").read_text())
+    rows = {r["id"]: r for r in registry["processes"]}
+    processes = {life.AUTO_PROCESS, *routes.CRITIQUE_PROCESSES.values()}
+    for process in processes:
+        assert rows[process]["default_mode"] == "automated"
+        assert rows[process]["daily_soft_cap"] == 30
+        assert rows[process]["daily_cost_cap_usd"] == 5
+    routes._configuration(life.AUTO_PROCESS, "anthropic", root)
+    for provider, process in routes.CRITIQUE_PROCESSES.items():
+        routes._configuration(process, provider, root)
+    lanes = {r["lane_id"]: r for r in json.loads((root / "config/lane_registry.json").read_text())["lanes"]}
+    allowlist = {r["lane_id"]: r for r in json.loads((root / "config/n8n_run_allowlist.json").read_text())["lanes"]}
+    contracts = {r["id"]: r for r in json.loads((root / "config/n8n_health_contracts.json").read_text())["contracts"]}
+    for lane in ["cio-ask-lifecycle", "cio-ask-material-events"]:
+        assert lanes[lane]["state"] == "NEVER_SCHEDULED"
+        assert lanes[lane]["scheduler"]["kind"] == "n8n"
+        assert lanes[lane]["scheduler"]["timezone"] == "America/New_York"
+        assert allowlist[lane]["live_arg"] is None
+        assert set(allowlist[lane]["llm_route"]["process_ids"]) == processes
+        assert contracts[lane]["status"] == "REVIEWED"
+        assert contracts[lane]["review"]["reviewed_by"].startswith("codex-")
+        assert "SOURCE_AND_SYNTHETIC_ONLY" in contracts[lane]["evidence"]["acceptance"]

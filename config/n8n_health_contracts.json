@@ -34525,6 +34525,408 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-lifecycle",
+      "kind": "lane",
+      "workflow_id": "tradeai-cio-ask-lifecycle-native",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "purpose": {
+        "text": "Check every monitored Ask thread on the hour, every day, and issue another advisory answer only after material change and cooldown admission.",
+        "business_function": "research",
+        "source": "DSN-20261026-ask-hourly; scripts/cio_ask_lifecycle.py"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "Native n8n Schedule Trigger",
+          "kind": "workflow",
+          "direction": "calls",
+          "source": "0 0 * * * * America/New_York, active false"
+        },
+        {
+          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        },
+        {
+          "name": "data/cio/cio_ask_events.jsonl",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
+        },
+        {
+          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
+        },
+        {
+          "name": "data/runtime/cio-ask-lifecycle_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt v2 includes CioAskLifecycleReceipt@v1 summary"
+        },
+        {
+          "name": "data/runtime/lane_attempts/cio-ask-lifecycle/<run_id>.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Immutable existing-executor attempt copy, bound to same lane/run"
+        },
+        {
+          "name": "CIO memory, canonical Ask consumer readback and delivery receipts",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Business proof, separate states; accepted send is not delivered"
+        },
+        {
+          "name": "scripts/lib/research_lane_health.py -> health_agent research heartbeat",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Registered collect_cio_ask_lifecycle_health, no model/send/write"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "trigger_host_binding",
+          "text": "Real live d: slot matches lane_id/run_id/mode on an immutable successful LaneRunReceipt@v2 attempt; n8n execution status or RUN_DONE alone is insufficient."
+        },
+        {
+          "check": "hourly_business_freshness",
+          "text": "Each monitoring_active thread has a canonical last_checked_at/last_check_outcome read back in the matching receipt; next check is hourly and <=15 minutes late. Six-hour answer cooldown never defers evidence checks."
+        },
+        {
+          "check": "memory_consumer_delivery",
+          "text": "memory_sync is verified/synced (or typed not_required), exact canonical Ask answer/check consumer readback is verified, and delivery is delivered/verified or typed not_required."
+        },
+        {
+          "check": "typed_empty",
+          "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "hourly_late",
+          "text": "An eligible hourly check is more than 15 minutes past next_check_at or last_checked_at+one hour, whichever is sooner."
+        },
+        {
+          "check": "material_poll_late",
+          "text": "Material-feed schedule receipt is older than fifteen minutes (5 minute cadence + 10 minute grace)."
+        },
+        {
+          "check": "memory_pending",
+          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
+        },
+        {
+          "check": "cooldown_distinct",
+          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        }
+      ],
+      "failed": [
+        {
+          "check": "business_unavailable",
+          "text": "Receipt schema, canonical thread lifecycle or matching immutable host attempt is missing/corrupt/old: UNAVAILABLE, never green."
+        },
+        {
+          "check": "host_or_source_failure",
+          "text": "Failed/refused/timed out attempt, nonempty source_errors, fatal skip, or mismatched run/check/answer identity."
+        },
+        {
+          "check": "dry_run_nonproof",
+          "text": "Dry-run RUN_DONE never advances business freshness; any dry-run store/receipt/memory/send write is a failure."
+        },
+        {
+          "check": "two_hourly_slots_missed",
+          "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        }
+      ],
+      "baseline": {
+        "basis": "OPERATOR_SLO",
+        "source": "Approved plan: hourly on the hour every day, eligible check lateness >15 minutes warns; material feed polling every5min via separate same-lock schedule lane.",
+        "class": "llm",
+        "timeout_s": 600,
+        "duration_degraded_above_s": 480,
+        "freshness_degraded_after_h": 1.25,
+        "freshness_failed_after_h": 2.25,
+        "runs_considered": 0,
+        "business_volume_baseline": "NOT_MEASURED"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "Operator advisory question freshness; no execution authority.",
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing research-lane-health heartbeat and incident fan-in/notifier only; monitor sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "mode": "MONITOR_ONLY",
+        "note": "Read receipt+canonical thread; coordinator fixes integration; monitor never dispatches, resets or mutates."
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-lifecycle_last.json",
+        "monitor": "scripts/cio_ask_lifecycle_health.py",
+        "verify": [
+          "TRADE_AI_CI=1 pytest -q tests/test_cio_ask_lifecycle_health_20261026.py",
+          "Read-only --root <fixture-root> --dry-run --strict; exact source changed by root integration then repeat gate.",
+          "After reviewed admission: one shadow dry run, one bounded live canary, then first natural hourly/material slots with matching attempt+canonical check+memory/readback/delivery evidence."
+        ],
+        "acceptance": "SOURCE_AND_SYNTHETIC_ONLY; no live or natural-slot evidence",
+        "never": "RUN_DONE in dry_run, accepted /run, a file mtime, historical ok_at or process exit0 alone"
+      },
+      "review": {
+        "status": "REVIEWED_SOURCE_ONLY",
+        "prepared_by": "codex-ask-hourly-n8n-20261026",
+        "reviewed_by": "codex-ask-hourly-20261026 (CIO lane source owner)",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-02",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "canonical Ask per-thread evidence checks recorded",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable",
+          "source_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_tracked_threads",
+          "no_new_events",
+          "no_due_threads"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/cio/cio_ask_events.jsonl exact thread lifecycle/check; memory_sync/consumer_readback/delivery"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-material-events",
+      "kind": "lane",
+      "workflow_id": "tradeai-cio-ask-lifecycle-native",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "purpose": {
+        "text": "Poll existing material feeds/cursors every five minutes, rechecking only new material events and retryable blockers.",
+        "business_function": "research",
+        "source": "DSN-20261026-ask-hourly; scripts/cio_ask_lifecycle.py"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "Native n8n Schedule Trigger",
+          "kind": "workflow",
+          "direction": "calls",
+          "source": "0 */5 * * * * America/New_York, active false"
+        },
+        {
+          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        },
+        {
+          "name": "data/cio/cio_ask_events.jsonl",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
+        },
+        {
+          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
+        },
+        {
+          "name": "data/runtime/cio-ask-material-events_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt v2 includes CioAskLifecycleReceipt@v1 summary"
+        },
+        {
+          "name": "data/runtime/lane_attempts/cio-ask-material-events/<run_id>.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Immutable existing-executor attempt copy, bound to same lane/run"
+        },
+        {
+          "name": "CIO memory, canonical Ask consumer readback and delivery receipts",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Business proof, separate states; accepted send is not delivered"
+        },
+        {
+          "name": "scripts/lib/research_lane_health.py -> health_agent research heartbeat",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Registered collect_cio_ask_lifecycle_health, no model/send/write"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "trigger_host_binding",
+          "text": "Real live d: slot matches lane_id/run_id/mode on an immutable successful LaneRunReceipt@v2 attempt; n8n execution status or RUN_DONE alone is insufficient."
+        },
+        {
+          "check": "hourly_business_freshness",
+          "text": "Each monitoring_active thread has a canonical last_checked_at/last_check_outcome read back in the matching receipt; next check is hourly and <=15 minutes late. Six-hour answer cooldown never defers evidence checks."
+        },
+        {
+          "check": "memory_consumer_delivery",
+          "text": "memory_sync is verified/synced (or typed not_required), exact canonical Ask answer/check consumer readback is verified, and delivery is delivered/verified or typed not_required."
+        },
+        {
+          "check": "typed_empty",
+          "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "hourly_late",
+          "text": "An eligible hourly check is more than 15 minutes past next_check_at or last_checked_at+one hour, whichever is sooner."
+        },
+        {
+          "check": "material_poll_late",
+          "text": "Material-feed schedule receipt is older than fifteen minutes (5 minute cadence + 10 minute grace)."
+        },
+        {
+          "check": "memory_pending",
+          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
+        },
+        {
+          "check": "cooldown_distinct",
+          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        }
+      ],
+      "failed": [
+        {
+          "check": "business_unavailable",
+          "text": "Receipt schema, canonical thread lifecycle or matching immutable host attempt is missing/corrupt/old: UNAVAILABLE, never green."
+        },
+        {
+          "check": "host_or_source_failure",
+          "text": "Failed/refused/timed out attempt, nonempty source_errors, fatal skip, or mismatched run/check/answer identity."
+        },
+        {
+          "check": "dry_run_nonproof",
+          "text": "Dry-run RUN_DONE never advances business freshness; any dry-run store/receipt/memory/send write is a failure."
+        },
+        {
+          "check": "two_hourly_slots_missed",
+          "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        }
+      ],
+      "baseline": {
+        "basis": "OPERATOR_SLO",
+        "source": "Approved plan: hourly on the hour every day, eligible check lateness >15 minutes warns; material feed polling every5min via separate same-lock schedule lane.",
+        "class": "llm",
+        "timeout_s": 600,
+        "duration_degraded_above_s": 480,
+        "freshness_degraded_after_h": 0.25,
+        "freshness_failed_after_h": 0.5,
+        "runs_considered": 0,
+        "business_volume_baseline": "NOT_MEASURED"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "Operator advisory question freshness; no execution authority.",
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing research-lane-health heartbeat and incident fan-in/notifier only; monitor sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "mode": "MONITOR_ONLY",
+        "note": "Read receipt+canonical thread; coordinator fixes integration; monitor never dispatches, resets or mutates."
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-material-events_last.json",
+        "monitor": "scripts/cio_ask_lifecycle_health.py",
+        "verify": [
+          "TRADE_AI_CI=1 pytest -q tests/test_cio_ask_lifecycle_health_20261026.py",
+          "Read-only --root <fixture-root> --dry-run --strict; exact source changed by root integration then repeat gate.",
+          "After reviewed admission: one shadow dry run, one bounded live canary, then first natural hourly/material slots with matching attempt+canonical check+memory/readback/delivery evidence."
+        ],
+        "acceptance": "SOURCE_AND_SYNTHETIC_ONLY; no live or natural-slot evidence",
+        "never": "RUN_DONE in dry_run, accepted /run, a file mtime, historical ok_at or process exit0 alone"
+      },
+      "review": {
+        "status": "REVIEWED_SOURCE_ONLY",
+        "prepared_by": "codex-ask-hourly-n8n-20261026",
+        "reviewed_by": "codex-ask-hourly-20261026 (CIO lane source owner)",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-02",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "canonical Ask per-thread evidence checks recorded",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable",
+          "source_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_tracked_threads",
+          "no_new_events",
+          "no_due_threads"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/cio/cio_ask_events.jsonl exact thread lifecycle/check; memory_sync/consumer_readback/delivery"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {
