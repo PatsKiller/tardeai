@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import render, store
+from . import cio_memory, render, store
 from .generate import GenerationFailed, QueueLater, governed_generate, write
 from .blocks import book_returns
 from .domains import full_assemble
@@ -136,14 +136,22 @@ def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, tr
 
 def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict | None = None,
               generate_fn: Callable = governed_generate, now_fn: Callable[[], datetime] | None = None,
-              manual: bool = False, log: Callable[[str], None] = print) -> dict:
-    """Process up to ``limit`` queued rows (priority order). Stops for the day when the credit is unavailable."""
+              manual: bool = False, log: Callable[[str], None] = print,
+              memory_root: Path | None = None, memory_fn: Callable[..., dict] | None = None) -> dict:
+    """Process up to ``limit`` queued rows (priority order). Stops for the day when the credit is unavailable.
+
+    Every stored version is then written into the CIO memory (``cio_memory.record_version``, the shared research
+    spine); a memory failure is recorded in the summary and never fails the prospectus.
+    """
     now_fn = now_fn or (lambda: datetime.now(timezone.utc))
     holdings = holdings if holdings is not None else (sources.holdings() or {})
     universe = {r["symbol"]: r for r in store.read_universe(base)}
     procs = cfg["processes"]
     brave = cfg.get("brave") or {}
-    summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0}
+    summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0, "cio_memory": []}
+    if memory_root is None:
+        memory_root = state_root_for(base, cfg)
+    memory_fn = memory_fn or cio_memory.record_version
     book = None
     for row in list(store.read_queue(base)["items"]):
         if len(summary["done"]) + len(summary["failed"]) >= limit:
@@ -197,12 +205,28 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
                  "inputs_digest": doc["inputs_digest"], "formats": sorted(k.split(".")[-1] for k in files if "/" not in k)}
         entry["next_due"] = next_due(entry, cfg)
         store.update_index(base, sym, **entry)
+        try:
+            mem = memory_fn(doc, root=memory_root)
+        except Exception as exc:  # noqa: BLE001 - CIO memory never fails a stored prospectus
+            mem = {"symbol": sym, "version": version, "outcome": "error", "reason": f"{type(exc).__name__}: {exc}"[:200]}
+        summary["cio_memory"].append({k: mem.get(k) for k in ("symbol", "version", "outcome", "reason")})
+        if mem.get("outcome") not in ("written", "exists"):
+            log(f"CIO MEMORY {sym} {version}: {mem.get('outcome')} {mem.get('reason') or ''}".rstrip())
         store.mark(base, sym, state="done", done=True)
         summary["done"].append(sym)
         summary["cost_usd"] += float(doc.get("cost_usd") or 0)
         log(f"READY {sym} {version} model={doc['model']} cost=${float(doc.get('cost_usd') or 0):.4f}")
     summary["cost_usd"] = round(summary["cost_usd"], 4)
     return summary
+
+
+def state_root_for(base: Path, cfg: dict) -> Path:
+    """The state root a prospectus base directory lives under (``<root>/<storage_rel>``)."""
+    rel = Path(str((cfg or {}).get("storage_rel") or "data/prospectus"))
+    out = Path(base)
+    for _ in rel.parts:
+        out = out.parent
+    return out
 
 
 def estimate(prompt: str, cfg: dict, *, premium: bool, pricing: dict) -> dict:

@@ -65,6 +65,10 @@ def empty_spine(symbol: str, *, subject_guid: str | None = None) -> dict[str, An
         "latest_hermes": {"research_id": None, "result_id": None, "status": None, "as_of": None},
         "latest_operator": {"pending_id": None, "kind": None, "as_of": None},
         "latest_llm": {"source": None, "model": None, "kind": None, "as_of": None},
+        # Ticker Prospectus memory (2026-10-26): the newest version's ProspectusMemory@v1 record; older
+        # versions stay in ``prospectus_history`` (compact rows) and in the append-only ledger lines.
+        "latest_prospectus": None,
+        "prospectus_history": [],
         # Active operator asks remain until a thesis_publish clears/archives them.
         "operator_asks": [],
         "transparency": {
@@ -125,7 +129,46 @@ KNOWN_TAGS = frozenset({
     "stale_sla",
     "sector",
     "sector_subject",
+    "prospectus",
 })
+
+#: Compact prospectus history rows kept on the tip (newest first). Full records stay in the ledger lines
+#: and the private prospectus store; the tip carries only the latest full record.
+PROSPECTUS_HISTORY_MAX = 24
+PROSPECTUS_HISTORY_KEYS = ("version", "written_at", "model", "model_label", "status", "verdict",
+                           "cio_conviction", "one_line", "link")
+
+
+def has_prospectus_version(spine: dict[str, Any] | None, version: str) -> bool:
+    """True when this spine already holds the prospectus ``version`` (idempotency by (symbol, version))."""
+    if not isinstance(spine, dict) or not version:
+        return False
+    latest = spine.get("latest_prospectus") or {}
+    if isinstance(latest, dict) and str(latest.get("version") or "") == str(version):
+        return True
+    return any(isinstance(h, dict) and str(h.get("version") or "") == str(version)
+               for h in spine.get("prospectus_history") or [])
+
+
+def _apply_prospectus(out: dict[str, Any], record: dict[str, Any], ts: str) -> None:
+    """Newer versions supersede the tip record; every version keeps a compact history row."""
+    version = str(record.get("version") or "")
+    if not version:
+        return
+    row = {k: record.get(k) for k in PROSPECTUS_HISTORY_KEYS}
+    row["recorded_at"] = ts
+    hist = [h for h in (out.get("prospectus_history") or [])
+            if isinstance(h, dict) and str(h.get("version") or "") != version]
+    hist.append(row)
+    hist.sort(key=lambda h: str(h.get("version") or ""), reverse=True)
+    out["prospectus_history"] = hist[:PROSPECTUS_HISTORY_MAX]
+    latest = out.get("latest_prospectus") if isinstance(out.get("latest_prospectus"), dict) else None
+    if latest is None or version >= str(latest.get("version") or ""):
+        rec = dict(record)
+        if latest and str(latest.get("version") or "") != version:
+            rec["supersedes_version"] = latest.get("version")
+        rec["recorded_at"] = ts
+        out["latest_prospectus"] = rec
 
 
 def _normalize_tags(tags: Iterable[str] | None) -> list[str]:
@@ -153,8 +196,9 @@ def contribute(
     hermes: dict[str, Any] | None = None,
     operator: dict[str, Any] | None = None,
     llm: dict[str, Any] | None = None,
+    prospectus: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Append a contribution from any producer silo; optional thesis/hermes/operator/llm upgrade."""
+    """Append a contribution from any producer silo; optional thesis/hermes/operator/llm/prospectus upgrade."""
     out = deepcopy(spine)
     silo_n = str(silo or "unknown").strip().lower()
     ts = _now()
@@ -227,6 +271,8 @@ def contribute(
             "as_of": llm.get("as_of") or ts,
             "note": llm.get("note") or "curation_not_fact_source",
         }
+    if prospectus:
+        _apply_prospectus(out, dict(prospectus), ts)
     # Thesis publish closes active operator asks (memory retained in contributions).
     if kind in {"thesis_publish", "thesis_backfill"} or "thesis" in tag_list:
         archived = []
@@ -417,6 +463,7 @@ def upsert_research_memory(
     issuer_guid: str | None = None,
     path: Path | None = None,
     root: Path | None = None,
+    prospectus: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generic multi-producer write: Hermes, operator Q, thesis, LLM research, desk.
 
@@ -460,6 +507,7 @@ def upsert_research_memory(
         hermes=hermes,
         operator=operator,
         llm=llm,
+        prospectus=prospectus,
     )
     spine["subject_guid"] = cand
     if iss:
@@ -572,6 +620,8 @@ def view_for_silo(
         "latest_hermes": viewed.get("latest_hermes"),
         "latest_operator": viewed.get("latest_operator"),
         "latest_llm": viewed.get("latest_llm"),
+        "latest_prospectus": viewed.get("latest_prospectus"),
+        "prospectus_history": list(viewed.get("prospectus_history") or []),
         "operator_asks": [
             a for a in (viewed.get("operator_asks") or [])
             if isinstance(a, dict) and a.get("status") == "active"
