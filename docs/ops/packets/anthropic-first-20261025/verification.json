@@ -68,9 +68,21 @@
     "status": "INCOMPLETE",
     "detail": "Interrupted after OS-restricted lease/socket fixture failures; those three tests later passed in an approved isolated run; remaining profile units not completed."
   },
-  "full_github_ci": "PENDING publication of corrected head; no claim of CI green",
+  "full_github_ci": "FAILED at448607166 on two documentation checks; corrective follow-up awaits publication and new-head CI",
   "real_provider_canaries": "NOT_RUN: operator key-org confirmation, activation config and per-tier/fallback canaries required",
   "runtime_activation": "NOT_PERFORMED; shipped enabled:false",
   "source_admission": "PROPOSED; no grant invented",
-  "remote_publication": "OPERATOR CONTROLLED; automatic approval review rejected agent pushes; no workaround"
+  "remote_publication": "Initial correction published by operator at448607166; documentation follow-up remains operator-controlled",
+  "github_ci_checkpoint": {
+    "head": "44860716649f6c904e21321b2a017a36477087bb",
+    "hardening_run": 40251267587,
+    "full_suite_run": 40251267578,
+    "failed_tests": [
+      "tests/test_work_board_designs_20261023.py::test_seeded_registry_parses_and_ids_are_consistent",
+      "tests/test_data_dictionary_foundation_20261022.py::test_rendered_dictionary_is_current"
+    ],
+    "followup": "Required design YAML metadata added; deterministic dictionary regenerated; provider source and authority unchanged",
+    "local_affected_suites_passed": 67,
+    "new_head_ci": "PENDING operator publication of documentation-only follow-up"
+  }
 }

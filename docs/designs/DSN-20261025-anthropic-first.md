@@ -1,3 +1,22 @@
+---
+id: DSN-20261025-anthropic-first
+title: Anthropic-first governed routing and credit monitoring
+status: IN_PROGRESS
+approval: "Operator-approved to build on 2026-10-25 via PROMPT.md and REQUIREMENTS.md; release and activation pending."
+phases:
+  - id: DSN-20261025-anthropic-first-P1
+    title: Implement and verify governed promotional routing
+    status: IN_PROGRESS
+    tasks:
+      - id: DSN-20261025-anthropic-first-P1-T1
+        title: Build provider adapter, credit accounting and monitoring
+        status: IN_PROGRESS
+        areas:
+          - scripts/lib/anthropic_credit.py
+          - scripts/lib/anthropic_transport.py
+          - scripts/lib/anthropic_routing.py
+          - scripts/lib/anthropic_monitoring.py
+---
 # DSN-20261025 Anthropic-first governed routing
 
 Status: APPROVED TO BUILD by operator REQUIREMENTS.md (2026-10-25); source only, no activation/release.
@@ -9,7 +28,7 @@ An injected HTTP adapter supports current Messages and explicit asynchronous Bat
 
 An append-only, locked credit-authorization journal under the existing provider_cost runtime namespace holds worst-case cost before dispatch. Pending and ambiguous holds survive midnight; corrupt records fail closed. The journal authorizes credit locally, backed by an additional promotion-total and UTC-day cap on the existing PostgreSQL reservation table under its global advisory lock. Losing local journal state cannot reset that durable cap. The existing consumption and provider-cost ledgers meter actual calls. Both are reconciled in health/readback, and a missing accounting write stops further promotional dispatch. Promotional credit is separate from the unchanged paid global cap; paid fallback must reacquire authorization on the existing reservation under its existing lock. Per-process caps and manual rules continue to bind.
 
-One canonical read-only status projection supplies LLM Spend, provider-health output, agent runtime health and digest. Platform/Jobs/needs-action wiring is pending normal handoff from the active owners named in the build report. Notifications use existing host notification intents with deterministic milestone identities. No new host schedule or workflow activation is authorized. Before a real key/canary the provider is not configured or awaiting observations, never proven healthy.
+One canonical read-only status projection supplies LLM Spend, provider-health output, agent runtime health and digest. Platform, Jobs and the production needs-action probe map now consume this projection; isolated fixtures verify the read-only wiring. Notifications use existing host notification intents with deterministic milestone identities. No new host schedule or workflow activation is authorized. Before a real key/canary the provider is not configured or awaiting observations, never proven healthy.
 
 Proof uses synthetic fixtures, pinned clocks, HTTP spies, isolated journals and a temp PROJECT_ROOT. No credentials, real portfolio fixtures, model calls, live server traffic, merges or releases. The PostgreSQL aggregate census is currently unavailable due to a sandbox Unix-socket refusal; the inventory contains only trusted file-ledger counts and marks complete call volume unmeasured.
 
