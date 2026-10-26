@@ -1,6 +1,10 @@
 {
   "schema": "CiGate@v1",
   "name": "deploy_on_main_repo_20261026",
-  "files": ["tests/test_deploy_on_main_repo_20261026.py"],
-  "comment": ["CURRENT code/canonical Git checkout separation; clean exact-main fast-forward; dirty/divergent/moved-target refusal; native CI/grant failure, STOP, delegation and release-lock preservation. Temporary Git fixtures and injected native deployment only."]
+  "files": [
+    "tests/test_deploy_on_main_repo_20261026.py"
+  ],
+  "comment": [
+    "CURRENT code/canonical Git checkout separation; clean exact-main fast-forward; dirty/divergent/moved-target refusal; native CI/grant failure, STOP, delegation and release-lock preservation. Temporary Git fixtures and injected native deployment only."
+  ]
 }
