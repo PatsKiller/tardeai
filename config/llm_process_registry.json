@@ -2006,9 +2006,9 @@
       "id": "prospectus_writer",
       "name": "Ticker Prospectus writer (Opus 5.5)",
       "description": "Ticker Prospectus: one sourced research document per holding / watch-list symbol (scripts/prospectus_build.py). Claude Opus 5.5, effort high, via the Anthropic promotional credit ONLY (anthropic_only_processes): when the credit is paused/exhausted the job queues; never a paid DeepSeek fallback. READ_ONLY_ADVISORY.",
-      "daily_cost_cap_usd": 22.0,
-      "daily_soft_cap": 80,
-      "notes": "operator 2026-10-26: 'Opus for all, Fable for top. [3: $25/day for 3 days]'. Cap sized to the $25/UTC-day credit override (2026-10-26..28); afterwards the credit's own $10/day cap binds first. Projected per-call hold <= $2.00 (credit tier long_form)."
+      "daily_cost_cap_usd": 40.0,
+      "daily_soft_cap": 200,
+      "notes": "operator 2026-10-26: 'Opus for all, Fable for top. [3: $25/day for 3 days]'. Cap sized to the $25/UTC-day credit override (2026-10-26..28); afterwards the credit's own $10/day cap binds first. Projected per-call hold <= $2.00 (credit tier long_form). | 2026-10-26 operator \"I rather finish right now\": daily_soft_cap 80->200 and daily_cost_cap_usd 22->40 so the first build finishes today; the credit's own UTC-day cap still binds."
     },
     {
       "category": "Research",
