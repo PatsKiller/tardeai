@@ -148,12 +148,17 @@ def _reasoning_settings(model: str, thinking: str, policy: Mapping[str, Any]) ->
     try:
         configured = policy.get("thinking_controls", {}).get(model, {}).get("enabled" if enabled else "disabled")
         if configured is not None:
-            if (not isinstance(configured, dict) or not isinstance(configured.get("thinking"), dict)
-                    or not isinstance(configured.get("output_config"), dict)):
+            if (not isinstance(configured, dict) or not isinstance(configured.get("output_config"), dict)
+                    or not (isinstance(configured.get("thinking"), dict)
+                            or ("thinking" in configured and configured["thinking"] is None))):
                 raise AnthropicError("CREDIT_CONFIGURATION_INVALID")
             settings = deepcopy(configured)
         if model == "claude-opus-5-5":
             settings["thinking"] = {"type": "adaptive"}
+        if settings.get("thinking") is None:
+            # Always-on thinking (Fable 5.1): the parameter is omitted entirely;
+            # any explicit disabled/budget configuration is a 400.
+            settings.pop("thinking", None)
         return settings
     except (AttributeError, KeyError, TypeError) as exc:
         raise AnthropicError("CREDIT_CONFIGURATION_INVALID") from exc
@@ -307,6 +312,10 @@ class AnthropicTransport:
         if tools:
             raise AnthropicError("TOOLS_UNSUPPORTED")
         model = str(model or "")
+        premium = {self.policy.get("models", {}).get("premium")} - {None}
+        if model in premium and process_id not in set(self.policy.get("premium_tier_processes") or []):
+            # The premium model is approved for named processes only.
+            raise AnthropicError("MODEL_DISABLED")
         if (credit_tier or self._tier(model)) == "highest" and _kwargs.get("operator_confirmed") is not True:
             raise AnthropicError("OPERATOR_CONFIRMATION_REQUIRED")
         if credit_tier and self.policy["models"].get(credit_tier) != model:

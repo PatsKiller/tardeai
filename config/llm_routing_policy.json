@@ -1812,6 +1812,44 @@
             "policy": "PRO_THINK"
           },
           "anthropic_first": true
+        },
+        "prospectus_writer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 900000,
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
+        "prospectus_writer_premium": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 900000,
+          "cost_ceiling_usd": 4.0,
+          "anthropic_first": true,
+          "anthropic_only": true
         }
       }
     }

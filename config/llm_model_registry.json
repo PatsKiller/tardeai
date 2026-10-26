@@ -187,6 +187,26 @@
             "output": 20.0
           }
         },
+        "anthropic_fable": {
+          "model_id": "claude-fable-5-1",
+          "display_name": "Claude Fable 5.1",
+          "latency_class": "slow",
+          "enabled": true,
+          "thinking_supported": true,
+          "thinking_param": "omit",
+          "pricing_effective_at": "2026-10-26",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.25,
+            "cache_miss_input": 10.0,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20.0,
+            "output": 50.0
+          },
+          "restricted_to_processes": [
+            "prospectus_writer_premium"
+          ],
+          "approved_by": "operator 2026-10-26: \"Opus for all, Fable for top\""
+        },
         "anthropic_haiku_historical_4_5": {
           "model_id": "claude-haiku-4-5-20251001",
           "display_name": "Claude Haiku 4.5",

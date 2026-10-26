@@ -16,7 +16,7 @@ not counted, so changing the promotion never makes the journal unreadable.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import fcntl
 import hashlib
@@ -69,6 +69,44 @@ def utc(value: datetime | str) -> datetime:
         raise CreditDenied("CREDIT_CLOCK_INVALID") from exc
 
 
+def _daily_overrides(raw: Any) -> list[tuple[date, date, Decimal]]:
+    """Temporary UTC-day cap overrides: ``[{"usd", "from", "until"}]``; ``until`` is exclusive."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    result = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        try:
+            start, until = date.fromisoformat(str(row["from"])), date.fromisoformat(str(row["until"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
+        usd = amount(row.get("usd"))
+        if usd <= 0 or until <= start:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        result.append((start, until, usd))
+    return result
+
+
+def _renewal(raw: Any) -> dict[str, Any]:
+    """``one_time`` (default): one total cap for the promotion. ``monthly``: a fresh
+    ``monthly_allowance_usd`` each UTC month from ``renews_on_day`` (default 1); the
+    journal keeps every period, only the current period counts toward the total."""
+    if raw is None:
+        return {"mode": "one_time", "monthly_allowance_usd": None, "renews_on_day": None}
+    if not isinstance(raw, dict) or raw.get("mode") not in {"one_time", "monthly"}:
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    day = raw.get("renews_on_day")
+    if day is not None and (isinstance(day, bool) or not isinstance(day, int) or not 1 <= day <= 28):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    allowance = raw.get("monthly_allowance_usd")
+    if raw["mode"] == "monthly" and (allowance is None or amount(allowance) <= 0):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    return {"mode": raw["mode"], "monthly_allowance_usd": allowance, "renews_on_day": day}
+
+
 class CreditBook:
     def __init__(self, root: Path, policy: dict[str, Any]):
         try:
@@ -80,11 +118,16 @@ class CreditBook:
             self.daily = amount(policy["daily_cap_usd"])
             self.credit = amount(policy["credit_usd"])
             self.start, self.expiry = utc(policy["starts_at"]), utc(policy["expires_at"])
+            self.overrides = _daily_overrides(policy.get("daily_cap_overrides"))
+            self.renewal = _renewal(policy.get("renewal"))
+            if self.renewal["mode"] == "monthly":
+                self.total = amount(self.renewal["monthly_allowance_usd"])
             caps = policy["per_call_caps_usd"]
             if (not isinstance(self.promotion, str) or not self.promotion.strip()
                     or not isinstance(caps, dict) or not caps
                     or any(not isinstance(tier, str) or amount(cap) <= 0 for tier, cap in caps.items())
-                    or not (0 < self.total <= self.credit and 0 < self.daily and self.start < self.expiry)):
+                    or not (0 < self.total and 0 < self.daily and self.start < self.expiry)
+                    or (self.renewal["mode"] == "one_time" and self.total > self.credit)):
                 raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
         except (CreditDenied, KeyError, TypeError, ValueError, OverflowError) as exc:
             raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
@@ -178,6 +221,24 @@ class CreditBook:
     def _own(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [row for row in rows if row.get("promotion_id") == self.promotion]
 
+    def daily_cap(self, now: datetime) -> Decimal:
+        """The UTC-day cap in force at ``now``: an active override, else the base cap."""
+        day = utc(now).date()
+        active = [usd for start, until, usd in self.overrides if start <= day < until]
+        return active[-1] if active else self.daily
+
+    def period_start(self, now: datetime) -> datetime | None:
+        """Start of the current monthly renewal period, or None for a one-time credit."""
+        if self.renewal["mode"] != "monthly":
+            return None
+        now = utc(now)
+        day = self.renewal["renews_on_day"] or 1
+        start = now.replace(day=day, hour=0, minute=0, second=0, microsecond=0)
+        if start > now:
+            month, year = (now.month - 1, now.year) if now.month > 1 else (12, now.year - 1)
+            start = start.replace(year=year, month=month)
+        return start
+
     def _minutes(self, key: str, default: int) -> float:
         try:
             value = amount(self.policy.get(key, default))
@@ -214,8 +275,12 @@ class CreditBook:
         now = utc(now)
         requests = self._requests(rows)
         own = self._own(rows)
+        daily = self.daily_cap(now)
+        period = self.period_start(now)
         spent = held = today = held_today = expired = Decimal(0)
         for row in requests.values():
+            if period is not None and utc(row["at"]) < period:
+                continue  # an earlier monthly period; kept in the journal, not counted
             if row["status"] == "settled":
                 value = amount(row["actual"])
                 spent += value
@@ -245,13 +310,17 @@ class CreditBook:
         status = ("EXPIRED" if now >= self.expiry else "DISABLED" if self.policy.get("enabled") is not True or self.policy.get("provider_enabled", True) is not True
                   else "NOT_STARTED" if now < self.start else "UNAVAILABLE" if unavailable
                   else "EXHAUSTED" if exhausted or spent + held >= self.total
-                  else "PAUSED_TODAY" if today + held_today >= self.daily else "OK")
+                  else "PAUSED_TODAY" if today + held_today >= daily else "OK")
         resets = [r for r in own if r["event"] == "operator_reset"]
         return {"status": status, "promotion_id": self.promotion,
                 "credit_used_usd": money(spent), "reserved_usd": money(held),
                 "reserved_today_usd": money(held_today), "expired_unsettled_usd": money(expired),
                 "today_used_usd": money(today), "total_cap_usd": money(self.total),
-                "daily_cap_usd": money(self.daily),
+                "daily_cap_usd": money(daily), "daily_cap_base_usd": money(self.daily),
+                "daily_cap_override_active": daily != self.daily or any(
+                    start <= now.date() < until for start, until, _ in self.overrides),
+                "renewal_mode": self.renewal["mode"],
+                "period_start": period.isoformat() if period is not None else None,
                 "remaining_budget_usd": money(max(Decimal(0), self.total - spent - held)),
                 "estimated_credit_remaining_usd": money(max(Decimal(0), self.credit - spent - held)),
                 "days_to_expiry": max(0, (self.expiry - now).total_seconds() / 86400),
@@ -301,7 +370,7 @@ class CreditBook:
                 raise CreditDenied("CREDIT_REPLAY_REFUSED")
             if amount(snapshot["credit_used_usd"]) + amount(snapshot["reserved_usd"]) + projected > self.total:
                 raise CreditDenied("EXHAUSTED")
-            if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_today_usd"]) + projected > self.daily:
+            if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_today_usd"]) + projected > self.daily_cap(now):
                 raise CreditDenied("PAUSED_TODAY")
             if process_cap is not None:
                 day = utc(now)

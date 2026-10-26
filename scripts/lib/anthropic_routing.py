@@ -18,6 +18,12 @@ ROOT = Path(__file__).resolve().parents[2]
 _CURRENT: ContextVar[Any] = ContextVar("anthropic_call_funding", default=None)
 
 
+def anthropic_only(process_id: str, *, policy: dict | None = None) -> bool:
+    """True for processes that must never leave the Anthropic credit lane."""
+    policy = load_policy() if policy is None else policy
+    return process_id in (policy.get("anthropic_only_processes") or {})
+
+
 def eligible(process_id: str, cfg: dict[str, Any], *, policy: dict | None = None) -> bool:
     policy = load_policy() if policy is None else policy
     return bool(cfg.get("anthropic_first") is True
@@ -56,6 +62,10 @@ def credit_admitted(cfg: dict) -> bool:
 
 def tier_for(logical_policy: str, reasoning_tier: str = "standard", *, policy: dict | None = None, process_id: str | None = None) -> str:
     policy = load_policy() if policy is None else policy
+    pinned = (policy.get("process_tiers") or {}).get(process_id) if process_id else None
+    if pinned:
+        # A declared per-process tier (e.g. prospectus long-form / premium) wins.
+        return str(pinned)
     if str(logical_policy).upper() == "PRO_MAX":
         return "highest"
     if reasoning_tier == "high":
@@ -110,7 +120,11 @@ def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set 
                 skip = "process_caps_not_admitted"
         else:
             model = model_for_provider(provider, logical)
-            if provider not in enabled:
+            if process_id in (policy.get("anthropic_only_processes") or {}):
+                # Operator rule: this job queues when the credit is unavailable; it never
+                # falls to another (possibly paid) provider.
+                skip = "anthropic_only_process"
+            elif provider not in enabled:
                 skip = "no_transport"
         # The promotional provider order is an overlay, not a permanent expansion of legacy lanes.
         plan.append({"lane": "promotion" if provider == "anthropic" else provider,

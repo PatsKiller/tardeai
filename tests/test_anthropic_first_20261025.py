@@ -139,7 +139,8 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     root = Path(__file__).resolve().parents[1]
     p = json.loads((root / "config/anthropic_credit_policy.json").read_text())
     assert p["total_cap_usd"] == "190" and p["daily_cap_usd"] == "10"
-    assert set(p["models"].values()) == {"claude-opus-5-5", "claude-haiku-5-5"}
+    assert set(p["models"].values()) == {"claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"}
+    assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 
 
@@ -305,8 +306,11 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     before={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
     monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
     rows,total=report(tmp_path,observed)
-    assert len(rows)==90
-    assert len([r for r in rows if r['new'].startswith('anthropic')])==67
+    assert len(rows)==92  # + prospectus_writer, prospectus_writer_premium (operator 2026-10-26)
+    assert len([r for r in rows if r['new'].startswith('anthropic')])==69
+    prospectus={r['process']:r for r in rows if r['process'].startswith('prospectus_writer')}
+    assert prospectus['prospectus_writer_premium']['new']=='anthropic / claude-fable-5-1'
+    assert {r['no_key_or_expired'] for r in prospectus.values()}=={'QUEUED (anthropic-only)'}
     assert total==Decimal('5.050121')
     assert before=={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
 

@@ -28,8 +28,10 @@ def test_operator_enabled_promotion_preserves_caps_and_model_choices():
     assert (p['total_cap_usd'], p['daily_cap_usd']) == ('190', '10')
     assert p['models']['standard'] == p['models']['high'] == 'claude-opus-5-5'
     assert p['models']['bulk'] == 'claude-haiku-5-5'
-    assert not any('fable' in model for model in p['models'].values())
-    assert p['pricing']['claude-sonnet-5-5']['cache_read'] == '0.10'  # current official pricing, re-fetched 2026-10-25
+    # Operator 2026-10-26 ("Opus for all, Fable for top"): Fable only as the premium tier, for named processes.
+    assert [tier for tier, model in p['models'].items() if 'fable' in model] == ['premium']
+    assert p['premium_tier_processes'] == ['prospectus_writer_premium']
+    assert p['pricing']['claude-sonnet-5-5']['cache_read'] == '0.10'  # official pricing page re-fetched 2026-10-26: $0.10 (0.05x base)
 
 
 @pytest.mark.parametrize('state', ['disabled', 'missing_key', 'expired', 'billing', 'paused', 'corrupt'])
