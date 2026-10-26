@@ -48,7 +48,7 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
     assert p["models"]["premium"] == "claude-fable-5-1" and p["models"]["long_form"] == "claude-opus-5-5"
     assert p["process_tiers"] == {"prospectus_writer": "long_form", "prospectus_writer_premium": "premium"}
     assert p["premium_tier_processes"] == ["prospectus_writer_premium"]
-    assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium"}
+    assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "cio_ask_reanswer"}
     assert p["thinking_controls"]["claude-fable-5-1"]["enabled"] == {"thinking": None, "output_config": {"effort": "high"}}
 
 

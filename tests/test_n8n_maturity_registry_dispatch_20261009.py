@@ -517,6 +517,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
         # (tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # Approved source registration only: two native inactive Ask proposals, never host cron or live mode.
+        "cio-ask-lifecycle",
+        "cio-ask-material-events",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",
@@ -663,6 +666,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+            if lane in {"cio-ask-lifecycle", "cio-ask-material-events"}:
+                assert row["state"]=="NEVER_SCHEDULED" and allow[lane]["live_arg"] is None, lane
+                assert LD.r1_class_admission(row, allow[lane])==(True, "r1_admitted:llm"), lane
         elif lane in SYSTEMD_TIMER_SHADOW:
             assert sched["kind"] == "systemd" and sched.get("stage") == "shadow", lane
             assert sched["expression"].endswith(".timer"), lane
