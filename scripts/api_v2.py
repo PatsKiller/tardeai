@@ -2990,12 +2990,27 @@ def _today_pnl_provenance(
             if _a:
                 held_by_acct[_a] = held_by_acct.get(_a, 0) + 1
 
+    # account_summaries carry holdings keys (schwab_roth); the day figures are
+    # keyed by the canonical account key (schwab_roth_ira). Look up by both, so
+    # an alias never reads as "no report" or picks up a 0.0 filler row.
+    try:
+        from lib.account_display import canonical_key as _ck
+    except Exception:  # noqa: BLE001 -- loaded standalone by tests
+        def _ck(k):
+            return k
+    _by_canon = {_ck(k): v for k, v in (today_by_account or {}).items()}
+
     contributing: list[str] = []
     zero_change: list[str] = []
     empty: list[str] = []
     missing: list[str] = []
     for acct in sorted(account_summaries or {}):
-        row = (today_by_account or {}).get(acct)
+        row = _by_canon.get(_ck(acct))
+        if row is None:
+            row = (today_by_account or {}).get(acct)
+        # A change of None is an UNKNOWN day, not a flat one.
+        if row is not None and row.get("change") is None:
+            row = None
         if row is None:
             summary = (account_summaries or {}).get(acct) or {}
             try:
@@ -3589,11 +3604,13 @@ def overview():
             today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
 
     # per-account breakdown — from broker snapshot, with per-account top-movers from holdings
+    from lib.account_display import canonical_key as _canon_acct
+
     today_by_account = {}
     for a, d in snap.get("by_account", {}).items():
         entry = {"change": d.get("change", 0), "value": d.get("value", 0), "pct": d.get("pct")}
         movers_a = sorted(
-            [p for p in holdings if (p.get("account") or "unknown") == a],
+            [p for p in holdings if (_canon_acct(p.get("account")) or "unknown") == a],
             key=lambda p: abs(p.get("day_change") or 0),
             reverse=True,
         )[:2]
@@ -3604,8 +3621,11 @@ def overview():
         )
         today_by_account[a] = entry
     # Ensure every known account gets an entry (snapshot may only cover accounts with activity)
+    # Snapshot rows are keyed canonically (schwab_roth_ira); holdings rows carry
+    # the raw key (schwab_roth). Comparing raw to canonical added a fake 0.0 row
+    # for every aliased account, which the census then counted as "flat".
     for p in holdings:
-        a = p.get("account") or "unknown"
+        a = _canon_acct(p.get("account")) or "unknown"
         if a not in today_by_account:
             today_by_account[a] = {"change": 0.0, "value": 0.0, "pct": None, "top_movers": ""}
 
