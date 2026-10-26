@@ -10,10 +10,10 @@
  */
 import { readableTime } from './readableTime.ts'
 
-export type ProspectusStatus = 'ready' | 'queued' | 'running' | 'failed' | 'missing'
+export type ProspectusStatus = 'ready' | 'partial' | 'queued' | 'running' | 'failed' | 'missing'
 export type ProspectusScope = 'holding' | 'watch'
 export type ProspectusFileKind = 'pdf' | 'docx' | 'html'
-export type ScopeFilter = 'holdings' | 'watch' | 'all'
+export type ScopeFilter = 'holdings' | 'watch' | 'all' | 'rewrite'
 
 export type ProspectusIndexItem = {
   symbol: string
@@ -71,10 +71,18 @@ export type ProspectusDoc = {
   charts?: ProspectusChart[]
   versions?: ProspectusVersion[]
   viewer?: ProspectusViewer
+  /** Institutional blocks computed by the backend from house data (never model output). Each may be absent. */
+  blocks?: ProspectusBlocks
+  source_coverage?: SourceCoverage
+  partial_gaps?: string[]
+  facts?: ProspectusFact[]
+  inputs_digest?: Record<string, unknown>
+  next_due?: string | null
+  mode?: string
 }
 
 export const API_BASE = '/api/v2/prospectus'
-export const STATUSES: readonly ProspectusStatus[] = ['ready', 'queued', 'running', 'failed', 'missing'] as const
+export const STATUSES: readonly ProspectusStatus[] = ['ready', 'partial', 'queued', 'running', 'failed', 'missing'] as const
 
 /** Contract section order. Unknown ids keep their payload order after these. */
 export const SECTION_ORDER = ['summary_verdict', 'business_and_moat', 'financials_and_trend', 'valuation_vs_peers',
@@ -105,8 +113,14 @@ export function pageRoute(symbol?: string | null): string { return symbol ? `/pr
 
 export function normSymbol(s: unknown): string { return String(s ?? '').trim().toUpperCase() }
 
-export function scopeMatches(item: Pick<ProspectusIndexItem, 'scope'>, f: ScopeFilter): boolean {
+/** "Needs rewrite": stale or failed (the operator's chip in the approved mockup). */
+export function needsRewrite(item: Pick<ProspectusIndexItem, 'stale' | 'status'>): boolean {
+  return !!item.stale || item.status === 'failed'
+}
+
+export function scopeMatches(item: Pick<ProspectusIndexItem, 'scope' | 'stale' | 'status'>, f: ScopeFilter): boolean {
   if (f === 'all') return true
+  if (f === 'rewrite') return needsRewrite(item)
   return f === 'holdings' ? item.scope === 'holding' : item.scope === 'watch'
 }
 
@@ -116,7 +130,7 @@ export function searchMatches(item: Pick<ProspectusIndexItem, 'symbol' | 'name' 
   return [item.symbol, item.name, item.verdict_line].some(v => String(v ?? '').toLowerCase().includes(s))
 }
 
-const STATUS_RANK: Record<ProspectusStatus, number> = { failed: 0, running: 1, queued: 2, ready: 3, missing: 4 }
+const STATUS_RANK: Record<ProspectusStatus, number> = { failed: 0, running: 1, queued: 2, partial: 3, ready: 3, missing: 4 }
 
 /** Holdings first, then failures/stale up top within a scope, then alphabetical. Deterministic. */
 export function sortItems(items: ProspectusIndexItem[]): ProspectusIndexItem[] {
@@ -132,7 +146,8 @@ export function filterItems(items: ProspectusIndexItem[], f: ScopeFilter, q: str
 }
 
 export function scopeCounts(items: ProspectusIndexItem[]): Record<ScopeFilter, number> {
-  return { holdings: items.filter(i => i.scope === 'holding').length, watch: items.filter(i => i.scope === 'watch').length, all: items.length }
+  return { holdings: items.filter(i => i.scope === 'holding').length, watch: items.filter(i => i.scope === 'watch').length,
+    all: items.length, rewrite: items.filter(needsRewrite).length }
 }
 
 /** Totals from the server when present, else counted from items (never invented). */
@@ -141,6 +156,7 @@ export function totals(idx: ProspectusIndex | null | undefined): Record<Prospect
   const counted = Object.fromEntries(STATUSES.map(s => [s, items.filter(i => i.status === s).length])) as Record<ProspectusStatus, number>
   const t = idx?.totals ?? {}
   return {
+    partial: numOr((t as Record<string, unknown>).partial, counted.partial),
     ready: numOr(t.ready, counted.ready), queued: numOr(t.queued, counted.queued), running: numOr(t.running, counted.running),
     failed: numOr(t.failed, counted.failed), missing: numOr(t.missing, counted.missing),
   }
@@ -176,9 +192,16 @@ export function modelLabel(model: unknown): { label: string; tier: 'fable' | 'op
   return { label: String(model).replace(/^claude-/, '').slice(0, 18), tier: 'other' }
 }
 
-export const STATUS_LABEL: Record<ProspectusStatus, string> = { ready: 'Ready', queued: 'Queued', running: 'Writing', failed: 'Failed', missing: 'Not written' }
+export const STATUS_LABEL: Record<ProspectusStatus, string> = { ready: 'Ready', partial: 'Partial', queued: 'Queued', running: 'Writing', failed: 'Failed', missing: 'Missing' }
 export const STATUS_TONE: Record<ProspectusStatus, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
-  ready: 'success', queued: 'warning', running: 'info', failed: 'danger', missing: 'neutral',
+  ready: 'success', partial: 'warning', queued: 'info', running: 'info', failed: 'danger', missing: 'danger',
+}
+
+/** Row status chip: a stale ready report reads "Needs rewrite" (approved mockup). */
+export function rowStatus(item: Pick<ProspectusIndexItem, 'status' | 'stale'>): { label: string; tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral' } {
+  const st = statusOf(item.status)
+  if (item.stale && (st === 'ready' || st === 'partial')) return { label: 'Needs rewrite', tone: 'warning' }
+  return { label: STATUS_LABEL[st], tone: STATUS_TONE[st] }
 }
 
 export function statusOf(v: unknown): ProspectusStatus {
@@ -189,7 +212,7 @@ export function statusOf(v: unknown): ProspectusStatus {
 /** ET, readable; date-only stamps stay dates. Never a raw ISO string on screen. */
 export function whenEt(iso: unknown): string {
   if (!iso) return '—'
-  return readableTime(iso) ?? '—'
+  return (readableTime(iso) ?? '—').replace(/ \(date only\)$/, '')
 }
 
 /** Sections in contract order; unknown ids after, in payload order; empty bodies dropped (no empty bullets). */
@@ -278,7 +301,7 @@ export function priceLines(c: ProspectusChart): Array<{ y: number; label: string
     const y = toNumber(a.y)
     if (y == null) continue
     const k = String(a.kind ?? a.label ?? '').toLowerCase()
-    const tone = k.includes('stop') ? 'danger' : k.includes('entry') || k.includes('basis') ? 'info' : k.includes('target') ? 'success' : 'warning'
+    const tone = k.includes('stop') ? 'danger' : k.includes('entry') || k.includes('basis') || k.includes('cost') ? 'success' : k.includes('target') ? 'info' : 'warning'
     out.push({ y, label: a.label || a.kind || 'level', tone })
   }
   return out
@@ -293,11 +316,11 @@ export function chartKind(c: ProspectusChart): 'line' | 'bar' | 'range' | 'unkno
 }
 
 /** Detail page state from the index row and/or the detail payload. */
-export type DetailState = 'loading' | 'ready' | 'missing' | 'queued' | 'running' | 'failed' | 'error'
+export type DetailState = 'loading' | 'ready' | 'partial' | 'missing' | 'queued' | 'running' | 'failed' | 'error'
 export function detailState(opts: { loading: boolean; httpStatus?: number | null; error?: unknown; doc?: ProspectusDoc | null; row?: ProspectusIndexItem | null }): DetailState {
   const { loading, httpStatus, error, doc, row } = opts
   const hasBody = !!doc && (doc.sections?.length ?? 0) > 0
-  if (hasBody) return 'ready'
+  if (hasBody) return doc!.status === 'partial' ? 'partial' : 'ready'
   const st = doc?.status ?? row?.status
   if (st === 'failed') return 'failed'
   if (st === 'running') return 'running'
@@ -307,3 +330,174 @@ export function detailState(opts: { loading: boolean; httpStatus?: number | null
   if (error) return 'error'
   return 'missing'
 }
+
+// ── Institutional blocks (backend scripts/lib/prospectus/blocks.py + domains.py shapes) ─────────────────────────────
+
+export type ProspectusFact = { id: string; kind?: string; label: string; value?: number; unit?: string; text?: string; source?: string; as_of?: string | null; url?: string }
+type Num = number | null | undefined
+export type RelLine = { name: string; points: ChartPoint[] }
+export type RelReturnRow = { name: string } & Partial<Record<'1W' | '1M' | '3M' | 'YTD' | '1Y' | '3Y', Num>>
+export type RelativePerformance = {
+  series?: Partial<Record<'3M' | 'YTD' | '1Y' | '3Y', RelLine[]>>
+  returns?: RelReturnRow[]
+  excess_vs_spy?: Partial<Record<string, Num>>
+  rank_in_industry?: { rank: number; of: number; percentile?: number } | null
+  rs_rating_12m?: Num
+  sector_trend?: Record<string, unknown> | null
+  industry_trend?: Record<string, unknown> | null
+  benchmarks?: string[]
+  gaps?: string[]
+}
+export type PeerRow = { symbol: string; is_subject?: boolean; consensus?: string | null } & Record<string, unknown>
+export type PeerComparison = { industry?: string; rows?: PeerRow[]; median?: Record<string, Num> | null; fields?: string[]; labels?: Record<string, string>; gaps?: string[] }
+export type Estimates = { eps_surprises?: { date?: string | null; actual?: Num; estimate?: Num; surprise_pct?: Num }[]; revisions_90d?: { up?: Num; down?: Num }; next_report?: string | null; gaps?: string[] }
+export type ScenarioCase = { case: 'bear' | 'base' | 'bull'; price?: Num; probability_pct?: Num; narrative?: string; change_pct?: Num }
+export type Scenarios = { cases?: ScenarioCase[]; footer?: string; probability_basis?: string; gaps?: string[] }
+export type MacroSeries = { label: string; value?: Num; as_of?: string | null; chg_3m?: Num; trend?: string | null; effect?: string | null }
+export type MacroSensitivity = { series?: Record<string, MacroSeries>; rate_beta_10y?: Num; next_events?: Array<Record<string, unknown>>; gaps?: string[] }
+export type SecFiling = { form: string; filed_at?: string | null; url?: string | null; what_changed?: string | null }
+export type SecFilings = { filings?: SecFiling[]; form4_90d?: { buys?: Num; sells?: Num } | null; gaps?: string[] }
+export type EarningsCall = { bullets?: string[]; transcripts?: { id?: string; label: string; as_of?: string | null; url?: string | null }[]; gaps?: string[] }
+export type ProspectusBlocks = {
+  relative_performance?: RelativePerformance
+  peer_comparison?: PeerComparison
+  estimates?: Estimates
+  ownership_flows?: Record<string, unknown>
+  risk_technicals?: Record<string, unknown>
+  scenarios?: Scenarios
+  macro_sensitivity?: MacroSensitivity
+  sec_filings?: SecFilings
+  earnings_call?: EarningsCall
+  options_sentiment_dividends?: Record<string, unknown>
+  verdict_tiles?: Partial<Record<VerdictTileId, { value?: string | null; sub?: string | null; tone?: string | null }>>
+}
+export type CoverageDomain = { domain: string; status: string; reason?: string | null; as_of?: string | null; label?: string | null }
+export type SourceCoverage = { domains?: CoverageDomain[]; key_gaps?: string[]; counts?: Record<string, number> }
+
+export const REL_WINDOWS = ['3M', 'YTD', '1Y', '3Y'] as const
+export const RET_COLUMNS = ['1W', '1M', '3M', 'YTD', '1Y', '3Y'] as const
+export const RET_COLUMNS_PHONE = ['1M', 'YTD', '1Y', '3Y'] as const
+
+/** Benchmark display names (sector ETFs keep their ticker, labelled as the sector ETF). */
+export function benchName(name: string, subject: string, benchmarks: string[] = []): string {
+  if (name === subject) return name
+  if (name === 'SPY') return 'S&P 500'
+  if (name === 'QQQ') return 'Nasdaq-100'
+  if (/industry/i.test(name)) return name
+  if (benchmarks.includes(name) || /^XL[A-Z]{1,2}$/.test(name)) return `Sector ETF ${name}`
+  return name
+}
+
+export function pct(v: unknown, digits = 1, signed = true): string {
+  const n = toNumber(v)
+  if (n == null) return '—'
+  return `${signed && n > 0 ? '+' : ''}${n.toFixed(digits)}%`
+}
+
+export function fmtNum(v: unknown, digits = 2): string {
+  const n = toNumber(v)
+  return n == null ? '—' : n.toFixed(digits)
+}
+
+export function signTone(v: unknown): 'success' | 'danger' | 'neutral' {
+  const n = toNumber(v)
+  return n == null || n === 0 ? 'neutral' : n > 0 ? 'success' : 'danger'
+}
+
+/** Rows for the rebased chart in one window: { x, [line.name]: value }. */
+export function relRows(rel: RelativePerformance | null | undefined, w: string): { rows: Array<Record<string, string | number | null>>; names: string[] } {
+  const lines = (rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? []
+  return { rows: chartRows(lines), names: lines.map(l => l.name) }
+}
+
+/** The windows that actually have lines (the toggle only offers these). */
+export function relWindows(rel: RelativePerformance | null | undefined): string[] {
+  return REL_WINDOWS.filter(w => ((rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? []).length > 0)
+}
+
+const PEER_DEFAULT_LABELS: Record<string, string> = {
+  market_cap_b: 'Mkt cap ($B)', forward_pe: 'P/E fwd', ev_ebitda: 'EV/EBITDA', sales_growth_past_5y_pct: 'Rev growth 5y',
+  oper_margin_pct: 'Op margin', roe_pct: 'ROE', div_yield_pct: 'Div yield', total_debt_equity: 'Debt/Equity',
+  perf_year_pct: '1Y return', consensus: 'Consensus',
+}
+export function peerColumns(pc: PeerComparison | null | undefined): Array<{ key: string; label: string }> {
+  const fields = pc?.fields?.length ? pc.fields : Object.keys(PEER_DEFAULT_LABELS).filter(k => k !== 'consensus')
+  return [...fields.map(k => ({ key: k, label: PEER_DEFAULT_LABELS[k] || pc?.labels?.[k] || k })), { key: 'consensus', label: 'Consensus' }]
+}
+export function peerCell(key: string, v: unknown): string {
+  if (key === 'consensus') return v ? String(v) : '—'
+  const n = toNumber(v)
+  if (n == null) return '—'
+  if (key === 'market_cap_b') return `$${n.toFixed(1)}B`
+  if (key.endsWith('_pct')) return `${n.toFixed(1)}%`
+  return `${n.toFixed(1)}×`
+}
+
+/** Coverage chip tone: green used, amber stale, grey not applicable / empty, red failed. */
+export function coverageTone(status: string): 'success' | 'warning' | 'neutral' | 'danger' {
+  const s = String(status || '').toLowerCase()
+  if (s === 'used') return 'success'
+  if (s === 'stale') return 'warning'
+  if (s === 'failed') return 'danger'
+  return 'neutral'
+}
+export function domainLabel(d: CoverageDomain): string {
+  if (d.label) return d.label
+  return String(d.domain || '').replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase())
+}
+
+export type VerdictTileId = 'verdict' | 'price' | 'position' | 'stop' | 'yield'
+export type VerdictTile = { id: VerdictTileId; label: string; value: string | null; sub: string | null; tone: 'success' | 'warning' | 'danger' | 'info' | 'ai' | 'neutral' }
+
+function fact(doc: ProspectusDoc, re: RegExp): ProspectusFact | undefined {
+  return (doc.facts ?? []).find(f => re.test(f.label))
+}
+
+/** The five verdict tiles. Server-supplied `blocks.verdict_tiles` win; otherwise each is read from the cited facts by
+ *  label. A tile the data cannot fill has value null (rendered "not available yet"), never an invented number. */
+export function verdictTiles(doc: ProspectusDoc | null | undefined): VerdictTile[] {
+  const d = doc ?? ({ symbol: '' } as ProspectusDoc)
+  const given = d.blocks?.verdict_tiles ?? {}
+  const digest = (d.inputs_digest ?? {}) as Record<string, unknown>
+  const stanceRaw = digest.cio_stance as unknown
+  const stance = typeof stanceRaw === 'string' ? stanceRaw : (stanceRaw && typeof stanceRaw === 'object' ? String((stanceRaw as Record<string, unknown>).stance ?? '') : '')
+  const lead = /^([A-Z][A-Z -]{1,16}?)\s*(?:[—:–-]|$)/.exec(String(d.verdict_line ?? ''))
+  const verdictWord = (stance || lead?.[1] || '').trim().toUpperCase().replace(/_/g, ' ') || null
+  const conv = fact(d, /^CIO conviction/i)
+  const close = fact(d, /^Last close/i)
+  const day = fact(d, /(day|1-day|today).*(change|move)/i)
+  const mv = fact(d, /^Market value/i)
+  const plDollar = fact(d, /^Unrealized P\/L \$/i)
+  const plPct = fact(d, /^Unrealized P\/L %/i)
+  const stop = fact(d, /^Recorded protective stop level/i)
+  const dist = fact(d, /^Distance from last close to stop/i)
+  const yld = fact(d, /^Dividend yield/i)
+  const exp = fact(d, /expense ratio/i)
+  const money = (v: unknown) => { const n = toNumber(v); return n == null ? null : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+  const verdictTone = /SELL|EXIT|TRIM|REVIEW|AVOID/.test(verdictWord ?? '') ? 'danger' : /HOLD|WATCH|WAIT/.test(verdictWord ?? '') ? 'success' : /BUY|ADD|ACCUM/.test(verdictWord ?? '') ? 'success' : 'neutral'
+  const base: VerdictTile[] = [
+    { id: 'verdict', label: 'Verdict', value: verdictWord, sub: conv?.value != null ? `CIO conviction ${Math.round(conv.value)}/100` : null, tone: verdictTone },
+    { id: 'price', label: 'Price', value: money(close?.value), sub: day?.value != null ? `${pct(day.value, 2)} today` : null, tone: signTone(day?.value) === 'neutral' ? 'neutral' : signTone(day?.value) },
+    d.scope === 'watch'
+      ? { id: 'position', label: 'Your position', value: 'Not held', sub: 'Watch list', tone: 'neutral' }
+      : { id: 'position', label: 'Your position', value: money(mv?.value), sub: plDollar?.value != null || plPct?.value != null ? `${plDollar?.value != null ? `${plDollar.value >= 0 ? '+' : '−'}${money(Math.abs(plDollar.value))}` : ''}${plPct?.value != null ? ` (${pct(plPct.value, 1)})` : ''} on cost`.trim() : null, tone: signTone(plDollar?.value ?? plPct?.value) },
+    { id: 'stop', label: 'Stop', value: money(stop?.value), sub: dist?.value != null ? `${Math.abs(dist.value).toFixed(1)}% below` : (d.scope === 'watch' ? 'No position' : null), tone: stop ? 'warning' : 'neutral' },
+    { id: 'yield', label: 'Yield · Expense', value: yld || exp ? `${yld?.value != null ? `${yld.value.toFixed(2)}%` : '—'} · ${exp?.value != null ? `${exp.value.toFixed(2)}%` : '—'}` : null, sub: yld || exp ? 'trailing 12 months' : null, tone: 'neutral' },
+  ]
+  return base.map(t => {
+    const g = given[t.id]
+    if (!g) return t
+    const tone = (['success', 'warning', 'danger', 'info', 'ai', 'neutral'] as const).find(x => x === g.tone) ?? t.tone
+    return { ...t, value: g.value ?? t.value, sub: g.sub ?? t.sub, tone }
+  })
+}
+
+/** Every citation across the sections, de-duplicated by id, in first-seen order (the "Sources" list). */
+export function allCitations(sections: ProspectusSection[] | null | undefined): ProspectusCitation[] {
+  const seen = new Map<string, ProspectusCitation>()
+  for (const s of sections ?? []) for (const c of s.citations ?? []) if (c && !seen.has(c.id)) seen.set(c.id, c)
+  return [...seen.values()]
+}
+
+/** Section ids that render as their own tile row / summary instead of the narrative grid. */
+export const SUMMARY_SECTION = 'summary_verdict'

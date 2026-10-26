@@ -5,7 +5,7 @@
 - **Nav group:** Intel (appended after Communications)
 - **Component:** `apps/command-center-v3/src/pages/ProspectusPage.tsx`
 - **Owner:** coordinator (builds) · operator (approves)
-- **Approved version:** none yet
+- **Approved version:** v001 (operator 2026-10-26; ledger row pending)
 - **Current (verified) version:** none yet — becomes CURRENT only after the post-release visual check passes
 
 ## Purpose
@@ -24,6 +24,6 @@ PDF / Word / HTML downloads, and an operator-only rewrite.
 
 | Version | State | Approved | Notes |
 |---|---|---|---|
-| v001 | DRAFT | — | First build on fixtures; awaiting the operator mockup approval |
+| v001 | IMPLEMENTING | 2026-10-26 | Approved mockup (five boards); built on fixtures |
 
 How to change this page: design/README.md (propose a new version; never edit an approved one).

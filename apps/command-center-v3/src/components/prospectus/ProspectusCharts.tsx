@@ -1,7 +1,7 @@
 /** Ticker Prospectus charts — rendered from the prospectus `charts[]` (contract 2026-10-26).
  *  line → price with stop / entry reference lines; bar → grouped bars; range → analyst target range bar.
  *  Colours come from CHART_HEX per resolved theme (recharts props cannot read CSS vars); chrome uses tokens. */
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CHART_HEX, RADIUS, TOKENS, TYPE, numStyle } from '../../lib/designTokens'
 import { useTheme } from '../../hooks/useTheme'
 import { chartKind, chartRows, priceLines, targetRange, type ProspectusChart } from '../../lib/prospectusModel'
@@ -52,7 +52,7 @@ function LineChartView({ chart }: { chart: ProspectusChart }) {
   )
 }
 
-function BarChartView({ chart }: { chart: ProspectusChart }) {
+function BarChartView({ chart, highlight }: { chart: ProspectusChart; highlight?: string }) {
   const [, , theme] = useTheme()
   const hex = CHART_HEX[theme]
   const rows = chartRows(chart.series)
@@ -71,7 +71,13 @@ function BarChartView({ chart }: { chart: ProspectusChart }) {
             {dual && <YAxis yAxisId="r" orientation="right" tick={{ fill: hex.series[1], fontSize: TYPE.xs }} stroke={hex.grid} />}
             <Tooltip cursor={{ fill: hex.grid, opacity: 0.3 }} contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
             {chart.series.length > 1 && <Legend wrapperStyle={{ fontSize: TYPE.sm, color: hex.text }} />}
-            {chart.series.map((s, i) => <Bar key={s.name} yAxisId={dual && i === 1 ? 'r' : 'l'} dataKey={s.name} fill={hex.series[i % hex.series.length]} radius={[3, 3, 0, 0]} isAnimationActive={false} />)}
+            {chart.series.map((s, i) => (
+              <Bar key={s.name} yAxisId={dual && i === 1 ? 'r' : 'l'} dataKey={s.name} fill={hex.series[i % hex.series.length]} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                {/* Single-series peer bars: this ticker in amber, the rest muted (approved design). */}
+                {chart.series.length === 1 && highlight && rows.some(r => r.x === highlight)
+                  ? rows.map(r => <Cell key={String(r.x)} fill={r.x === highlight ? hex.warning : hex.grid} />) : null}
+              </Bar>
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -105,7 +111,7 @@ function RangeView({ chart }: { chart: ProspectusChart }) {
   )
 }
 
-export default function ProspectusCharts({ charts }: { charts: ProspectusChart[] }) {
+export default function ProspectusCharts({ charts, symbol }: { charts: ProspectusChart[]; symbol?: string }) {
   const list = (charts ?? []).filter(c => c && (c.series?.length || c.annotations?.length))
   if (!list.length) return null
   return (
@@ -113,9 +119,9 @@ export default function ProspectusCharts({ charts }: { charts: ProspectusChart[]
       {list.map(c => {
         const k = chartKind(c)
         if (k === 'line') return <LineChartView key={c.id} chart={c} />
-        if (k === 'bar') return <BarChartView key={c.id} chart={c} />
+        if (k === 'bar') return <BarChartView key={c.id} chart={c} highlight={symbol} />
         if (k === 'range') return <RangeView key={c.id} chart={c} />
-        return <BarChartView key={c.id} chart={c} />
+        return <BarChartView key={c.id} chart={c} highlight={symbol} />
       })}
     </section>
   )

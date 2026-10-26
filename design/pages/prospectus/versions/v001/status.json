@@ -2,83 +2,180 @@
   "schema": "DesignVersionStatus@v1",
   "page": "prospectus",
   "version": "v001",
-  "state": "DRAFT",
-  "title": "Prospectus: list + report sheet (first build, fixture data)",
+  "state": "IMPLEMENTING",
+  "title": "Prospectus: list + report (approved mockup, five boards)",
   "created": "2026-10-26",
-  "approval": null,
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-26",
+    "ref": "\"approved push live\" (claude.ai artifact Uv1God9MaAR2XN7bRMEmxo version 10)",
+    "kind": "artifact approval relayed by the coordinator; Approvals -> Designs ledger row pending",
+    "source": [
+      "handoffs/prospectus-20261026/approved-mockup-v001/APPROVAL.txt"
+    ],
+    "ledger": null
+  },
   "spec": "SPEC.md",
   "private_assets": {
     "root": "persistent-state/data/design/pages/prospectus",
-    "note": "Private, never committed. Fixture-run screenshots at 1440/412/390; the operator-approved mockup will be added as role mockups.",
+    "note": "Private, never committed: the approved mockup boards show real tickers. Paths are relative to root; sha256 binds each file.",
     "files": [
       {
+        "path": "v001/mockups/Main.dc.html",
+        "sha256": "7f443b28b09ef26ff0c9db7b6b1b858c65e9de6825da8769fa1f0ecc8307a707",
+        "bytes": 8770,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/Main.dc.html"
+      },
+      {
+        "path": "v001/mockups/Pdf.dc.html",
+        "sha256": "f8cfd538dfb172dad16cf5262d4dd59bc17aec46677a02346a96e6e2c0fcf776",
+        "bytes": 6627,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/Pdf.dc.html"
+      },
+      {
+        "path": "v001/mockups/PhoneList.dc.html",
+        "sha256": "94911f43bebc987bf49b09e52eb6ce84d2c61d854416024e1c41d6ee11aa748d",
+        "bytes": 4594,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/PhoneList.dc.html"
+      },
+      {
+        "path": "v001/mockups/PhoneReport.dc.html",
+        "sha256": "683cf1785652f5e8ac1e1de6eeec964be3caf3e3fe7c7f64d49f85548c97ed57",
+        "bytes": 19356,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/PhoneReport.dc.html"
+      },
+      {
+        "path": "v001/mockups/Report.dc.html",
+        "sha256": "aca8ff72c3b43eb3518f63d875f20a2d6979d8933d613a1df2d8238b05446af1",
+        "bytes": 34741,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/Report.dc.html"
+      },
+      {
+        "path": "v001/mockups/canvas.json",
+        "sha256": "fd168a898aee547d5d2c7ce1ad7210a3890460c1ed152c6c0101339a8ac01dd2",
+        "bytes": 869,
+        "role": "mockups",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/canvas.json"
+      },
+      {
+        "path": "v001/spec/APPROVAL.txt",
+        "sha256": "5ed1e09912179c681c4de00786407a5d3db70954043827c6cf232f268145bce9",
+        "bytes": 129,
+        "role": "spec",
+        "source": "handoffs/prospectus-20261026/approved-mockup-v001/APPROVAL.txt"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-1440-full.png",
+        "sha256": "558a33dc10e31478d20303df051d95737c13974e8c404075528b76c51cfb8287",
+        "bytes": 665660,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
         "path": "v001/evidence/prospectus-detail-1440.png",
-        "sha256": "105d5a1a1ceb9ebee627bdb7726b429d57017b912d24b1f756db3a2c94172a20",
-        "bytes": 202555,
+        "sha256": "d601890c42ce5a3761888b0a44c02c0ecf5dba4196352bdd29474ee89e334dee",
+        "bytes": 154539,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-390-blocks.png",
+        "sha256": "b8cc67a6c7d7e9952172a4420c70501b2b69b1e08a49d22f9b3e72f8f91f84dc",
+        "bytes": 80498,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-detail-390-sections.png",
-        "sha256": "90693d9ba5dda96d4d8d07d9ad3def47fe5a16ccdc14e3d9402e6004437f26b5",
-        "bytes": 64582,
+        "sha256": "e822a4c69c58661e72022c95fbffb6b12599eb72dfbdae6b41dacc079046bc78",
+        "bytes": 51176,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-detail-390.png",
-        "sha256": "047e20729d52ce6f9d4068dafe45ea2464deba59b615e9f8b472dad2be05310e",
-        "bytes": 43337,
+        "sha256": "a9a1081905240f5f1ba85c170280a3f10924ecefaa71c4a37aec8d8abf054d5c",
+        "bytes": 65549,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-412-blocks.png",
+        "sha256": "ee273eec8db98eb06d5f579d2184d15f2c3759fbfa30c076f5b585aa1f31dd11",
+        "bytes": 90689,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-detail-412-sections.png",
-        "sha256": "7735ccf7af382596ccdd78953550ab48be9f7b53fd89e63f2f48707d62f8aa71",
-        "bytes": 72781,
+        "sha256": "c43d49f3289ad9bc20aa4bc9caffd6850cce72b77392c696e54e0f6d335a9155",
+        "bytes": 59494,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-detail-412.png",
-        "sha256": "d393cabdb2a49335647df4155254e1f4796c23aadfbe3d45b23c74811a39e6d4",
-        "bytes": 47243,
+        "sha256": "015957ad9bff57da74512418ee5bd3bc8e0cf29c29d437c2bc4e361e7c65d6e8",
+        "bytes": 70670,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-list-1440.png",
-        "sha256": "4c5f06f1105e442066bd3a40883e4acee323e275c0cb8c5431c970573ff94d51",
-        "bytes": 165528,
+        "sha256": "73774acf44b0c7d8a25fd8ade213311dac6348bce952212abd197cc0c7e94f3d",
+        "bytes": 191579,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-list-390.png",
-        "sha256": "6f2b5b0b6984e45b65c8a3ca6aeab00f012cc665507a84c969493e46b596c757",
-        "bytes": 82205,
+        "sha256": "b2054617774988fbbbc897991a584f14b5d09389e2388b84a64441e76a6c72e1",
+        "bytes": 57656,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       },
       {
         "path": "v001/evidence/prospectus-list-412.png",
-        "sha256": "399e03455be2cc12176c6b55f47ab9df0477ffcdd18793d33f33defeef924cd5",
-        "bytes": 96224,
+        "sha256": "83f2f29067e57be8c82e1c7928d8ea7e39edb117cd845d1bc64abe4c0976ccda",
+        "bytes": 62917,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-partial-1440.png",
+        "sha256": "2e0f21d6f2d867877f2f09a82a6c394646128ec73fb9dbd72e921db5c22cfd21",
+        "bytes": 141587,
         "role": "evidence",
         "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
       }
     ]
   },
-  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "fingerprint": "dfa0cb987ae9f7a0b6d83799cd70df50e23f056ac83e90a30a5eedaa948f664b",
   "implementation": {
     "state": "IMPLEMENTING",
-    "note": "Built on fixtures; awaiting the operator's mockup approval in Approvals -> Designs (\u00a728.13)."
+    "note": "Built to the approved boards on synthetic fixtures; e2e/prospectus.spec.ts at 1440/412/390."
   },
   "prs": [],
   "verified": null,
   "history": [
     {
       "state": "DRAFT",
+      "at": "2026-10-26",
+      "by": "agent"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-26",
+      "by": "operator",
+      "ref": "approved push live"
+    },
+    {
+      "state": "IMPLEMENTING",
       "at": "2026-10-26",
       "by": "agent"
     }

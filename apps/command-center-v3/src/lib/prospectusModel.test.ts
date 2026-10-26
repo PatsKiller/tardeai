@@ -2,6 +2,7 @@
 //   node --experimental-strip-types src/lib/prospectusModel.test.ts
 // Synthetic tickers and made-up numbers only (public repo).
 import {
+  coverageTone, needsRewrite, peerCell, relWindows, rowStatus, verdictTiles,
   budgetView, chartRows, detailState, filePath, filterItems, mdBlocks, modelLabel, orderedSections, pageRoute, priceLines,
   scopeCounts, splitCitations, statusOf, targetRange, totals, whenEt, type ProspectusIndexItem,
 } from './prospectusModel.ts'
@@ -24,8 +25,8 @@ eq('all: holdings before watch', filterItems(items, 'all', '').map(i => i.symbol
 eq('search by name', filterItems(items, 'all', 'widg').map(i => i.symbol), ['BETA'])
 eq('search by verdict', filterItems(items, 'all', 'dips').map(i => i.symbol), ['BETA'])
 eq('status filter', filterItems(items, 'all', '', 'missing').map(i => i.symbol), ['DELTA'])
-eq('scope counts', scopeCounts(items), { holdings: 2, watch: 2, all: 4 })
-eq('totals counted when server omits', totals({ items }), { ready: 2, queued: 0, running: 0, failed: 1, missing: 1 })
+eq('scope counts', scopeCounts(items), { holdings: 2, watch: 2, all: 4, rewrite: 2 })
+eq('totals counted when server omits', totals({ items }), { partial: 0, ready: 2, queued: 0, running: 0, failed: 1, missing: 1 })
 eq('server totals win', totals({ items, totals: { ready: 9 } }).ready, 9)
 
 const b = budgetView({ credit_remaining_usd: '120.5', today_used_usd: 4, daily_cap_usd: 20 })
@@ -62,12 +63,31 @@ eq('chart rows', chartRows([{ name: 'Rev', points: [['2025', 10], ['2026', 12]] 
   [{ x: '2025', Rev: 10 }, { x: '2026', Rev: 12, EPS: 1.5 }])
 eq('target range from annotation', targetRange({ id: 't', type: 'range', title: 't', series: [{ name: 'Mean', points: [['mean', 50]] }],
   annotations: [{ kind: 'range', low: 40, high: 60 }, { kind: 'current', y: 45 }] }), { low: 40, mean: 50, high: 60, current: 45 })
-eq('price lines tone', priceLines({ id: 'p', type: 'line', title: 'p', series: [], annotations: [{ kind: 'stop', label: 'Stop', y: 10 }, { kind: 'entry', label: 'Entry', y: 12 }] }).map(l => l.tone), ['danger', 'info'])
+eq('price lines tone', priceLines({ id: 'p', type: 'line', title: 'p', series: [], annotations: [{ kind: 'stop', label: 'Stop', y: 10 }, { kind: 'entry', label: 'Entry', y: 12 }] }).map(l => l.tone), ['danger', 'success'])
 
 eq('detail ready', detailState({ loading: false, doc: { symbol: 'A', sections: [{ id: 's', title: 's', body_md: 'x' }] } }), 'ready')
 eq('detail 404 → missing', detailState({ loading: false, httpStatus: 404 }), 'missing')
 eq('detail failed from row', detailState({ loading: false, row: { symbol: 'A', scope: 'watch', status: 'failed' } }), 'failed')
 eq('detail loading', detailState({ loading: true }), 'loading')
+
+eq('needs-rewrite filter: stale or failed', filterItems(items, 'rewrite', '').map(i => i.symbol), ['GAMMA', 'ACME'])
+eq('stale ready row reads Needs rewrite', rowStatus({ status: 'ready', stale: true }).label, 'Needs rewrite')
+eq('missing row', rowStatus({ status: 'missing' }).label, 'Missing')
+eq('partial is its own state', detailState({ loading: false, doc: { symbol: 'A', status: 'partial', sections: [{ id: 's', title: 's', body_md: 'x' }] } }), 'partial')
+eq('coverage tones', ['used', 'stale', 'not_applicable', 'empty', 'failed'].map(coverageTone), ['success', 'warning', 'neutral', 'neutral', 'danger'])
+eq('peer cells', [peerCell('market_cap_b', 12.345), peerCell('forward_pe', 18), peerCell('roe_pct', 21.04), peerCell('consensus', null)], ['$12.3B', '18.0×', '21.0%', '—'])
+eq('rel windows only with lines', relWindows({ series: { '3M': [], '1Y': [{ name: 'A', points: [['d', 100]] }] } }), ['1Y'])
+const tiles = verdictTiles({ symbol: 'ACME', scope: 'holding', verdict_line: 'HOLD — fine', facts: [
+  { id: 'F1', label: 'CIO conviction', value: 72 }, { id: 'F2', label: 'Last close', value: 51 },
+  { id: 'F3', label: 'Market value $', value: 1000 }, { id: 'F4', label: 'Unrealized P/L %', value: 12.5 },
+  { id: 'F5', label: 'Recorded protective stop level (Example, broker)', value: 42 }, { id: 'F6', label: 'Distance from last close to stop % (Example)', value: -17.6 }] })
+eq('tile verdict', [tiles[0].value, tiles[0].sub], ['HOLD', 'CIO conviction 72/100'])
+eq('tile price', tiles[1].value, '$51.00')
+eq('tile stop', [tiles[3].value, tiles[3].sub], ['$42.00', '17.6% below'])
+eq('tile yield absent → null (not available yet)', tiles[4].value, null)
+eq('watch tile position', verdictTiles({ symbol: 'B', scope: 'watch' })[2].value, 'Not held')
+eq('server tiles win', verdictTiles({ symbol: 'B', blocks: { verdict_tiles: { verdict: { value: 'ADD', tone: 'success' } } } })[0].value, 'ADD')
+check('needsRewrite', needsRewrite({ stale: false, status: 'failed' }) && !needsRewrite({ status: 'ready' }))
 
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
