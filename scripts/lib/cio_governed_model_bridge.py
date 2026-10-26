@@ -149,6 +149,10 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         # Ask-CIO operator research uses its own approved process/caps.
         "cio_ask_deep_research": "cio_ask_deep_research",
         "cio_ask_deep_research_depth": "cio_ask_deep_research",
+        "cio_ask_reanswer": "cio_ask_reanswer",
+        "cio_ask_critique_deepseek": "cio_ask_critique_deepseek",
+        "cio_ask_critique_grok": "cio_ask_critique_grok",
+        "cio_ask_critique_chatgpt": "cio_ask_critique_chatgpt",
     },
 }
 
@@ -160,9 +164,7 @@ CALLER_TASK_REASONING_TIER_MAP: dict[str, dict[str, str]] = {
 
 def caller_reasoning_options(caller: str, task_type: str) -> dict[str, str]:
     """Only a server-mapped task can select the registered reasoning lane."""
-    tier = CALLER_TASK_REASONING_TIER_MAP.get(str(caller).strip().lower(), {}).get(
-        str(task_type).strip().lower()
-    )
+    tier = CALLER_TASK_REASONING_TIER_MAP.get(str(caller).strip().lower(), {}).get(str(task_type).strip().lower())
     return {"reasoning_tier": tier} if tier else {}
 
 
@@ -1502,6 +1504,7 @@ def get_transport(provider: str) -> Any:
         return oauth_transport.OAuthProxyTransport.for_provider(provider)
     if provider == "anthropic":
         from lib.anthropic_routing import transport
+
         return transport()
     return RealProvider.instance()
 
@@ -1713,6 +1716,7 @@ def _metered_cost_usd(model_id: str | None, usage: dict[str, Any] | None) -> flo
     try:
         if (usage or {}).get("anthropic_usage"):
             from lib.anthropic_transport import price_usage, load_policy
+
             return float(price_usage(usage["anthropic_usage"], load_policy()["pricing"][model_id]))
         import lib.llm_model_registry as lmr2
 
@@ -1755,9 +1759,16 @@ def route_plan(
     reasoning_tier "high" on an n8n_oauth_first row puts the row's reasoning_lane first (DeepSeek reasoning), the
     row's own lanes (OAuth first) after it as the fallback."""
     from lib import anthropic_routing as promo
-    if cfg and promo.eligible(process_id, cfg) and policy_id == "default" and (policy.get("routing_decision") or {}).get("route_profile") == "anthropic_promotional_first":
-        return promo.configured_plan(process_id, cfg, policy,
-                                     enabled=enabled_transport_providers(), model_for_provider=_lane_model_id)
+
+    if (
+        cfg
+        and promo.eligible(process_id, cfg)
+        and policy_id == "default"
+        and (policy.get("routing_decision") or {}).get("route_profile") == "anthropic_promotional_first"
+    ):
+        return promo.configured_plan(
+            process_id, cfg, policy, enabled=enabled_transport_providers(), model_for_provider=_lane_model_id
+        )
     decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
     start = str(decision.get("lane_chosen") or "primary")
     first_provider = str(policy.get("provider") or "deepseek")
@@ -1937,11 +1948,14 @@ def walk_routes(
             if funding is not None:
                 kwargs["max_tokens"] = min(int(max_tokens), int(funding.cfg.get("max_output_tokens") or max_tokens))
             if provider == "anthropic" and funding is not None:
-                kwargs.update(process_id=funding.process_id,
-                              process_cap=funding.cfg["daily_cost_cap_usd"],
-                              max_input_tokens=funding.cfg.get("max_input_tokens"),
-                              cost_ceiling_usd=funding.cost_ceiling,
-                              credit_tier=cand.get("credit_tier"), deadline_s=remaining)
+                kwargs.update(
+                    process_id=funding.process_id,
+                    process_cap=funding.cfg["daily_cost_cap_usd"],
+                    max_input_tokens=funding.cfg.get("max_input_tokens"),
+                    cost_ceiling_usd=funding.cost_ceiling,
+                    credit_tier=cand.get("credit_tier"),
+                    deadline_s=remaining,
+                )
             if isinstance(transport, oauth_transport.OAuthProxyTransport):
                 kwargs["deadline_s"] = remaining
             _CALL_LATENCY_BUDGET_S.set(remaining)
@@ -2245,8 +2259,13 @@ def escalate_once(
 
 
 def _ask_settlement_receipt(
-    consumption: Any, *, reservation_id: int | None, process_id: str,
-    request_id: str, provider_actual_usd: Any, mock: bool,
+    consumption: Any,
+    *,
+    reservation_id: int | None,
+    process_id: str,
+    request_id: str,
+    provider_actual_usd: Any,
+    mock: bool,
 ) -> dict[str, Any]:
     """Ask-only SELECT readback; a settlement function's return is not proof.
 
@@ -2255,10 +2274,15 @@ def _ask_settlement_receipt(
     No schema initialization, transaction mutation, or budget-policy change.
     """
     receipt: dict[str, Any] = {
-        "schema": "AskSettlementReceipt@v1", "status": "UNVERIFIED",
-        "reservation_id": reservation_id, "process_id": process_id,
-        "request_id": request_id, "provider_actual_usd": None,
-        "actual_usd": None, "amount_precision_usd": "0.000001", "readback": None,
+        "schema": "AskSettlementReceipt@v1",
+        "status": "UNVERIFIED",
+        "reservation_id": reservation_id,
+        "process_id": process_id,
+        "request_id": request_id,
+        "provider_actual_usd": None,
+        "actual_usd": None,
+        "amount_precision_usd": "0.000001",
+        "readback": None,
     }
     if mock:
         return dict(receipt, reason="MOCK_RESPONSE")
@@ -2274,9 +2298,14 @@ def _ask_settlement_receipt(
     except (InvalidOperation, ValueError, TypeError):
         return dict(receipt, reason="PROVIDER_ACTUAL_INVALID")
     receipt["provider_actual_usd"] = float(measured)
-    if (process_id != "cio_ask_deep_research" or not isinstance(reservation_id, int)
-            or isinstance(reservation_id, bool) or reservation_id <= 0
-            or not isinstance(request_id, str) or not request_id):
+    if (
+        process_id != "cio_ask_deep_research"
+        or not isinstance(reservation_id, int)
+        or isinstance(reservation_id, bool)
+        or reservation_id <= 0
+        or not isinstance(request_id, str)
+        or not request_id
+    ):
         return dict(receipt, reason="RESERVATION_IDENTITY_INVALID")
     cursor = None
     try:
@@ -2297,8 +2326,10 @@ def _ask_settlement_receipt(
         except (InvalidOperation, ValueError, TypeError):
             stored = None
         receipt["readback"] = {
-            "reservation_id": row_id, "process_id": row_pid,
-            "request_id": row_request, "status": row_status,
+            "reservation_id": row_id,
+            "process_id": row_pid,
+            "request_id": row_request,
+            "status": row_status,
             "actual_usd": float(stored) if stored is not None else None,
         }
         if (row_id, row_pid, row_request) != (reservation_id, process_id, request_id):
@@ -2307,8 +2338,7 @@ def _ask_settlement_receipt(
             return dict(receipt, reason="RESERVATION_NOT_SETTLED")
         if stored is None or stored != expected:
             return dict(receipt, reason="SETTLED_AMOUNT_MISMATCH")
-        return dict(receipt, status="VERIFIED_SETTLED", reason="MATCHED_RESERVATION_READBACK",
-                    actual_usd=float(stored))
+        return dict(receipt, status="VERIFIED_SETTLED", reason="MATCHED_RESERVATION_READBACK", actual_usd=float(stored))
     except Exception:
         # A failed read is not evidence of zero spend or successful persistence.
         # Keep database/connection diagnostics out of caller-visible metadata.
@@ -2425,9 +2455,13 @@ def execute_governed_call(
 
     # ── Step 3: Model policy resolution (server-side) ──────────────────
     from lib import anthropic_routing as promo
+
     _promotion = selected_policy_id == "default" and promo.active(process_id, cfg)
-    policy = (promo.selected_policy(process_id, cfg, POLICY_RESOLUTION, reasoning_tier=reasoning_tier)
-              if _promotion else resolve_model_policy(process_id, routing_policy=selected_policy_id))
+    policy = (
+        promo.selected_policy(process_id, cfg, POLICY_RESOLUTION, reasoning_tier=reasoning_tier)
+        if _promotion
+        else resolve_model_policy(process_id, routing_policy=selected_policy_id)
+    )
     if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
         routing_box["decision"] = policy["routing_decision"]
     if not isinstance(policy, dict) or policy.get("missing_process"):
@@ -2542,6 +2576,7 @@ def execute_governed_call(
 
     # Operator questions retain their pre-provider global-cap admission.
     from lib.governed_process_routes import OPERATOR_INTENT_PROCESS_IDS
+
     _caller_bound = _promotion and process_id in OPERATOR_INTENT_PROCESS_IDS
     # Validate caps exist
     try:
@@ -2554,7 +2589,11 @@ def execute_governed_call(
         projected = 0.0
     else:
         # Operator questions retain their original pre-provider process/question/global admission.
-        _admission_model = resolve_model_policy(process_id, routing_policy=selected_policy_id)["model_id"] if _caller_bound else model_id
+        _admission_model = (
+            resolve_model_policy(process_id, routing_policy=selected_policy_id)["model_id"]
+            if _caller_bound
+            else model_id
+        )
         if _caller_bound and _tier == "high":
             _admission_candidate, _ = reasoning_lane_candidate(process_id, selected_policy_id, ds_pols)
             if _admission_candidate is not None:
@@ -2577,7 +2616,9 @@ def execute_governed_call(
     except (TypeError, ValueError):
         gcap = None
 
-    cap_check = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=None if _promotion and not _caller_bound else gcap)
+    cap_check = lc.check_cost_cap(
+        process_id, projected_usd=projected, global_cap=None if _promotion and not _caller_bound else gcap
+    )
     if not cap_check.get("allow"):
         return _error(
             "COST_CAP_EXCEEDED",
@@ -2632,8 +2673,17 @@ def execute_governed_call(
         log.exception("reservation failed for %s", process_id)
         return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}", status=500)
 
-    _funding = (promo.FundingContext(process_id, dict(cfg, max_output_tokens=cfg.get("max_output_tokens") or max_tokens), reservation_id, global_cap=gcap,
-                                     cost_ceiling=policy.get("cost_ceiling_usd")) if _promotion else None)
+    _funding = (
+        promo.FundingContext(
+            process_id,
+            dict(cfg, max_output_tokens=cfg.get("max_output_tokens") or max_tokens),
+            reservation_id,
+            global_cap=gcap,
+            cost_ceiling=policy.get("cost_ceiling_usd"),
+        )
+        if _promotion
+        else None
+    )
     # Real provider calls get a durable side-effect identity before dispatch.
     # Mock calls intentionally remain isolated from the production journal.
     provider_journal = None
@@ -2715,12 +2765,16 @@ def execute_governed_call(
                 yield {}
 
         from contextlib import nullcontext
-        with (promo.funding_context(_funding) if _funding is not None else nullcontext()), cost_attribution(
-            source_service="cio_governed_model_bridge",
-            source_process=process_id,
-            source_lane=requested_policy,
-            reservation_id=str(reservation_id) if reservation_id is not None else None,
-            run_id=rid,
+
+        with (
+            promo.funding_context(_funding) if _funding is not None else nullcontext(),
+            cost_attribution(
+                source_service="cio_governed_model_bridge",
+                source_process=process_id,
+                source_lane=requested_policy,
+                reservation_id=str(reservation_id) if reservation_id is not None else None,
+                run_id=rid,
+            ),
         ):
             walk = walk_routes(
                 plan,
@@ -2756,8 +2810,13 @@ def execute_governed_call(
         )
         if _funding is not None:
             failure_cost, paid_failure = _funding.failure_cost(paid_billable=bool(walk.get("billable_seen")))
-            lc.settle_reservation(reservation_id, float(failure_cost), ok=False,
-                                  billable_attempt=bool(failure_cost), paid_component_usd=float(paid_failure))
+            lc.settle_reservation(
+                reservation_id,
+                float(failure_cost),
+                ok=False,
+                billable_attempt=bool(failure_cost),
+                paid_component_usd=float(paid_failure),
+            )
         else:
             lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
         if e is not None or attempted:
@@ -3053,8 +3112,12 @@ def execute_governed_call(
 
     if process_id == "cio_ask_deep_research":
         response["_tradeai"]["settlement_receipt"] = _ask_settlement_receipt(
-            lc, reservation_id=reservation_id, process_id=process_id,
-            request_id=rid, provider_actual_usd=actual_cost, mock=is_mock,
+            lc,
+            reservation_id=reservation_id,
+            process_id=process_id,
+            request_id=rid,
+            provider_actual_usd=actual_cost,
+            mock=is_mock,
         )
 
     agent_gate.annotate_response(response, process_id, _egress.get("verdict"))
@@ -3353,8 +3416,9 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         if not self._caller_auth_admits(caller, process_id):
             return
         if process_id in OPERATOR_INTENT_PROCESS_IDS and self.headers.get(MANUAL_TRIGGER_HEADER) != "1":
-            self._send_error(403, "MANUAL_TRIGGER_REQUIRED",
-                             "Explicit operator-origin intent is required for Ask research")
+            self._send_error(
+                403, "MANUAL_TRIGGER_REQUIRED", "Explicit operator-origin intent is required for Ask research"
+            )
             return
 
         routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))
@@ -3466,6 +3530,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                 max_tokens=max_tokens,
                 request_id=request_id,
                 routing_policy=routing_policy_name,
+                **({"budget": data["budget"]} if isinstance(data.get("budget"), dict) else {}),
                 **caller_reasoning_options(caller, task_type),
             )
         finally:
