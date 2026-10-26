@@ -620,12 +620,22 @@ def wait_guard_and_apply(
                         f"(request `{request_id}`, via guard bridge). "
                         f"Mergify may queue when CI is green in an ET window.",
                     )
-                return {
+                out: dict[str, Any] = {
                     "ok": bool(label_result.get("ok")),
                     "pr_number": pr_number,
                     "request_id": request_id,
                     "label_result": label_result,
                 }
+                # Chicken-egg: main may still require GitHub Approve / merge-ready.
+                # When enabled, Telegram Approve also merges this one PR via gh so
+                # the new Mergify rules land without the operator opening github.com.
+                if out["ok"] and os.environ.get("PR_MERGE_BOOTSTRAP_GH_MERGE", "").strip() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
+                    out["bootstrap_merge"] = _bootstrap_gh_merge(pr_number)
+                return out
         time.sleep(max(1.0, float(poll_s)))
     return {"ok": False, "reason": "TIMEOUT", "pr_number": pr_number, "request_id": request_id}
 
@@ -634,3 +644,35 @@ def write_notify_receipt(summary: dict[str, Any]) -> Path:
     path = store_dir() / "notify_receipt.json"
     path.write_text(json.dumps({**summary, "written_at": time.time()}, indent=2) + "\n")
     return path
+
+
+def _bootstrap_gh_merge(pr_number: int, *, repo: str = DEFAULT_REPO) -> dict[str, Any]:
+    """Merge via ``gh`` so the operator never opens github.com for the bootstrap PR.
+
+    Used only while main's Mergify still requires a GitHub Approve. After this
+    PR lands, Telegram → ``operator-merge`` is enough and this path stays off.
+    """
+    # Prefer squash to match queue_rules.merge_method on this repo.
+    proc = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "merge",
+            str(int(pr_number)),
+            "--repo",
+            repo,
+            "--squash",
+            "--auto",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    return {
+        "ok": proc.returncode == 0,
+        "rc": proc.returncode,
+        "stdout": (proc.stdout or "")[-500:],
+        "stderr": (proc.stderr or "")[-500:],
+        "mode": "gh_pr_merge_squash_auto",
+    }
