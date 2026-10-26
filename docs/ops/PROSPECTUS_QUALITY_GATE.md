@@ -41,6 +41,13 @@ Thresholds: `DEFAULTS` in the module, overridable by an optional `config/prospec
 concurrent data-defect fixes exist (`blocks.series_quality`, `domains.transcript_rejection`) the gate calls them;
 otherwise its own checks stand alone.
 
+**Price guard interplay (PR #2202).** The price checks run on the RAW 1Y window (`bundle.series["price_1y_raw"]`,
+before `blocks.series_quality` drops bad bars), so a bad first bar or pre-listing / symbol-reuse history is still
+reported. When the guard has already excluded exactly those bars, `first_bar_outlier` and
+`pre_listing_or_symbol_reuse` are SOFT (the report proceeds on the cleaned series and says "excluded N bad bar(s)";
+no fact is marked unreliable) unless fewer than `min_clean_sessions` (20) clean sessions remain, which stays HARD.
+Stored reports checked with `--gate-only` were not built on the cleaned series, so the same defect there stays HARD.
+
 ### Outcomes
 
 - **HARD_FAIL** — `DataBlocked` is raised before any model call. The queue row is parked as `blocked_data`, the index
