@@ -3656,6 +3656,71 @@
         "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
       },
       "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection."
+    },
+    {
+      "domain": "anthropic_promotional_credit",
+      "class": "native",
+      "store": {
+        "file": "runtime/provider_cost/anthropic_credit.jsonl"
+      },
+      "writer": "scripts/lib/anthropic_credit.py",
+      "cadence": "before each governed promotional request; settle after usage; existing llm-provider-health observations",
+      "stale_after_hours": 0.25,
+      "required_fields": [
+        "promotion_id",
+        "sequence",
+        "previous",
+        "event",
+        "at",
+        "checksum"
+      ],
+      "backup": [
+        "durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock"
+      ],
+      "no_coverage": "Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available",
+      "on_gap": [
+        "refuse promotional dispatch",
+        "operator reconciles canonical provider usage and reservation ledger; never reset credit automatically"
+      ],
+      "_note": "The runtime journal is excluded from current data offsite backup. No backup proof is claimed. Durable cap backstop uses existing PostgreSQL reservation table. Retain this evidence through promotion expiry and operator reconciliation; no automated purge. Operational accessor is a shared read-only helper used by existing consumption/health endpoints, not an admitted data-broker projection id.",
+      "entity": "LLM operational credit",
+      "title": "Anthropic promotional-credit authorization evidence",
+      "facts": [
+        "credit authorization",
+        "actual usage settlement",
+        "ambiguous holds",
+        "provider fallback reasons"
+      ],
+      "freshness_sla": "Each request is authorized before dispatch; provider-health projection refreshed on existing monitor cadence; no call on unreadable/corrupt evidence",
+      "refresh_lane": {
+        "runner": "event",
+        "lane": "llm-provider-health",
+        "note": "Existing provider-health lane and application dispatch; no new schedule or activation"
+      },
+      "readers": [
+        "LLM Spend",
+        "Health",
+        "Agent Runtime",
+        "daily digest"
+      ],
+      "derived_copies": [],
+      "proposal": {
+        "proposed_by": "codex-anthropic-first-20261025",
+        "proposed_on": "2026-10-25",
+        "reference": "Operator-approved build: llm-anthropic-first-20261025/REQUIREMENTS.md sections 4 and 4a. New journal source admission remains proposed for operator review before release.",
+        "decision": "Superseded by explicit operator activation instruction 2026-10-25; live authentication and canary still require receipt evidence."
+      },
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-25",
+        "reference": "Operator in this session: \"what disable enable and test call\", following deployed PR #2181. Authorizes the promotional router and its required append-only credit authorization journal. This records activation intent, not a successful authentication/canary or backup proof.",
+        "scope": "Anthropic promotional calls under unchanged $190 total/$10 UTC-day/per-call caps and expiry; CreditBook is the only journal writer; existing operational monitoring reads its projection. No broker/order/stop authority, cap increase, new schedule or secret reads."
+      },
+      "dictionary": {
+        "writer_ceiling": 1,
+        "surface_read_ceilings": {}
+      },
+      "accessor": "scripts/lib/anthropic_monitoring.py::snapshot"
     }
   ],
   "proposed_domains": [
@@ -5289,62 +5354,6 @@
       },
       "retention_days": 400,
       "retention_mode": "archive_then_tripwire; no deletion by this module"
-    },
-    {
-      "domain": "anthropic_promotional_credit",
-      "status": "proposed",
-      "class": "native",
-      "store": {
-        "file": "runtime/provider_cost/anthropic_credit.jsonl"
-      },
-      "writer": "scripts/lib/anthropic_credit.py",
-      "projection": "scripts/lib/anthropic_monitoring.py::snapshot",
-      "cadence": "before each governed promotional request; settle after usage; existing llm-provider-health observations",
-      "stale_after_hours": 0.25,
-      "required_fields": [
-        "promotion_id",
-        "sequence",
-        "previous",
-        "event",
-        "at",
-        "checksum"
-      ],
-      "backup": [
-        "durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock"
-      ],
-      "no_coverage": "Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available",
-      "on_gap": [
-        "refuse promotional dispatch",
-        "operator reconciles canonical provider usage and reservation ledger; never reset credit automatically"
-      ],
-      "_note": "The runtime journal is excluded from current data offsite backup. No backup proof is claimed. Durable cap backstop uses existing PostgreSQL reservation table. Retain this evidence through promotion expiry and operator reconciliation; no automated purge.",
-      "entity": "LLM operational credit",
-      "title": "Anthropic promotional-credit authorization evidence",
-      "facts": [
-        "credit authorization",
-        "actual usage settlement",
-        "ambiguous holds",
-        "provider fallback reasons"
-      ],
-      "freshness_sla": "Each request is authorized before dispatch; provider-health projection refreshed on existing monitor cadence; no call on unreadable/corrupt evidence",
-      "refresh_lane": {
-        "runner": "event",
-        "lane": "llm-provider-health",
-        "note": "Existing provider-health lane and application dispatch; no new schedule or activation"
-      },
-      "readers": [
-        "LLM Spend",
-        "Health",
-        "Agent Runtime",
-        "daily digest"
-      ],
-      "derived_copies": [],
-      "proposal": {
-        "proposed_by": "codex-anthropic-first-20261025",
-        "proposed_on": "2026-10-25",
-        "reference": "Operator-approved build: llm-anthropic-first-20261025/REQUIREMENTS.md sections 4 and 4a. New journal source admission remains proposed for operator review before release.",
-        "decision": "Review journal store/writer and operational projection before activation. Existing PostgreSQL reservations remain the durable cap backstop. No new source grant is claimed."
-      }
     }
   ],
   "data_dictionary": {
