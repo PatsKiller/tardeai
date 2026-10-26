@@ -100,14 +100,14 @@ export default function ReleaseTrainTab() {
   return (
     <div data-testid="release-train-tab" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
       <div style={panel} data-testid="release-train-stop-panel">
-        <Header title="Release train" sub="agents queue PRs · the train integrates, releases and reports · this page shows; only STOP acts" />
+        <Header title="Release train" sub="observe the queue and trains · emergency STOP here · Run now / Arm / Resume on Ops → Controls" />
         <div style={{ marginTop: 10 }}><ReleaseStopControl /></div>
         <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: TYPE.sm }}>
           <Link to="/system/ops-controls?tab=jobs" data-testid="rt-run-now-link" style={{ color: TOKENS.primary, fontWeight: 750, textDecoration: 'none' }}>
-            Run now on Ops → Controls →
+            Act: Run now / Arm / Resume on Ops → Controls →
           </Link>
-          <Link to="/policy" data-testid="rt-rulebook-link" style={{ color: TOKENS.text[2], fontWeight: 650, textDecoration: 'none' }}>
-            Rulebook (ratify 22.0.0 via PR 2117 Policy versions) →
+          <Link to="/system/releases" data-testid="rt-releases-link" style={{ color: TOKENS.text[2], fontWeight: 650, textDecoration: 'none' }}>
+            PR census & shipped history →
           </Link>
         </div>
       </div>

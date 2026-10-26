@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useApi } from '../hooks/useApi'
 import CountTile from '../components/CountTile'
 import { dataApprovalTiles } from '../lib/measuredCount'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import JobsHealth from '../components/JobsHealth'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
@@ -323,7 +323,7 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
     <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume, Arm and Run now need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n” / “RUN NOW EPOCH n WINDOW HHMM”) and are applied by the host applier; clearing the kill switch stays host terminal only. Run now stays disabled until AGENTS.md 22.0.0 is ACTIVE (and the canary force gates pass).</p>
+      <p style={muted} data-testid="ops-release-train-explainer">Act here. Safe direction (STOP, Pause, Engage kill switch): one click, no passkey. Risky direction (Resume, Arm, Run now): passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n” / “RUN NOW EPOCH n WINDOW HHMM”); the host applier applies it. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
@@ -333,13 +333,19 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
             <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
           <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
             <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} />
-            <ActionButton state={d} kind="release_train.run_now" text="Run now" params={{ ...relParams, force_window: rt?.run_now?.default_slot || '1800', forced_n: 1 }} title="Force a live canary Run now (AGENTS 22.0.0)" run={run} /></ChipRow>],
+            <ActionButton state={d} kind="release_train.run_now" text="Run now (passkey)" params={{ ...relParams, force_window: rt?.run_now?.default_slot || '1800', forced_n: 1 }} title="Force a live canary train now (passkey + typed phrase)" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
       {rt?.run_now?.block_reason ? <p role="status" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }} data-testid="ops-run-now-block">{rt.run_now.block_reason}</p> : null}
-      <p style={muted}>Ratify AGENTS.md 22.0.0 (Run now) at <a href="/v3/policy" data-testid="ops-rulebook-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Rulebook → Policy versions</a> (PR 2117). Until ACTIVE, Run now stays disabled with an explicit reason — never a silent no-op. Host CLI remains the fallback.</p>
+      <p style={muted} data-testid="ops-run-now-help">
+        {rt?.run_now?.allowed
+          ? <>Run now is ready. Phrase: <span style={mono}>{rt.run_now.phrase_example || 'RUN NOW EPOCH n WINDOW HHMM'}</span>.</>
+          : <>When Run now is blocked, the reason is above — never a silent no-op.</>}
+        {' '}Queue, windows and history (observe; emergency STOP only):{' '}
+        <Link to="/coordination?tab=release" data-testid="ops-coord-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Coordination → Release train</Link>.
+      </p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>
