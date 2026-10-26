@@ -1,0 +1,42 @@
+diff --git a/.github/workflows/agent-governance.yml b/.github/workflows/agent-governance.yml
+index cf9ab668c..218961576 100644
+--- a/.github/workflows/agent-governance.yml
++++ b/.github/workflows/agent-governance.yml
+@@ -6,6 +6,8 @@ on:
+   pull_request:
+   push:
+     branches: [main]
++  # Release train 2026-10-21: required context; reports on a merge-queue group (inert until a queue exists).
++  merge_group:
+   workflow_dispatch:
+ 
+ concurrency:
+diff --git a/.github/workflows/cio-production-hardening-ci.yml b/.github/workflows/cio-production-hardening-ci.yml
+index 18487b279..e23563768 100644
+--- a/.github/workflows/cio-production-hardening-ci.yml
++++ b/.github/workflows/cio-production-hardening-ci.yml
+@@ -14,6 +14,10 @@ on:
+     # `cio-hardening` is a required status check on main. A path filter here
+     # would let unrelated PRs skip the job and leave the check "Pending",
+     # blocking merge. Run on every PR so the required check is always reported.
++  # Release train 2026-10-21: on a merge-queue group the job takes the non-PR branch below, i.e. the FAST
++  # profile (every registered gate) -- the full suite runs on the train, the PR keeps the affected-only profile.
++  # Inert until the operator enables a merge queue on main (docs/ops/packets/release-train-20261021/).
++  merge_group:
+   workflow_dispatch:
+   # Nightly isolation run of the FULL (serial) profile -- see cio-hardening-full.
+   schedule:
+diff --git a/.github/workflows/release-readiness.yml b/.github/workflows/release-readiness.yml
+index 80474e6db..214fcd558 100644
+--- a/.github/workflows/release-readiness.yml
++++ b/.github/workflows/release-readiness.yml
+@@ -8,6 +8,9 @@ on:
+   push:
+     branches: ["main", "hardening/**"]
+   pull_request:
++  # Release train 2026-10-21: a required context must report on a merge-queue group, or the queue stalls.
++  # Inert until the operator enables a merge queue on main (docs/ops/packets/release-train-20261021/).
++  merge_group:
+   workflow_dispatch:
+ 
+ jobs:

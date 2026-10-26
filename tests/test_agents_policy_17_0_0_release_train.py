@@ -312,17 +312,23 @@ def test_section_25_9_quotes_the_clauses_verbatim_with_their_digests():
 
 
 def test_ai_work_policy_only_appends_section_28():
-    i = AWP.find("---\n\n# 28. RELEASE TRAIN PUSHES")
+    # 24.0.0 rewrote tip §28 to AUTOMATED MERGE; 17.0.0 train-push text lives under ## 28.HISTORICAL.
+    i = AWP.find("---\n\n# 28. AUTOMATED MERGE AND DEPLOY")
+    if i < 0:
+        i = AWP.find("---\n\n# 28. RELEASE TRAIN PUSHES")
     assert i > 0, "AI_WORK_POLICY.md §28 missing: the 17.0.0 AI_WORK_POLICY patch is not applied"
     # AGENTS.md 21.0.0 (§28.15) adds two marked "Hands-off delivery (AGENTS.md 21.0.0 ..." paragraphs to §3 and §17;
     # taken out, sections 1-27 are byte-identical to the 17.0.0 pin.
     pre = re.sub(r"Hands-off delivery \(AGENTS\.md 21\.0\.0.*?\n\n", "", AWP[:i], flags=re.S)
     assert h(pre) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
-    s28 = _flat(AWP[i:])
+    hist = AWP.find("## 28.HISTORICAL — RELEASE TRAIN PUSHES")
+    s28 = _flat(AWP[hist if hist > 0 else i :])
     # while PROPOSED §28 is binding only once 17.0.0 is ACTIVE and the delegation is armed; the ratifying edit marks
     # 17.0.0 ACTIVE there and leaves the arming condition
-    gate = (("(AGENTS.md 17.0.0, ACTIVE)", "AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914)",
-             "Binding only once the operator has also armed the standing release delegation at the host")
+    # 24.0.0 moved train-push text under HISTORICAL; tip heading no longer carries the 17.0.0 ACTIVE paren.
+    gate = (("AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914)",
+             "Binding only once the operator has also armed the standing release delegation at the host",
+             "AGENTS.md 17.0.0; retired")
             if _ratified() else ("(AGENTS.md 17.0.0, PROPOSED)", "Binding only once AGENTS.md 17.0.0 is ACTIVE"))
     for frag in gate + ("only automated remote synchronization",
                  "refs/heads/train/<train_id>", "ReleaseCapability@v1", "GitHub App installation", "not counted against",

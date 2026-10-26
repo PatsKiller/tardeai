@@ -1,0 +1,24 @@
+# Live once 24.0.0 ACTIVE and units installed (AGENTS.md §25.10).
+# Promote-only poller: if origin/main tip != CURRENT and deploy STOP is clear and the standing
+# deploy delegation is armed, runs cio_phase2_exact_main_deploy.sh prepare+promote then
+# post_release_tester. Never merges, never pushes remotes. See docs/ops/MERGIFY_DEPLOY_FOUNDATION.md.
+
+[Unit]
+Description=Trade AI deploy-on-main poller (promote-only)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+Environment=TRADEAI_PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=LLM_DEFER_OFFPEAK=1
+# --apply: promote when decide() says proceed; STOP / lock / missing delegation still refuse.
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/deploy_on_main_poll.py --apply --json
+Nice=10
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

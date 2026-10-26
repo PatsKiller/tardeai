@@ -108,8 +108,9 @@ SCHEMA_OUTCOME = "TrainOutcome@v1"
 SCHEMA_RUN = "ReleaseTrainRun@v1"
 SCHEMA_STATE = "ReleaseTrainState@v1"
 
-#: The CLI refuses --live while this is BUILD_ONLY. Arming is an operator act (plan "Not in scope of approval").
-TRAIN_CONTROLLER_STATUS = "ACTIVE"
+#: Soft-add Mergify cutover (AGENTS 24.0.0 PROPOSED): refuse --live. Mergify merges; host deploy-on-main poller
+#: promotes. Re-arming this flag is operator-only and must not happen while Mergify owns the queue.
+TRAIN_CONTROLLER_STATUS = "BUILD_ONLY"
 #: The real GitHub writer refuses until D2 (GitHub App) and the AGENTS 17.0.0 amendment are ACTIVE.
 GITHUB_WRITES_STATUS = "ACTIVE"
 #: Arming packet §K (2026-10-25, operator: "It needs to work without grant. It's a perpetual grant."): the deploy

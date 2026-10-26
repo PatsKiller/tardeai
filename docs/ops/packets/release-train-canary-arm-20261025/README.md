@@ -1,3 +1,11 @@
+# SUPERSEDED — Mergify cutover 2026-10-26
+
+Status: SUPERSEDED BY docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+Archived copy: archive/release_train_20261026/packets/release-train-canary-arm-20261025/
+Tripwire: archive/release_train_20261026/TRIPWIRE.md
+
+---
+
 # Release train: arm the schedule with no per-release grant (2026-10-25)
 
 ```

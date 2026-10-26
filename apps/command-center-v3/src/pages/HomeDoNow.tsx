@@ -26,7 +26,7 @@ import { RELEASE_TRAIN_PATHS, freshness, summaryFrom, type ReleaseTrainSummaryWi
 import DoNowQueue from '../components/home/DoNowQueue'
 import { AccountChip, AccountsBadge } from '../components/AccountChip'
 import { accountsBadge } from '../lib/accountLabels'
-import ReleaseTrainCard from '../components/home/ReleaseTrainCard'
+import DeployHoldStrip from '../components/home/DeployHoldStrip'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
 import { AiIntelligenceBriefing, ExecutiveBriefCard, HermesGatewayLine } from '../components/home/HomeTrustRender'
@@ -171,8 +171,8 @@ export default function HomeDoNow() {
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
     { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',
       tone: dn.unavailableSources.length || dn.staleSources.length || dn.state === 'STALE' ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
-    { k: 'Release train', v: `${rt.stop.text} · next ${rt.nextWindow.text}`, to: '/system/releases',
-      tone: rt.stop.effective ? 'danger' : rtF.state === 'OK' ? 'neutral' : 'warning', tip: `release-train summary · ${rtF.state}${rtF.reason ? ` · ${rtF.reason}` : ''}` },
+    { k: 'Deploy hold', v: rt.stop.effective ? `${rt.stop.text} · promote held` : `${rt.stop.text} · Mergify + poller`, to: '/system/releases',
+      tone: rt.stop.effective ? 'danger' : rtF.state === 'OK' ? 'neutral' : 'warning', tip: `deploy STOP latch · ${rtF.state}${rtF.reason ? ` · ${rtF.reason}` : ''}` },
   ]
 
   const llm = cmd.llm_intelligence
@@ -371,16 +371,16 @@ export default function HomeDoNow() {
           {() => (llm || cmd.executive_brief) ? <>{llm && <AiIntelligenceBriefing llm={llm} />}{cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}</>
             : <span style={{ color: TOKENS.text[3] }}>No briefing in /api/v2/command yet.</span>}
         </Drawer>
-        <Drawer id="release" title="Release train" summary={`${rt.stop.text} · next ${rt.nextWindow.text} · ready ${rt.ready.text} · held ${rt.held.text}`}
+        <Drawer id="release" title="Deploy on main" summary={`${rt.stop.text} · Mergify merges · poller promotes`}
           right={(openDrawer, isOpen) => isOpen ? null : (
             <button type="button" data-testid="home-release-stop-shortcut" onClick={openDrawer}
-              title="Opens the release-train drawer with the STOP RELEASES control (it asks for a reason and confirms). Not the trading kill switch."
+              title="Opens deploy hold (STOP latch for host promote). Not the trading kill switch. Act on Ops → Controls."
               style={{ fontSize: TYPE.sm, fontWeight: 700, padding: '6px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontFamily: 'inherit', minHeight: 32,
                 color: toneVars('danger').color, background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}` }}>
-              STOP releases…
+              Deploy hold…
             </button>
           )}>
-          {() => <ReleaseTrainCard />}
+          {() => <DeployHoldStrip />}
         </Drawer>
         <Drawer id="agents" title="Agents and Hermes" summary={agentsN ? `${agentsN} agents reporting runs (30 d)` : 'agent runs and Hermes status'}>
           {() => <HermesDrawerBody cmd={cmd} />}

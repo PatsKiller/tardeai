@@ -691,7 +691,30 @@ It does **not** authorize:
 
 ---
 
-# 28. RELEASE TRAIN PUSHES (AGENTS.md 17.0.0, ACTIVE)
+# 28. AUTOMATED MERGE AND DEPLOY (AGENTS.md 24.0.0 ACTIVE)
+
+**Binding (AGENTS.md 24.0.0 ACTIVE, §25.10).** This section governs. The 17.0.0 train-push
+exception below is historical only.
+
+- **Mergify** may merge eligible PRs into `main` when required checks are green and its
+  `.mergify.yml` schedule/queue rules allow. That merge is not an agent push and does not
+  draw on an agent's push budget (section 3).
+- The host **`deploy_on_main` poller** may promote CURRENT to the new `origin/main` SHA
+  under STOP clear, GlobalReleaseLock, and the standing **deploy** (promote-only)
+  delegation. It never merges and never pushes remotes.
+- **Emergency promote** is operator host CLI only (`scripts/emergency_manual_promote.sh`)
+  with `release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never
+  set that env or run that script.
+- Coding agents keep every rule above: local commit is the checkpoint; one authorized
+  push per tranche; a PR is their last remote act. An agent never pushes `main` or
+  `train/*`, never merges, and never promotes.
+
+A deploy STOP (AGENTS.md §25.4 / §25.10) halts the poller at the next mutation boundary.
+Clearing it, arming the deploy delegation, and Mergify App custody are operator-only.
+
+---
+
+## 28.HISTORICAL — RELEASE TRAIN PUSHES (AGENTS.md 17.0.0; retired — 24.0.0 ACTIVE)
 
 AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914). Binding only once the
 operator has also armed the standing release delegation at the host. Until then,

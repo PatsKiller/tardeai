@@ -2109,7 +2109,8 @@ def test_claimer_answer_refuses_a_hand_written_live_request_on_an_unscheduled_sl
     w = World(tmp_path, slot="0900", now=datetime(2026, 10, 27, 9, 2, tzinfo=ET))
     req = request(slot="0900", day="20261027", shadow=False, shadow_reason=None)
     put(w, req)
-    claim(w)
+    # Live status ACTIVE so BUILD_ONLY does not mask the WINDOW_NOT_ENABLED refusal under test.
+    claim(w, status="ACTIVE")
     r = receipt(w, req["request_id"])
     assert r["state"] == "REFUSED" and r["mode"] == "live" and r["refusal"]["code"] == "WINDOW_NOT_ENABLED", r
     assert w.writer.calls == [] and w.host.calls == []
@@ -2149,7 +2150,8 @@ def test_a_stalled_train_is_visible_on_the_readiness_view(tmp_path):
     def factory(live):
         return w.controller(live=live, classifier=RTC.load_classifier(closure=False))
 
-    T.process_requests(w.state, factory, apply=True, now=lambda: w.clock.t)
+    # Live status ACTIVE so BUILD_ONLY does not mask the TRAIN_STALLED NO_OP under test.
+    T.process_requests(w.state, factory, apply=True, now=lambda: w.clock.t, live_status="ACTIVE")
     r = receipt(w, req["request_id"])
     assert r["outcome"] == "NO_OP" and r["needs_action"][0]["code"] == "TRAIN_STALLED", r
     assert "BASE_HAS_UNRELEASED_HELD" in r["needs_action"][0]["text"]

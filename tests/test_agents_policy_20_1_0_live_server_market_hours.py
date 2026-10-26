@@ -143,8 +143,8 @@ def test_row_waits_for_the_operator_or_records_the_token():
     else:
         assert re.search(rf"{TOKEN} \d+ [0-9a-f]{{40}}", rest), "ACTIVE 20.1.0 row must record token, PR and sha"
         assert "(20.1.0, ACTIVE)" in _s288()
-    # Tip may still be 20.1.0 or a later ACTIVE version (20.2+/21+/22+) that supersedes it.
-    assert re.search(r"^Supersedes:\s+(20\.[0-3]\.0|21\.0\.0)$", AGENTS, re.M)
+    # Tip may still be 20.1.0 or a later ACTIVE version (20.2+/21+/22+/24+) that supersedes it.
+    assert re.search(r"^Supersedes:\s+(20\.[0-3]\.0|21\.0\.0|22\.0\.0)$", AGENTS, re.M)
 
 
 def test_banner_explains_class_scope_and_phrase():

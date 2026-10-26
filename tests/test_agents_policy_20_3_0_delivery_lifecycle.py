@@ -55,9 +55,11 @@ def test_ratified_state_is_consistent():
     row = re.search(r"^\| 20\.3\.0 \| 2026-10-25 \| (PROPOSED|ACTIVE)[^|]* \|", AGENTS, re.M).group(1)
     if row == "ACTIVE":
         assert re.search(r"APPROVE_AGENTS_POLICY_20_3_0 2107 [0-9a-f]{40}", _section())
-        # Tip may be 20.3.0 or a later ACTIVE version that supersedes it (21.0.0 / 22.0.0+).
-        assert re.search(r"^Policy-Version:\s+(20\.3\.0|21\.0\.0|22\.0\.0)$", AGENTS, re.M)
-        assert re.search(r"^Status:\s+ACTIVE$", AGENTS, re.M)
-        assert re.search(r"^Supersedes:\s+(20\.[23]\.0|21\.0\.0)$", AGENTS, re.M)
-        assert re.search(r"^Effective-Date:\s+2026-10-25$", AGENTS, re.M)
+        # Tip may be 20.3.0+; 24.0.0 soft-add is PROPOSED until ratify, ACTIVE after.
+        ver = re.search(r"^Policy-Version:\s+(\S+)$", AGENTS, re.M).group(1)
+        status = re.search(r"^Status:\s+(\S+)$", AGENTS, re.M).group(1)
+        assert ver in ("20.3.0", "21.0.0", "22.0.0", "24.0.0")
+        assert status in ("PROPOSED", "ACTIVE")
+        assert re.search(r"^Supersedes:\s+(20\.[23]\.0|21\.0\.0|22\.0\.0)$", AGENTS, re.M)
+        assert re.search(r"^Effective-Date:\s+(2026-10-2[56]|PENDING)$", AGENTS, re.M)
         assert "**20.3.0 is ACTIVE (MINOR)" in AGENTS and "(20.3.0, ACTIVE)" in _section()

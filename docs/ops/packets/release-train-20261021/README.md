@@ -1,3 +1,11 @@
+# SUPERSEDED — Mergify cutover 2026-10-26
+
+Status: SUPERSEDED BY docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+Archived copy: archive/release_train_20261026/packets/release-train-20261021/
+Tripwire: archive/release_train_20261026/TRIPWIRE.md
+
+---
+
 # Release train: merge when green, release main in the 12:00 and 17:30 windows
 
 ```

@@ -1,0 +1,13 @@
+# PROPOSED (release-train schedule, 2026-10-25; packet docs/ops/packets/release-train-canary-arm-20261025/).
+# PR census at 11:40 America/New_York (window 1200). A missed window is never replayed late (Persistent=false).
+[Unit]
+Description=Trade AI release train: PR census at 11:40 America/New_York (window 1200).
+
+[Timer]
+OnCalendar=*-*-* 11:40:00 America/New_York
+Persistent=false
+AccuracySec=30s
+Unit=tradeai-pr-census@1200.service
+
+[Install]
+WantedBy=timers.target

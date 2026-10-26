@@ -322,29 +322,24 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
-    <Panel title="Release train & kill switch">
-      <p style={muted} data-testid="ops-release-train-explainer">Act here. Safe direction (STOP, Pause, Engage kill switch): one click, no passkey. Risky direction (Resume, Arm, Run now): passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n” / “RUN NOW EPOCH n WINDOW HHMM”); the host applier applies it. Clearing the kill switch stays host terminal only.</p>
+    <Panel title="Deploy hold & kill switch">
+      <p style={muted} data-testid="ops-release-train-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Pause, Engage kill switch): one click, no passkey. Resume / clear STOP: passkey and the typed phrase. Run now / Arm train are removed — emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
-      <Table label="Release train and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
-        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip>{rt.run_now ? <Chip tone={rt.run_now.allowed ? 'info' : 'warning'} title={rt.run_now.block_reason || rt.run_now.phrase_example || ''}>Run now {rt.run_now.allowed ? 'ready' : 'blocked'}</Chip> : null}</ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
-          <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
-            <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
-          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} />
-            <ActionButton state={d} kind="release_train.run_now" text="Run now (passkey)" params={{ ...relParams, force_window: rt?.run_now?.default_slot || '1800', forced_n: 1 }} title="Force a live canary train now (passkey + typed phrase)" run={run} /></ChipRow>],
+      <Table label="Deploy hold and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
+        ['Deploy hold', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
+          <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP host promote (deploy hold)" run={run} />
+            <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause deploy hold surface" run={run} /></ChipRow>,
+          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Clear deploy STOP / resume promote" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
-      {rt?.run_now?.block_reason ? <p role="status" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }} data-testid="ops-run-now-block">{rt.run_now.block_reason}</p> : null}
       <p style={muted} data-testid="ops-run-now-help">
-        {rt?.run_now?.allowed
-          ? <>Run now is ready. Phrase: <span style={mono}>{rt.run_now.phrase_example || 'RUN NOW EPOCH n WINDOW HHMM'}</span>.</>
-          : <>When Run now is blocked, the reason is above — never a silent no-op.</>}
-        {' '}Queue, windows and history (observe; emergency STOP only):{' '}
-        <Link to="/coordination?tab=release" data-testid="ops-coord-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Coordination → Release train</Link>.
+        Serving pin and last promote receipt:{' '}
+        <Link to="/system/releases" data-testid="ops-coord-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>System → Releases &amp; schedules</Link>
+        . Mergify queue lives on the Mergify dashboard. Emergency promote: host CLI under release-write naming the SHA.
       </p>
     </Panel>
     <JobsSchedules d={d} run={run} />

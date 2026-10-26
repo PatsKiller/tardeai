@@ -1,0 +1,99 @@
+# Mergify — merge actor for Trade AI (AGENTS.md §25.10 / 24.0.0).
+# Mergify merges to main inside ET windows; the host deploy_on_main poller promotes CURRENT.
+# Agents never merge. Installing / re-permissioning the Mergify GitHub App is §17.
+#
+# Required checks must match GitHub check names exactly.
+# Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
+
+pull_request_rules:
+  - name: Hold broker / Active Trader / MBI / secrets forever
+    conditions:
+      - or:
+          - label=broker_active_trader
+          - label=held
+          - label=broker
+          - files~=^(scripts/active_trader/|scripts/brokers/|scripts/moomoo/)
+          - files~=^(\.env|config/secret_registry\.yaml)
+    actions:
+      label:
+        add:
+          - held
+      comment:
+        message: >
+          Held: broker / Active Trader / MBI / secrets paths are never Mergify-merged
+          (AGENTS.md §0 rules 1–2, §25.10). Operator merge only.
+
+  - name: Queue default when CI green and merge-ready
+    conditions:
+      - base=main
+      - "#approved-reviews-by>=1"
+      - check-success=cio-hardening
+      - check-success=agent-governance
+      - check-success=release-readiness
+      - check-success=ci-gate
+      - label=merge-ready
+      - label!=held
+      - label!=broker
+      - label!=broker_active_trader
+      - label!=solo
+      - label!=shared-infra
+      - or:
+          - schedule=Mon-Fri 18:00-19:00[America/New_York]
+          - schedule=Tue-Sat 00:00-01:00[America/New_York]
+          - schedule=Mon-Fri 06:00-07:00[America/New_York]
+          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+    actions:
+      queue:
+        name: default
+        method: squash
+
+  - name: Queue solo / shared-infra one-at-a-time
+    conditions:
+      - base=main
+      - "#approved-reviews-by>=1"
+      - check-success=cio-hardening
+      - check-success=agent-governance
+      - check-success=release-readiness
+      - check-success=ci-gate
+      - or:
+          - label=solo
+          - label=shared-infra
+      - label!=held
+      - label!=broker
+      - label!=broker_active_trader
+      - or:
+          - schedule=Mon-Fri 18:00-19:00[America/New_York]
+          - schedule=Tue-Sat 00:00-01:00[America/New_York]
+          - schedule=Mon-Fri 06:00-07:00[America/New_York]
+          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+    actions:
+      queue:
+        name: solo
+        method: squash
+
+queue_rules:
+  - name: default
+    batch_size: 5
+    merge_conditions:
+      - check-success=cio-hardening
+      - check-success=agent-governance
+      - check-success=release-readiness
+      - check-success=ci-gate
+      - or:
+          - schedule=Mon-Fri 18:00-19:00[America/New_York]
+          - schedule=Tue-Sat 00:00-01:00[America/New_York]
+          - schedule=Mon-Fri 06:00-07:00[America/New_York]
+          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+
+  - name: solo
+    batch_size: 1
+    merge_conditions:
+      - check-success=cio-hardening
+      - check-success=agent-governance
+      - check-success=release-readiness
+      - check-success=ci-gate
+      - or:
+          - schedule=Mon-Fri 18:00-19:00[America/New_York]
+          - schedule=Tue-Sat 00:00-01:00[America/New_York]
+          - schedule=Mon-Fri 06:00-07:00[America/New_York]
+          - schedule=Mon-Fri 08:00-08:45[America/New_York]
