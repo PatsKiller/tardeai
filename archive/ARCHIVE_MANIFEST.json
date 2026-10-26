@@ -150,85 +150,454 @@
       "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer config/systemd/user/tradeai-agent-runtime@pulse.timer"
     },
     {
+      "path": "archive/release_train_20261026/TRIPWIRE.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_TRIPWIRE.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/TRIPWIRE.md docs/ops/RELEASE_TRAIN_TRIPWIRE.md"
+    },
+    {
       "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md",
       "original_path": "docs/ops/RELEASE_TRAIN_API.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md docs/ops/RELEASE_TRAIN_API.md"
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md docs/ops/RELEASE_TRAIN_API.md"
     },
     {
       "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
       "original_path": "docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md docs/ops/RELEASE_TRAIN_GITHUB_APP.md"
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md docs/ops/RELEASE_TRAIN_GITHUB_APP.md"
     },
     {
       "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
       "original_path": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md"
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md"
     },
     {
       "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
       "original_path": "docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md docs/ops/RELEASE_TRAIN_UI_CONTRACT.md"
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md docs/ops/RELEASE_TRAIN_UI_CONTRACT.md"
     },
     {
       "path": "archive/release_train_20261026/packets/release-train-20261021/README.md",
       "original_path": "docs/ops/packets/release-train-20261021/README.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-20261021/README.md docs/ops/packets/release-train-20261021/README.md"
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/README.md docs/ops/packets/release-train-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/ci-merge-group.proposed.diff",
+      "original_path": "docs/ops/packets/release-train-20261021/ci-merge-group.proposed.diff",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/ci-merge-group.proposed.diff docs/ops/packets/release-train-20261021/ci-merge-group.proposed.diff"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/ci-train-profile.proposed.diff",
+      "original_path": "docs/ops/packets/release-train-20261021/ci-train-profile.proposed.diff",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/ci-train-profile.proposed.diff docs/ops/packets/release-train-20261021/ci-train-profile.proposed.diff"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/install_release_window_timer.sh",
+      "original_path": "docs/ops/packets/release-train-20261021/install_release_window_timer.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/install_release_window_timer.sh docs/ops/packets/release-train-20261021/install_release_window_timer.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/merge-queue-ruleset.json",
+      "original_path": "docs/ops/packets/release-train-20261021/merge-queue-ruleset.json",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/merge-queue-ruleset.json docs/ops/packets/release-train-20261021/merge-queue-ruleset.json"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.path.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.path.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.path.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.path.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.service.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.service.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed"
     },
     {
       "path": "archive/release_train_20261026/packets/release-train-arming-20261021/README.md",
       "original_path": "docs/ops/packets/release-train-arming-20261021/README.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-arming-20261021/README.md docs/ops/packets/release-train-arming-20261021/README.md"
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-arming-20261021/README.md docs/ops/packets/release-train-arming-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-arming-20261021/framework_pending_evidence.json",
+      "original_path": "docs/ops/packets/release-train-arming-20261021/framework_pending_evidence.json",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-arming-20261021/framework_pending_evidence.json docs/ops/packets/release-train-arming-20261021/framework_pending_evidence.json"
     },
     {
       "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md",
       "original_path": "docs/ops/packets/release-train-canary-arm-20261025/README.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md docs/ops/packets/release-train-canary-arm-20261025/README.md"
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md docs/ops/packets/release-train-canary-arm-20261025/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/install.sh",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/install.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/install.sh docs/ops/packets/release-train-canary-arm-20261025/install.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/update-delegation-windows.sh",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/update-delegation-windows.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/update-delegation-windows.sh docs/ops/packets/release-train-canary-arm-20261025/update-delegation-windows.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md"
     },
     {
       "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md",
       "original_path": "docs/ops/packets/release-train-host-trigger-20261023/README.md",
       "verdict": "SUPERSEDED",
-      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md docs/ops/packets/release-train-host-trigger-20261023/README.md"
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md docs/ops/packets/release-train-host-trigger-20261023/README.md"
     },
     {
-      "path": "archive/release_train_20261026/TRIPWIRE.md",
-      "original_path": null,
-      "verdict": "TRIPWIRE",
-      "evidence": "Fires if live code/cron/unit/n8n reads archive/release_train_20261026/ as authority.",
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/install.sh",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/install.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
       "date": "2026-10-26",
       "review_by": "2026-11-26",
-      "restore_command": null
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/install.sh docs/ops/packets/release-train-host-trigger-20261023/install.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/rollback.sh",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/rollback.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/rollback.sh docs/ops/packets/release-train-host-trigger-20261023/rollback.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed"
     }
   ]
 }

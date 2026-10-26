@@ -473,6 +473,8 @@
     "unit:tradeai-data-plausibility.timer",
     "unit:tradeai-data-source-health.service",
     "unit:tradeai-data-source-health.timer",
+    "unit:tradeai-deploy-on-main.service",
+    "unit:tradeai-deploy-on-main.timer",
     "unit:tradeai-edge-fanout-consumer.service",
     "unit:tradeai-edge-fanout-consumer.timer",
     "unit:tradeai-eod-consolidated-close.service",
