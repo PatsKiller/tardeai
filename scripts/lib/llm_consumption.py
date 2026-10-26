@@ -1277,6 +1277,11 @@ def gate_and_generate(
 
     from lib import anthropic_routing as promo
     _promo_cfg = get_process_config(process_id)
+    if (not _anthropic_route and promo.anthropic_only(process_id)
+            and (meta.get("provider_pinned") or model is not None or not promo.active(process_id, _promo_cfg))):
+        # Anthropic-only jobs (operator 2026-10-26) never take the caller's legacy lane:
+        # an unusable credit is a typed refusal the caller turns into a queued job.
+        raise RuntimeError("ANTHROPIC_CREDIT_UNAVAILABLE: anthropic-only process; queue and retry")
     if not _anthropic_route and not meta.get("provider_pinned") and model is None and promo.active(process_id, _promo_cfg):
         return promo.generate_in_process(prompt, process_id=process_id, cfg=_promo_cfg, options={
             "task_summary": task_summary, "manual_trigger": manual_trigger, "timeout": timeout,
@@ -1491,7 +1496,8 @@ def gate_and_generate(
                         client_request_id=uuid.uuid4().hex, process_id=process_id,
                         process_cap=cfg["daily_cost_cap_usd"], deadline_s=timeout,
                         credit_tier=meta.get("credit_tier"), operator_confirmed=operator_confirmed,
-                        thinking="enabled" if meta.get("credit_tier") in {"high", "highest"} else "disabled")
+                        thinking="enabled" if meta.get("credit_tier") in set(
+                            promo.load_policy().get("thinking_tiers") or ("high", "highest")) else "disabled")
                 result = (response["choices"][0]["message"]["content"], response)
                 text, prov = result
                 from lib import bridge_agent_preconditions as _gate
