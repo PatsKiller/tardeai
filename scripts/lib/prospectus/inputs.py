@@ -262,8 +262,16 @@ class HouseSources:
         return out
 
     def search(self, query: str, sym: str) -> dict:
-        """One governed search (search_router: cache → free tier → paid Brave under its budget)."""
-        res = _plib("search_router").route_query(query, caller="prospectus_writer", symbol=sym, kind="news", count=4)
+        """One governed search (search_router: cache → free tier → paid Brave under its budget).
+
+        ``enabled=True`` turns the routing engine on for this caller only. Without it the
+        router returns ENGINE_DISABLED unless the process happens to carry
+        SEARCH_ROUTING_ENGINE=1, and the 2026-10-26 first build ran 204 searches that all
+        failed that way. The paid tier still needs brave_router's own BRAVE_ROUTER_LIVE arm
+        and this caller's budget, so this never opens a paid socket by itself.
+        """
+        res = _plib("search_router").route_query(query, caller="prospectus_writer", symbol=sym, kind="news",
+                                                 count=4, enabled=True)
         return {"ok": bool(res.ok), "reason": res.reason, "provider": res.provider, "cost_usd": res.cost_usd,
                 "results": [r for r in (res.results or []) if isinstance(r, dict)]}
 
