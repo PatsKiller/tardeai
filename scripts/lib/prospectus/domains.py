@@ -547,4 +547,10 @@ def full_assemble(sources: Any, symbol: str, scope: str, *, cfg: dict, holding: 
     if "sec_filings" not in b.blocks:
         b.blocks["sec_filings"] = {"filings": [], "gaps": ["SEC filings unavailable"]}
     b.context["registry_coverage"] = res["domains"]
+    try:  # house stop policy + broker stop state, read-only (scripts/lib/prospectus/stops.py, PR #2201)
+        from .stops import build as stop_plan
+    except ImportError:
+        b.blocks["stop_plan"] = {"gaps": ["stop plan: scripts/lib/prospectus/stops.py not installed yet"]}
+    else:
+        b.blocks["stop_plan"] = stop_plan(sources, b, holding=holding, cfg=cfg, now=now)
     return b
