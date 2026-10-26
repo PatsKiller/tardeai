@@ -287,7 +287,9 @@ def collect(base: Path, cfg: dict, *, now: datetime, collect_fn: Callable = gove
             persist = persist_fn
             if persist is None:
                 from .pipeline import persist_doc as persist
-            persist(base, sym, "watch", doc, bundle, extra["version"], cfg, entry.get("row") or {}, now=now)
+            mem = persist(base, sym, "watch", doc, bundle, extra["version"], cfg, entry.get("row") or {}, now=now)
+            if isinstance(mem, dict):  # pipeline.persist_doc also writes the version into the CIO memory
+                out.setdefault("cio_memory", []).append(mem)
             entry.update(state="closed", closed_at=now.isoformat(), outcome="written")
             _write_state(base, state)
             out["written"].append(sym)

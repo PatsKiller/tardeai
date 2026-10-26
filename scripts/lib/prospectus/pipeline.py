@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import batch, quality_gate, render, store
+from . import batch, cio_memory, quality_gate, render, store
 from .generate import GenerationFailed, QueueLater, generation_config, governed_generate, write
 from .blocks import book_returns
 from .domains import full_assemble
@@ -136,15 +136,23 @@ def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, tr
 
 def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict | None = None,
               generate_fn: Callable = governed_generate, now_fn: Callable[[], datetime] | None = None,
-              manual: bool = False, log: Callable[[str], None] = print, batch_enabled: bool = True) -> dict:
-    """Process up to ``limit`` queued rows (priority order). Stops for the day when the credit is unavailable."""
+              manual: bool = False, log: Callable[[str], None] = print, batch_enabled: bool = True,
+              memory_root: Path | None = None, memory_fn: Callable[..., dict] | None = None) -> dict:
+    """Process up to ``limit`` queued rows (priority order). Stops for the day when the credit is unavailable.
+
+    Every stored version is then written into the CIO memory (``cio_memory.record_version``, the shared research
+    spine); a memory failure is recorded in the summary and never fails the prospectus.
+    """
     now_fn = now_fn or (lambda: datetime.now(timezone.utc))
     holdings = holdings if holdings is not None else (sources.holdings() or {})
     universe = {r["symbol"]: r for r in store.read_universe(base)}
     procs = cfg["processes"]
     brave = cfg.get("brave") or {}
-    summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0}
+    summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0, "cio_memory": []}
     gen = generation_config()
+    if memory_root is None:
+        memory_root = state_root_for(base, cfg)
+    memory_fn = memory_fn or cio_memory.record_version
     book = None
     for row in list(store.read_queue(base)["items"]):
         if len(summary["done"]) + len(summary["failed"]) >= limit:
@@ -196,7 +204,9 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
             summary["failed"].append(sym)
             log(f"FAILED {sym}: {str(exc)[:160]}")
             continue
-        persist_doc(base, sym, scope, doc, bundle, version, cfg, row, now=now)
+        mem = persist_doc(base, sym, scope, doc, bundle, version, cfg, row, now=now, memory_root=memory_root,
+                          memory_fn=memory_fn, log=log)
+        summary["cio_memory"].append(mem)
         summary["done"].append(sym)
         summary["cost_usd"] += float(doc.get("cost_usd") or 0)
         log(f"READY {sym} {version} model={doc['model']} cost=${float(doc.get('cost_usd') or 0):.4f}")
@@ -213,8 +223,14 @@ def handle_blocked(base: Path, sym: str, exc: "quality_gate.DataBlocked") -> Non
 
 
 def persist_doc(base: Path, sym: str, scope: str, doc: dict, bundle: Any, version: str, cfg: dict, row: dict, *,
-                now: datetime) -> None:
-    """Render, store, index and close one written report (the synchronous and the batch path share this)."""
+                now: datetime, memory_root: Path | None = None, memory_fn: Callable[..., dict] | None = None,
+                log: Callable[[str], None] = print) -> dict:
+    """Render, store, index and close one written report (the synchronous and the batch path share this).
+
+    The stored version is then written into the CIO memory (``cio_memory.record_version``, the shared research
+    spine) here, so batch-collected Watch reports reach the CIO exactly like synchronous ones. A memory failure is
+    returned (and logged) and never fails the stored prospectus. Returns the memory outcome row.
+    """
     files = render.render_all(doc)
     store.write_version(base, sym, version, doc, files)
     entry = {"name": doc["name"], "scope": scope, "version": version, "generated_at": doc["generated_at"],
@@ -225,11 +241,30 @@ def persist_doc(base: Path, sym: str, scope: str, doc: dict, bundle: Any, versio
              **quality_gate.index_fields(doc.get("gate") or {}, (doc.get("gate") or {}).get("layers", {}).get("post_write"))}
     entry["next_due"] = next_due(entry, cfg)
     store.update_index(base, sym, **entry)
+    if memory_root is None:
+        memory_root = state_root_for(base, cfg)
+    try:
+        mem = (memory_fn or cio_memory.record_version)(doc, root=memory_root)
+    except Exception as exc:  # noqa: BLE001 - CIO memory never fails a stored prospectus
+        mem = {"symbol": sym, "version": version, "outcome": "error", "reason": f"{type(exc).__name__}: {exc}"[:200]}
+    mem = {k: (mem or {}).get(k) for k in ("symbol", "version", "outcome", "reason")}
+    if mem.get("outcome") not in ("written", "exists"):
+        log(f"CIO MEMORY {sym} {version}: {mem.get('outcome')} {mem.get('reason') or ''}".rstrip())
     store.mark(base, sym, state="done", done=True)
     if (doc.get("gate") or {}).get("rewrite_requested") and row.get("reason") != "gate_rewrite":
         store.enqueue(base, [{"symbol": sym, "scope": scope, "premium": bool(row.get("premium")), "mode": "full",
                               "priority": PRIORITY_WATCH + 500, "reason": "gate_rewrite",
                               "requested_by": "quality_gate"}], now=now)  # one rewrite, never a loop
+    return mem
+
+
+def state_root_for(base: Path, cfg: dict) -> Path:
+    """The state root a prospectus base directory lives under (``<root>/<storage_rel>``)."""
+    rel = Path(str((cfg or {}).get("storage_rel") or "data/prospectus"))
+    out = Path(base)
+    for _ in rel.parts:
+        out = out.parent
+    return out
 
 
 def estimate(prompt: str, cfg: dict, *, premium: bool, pricing: dict, scope: str = "holding") -> dict:

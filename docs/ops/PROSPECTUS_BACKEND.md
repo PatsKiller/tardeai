@@ -148,6 +148,57 @@ Routes are wired in `scripts/portfolio_server.py` ahead of the api_v2 dispatcher
   - It is restricted to the operator's tailnet identity on the serve proxy.
   - The handler re-checks CSRF, and `cc_auth.yaml` lists the route as hard route `prospectus_command`.
 
+## CIO memory
+
+Operator 2026-10-26: "I need to ensure that this is also in the CIO memory. Very important."
+
+Every finished version (`ready` or `partial`) lands in the CIO-owned shared research memory, the
+`SecurityResearchSpine` (`data/cio/security_research_spine.jsonl`). No new store is added.
+
+- **Writer.** `scripts/lib/prospectus/cio_memory.py` `record_version` builds one `ProspectusMemory@v1` record and
+  writes it through `security_research_spine.upsert_research_memory`. The call runs as `silo="cio"` with kind
+  `prospectus_version` and tags `prospectus`, `llm_research` and `lifecycle`.
+  - It requires a registry GUID. A security whose identity is unresolved is refused, as §26.1 requires.
+  - It passes `thesis_patch=None`, so the writer's prose never replaces the house thesis tip.
+  - The same payload goes to `research_write_path.submit` as lane `prospectus-writer`. That lane is SHADOW by
+    default: it writes a receipt in `research_write_path_receipts.jsonl` and leaves the thesis stores untouched.
+- **Record.** Each record holds:
+  - symbol, version, `written_at`, model (`Opus` or `Fable`), status
+  - verdict and the CIO conviction at writing (the `CIO conviction` fact)
+  - a one-line summary, the summary section and a short excerpt of every section
+  - scenarios (bear, base and bull price plus probability)
+  - thesis breakers, key risks and data gaps
+  - `source_coverage` counts
+  - the house stop plan (level, method, distance and broker state; never dollars at risk)
+  - a link to `/v3/prospectus/<SYM>`
+- **Versions.** The spine tip holds the newest version in `latest_prospectus`, with `supersedes_version`. Every
+  version keeps a compact row in `prospectus_history` (24 rows, newest first). A backfilled older version never
+  replaces a newer tip.
+- **Idempotent.** A record is keyed by (symbol, version). A version already on the spine is skipped.
+- **When it runs.** `pipeline.run_queue` writes the record right after `store.write_version`. A memory failure is
+  logged in the run summary (`cio_memory`) and never fails the prospectus.
+- **Where it surfaces.**
+  - **Ask the CIO.** Source `internal.prospectus` in `cio_ask_research.default_sources`. Its facts are cited to
+    `security_research_spine.latest_prospectus` with the version and link. The headline fact reads like
+    "Latest prospectus (Fable, Oct 26): ADD — … · CIO conviction 62/100 at writing". The other facts carry the
+    summary, every section excerpt (so "what does the prospectus say about X" has an answer), the scenarios, the
+    thesis breakers and key risks (as `risk` facts, which the answer lists), the data gaps and the stop plan. The
+    stop plan fact is marked `local_only`.
+  - **CIO desk.** `subject_dossier` shows a pill-tagged "Latest prospectus …" line with the thesis breakers,
+    scenarios and link. The desk reads it with `_latest_prospectus`.
+  - **Thesis readers** (Watch, options, desk). `overlay_thesis_fields_from_spine` adds a `latest_prospectus`
+    reference to the thesis fields.
+- **It is not a conviction input.** The prospectus is model-written. It never changes stance, conviction or the
+  thesis tip; the CIO record stays the single source for those.
+
+Backfill of existing versions (dry run by default; idempotent):
+
+```
+python3 scripts/prospectus_cio_memory.py                 # dry run: what would be written, refused (identity) or exists
+python3 scripts/prospectus_cio_memory.py --apply         # write every stored version, oldest first per symbol
+python3 scripts/prospectus_cio_memory.py --apply --latest-only --symbols AAA,BBB
+```
+
 ## Running it
 
 ```
