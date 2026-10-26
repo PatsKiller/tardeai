@@ -542,7 +542,7 @@ def view_for_silo(
     currency: dict[str, Any] = {"fresh": None, "age_days": None, "sla_days": None}
     try:
         from datetime import datetime, timezone
-        from scripts.lib.symbol_thesis_coverage import stale_days_for
+        from scripts.lib.cio_thesis_freshness import stale_days_for
 
         sla_days = int(stale_days_for(str(viewed.get("symbol") or symbol), {}, {}, root=root))
         currency["sla_days"] = sla_days

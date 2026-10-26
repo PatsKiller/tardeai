@@ -92,13 +92,43 @@ process and reviewed contracts, stage bounded native canaries, then retain real
 immutable hourly and material-slot receipts plus canonical consumer readback.
 Only that evidence establishes production acceptance.
 
+## CI integration and runtime blockers
 
-Local verification completed on 2026-10-26: 312 combined hidden-PostgreSQL tests
-passed before the final packet/config admission additions; 96 focused engine and
-native-binding tests passed after the packet update. The integrated UI build and
-all design/contrast checks passed. The fixture browser passed 12 cases and saved
-23 screenshots, including 1440, 412 and 390 px hourly lifecycle views. No live
-provider or scheduler acceptance is implied by these results. The archived
-scheduler snapshot was used only in reconciler CHECK mode; it is an offline
-structural proof, not a fresh host census. The current host schedules were never
-read or changed in this task.
+PR #2195 is published. Its first CI run found integration defects beyond the
+focused fixture suite. The follow-up isolates shared Ask accounting, material
+readers and pure freshness policy from operator UI and broker dependencies.
+The operator core retains its explicit global-cap precheck. Native workers make
+only a typed route precheck; the mandatory bridge still reserves authoritative
+process, global, provider and promotional budgets before dispatch. No measured
+budget balance is inferred from configuration.
+
+The generated inactive workflow now has reproducible source metadata, native
+recovery declarations and explicit business-output rules. The registry remains
+an offline reconciler fixed point without changing any host schedule. An absent
+review timestamp is an availability observation, not a new source event every
+hour. Private-entity memory acknowledgement requires the exact answer and entity
+to be read back from the canonical Ask ledger.
+
+Two runtime blockers remain separate from source validation. The installed
+deploy poller resolves its default Git repository to a release without Git
+metadata; the separate deploy-repo fix also aligns clean canonical source before
+native prepare. Installing/bootstrap-testing that correction is still required.
+The mandatory n8n import gate requires authenticated runtime evidence even for
+inactive imports, but its semantic verifier currently implements only L5b.
+Unsupported obligation adapters and the authenticated bootstrap path must be
+resolved before import. An ordinary cron grant or unsigned JSON cannot satisfy
+that requirement. Exact conditional checks and the unresolved boundary are in
+`packets/ask-hourly-20261026/n8n/OPERATOR_READINESS.txt`.
+
+
+Local verification on 2026-10-26: the integration-correction suite passed 815
+hidden-PostgreSQL tests with one skip. After the final memory-acknowledgement
+review fix, all 224 affected Ask/research/health tests passed, including nine
+negative cases for zero-count failed or unmeasured retries. These are overlapping
+runs, not additive totals. The unchanged UI has a successful integrated build and
+12 fixture-browser cases with 23 screenshots at 1440, 412 and 390 px. Workflow
+source/framework checks, registry checks, docs index, Ruff and both test ratchets
+pass. No live provider or scheduler acceptance is implied. The archived scheduler
+snapshot was used only in reconciler CHECK mode; it is an offline structural
+proof, not a fresh host census. Current host schedules were never read or changed
+in this task.

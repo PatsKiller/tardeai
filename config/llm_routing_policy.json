@@ -1859,8 +1859,15 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.5,
-          "transport_failover": false,
-          "anthropic_first": true
+          "anthropic_first": true,
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          }
         },
         "cio_ask_critique_deepseek": {
           "primary": {
@@ -1870,8 +1877,15 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.5,
-          "transport_failover": false,
-          "anthropic_first": false
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          }
         },
         "cio_ask_critique_grok": {
           "primary": {
@@ -1881,8 +1895,15 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.5,
-          "transport_failover": false,
-          "anthropic_first": false
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          }
         },
         "cio_ask_critique_chatgpt": {
           "primary": {
@@ -1892,8 +1913,15 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.5,
-          "transport_failover": false,
-          "anthropic_first": false
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          }
         }
       }
     }

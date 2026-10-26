@@ -1,6 +1,10 @@
 {
   "schema": "CiGate@v1",
   "name": "cio_ask_hourly_20261026",
-  "files": ["tests/test_cio_ask_hourly_20261026.py"],
-  "comment": ["Hourly evidence checks, distinct answer clocks, immutable lifecycle receipts, concurrent budgets, memory/delivery retries; synthetic sources and providers only."]
+  "files": [
+    "tests/test_cio_ask_hourly_20261026.py"
+  ],
+  "comment": [
+    "Hourly evidence checks, distinct answer clocks, immutable lifecycle receipts, concurrent budgets, memory/delivery retries; synthetic sources and providers only."
+  ]
 }

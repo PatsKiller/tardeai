@@ -313,7 +313,12 @@ def test_reply_quoting_a_mirrored_message_attaches_without_its_message_id(tmp_pa
 
 def test_ask_core_never_calls_the_cio_send_entrypoint_directly():
     src = (ROOT / "scripts" / "lib" / "cio_ask_core.py").read_text(encoding="utf-8")
-    assert "send_cio_message(" not in src and "NotificationOutbox" in src
+    from scripts.lib import cio_ask_runtime
+    import inspect
+    shared = inspect.getsource(cio_ask_runtime)
+    assert "send_cio_message(" not in src + shared
+    assert core._default_telegram_send is cio_ask_runtime._default_telegram_send
+    assert "NotificationOutbox" in inspect.getsource(core._default_telegram_send)
 
 
 def test_thread_id_typed_on_telegram_attaches(tmp_path, _offline):

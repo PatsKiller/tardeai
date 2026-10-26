@@ -305,7 +305,7 @@ def request_deep(
     process_id=None,
 ):
     """Existing operator Deep route, with idempotent durable work and actual-cost settlement."""
-    from scripts.lib import cio_ask_core as core
+    from scripts.lib import cio_ask_runtime as core
     from scripts.lib.cio_ask_contract import (
         AskAnswer,
         AskRequest,
@@ -665,7 +665,7 @@ def _fingerprint(evidence):
 
 def _retry_publication(d, thread, events, *, now):
     """Retry only the failed sinks from persisted answer bytes; never recollect or call models."""
-    from scripts.lib import cio_ask_core as core
+    from scripts.lib import cio_ask_runtime as core
     from scripts.lib.cio_ask_contract import AskAnswer
 
     answer = latest_answer(thread)
@@ -708,7 +708,7 @@ def _retry_publication(d, thread, events, *, now):
 
 def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=None, event_sources=None, run_id=None):
     """Hourly source checks plus material-event polling. Dry run never constructs live dependencies."""
-    from scripts.lib import cio_ask_core as core
+    from scripts.lib import cio_ask_runtime as core
     from scripts.lib.cio_ask_store import AskEventStore
 
     now = clock(now)
@@ -764,7 +764,7 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
     except (OSError, ValueError) as exc:
         report.update(ok=False, reason="ASK_LEDGER_UNAVAILABLE", source_errors=[type(exc).__name__])
         return report
-    from scripts.lib.cio_ask_reanswer import default_sources
+    from scripts.lib.cio_ask_material_sources import default_sources
 
     sources = event_sources if event_sources is not None else default_sources(config)
     by_guid = {e.get("security_guid") for t in tracked for e in t.get("entities", []) if e.get("security_guid")}

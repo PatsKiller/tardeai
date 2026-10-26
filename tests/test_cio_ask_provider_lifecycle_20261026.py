@@ -612,3 +612,21 @@ def test_preprovider_budget_refusal_has_known_zero_native_requests():
     )
     assert answer.provenance["native_request_count"] == 0
     assert answer.provenance["native_request_count_known"] is True
+
+
+@pytest.mark.parametrize("review", [{}, {"status": "MISSING", "missing_reason": "cio_record_missing"}])
+def test_missing_stored_review_clock_does_not_create_hourly_material_change(monkeypatch, review):
+    from datetime import datetime, timedelta, timezone
+    from scripts.lib.data_broker import cio_company_facts as projection
+
+    review = dict(review)
+    monkeypatch.setattr(projection, "load_snapshot", lambda root: {})
+    monkeypatch.setattr(projection, "for_security", lambda *a, **k: {"company_facts": {}, "review_lifecycle": review})
+    entity = research.Entity(label="Synthetic Example", kind="listed", symbol="DEMO", security_guid="fixture-guid")
+    now = datetime(2031, 3, 10, 15, tzinfo=timezone.utc)
+    first = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now))
+    later = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1)))
+    assert research.evidence_fingerprint(first, []) == research.evidence_fingerprint(later, [])
+    review["completed_at"] = "2031-03-10T16:00:00Z"
+    changed = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1)))
+    assert research.evidence_fingerprint(first, []) != research.evidence_fingerprint(changed, [])

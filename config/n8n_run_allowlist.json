@@ -4546,10 +4546,11 @@
         ]
       },
       "env_names": [
-        "PROJECT_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_USER",
+        "POSTGRES_PASSWORD"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
@@ -4584,10 +4585,11 @@
         ]
       },
       "env_names": [
-        "PROJECT_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_USER",
+        "POSTGRES_PASSWORD"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",

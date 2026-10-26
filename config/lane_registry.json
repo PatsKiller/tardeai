@@ -18773,6 +18773,106 @@
       }
     },
     {
+      "lane_id": "cio-ask-lifecycle",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "tradeai-cio-ask-lifecycle-native",
+        "match": "scripts/cio_ask_lifecycle.py --once",
+        "cadence": "0 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-ask-lifecycle_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 * * * *"
+        ],
+        "tz": "America/New_York",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient",
+        "wave": "W5"
+      },
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
+      ]
+    },
+    {
+      "lane_id": "cio-ask-material-events",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "tradeai-cio-ask-lifecycle-native",
+        "match": "scripts/cio_ask_lifecycle.py --once --events-only",
+        "cadence": "*/5 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-ask-material-events_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient",
+        "wave": "W5"
+      },
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
+      ]
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -25566,106 +25666,6 @@
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/.openclaw/skills/tradeai-health-inspect/scripts/ops_agent_daemon.py --no-apply --telegram",
       "flags": [
         "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "cio-ask-lifecycle",
-      "owner": "cio",
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-26",
-      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "workflow_id": "tradeai-cio-ask-lifecycle-native",
-        "match": "scripts/cio_ask_lifecycle.py --once",
-        "cadence": "0 * * * *",
-        "timezone": "America/New_York",
-        "stage": "shadow",
-        "wave": "W5"
-      },
-      "expected_cadence_hours": 1,
-      "active_days": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ],
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/cio-ask-lifecycle_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "severity": "Medium",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 * * * *"
-        ],
-        "tz": "America/New_York",
-        "class": "llm",
-        "priority": 4,
-        "retry_policy": "llm-transient",
-        "wave": "W5"
-      },
-      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": [
-        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
-      ]
-    },
-    {
-      "lane_id": "cio-ask-material-events",
-      "owner": "cio",
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-26",
-      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "workflow_id": "tradeai-cio-ask-lifecycle-native",
-        "match": "scripts/cio_ask_lifecycle.py --once --events-only",
-        "cadence": "*/5 * * * *",
-        "timezone": "America/New_York",
-        "stage": "shadow",
-        "wave": "W5"
-      },
-      "expected_cadence_hours": 0.08333333333333333,
-      "active_days": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ],
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/cio-ask-material-events_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "severity": "Medium",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "*/5 * * * *"
-        ],
-        "tz": "America/New_York",
-        "class": "llm",
-        "priority": 4,
-        "retry_policy": "llm-transient",
-        "wave": "W5"
-      },
-      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": [
-        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
       ]
     }
   ],

@@ -617,3 +617,98 @@ def test_native_source_rows_parse_and_pass_real_r1_admission():
         assert row["scheduler"]["workflow_id"] == "tradeai-cio-ask-lifecycle-native"
         ok, reason = r1_class_admission(row, allowed[lane], process_ids=processes)
         assert ok, reason
+
+
+def test_private_entity_memory_acknowledges_exact_canonical_ledger_answer(tmp_path):
+    from scripts.lib import cio_ask_runtime as runtime
+    from scripts.lib.cio_ask_memory import SpineAskMemory
+
+    d = fixture(tmp_path, answer=False)
+    private = EntityRef(
+        name="Example Private Research",
+        kind="private_entity",
+        entity_guid="fixture-private",
+        resolution="UNRESOLVED_PRIVATE",
+    )
+    d.memory = SpineAskMemory(ledger=d.store)
+    answer = AskAnswer(
+        version=1,
+        ask_id=ASK,
+        thread_id=TID,
+        depth="deep",
+        status="deep",
+        summary="Private synthetic research",
+        entities=[private],
+    )
+    core.record_answer(answer, deps=d)
+    receipt = runtime.sync_answer_memory(answer, deps=d)
+    assert receipt["state"] == "synced"
+    assert receipt["private_ledger_verified"] == ["fixture-private"]
+    absent = AskAnswer(
+        version=2, ask_id=ASK, thread_id=TID, depth="deep", status="deep", summary="Not recorded", entities=[private]
+    )
+    assert runtime.sync_answer_memory(absent, deps=d)["state"] == "pending"
+
+
+def test_native_route_precheck_is_not_measured_budget_or_dispatch(monkeypatch):
+    from scripts.lib import cio_ask_provider_routes as routes
+
+    seen = []
+    monkeypatch.setattr(routes, "_configuration", lambda pid, provider, root: seen.append((pid, provider)))
+    out = routes.native_route_admission(life.AUTO_PROCESS, projected_usd=0.25)
+    assert out == {
+        "allow": True,
+        "reason": "NATIVE_RESERVATION_REQUIRED_AT_DISPATCH",
+        "scope": "native_bridge_dispatch",
+        "balance_measured": False,
+    }
+    assert seen == [(life.AUTO_PROCESS, "anthropic")]
+    assert not routes.native_route_admission("unknown", projected_usd=0.25)["allow"]
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        {"status": "pending", "ok": False, "not_measured": True, "planned_count": 0},
+        {"ok": False, "planned_count": 0},
+        {"not_measured": True, "planned_count": 0},
+        {"status": "pending", "planned_count": 0},
+        {"refused": 1, "planned_count": 0},
+        {"error": "writer unavailable", "planned_count": 0},
+        {"planned_count": -1},
+        {"planned_count": "invalid"},
+        None,
+    ],
+)
+def test_failed_zero_fact_retry_never_claims_memory_synced(tmp_path, monkeypatch, receipt):
+    from scripts.lib import cio_ask_research as research
+    from scripts.lib import cio_ask_runtime as runtime
+
+    d = fixture(tmp_path)
+    answer = AskAnswer(
+        version=2,
+        ask_id=ASK,
+        thread_id=TID,
+        depth="deep",
+        status="deep",
+        summary="Synthetic retry",
+        entities=[ENTITY],
+        provenance={"memory_retry_payload": {"request_id": "fixture"}},
+    )
+    monkeypatch.setattr(research, "retry_research_memory", lambda *a, **kw: receipt)
+    out = runtime.sync_answer_memory(answer, deps=d)
+    assert out["state"] == "pending"
+    assert out["summary_verified"] is True
+
+
+def test_shared_runtime_preserves_operator_global_precheck(tmp_path, monkeypatch):
+    from scripts.lib import cio_ask_runtime as runtime
+
+    d = fixture(tmp_path)
+    monkeypatch.setattr(core, "AskEventStore", lambda: d.store)
+    built = core.default_deps()
+    assert built.cost.global_check is core._global_cap_check
+    monkeypatch.setattr(runtime, "AskEventStore", lambda: d.store)
+    native = runtime.default_deps()
+    assert native.resolver is None and native.sizing is None and native.tracker is None
+    assert native.run_async is False

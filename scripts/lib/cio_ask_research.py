@@ -691,6 +691,10 @@ def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
             )
         )
     review = saved["review_lifecycle"]
+    review_at = (review.get("conflict_resolved_at") or review.get("updated_at")
+                 or review.get("answered_at") or review.get("completed_at")
+                 or review.get("researching_at") or review.get("started_at")
+                 or review.get("requested_at") or review.get("created_at"))
     out.append(
         make_fact(
             source="internal.cio_record_research",
@@ -699,19 +703,12 @@ def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
             subject_key=ent.subject_key,
             symbol=ent.symbol,
             claim="CIO review lifecycle: " + json.dumps(review, sort_keys=True, default=str),
-            as_of=review.get("conflict_resolved_at")
-            or review.get("updated_at")
-            or review.get("answered_at")
-            or review.get("completed_at")
-            or review.get("researching_at")
-            or review.get("started_at")
-            or review.get("requested_at")
-            or review.get("created_at")
-            or ctx.now,
+            as_of=review_at or ctx.now,
             citation={
                 "store": "cio_instrument_records",
                 "field": "research.review_lifecycle",
                 "security_guid": ent.security_guid,
+                "as_of_basis": "source_clock" if review_at else "availability_check",
             },
         )
     )
@@ -2764,6 +2761,8 @@ def run_deep_research(
     CIO memory as ``ask.source``; the core appends ``ask.answer_version`` itself (no duplicate). Test seams
     (sources, panel, governor, memory, identity_fn, ...) pass through ``kw`` to ``run_research``.
     """
+    from scripts.lib.cio_ask_provider_routes import native_route_admission
+
     C = _require_contract()
     req = ctx.request
     budget = getattr(ctx, "budget", None)
@@ -2778,6 +2777,7 @@ def run_deep_research(
         CostGovernor(
             per_question_usd=float(getattr(budget, "max_usd", 0.0) or 0.0),
             process_id=selected_process,
+            check_fn=native_route_admission,
         ),
     )
     if "memory" not in kw:

@@ -326,3 +326,31 @@ def call_role(
     except (KeyError, TypeError, IndexError, ValueError) as exc:
         raise ProviderRefused("OUTPUT_INVALID", evidence=evidence) from exc
     return ProviderResult(text=text, evidence=evidence)
+
+
+def native_route_admission(process_id, *, projected_usd, **_kwargs):
+    """Narrow client-side route check, never an observation of a live budget balance.
+
+    The native bridge remains mandatory and atomically reserves process/global
+    and promotional caps before HTTP provider dispatch. This function cannot
+    grant funds, substitute a provider, or call an unregistered process.
+    """
+    if _money(projected_usd) is None:
+        return {"allow": False, "reason": "COST_CONFIGURATION_INVALID"}
+    provider = (
+        "anthropic"
+        if process_id in {MANUAL_PROCESS, SCHEDULED_PROCESS}
+        else next((name for name, pid in CRITIQUE_PROCESSES.items() if pid == process_id), None)
+    )
+    if provider is None:
+        return {"allow": False, "reason": "ASK_PROCESS_NOT_REGISTERED"}
+    try:
+        _configuration(process_id, provider, ROOT)
+    except ProviderRefused as exc:
+        return {"allow": False, "reason": exc.code}
+    return {
+        "allow": True,
+        "reason": "NATIVE_RESERVATION_REQUIRED_AT_DISPATCH",
+        "scope": "native_bridge_dispatch",
+        "balance_measured": False,
+    }

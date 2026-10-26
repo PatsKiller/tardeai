@@ -34606,6 +34606,10 @@
         {
           "check": "typed_empty",
           "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        },
+        {
+          "check": "output_produced",
+          "text": "Measured LaneRunReceipt@v2 produced_count equals recorded canonical check outputs, or a typed zero-work reason records why no thread was due."
         }
       ],
       "degraded": [
@@ -34624,6 +34628,10 @@
         {
           "check": "cooldown_distinct",
           "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        },
+        {
+          "check": "slow",
+          "text": "Declared source bound, not a measured production p95: warn when host execution exceeds480s; executor maximum600s."
         }
       ],
       "failed": [
@@ -34642,6 +34650,10 @@
         {
           "check": "two_hourly_slots_missed",
           "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        },
+        {
+          "check": "empty_output",
+          "text": "An exit-0 live run without canonical check output fails unless its zero-work reason is explicitly allowed; disabled, source failures and lock skips never count as healthy empty output."
         }
       ],
       "baseline": {
@@ -34653,7 +34665,8 @@
         "freshness_degraded_after_h": 1.25,
         "freshness_failed_after_h": 2.25,
         "runs_considered": 0,
-        "business_volume_baseline": "NOT_MEASURED"
+        "business_volume_baseline": "NOT_MEASURED",
+        "p95_duration_bound_s": 600
       },
       "alerting": {
         "lane_severity": "Medium",
@@ -34702,8 +34715,7 @@
         "fatal_skip_reasons": [
           "no_runner",
           "disabled",
-          "dependency_unavailable",
-          "source_unavailable"
+          "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
           "no_tracked_threads",
@@ -34713,7 +34725,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+            "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding; LaneRunReceipt@v2.produced_count"
           },
           {
             "kind": "ledger_row",
@@ -34807,6 +34819,10 @@
         {
           "check": "typed_empty",
           "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        },
+        {
+          "check": "output_produced",
+          "text": "Measured LaneRunReceipt@v2 produced_count equals recorded canonical check outputs, or a typed zero-work reason records why no thread was due."
         }
       ],
       "degraded": [
@@ -34825,6 +34841,10 @@
         {
           "check": "cooldown_distinct",
           "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        },
+        {
+          "check": "slow",
+          "text": "Declared source bound, not a measured production p95: warn when host execution exceeds480s; executor maximum600s."
         }
       ],
       "failed": [
@@ -34843,6 +34863,10 @@
         {
           "check": "two_hourly_slots_missed",
           "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        },
+        {
+          "check": "empty_output",
+          "text": "An exit-0 live run without canonical check output fails unless its zero-work reason is explicitly allowed; disabled, source failures and lock skips never count as healthy empty output."
         }
       ],
       "baseline": {
@@ -34854,7 +34878,8 @@
         "freshness_degraded_after_h": 0.25,
         "freshness_failed_after_h": 0.5,
         "runs_considered": 0,
-        "business_volume_baseline": "NOT_MEASURED"
+        "business_volume_baseline": "NOT_MEASURED",
+        "p95_duration_bound_s": 600
       },
       "alerting": {
         "lane_severity": "Medium",
@@ -34903,8 +34928,7 @@
         "fatal_skip_reasons": [
           "no_runner",
           "disabled",
-          "dependency_unavailable",
-          "source_unavailable"
+          "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
           "no_tracked_threads",
@@ -34914,7 +34938,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+            "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding; LaneRunReceipt@v2.produced_count"
           },
           {
             "kind": "ledger_row",
