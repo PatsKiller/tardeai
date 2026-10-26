@@ -240,6 +240,39 @@ export function RiskBlock({ blocks, phone }: { blocks?: ProspectusBlocks; phone?
   )
 }
 
+// ── Stop plan (holdings) ──────────────────────────────────────────────────────────────────────────────────────────
+const STOP_STATE: Record<string, [string, string]> = {
+  active: ['Active', 'success'], resting: ['Resting · pending activation', 'warning'], filled: ['Filled', 'warning'],
+  none: ['None on record', 'danger'], unknown: ['State not reported', 'neutral'],
+}
+export function StopPlanBlock({ blocks }: { blocks?: ProspectusBlocks }) {
+  const sp = blocks?.stop_plan
+  if (!sp || sp.not_applicable) return null
+  const rec = sp.recommended ?? {}
+  const br = sp.broker ?? {}
+  const money = (v: unknown) => { const n = toNumber(v); return n == null ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+  const band = rec.band
+  const [stateLabel, stateTone] = STOP_STATE[br.state ?? 'unknown'] ?? STOP_STATE.unknown
+  const bandText = band && toNumber(band.stop_min_pct) != null
+    ? `${band.label ?? 'Policy'} ${fmtNum(band.stop_min_pct, 0)}–${fmtNum(band.stop_max_pct, 0)}% below${band.levels?.length === 2 ? ` (${money(band.levels[0])}–${money(band.levels[1])})` : ''}`
+    : '—'
+  return (
+    <Card title="Stop plan · house policy vs broker" testId="prospectus-stop-plan" label="Stop plan">
+      <Kv rows={[
+        ['House recommended stop', <span data-testid="prospectus-stop-house">{money(rec.level)}</span>],
+        ['Method', dash(rec.method)],
+        ['Distance below last close', toNumber(rec.distance_pct) == null ? '—' : `${fmtNum(rec.distance_pct, 1)}%`],
+        ['$ at risk at the house stop', money(rec.usd_at_risk)],
+        ['Broker stop', <span data-testid="prospectus-stop-broker">{money(br.level)} · {stateLabel}</span>, stateTone],
+        ['Policy band', bandText],
+      ]} />
+      {sp.comparison && <p className="psp-muted" data-testid="prospectus-stop-comparison">{sp.comparison}</p>}
+      {(sp.gaps ?? []).length > 0 && <p className="psp-muted">{(sp.gaps ?? []).join('; ')}</p>}
+      <div className="psp-muted" data-testid="prospectus-stop-advisory">{sp.advisory ?? 'advisory — no AI places, sizes or stops orders'}</div>
+    </Card>
+  )
+}
+
 // ── Scenarios ─────────────────────────────────────────────────────────────────────────────────────────────────────
 const CASE_TONE: Record<ScenarioCase['case'], string> = { bear: 'danger', base: 'neutral', bull: 'success' }
 export function ScenariosBlock({ blocks, price }: { blocks?: ProspectusBlocks; price?: number | null }) {

@@ -2038,6 +2038,58 @@
       "daily_cost_cap_usd": 12.0,
       "daily_soft_cap": 12,
       "notes": "operator 2026-10-26: 'Fable for top' (top 5 holdings). Projected per-call hold <= $4.00 (credit tier premium)."
+    },
+    {
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "advisory_only": true,
+      "anthropic_first": true,
+      "allowed_lanes": [
+        "fast"
+      ],
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "deepseek_default_policy": "FAST",
+      "circuit_breaker": true,
+      "dedupe_policy": "request_id_only",
+      "default_mode": "automated",
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1200,
+      "reasoning_tier": "standard",
+      "registered_at": "2026-10-26T21:40:00Z",
+      "registered_by": "prospectus-quality-gate (operator 2026-10-26)",
+      "id": "prospectus_fact_check",
+      "name": "Ticker Prospectus data-quality read (Haiku 5.5)",
+      "description": "Layer 2 of the prospectus data-quality gate (scripts/lib/prospectus/quality_gate.py): one read of the assembled facts packet (never prose) returning structured anomalies {field, value, why, severity} before any Opus/Fable call. Claude Haiku 5.5, bulk tier (thinking disabled, effort low), Anthropic promotional credit ONLY (anthropic_only_processes): the legacy DeepSeek lane listed here is never taken. When the credit is unusable the caller moves to prospectus_fact_check_oauth (free Grok OAuth), never DeepSeek. READ_ONLY_ADVISORY.",
+      "daily_cost_cap_usd": 0.5,
+      "daily_soft_cap": 250,
+      "notes": "operator 2026-10-26: 'never spend Opus/Fable on bad data' — target <= $0.003/ticker (packet ~5.5k input tokens + <= 1200 output at Haiku 5.5 list price ~ $0.001). 250/day covers one pass over the ~120-ticker universe twice."
+    },
+    {
+      "category": "Research",
+      "lane_policy": "grok_only",
+      "advisory_only": true,
+      "allowed_lanes": [
+        "grok"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1200,
+      "daily_soft_cap": 250,
+      "daily_cost_cap_usd": 0.05,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "default_mode": "automated",
+      "registered_at": "2026-10-26T21:40:00Z",
+      "registered_by": "prospectus-quality-gate (operator 2026-10-26)",
+      "id": "prospectus_fact_check_oauth",
+      "name": "Ticker Prospectus data-quality read, OAuth fallback (Grok)",
+      "description": "Same read-only facts-packet check as prospectus_fact_check, used only when the Anthropic credit is unavailable. Grok OAuth only (settles $0.00); no other lane, never DeepSeek. A failed read is recorded and never blocks the deterministic gate. READ_ONLY_ADVISORY.",
+      "notes": "Grok is an external provider (AGENTS.md 2A egress): the packet carries fundamentals, price and position figures for one symbol. daily_cost_cap_usd 0.05 exists so the gate's cost check has a declared ceiling."
     }
   ],
   "default_deepseek_policy": "FAST",

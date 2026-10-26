@@ -13,7 +13,9 @@ import re
 from typing import Any
 
 from . import charts as ch
+from . import extensions as ext
 from . import tables as tb
+from .stops import stop_plan_table
 
 CITE_RE = re.compile(r"\[(F\d+(?:\s*,\s*F\d+)*)\]")
 
@@ -180,17 +182,19 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
                 + f'<div class="pc-tw"><table class="pc-table"><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
                 + (f'<p class="pc-note">{escape(t["note"])}</p>' if t.get("note") else "") + "</section>")
 
+    for t in ext.top_tables(doc):
+        parts.append(table_html(t))
     if sections:
         parts.append(section_html(sections[0]))
     parts.append('<div class="pc-charts">' + "".join(figs.pop(k) for k in ("price_1y", "analyst_targets", "position_pl")
                                                        if k in figs) + "</div>")
-    for t in tb.top_tables(doc):
+    for t in tb.top_tables(doc) + stop_plan_table(doc):
         parts.append(table_html(t))
     for sec in sections[1:]:
         parts.append(section_html(sec))
         if sec["id"] == "valuation_vs_peers":
             parts.append("".join(figs.pop(k) for k in ("valuation_vs_peers", "revenue_eps_trend") if k in figs))
-    for t in tb.bottom_tables(doc):
+    for t in tb.bottom_tables(doc) + ext.bottom_tables(doc):
         parts.append(table_html(t))
     if figs:
         parts.append('<div class="pc-charts">' + "".join(figs.values()) + "</div>")
@@ -249,6 +253,7 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
     for run in meta.runs:
         run.font.color.rgb = rgb(light["muted"])
         run.font.size = Pt(8.5)
+    ext.docx_tables(d, ext.top_tables(doc))
     for i, sec in enumerate(doc.get("sections") or []):
         h = d.add_heading(sec.get("title", ""), level=1)
         for run in h.runs:
@@ -305,7 +310,7 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
                 run.font.size = Pt(8)
                 run.font.color.rgb = rgb(light["muted"])
 
-    for t in tb.top_tables(doc) + tb.bottom_tables(doc):
+    for t in tb.top_tables(doc) + stop_plan_table(doc) + tb.bottom_tables(doc) + ext.bottom_tables(doc):
         add_table(t)
     d.add_heading("Sources and facts", level=1)
     facts = doc.get("facts") or []

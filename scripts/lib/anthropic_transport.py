@@ -415,7 +415,7 @@ class AnthropicTransport:
     def submit_batch(self, messages: list[dict], model: str, *, client_request_id: str,
                      process_id: str, caller_allows_async: bool = False, max_tokens: int = 2048,
                      credit_tier: str = "bulk", max_input_tokens: int,
-                     process_cap: Decimal, deadline_s: float = 90) -> dict:
+                     process_cap: Decimal, deadline_s: float = 90, effort: str | None = None) -> dict:
         """One explicitly asynchronous governed request; never changes a sync caller's contract.
 
         The caller retains its native reservation and polls this identity later. Pending
@@ -429,13 +429,18 @@ class AnthropicTransport:
             raise AnthropicError("NOT_CONFIGURED")
         if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
-        if credit_tier not in {"bulk", "standard"} or self.policy["models"].get(credit_tier) != model:
+        batch_tiers = set(self.policy.get("batch_tiers") or ("bulk", "standard"))
+        if credit_tier not in batch_tiers or self.policy["models"].get(credit_tier) != model:
             raise AnthropicError("BATCH_TIER_UNSUPPORTED")
+        if effort is not None and effort not in {"low", "medium", "high"}:
+            raise AnthropicError("BATCH_EFFORT_UNSUPPORTED")
         status=self.book.snapshot(now=self.now())["status"]
         if status!="OK":
             raise AnthropicError(status)
         prices=self._prices(model)
         payload=self._payload(messages,model,max_tokens,"disabled")
+        if effort is not None:  # explicit per-caller effort (e.g. prospectus Watch: medium); thinking stays as configured
+            payload["output_config"]=dict(payload.get("output_config") or {},effort=effort)
         deadline=self.monotonic()+deadline_s
         count,_=self._send("POST","/v1/messages/count_tokens",{k:v for k,v in payload.items() if k not in {"max_tokens","output_config"}},deadline=deadline)
         if _count(count["input_tokens"]) > max_input_tokens:

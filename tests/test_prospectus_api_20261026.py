@@ -57,12 +57,13 @@ def test_index_shape_matches_contract(seeded):
     assert set(body["budget"]) >= {"credit_remaining_usd", "today_used_usd", "daily_cap_usd"}
     rows = {r["symbol"]: r for r in body["items"]}
     keys = {"symbol", "name", "scope", "version", "generated_at", "model", "cost_usd", "status", "stale",
-            "next_due", "verdict_line", "failure_reason", "partial_gaps"}
+            "next_due", "verdict_line", "failure_reason", "partial_gaps",
+            "gate_status", "gate_reasons", "gate_checked_at"}  # data-quality gate fields (2026-10-26)
     assert all(set(r) == keys for r in body["items"])
     assert rows["ZZAA"]["status"] == "ready" and rows["ZZAA"]["stale"] is False
     assert rows["ZZBB"]["status"] == "queued" and rows["ZZCC"]["status"] == "missing"
     assert rows["ZZDD"]["stale"] is True and rows["ZZDD"]["scope"] == "watch"
-    assert body["totals"] == {"ready": 2, "partial": 0, "queued": 1, "running": 0, "missing": 1, "failed": 0}
+    assert body["totals"] == {"ready": 2, "partial": 0, "queued": 1, "running": 0, "missing": 1, "failed": 0, "blocked_data": 0}
     agent = api.handle("/api/v2/prospectus/index", "GET", ctx=ctx(root, principal="service-token"))[1]
     assert agent["viewer"] == {"operator": False}
 

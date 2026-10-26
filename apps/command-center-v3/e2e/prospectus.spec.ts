@@ -1,7 +1,7 @@
 /** Ticker Prospectus (/v3/prospectus) on the built app, approved design prospectus/v001, with every /api call fulfilled
  *  here (synthetic tickers and made-up numbers only — public repo). Port 7777 and any non-local origin fail the test.
  *  Desktop 1440: list table, stat tiles, chips, search, full report (tiles, charts, relative performance with window
- *  toggle, peers, estimates / ownership / risk, scenarios, narrative, macro / filings / call / options, coverage,
+ *  toggle, peers, estimates / ownership / risk, stop plan, scenarios, narrative, macro / filings / call / options, coverage,
  *  sources), versions, states, partial report with no blocks, operator-only Rewrite with confirm, ticker-modal link.
  *  Phone 412 and 390 with touch: tap a row → full-screen sheet, ← Back, 44px targets, downloads, narrative sections
  *  tap to open, peer table scrolls inside its card, no sideways page scroll.
@@ -93,6 +93,11 @@ async function expectBlocks(page: Page) {
   await expect(page.getByTestId('prospectus-tile-price')).toContainText('$51.00')
   await expect(page.getByTestId('prospectus-tile-position')).toContainText('$5,100.00')
   await expect(page.getByTestId('prospectus-tile-stop')).toContainText('$42.00')
+  await expect(page.getByTestId('prospectus-tile-stop')).toContainText('house $45.50')
+  await expect(page.getByTestId('prospectus-stop-house')).toHaveText('$45.50')
+  await expect(page.getByTestId('prospectus-stop-broker')).toContainText('$42.00 · Active')
+  await expect(page.getByTestId('prospectus-stop-comparison')).toContainText('7.7% below the house level')
+  await expect(page.getByTestId('prospectus-stop-advisory')).toHaveText('advisory — no AI places, sizes or stops orders')
   await expect(page.getByTestId('prospectus-rel-chart')).toBeVisible()
   await expect(page.getByTestId('prospectus-returns')).toContainText('S&P 500')
   await expect(page.getByTestId('prospectus-returns')).toContainText('Nasdaq-100')

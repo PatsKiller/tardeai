@@ -55,6 +55,15 @@ export const ACME_BLOCKS: ProspectusBlocks = {
   estimates: { eps_surprises: [{ date: '2026-08-12', actual: 1.45, estimate: 1.38, surprise_pct: 5.1 }], revisions_90d: { up: null, down: null }, next_report: '2026-11-12',
     gaps: ['EPS surprise history: the house keeps the latest quarter only (1 of 4)', '90-day estimate revisions: not in the house'] },
   ownership_flows: { institutional_pct: 71.2, short_float_pct: 2.4, days_to_cover: 1.9, insider_buys_90d: null, insider_sells_90d: null, etf_flows_30d: null, top_holders: null },
+  stop_plan: {
+    recommended: { level: 45.5, method: 'fixed stop anchored at or below the 20-day swing low; Fixture band 5–10% below', distance_pct: 10.78,
+      usd_at_risk: 550, policy: 'holding_protection_advisor (protection_advisory) within holding_family.protection_bounds (config/stop_policy.yaml)',
+      as_of: '2026-10-24T12:00:00Z', band: { label: 'Fixture', stop_min_pct: 5, stop_max_pct: 10, levels: [45.9, 48.45] } },
+    broker: { level: 42, state: 'active', as_of: '2026-10-26T11:00:00Z', source: 'stop_last_known (persisted broker observations)' },
+    comparison: 'Active broker stop $42.00 sits 7.7% below the house level $45.50.',
+    advisory: 'advisory — no AI places, sizes or stops orders', gaps: [],
+  },
+  verdict_tiles: { stop: { value: '$42.00', sub: 'active · house $45.50', tone: 'success' } },
   risk_technicals: { beta_1y: 1.08, vol_annualized_pct: 24.6, max_drawdown_1y_pct: -12.3, correlation_to_book: 0.62, px_vs_sma50_pct: 3.1, px_vs_sma200_pct: 9.4, rsi14: 58.2, atr20: 1.12 },
   scenarios: { cases: [
     { case: 'bear', price: 44, probability_pct: 20, narrative: 'Margins slip below 40% and a top customer leaves.' },
