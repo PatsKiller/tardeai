@@ -1,0 +1,26 @@
+{
+ "lane_id": "post-release-tester",
+ "command": [
+  "$PY",
+  "scripts/post_release_tester.py"
+ ],
+ "dry_run_arg": [],
+ "live_arg": null,
+ "lock": "/tmp/tradeai_post_release_tester.lock",
+ "lock_kind": "flock",
+ "timeout_s": 5700,
+ "market_gate": false,
+ "output_signal": "data/runtime/post_release_tester/last_tick.json",
+ "output_receipt": "v1",
+ "env_names": [
+  "TRADEAI_STATE_ROOT",
+  "TRADEAI_PERSISTENT_STATE_ROOT",
+  "XDG_RUNTIME_DIR",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "HOME",
+  "PATH"
+ ],
+ "env_allowlist_mode": "enforce",
+ "env_evidence": "scripts/post_release_tester.py: TRADEAI_STATE_ROOT; systemctl --user show portfolio-server MemoryCurrent needs XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS; scripts/site_sweep.sh needs HOME and node on PATH. No credential is named or read.",
+ "source": "PROPOSED feat/delivery-lifecycle-20261025. SHADOW: live_arg null (the dry run prints the tick plan); live_arg ['--live'] at canary."
+}

@@ -1,0 +1,55 @@
+[
+ {
+  "lane_id": "delivery-failure-alerts",
+  "owner": "platform",
+  "scheduler": {
+   "kind": "cron",
+   "expression": "*/5 * * * *",
+   "match": "scripts/delivery_failure_alerts.py --live",
+   "install_line": "*/5 * * * * cd $PROJ && set -a && . ./.env && set +a && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state COMMS_GATEWAY_MODE=CANARY SYSTEM_TELEGRAM_ENABLED=1 bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_delivery_failure_alerts.lock timeout 120 $PY scripts/delivery_failure_alerts.py --live >> logs/delivery_failure_alerts.log 2>&1  # TRADEAI_LANE delivery-failure-alerts"
+  },
+  "expected_cadence_hours": 0.1,
+  "state": "PAUSED",
+  "state_since": "<merge date>",
+  "state_reason": "PROPOSED (AGENTS.md \u00a729, operator 2026-10-25 'Any failures I need to be emailed, notified, and texted'). P1 sender: stays on host cron, never on config/n8n_run_allowlist.json (\u00a723.3 senders never-list; \u00a724.1 the P1 path does not depend on n8n). COMMS_GATEWAY_MODE=CANARY lets the gateway deliver email/sms; Telegram stays the send_telegram chokepoint (no class allowlist set, so legacy path). PAUSED until the operator installs install_line under a cron grant naming this lane.",
+  "output_signal": {
+   "kind": "file_mtime",
+   "path": "data/runtime/delivery_failure_alerts_last.json"
+  },
+  "reason_evidence": "tests/test_delivery_failure_alerts_20261025.py; dry-run proofs in the PR body (temp root, sends disabled)",
+  "severity": "High"
+ },
+ {
+  "lane_id": "post-release-tester",
+  "owner": "platform",
+  "scheduler": {
+   "kind": "n8n",
+   "expression": "dispatcher",
+   "match": "scripts/post_release_tester.py",
+   "cadence": "*/10 * * * *",
+   "stage": "shadow",
+   "wave": "W4",
+   "timezone": "America/New_York"
+  },
+  "expected_cadence_hours": 0.17,
+  "state": "ACTIVE",
+  "state_since": "<merge date>",
+  "state_reason": "PROPOSED (AGENTS.md \u00a729). After every release: API checks at once; light browser sweep (scripts/site_sweep.sh, PR #2101) outside 04:00-16:15 ET weekdays under the memory gate; nightly full sweep 21:30 ET. Not a sender: FAILED receipts are paged by delivery-failure-alerts. n8n-native dispatcher lane (directive 2026-10-15), shadow first (dry_run prints the plan only).",
+  "output_signal": {
+   "kind": "file_mtime",
+   "path": "data/runtime/post_release_tester/last_tick.json"
+  },
+  "severity": "Medium",
+  "dispatch": {
+   "mode": "dry_run",
+   "cron": [
+    "*/10 * * * *"
+   ],
+   "tz": "America/New_York",
+   "wave": "W4",
+   "class": "monitor",
+   "priority": 6,
+   "retry_policy": "transient-2"
+  }
+ }
+]
