@@ -76,7 +76,7 @@ def _save_bundle(base: Path, sym: str, bundle: Bundle, extra: dict) -> None:
 def _load_bundle(base: Path, sym: str) -> tuple[Bundle, dict]:
     doc = json.loads((base / PENDING_DIR / f"{sym}.json").read_text(encoding="utf-8"))
     b = doc.pop("bundle")
-    b["series"] = {k: ([tuple(x) for x in v] if k in ("price_1y", "valuation_vs_peers", "revenue_eps_trend")
+    b["series"] = {k: ([tuple(x) for x in v] if k in ("price_1y", "price_1y_raw", "valuation_vs_peers", "revenue_eps_trend")
                        and isinstance(v, list) else v) for k, v in (b.get("series") or {}).items()}
     return Bundle(**b), doc
 

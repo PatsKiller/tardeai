@@ -452,6 +452,8 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
         _stale(b, "price_history", bars[-1]["price_date"], now)
         year = quality["series"][-253:]  # clean segment only: bad bars and pre-break history never reach a fact
         b.series["price_1y"] = year
+        # the raw window (before the guard) is kept for the data-quality gate only: it still reports what was dropped
+        b.series["price_1y_raw"] = bk._series(bars)[-253:]
         at = bars[-1]["price_date"]
         closes = [c for _, c in year]
         b.add("price", "Last close", value=last, unit="$", source=price_src, as_of=at)

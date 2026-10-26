@@ -22,7 +22,11 @@ Layer 3 — deterministic post-write check: every number in a written section mu
 rewrite is requested.
 
 Where the concurrent data-defect fixes exist (``blocks.series_quality``, ``domains.transcript_rejection``) the gate
-calls them; where they do not, the checks below stand on their own. Thresholds: ``DEFAULTS`` overridden by the
+calls them; where they do not, the checks below stand on their own. The price checks run on the RAW series
+(``bundle.series["price_1y_raw"]``, before the price guard drops bars), so a bad first bar or pre-listing /
+symbol-reuse history is still reported. When the guard has excluded exactly those bars the finding is SOFT (the
+report proceeds on the cleaned series and says "excluded N bad bar(s)"); it stays HARD when fewer than
+``min_clean_sessions`` clean sessions remain. Thresholds: ``DEFAULTS`` overridden by the
 optional ``config/prospectus_quality_gate.json``.
 """
 from __future__ import annotations
@@ -48,6 +52,8 @@ DEFAULTS: dict[str, Any] = {
     "stale_soft_sessions": 3,
     "stale_hard_sessions": 10,
     "min_series_bars": 20,
+    "min_clean_sessions": 20,         # a bad first bar / pre-break history the price guard drops is SOFT only while
+                                      # at least this many clean sessions remain; fewer → HARD (nothing to report on)
     "beta_range": [-3.0, 5.0],
     "vol_max_pct": 200.0,
     "pe_max": 1000.0,
@@ -112,7 +118,11 @@ def _finding(code: str, severity: str, message: str, *, facts: Iterable[str] = (
 def packet_from_bundle(bundle: Any, *, now: datetime | None = None) -> dict:
     """The assembled facts packet the writer will see (plus the price series and blocks it was derived from)."""
     return {"symbol": bundle.symbol, "name": bundle.name, "scope": bundle.scope, "facts": bundle.facts,
-            "series": list(bundle.series.get("price_1y") or []), "blocks": bundle.blocks,
+            # RAW closes (before blocks.series_quality drops bad bars) so the price checks still see them
+            "series": list(bundle.series.get("price_1y_raw") or bundle.series.get("price_1y") or []),
+            # the facts were built on the guard's cleaned series (inputs.assemble), so a defect it dropped is SOFT
+            "series_guarded": "price_1y_raw" in bundle.series,
+            "blocks": bundle.blocks,
             "coverage": list(bundle.coverage), "context": dict(bundle.context),
             "as_of": (now or datetime.now(timezone.utc)).isoformat()}
 
@@ -141,14 +151,16 @@ def _one(facts: list[dict], label: str) -> Optional[dict]:
 
 # ── layer 1: price series ─────────────────────────────────────────────────────────────────────────────────────
 def _external_series_guard(series: list) -> Optional[dict]:
-    """The concurrent fix's ``blocks.series_quality`` when it exists (informational; our checks stand alone)."""
+    """The price guard (``blocks.series_quality``) over ``series`` when it exists: which bars it excludes, the break it
+    cuts at and how many clean sessions remain. ``check_series`` uses it to grade a guarded defect SOFT."""
     try:
         from . import blocks as bk
         fn = getattr(bk, "series_quality", None)
         if fn is None:
             return None
         out = fn([{"price_date": d, "close": c} for d, c in series])
-        return {k: out.get(k) for k in ("excluded", "break") if isinstance(out, dict)} if isinstance(out, dict) else None
+        keys = ("excluded", "break", "raw_sessions", "clean_sessions", "clean_from")
+        return {k: out.get(k) for k in keys} if isinstance(out, dict) else None
     except Exception:  # noqa: BLE001 - a guard that fails is recorded as absent
         return None
 
@@ -172,6 +184,25 @@ def check_series(packet: dict, s: dict) -> list[dict]:
     if not pts:
         return out
     k = float(s["jump_factor"])
+    # Only a fresh bundle's facts are built on the guard's cleaned series; a stored report's chart (--gate-only)
+    # printed whatever it held, so a defect in it stays HARD (rewrite).
+    guard = _external_series_guard(pts) if packet.get("series_guarded") else None
+    dropped = {str(e.get("date"))[:10] for e in (guard or {}).get("excluded") or []}
+    cut = str(((guard or {}).get("break") or {}).get("date") or "")[:10]
+
+    def graded(code: str, message: str, dates: list[str]) -> dict:
+        """HARD unless the price guard already dropped every bar in ``dates`` and enough clean sessions remain."""
+        if guard is None or not dates or not all(d in dropped or (cut and d < cut) for d in dates):
+            return _finding(code, HARD, message, facts=price_facts, repair="quote_price")
+        n_clean = int(guard.get("clean_sessions") or 0)
+        n_bad = len(dropped | {d for d, _ in pts if cut and d < cut})
+        if n_clean < int(s.get("min_clean_sessions", s["min_series_bars"])):
+            return _finding(code, HARD, f"{message}; the price guard excluded {n_bad} bad bar(s) but only {n_clean} "
+                            "clean session(s) remain", facts=price_facts, repair="quote_price")
+        f = _finding(code, SOFT, f"{message}; excluded {n_bad} bad bar(s): the report uses the cleaned series "
+                     f"({n_clean} clean sessions from {guard.get('clean_from')})", repair="quote_price")
+        f["guarded"] = True  # informational: no fact is unreliable (the facts come from the cleaned series)
+        return f
     if any(c <= 0 for _, c in pts):
         out.append(_finding("nonpositive_price", HARD, f"{sum(c <= 0 for _, c in pts)} bar(s) with a zero or negative "
                             "close", facts=price_facts, repair="quote_price"))
@@ -180,8 +211,8 @@ def check_series(packet: dict, s: dict) -> list[dict]:
         head = statistics.median(closes[1:6])
         r = closes[0] / head if head else 1.0
         if r > k or r < 1 / k:
-            out.append(_finding("first_bar_outlier", HARD, f"first bar ({pts[0][0]}) is {r:.2f}x the next five bars' "
-                                "median: listing-day / prior-symbol bar", facts=price_facts, repair="quote_price"))
+            out.append(graded("first_bar_outlier", f"first bar ({pts[0][0]}) is {r:.2f}x the next five bars' "
+                              "median: listing-day / prior-symbol bar", [pts[0][0]]))
         tail = statistics.median(closes[-6:-1])
         r = closes[-1] / tail if tail else 1.0
         if r > k or r < 1 / k:
@@ -200,8 +231,8 @@ def check_series(packet: dict, s: dict) -> list[dict]:
         out.append(_finding("isolated_price_jump", HARD, f"{len(isolated)} isolated bar(s) >{k:g}x their neighbours "
                             f"(first {isolated[0]})", facts=price_facts, repair="quote_price"))
     if breaks:
-        out.append(_finding("pre_listing_or_symbol_reuse", HARD, f"persistent >{k:g}x level break at {breaks[0]}: "
-                            "bars before it look like another listing", facts=price_facts, repair="quote_price"))
+        out.append(graded("pre_listing_or_symbol_reuse", f"persistent >{k:g}x level break at {breaks[0]}: "
+                          "bars before it look like another listing", [d for d, _ in pts if d < breaks[-1]]))
     gaps = []
     for (a, _), (b, _) in zip(pts, pts[1:]):
         da, db = _d(a), _d(b)
@@ -499,6 +530,7 @@ def ai_sanity(packet: dict, findings: list[dict], *, settings: dict, ai_fn: Call
     except Exception as exc:  # noqa: BLE001 - layer 2 is advisory: a failed read never blocks, it is recorded
         return {"ran": False, "reason": f"{type(exc).__name__}: {str(exc)[:160]}", "anomalies": [], "findings": []}
     hit_facts = {fid for f in findings for fid in f["facts"]}
+    findings = [f for f in findings if not f.get("guarded")]  # a defect the price guard removed is not confirmable
     by_label = {str(f.get("label") or "").lower(): f["id"] for f in packet["facts"]}
     out = []
     for a in anomalies:
@@ -567,7 +599,12 @@ def _set_path(root: Any, path: list, value: str) -> bool:
 
 def apply_unreliable(bundle: Any, gate: dict) -> None:
     """SOFT_FAIL: tag facts, tell the writer (gaps), and make blocks print "not reliable (reason)"."""
-    soft = [f for f in gate.get("findings") or [] if f["severity"] == SOFT]
+    soft = [f for f in gate.get("findings") or [] if f["severity"] == SOFT and not f.get("guarded")]
+    guarded = [f for f in gate.get("findings") or [] if f.get("guarded")]
+    if guarded:
+        line = "PRICE HISTORY: " + "; ".join(f["message"] for f in guarded)
+        if line[:1500] not in bundle.gaps:
+            bundle.gaps.append(line[:1500])
     for f in bundle.facts:
         why = gate["unreliable"].get(f["id"])
         if why:

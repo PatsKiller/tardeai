@@ -81,9 +81,21 @@ def test_clean_packet_passes():
 
 
 def test_first_bar_outlier_like_a_listing_day_is_hard_fail():
-    # listing-day style: first close ~7x below the following bars
-    gate = qg.pre_write(packet(series=series(first=7.5)), settings=S)
+    # listing-day style: first close ~7x below the following bars, and too few clean sessions remain without it
+    gate = qg.pre_write(packet(series=series(n=15, first=7.5), series_guarded=True), settings=S)
     assert gate["status"] == qg.HARD and "first_bar_outlier" in codes(gate)
+
+
+def test_first_bar_outlier_the_price_guard_dropped_is_soft_with_enough_clean_sessions():
+    # PR #2202's price guard drops the bad first bar; the gate (on the RAW series) still reports it, as SOFT
+    gate = qg.pre_write(packet(series=series(first=7.5), series_guarded=True), settings=S)
+    f = next(x for x in gate["findings"] if x["code"] == "first_bar_outlier")
+    assert gate["status"] == qg.SOFT and f["severity"] == qg.SOFT and f.get("guarded")
+    assert "excluded 1 bad bar(s)" in f["message"] and f["facts"] == [] and gate["unreliable"] == {}
+    # a stored report's chart (--gate-only) was not built on the cleaned series: the same defect stays HARD
+    assert qg.pre_write(packet(series=series(first=7.5)), settings=S)["status"] == qg.HARD
+    brk = qg.pre_write(packet(series=series(break_at=5), series_guarded=True), settings=S)  # pre-listing history before a level break
+    assert brk["status"] == qg.SOFT and "pre_listing_or_symbol_reuse" in codes(brk)
 
 
 def test_isolated_jump_level_break_nonpositive_and_stale():
@@ -193,7 +205,7 @@ def test_ai_high_severity_soft_and_confirming_hard():
 
 def test_ai_skipped_on_hard_and_failure_never_blocks():
     calls = []
-    qg.pre_write(packet(series=series(first=7.5)), settings=S, ai_fn=ai_stub([], calls))
+    qg.pre_write(packet(series=series(n=15, first=7.5)), settings=S, ai_fn=ai_stub([], calls))
     assert calls == []  # layer 1 hard fail: not even the cheap read is spent
 
     def boom(prompt, **kw):
@@ -245,10 +257,12 @@ def test_post_write_numbers_must_match_cited_facts():
 
 # ── wiring: write(), run_queue, API, --gate-only ──────────────────────────────────────────────────────────────
 class SpikySources(FakeSources):
+    sessions = 15  # too few clean sessions once the bad first bar is dropped → HARD (see SpikyButLongSources)
+
     def bars(self, sym, days=1100):
         rows = super().bars(sym, days)
-        if sym == "ZZCC":  # listed ~5 months ago; the first stored bar belongs to another listing
-            rows = rows[-110:]
+        if sym == "ZZCC":  # listed ~3 weeks ago; the first stored bar belongs to another listing
+            rows = rows[-self.sessions:]
             rows[0] = dict(rows[0], close=rows[0]["close"] / 7)
         return rows
 
@@ -261,6 +275,21 @@ def test_write_hard_fail_calls_no_model(tmp_path):
         gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
                   generate_fn=lambda *a, **k: calls.append(1), now=NOW, version=store.stamp(NOW), search_fn=src.search)
     assert calls == [] and src.calls == [] and "first_bar_outlier" in str(err.value)
+
+
+class SpikyButLongSources(SpikySources):
+    sessions = 110  # listed ~5 months ago: the price guard drops the bad first bar, 109 clean sessions remain
+
+
+def test_write_guarded_first_bar_proceeds_partial_on_the_cleaned_series():
+    src = SpikyButLongSources()
+    b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
+    assert len(b.series["price_1y_raw"]) == 110 and len(b.series["price_1y"]) == 109
+    doc = gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
+                    generate_fn=stub_generate(src), now=NOW, version=store.stamp(NOW), ai_fn=None)
+    f = next(x for x in doc["gate"]["findings"] if x["code"] == "first_bar_outlier")
+    assert doc["gate"]["status"] == qg.SOFT and f["severity"] == qg.SOFT and "excluded 1 bad bar(s)" in f["message"]
+    assert doc["status"] == "partial"
 
 
 def test_write_soft_fail_marks_partial_and_hides_numbers_from_writer():
