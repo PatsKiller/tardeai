@@ -391,3 +391,14 @@ def test_missing_or_future_attempt_clock_is_unavailable(stamp):
     value = evidence()
     value['attempt_receipt']['finished_at'] = stamp
     assert 'cio-ask-lifecycle.host_attempt_clock_unverified' in codes(health.evaluate(**value))
+
+
+def test_refreshing_an_older_turn_uses_latest_produced_answer_across_the_thread():
+    value = evidence()
+    value['threads']['fixture_thread']['turns'] = [
+        {'answers': [{'answer_id': 'fixture_latest', 'produced_at': NOW.isoformat()}]},
+        {'answers': [{'answer_id': 'fixture_old', 'produced_at': CHECKED.isoformat()}]},
+    ]
+    value['receipt']['threads'][0]['consumer_readback']['answer_id'] = 'fixture_latest'
+    sync(value)
+    assert health.evaluate(**value)['ok']

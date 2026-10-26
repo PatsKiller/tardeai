@@ -209,8 +209,10 @@ def evaluate(*, receipt: Any, material_receipt: Any, threads: Any,
         if _state(readback) not in {'verified', 'matched', 'visible', 'ok'}:
             issue('consumer_readback_unverified')
         elif isinstance(readback, Mapping):
-            latest_id = next((answer.get('answer_id') for turn in reversed(thread.get('turns') or [])
-                              for answer in reversed(turn.get('answers') or []) if answer.get('answer_id')), None)
+            answers = [answer for turn in thread.get('turns') or []
+                       for answer in turn.get('answers') or [] if isinstance(answer, Mapping)]
+            latest = max(answers, key=lambda answer: str(answer.get('produced_at') or ''), default={})
+            latest_id = latest.get('answer_id')
             if latest_id is not None and readback.get('answer_id') != latest_id:
                 issue('consumer_answer_readback_mismatch')
             measured_at = readback.get('checked_at') or readback.get('last_checked_at')
