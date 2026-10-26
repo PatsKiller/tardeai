@@ -172,6 +172,28 @@ def test_collect_writes_report_once_and_is_idempotent(base):
     assert third["written"] == [] and len(seen) == 2  # closed entries are never collected again
 
 
+def test_collected_batch_report_reaches_cio_memory(base, monkeypatch):
+    # PR #2200's CIO-memory hook lives in pipeline.persist_doc, so batch-written Watch reports land there too
+    src = FakeSources()
+    _submitted(base, src)
+    bundle = full_assemble(src, "ZZBB", "watch", cfg=load_config(), now=NOW)
+    seen = []
+
+    def memory_fn(d, *, root):
+        seen.append((d["symbol"], d["version"], root))
+        return {"symbol": d["symbol"], "version": d["version"], "outcome": "written"}
+    monkeypatch.setattr(pl.cio_memory, "record_version", memory_fn)
+
+    def collect_fn(entry):
+        return {"status": "SUCCEEDED", "text": model_reply(bundle),
+                "prov": {"returned_model": "claude-opus-5-5", "provider": "anthropic", "estimated_cost_usd": 0.07,
+                         "usage": {"prompt_tokens": 9000, "completion_tokens": 3500}, "batch": True}}
+    out = batch.collect(base, load_config(), now=NOW + timedelta(hours=1), collect_fn=collect_fn, log=lambda m: None)
+    assert out["written"] == ["ZZBB"] and [s for s, _v, _r in seen] == ["ZZBB"]
+    assert seen[0][2] == pl.state_root_for(base, load_config())
+    assert out["cio_memory"] == [{"symbol": "ZZBB", "version": seen[0][1], "outcome": "written", "reason": None}]
+
+
 def test_errored_or_expired_results_requeue_then_fail(base):
     src = FakeSources()
     _submitted(base, src)
