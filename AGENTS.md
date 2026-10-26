@@ -119,6 +119,23 @@ remains the fallback. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128). **Why MAJO
 accepted from … the Command Center" for one operator surface (version policy: classify by the weakest guarantee).
 §0, §2, §2A, §7A and role authority are unchanged.
 
+**23.0.0 is PROPOSED (MAJOR) — Telegram remote grants are retired.** Awaiting the operator's
+`APPROVE_AGENTS_POLICY_23_0_0 <pr_number> <head_sha>` (§20). Until ratified and merged, the header stays 22.0.0
+ACTIVE; the code path may ship RETIRED on merge so Telegram cannot mint or approve a grant. Operator direction
+2026-10-25: no CLI or Telegram grants for train publication — queue the PR, approve on Ops → Controls (passkey),
+then the next train window or Run now. **What retires:** `/approve <CODE>`, Telegram Approve buttons, and
+`guard_request_approval.py` minting a PENDING remote request that settles into `bin/guard grant`.
+`scripts/lib/guard_remote_approval.py` `TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"`: `mint_request` raises;
+`verify_and_consume` and approve `settle_by_request_id` return `TELEGRAM_GRANT_RETIRED`. Deny still settles so a
+stale prompt can be cleared. **What stays:** keyboard `bin/guard grant` / `bin/guard request` at the host;
+Ops → Controls grants and passkey acts; the release train (no grant for merge or promote once armed). **Why MAJOR:**
+it removes a remote approval channel that could issue `git-push`, `release-write` and other scopes from a phone
+(version policy: classify by the weakest guarantee after the change — here a removed remote path). §0, §2, §2A,
+§7A and role authority text are unchanged; the remote-approval section is replaced (not accumulated). Header block
+stays 22.0.0 ACTIVE with `Effective-Date` of 22.0.0 until the ratifying edit. Numbered 23.0.0 after ACTIVE 22.0.0.
+Tests: `tests/test_agents_policy_23_0_0_no_telegram_grants.py`, `tests/test_guard_remote_approval.py` (retirement +
+LEGACY_TEST fixtures).
+
 **21.0.0 is ACTIVE (MAJOR) — §28.13 design lifecycle, §28.14 self-heal monitor and fixer, §28.15 hands-off delivery.**
 Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20; PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834).
 Designs live in `design/` with versioned pages and one-tap operator approval; a host-timer monitor and the self-heal
@@ -2655,97 +2672,28 @@ rg -n 'runtime_mode' config/operator_alert_policy.yaml
 .venv/bin/python scripts/report_agent_number_grounding.py
 ```
 
-## Remote approval by Telegram — when the operator is not at the keyboard
+## Remote approval by Telegram — RETIRED (23.0.0)
 
-The workflow above needs someone at a terminal. When the operator is away, work that is finished,
-verified and green otherwise waits. This moves the *typing* to Telegram. It moves the *deciding*
-nowhere.
+**Status: RETIRED under AGENTS.md 23.0.0 (PROPOSED until `APPROVE_AGENTS_POLICY_23_0_0`).** Telegram
+may never issue a guard grant. Code: `scripts/lib/guard_remote_approval.py`
+`TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"`.
 
-**The rule above is unchanged and unweakened: the agent must never type, pipe, simulate, automate,
-or infer the confirmation word.** What follows is how the operator gives it from their phone.
+- **Mint refuses.** `mint_request` and `scripts/guard_request_approval.py` raise / exit 2 with the
+  retirement message. No PENDING remote request is created.
+- **Approve refuses.** `/approve <CODE>` and Telegram Approve buttons return `TELEGRAM_GRANT_RETIRED`
+  and grant nothing. Deny may still settle a stale prompt.
+- **Keyboard and Ops stay.** `bin/guard grant` / `bin/guard request` at the host, and Ops → Controls
+  (passkey), remain. Agents still never type, pipe, simulate, automate, or infer the confirmation
+  word.
+- **Train publication needs no grant.** Queue the PR → Ops → Controls approve (passkey) → next train
+  window or Run now (`release_train.run_now`). Do not ask for `git-push` or `release-write` over
+  Telegram for train work.
 
-```bash
-# Agent side. Grants nothing. Sends the operator a message and exits.
-"$GUARD_PATH" request git-push --for 30m --uses 8 --reason "merge PR #NNN, CI green on <sha>"
-```
-
-The operator receives the scope, the window, the uses, the reason and the host, and replies in
-Telegram with `/approve <CODE>` or `/deny <CODE>`. The live callback poller — which already owns
-the single `getUpdates` consumer, so nothing new polls and nothing collides on HTTP 409 — verifies
-and issues the grant.
-
-Properties that make this safe, each pinned by a test in
-`tests/test_guard_remote_approval.py`:
-
-- **The requesting process is not the answering process.** `guard_request_approval.py` mints a
-  PENDING record; only `run_telegram_callback_poller.py` can settle it.
-- **The one-time code is never printed to stdout and never written to disk** — only its SHA-256 is
-  stored. The agent runs the requesting process, so a code in that process's output would be a code
-  the agent could read.
-- **The grant is bound to what was requested.** Scope, window and uses are fixed in the record the
-  operator saw before replying; they cannot be widened afterwards.
-- **A reply from an unlisted chat burns the code** rather than leaving it live for a second try.
-- **Codes work once, and the answer deadline is 4 hours by default (12h ceiling).** Silence is not
-  approval, and an expired request is not approval. *It was 15 minutes, which is the right number
-  for someone at their desk and the wrong one everywhere else: on 2026-09-06 a request for work the
-  operator had explicitly asked for expired unanswered overnight. The grant window was never the
-  constraint — the answer deadline was. Set it with `--ttl`.*
-- **`sudo`, `destructive`, `file-delete`, `guard-config` and `frozen-v2` can never be requested
-  remotely**, and no remote window may exceed **12 hours** or **500 uses**. `guard-config` is on
-  that list specifically so a phone cannot widen what a phone may do — **raising the 12-hour ceiling
-  itself required a keyboard, and that is the property that makes every other limit here real.**
-
-### The 12-hour window — raised 2026-09-06, and what still bounds it
-
-Remote approval was capped at one hour, on the reasoning that it is for finishing a piece of work
-rather than handing over the machine. The operator raised it to **12 hours** so an overnight or
-full-day autonomous run can be authorised from a phone instead of requiring a keyboard they are not
-at. `bin/guard grant ... --for 12h --uses 40` is now requestable remotely.
-
-**This is a real widening and it is recorded as one.** A stolen or misdelivered code buys twelve
-hours instead of one. Four things bound it, and none of them may be relaxed to make a change pass:
-
-| bound | value | why it holds |
-|---|---|---|
-| `REMOTE_FORBIDDEN_SCOPES` | unchanged | `sudo`, `destructive`, `file-delete`, `frozen-v2`, `guard-config` |
-| `MAX_GRANT_SECONDS` | 12h | raised at the keyboard, because `guard-config` is remote-forbidden |
-| `MAX_GRANT_USES` | 500 | **was unbounded** — `int(uses)` with no check. Harmless against one hour, not against twelve |
-| settlement | chat allowlist | a reply from an unlisted chat burns the code; SHA-256 only on disk; single use |
-
-The one that carries the weight is `guard-config`. **A phone cannot widen what a phone may do** — so
-this ceiling could only ever be raised by someone at the machine, which is exactly what happened.
-
-**Two reply paths, one settlement.** The operator may type `/approve <CODE>`, or tap **Approve** on
-the inline keyboard the request carries. The button sends a `callback_query`, which originates at
-Telegram's servers — a bot token cannot fabricate one — so it is not a weaker door than the code.
-Both paths land in `settle_by_request_id`. Proven end to end 2026-09-06: `28e47322a7` and
-`7f112670b7`, both `APPROVED` / `telegram_button`, from two different allowlisted chats.
-
-**Know which identifier is enforced.** The gate is `chat_id` against `TELEGRAM_CHAT_ID`
-(`approved_by_chat`); `from_id` is recorded as metadata and gated on nothing. In a 1:1 chat
-Telegram makes the two equal, which is why every settlement so far shows them matching and why it
-is easy to believe the *sender* is authenticated. **They diverge in a group.** If a group chat is
-ever added to the allowlist, `chat_id` is the group and every member of it can approve — the
-control would still pass its own test while meaning something entirely different. Keep the
-allowlist to 1:1 chats, or gate `from_id` too before adding one.
-
-**Any link in that message is read-only, and must stay so.** A URL button carries no sender
-identity — anyone holding the link is anonymous to the receiver — so a link can never be the
-approval path. The tailnet FQDN in the message shows status; it grants nothing.
-
-**The request must not be routed.** The first version printed `telegram=sent` while the router
-classified the prompt `P1_DIGEST` and suppressed it into an archive nothing delivers — an approval
-request the operator was never shown, reported as sent. Requests now go with `bypass_router=True`
-and report *accepted for interrupt delivery*, never *sent*. See `accepted` is not `delivered`,
-above: this is that rule applied to the one message class where silence blocks the work. Under 5.1.0 that
-bypass is an allowlisted legacy site (§9.1); migrated, the request is a P1 intent with dedupe off, which gives the
-same guarantee and adds a route receipt.
-
-**This is auditable, not impregnable, and must not be described as more than that.** The agent runs
-as the same OS user. What the mechanism guarantees is that every legitimately obtained grant carries
-provenance — chat id, message id, update id and the operator's own words — so a grant explained by
-neither an interactive terminal nor an allowlisted Telegram reply is a detectable anomaly.
-`guard_remote_approval.unprovenanced_grants()` finds them.
+HISTORICAL (pre-23.0.0): this section described how `/approve <CODE>` and Approve buttons moved the
+*typing* of APPROVE to Telegram without moving the *deciding*. That path is closed. Do not re-enable
+without a new MAJOR amendment. Legacy store mechanics remain testable under
+`TELEGRAM_REMOTE_GRANT_STATUS = "LEGACY_TEST"` (tests only). Pins:
+`tests/test_guard_remote_approval.py`, `tests/test_agents_policy_23_0_0_no_telegram_grants.py`.
 
 ## Know what CI green means
 
@@ -7521,6 +7469,7 @@ interactive TTY ACKs for routine schedule changes; enabling SMS waited on the op
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 23.0.0 | 2026-10-25 | PROPOSED | MAJOR | Telegram remote grants retired: `TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"`; mint and approve settlement refuse (`TELEGRAM_GRANT_RETIRED`); keyboard `bin/guard grant` and Ops → Controls stay; train publication needs no grant (Ops approve → next train / Run now). Replaces the "Remote approval by Telegram" section. Header stays 22.0.0 ACTIVE until ratification. §0, §2, §2A, §7A unchanged. Tests: `tests/test_agents_policy_23_0_0_no_telegram_grants.py`. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_23_0_0 <pr_number> <head_sha>` (§20); per-PR word (MAJOR / `AGENTS.md`). Until then the 22.0.0 text governs the header; code may ship RETIRED on merge. |
 | 22.0.0 | 2026-10-25 | ACTIVE | MAJOR | §25.3 Ops → Controls Run now (`release_train.run_now`): once ACTIVE, the operator may force a live canary train from Ops → Controls with a passkey and typed phrase `RUN NOW EPOCH n WINDOW HHMM`; every other §25.3 gate stays; agents never force; host CLI remains the fallback. Until ACTIVE the kind refused `POLICY_NOT_ACTIVE`. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1` (operator, PR #2149 comment by PatsKiller 2026-10-25T22:37:35Z, https://github.com/PatsKiller/tardeai/pull/2149#issuecomment-6404374642, verbatim: "APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1"); ratified by this edit on #2149's branch, which set the header block, banner and history row to 22.0.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 21.0.0 | 2026-10-25 | ACTIVE | MAJOR | Three sections, one token. §28.13 "Design lifecycle" (operator 2026-10-25, "I approve the design workflow"): `design/` the single home, every page versioned (v000 as built 2026-10-26, v001 the 10-24 approvals back-filled), DRAFT → PROPOSED → APPROVED (operator only, one tap in Approvals → Designs, signed ledger decision; prose never counts) → IMPLEMENTING (`Design: <page>/vNNN` or `Design: none`) → VERIFIED → CURRENT, approved versions immutable, removal guard, phone ≤820 (412/390) and desktop ≥1280 (1440) rules, logged-in live drift via a read-only reader, no real data in the public repo. §28.14 "Self-heal monitor and fixer" (operator 2026-10-25, "Arm the fixer and also a logger"): host-timer monitor independent of n8n; four deterministic remediations once per incident; every other fix an ordinary self-heal fixer PR through CI and the train, never merging or deploying; refused scopes alert + coordinator task; append-only fix log on Releases & schedules → Fixes; P1 after max attempts; armed by ACTIVE status, shadow before. §28.15 "Hands-off delivery" (operator 2026-10-25, "Do 20.4"; numbered MAJOR by the version policy because it widens §17 and the §25.2 delegation): push budget 5 with a coordinator-only override on operator-approved scope; solo trains for every `needs_operator` class with one adversarial review and real-layout proof; train-self and guard/CI solo trains with two reviews, a ≥3 h veto window and a next-window dry run, no weakening of §0/§2/§17 enforcement; live lanes derived from the lane registry (host list an override); no TTY ACK for routine setup; `.env` configuration keys changeable, secrets unchanged; the `solo` delegation class accepted once at ratification; routine feature-branch pushes under an approved plan need no guard `git-push` grant (fast-forward only, never `main`/release, never force) and running toolchains (`npm run`, Playwright, pytest, builds) is never `deps`; the complete operator list (ratification, broker/MBI, credentials/secrets, design approvals, alerts/escalations). Broker/Active Trader/MBI always held; secrets never. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3` (operator, PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834, verbatim: "APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3"); ratified by this edit on #2128's branch, which set the header block, banner, row and §28.13–§28.15 to 21.0.0 ACTIVE and marked the `AI_WORK_POLICY.md` paragraphs binding, and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_21_0_0 <pr_number> <head_sha>`; the `solo` delegation digest acceptance (§28.15 item 7) remains the operator's host act. Effective 2026-10-25. |
 | 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |

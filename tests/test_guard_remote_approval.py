@@ -27,13 +27,48 @@ OTHER = "1000000002"
 
 @pytest.fixture(autouse=True)
 def _isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Never touch the real approvals directory."""
+    """Never touch the real approvals directory.
+
+    Production ``TELEGRAM_REMOTE_GRANT_STATUS`` is ``RETIRED`` (23.0.0). Legacy
+    store/settlement tests monkeypatch to ``LEGACY_TEST`` so the refusal surface
+    stays covered; retirement tests re-set ``RETIRED`` explicitly.
+    """
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     yield
 
 
 def _mint(scope="git-push", seconds=600, uses=5, reason="ship the header work", **kw):
     return gra.mint_request(scope, seconds=seconds, uses=uses, reason=reason, **kw)
+
+
+# ── 23.0.0: Telegram remote grants are retired ───────────────────────────────
+
+def test_production_status_constant_is_retired():
+    """Production must refuse Telegram grants; LEGACY_TEST is tests-only."""
+    src = Path(gra.__file__).read_text(encoding="utf-8")
+    assert 'TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"' in src
+
+
+def test_retired_mint_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    with pytest.raises(ValueError, match="retired"):
+        gra.mint_request("git-push", seconds=600, uses=1, reason="should refuse")
+
+
+def test_retired_verify_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.verify_and_consume("ABC123", chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
+
+
+def test_retired_button_approve_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.settle_by_request_id(
+        "deadbeef", approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
 
 
 # ── the plaintext code never lands on disk ───────────────────────────────────

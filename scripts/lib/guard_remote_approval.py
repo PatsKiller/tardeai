@@ -1,45 +1,20 @@
-"""guard_remote_approval.py — operator approves a guard scope from Telegram.
+"""guard_remote_approval.py — Telegram remote guard grants (RETIRED, 23.0.0).
 
-THE PROBLEM THIS SOLVES
+STATUS (AGENTS.md 23.0.0)
+-------------------------
+Telegram may never issue a guard grant. ``TELEGRAM_REMOTE_GRANT_STATUS =
+"RETIRED"``: ``mint_request`` raises, and approve settlement returns
+``TELEGRAM_GRANT_RETIRED``. Keyboard ``bin/guard grant`` and Ops → Controls
+remain. Train publication needs no grant: Ops → Controls approve → next train
+or Run now.
+
+The store, deny path, and tests that monkeypatch STATUS to a non-RETIRED value
+still exercise the legacy mechanics so the refusal surface cannot drift.
+
+HISTORICAL (pre-23.0.0)
 -----------------------
-`bin/guard grant` asks the operator to type APPROVE at an interactive terminal.
-That is the right shape when they are at the machine, and useless when they are
-not: work that is finished, verified and green then waits hours for someone to
-walk to a keyboard.
-
-This moves the *typing* to Telegram. It does not move the *deciding* anywhere.
-
-WHAT IS AND IS NOT WEAKENED
----------------------------
-The standing rule is that the agent must never type, pipe, simulate, automate or
-infer APPROVE. That rule is intact, and this module is built so the agent cannot
-route around it:
-
-  * `mint_request()` creates a PENDING record and nothing else. It grants no
-    authority. An agent may call it freely.
-  * The one-time code is sent to Telegram and **only a SHA-256 of it is stored**.
-    `mint_request` returns the code to its immediate caller so `bin/guard
-    request` can send it, and that caller must not print or persist it.
-  * Converting PENDING -> APPROVED requires a real Telegram message, from a chat
-    on the existing allowlist, carrying that code. The operator types the
-    approval, on their own device, against a described scope and duration.
-  * The approval is bound to the scope, window and uses that were *requested*.
-    An agent cannot widen a grant after the fact, because the numbers are fixed
-    in the pending record the operator saw before replying.
-
-HONEST LIMITATION, STATED PLAINLY
----------------------------------
-The agent runs as the same OS user as this code. Nothing here is a sandbox: an
-agent determined to defeat it could call `bin/guard grant --yes` directly, or
-read the code out of its own process. This mechanism is **auditable, not
-impregnable**. What it guarantees is that every legitimately-obtained grant
-carries Telegram provenance — chat id, message id, update id, and the operator's
-own words — so a grant that appeared *without* either an interactive terminal or
-that provenance is a detectable anomaly. `unprovenanced_grants()` finds them.
-
-Do not weaken this to "the agent asked and nobody objected". Silence is not
-approval, an expired request is not approval, and a reply from an unlisted chat
-is not approval.
+This module moved the *typing* of APPROVE to Telegram without moving the
+*deciding*. That path is closed; do not re-enable without a new MAJOR amendment.
 """
 
 from __future__ import annotations
@@ -108,6 +83,21 @@ REMOTE_FORBIDDEN_SCOPES: frozenset[str] = frozenset({
     "guard-config",    # would let a remote approval widen remote approval
     "frozen-v2",       # frozen by explicit operator decision
 })
+
+#: 23.0.0 — Telegram remote grants are retired. Only ``"RETIRED"`` refuses every
+#: mint and approve settlement. Tests may monkeypatch to ``"LEGACY_TEST"`` to
+#: exercise the store; production must stay ``"RETIRED"``.
+TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"
+
+RETIRED_MSG = (
+    "Telegram remote grants are retired (AGENTS.md 23.0.0). "
+    "Approve grants at the keyboard (`bin/guard grant`). "
+    "Train publication needs no grant: Ops → Controls approve → next train / Run now."
+)
+
+
+def telegram_remote_grants_retired() -> bool:
+    return TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"
 
 
 def approvals_dir() -> Path:
@@ -244,7 +234,12 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
 
     Returns the record plus the plaintext `code`, which the caller must send to
     Telegram and must not print or persist.
+
+    Under 23.0.0 (``TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"``) this always
+    raises — Telegram may never mint a grant request.
     """
+    if telegram_remote_grants_retired():
+        raise ValueError(RETIRED_MSG)
     scope = str(scope).strip()
     if scope in REMOTE_FORBIDDEN_SCOPES:
         raise ValueError(
@@ -397,7 +392,12 @@ def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
 
     The code is consumed on success AND on a chat-rejection: a code that leaked
     to the wrong chat is burnt, not left live for a second attempt.
+
+    Under 23.0.0 this always refuses with ``TELEGRAM_GRANT_RETIRED``.
     """
+    if telegram_remote_grants_retired():
+        return {"ok": False, "reason": "TELEGRAM_GRANT_RETIRED", "detail": RETIRED_MSG}
+
     allowed = {str(c).strip() for c in (allowed_chats or set()) if str(c).strip()}
     chat = str(chat_id).strip()
 
@@ -488,6 +488,11 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
         return {"ok": False, "reason": "NO_CHAT_ALLOWLIST_CONFIGURED"}
     if chat not in allowed:
         return {"ok": False, "reason": "CHAT_NOT_ALLOWED"}
+
+    # Approving via Telegram is retired (23.0.0). Deny still clears a PENDING
+    # row so a leftover request cannot sit forever.
+    if approve and telegram_remote_grants_retired():
+        return {"ok": False, "reason": "TELEGRAM_GRANT_RETIRED", "detail": RETIRED_MSG}
 
     doc = _load()
     if doc.get("corrupt"):

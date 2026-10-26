@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_23_0_0_no_telegram_grants",
+  "files": [
+    "tests/test_agents_policy_23_0_0_no_telegram_grants.py"
+  ],
+  "anchor": "AGENTS_POLICY_23_0_0_NO_TELEGRAM_GRANTS",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_23_0_0_NO_TELEGRAM_GRANTS — AGENTS.md 23.0.0 (MAJOR, PROPOSED): Telegram remote",
+    "grants retired (TELEGRAM_REMOTE_GRANT_STATUS=RETIRED); mint/approve refuse TELEGRAM_GRANT_RETIRED;",
+    "keyboard bin/guard and Ops → Controls stay; header remains 22.0.0 ACTIVE until ratification. Hermetic text checks."
+  ]
+}
