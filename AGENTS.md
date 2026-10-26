@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      22.0.0
+Policy-Version:      24.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-25
-Last-Reviewed:       2026-10-25T18:37:00-04:00
+Effective-Date:      2026-10-26
+Last-Reviewed:       2026-10-26T10:25:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          21.0.0
+Supersedes:          22.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -111,13 +111,25 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
+**24.0.0 is ACTIVE (MAJOR) — Mergify merges; host `deploy_on_main` promotes; emergency is operator CLI + `release-write` (§25.10).**
+Ratified by the operator 2026-10-26 in session (approved AGENTS 24.0.0 PROPOSED, then directed full cutover: install,
+configure, commit the approval policy; `APPROVE_AGENTS_POLICY_24_0_0` to be bound to the cutover PR head on open, §20).
+Mergify owns scheduled merge of green PRs; a thin host poller promotes exact `origin/main` SHAs under STOP +
+GlobalReleaseLock + a standing **deploy** (promote-only) delegation; emergency promote is host CLI only with
+`release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents remain PR-only. Retires the custom train
+live merge/`train/*` push path, Ops → Controls **Run now**, and the train UI.
+**Why MAJOR:** it replaces the 17.0.0 release-train merge actor and widens §17 (Mergify install, deploy-delegation arming,
+emergency SHA promote). Numbered 24.0.0 after ACTIVE 22.0.0 (PR #2149); 23.x is reserved. §0, §2, §2A, §7A, §22 and §23.14
+stay byte-identical. Foundation: `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md`.
+
 **22.0.0 is ACTIVE (MAJOR) — Ops → Controls may force a live canary Run now (`release_train.run_now`, §25.3).**
 Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1`, §20; PR #2149 comment by PatsKiller 2026-10-25T22:37:35Z, https://github.com/PatsKiller/tardeai/pull/2149#issuecomment-6404374642).
 Ops → Controls kind `release_train.run_now` (passkey + typed phrase `RUN NOW EPOCH n WINDOW HHMM`, always-fresh) may
 force one live canary train outside a window under every other §25.3 gate; agents still never force; the host CLI
 remains the fallback. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128). **Why MAJOR:** it narrows §25.3's "never
 accepted from … the Command Center" for one operator surface (version policy: classify by the weakest guarantee).
-§0, §2, §2A, §7A and role authority are unchanged.
+§0, §2, §2A, §7A and role authority are unchanged. **Superseded for live force once 24.0.0 is ACTIVE** (§25.10): Mergify +
+host deploy replace the train force path; `release_train.run_now` refuses as retired.
 
 **21.0.0 is ACTIVE (MAJOR) — §28.13 design lifecycle, §28.14 self-heal monitor and fixer, §28.15 hands-off delivery.**
 Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3`, §20; PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834).
@@ -4114,6 +4126,12 @@ force path. Agents never force one.
 broker trading lock · clearing a `live_submit` or `broker` kill switch. Each is the operator's alone, made with a
 passkey on Ops → Controls or at the host terminal; never by an agent, a release, the release train or n8n.
 
+**Mergify deploy (24.0.0, §25.10):** installing or re-permissioning the Mergify GitHub App · arming, pausing or
+revoking the standing **deploy** (promote-only) delegation · clearing a deploy STOP or resuming the deploy poller ·
+running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never
+promote, never set that env. The 17.0.0 / 22.0.0 release-train merge and Run now paths are retired for live use
+(§25.10); train libraries may remain for read-only history.
+
 ---
 
 # 17A · Topology and vocabulary
@@ -6501,6 +6519,36 @@ arms the delegation at the host (§25.2) and enables a window (§25.3), each a �
   adapters do not change. *Cause (§20): §20 — rules are replaced, not accumulated;
   until ratification the widened clauses stay byte-identical, so no agent reads a PROPOSED widening as in force.*
 
+## 25.10 Mergify + host deploy (24.0.0, ACTIVE)
+
+**Status: ACTIVE (MAJOR).** Ratified 2026-10-26 by the operator in session (PROPOSED approved, then full cutover
+directed; bind `APPROVE_AGENTS_POLICY_24_0_0 <pr> <head_sha>` on the cutover PR when opened, §20). §25.1–§25.9 remain
+as history and library rules; live merge is Mergify and live promote is `deploy_on_main`. 22.0.0 Run now is retired
+for live force. Foundation docs: `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md`, `docs/ops/EMERGENCY_MANUAL_PROMOTE.md`,
+`docs/ops/MERGIFY_CUTOVER_CHECKLIST.md`.
+
+- **Agents queue; they never merge or promote.** An agent's last remote act is a PR (§25.1). Mergify merges; the host
+  poller promotes. No agent pushes `main` or `train/*`, merges, or runs prepare/promote.
+- **Mergify is the merge actor.** Required checks (`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`)
+  must be exactly `success` on the head. Queues and `schedule` windows are America/New_York (DST-aware) in `.mergify.yml`.
+  Exclusions (broker / Active Trader / MBI, secrets, AGENTS.md / AI_WORK_POLICY / hooks / guard without the solo review
+  path) stay held for the operator. Installing or re-permissioning Mergify is §17.
+- **Host `deploy_on_main` promotes only.** Timer `tradeai-deploy-on-main` runs `scripts/deploy_on_main_poll.py`: if
+  `origin/main` SHA ≠ CURRENT pin, STOP is absent, GlobalReleaseLock is free, and the standing **deploy** delegation is
+  armed, it runs `cio_phase2_exact_main_deploy.sh` prepare+promote for that SHA, then `scripts/post_release_tester.py`,
+  and writes `DeployOnMainReceipt@v1` with `path=poller`. It never merges or pushes remotes.
+- **Standing deploy delegation is promote-only.** Host record outside the repo; arms the poller only. It does not
+  authorize Mergify, agents, or emergency. Arming / pause / revoke are §17 (passkey on Ops → Controls or host CLI).
+- **Shared STOP and lock.** Same `STOP.json` latch and `<state_dir>/.lock` as §25.4 / `release_control.GlobalReleaseLock`.
+  Poller and emergency refuse when latched or unreadable.
+- **Emergency is operator host CLI only.** `scripts/emergency_manual_promote.sh` requires an active `release-write`
+  grant naming the SHA (`ReleaseGrantBinding@v1`) and `TRADEAI_EMERGENCY_RELEASE_SHA` matching that SHA. Receipt
+  `path=manual_emergency`. Used when CI/Mergify cannot merge or the poller must be bypassed once. Agents, n8n and
+  Mergify never set that env.
+- **Retires once ACTIVE.** Custom train live merge and `train/*` pushes; Ops → Controls `release_train.run_now`; Release
+  train tab / Run now UI; `AI_WORK_POLICY.md` §28 train-push exception (replaced by this subsection’s merge+promote
+  split). Train libraries may remain for read-only history; live `TRAIN_CONTROLLER` paths refuse.
+
 ---
 
 # 26 · Data foundation — one store, one writer, the CIO as integrator (18.0.0, ACTIVE)
@@ -7521,6 +7569,7 @@ interactive TTY ACKs for routine schedule changes; enabling SMS waited on the op
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 24.0.0 | 2026-10-26 | ACTIVE | MAJOR | §25.10 Mergify + host deploy: Mergify merges green PRs on ET schedules; host `deploy_on_main` poller promotes exact `main` SHAs under STOP + GlobalReleaseLock + standing deploy (promote-only) delegation; emergency is operator `emergency_manual_promote.sh` + `release-write` naming SHA + `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents stay PR-only. Retires train live merge/`train/*`, Ops Run now, train UI; replaces `AI_WORK_POLICY.md` §28 train-push exception. Numbered 24.0.0 after ACTIVE 22.0.0; 23.x reserved. §0/§2/§2A/§7A/§22/§23.14 byte-identical. | **ACTIVE** — operator 2026-10-26 in session (approved 24.0.0 PROPOSED, directed install/configure/commit); bind `APPROVE_AGENTS_POLICY_24_0_0 <pr> <head_sha>` on the cutover PR (§20). Effective 2026-10-26. |
 | 22.0.0 | 2026-10-25 | ACTIVE | MAJOR | §25.3 Ops → Controls Run now (`release_train.run_now`): once ACTIVE, the operator may force a live canary train from Ops → Controls with a passkey and typed phrase `RUN NOW EPOCH n WINDOW HHMM`; every other §25.3 gate stays; agents never force; host CLI remains the fallback. Until ACTIVE the kind refused `POLICY_NOT_ACTIVE`. Numbered 22.0.0 after ACTIVE 21.0.0 (PR #2128). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1` (operator, PR #2149 comment by PatsKiller 2026-10-25T22:37:35Z, https://github.com/PatsKiller/tardeai/pull/2149#issuecomment-6404374642, verbatim: "APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1"); ratified by this edit on #2149's branch, which set the header block, banner and history row to 22.0.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 21.0.0 | 2026-10-25 | ACTIVE | MAJOR | Three sections, one token. §28.13 "Design lifecycle" (operator 2026-10-25, "I approve the design workflow"): `design/` the single home, every page versioned (v000 as built 2026-10-26, v001 the 10-24 approvals back-filled), DRAFT → PROPOSED → APPROVED (operator only, one tap in Approvals → Designs, signed ledger decision; prose never counts) → IMPLEMENTING (`Design: <page>/vNNN` or `Design: none`) → VERIFIED → CURRENT, approved versions immutable, removal guard, phone ≤820 (412/390) and desktop ≥1280 (1440) rules, logged-in live drift via a read-only reader, no real data in the public repo. §28.14 "Self-heal monitor and fixer" (operator 2026-10-25, "Arm the fixer and also a logger"): host-timer monitor independent of n8n; four deterministic remediations once per incident; every other fix an ordinary self-heal fixer PR through CI and the train, never merging or deploying; refused scopes alert + coordinator task; append-only fix log on Releases & schedules → Fixes; P1 after max attempts; armed by ACTIVE status, shadow before. §28.15 "Hands-off delivery" (operator 2026-10-25, "Do 20.4"; numbered MAJOR by the version policy because it widens §17 and the §25.2 delegation): push budget 5 with a coordinator-only override on operator-approved scope; solo trains for every `needs_operator` class with one adversarial review and real-layout proof; train-self and guard/CI solo trains with two reviews, a ≥3 h veto window and a next-window dry run, no weakening of §0/§2/§17 enforcement; live lanes derived from the lane registry (host list an override); no TTY ACK for routine setup; `.env` configuration keys changeable, secrets unchanged; the `solo` delegation class accepted once at ratification; routine feature-branch pushes under an approved plan need no guard `git-push` grant (fast-forward only, never `main`/release, never force) and running toolchains (`npm run`, Playwright, pytest, builds) is never `deps`; the complete operator list (ratification, broker/MBI, credentials/secrets, design approvals, alerts/escalations). Broker/Active Trader/MBI always held; secrets never. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3` (operator, PR #2128 comment by PatsKiller 2026-10-25T20:33:01Z, https://github.com/PatsKiller/tardeai/pull/2128#issuecomment-6402870834, verbatim: "APPROVE_AGENTS_POLICY_21_0_0 2128 f8a89dc6b568406a3e7662e04fae9ef31fe559c3"); ratified by this edit on #2128's branch, which set the header block, banner, row and §28.13–§28.15 to 21.0.0 ACTIVE and marked the `AI_WORK_POLICY.md` paragraphs binding, and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_21_0_0 <pr_number> <head_sha>`; the `solo` delegation digest acceptance (§28.15 item 7) remains the operator's host act. Effective 2026-10-25. |
 | 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |

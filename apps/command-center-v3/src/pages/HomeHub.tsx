@@ -20,7 +20,7 @@ import RiskGauge from '../components/risk/RiskGauge'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
 import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import NeedsActionCard from '../components/home/NeedsActionCard'
-import ReleaseTrainCard from '../components/home/ReleaseTrainCard'
+import DeployHoldStrip from '../components/home/DeployHoldStrip'
 import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
@@ -204,7 +204,7 @@ function HomeClassic({ onDrill }: Props) {
       <NeedsActionCard />
 
       {/* Release train (Release Train v2, 2026-10-21): next window, ready/held, current train, policy, STOP RELEASES */}
-      <ReleaseTrainCard />
+      <DeployHoldStrip />
 
       {/* Decision-first (operator 2026-10-08): what needs action, highest risk, highest opportunity */}
       <HomeDecision overview={overview} winRate={tradingWr} />

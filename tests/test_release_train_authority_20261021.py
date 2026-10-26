@@ -1028,6 +1028,13 @@ def test_libraries_are_wired_into_nothing():
         # runs the controller. Read/write of control + capability only through existing libraries;
         # POLICY_NOT_ACTIVE until 22.0.0 is ratified. Never arms, merges or promotes on its own.
         "scripts/lib/release_train_run_now.py",
+        # Mergify cutover soft-add (AGENTS 24.0.0 PROPOSED): deploy-on-main reuses the STOP latch and
+        # GlobalReleaseLock from release_control only — never capability, delegation, or train merge.
+        "scripts/lib/deploy_on_main.py",
+        "scripts/emergency_manual_promote.sh",
+        "scripts/deploy_on_main_poll.py",
+        "config/systemd/user/tradeai-deploy-on-main.service",
+        "config/systemd/user/tradeai-deploy-on-main.timer",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):

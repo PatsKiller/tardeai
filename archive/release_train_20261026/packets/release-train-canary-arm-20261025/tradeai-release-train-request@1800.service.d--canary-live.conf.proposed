@@ -1,0 +1,9 @@
+# PROPOSED (release-train canary arming, 2026-10-25; docs/ops/packets/release-train-canary-arm-20261025/README.md).
+# Install path: ~/.config/systemd/user/tradeai-release-train-request@1800.service.d/canary-live.conf
+# A drop-in for the 1800 INSTANCE only: it drops --shadow-only from the 18:00 request, so the writer may append a
+# live (shadow: false) TrainWindowRequest@v1 when the host gate passes (STOP latch ABSENT, policy armed, delegation
+# ACTIVE, 18:00 enabled). Every other slot keeps the template's --shadow-only. Rollback: archive this file
+# (rename, never delete) and `systemctl --user daemon-reload`.
+[Service]
+ExecStart=
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/release_train_window_request.py --window 1800 --append

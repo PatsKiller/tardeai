@@ -1,3 +1,12 @@
+Status: SUPERSEDED BY docs/ops/MERGIFY_DEPLOY_FOUNDATION.md (archive/release_train_20261026/; AGENTS 24.0.0 PROPOSED)
+as_of: 2026-10-26
+Measured at: soft-add Mergify cutover; live train path BUILD_ONLY
+Authority: historical — do not treat as live operating procedure
+See also: docs/ops/EMERGENCY_MANUAL_PROMOTE.md, docs/ops/MERGIFY_CUTOVER_CHECKLIST.md
+
+
+---
+
 # Release train: n8n coordination contract (Phase 4)
 
 ```

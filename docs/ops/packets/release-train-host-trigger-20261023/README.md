@@ -1,3 +1,11 @@
+# SUPERSEDED — Mergify cutover 2026-10-26
+
+Status: SUPERSEDED BY docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+Archived copy: archive/release_train_20261026/packets/release-train-host-trigger-20261023/
+Tripwire: archive/release_train_20261026/TRIPWIRE.md
+
+---
+
 # Release train host trigger: request and census timers (2026-10-23)
 
 **Status: PROPOSED, NOT INSTALLED.** The operator installs it (AGENTS §17: a new production systemd entry; the

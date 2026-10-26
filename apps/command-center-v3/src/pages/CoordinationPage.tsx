@@ -3,7 +3,7 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
-import ReleaseTrainTab from './ReleaseTrainTab'
+import DeployHoldStrip from '../components/home/DeployHoldStrip'
 import AgentClaimsPanel from './AgentClaimsPanel'
 import WorkBoardPanel from './WorkBoardPanel'
 import WorkPipelinePanel from './WorkPipelinePanel'
@@ -39,7 +39,7 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 // 2026-10-25 (board 16, batch 27): ?tab=jobs embeds the one Jobs & health view (same component and data as /ops/jobs).
 const TABS = ['pipeline', 'operations', 'jobs', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: 'Files held', work: 'Work board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Deploy', agents: 'Files held', work: 'Work board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', minHeight: 44, borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -121,14 +121,12 @@ export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNod
         ))}
       </nav>
       {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {/* Three surfaces: this tab observes + emergency STOP; Ops → Controls acts (Run now / Arm / Resume);
-              Releases & schedules is the PR census + n8n/cron timeline. */}
+        <div style={{ display: 'grid', gap: 12 }} data-testid="coordination-deploy-tab">
           <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>This tab shows the train. To force a canary, use Ops → Controls. Serving release, PR census, shipped history and the next 3 hours of n8n/cron are on Releases &amp; schedules.</div>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Mergify merges to main on the ET schedule; the host poller promotes. Deploy STOP and the kill switch live on Ops → Controls. Serving pin and history are on Releases &amp; schedules. Emergency promote is host CLI only.</div>
             <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
           </div>
-          <ReleaseTrainTab />
+          <DeployHoldStrip />
         </div>
       ) : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">

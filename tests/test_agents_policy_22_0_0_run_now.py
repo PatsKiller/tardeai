@@ -25,9 +25,16 @@ def _section_25_3() -> str:
 def test_header_is_22_0_0_active():
     hdr = _header_block()
     m = re.search(r"^Policy-Version:\s*(\S+)", hdr, re.M)
-    assert m and m.group(1) == "22.0.0", hdr[:200]
-    assert re.search(r"^Status:\s*ACTIVE\b", hdr, re.M), hdr[:200]
-    assert re.search(r"^Supersedes:\s*21\.0\.0\b", hdr, re.M), hdr[:200]
+    assert m, hdr[:200]
+    ver = m.group(1)
+    # Soft-add 24.0.0 PROPOSED may be tip; 22.0.0 remains ACTIVE in the banner until ratify.
+    if ver == "24.0.0":
+        assert re.search(r"^Status:\s*PROPOSED\b", hdr, re.M), hdr[:200]
+        assert re.search(r"^Supersedes:\s*22\.0\.0\b", hdr, re.M), hdr[:200]
+    else:
+        assert ver == "22.0.0", hdr[:200]
+        assert re.search(r"^Status:\s*ACTIVE\b", hdr, re.M), hdr[:200]
+        assert re.search(r"^Supersedes:\s*21\.0\.0\b", hdr, re.M), hdr[:200]
     assert "22.0.0 is ACTIVE" in AGENTS[:20000]
     assert "22.0.0 is PROPOSED" not in AGENTS
 

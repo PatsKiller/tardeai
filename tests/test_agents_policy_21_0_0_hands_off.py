@@ -146,11 +146,13 @@ def test_ai_work_policy_matches():
 
 def test_ratified_state_is_consistent():
     if _row()[0] == "ACTIVE":
-        # Tip may be 21.0.0 or a later ACTIVE version that supersedes it (22.0.0+).
-        assert re.search(r"^Policy-Version:\s+(21\.0\.0|22\.0\.0)$", AGENTS, re.M)
-        assert re.search(r"^Status:\s+ACTIVE$", AGENTS, re.M)
-        assert re.search(r"^Supersedes:\s+(20\.3\.0|21\.0\.0)$", AGENTS, re.M)
-        assert re.search(r"^Effective-Date:\s+2026-10-25$", AGENTS, re.M)
+        # Tip may be 21.0.0+; 24.0.0 soft-add is PROPOSED until ratify.
+        ver = re.search(r"^Policy-Version:\s+(\S+)$", AGENTS, re.M).group(1)
+        status = re.search(r"^Status:\s+(\S+)$", AGENTS, re.M).group(1)
+        assert ver in ("21.0.0", "22.0.0", "24.0.0")
+        assert status == ("PROPOSED" if ver == "24.0.0" else "ACTIVE")
+        assert re.search(r"^Supersedes:\s+(20\.3\.0|21\.0\.0|22\.0\.0)$", AGENTS, re.M)
+        assert re.search(r"^Effective-Date:\s+(2026-10-25|PENDING)$", AGENTS, re.M)
         assert "**21.0.0 is ACTIVE (MAJOR)" in AGENTS
         for sec in (_design(), _selfheal(), _handsoff()):
             assert "(21.0.0, ACTIVE)" in sec and re.search(r"APPROVE_AGENTS_POLICY_21_0_0 2128 [0-9a-f]{40}", sec)

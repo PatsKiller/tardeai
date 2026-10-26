@@ -1,3 +1,11 @@
+# SUPERSEDED — Mergify cutover 2026-10-26
+
+Status: SUPERSEDED BY docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+Archived copy: archive/release_train_20261026/packets/release-train-arming-20261021/
+Tripwire: archive/release_train_20261026/TRIPWIRE.md
+
+---
+
 # Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand)
 
 ```

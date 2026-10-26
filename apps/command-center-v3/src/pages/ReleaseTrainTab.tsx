@@ -1,3 +1,5 @@
+// SUPERSEDED 2026-10-26 (Mergify cutover, AGENTS 24.0.0 PROPOSED): unused — Coordination mounts DeployHoldStrip.
+// Historical train queue UI kept for pin tests / rollback. Live ops: DeployHoldStrip + STOP only.
 // Coordination → Release train (Release Train v2, 2026-10-21). What is queued, what each train froze and did, and
 // what has been processed — with STOP RELEASES. Read-only except the set-only STOP (components/ReleaseStopControl).
 // Read shapes: docs/ops/RELEASE_TRAIN_API.md (summary, /queue, /trains/{id}, /events); STOP: docs/ops/

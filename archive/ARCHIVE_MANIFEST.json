@@ -1,9 +1,9 @@
 {
   "schema": "ArchiveManifest@v1",
   "status": "BATCH1_APPLIED",
-  "as_of": "2026-09-16",
+  "as_of": "2026-10-26",
   "author": "operator-approved-full-package",
-  "note": "Batch1 applied under operator APPROVE E5 2026-09-16.",
+  "note": "Batch1 applied under operator APPROVE E5 2026-09-16. Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
   "items": [
     {
       "path": "archive/retired_providers_20260913/discovery_sources/polygon_source.py",
@@ -148,6 +148,87 @@
       "date": "2026-09-16",
       "review_by": "2026-10-16",
       "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer config/systemd/user/tradeai-agent-runtime@pulse.timer"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_API.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md docs/ops/RELEASE_TRAIN_API.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md docs/ops/RELEASE_TRAIN_GITHUB_APP.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md docs/ops/RELEASE_TRAIN_UI_CONTRACT.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/README.md",
+      "original_path": "docs/ops/packets/release-train-20261021/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-20261021/README.md docs/ops/packets/release-train-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-arming-20261021/README.md",
+      "original_path": "docs/ops/packets/release-train-arming-20261021/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-arming-20261021/README.md docs/ops/packets/release-train-arming-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md docs/ops/packets/release-train-canary-arm-20261025/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Mergify replaces custom release train soft-add 2026-10-26; AGENTS 24.0.0 PROPOSED. Live authority: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md + deploy-on-main poller. Pin tests still read original_path stubs/banners until ratification.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "cp -a archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md docs/ops/packets/release-train-host-trigger-20261023/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/TRIPWIRE.md",
+      "original_path": null,
+      "verdict": "TRIPWIRE",
+      "evidence": "Fires if live code/cron/unit/n8n reads archive/release_train_20261026/ as authority.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": null
     }
   ]
 }

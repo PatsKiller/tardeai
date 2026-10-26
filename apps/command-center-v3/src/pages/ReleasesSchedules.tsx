@@ -136,11 +136,11 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
       </> : null}
     </Section>
     <p style={muted} data-testid="rs-where-to-act">
-      Lifecycle and train status:{' '}
-      <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Release train</Link>
-      {' '}· Force a canary now:{' '}
-      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Run now</Link>
-      . This tab is the PR census and schedule timeline only.
+      Deploy hold / STOP:{' '}
+      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Deploy hold</Link>
+      {' '}· Observe:{' '}
+      <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Deploy</Link>
+      . Mergify owns the merge queue; emergency promote is host CLI under release-write naming the SHA. This tab is serving pin, PR census and schedule timeline.
     </p>
   </div>
 }
@@ -210,14 +210,14 @@ export default function ReleasesSchedules() {
   const current = !api.error && !api.stale && keys.some(k => s[k].state === 'OK')
   const kpis = api.data?.schema === 'ReleasesSchedules@v1' ? api.data.kpis ?? [] : []
   const kpiKeys = ['serving', 'next_release', 'next_window', 'n8n_runs', 'n8n_errors']
-  const labels: Record<string, string> = { serving: 'Serving', next_release: 'Releasing next', next_window: 'Next train window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
+  const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', next_window: 'Next Mergify window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
-      <p style={muted}>What is queued, for when · what actually shipped · what failed. Release train and n8n in one place. Read-only; nothing here releases, stops or schedules.</p>
+      <p style={muted}>Serving pin · last promote · deploy STOP · Mergify queue (external) · n8n schedules. Read-only; nothing here merges, promotes or schedules.</p>
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
           : <Chip tone={api.data?.status === 'OK' && current ? 'neutral' : 'warning'}>{current ? (api.data?.status ?? 'UNKNOWN') : 'STALE'}</Chip>}
