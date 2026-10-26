@@ -965,6 +965,28 @@ def reserve_projected_cost(
         raise
 
 
+def credit_daily_cap_usd(cp: dict, now: datetime):
+    """The promotional credit's UTC-day cap at ``now``.
+
+    Same rule as ``anthropic_credit.CreditBook.daily_cap``: an active
+    ``daily_cap_overrides`` row (``from`` <= day < ``until``) replaces the base
+    ``daily_cap_usd``; the last matching row wins. The durable DB backstop must
+    agree with the credit journal, or an approved override pauses at the base cap.
+    """
+    from datetime import date
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        cap = Decimal(str(cp["daily_cap_usd"]))
+        day = now.astimezone(timezone.utc).date()
+        for row in cp.get("daily_cap_overrides") or []:
+            if date.fromisoformat(str(row["from"])) <= day < date.fromisoformat(str(row["until"])):
+                cap = Decimal(str(row["usd"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation, AttributeError) as exc:
+        raise RuntimeError("CREDIT_CONFIGURATION_INVALID") from exc
+    return cap
+
+
 def reprice_reservation(
     reservation_id: int, process_id: str, projected_usd: float, *,
     process_config: dict, global_cap: float | None,
@@ -1029,7 +1051,7 @@ def reprice_reservation(
             addition = Decimal(str(projected)) - Decimal(str(paid_component_usd))
             if Decimal(str(used_total)) + addition > Decimal(str(cp["total_cap_usd"])):
                 raise RuntimeError("CREDIT_EXHAUSTED: durable total cap")
-            if Decimal(str(used_day)) + addition > Decimal(str(cp["daily_cap_usd"])):
+            if Decimal(str(used_day)) + addition > credit_daily_cap_usd(cp, datetime.now(timezone.utc)):
                 raise RuntimeError("CREDIT_PAUSED_TODAY: durable UTC cap")
             old_credit = (max(Decimal(0), Decimal(str(old)) - Decimal(str(old_paid)))
                           if meta.get("promotion_id") == cp["promotion_id"] else Decimal(0))
