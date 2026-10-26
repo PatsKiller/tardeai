@@ -9,6 +9,7 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
+import ProspectusLink from '../components/prospectus/ProspectusLink'
 import './WatchLayout.css'
 import './W9Mobile.css'
 import ConflictLine from '../components/conflicts/ConflictLine'
@@ -216,6 +217,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{companyDisplayName({ value: r.company ?? null, display_name: r.company_facts?.company?.display_name }) || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <div><ProspectusLink symbol={r.symbol} testId="watch-detail-prospectus" /></div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />
       <div data-testid="watch-detail-why" style={{ fontSize: TYPE.base, lineHeight: 1.5 }}><b>Why here:</b> {r.why}</div>
       {(r as ListRow).expiry_suggestion && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Review suggested: {(r as ListRow).expiry_suggestion?.suggest}</div>}

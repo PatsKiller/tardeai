@@ -1,0 +1,298 @@
+{
+  "schema": "ProspectusConfig@v1",
+  "approved_by": "operator 2026-10-26: \"Opus for all, Fable for top. [3: $25/day for 3 days] Build everything now.\" Contract: persistent-state coordination/handoffs/prospectus-20261026/CONTRACT.md",
+  "premium_top_n": 5,
+  "processes": {
+    "standard": "prospectus_writer",
+    "premium": "prospectus_writer_premium"
+  },
+  "storage_rel": "data/prospectus",
+  "max_prompt_bytes": 60000,
+  "max_output_tokens": 16000,
+  "delta_max_output_tokens": 6000,
+  "timeout_s": 900,
+  "max_attempts_per_day": 2,
+  "brave": {
+    "caller": "prospectus_writer",
+    "daily_limit": 40,
+    "per_holding": 2,
+    "scopes": [
+      "holding"
+    ],
+    "note": "Brave 1500/mo, 120/day overall; at most 40/day are reserved for this job (holdings only on the first pass)."
+  },
+  "cadence": {
+    "holding": {
+      "full_days": 30,
+      "delta_days": 7,
+      "after_earnings": true
+    },
+    "watch": {
+      "full_days": 90,
+      "after_earnings": true
+    },
+    "triggers": {
+      "day_move_abs_pct": 8.0,
+      "material_news": true,
+      "stop_event": true,
+      "cio_stance_change": true,
+      "promoted_to_proposal": true
+    }
+  },
+  "estimate": {
+    "note": "Dry-run cost estimate only; real spend is settled from provider usage.",
+    "expected_output_tokens": 9000,
+    "chars_per_token": 3.6
+  },
+  "registry_domains": {
+    "quote_price": {
+      "reader": "quote_price",
+      "stale_days": 5
+    },
+    "symbol_identity": {
+      "covered_by": [
+        "dossier_profile"
+      ]
+    },
+    "analyst_opinion": {
+      "covered_by": [
+        "analyst_targets"
+      ]
+    },
+    "catalyst_news": {
+      "covered_by": [
+        "catalysts",
+        "news"
+      ]
+    },
+    "technicals": {
+      "reader": "technicals",
+      "stale_days": 7,
+      "refreshable": true
+    },
+    "sector_momentum": {
+      "covered_by": [
+        "sector_momentum"
+      ]
+    },
+    "industry_momentum": {
+      "covered_by": [
+        "industry_momentum"
+      ]
+    },
+    "market_regime": {
+      "reader": "market_regime",
+      "stale_days": 7
+    },
+    "earnings_date": {
+      "covered_by": [
+        "dossier_profile"
+      ]
+    },
+    "holdings_accounts": {
+      "covered_by": [
+        "position"
+      ]
+    },
+    "positions_store": {
+      "covered_by": [
+        "position",
+        "journal_trades",
+        "stops"
+      ]
+    },
+    "options_iv": {
+      "covered_by": [
+        "options_iv"
+      ]
+    },
+    "research_thesis": {
+      "covered_by": [
+        "house_research",
+        "symbol_thesis"
+      ]
+    },
+    "watch_directives": {
+      "reader": "watch_directives"
+    },
+    "watch_discovery": {
+      "excluded": "screener discovery candidates; a security's watch state is read via watch_directives and cio_prospect"
+    },
+    "web_search": {
+      "covered_by": [
+        "web_search"
+      ]
+    },
+    "private_company": {
+      "reader": "private_company"
+    },
+    "dividends": {
+      "covered_by": [
+        "dossier"
+      ]
+    },
+    "macro": {
+      "reader": "macro",
+      "stale_days": 45,
+      "refreshable": true,
+      "note": "FRED via fred_data_ingest + macro_calendar_refresh"
+    },
+    "fundamentals": {
+      "reader": "fundamentals",
+      "refreshable": true,
+      "note": "fundamental_data + sec_xbrl (sec_fundamentals_ingest)"
+    },
+    "agent_opinion": {
+      "covered_by": [
+        "house_agents",
+        "final_synthesis"
+      ]
+    },
+    "agent_debate": {
+      "reader": "agent_debate"
+    },
+    "ai_reports": {
+      "reader": "ai_reports"
+    },
+    "redeploy_analytics": {
+      "excluded": "portfolio-level redeploy analytics, not per-security"
+    },
+    "inverse_stoplights": {
+      "excluded": "portfolio hedge signal surface, not per-security research"
+    },
+    "data_gaps": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "operator_conversation": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_memory_contexts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_retrieval_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_heartbeats": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "approval_packages": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "platform_conformance": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_gir_projection": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_breaches": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "research_write_path_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "edge_fanout_work_items": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_research_index": {
+      "reader": "intelligence_research_index"
+    },
+    "sec_filing_events": {
+      "reader": "sec_filing_events",
+      "refreshable": true,
+      "note": "sec_filings_feed + sec_form4 (sec_data_ingest) + Form 4 momentum context"
+    },
+    "agent_checkpoints": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "lesson_promotions": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "contradiction_verdicts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "agent_registry": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "model_chooser_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_ladder_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "maturity_scores": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "conformance_gate_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_recoveries": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "capital_plan_decisions": {
+      "excluded": "portfolio capital plan decisions (operator-level), not per-security research"
+    },
+    "cio_operator_artifacts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "counterfactual_ledger": {
+      "reader": "counterfactual_ledger"
+    },
+    "active_trader_microstructure": {
+      "excluded": "intraday microstructure for alerts; not research content"
+    },
+    "opportunity_assessment": {
+      "reader": "opportunity_assessment",
+      "stale_days": 7
+    },
+    "finviz_enrichment": {
+      "covered_by": [
+        "fundamentals"
+      ]
+    },
+    "scalp_list": {
+      "excluded": "intraday scalp candidates; not research content"
+    },
+    "social_posts": {
+      "reader": "social_posts"
+    },
+    "yfinance_info_snapshot": {
+      "reader": "yfinance_info_snapshot",
+      "stale_days": 30,
+      "refreshable": true
+    },
+    "earnings_calendar": {
+      "reader": "earnings_calendar",
+      "stale_days": 14,
+      "refreshable": true
+    },
+    "news_sentiment": {
+      "reader": "news_sentiment",
+      "stale_days": 3
+    },
+    "cio_prospect": {
+      "covered_by": [
+        "cio_record",
+        "cio_lineage_origin"
+      ]
+    },
+    "cio_asks": {
+      "excluded": "operator questions; answers already flow into the CIO record"
+    },
+    "anthropic_promotional_credit": {
+      "excluded": "model credit ledger (funding), not research content"
+    },
+    "transcripts": {
+      "reader": "transcripts",
+      "note": "not a registry domain: youtube_transcripts (transcript_processor/tagger)"
+    }
+  },
+  "registry_domains_note": "Every domain in config/data_source_authority.json must appear here: read (reader / covered_by) or excluded with a reason. tests/test_prospectus_domains_20261026.py enforces it.",
+  "web": {
+    "max_uses": {
+      "holding": 6,
+      "watch": 3
+    },
+    "plan_max_output_tokens": 4000,
+    "note": "governed search_router (free tier first, then Brave under its budget); the job's daily paid-search allowance is brave.daily_limit"
+  }
+}

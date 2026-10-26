@@ -5,6 +5,27 @@
   "credit_usd": "200",
   "total_cap_usd": "190",
   "daily_cap_usd": "10",
+  "daily_cap_overrides": [
+    {
+      "usd": "25",
+      "from": "2026-10-26",
+      "until": "2026-10-29",
+      "approved_by": "operator 2026-10-26: \"$25/day for 3 days\" (Ticker Prospectus first build); UTC days 2026-10-26..2026-10-28, then the $10 base"
+    }
+  ],
+  "renewal": {
+    "mode": "one_time",
+    "monthly_allowance_usd": "190",
+    "renews_on_day": null,
+    "note": "one_time: one total cap for the promotion. Operator may switch mode to monthly: a fresh monthly_allowance_usd each UTC month from renews_on_day (default 1); the journal keeps every period."
+  },
+  "admin_cost_verification": {
+    "enabled": true,
+    "env_key_name": "ANTHROPIC_ADMIN_API_KEY",
+    "mode": "optional_presence_gated",
+    "result_rel": "data/runtime/provider_cost/anthropic_admin_cost.json",
+    "note": "Optional: when a key with this NAME exists, scripts/anthropic_cost_verify.py compares the Usage & Cost Admin API cost report with the credit ledger. Absent key = skipped, never an error. Presence is checked by name only."
+  },
   "starts_at": "2026-10-25T00:00:00Z",
   "expires_at": "2026-11-16T00:00:00Z",
   "approved_by": "operator 2026-10-25; REQUIREMENTS.md sections 2-4",
@@ -18,7 +39,9 @@
     "bulk": "claude-haiku-5-5",
     "standard": "claude-opus-5-5",
     "high": "claude-opus-5-5",
-    "highest": "claude-opus-5-5"
+    "highest": "claude-opus-5-5",
+    "long_form": "claude-opus-5-5",
+    "premium": "claude-fable-5-1"
   },
   "policy_tiers": {
     "FAST": "standard",
@@ -31,7 +54,9 @@
     "bulk": "0.10",
     "standard": "0.25",
     "high": "0.50",
-    "highest": "0.50"
+    "highest": "0.50",
+    "long_form": "2.00",
+    "premium": "4.00"
   },
   "retry": {
     "max_attempts": 2,
@@ -97,11 +122,19 @@
       "cache_write_5m": "5",
       "cache_write_1h": "8",
       "batch_multiplier": "0.5"
+    },
+    "claude-fable-5-1": {
+      "input": "10",
+      "output": "50",
+      "cache_read": "0.25",
+      "cache_write_5m": "12.50",
+      "cache_write_1h": "20",
+      "batch_multiplier": "0.5"
     }
   },
   "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "models_source": "https://platform.claude.com/docs/en/models/overview",
-  "pricing_verified_at": "2026-10-25",
+  "pricing_verified_at": "2026-10-26",
   "pacing_timezone": "UTC",
   "credit_is_promotional": true,
   "threshold_notes": [
@@ -111,9 +144,9 @@
   "expiry_notice_days": 3,
   "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner.",
   "milestone_dedupe_minutes": 43200,
-  "activation_note": "Enable only after operator verifies the promotional organization and the tier canaries pass.",
+  "activation_note": "Operator requested enable and a governed test call on 2026-10-25; promotional org key stored and validated HTTP 200 on 2026-10-26. Live canary results must be recorded separately.",
   "activated_by": "operator 2026-10-26: stored the promotional-organization key as ANTHROPIC_API_KEY (validated HTTP 200) and asked to get it running",
-  "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable",
+  "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable. Amended operator 2026-10-26: \"Opus for all, Fable for top\" — Fable only for prospectus_writer_premium (top holdings).",
   "thinking_controls": {
     "claude-haiku-5-5": {
       "enabled": {
@@ -168,9 +201,23 @@
           "effort": "low"
         }
       }
+    },
+    "claude-fable-5-1": {
+      "enabled": {
+        "thinking": null,
+        "output_config": {
+          "effort": "high"
+        }
+      },
+      "disabled": {
+        "thinking": null,
+        "output_config": {
+          "effort": "low"
+        }
+      }
     }
   },
-  "thinking_note": "Opus 5.5 adaptive thinking is always on; ordinary calls use low effort, not a claim that thinking is disabled.",
+  "thinking_note": "Opus 5.5 adaptive thinking is always on; ordinary calls use low effort, not a claim that thinking is disabled. Fable 5.1: thinking is always on and the parameter is omitted (thinking: null); effort is the only control.",
   "bulk_processes": [
     "hermes_tag_engine",
     "iris_taxonomy_agent",
@@ -183,5 +230,23 @@
     "n8n_material_digest_draft",
     "n8n_ops_summary_draft",
     "topic_curator"
+  ],
+  "activation_approved_by": "operator 2026-10-25: \"what disable enable and test call\"",
+  "process_tiers": {
+    "prospectus_writer": "long_form",
+    "prospectus_writer_premium": "premium"
+  },
+  "premium_tier_processes": [
+    "prospectus_writer_premium"
+  ],
+  "anthropic_only_processes": {
+    "prospectus_writer": "operator 2026-10-26: prospectus jobs QUEUE when the credit is unavailable; never a paid DeepSeek fallback",
+    "prospectus_writer_premium": "operator 2026-10-26: same; a Fable refusal falls back to Opus (prospectus_writer), never to another provider"
+  },
+  "thinking_tiers": [
+    "high",
+    "highest",
+    "long_form",
+    "premium"
   ]
 }

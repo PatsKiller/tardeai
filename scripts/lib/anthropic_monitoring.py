@@ -253,7 +253,48 @@ def _snapshot(root: Path, policy: dict, now: datetime, configured: bool, basis: 
                   if failures or success_times else None},
         'as_of': now.isoformat(), 'offpeak': 'Promotional credit exempt; DeepSeek deferral unchanged',
         'note': policy.get('external_credit_note'),
-        'digest_line': f"Anthropic {status} · credit used ${credit.get('credit_used_usd', '?')} · remaining estimate ${credit.get('estimated_credit_remaining_usd', '?')} · UTC daily ${credit.get('today_used_usd', '?')}/${policy['daily_cap_usd']} · expires {policy['expires_at']}",
+        'credit_config': credit_config(root, policy, credit),
+        'digest_line': f"Anthropic {status} · credit used ${credit.get('credit_used_usd', '?')} · remaining estimate ${credit.get('estimated_credit_remaining_usd', '?')} · UTC daily ${credit.get('today_used_usd', '?')}/${credit.get('daily_cap_usd', policy['daily_cap_usd'])} · expires {policy['expires_at']}",
+    }
+
+
+def admin_verification(root: Path, policy: dict) -> dict:
+    """Optional Usage & Cost Admin API cross-check: key presence by NAME only, plus the last
+    result file written by scripts/anthropic_cost_verify.py. Never reads a credential value."""
+    cfg = policy.get('admin_cost_verification') or {}
+    name = 'ANTHROPIC_ADMIN_API_KEY'  # literal env name (presence only; never the value)
+    configured = cfg.get('enabled') is True and 'ANTHROPIC_ADMIN_API_KEY' in os.environ
+    out = {'enabled': cfg.get('enabled') is True, 'key_name': name, 'configured': configured,
+           'status': 'SKIPPED_NO_KEY' if not configured else 'NOT_RUN', 'last': None}
+    try:
+        last = json.loads((Path(root) / str(cfg.get('result_rel') or
+                          'data/runtime/provider_cost/anthropic_admin_cost.json')).read_text(encoding='utf-8'))
+        if isinstance(last, dict):
+            out['last'] = {k: last.get(k) for k in ('verified_at', 'window_start', 'reported_usd',
+                                                    'ledger_usd', 'delta_usd', 'status')}
+            if configured:
+                out['status'] = str(last.get('status') or 'UNKNOWN')
+    except (OSError, ValueError, TypeError):
+        pass
+    return out
+
+
+def credit_config(root: Path, policy: dict, credit: dict) -> dict:
+    """Operator-visible credit configuration for LLM Spend and Ops Controls."""
+    renewal = policy.get('renewal') or {'mode': 'one_time'}
+    return {
+        'daily_cap_usd': credit.get('daily_cap_usd'),
+        'daily_cap_base_usd': policy.get('daily_cap_usd'),
+        'daily_cap_override_active': bool(credit.get('daily_cap_override_active')),
+        'daily_cap_overrides': [{k: row.get(k) for k in ('usd', 'from', 'until')}
+                                for row in policy.get('daily_cap_overrides') or [] if isinstance(row, dict)],
+        'renewal': {k: renewal.get(k) for k in ('mode', 'monthly_allowance_usd', 'renews_on_day')},
+        'period_start': credit.get('period_start'),
+        'total_cap_usd': credit.get('total_cap_usd', policy.get('total_cap_usd')),
+        'models': dict(policy.get('models') or {}),
+        'process_tiers': dict(policy.get('process_tiers') or {}),
+        'anthropic_only_processes': sorted(policy.get('anthropic_only_processes') or {}),
+        'admin_verification': admin_verification(root, policy),
     }
 
 

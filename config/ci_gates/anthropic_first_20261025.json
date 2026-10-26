@@ -8,7 +8,8 @@
     "tests/test_anthropic_native_20261025.py",
     "tests/test_anthropic_review_20261025.py",
     "tests/test_anthropic_credit_review_20261025.py",
-    "tests/test_anthropic_monitor_review_20261025.py"
+    "tests/test_anthropic_monitor_review_20261025.py",
+    "tests/test_anthropic_canary_20261026.py"
   ],
   "comment": [
     "Promotional-first dispatch, concurrent credit authorization, all token classes, bounded fallback, async Batch and read-only provider-health projection. All providers, ledger writes and clocks are injected; no real API calls or credentials."

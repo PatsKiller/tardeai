@@ -24,7 +24,7 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
     rows=[];total=Decimal(0)
     for process in registry['processes']:
         pid=process['id'];row=routes[pid];old=row['primary'];logical=old['policy']
-        tier='high' if process.get('reasoning_tier')=='high' else ('bulk' if logical=='FAST' and pid in credit.get('bulk_processes',[]) else credit['policy_tiers'][logical])
+        tier=(credit.get('process_tiers') or {}).get(pid) or ('high' if process.get('reasoning_tier')=='high' else ('bulk' if logical=='FAST' and pid in credit.get('bulk_processes',[]) else credit['policy_tiers'][logical]))
         eligible=process.get('anthropic_first') is True and pid not in credit['excluded_processes']
         new=credit['models'][tier] if eligible else 'unchanged'
         observed=observations.get('by_registered_process',{}).get(pid)
@@ -40,7 +40,7 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
             old_model='proxy-selected (not pinned in routing row)'
         rows.append({'process':pid,'old':old['provider']+' / '+old_model,
                      'new':('anthropic / '+new) if eligible else 'EXCLUDED / unchanged',
-                     'no_key_or_expired':'unchanged / '+old['provider'],'currently_enabled':bool(credit.get('enabled')),'tier':tier,'admission':'DECLARED_USD_REQUEST_CAPS' if process.get('daily_cost_cap_usd') and process.get('daily_soft_cap') else 'DB_BUDGET_NOT_MEASURED','observed_calls':observed['events'] if observed else 'NOT_MEASURED',
+                     'no_key_or_expired':'QUEUED (anthropic-only)' if pid in (credit.get('anthropic_only_processes') or {}) else 'unchanged / '+old['provider'],'currently_enabled':bool(credit.get('enabled')),'tier':tier,'admission':'DECLARED_USD_REQUEST_CAPS' if process.get('daily_cost_cap_usd') and process.get('daily_soft_cap') else 'DB_BUDGET_NOT_MEASURED','observed_calls':observed['events'] if observed else 'NOT_MEASURED',
                      'comparable_token_usd':str(cost) if cost is not None else 'NOT_MEASURED'})
     return rows,total
 
