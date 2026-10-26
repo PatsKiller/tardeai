@@ -2,14 +2,14 @@
   "schema": "CiGate@v1",
   "name": "prospectus_backend_20261026",
   "files": [
-    "tests/test_prospectus_credit_config_20261026.py",
-    "tests/test_prospectus_build_20261026.py",
     "tests/test_prospectus_api_20261026.py",
+    "tests/test_prospectus_build_20261026.py",
+    "tests/test_prospectus_credit_config_20261026.py",
     "tests/test_prospectus_domains_20261026.py",
     "tests/test_prospectus_web_search_enabled_20261026.py"
   ],
   "anchor": "PROSPECTUS_BACKEND_20261026",
   "comment": [
-    "ANCHOR: PROSPECTUS_BACKEND_20261026 \u2014 Ticker Prospectus backend (operator 2026-10-26): credit daily-cap override + renewal + presence-only Admin API check, Fable 5.1 premium tier, anthropic-only queueing, registry-driven source coverage (every data_source_authority domain read or excluded with a reason), grounding and MBI guards, private storage layout, renders, API contract and operator-only refresh. Synthetic tickers; model, search and DB stubbed."
+    "ANCHOR: PROSPECTUS_BACKEND_20261026 — Ticker Prospectus backend (operator 2026-10-26): credit daily-cap override + renewal + presence-only Admin API check, Fable 5.1 premium tier, anthropic-only queueing, registry-driven source coverage (every data_source_authority domain read or excluded with a reason), grounding and MBI guards, private storage layout, renders, API contract and operator-only refresh. Synthetic tickers; model, search and DB stubbed."
   ]
 }
