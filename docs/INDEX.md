@@ -2299,7 +2299,29 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
 | `docs/ops/packets/tradeinview-redesign-20261024/README.md` | WP-22 TradeInView A source packet |
 | `docs/ops/packets/w8-writers-20261024/README.md` | W8 source packet |
+| `docs/ops/page-repair/INDEX.md` | Page repair index (Command Center v3) |
+| `docs/ops/page-repair/approvals.md` | Page repair — Approvals `/approvals` |
+| `docs/ops/page-repair/broker-access.md` | Page repair — Broker Access `/system/broker-access` |
+| `docs/ops/page-repair/cio-questions.md` | Page repair — My questions `/cio/questions` |
+| `docs/ops/page-repair/cio.md` | Page repair — CIO Desk `/cio` |
+| `docs/ops/page-repair/conflicts-rules.md` | Page repair — Conflict rules `/conflicts/rules` |
+| `docs/ops/page-repair/health.md` | Page repair — Health `/ops/health` |
 | `docs/ops/page-repair/home.md` | Home page repair — Board 14 |
+| `docs/ops/page-repair/jobs.md` | Page repair — Jobs `/ops/jobs` |
+| `docs/ops/page-repair/ops-controls.md` | Page repair — Ops Controls `/ops/controls` |
+| `docs/ops/page-repair/policy.md` | Page repair — Rulebook `/policy` |
+| `docs/ops/page-repair/pullback-macd.md` | Page repair — Pullback/MACD `/pullback-macd` |
+| `docs/ops/page-repair/rec-intel.md` | Page repair — Rec Intelligence `/rec-intel` |
+| `docs/ops/page-repair/releases.md` | Page repair — Releases & Schedules `/system/releases` |
+| `docs/ops/page-repair/reports.md` | Page repair — Reports `/reports` |
+| `docs/ops/page-repair/research-intel.md` | Page repair — Research Intel `/research-intelligence` |
+| `docs/ops/page-repair/research-lineage.md` | Page repair — Research lineage `/closed-loop` |
+| `docs/ops/page-repair/rotation.md` | Page repair — Rotation `/rotation` |
+| `docs/ops/page-repair/sectors.md` | Page repair — Sectors `/sectors` |
+| `docs/ops/page-repair/strategy.md` | Page repair — Strategy `/strategy` |
+| `docs/ops/page-repair/system.md` | Page repair — System `/system` |
+| `docs/ops/page-repair/trading.md` | Page repair — Trading `/trading` |
+| `docs/ops/page-repair/watchpool.md` | Page repair — Watchpool `/watchpool` |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |

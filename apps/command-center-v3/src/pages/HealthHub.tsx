@@ -15,6 +15,17 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
+/** Mirror of stop desks stopCategory (PR #2141) — count only; do not import claimed stopDisplay.ts. */
+function isNoBrokerStop(p: any): boolean {
+  const c = p?.stop_category
+  if (c === 'none' || c === 'planned') return true
+  if (c === 'active' || c === 'pending_activation' || c === 'filled' || c === 'unknown') return false
+  const s = p?.stop_state
+  if (s === 'active' || s === 'pending_activation' || s === 'filled' || s === 'unknown' || s === 'pending') return false
+  if (p?.stop_source === 'planned' && p?.stop_price != null) return true
+  return !p?.has_stop
+}
+
 interface Props { onDrill?: (ctx: DrillContext) => void; jobsHealth?: ReactNode }
 const HEALTH_TABS = ['overview', 'jobs', 'coders', 'history', 'log', 'autonomy', 'intelligence-loop', 'daily-intelligence'] as const
 
@@ -155,7 +166,9 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
           <RiskHealthStrip
             heatPct={riskData?.portfolio_heat_pct ?? 0}
             healthScore={overall}
-            unprotected={(riskData?.positions || []).filter((p: any) => !p.has_stop).length}
+            // "Unprotected" = no broker stop (none + planned). Do not lump
+            // pending_activation / filled / unknown (board 15; shared helper in #2141).
+            unprotected={(riskData?.positions || []).filter(isNoBrokerStop).length}
             brokerStale={propHealth?.broker?.stale_count ?? 0}
             optionsAlerts={propHealth?.options?.needs_action ?? 0}
           />

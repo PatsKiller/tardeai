@@ -80,6 +80,8 @@ for (const width of [412, 390]) {
       await expect(root.getByTestId('cr-status')).toContainText('Rulebook proposed — not yet approved by you')
       await expect(root.getByTestId('cr-status')).toContainText('Not live')
       await expect(root.getByTestId('cr-status')).toContainText(VIEW.rulebook.matrix_sha256.slice(0, 12))
+      await expect(root.getByTestId('cr-approval')).toHaveText('Approval: none recorded')
+      await expect(root.getByTestId('cr-approval')).not.toContainText('{')
       await expect(root.getByTestId('cr-proposals')).toHaveCount(0)
       await expect(root.getByTestId('cr-tiers').locator('li')).toHaveCount(5)
       await expect(root.getByTestId('cr-rule-card')).toHaveCount(VIEW.rules.length)
