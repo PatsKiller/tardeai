@@ -18773,6 +18773,77 @@
       }
     },
     {
+      "lane_id": "prospectus-build",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/prospectus_window.py",
+        "cadence": "*/15 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-26",
+      "state_reason": "operator 2026-10-26 Ticker Prospectus; run windows 2026-10-26 (\"queued up and run a certain time of the day\"). SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs scripts/prospectus_window.py --dry-run (names the due window, the rows its triggers would enqueue and the drain size; no model call, no writes).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/prospectus_window.py dry run (tests/test_prospectus_schedule_delivery_20261026.py::test_window_dry_run_writes_nothing).",
+      "review_by": "2026-11-09",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/prospectus-build_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Ticker Prospectus run windows (docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md). Fires every 15 min; a window runs once per day (config/prospectus.json run_windows, ET): 17:45 after the close (holdings + watch; |day move| >= 8% on the close, material news, stop event, CIO stance change, promoted to proposal, earnings-after, monthly / quarterly due, weekly delta) and 07:00 pre-market (holdings only). Triggers only enqueue; a window drains by priority (operator, holdings by $ value, watch) up to max_reports inside the governed Anthropic credit cap; leftovers wait. Other fires drain only operator 'Rewrite now' rows. Each run leaves an outbox record for the host sender prospectus-deliver; this lane sends nothing. Lock /tmp/prospectus_build.lock.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "prospectus-deliver",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-prospectus-deliver.timer"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "operator 2026-10-26: prospectus reports 'sent out both in Word and PDF as a notification [on] Telegram and [email]' (email = audit only, clarified the same day). Host sender because an n8n lane never sends (AGENTS.md §23.14, §24.1). Unit files in config/systemd/user; install is the coordinator's/operator's step.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/prospectus_deliver.py dry run (tests/test_prospectus_schedule_delivery_20261026.py::test_deliver_dry_run_sends_nothing).",
+      "review_by": "2026-11-09",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/prospectus-deliver_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Every 10 min: sends pending prospectus run outboxes (data/prospectus/delivery/outbox) through telegram_alert.send_telegram / send_telegram_document (P2 intents; summary + PDF + Word) and email_notifier.send_email (gog Gmail audit, no attachments). Idempotent per SYMBOL@version (delivery/ledger.json). Cadence 24h: an idle healthy sender writes its receipt every fire, but outboxes appear at most a few times a day. Lock /tmp/prospectus_deliver.lock."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

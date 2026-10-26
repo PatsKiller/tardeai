@@ -4518,6 +4518,32 @@
       "env_evidence": "scripts/cio_ask_research.py reads CIO_ASK_REQUESTS_DIR, CIO_ASK_ANSWERS_DIR and the executor-set TRADEAI_RUN_ID; scripts/lib/cio_ask_research.py reads CIO_ASK_RESEARCH_PER_QUESTION_USD. Its read closure (identity registry, data broker readers, db_adapter, search_router, llm_consumption) resolves the state root and DB settings; the dry run opens no DB and no provider. No broker, messaging or provider credential name.",
       "env_report_reason": "New lane (2026-10-23): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing; the live closure (db_adapter, search_router, governed_cloud_generation) is re-inventoried for enforce at canary.",
       "source": "operator 2026-10-23 (Ask the CIO, Phase 9 approved: research pipeline 'runnable as an n8n lane cio-ask-research registered at SHADOW with a DRAFT contract (operator reviews)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR, after the operator approves the cio_ask_deep_research spend cap): []. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0)."
+    },
+    {
+      "lane_id": "prospectus-build",
+      "command": [
+        "$PY",
+        "scripts/prospectus_window.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/prospectus_build.lock",
+      "lock_kind": "flock",
+      "timeout_s": 7200,
+      "market_gate": false,
+      "output_signal": "data/runtime/prospectus-build_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "ANTHROPIC_API_KEY",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
+      "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
+      "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
     }
   ],
   "blocked_reasons": {

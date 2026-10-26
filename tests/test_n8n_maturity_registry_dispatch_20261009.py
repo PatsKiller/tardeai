@@ -517,6 +517,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
         # (tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 2 h 08:10-20:10 ET dry_run
+        # (tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",

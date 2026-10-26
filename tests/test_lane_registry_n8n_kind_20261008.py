@@ -359,6 +359,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
         # (no host line; tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 2 h 08:10-20:10 ET dry_run
+        # (no host line; tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",

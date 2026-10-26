@@ -36,8 +36,96 @@
       "material_news": true,
       "stop_event": true,
       "cio_stance_change": true,
-      "promoted_to_proposal": true
+      "promoted_to_proposal": true,
+      "day_move_scopes": [
+        "holding"
+      ],
+      "note": "Triggers only ENQUEUE with a reason (scripts/lib/prospectus/schedule.py); a run window writes. day_move is measured on the CLOSE: the last two daily closes, once per session close after the last report."
     }
+  },
+  "run_windows": {
+    "timezone": "America/New_York",
+    "note": "Operator 2026-10-26: reports are queued and run at set times, not ad hoc. The n8n lane prospectus-build fires every 15 min; a window runs once per day from its start until catch_up_minutes later. Off-window fires drain only operator 'Rewrite now' rows.",
+    "catch_up_minutes": 120,
+    "windows": [
+      {
+        "id": "post_close",
+        "label": "After the close",
+        "time": "17:45",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding",
+          "watch"
+        ],
+        "triggers": "all",
+        "max_reports": 12,
+        "note": "after the 16:00 ET close so the 8% day-move test uses the closing price"
+      },
+      {
+        "id": "pre_market",
+        "label": "Pre-market",
+        "time": "07:00",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding"
+        ],
+        "triggers": [
+          "missing",
+          "after_earnings",
+          "material_news",
+          "stop_event",
+          "cio_stance_change"
+        ],
+        "max_reports": 6,
+        "note": "overnight news and earnings for holdings only"
+      }
+    ],
+    "operator_rewrite": {
+      "immediate": true,
+      "max_per_fire": 3
+    },
+    "watch_batch": {
+      "enabled": true,
+      "note": "watch rows go to scripts.lib.prospectus.batch.submit_window when the cost-settings PR provides it; synchronous until then"
+    }
+  },
+  "delivery": {
+    "note": "Host sender scripts/prospectus_deliver.py (timer tradeai-prospectus-deliver.timer). Operator 2026-10-26: Telegram = summary + each report's PDF and Word; email = 'just the audit' (no attachments).",
+    "telegram": {
+      "enabled": true,
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attached_reports": 10
+    },
+    "email": {
+      "enabled": true,
+      "attachments": false
+    },
+    "scopes": {
+      "holding": true,
+      "watch": true
+    },
+    "on_operator_rewrite": true,
+    "max_attempts": 3,
+    "link_template": "https://ms01-openclaw.tail163d14.ts.net/v3/prospectus/{symbol}"
   },
   "estimate": {
     "note": "Dry-run cost estimate only; real spend is settled from provider usage.",
