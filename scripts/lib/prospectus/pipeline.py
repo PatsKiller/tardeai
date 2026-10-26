@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import quality_gate, render, store
-from .generate import GenerationFailed, QueueLater, governed_generate, write
+from . import batch, quality_gate, render, store
+from .generate import GenerationFailed, QueueLater, generation_config, governed_generate, write
 from .blocks import book_returns
 from .domains import full_assemble
 from .inputs import earnings_passed, holdings_ranked
@@ -136,7 +136,7 @@ def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, tr
 
 def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict | None = None,
               generate_fn: Callable = governed_generate, now_fn: Callable[[], datetime] | None = None,
-              manual: bool = False, log: Callable[[str], None] = print) -> dict:
+              manual: bool = False, log: Callable[[str], None] = print, batch_enabled: bool = True) -> dict:
     """Process up to ``limit`` queued rows (priority order). Stops for the day when the credit is unavailable."""
     now_fn = now_fn or (lambda: datetime.now(timezone.utc))
     holdings = holdings if holdings is not None else (sources.holdings() or {})
@@ -144,12 +144,15 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
     procs = cfg["processes"]
     brave = cfg.get("brave") or {}
     summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0}
+    gen = generation_config()
     book = None
     for row in list(store.read_queue(base)["items"]):
         if len(summary["done"]) + len(summary["failed"]) >= limit:
             break
         if row.get("state") not in ("queued", None):
             continue
+        if batch_enabled and batch.is_batch_row(row, gen):
+            continue  # scheduled Watch work goes through the Message Batches API (batch.submit_due)
         sym, scope = row["symbol"], row.get("scope", "watch")
         if scope == "holding" and sym not in holdings:
             scope = "watch"  # sold since it was queued
@@ -180,11 +183,7 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
             log(f"QUEUED {sym}: credit unavailable ({str(exc)[:120]}) — stopping for this run")
             break
         except quality_gate.DataBlocked as exc:
-            # Data-quality gate HARD_FAIL: no model was called. Park the row (no retry loop), file the repair.
-            repairs = quality_gate.request_repairs(sym, exc.gate)
-            store.mark(base, sym, state="blocked_data", error=str(exc)[:240])
-            store.update_index(base, sym, status="blocked_data", last_error=str(exc)[:240], failure_reason=None,
-                               gate_repairs=repairs, **quality_gate.index_fields(exc.gate))
+            handle_blocked(base, sym, exc)
             summary.setdefault("blocked_data", []).append(sym)
             log(f"BLOCKED_DATA {sym}: {str(exc)[:160]}")
             continue
@@ -197,21 +196,7 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
             summary["failed"].append(sym)
             log(f"FAILED {sym}: {str(exc)[:160]}")
             continue
-        files = render.render_all(doc)
-        store.write_version(base, sym, version, doc, files)
-        entry = {"name": doc["name"], "scope": scope, "version": version, "generated_at": doc["generated_at"],
-                 "model": doc["model"], "cost_usd": doc["cost_usd"], "status": doc.get("status") or "ready",
-                 "verdict_line": doc["verdict_line"], "partial_gaps": doc.get("partial_gaps") or [], "failure_reason": None,
-                 "earnings_date": bundle.context.get("next_earnings_date"), "last_error": None,
-                 "inputs_digest": doc["inputs_digest"], "formats": sorted(k.split(".")[-1] for k in files if "/" not in k),
-                 **quality_gate.index_fields(doc.get("gate") or {}, (doc.get("gate") or {}).get("layers", {}).get("post_write"))}
-        entry["next_due"] = next_due(entry, cfg)
-        store.update_index(base, sym, **entry)
-        store.mark(base, sym, state="done", done=True)
-        if (doc.get("gate") or {}).get("rewrite_requested") and row.get("reason") != "gate_rewrite":
-            store.enqueue(base, [{"symbol": sym, "scope": scope, "premium": bool(row.get("premium")), "mode": "full",
-                                  "priority": PRIORITY_WATCH + 500, "reason": "gate_rewrite",
-                                  "requested_by": "quality_gate"}], now=now)  # one rewrite, never a loop
+        persist_doc(base, sym, scope, doc, bundle, version, cfg, row, now=now)
         summary["done"].append(sym)
         summary["cost_usd"] += float(doc.get("cost_usd") or 0)
         log(f"READY {sym} {version} model={doc['model']} cost=${float(doc.get('cost_usd') or 0):.4f}")
@@ -219,15 +204,51 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
     return summary
 
 
-def estimate(prompt: str, cfg: dict, *, premium: bool, pricing: dict) -> dict:
-    """Dry-run cost estimate from the prompt size (no provider call)."""
+def handle_blocked(base: Path, sym: str, exc: "quality_gate.DataBlocked") -> None:
+    """Data-quality gate HARD_FAIL: no model was called. Park the row (no retry loop), file the repair."""
+    repairs = quality_gate.request_repairs(sym, exc.gate)
+    store.mark(base, sym, state="blocked_data", error=str(exc)[:240])
+    store.update_index(base, sym, status="blocked_data", last_error=str(exc)[:240], failure_reason=None,
+                       gate_repairs=repairs, **quality_gate.index_fields(exc.gate))
+
+
+def persist_doc(base: Path, sym: str, scope: str, doc: dict, bundle: Any, version: str, cfg: dict, row: dict, *,
+                now: datetime) -> None:
+    """Render, store, index and close one written report (the synchronous and the batch path share this)."""
+    files = render.render_all(doc)
+    store.write_version(base, sym, version, doc, files)
+    entry = {"name": doc["name"], "scope": scope, "version": version, "generated_at": doc["generated_at"],
+             "model": doc["model"], "cost_usd": doc["cost_usd"], "status": doc.get("status") or "ready",
+             "verdict_line": doc["verdict_line"], "partial_gaps": doc.get("partial_gaps") or [], "failure_reason": None,
+             "earnings_date": bundle.context.get("next_earnings_date"), "last_error": None,
+             "inputs_digest": doc["inputs_digest"], "formats": sorted(k.split(".")[-1] for k in files if "/" not in k),
+             **quality_gate.index_fields(doc.get("gate") or {}, (doc.get("gate") or {}).get("layers", {}).get("post_write"))}
+    entry["next_due"] = next_due(entry, cfg)
+    store.update_index(base, sym, **entry)
+    store.mark(base, sym, state="done", done=True)
+    if (doc.get("gate") or {}).get("rewrite_requested") and row.get("reason") != "gate_rewrite":
+        store.enqueue(base, [{"symbol": sym, "scope": scope, "premium": bool(row.get("premium")), "mode": "full",
+                              "priority": PRIORITY_WATCH + 500, "reason": "gate_rewrite",
+                              "requested_by": "quality_gate"}], now=now)  # one rewrite, never a loop
+
+
+def estimate(prompt: str, cfg: dict, *, premium: bool, pricing: dict, scope: str = "holding") -> dict:
+    """Dry-run cost estimate from the prompt size (no provider call). Watch rows: scope output budget + batch price."""
+    from .generate import scope_settings
     est = cfg.get("estimate") or {}
+    gen = generation_config()
+    ss = scope_settings(scope, gen)
+    use_batch = bool(ss.get("batch")) and scope != "holding" and not premium
+    mult = float((gen.get("batch") or {}).get("price_multiplier", 0.5)) if use_batch else 1.0
     tokens_in = int(len(prompt) / float(est.get("chars_per_token", 3.6)))
-    tokens_out = int(est.get("expected_output_tokens", 9000))
+    tokens_out = int(ss.get("expected_output_tokens") or est.get("expected_output_tokens", 9000))
     model = "claude-fable-5-1" if premium else "claude-opus-5-5"
     p = pricing.get(model) or {}
-    usd = tokens_in * float(p.get("input", 0)) / 1e6 + tokens_out * float(p.get("output", 0)) / 1e6
+    usd = (tokens_in * float(p.get("input", 0)) / 1e6 + tokens_out * float(p.get("output", 0)) / 1e6) * mult
     worst_in = len(prompt.encode("utf-8")) + 4096
-    hold = (worst_in * float(p.get("cache_write_5m", 0)) + int(cfg.get("max_output_tokens", 16000)) * float(p.get("output", 0))) / 1e6 * 2
+    max_out = int(ss.get("max_output_tokens") or cfg.get("max_output_tokens", 16000))
+    hold = (worst_in * float(p.get("cache_write_5m", 0)) + max_out * float(p.get("output", 0))) / 1e6 * 2 * mult
     return {"model": model, "prompt_bytes": len(prompt.encode("utf-8")), "input_tokens_est": tokens_in,
-            "output_tokens_est": tokens_out, "cost_usd_est": round(usd, 4), "reservation_hold_usd": round(hold, 4)}
+            "output_tokens_est": tokens_out, "effort": ss.get("effort"), "batch": use_batch,
+            "cost_usd_est": round(usd, 4), "reservation_hold_usd": round(hold, 4),
+            "note": "writer turn only; the web planning turn (sync) and the gate read (~$0.001) are extra"}

@@ -247,7 +247,8 @@ def test_run_queue_writes_private_layout_index_and_all_formats(base):
     store.write_universe(base, uni)
     store.enqueue(base, pl.first_build_rows(uni), now=NOW)
     fn = stub_generate(src)
-    out = pl.run_queue(base, src, cfg, limit=5, generate_fn=fn, now_fn=lambda: NOW, log=lambda _m: None)
+    out = pl.run_queue(base, src, cfg, limit=5, generate_fn=fn, now_fn=lambda: NOW, log=lambda _m: None,
+                       batch_enabled=False)  # synchronous path under test (Watch batch: test_prospectus_watch_batch)
     assert out["done"] == ["ZZAA", "ZZBB", "ZZCC"] and out["cost_usd"] == pytest.approx(3 * (0.31 + 0.05))
     assert fn.seen[0] == "prospectus_writer_premium" and fn.seen[-1] == "prospectus_writer"
     vdir = base / "ZZAA" / store.stamp(NOW)
