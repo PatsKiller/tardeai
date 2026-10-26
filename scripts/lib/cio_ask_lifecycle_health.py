@@ -97,6 +97,15 @@ def _receipt(doc: Any, attempt: Any, lane: str, now: datetime, conditions: list[
             and attempt.get('status') == 'ok'):
         issue('host_attempt_unverified')
     else:
+        started, finished = _at(attempt.get('started_at')), _at(attempt.get('finished_at'))
+        if started is None or finished is None or not started <= observed <= finished <= now:
+            issue('host_attempt_clock_unverified')
+        produced = attempt.get('produced_count')
+        if type(produced) is not int or produced < 0 or produced < summary['checked_count']:
+            issue('host_output_unverified')
+        elif produced == 0 and attempt.get('empty_reason') not in {
+                'no_tracked_threads', 'no_new_events', 'no_due_threads'}:
+            issue('host_empty_reason_unverified')
         at_summary = attempt.get('summary')
         if not isinstance(at_summary, Mapping) or dict(at_summary) != dict(summary):
             issue('host_attempt_summary_mismatch')

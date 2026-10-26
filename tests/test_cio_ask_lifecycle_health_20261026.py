@@ -38,7 +38,9 @@ def evidence():
                         'consumer_readback': {'state': 'verified', 'answer_id': 'fixture_answer'}}]}
         attempt = {'schema': 'LaneRunReceipt@v2', 'lane_id': lane, 'run_id': run_id,
                    'mode': 'live', 'run_mode': 'live', 'status': 'ok', 'exit': 0,
-                   'produced_count': 0 if event else 1, 'summary': deepcopy(summary)}
+                   'started_at': summary['observed_at'], 'finished_at': summary['observed_at'],
+                   'produced_count': 0 if event else 1, 'empty_reason': 'no_new_events' if event else None,
+                   'summary': deepcopy(summary)}
         docs.append(summary)
         attempts.append(attempt)
     return {'receipt': docs[0], 'material_receipt': docs[1], 'attempt_receipt': attempts[0],
@@ -47,7 +49,14 @@ def evidence():
 
 def sync(value):
     for key, attempt in [('receipt', 'attempt_receipt'), ('material_receipt', 'material_attempt_receipt')]:
+        if not isinstance(value[key], dict):
+            continue
         value[attempt]['summary'] = deepcopy(value[key])
+        value[attempt]['started_at'] = value[key]['observed_at']
+        value[attempt]['finished_at'] = value[key]['observed_at']
+        value[attempt]['produced_count'] = value[key]['checked_count']
+        if value[key]['checked_count'] == 0:
+            value[attempt]['empty_reason'] = 'no_tracked_threads' if not value[key]['tracked_threads'] else 'no_new_events'
 
 
 def codes(report):
@@ -336,6 +345,8 @@ def test_no_event_receipt_keeps_previous_material_thread_check_provable():
     # Latest material poll has no new event/rows; the immutable 13:05 copy is proof.
     archived = deepcopy(value['material_attempt_receipt'])
     archived['run_id'] = archived['run_id'].replace('1300', '1305')
+    archived['produced_count'] = 1
+    archived['started_at'] = archived['finished_at'] = checked.isoformat()
     archived['summary'].update(run_id=archived['run_id'], observed_at=checked.isoformat(),
         checked_count=1, no_change_count=1, threads=[{'thread_id': 'fixture_thread',
         'lifecycle': deepcopy(canonical), 'consumer_readback': {'state': 'verified'}}])
@@ -360,3 +371,23 @@ def test_trigger_identity_requires_a_valid_admitted_hourly_slot(slot):
     value['receipt']['run_id'] = value['attempt_receipt']['run_id'] = 'd:' + health.LANE + ':live:' + slot
     sync(value)
     assert 'cio-ask-lifecycle.trigger_identity_unverified' in codes(health.evaluate(**value))
+
+
+@pytest.mark.parametrize('bad', [None, True, -1, 0, '1'])
+def test_v2_output_count_must_prove_the_declared_business_checks(bad):
+    value = evidence()
+    value['attempt_receipt']['produced_count'] = bad
+    assert 'cio-ask-lifecycle.host_output_unverified' in codes(health.evaluate(**value))
+
+
+def test_zero_work_material_poll_requires_a_typed_empty_reason():
+    value = evidence()
+    value['material_attempt_receipt'].pop('empty_reason')
+    assert 'cio-ask-material-events.host_empty_reason_unverified' in codes(health.evaluate(**value))
+
+
+@pytest.mark.parametrize('stamp', [None, '2026-10-26T18:00:00Z'])
+def test_missing_or_future_attempt_clock_is_unavailable(stamp):
+    value = evidence()
+    value['attempt_receipt']['finished_at'] = stamp
+    assert 'cio-ask-lifecycle.host_attempt_clock_unverified' in codes(health.evaluate(**value))
