@@ -1,0 +1,12 @@
+[Unit]
+Description=Trade AI Ticker Prospectus delivery every 10 minutes (lane prospectus-deliver)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-prospectus-deliver.service
+
+[Install]
+WantedBy=timers.target

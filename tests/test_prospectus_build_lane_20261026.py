@@ -28,7 +28,7 @@ def test_lane_is_n8n_native_shadow_dry_run():
     row = next(r for r in rows if r["lane_id"] == LANE)
     sched = row["scheduler"]
     assert (sched["kind"], sched["expression"], sched["stage"]) == ("n8n", "dispatcher", "shadow")
-    assert sched["match"] == "scripts/prospectus_build.py"
+    assert sched["match"] == "scripts/prospectus_window.py"  # run windows (2026-10-26)
     assert row["dispatch"]["mode"] == "dry_run" and row["dispatch"]["cron"] == [sched["cadence"]]
     assert row["output_signal"]["path"] == f"data/runtime/{LANE}_last.json"
     assert LD.validate_dispatch_block(row) == []
@@ -37,7 +37,7 @@ def test_lane_is_n8n_native_shadow_dry_run():
 
     allow = _json("config/n8n_run_allowlist.json")
     entry = next(e for e in allow["lanes"] if e["lane_id"] == LANE)
-    assert entry["command"][:2] == ["$PY", "scripts/prospectus_build.py"] and "--apply" not in entry["command"]
+    assert entry["command"][:2] == ["$PY", "scripts/prospectus_window.py"] and "--apply" not in entry["command"]
     assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None
     assert entry["lock_kind"] == "flock" and entry["output_signal"] == row["output_signal"]["path"]
     assert not any(n.startswith(("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR")) for n in entry["env_names"])
@@ -54,11 +54,13 @@ def test_no_forbidden_capability_in_import_closure():
     import audit_lane_transitive_capabilities as cap
 
     res = cap.Resolver(ROOT)
-    order, _parent = res.closure(ROOT / "scripts" / "prospectus_build.py")
-    caps = set().union(*(res.info(m).caps for m in order))
-    assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, caps
-    paths = {str(res.info(m).path) for m in order}
-    assert not [p for p in paths if "active_trader/" in p or "brokers/" in p], paths
+    for entry in ("prospectus_build.py", "prospectus_window.py"):
+        order, _parent = res.closure(ROOT / "scripts" / entry)
+        caps = set().union(*(res.info(m).caps for m in order))
+        assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, (entry, caps)
+        paths = {str(res.info(m).path) for m in order}
+        assert not [p for p in paths if "active_trader/" in p or "brokers/" in p], paths
+        assert not [p for p in paths if p.endswith(("telegram_alert.py", "email_notifier.py"))], paths
 
 
 def test_ci_gate_registered():

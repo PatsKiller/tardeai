@@ -34535,9 +34535,9 @@
       "target_reason": "operator_approved_shadow_20261026",
       "stage": "shadow",
       "purpose": {
-        "text": "Keep one sourced Ticker Prospectus per holding and Watch-list symbol current: enqueue due rewrites (cadence + triggers) and write them through the governed Anthropic credit path; at shadow a fire only plans (dry run).",
+        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close, 07:00 ET pre-market for holdings) enqueue what the cadence and triggers say is due and write it through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave a delivery outbox for the host sender. At shadow a fire only plans (dry run).",
         "business_function": "research",
-        "source": "scripts/prospectus_build.py module docstring; operator 2026-10-26 Ticker Prospectus contract"
+        "source": "scripts/prospectus_window.py module docstring; operator 2026-10-26 ('queued up and run a certain time of the day')"
       },
       "owner": "cio",
       "connects_to": [
@@ -34545,10 +34545,10 @@
           "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
           "kind": "service",
           "direction": "calls",
-          "source": "AGENTS.md §23.3"
+          "source": "AGENTS.md \u00a723.3"
         },
         {
-          "name": "$PY scripts/prospectus_build.py",
+          "name": "$PY scripts/prospectus_window.py",
           "kind": "runner",
           "direction": "calls",
           "source": "config/n8n_run_allowlist.json command"
@@ -34563,25 +34563,13 @@
           "name": "data/runtime/prospectus-build_last.json",
           "kind": "receipt",
           "direction": "write",
-          "source": "LaneRunReceipt@v2 / allowlist output_signal (live run only)"
+          "source": "LaneRunReceipt@v2 (lane_last_receipt.write_lane_receipt; live run only)"
         },
         {
-          "name": "search_router (caller web_research, class operator; Brave budget + cache) (live run only)",
-          "kind": "service",
-          "direction": "calls",
-          "source": "_src_web"
-        },
-        {
-          "name": "governed LLM generation as process cio_ask_deep_research (refused until registered with an approved cap) (live run only)",
-          "kind": "service",
-          "direction": "calls",
-          "source": "default_panel(); CostGovernor"
-        },
-        {
-          "name": "position store, data-broker projections, Finviz cache, FRED/SEC/house research tables (read-only)",
+          "name": "position store, data-broker projections (daily bars, catalysts, CIO prospect, stops display), Finviz cache (read-only)",
           "kind": "store",
           "direction": "read",
-          "source": "scripts/lib/prospectus/inputs.py, domains.py"
+          "source": "scripts/lib/prospectus/inputs.py, domains.py, schedule.py"
         },
         {
           "name": "governed LLM generation as prospectus_writer / prospectus_writer_premium (Anthropic credit only) (live run only)",
@@ -34596,10 +34584,16 @@
           "source": "generate.web_loop"
         },
         {
-          "name": "<state>/data/prospectus/** (live run only)",
+          "name": "<state>/data/prospectus/{queue,index,universe,windows}.json, <SYMBOL>/<version>/**, delivery/outbox/*.json (live run only)",
           "kind": "store",
           "direction": "write",
-          "source": "scripts/lib/prospectus/store.py"
+          "source": "scripts/lib/prospectus/store.py, schedule.py, delivery.write_outbox"
+        },
+        {
+          "name": "prospectus-deliver (host systemd timer) reads delivery/outbox; this lane sends nothing",
+          "kind": "service",
+          "direction": "write",
+          "source": "scripts/prospectus_deliver.py"
         }
       ],
       "healthy": [
@@ -34609,37 +34603,37 @@
         },
         {
           "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/prospectus-build_last.json (a dry run writes nothing, AGENTS.md §6)"
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/prospectus-build_last.json (AGENTS.md \u00a76)"
         },
         {
           "check": "duration_within_baseline",
-          "text": "duration <= 480.0 s (80% of timeout_s 600)"
+          "text": "off-window fire <= 60 s; window fire <= 5760 s (80% of timeout_s 7200)"
         },
         {
-          "check": "inputs_read",
-          "text": "the DRY-RUN summary carries pending >= 0 and, for each due ticker, resolved entities and a panel plan (no error key)"
+          "check": "window_ran_once",
+          "text": "once live: data/prospectus/windows.json has one run per enabled window per weekday (key <date>:<window id>) with a finished_at inside start + catch_up_minutes"
         },
         {
           "check": "output_produced",
-          "text": "once live: every due ticker gets one prospectus version file (produced_count = answers written)"
+          "text": "once live: each window that enqueued work writes >= 1 version and one delivery/outbox record (produced_count = reports written)"
         }
       ],
       "degraded": [
         {
           "check": "late",
-          "text": "output_signal older than 2 h (2x cadence) inside 07:20-21:20 ET once live"
+          "text": "output_signal older than 30 min (2x the 15 min cadence) once live"
         },
         {
           "check": "slow",
-          "text": "duration above 480.0 s"
+          "text": "window fire above 5760 s"
         },
         {
           "check": "retried",
           "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
         },
         {
-          "check": "partial_answers",
-          "text": "once live: answers marked partial because the panel was refused (cost cap / process not registered) or a source timed out (not machine-checked yet)"
+          "check": "credit_stop",
+          "text": "a window stopped early on the credit cap (receipt stopped_reason set) with rows left queued (not machine-checked yet)"
         }
       ],
       "failed": [
@@ -34653,7 +34647,11 @@
         },
         {
           "check": "stale",
-          "text": "output_signal older than 12 h once the lane runs live (overnight gap 21:20-07:20 ET is expected)"
+          "text": "output_signal older than 2 h once the lane runs live"
+        },
+        {
+          "check": "window_missed",
+          "text": "once live: a weekday passes with an enabled window absent from windows.json (not machine-checked yet)"
         },
         {
           "check": "breaker_or_dlq",
@@ -34669,20 +34667,20 @@
         },
         {
           "check": "empty_output",
-          "text": "an exit-0 live run produced 0 answers for a reason other than no_new_input (no due ticker), or skipped for a fatal reason ['no_runner', 'disabled', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+          "text": "an exit-0 live run produced 0 reports for a reason other than no_new_input (nothing due / no operator row), or skipped for a fatal reason -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
-        "freshness_degraded_after_h": 2.0,
-        "freshness_failed_after_h": 12.0,
-        "freshness_rule": "degraded beyond 2x cadence inside the window; failed beyond the overnight gap (10 h) plus margin",
-        "timeout_s": 600,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 2.0,
+        "freshness_rule": "the lane fires every 15 min around the clock and writes its receipt on every live fire, windows or not",
+        "timeout_s": 7200,
         "class": "report",
-        "computed_on": "2026-10-23",
+        "computed_on": "2026-10-26",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "NOT_MEASURED: the lane has never been scheduled (no cron line, no timer, no prior dispatcher run); source class defaults only.",
+        "source": "NOT_MEASURED: the lane has never been scheduled; window duration bounded by max_reports (12) x per-report generation (allowlist timeout_s 7200).",
         "runs_considered": null,
-        "duration_degraded_above_s": 480.0
+        "duration_degraded_above_s": 5760.0
       },
       "alerting": {
         "lane_severity": "Low",
@@ -34707,23 +34705,24 @@
         "receipt": "data/runtime/prospectus-build_last.json",
         "verify": [
           "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='prospectus-build' ORDER BY requested_at DESC LIMIT 5\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:prospectus-build' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/prospectus-build_last.json; jq '{partial, refusals, gaps: (.gaps|length)}' $CIO_ASK_ANSWERS_DIR/<request_id>.json"
+          "jq '.runs | to_entries | .[-5:]' $STATE_ROOT/data/prospectus/windows.json",
+          "ls $STATE_ROOT/data/prospectus/delivery/outbox $STATE_ROOT/data/prospectus/delivery/sent",
+          "jq '{ok_at, produced_count, summary}' $STATE_ROOT/data/runtime/prospectus-build_last.json"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
         "evidence_class": "SOURCE_ONLY",
-        "expected_output_basis": "expected_output derived 2026-10-23 from scripts/prospectus_build.py main(): produced_count = answers written (one per pending request); 0 with empty_reason no_new_input when no request is pending."
+        "expected_output_basis": "derived 2026-10-26 from scripts/prospectus_window.py write_receipt(): produced_count = reports written this fire; 0 with empty_reason no_new_input when no window is due and no operator row is queued, or when a window found nothing due."
       },
       "review_by": "2026-11-06",
       "review": {
         "status": "PENDING",
         "reviewed_by": null,
         "reviewed_on": null,
-        "note": "Needs the owner's review (AGENTS.md §23.19) before this lane may merge: DRAFT_NOT_GRANDFATHERED."
+        "note": "Fields re-proposed 2026-10-26 for run windows (PR stacked on #2193). Needs the owner's review (AGENTS.md \u00a723.19) before this lane may merge: DRAFT_NOT_GRANDFATHERED."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "AskAnswer prospectuses written",
+        "unit": "Ticker Prospectus versions written",
         "rule": "min_produced",
         "min_produced": 1,
         "produced_field": "produced_count",
@@ -34742,7 +34741,7 @@
           },
           {
             "kind": "file_artifact",
-            "ref": "$CIO_ASK_ANSWERS_DIR/<request_id>.json (atomic replace in main())"
+            "ref": "$STATE_ROOT/data/prospectus/delivery/outbox/<run_key>.json (one per run that wrote or failed a report)"
           }
         ],
         "on_violation": {

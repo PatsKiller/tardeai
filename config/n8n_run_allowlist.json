@@ -4523,10 +4523,7 @@
       "lane_id": "prospectus-build",
       "command": [
         "$PY",
-        "scripts/prospectus_build.py",
-        "--due",
-        "--limit",
-        "12"
+        "scripts/prospectus_window.py"
       ],
       "dry_run_arg": [
         "--dry-run"
@@ -4544,9 +4541,9 @@
         "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
-      "env_evidence": "scripts/prospectus_build.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live run reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name.",
+      "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
       "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
-      "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0)."
+      "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
     }
   ],
   "blocked_reasons": {
