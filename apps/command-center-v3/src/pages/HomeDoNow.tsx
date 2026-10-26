@@ -360,6 +360,11 @@ export default function HomeDoNow() {
         </section>
       </div>
 
+      {/* Major News stays visible on Home (operator 2026-10-26): your names by day move, guarded headline counts */}
+      <div data-testid="home-major-news">
+        <MajorNewsGrid />
+      </div>
+
       {/* Collapsed drawers — bodies mount (and poll) only when open */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Drawer id="briefing" title="AI briefing" summary={briefSummary}>
@@ -380,8 +385,8 @@ export default function HomeDoNow() {
         <Drawer id="agents" title="Agents and Hermes" summary={agentsN ? `${agentsN} agents reporting runs (30 d)` : 'agent runs and Hermes status'}>
           {() => <HermesDrawerBody cmd={cmd} />}
         </Drawer>
-        <Drawer id="news" title="News and market movers" summary={newsN ? `${newsN} portfolio headlines · market movers` : 'portfolio headlines · market movers'}>
-          {() => <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}><MajorNewsGrid /><MarketMoversBoard /></div>}
+        <Drawer id="news" title="Market movers" summary={newsN ? `${newsN} portfolio headlines above · market movers` : 'market movers'}>
+          {() => <MarketMoversBoard />}
         </Drawer>
       </div>
       <div style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}
