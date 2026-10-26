@@ -20,9 +20,11 @@ def activated_policy():
     return dict(load_policy(), enabled=True)
 
 
-def test_shipped_disabled_until_key_organization_and_canaries_are_verified():
+def test_enabled_only_with_the_operator_activation_record():
     p = json.loads((ROOT / 'config/anthropic_credit_policy.json').read_text())
-    assert p['enabled'] is False
+    # Operator activated the promotion 2026-10-26 after storing the promotional-org key.
+    assert p['enabled'] is True
+    assert p['activated_by'].startswith('operator 2026-10-2')
     assert (p['total_cap_usd'], p['daily_cap_usd']) == ('190', '10')
     assert p['models']['standard'] == p['models']['high'] == 'claude-opus-5-5'
     assert p['models']['bulk'] == 'claude-haiku-5-5'

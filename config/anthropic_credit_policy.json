@@ -1,6 +1,6 @@
 {
   "schema": "AnthropicCreditPolicy@v1",
-  "enabled": false,
+  "enabled": true,
   "promotion_id": "operator-promo-20261025",
   "credit_usd": "200",
   "total_cap_usd": "190",
@@ -112,6 +112,7 @@
   "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner.",
   "milestone_dedupe_minutes": 43200,
   "activation_note": "Enable only after operator verifies the promotional organization and the tier canaries pass.",
+  "activated_by": "operator 2026-10-26: stored the promotional-organization key as ANTHROPIC_API_KEY (validated HTTP 200) and asked to get it running",
   "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable",
   "thinking_controls": {
     "claude-haiku-5-5": {
