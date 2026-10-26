@@ -133,6 +133,7 @@ def _processed(store, thread_id: str, event_id: str) -> bool:
             e.get("kind") in ("ask.reanswer_triggered", "ask.reanswer_skipped")
             and (e.get("trigger") or {}).get("event_id") == event_id
             and e.get("final", True)
+            and (e.get("kind") != "ask.reanswer_skipped" or e.get("reason") not in ("SHADOW", "CAP_AWAITING_APPROVAL"))
         ):
             return True
     return False
@@ -222,7 +223,7 @@ def run_once(
                 report["skipped" if reason else "reanswered"].append({**cand, "reason": reason, "dry_run": True})
                 continue
             if reason:
-                final = reason in ("SHADOW", "CAP_AWAITING_APPROVAL")
+                final = False  # admission/shadow skips never consume a future live event
                 d.store.append(
                     "ask.reanswer_skipped",
                     {"thread_id": tid, "trigger": ev, "reason": reason, "final": final},
@@ -257,11 +258,6 @@ def reanswer(
     for turn in t["turns"]:
         for a in turn["answers"]:
             prior = a
-    d.store.append(
-        "ask.reanswer_triggered",
-        {"thread_id": thread_id, "trigger": event},
-        event_id=event_id_for("ask.reanswer_triggered", thread_id, event["event_id"]),
-    )
     question = f"{root['question']} {thread_id}"
     trigger = {**event, "previous_answer": (prior or {}).get("answer_id")}
     captured: dict[str, Any] = {}
@@ -290,6 +286,12 @@ def reanswer(
         },
     )
     text = captured.get("text") or ""
+    if text:
+        d.store.append(
+            "ask.reanswer_triggered",
+            {"thread_id": thread_id, "trigger": event},
+            event_id=event_id_for("ask.reanswer_triggered", thread_id, event["event_id"]),
+        )
     d.cost.record(
         thread_id=thread_id,
         ask_id=(out.get("ask") or {}).get("ask_id") or thread_id,

@@ -492,6 +492,7 @@ def _prospectus_answer(ctx: C.AskResearchContext) -> C.AskAnswer:
         ],
         sources=[C.Source(title="10-Q", kind="sec", as_of="2026-10-20")],
         cost_usd=0.12,
+        provenance={"cost_usage_known": True},
     )
 
 

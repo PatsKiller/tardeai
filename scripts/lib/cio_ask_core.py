@@ -630,11 +630,11 @@ def auto_track(turn: AskTurn, *, deps: Optional[AskDeps] = None) -> None:
         _remember(d, e, "ask.tracking_changed", f"tracked from question: {turn.request.question}", turn.ask_id)
 
 
-def _remember(d: AskDeps, e: EntityRef, kind: str, summary: str, ref: str) -> None:
+def _remember(d: AskDeps, e: EntityRef, kind: str, summary: str, ref: str) -> dict | None:
     try:
-        d.memory.append(entity=e, kind=kind, summary=summary, ref=ref)
-    except Exception:  # noqa: BLE001 — memory failure is recorded on the answer provenance, never costs the reply
-        pass
+        return d.memory.append(entity=e, kind=kind, summary=summary, ref=ref)
+    except Exception as exc:  # noqa: BLE001 — preserve a retryable acknowledgement gap
+        return {"ok": False, "error": type(exc).__name__}
 
 
 def finish_turn(
@@ -886,122 +886,63 @@ def ask_from_cc(
 # ── deep path (Phase 9 hand-off) ───────────────────────────────────────────────────────────────────────────────────
 
 
-def request_deep(thread_id: str, ask_id: str, *, deps: Optional[AskDeps] = None) -> dict[str, Any]:
+def request_deep(thread_id: str, ask_id: str, *, deps: Optional[AskDeps] = None,
+                 request_id: Optional[str] = None) -> dict[str, Any]:
+    """Genuine operator request; scheduled checks use their own admitted lifecycle entry."""
     d = _deps(deps)
     if d is None:
         return {"ok": False, "error": "ASK_DISABLED"}
-    t = d.store.thread(thread_id)
-    if not t:
-        return {"ok": False, "error": "THREAD_NOT_FOUND"}
-    turn_row = next((x for x in t["turns"] if x["ask_id"] == ask_id), t["turns"][-1] if t["turns"] else None)
-    if not turn_row:
-        return {"ok": False, "error": "ASK_NOT_FOUND"}
-    ask_id = turn_row["ask_id"]
-    entities = _thread_entities(d.store, thread_id)
-    projected = float((d.config.get("cost") or {}).get("projected_usd_deep") or 0.25)
-    gate = d.cost.allow(projected)
-    version = d.store.next_version(ask_id)
-    if not gate["allow"]:
-        status = "capped"
-        why = {"CAP_AWAITING_APPROVAL": "the research spend cap ($5/day proposed) awaits your approval"}.get(
-            gate["reason"], f"{gate['reason']}: {gate.get('detail')}"
-        )
-        ans = AskAnswer(
-            ask_id=ask_id,
-            thread_id=thread_id,
-            version=version,
-            depth="deep",
-            status=status,
-            summary=f"Deep research not run — {why}. The quick answer stands.",
-            entities=entities,
-            provenance={"cost_gate": gate},
-        )
-        record_answer(ans, deps=d)
-        return {"ok": True, "status": status, "gate": gate}
-    if d.deep_provider is None:
-        ans = AskAnswer(
-            ask_id=ask_id,
-            thread_id=thread_id,
-            version=version,
-            depth="deep",
-            status="deep_pending",
-            summary="Deep research (Phase 9 pipeline) is not installed yet; the quick answer stands and "
-            "this thread will carry the prospectus when it lands.",
-            entities=entities,
-        )
-        record_answer(ans, deps=d)
-        return {"ok": True, "status": "deep_pending"}
-    req = AskRequest(
-        question=turn_row["question"],
-        channel=turn_row.get("channel") or "cc",
-        source_ref=f"deep:{ask_id}",
-        depth="deep",
-        thread_id=thread_id,
-        entities=entities,
-    )
-    recall = []
-    for e in entities:
-        recall += research_context_for_model(d.memory.recall(entity=e, limit=6, exclude_refs=()) or [])
-    prior = _latest_answer_for_ask(d.store, ask_id)
-    ctx = AskResearchContext(
-        request=req,
-        thread_id=thread_id,
-        version=version,
-        recall=recall,
-        quick_answer=prior.summary if prior else None,
-        budget=ResearchBudget(max_usd=projected, process_id=str((d.config.get("cost") or {}).get("process_id"))),
-    )
+    from scripts.lib.cio_ask_lifecycle import request_deep as execute
 
-    def _run() -> None:
+    return execute(thread_id, ask_id, deps=d, request_id=request_id, automated=False)
+
+
+def sync_answer_memory(ans: AskAnswer, *, deps: Optional[AskDeps] = None) -> dict:
+    """Retry shared facts/summary writes without repeating research or changing its answer."""
+    d = _deps(deps)
+    if d is None:
+        return {"state": "pending", "reason": "ASK_DISABLED"}
+    receipts = []
+    for entity in ans.entities:
+        receipts.append(_remember(d, entity, "ask.answer_version", f"v{ans.version} {ans.status}: {_plain(ans.summary, 600)}", ans.answer_id))
+    summaries_ok = bool(receipts) and all(isinstance(x, dict) and ((x.get("spine") or {}).get("ok") is True or x.get("ok") is True) for x in receipts)
+    prior = (ans.provenance or {}).get("memory_receipt") or {}
+    facts = prior
+    if (ans.provenance or {}).get("memory_retry_payload"):
         try:
-            res = d.deep_provider(ctx)
-            raw, findings = mbi_guard_payload(res.to_dict(allow_size_suggestion=False))
-            ans = AskAnswer.from_dict(raw)
-            ans.ask_id, ans.thread_id, ans.version, ans.depth = ask_id, thread_id, version, "deep"
-            ans.status = "deep" if ans.status not in ("failed",) else "failed"
-            ans.mbi_guard = {
-                "stripped": len(findings) + int((ans.mbi_guard or {}).get("stripped") or 0),
-                "findings": findings + list((ans.mbi_guard or {}).get("findings") or []),
-            }
-            ans.sizing_context = prior.sizing_context if prior else []
-            record_answer(ans, deps=d)
-            d.cost.record(thread_id=thread_id, ask_id=ask_id, usd=float(ans.cost_usd or projected), kind="deep")
-            _post_to_telegram(d, thread_id, f"Deep answer (v{version}) for: {turn_row['question']}\n\n{ans.summary}")
-        except Exception as exc:  # noqa: BLE001
-            record_answer(
-                AskAnswer(
-                    ask_id=ask_id,
-                    thread_id=thread_id,
-                    version=version,
-                    depth="deep",
-                    status="failed",
-                    summary=f"Deep research failed: {type(exc).__name__}. The quick answer stands.",
-                    entities=entities,
-                ),
-                deps=d,
-            )
+            from scripts.lib.cio_ask_research import retry_research_memory
 
-    if d.run_async:
-        threading.Thread(target=_run, name=f"ask-deep-{ask_id}", daemon=True).start()
-        return {"ok": True, "status": "deep_running"}
-    _run()
-    return {"ok": True, "status": "deep_done"}
+            facts = retry_research_memory(ans, apply=bool((d.config.get("lifecycle") or {}).get("memory_apply", False)))
+        except Exception as exc:
+            return {"state": "pending", "reason": "FACT_MEMORY_SYNC:" + type(exc).__name__, "summary_verified": summaries_ok}
+    # A fixture without gathered facts has no fact-write requirement. A real dry-run receipt never proves apply.
+    planned = int(facts.get("planned_count", facts.get("appended", 0)) or 0)
+    applied = int(facts.get("applied_count", 0) or 0)
+    facts_ok = not planned or (facts.get("apply") is True and not facts.get("refused") and applied + int(facts.get("skipped_duplicate", 0) or 0) >= planned)
+    return {"state": "synced" if summaries_ok and facts_ok else "pending",
+            "reason": None if summaries_ok and facts_ok else "SHARED_MEMORY_NOT_ACKNOWLEDGED",
+            "summary_verified": summaries_ok, "facts_planned": planned, "facts_applied": applied,
+            "ref": ans.answer_id}
 
 
-def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> None:
+def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> dict:
     if not d.telegram_send:
-        return
+        return {"state": "not_configured", "reason": "NO_CHANNEL_TARGET"}
     has_tg = any(x.get("channel") == "telegram" for x in d.store.channel_links(thread_id))
     if not (has_tg or d.config.get("mirror_cc_to_telegram")):
-        return
+        return {"state": "not_required", "reason": "NO_CHANNEL_TARGET"}
     try:
         res = d.telegram_send(f"{text}\n\nThread {thread_id}") or {}
         if res.get("message_id") is not None:
             link_channel(
                 d.store, thread_id=thread_id, channel="telegram", chat_id=cc_chat_id(), message_id=res["message_id"]
             )
-    except Exception:  # noqa: BLE001
-        pass
+            return {"state": "delivered", "ref": str(res["message_id"])}
+        if res.get("ok") is True and res.get("queued"):
+            return {"state": "queued", "ref": str(res["queued"])}
+        return {"state": "failed", "reason": "DELIVERY_NOT_ACKNOWLEDGED"}
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "failed", "reason": "DELIVERY_FAILED:" + type(exc).__name__}
 
 
 # ── untrack ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1064,6 +1005,7 @@ def list_threads(*, deps: Optional[AskDeps] = None, limit: int = 50) -> list[dic
                 "channels": t["channels"],
                 "turns": len(t["turns"]),
                 "reanswers": t["reanswers"],
+                "lifecycle": t.get("lifecycle"),
                 "entities": [
                     {
                         "key": e.get("key"),

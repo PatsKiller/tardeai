@@ -214,6 +214,12 @@ def group_questions(threads: dict[str, dict[str, Any]], *, group_by: str = "secu
                                                   if group_by != "security" or not g.get("symbol")
                                                   else "no CIO prospect record for this security")),
         }
+        lifecycles = [(threads.get(tid) or {}).get("lifecycle") for tid in g["thread_ids"]]
+        lifecycles = [x for x in lifecycles if isinstance(x, dict)]
+        # Both security groups of one question reuse its canonical lifecycle; grouping never starts work.
+        if lifecycles:
+            rank = {"failed": 8, "blocked": 7, "overdue": 6, "partial": 5, "checking": 4, "deferred": 3, "not_checked": 2, "current": 1}
+            g["lifecycle"] = max(lifecycles, key=lambda x: rank.get(x.get("state"), 9))
         g["newest_at"] = max((str(x.get("asked_at") or "") for x in g["questions"]), default="")
         out.append(g)
     if group_by == "date":
