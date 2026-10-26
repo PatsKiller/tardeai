@@ -2996,8 +2996,10 @@ def _today_pnl_provenance(
     try:
         from lib.account_display import canonical_key as _ck
     except Exception:  # noqa: BLE001 -- loaded standalone by tests
+
         def _ck(k):
             return k
+
     _by_canon = {_ck(k): v for k, v in (today_by_account or {}).items()}
 
     contributing: list[str] = []
