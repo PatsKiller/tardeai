@@ -3679,8 +3679,12 @@
       ],
       "no_coverage": "Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available",
       "on_gap": [
-        "refuse promotional dispatch",
-        "operator reconciles canonical provider usage and reservation ledger; never reset credit automatically"
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
       ],
       "_note": "The runtime journal is excluded from current data offsite backup. No backup proof is claimed. Durable cap backstop uses existing PostgreSQL reservation table. Retain this evidence through promotion expiry and operator reconciliation; no automated purge. Operational accessor is a shared read-only helper used by existing consumption/health endpoints, not an admitted data-broker projection id.",
       "entity": "LLM operational credit",
