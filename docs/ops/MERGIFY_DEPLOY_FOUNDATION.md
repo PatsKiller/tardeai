@@ -1,32 +1,34 @@
 Status: ACTIVE
 as_of: 2026-10-26
-Measured at: AGENTS.md 24.0.0 ACTIVE · Approve-only Mergify (PatsKiller Approve; no merge-ready)
+Measured at: AGENTS.md 24.0.0 ACTIVE · Telegram go-signal (label=operator-merge)
 Canonical repo path: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
-Authority: operator-approved plan mergify_replace_train (2026-10-26); Approve-only plan 2026-10-26
-Supersedes: docs/ops/RELEASE_TRAIN_GITHUB_APP.md, docs/ops/RELEASE_TRAIN_OPERATOR_RUNBOOK.md (train merge path); merge-ready as Mergify gate
+Authority: operator-approved plan mergify_replace_train (2026-10-26); Telegram automation 2026-10-26
+Supersedes: GitHub Approve-by-PatsKiller as Mergify gate; merge-ready as Mergify gate; train merge path
 See also: docs/ops/AGENT_MERGIFY_HANDOFF.md · docs/ops/EMERGENCY_MANUAL_PROMOTE.md · docs/ops/MERGIFY_CUTOVER_CHECKLIST.md · AGENTS.md §25.10
 
 # Mergify + host deploy — foundation
 
 ## One-sentence version
 
-**Mergify merges ready green PRs after PatsKiller’s GitHub Approve on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
+**Mergify merges ready green PRs after a Telegram Approve tap (host adds `operator-merge`) on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
 
 ## Authority split
 
 | Actor | May | Must not |
 |---|---|---|
-| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra` | Merge, push `main`/`train/*`, promote, release, use `merge-ready` as a gate |
-| Mergify | Merge eligible PRs when PatsKiller Approve + required checks green + not draft + schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
+| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra`, run `request_pr_merge_approve.py` | Merge, push `main`/`train/*`, promote, release, Approve on GitHub, add `operator-merge` by hand |
+| Mergify | Merge eligible PRs when `label=operator-merge` + required checks green + not draft + schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
 | Host `deploy_on_main` poller | Promote CURRENT to the new `origin/main` SHA when STOP is clear and deploy delegation is armed | Merge, push remotes, run without STOP/lock checks |
-| Operator (host) | GitHub Approve once; emergency promote; STOP/resume; arm deploy delegation; install Mergify | Delegate live broker authority |
+| Operator (phone) | Telegram **Approve merge** / Deny; emergency promote; STOP/resume; arm deploy delegation; install Mergify | Delegate live broker authority |
 
 ## Normal path
 
 ```
 Ready PR opened (not draft; solo/shared-infra labels if needed)
          → CI green (cio-hardening, agent-governance, release-readiness, ci-gate)
-         → Operator PatsKiller GitHub Approve (one tap)
+         → Agent: request_pr_merge_approve.py --pr <N>
+         → Operator Telegram Approve merge (one tap)
+         → Host adds label operator-merge
          → Mergify queue (ET schedule windows)
          → squash-merge to main
          → deploy_on_main poller sees new origin/main SHA
@@ -36,7 +38,7 @@ Ready PR opened (not draft; solo/shared-infra labels if needed)
          → DeployOnMainReceipt@v1 (path=poller)
 ```
 
-Go signal in `.mergify.yml`: `approved-reviews-by=PatsKiller` + `draft=false`. The `merge-ready` label is **not** a queue condition.
+Go signal in `.mergify.yml`: `label=operator-merge` + `draft=false`. Not GitHub Approve UI. The `merge-ready` label is **not** a queue condition.
 
 ## Standing deploy delegation
 
@@ -66,9 +68,12 @@ No agent, n8n job, or Mergify rule may set that env or consume that grant.
 - Release-train GitHub App as merge actor (Mergify’s App replaces it for merge)
 - Ops → Controls **Run now** / Release train tab as a live force path
 - `AI_WORK_POLICY.md` §28 train-push exception (replaced by Mergify merge + poller promote)
+- GitHub Approve UI and `merge-ready` as Mergify go-signals
 
 ## Evidence
 
 - Receipt schema: `DeployOnMainReceipt@v1` under persistent-state `data/runtime/deploy_on_main/`
 - Poller unit: `tradeai-deploy-on-main.timer` → `scripts/deploy_on_main_poll.py`
+- Telegram go-signal: `scripts/lib/pr_merge_telegram.py` · `scripts/request_pr_merge_approve.py` · `scripts/notify_pr_merge_ready.py`
+- Notify timer (operator install §17): `config/systemd/user/tradeai-pr-merge-notify.{timer,service}`
 - Config: `.mergify.yml` at repo root

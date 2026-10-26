@@ -25567,6 +25567,23 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "pr-merge-telegram-notify",
+      "state": "NEVER_SCHEDULED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-notify.timer",
+        "match": "scripts/notify_pr_merge_ready.py --apply"
+      },
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/notify_receipt.json"
+      },
+      "note": "Scans open PRs; sends Telegram Approve when CI green; settle adds operator-merge (AGENTS.md §25.10). Install of the user timer is operator-only (§17). NEVER_SCHEDULED until granted.",
+      "state_since": "2026-10-26",
+      "value_class": "Platform",
+      "recommendation": "SCHEDULE_AFTER_GRANT"
     }
   ],
   "freshness_contracts": [

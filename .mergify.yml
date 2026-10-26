@@ -2,7 +2,7 @@
 # Mergify merges to main inside ET windows; the host deploy_on_main poller promotes CURRENT.
 # Agents never merge. Installing / re-permissioning the Mergify GitHub App is §17.
 #
-# Go signal: GitHub Approve by PatsKiller only (not merge-ready label, not Telegram, not chat LGTM).
+# Go signal: Telegram Approve → host adds label ``operator-merge`` (no GitHub Approve UI).
 # Required checks must match GitHub check names exactly.
 # Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
 
@@ -24,11 +24,11 @@ pull_request_rules:
           Held: broker / Active Trader / MBI / secrets paths are never Mergify-merged
           (AGENTS.md §0 rules 1–2, §25.10). Operator merge only.
 
-  - name: Queue default when CI green and PatsKiller Approve
+  - name: Queue default when CI green and operator-merge (Telegram Approve)
     conditions:
       - base=main
       - draft=false
-      - approved-reviews-by=PatsKiller
+      - label=operator-merge
       - check-success=cio-hardening
       - check-success=agent-governance
       - check-success=release-readiness
@@ -51,7 +51,7 @@ pull_request_rules:
     conditions:
       - base=main
       - draft=false
-      - approved-reviews-by=PatsKiller
+      - label=operator-merge
       - check-success=cio-hardening
       - check-success=agent-governance
       - check-success=release-readiness
@@ -80,6 +80,7 @@ queue_rules:
       - check-success=agent-governance
       - check-success=release-readiness
       - check-success=ci-gate
+      - label=operator-merge
       - or:
           - schedule=Mon-Fri 18:00-19:00[America/New_York]
           - schedule=Tue-Sat 00:00-01:00[America/New_York]
@@ -94,6 +95,7 @@ queue_rules:
       - check-success=agent-governance
       - check-success=release-readiness
       - check-success=ci-gate
+      - label=operator-merge
       - or:
           - schedule=Mon-Fri 18:00-19:00[America/New_York]
           - schedule=Tue-Sat 00:00-01:00[America/New_York]
