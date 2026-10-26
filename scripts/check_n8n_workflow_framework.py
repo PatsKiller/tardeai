@@ -91,7 +91,20 @@ FATAL_SKIP_REASONS = frozenset(
         "dependency_unavailable",
     }
 )
-EMPTY_ALLOWED_REASONS = frozenset({"market_closed", "holiday", "no_new_input", "nothing_due", "window_not_reached"})
+EMPTY_ALLOWED_REASONS = frozenset(
+    {
+        "market_closed",
+        "holiday",
+        "no_new_input",
+        "nothing_due",
+        "window_not_reached",
+        # Ask lifecycle producer: respectively no tracked threads, no unseen material events,
+        # or no currently eligible thread checks. Source/read failures remain dependency_unavailable.
+        "no_tracked_threads",
+        "no_new_events",
+        "no_due_threads",
+    }
+)
 EVIDENCE_KINDS = frozenset({"store_rows", "receipt_field", "ledger_row", "file_artifact"})
 EXPECTED_OUTPUT_KEYS = frozenset(
     {
@@ -118,6 +131,7 @@ WORKFLOWS_DIR = Path("docs/implementation/n8n-maturity/workflows")
 FABRIC_DIR = WORKFLOWS_DIR / "fabric"
 PER_LANE_DIR = Path("docs/implementation/n8n-parallel/workflows/generated")
 REFERENCE_DIR = Path("docs/implementation/n8n-parallel/workflows/reference")
+ASK_HOURLY_DIR = Path("docs/ops/packets/ask-hourly-20261026/n8n")
 DEFAULT_ACTIVE = Path("docs/implementation/n8n-maturity/data/n8n_active_workflows_20261015.json")
 DEFAULT_PLATFORM = Path("docs/implementation/n8n-maturity/data/n8n_platform_facts_20261015.json")
 CONTRACTS = Path("config/n8n_health_contracts.json")
@@ -742,7 +756,7 @@ class Context:
 def _manifest_rows(root: Path) -> dict[str, dict]:
     """Every committed workflow file listed by a generator manifest -> its row (sha256 when the manifest has one)."""
     out: dict[str, dict] = {}
-    for d in (WORKFLOWS_DIR, FABRIC_DIR, REFERENCE_DIR):
+    for d in (WORKFLOWS_DIR, FABRIC_DIR, REFERENCE_DIR, ASK_HOURLY_DIR):
         idx = root / d / "INDEX.json"
         if not idx.exists():
             continue
@@ -766,6 +780,7 @@ def _manifest_rows(root: Path) -> dict[str, dict]:
 
 def fresh_renders() -> dict[str, str]:
     """repo-relative path -> text, rendered now by each generator in-process (independent of every manifest)."""
+    import build_cio_ask_lifecycle_workflow as ASK  # noqa: PLC0415
     import build_n8n_reference_workflow as REF  # noqa: PLC0415
     import n8n_workflow_templates as T  # noqa: PLC0415
 
@@ -775,6 +790,7 @@ def fresh_renders() -> dict[str, str]:
         (FABRIC_DIR, T.render_fabric()),
         (PER_LANE_DIR, T.render(T.select_lanes("all"))),
         (REFERENCE_DIR, REF.render()),
+        (ASK_HOURLY_DIR, ASK.render()),
     ):
         for name, text in files.items():
             if name != "INDEX.json":
@@ -1231,6 +1247,96 @@ def _runbook_resolves(ctx: Context, rid: str, path: str | None) -> str | None:
         if p and (ctx.root / p).is_file() and rid in (ctx.root / p).read_text(encoding="utf-8", errors="replace"):
             return p
     return None
+
+
+def _check_native_recovery(wf: Mapping, fw: Mapping, ctx: Context) -> dict:
+    """FW-R3 source alternative for native-only lanes; it grants no runtime or dispatch authority.
+
+    The closed declaration binds a stop/review procedure to the actual workflow, n8n registry lanes,
+    existing Run Lane retry/DLQ owner and a repository runbook. Runtime recovery remains unproven.
+    """
+    import n8n_workflow_templates as T  # noqa: PLC0415
+
+    spec = fw.get("native_recovery")
+    keys = {
+        "schema",
+        "mode",
+        "workflow_id",
+        "lanes",
+        "runbook_id",
+        "runbook_path",
+        "stop_actions",
+        "retry_owner",
+        "max_attempts",
+        "dead_letter",
+        "cron_fallback",
+    }
+    if not isinstance(spec, Mapping) or set(spec) != keys:
+        return _r(FAIL, "native_recovery must use the closed N8nNativeRecovery@v1 schema")
+    problems = []
+    if spec.get("schema") != "N8nNativeRecovery@v1" or spec.get("mode") != "manual_stop_then_reviewed_canary":
+        problems.append("unknown native recovery schema/mode")
+    if spec.get("workflow_id") != wf.get("id"):
+        problems.append("native recovery workflow_id mismatch")
+    lanes = fw.get("lanes")
+    if not (
+        isinstance(lanes, list)
+        and lanes
+        and all(isinstance(x, str) for x in lanes)
+        and spec.get("lanes") == lanes
+        and len(set(lanes)) == len(lanes)
+    ):
+        problems.append("native recovery lanes must equal the nonempty declared lane list")
+    elif any(ctx.lane_schedulers.get(lane) != "n8n" for lane in lanes):
+        problems.append("native recovery requires n8n registry schedulers for every lane")
+    if spec.get("cron_fallback") is not False:
+        problems.append("native recovery cannot enable a cron fallback")
+    if spec.get("stop_actions") != ["unpublish_workflow", "disable_lane_dispatch"]:
+        problems.append("native recovery must stop the workflow and lane dispatch")
+    attempts = spec.get("max_attempts")
+    if not (_is_int(attempts) and 1 <= attempts <= T.RUN_LANE_MAX_ATTEMPTS):
+        problems.append("native recovery max_attempts exceeds the Run Lane bound")
+    if spec.get("retry_owner") != ctx.run_lane_id or spec.get("dead_letter") != "host_ledger":
+        problems.append("native recovery must retain existing Run Lane retries and host ledger dead letters")
+    live = reachable(wf)
+    calls = [
+        node
+        for node in wf.get("nodes") or []
+        if node.get("name") in live and node.get("type") == "n8n-nodes-base.executeWorkflow"
+    ]
+    if not calls or any(
+        (node.get("parameters") or {}).get("workflowId", {}).get("value") != ctx.run_lane_id
+        or (node.get("parameters") or {}).get("options", {}).get("waitForSubWorkflow") is not True
+        for node in calls
+    ):
+        problems.append("native recovery requires reachable waiting Run Lane calls")
+    if (wf.get("settings") or {}).get("errorWorkflow") not in ctx.error_workflow_ids:
+        problems.append("native recovery requires the existing error route")
+    path, rid = spec.get("runbook_path"), spec.get("runbook_id")
+    if not (
+        isinstance(path, str)
+        and isinstance(rid, str)
+        and rid
+        and path == fw.get("runbook_path")
+        and rid == fw.get("runbook_id")
+    ):
+        problems.append("native recovery runbook must match framework metadata")
+    elif Path(path).is_absolute() or ".." in Path(path).parts or not (ctx.root / path).is_file():
+        problems.append("native recovery runbook must be an existing repository file")
+    else:
+        text = (ctx.root / path).read_text(encoding="utf-8", errors="replace")
+        required = [str(wf.get("id")), rid, *(lanes if isinstance(lanes, list) else [])]
+        if any(str(item) not in text for item in required):
+            problems.append("native recovery runbook must name workflow, runbook id and every lane")
+    return (
+        _r(FAIL, "; ".join(problems))
+        if problems
+        else _r(
+            PASS,
+            "native-only manual stop/reviewed-canary recovery resolves; bounded Run Lane retries and host DLQ; "
+            "no cron fallback (runtime recovery remains unproven: 23.24-R3b)",
+        )
+    )
 
 
 def _http_auth_problem(n: Mapping, ctx: Context) -> str | None:
@@ -1697,7 +1803,9 @@ def score_workflow(wf: Mapping, ctx: Context, *, entry: Mapping | None = None, f
         else _r(NA, "requests no lane run")
     )
     rbk = fw.get("rollback")
-    if not rbk:
+    if "native_recovery" in fw:
+        el["FW-R3"] = _check_native_recovery(wf, fw, ctx)
+    elif not rbk:
         el["FW-R3"] = _r(FAIL, "no declared fallback in metadata")
     else:
         fw_lanes = [str(x) for x in fw.get("lanes") or []]
@@ -1866,8 +1974,11 @@ def score_workflow(wf: Mapping, ctx: Context, *, entry: Mapping | None = None, f
         # the five separate fields (audit §10): never folded into one number
         "integrity": integrity,
         "artifact_integrity": integrity,
-        "evidence_identity": {"workflow_id": str(wf.get("id")), "graph_sha256": T.graph_hash(wf),
-                              "policy_sha256": T.policy_hash()},
+        "evidence_identity": {
+            "workflow_id": str(wf.get("id")),
+            "graph_sha256": T.graph_hash(wf),
+            "policy_sha256": T.policy_hash(),
+        },
         "design_coverage": dict(score, note=MEASURE_NOTE),
         "deployed_parity": {
             "status": UNPROVEN,
@@ -2040,7 +2151,9 @@ def score_platform(facts: Mapping, now: _dt.datetime | None = None) -> dict:
     # FW-P1 "with retention": a host probe must also show pruning on with a positive max age; a cited file predates
     # the retention facts and is capped below anyway.
     retention_ok = (not probed) or (
-        f.get("executions_prune") is True and isinstance(f.get("executions_max_age_h"), int) and f["executions_max_age_h"] > 0
+        f.get("executions_prune") is True
+        and isinstance(f.get("executions_max_age_h"), int)
+        and f["executions_max_age_h"] > 0
     )
     out = {
         "FW-P1": (
@@ -2064,9 +2177,7 @@ def score_platform(facts: Mapping, now: _dt.datetime | None = None) -> dict:
     }
     capped = _platform_trust(facts, now)
     if capped:
-        out = {
-            k: ((PARTIAL, f"{e} — PASS withheld: {capped}") if s == PASS else (s, e)) for k, (s, e) in out.items()
-        }
+        out = {k: ((PARTIAL, f"{e} — PASS withheld: {capped}") if s == PASS else (s, e)) for k, (s, e) in out.items()}
     return {k: {"status": s, "title": PLATFORM_ELEMENTS[k], "evidence": e} for k, (s, e) in out.items()}
 
 
@@ -2080,8 +2191,11 @@ def _excused(exceptions: Iterable[Mapping], wid: str, item: str, today: str) -> 
     return False
 
 
-def _verified_runtime(row: Mapping, runtime_evidence: Mapping, obligation: str, *, evidence_trust=None, now=None) -> dict:
+def _verified_runtime(
+    row: Mapping, runtime_evidence: Mapping, obligation: str, *, evidence_trust=None, now=None
+) -> dict:
     from scripts.lib import n8n_evidence_attestation as A
+
     if runtime_evidence.get("schema") != RUNTIME_EVIDENCE_SCHEMA:
         return {"ok": False, "state": "UNPROVEN", "reason": "legacy or unavailable host attestation"}
     try:
@@ -2093,8 +2207,12 @@ def _verified_runtime(row: Mapping, runtime_evidence: Mapping, obligation: str, 
         identity = dict(row.get("evidence_identity") or {})
         if identity.get("workflow_id") != str(row["id"]):
             raise A.EvidenceError("scored workflow identity unavailable")
-        identity.update(served_sha=trust.served_sha, evaluation_id=trust.evaluation_id,
-                        obligation_id=obligation, audience=A.AUDIENCE)
+        identity.update(
+            served_sha=trust.served_sha,
+            evaluation_id=trust.evaluation_id,
+            obligation_id=obligation,
+            audience=A.AUDIENCE,
+        )
         have = workflows.get(str(row["id"])) or {}
         if not isinstance(have, dict):
             raise A.EvidenceError("runtime obligations must be an object")
@@ -2107,8 +2225,14 @@ def _verified_runtime(row: Mapping, runtime_evidence: Mapping, obligation: str, 
 
 
 def gate_workflow(
-    row: Mapping, *, platform: Mapping | None, runtime_evidence: Mapping,
-    exceptions: Iterable[Mapping], today: str | None = None, evidence_trust=None, now=None,
+    row: Mapping,
+    *,
+    platform: Mapping | None,
+    runtime_evidence: Mapping,
+    exceptions: Iterable[Mapping],
+    today: str | None = None,
+    evidence_trust=None,
+    now=None,
 ) -> dict:
     """Fail closed on static/platform gaps or unavailable authenticated runtime proof.
 
@@ -2148,9 +2272,15 @@ def apply_runtime_evidence(row: dict, runtime_evidence: Mapping, *, evidence_tru
         o["verification"] = verification
         if verification["ok"]:
             o["status"], o["evidence"] = EVIDENCED, verification
-        elif runtime_evidence.get("schema") == LEGACY_RUNTIME_EVIDENCE_SCHEMA and isinstance(have, dict) and o["id"] in have:
+        elif (
+            runtime_evidence.get("schema") == LEGACY_RUNTIME_EVIDENCE_SCHEMA
+            and isinstance(have, dict)
+            and o["id"] in have
+        ):
             o["legacy_evidence"] = have[o["id"]]
-    row["runtime_outcome"]["status"] = EVIDENCED if row.get("runtime") and all(o["status"] == EVIDENCED for o in row["runtime"]) else UNPROVEN
+    row["runtime_outcome"]["status"] = (
+        EVIDENCED if row.get("runtime") and all(o["status"] == EVIDENCED for o in row["runtime"]) else UNPROVEN
+    )
     verification = _verified_runtime(row, runtime_evidence, "23.24-L5b", evidence_trust=evidence_trust, now=now)
     row["deployed_parity"] = {"status": EVIDENCED if verification["ok"] else UNPROVEN, "verification": verification}
 
@@ -2167,6 +2297,10 @@ def committed_workflow_files(root: Path) -> list[Path]:
             files += sorted(
                 f for f in p.glob("*.json") if f.name != "INDEX.json" and not f.name.endswith(".health_contract.json")
             )
+    # The Ask packet also contains contract/registry proposals: only its manifest's workflow entries are graphs.
+    files += sorted(
+        root / rel for rel in _manifest_rows(root) if Path(rel).parent == ASK_HOURLY_DIR and (root / rel).is_file()
+    )
     return files
 
 
@@ -2191,7 +2325,12 @@ def build_report(
         row = score_workflow(wf, ctx, entry=entry, file=_rel(path, ctx.root))
         apply_runtime_evidence(row, runtime_evidence, evidence_trust=evidence_trust, now=now)
         row["activation_eligibility"] = gate_workflow(
-            row, platform=plat, runtime_evidence=runtime_evidence, exceptions=exceptions, evidence_trust=evidence_trust, now=now
+            row,
+            platform=plat,
+            runtime_evidence=runtime_evidence,
+            exceptions=exceptions,
+            evidence_trust=evidence_trust,
+            now=now,
         )
         rows.append(row)
     pts = sum(r["score"]["points"] for r in rows)
@@ -2287,8 +2426,11 @@ def _load_optional(path: str | None, schema: str) -> dict:
     if not path:
         return {}
     from scripts.lib import n8n_evidence_attestation as A
+
     doc = A.strict_json(Path(path).read_bytes())
-    versions = {RUNTIME_EVIDENCE_SCHEMA, LEGACY_RUNTIME_EVIDENCE_SCHEMA} if schema == RUNTIME_EVIDENCE_SCHEMA else {schema}
+    versions = (
+        {RUNTIME_EVIDENCE_SCHEMA, LEGACY_RUNTIME_EVIDENCE_SCHEMA} if schema == RUNTIME_EVIDENCE_SCHEMA else {schema}
+    )
     if not isinstance(doc, dict) or doc.get("schema") not in versions:
         raise ValueError(f"{path}: unsupported version; supported {sorted(versions)}")
     if doc.get("schema") == RUNTIME_EVIDENCE_SCHEMA:

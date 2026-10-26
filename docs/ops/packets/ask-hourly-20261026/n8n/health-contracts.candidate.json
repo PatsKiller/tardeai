@@ -24,7 +24,7 @@
         "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
         "kind": "service",
         "direction": "calls",
-        "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        "source": "Authenticated native /due discovery then existing Run Lane subworkflow; tradeai-run-relay credential reference; no credential values"
       },
       {
         "name": "data/cio/cio_ask_events.jsonl",
@@ -95,6 +95,10 @@
         "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
       },
       {
+        "check": "slow",
+        "text": "Duration above 480 seconds is degraded; the authored p95 upper bound is 600 seconds, not a measured baseline."
+      },
+      {
         "check": "cooldown_distinct",
         "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
       }
@@ -123,6 +127,7 @@
       "class": "llm",
       "timeout_s": 600,
       "duration_degraded_above_s": 480,
+      "p95_duration_bound_s": 600,
       "freshness_degraded_after_h": 1.25,
       "freshness_failed_after_h": 2.25,
       "runs_considered": 0,
@@ -175,8 +180,7 @@
       "fatal_skip_reasons": [
         "no_runner",
         "disabled",
-        "dependency_unavailable",
-        "source_unavailable"
+        "dependency_unavailable"
       ],
       "empty_allowed_reasons": [
         "no_tracked_threads",
@@ -186,7 +190,7 @@
       "evidence": [
         {
           "kind": "receipt_field",
-          "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+          "ref": "data/runtime/cio-ask-lifecycle_last.json produced_count (= summary.checked_count), summary.threads; immutable per-attempt v2 binding"
         },
         {
           "kind": "ledger_row",
@@ -225,7 +229,7 @@
         "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
         "kind": "service",
         "direction": "calls",
-        "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        "source": "Authenticated native /due discovery then existing Run Lane subworkflow; tradeai-run-relay credential reference; no credential values"
       },
       {
         "name": "data/cio/cio_ask_events.jsonl",
@@ -296,6 +300,10 @@
         "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
       },
       {
+        "check": "slow",
+        "text": "Duration above 480 seconds is degraded; the authored p95 upper bound is 600 seconds, not a measured baseline."
+      },
+      {
         "check": "cooldown_distinct",
         "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
       }
@@ -324,6 +332,7 @@
       "class": "llm",
       "timeout_s": 600,
       "duration_degraded_above_s": 480,
+      "p95_duration_bound_s": 600,
       "freshness_degraded_after_h": 0.25,
       "freshness_failed_after_h": 0.5,
       "runs_considered": 0,
@@ -376,8 +385,7 @@
       "fatal_skip_reasons": [
         "no_runner",
         "disabled",
-        "dependency_unavailable",
-        "source_unavailable"
+        "dependency_unavailable"
       ],
       "empty_allowed_reasons": [
         "no_tracked_threads",
@@ -387,7 +395,7 @@
       "evidence": [
         {
           "kind": "receipt_field",
-          "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
+          "ref": "data/runtime/cio-ask-material-events_last.json produced_count (= summary.checked_count), summary.threads; immutable per-attempt v2 binding"
         },
         {
           "kind": "ledger_row",

@@ -1,7 +1,7 @@
 diff --git a/config/lane_registry.json b/config/lane_registry.json
 --- a/config/lane_registry.json
 +++ b/config/lane_registry.json
-@@ -25567,6 +25567,94 @@
+@@ -25567,6 +25567,96 @@
        "flags": [
          "UNVERIFIED_OUTPUT"
        ]
@@ -14,7 +14,7 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +      "state_reason": "Candidate only: approved hourly plan; no workflow import, shared config admission or live proof has occurred.",
 +      "scheduler": {
 +        "kind": "n8n",
-+        "expression": "native",
++        "expression": "dispatcher",
 +        "workflow_id": "tradeai-cio-ask-lifecycle-native",
 +        "match": "scripts/cio_ask_lifecycle.py --once",
 +        "cadence": "0 * * * *",
@@ -44,9 +44,10 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +          "0 * * * *"
 +        ],
 +        "tz": "America/New_York",
++        "wave": "W5",
 +        "class": "llm",
 +        "priority": 4,
-+        "retry_policy": "transient-2"
++        "retry_policy": "llm-transient"
 +      },
 +      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
 +    },
@@ -58,7 +59,7 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +      "state_reason": "Candidate only: approved hourly plan; no workflow import, shared config admission or live proof has occurred.",
 +      "scheduler": {
 +        "kind": "n8n",
-+        "expression": "native",
++        "expression": "dispatcher",
 +        "workflow_id": "tradeai-cio-ask-lifecycle-native",
 +        "match": "scripts/cio_ask_lifecycle.py --once --events-only",
 +        "cadence": "*/5 * * * *",
@@ -88,9 +89,10 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +          "*/5 * * * *"
 +        ],
 +        "tz": "America/New_York",
++        "wave": "W5",
 +        "class": "llm",
 +        "priority": 4,
-+        "retry_policy": "transient-2"
++        "retry_policy": "llm-transient"
 +      },
 +      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
      }
@@ -139,7 +141,7 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +      "env_allowlist_mode": "report",
 +      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
 +      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
-+      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
++      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native schedules request authenticated relay /due then invoke existing Run Lane with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
 +    },
 +    {
 +      "lane_id": "cio-ask-material-events",
@@ -177,14 +179,14 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +      "env_allowlist_mode": "report",
 +      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
 +      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
-+      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
++      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native schedules request authenticated relay /due then invoke existing Run Lane with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
      }
    ],
    "blocked_reasons": {
 diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 --- a/config/n8n_health_contracts.json
 +++ b/config/n8n_health_contracts.json
-@@ -34525,6 +34525,408 @@
+@@ -34525,6 +34525,416 @@
            "notifier_priority": "P2"
          }
        }
@@ -214,7 +216,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
 +          "kind": "service",
 +          "direction": "calls",
-+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
++          "source": "Authenticated native /due discovery then existing Run Lane subworkflow; tradeai-run-relay credential reference; no credential values"
 +        },
 +        {
 +          "name": "data/cio/cio_ask_events.jsonl",
@@ -285,6 +287,10 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
 +        },
 +        {
++          "check": "slow",
++          "text": "Duration above 480 seconds is degraded; the authored p95 upper bound is 600 seconds, not a measured baseline."
++        },
++        {
 +          "check": "cooldown_distinct",
 +          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
 +        }
@@ -313,6 +319,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "class": "llm",
 +        "timeout_s": 600,
 +        "duration_degraded_above_s": 480,
++        "p95_duration_bound_s": 600,
 +        "freshness_degraded_after_h": 1.25,
 +        "freshness_failed_after_h": 2.25,
 +        "runs_considered": 0,
@@ -365,8 +372,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "fatal_skip_reasons": [
 +          "no_runner",
 +          "disabled",
-+          "dependency_unavailable",
-+          "source_unavailable"
++          "dependency_unavailable"
 +        ],
 +        "empty_allowed_reasons": [
 +          "no_tracked_threads",
@@ -376,7 +382,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "evidence": [
 +          {
 +            "kind": "receipt_field",
-+            "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
++            "ref": "data/runtime/cio-ask-lifecycle_last.json produced_count (= summary.checked_count), summary.threads; immutable per-attempt v2 binding"
 +          },
 +          {
 +            "kind": "ledger_row",
@@ -415,7 +421,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
 +          "kind": "service",
 +          "direction": "calls",
-+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
++          "source": "Authenticated native /due discovery then existing Run Lane subworkflow; tradeai-run-relay credential reference; no credential values"
 +        },
 +        {
 +          "name": "data/cio/cio_ask_events.jsonl",
@@ -486,6 +492,10 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
 +        },
 +        {
++          "check": "slow",
++          "text": "Duration above 480 seconds is degraded; the authored p95 upper bound is 600 seconds, not a measured baseline."
++        },
++        {
 +          "check": "cooldown_distinct",
 +          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
 +        }
@@ -514,6 +524,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "class": "llm",
 +        "timeout_s": 600,
 +        "duration_degraded_above_s": 480,
++        "p95_duration_bound_s": 600,
 +        "freshness_degraded_after_h": 0.25,
 +        "freshness_failed_after_h": 0.5,
 +        "runs_considered": 0,
@@ -566,8 +577,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "fatal_skip_reasons": [
 +          "no_runner",
 +          "disabled",
-+          "dependency_unavailable",
-+          "source_unavailable"
++          "dependency_unavailable"
 +        ],
 +        "empty_allowed_reasons": [
 +          "no_tracked_threads",
@@ -577,7 +587,7 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +        "evidence": [
 +          {
 +            "kind": "receipt_field",
-+            "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding"
++            "ref": "data/runtime/cio-ask-material-events_last.json produced_count (= summary.checked_count), summary.threads; immutable per-attempt v2 binding"
 +          },
 +          {
 +            "kind": "ledger_row",

@@ -1,0 +1,32 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "generator": "scripts/build_cio_ask_lifecycle_workflow.py",
+  "inert": "source candidate only; never imported or activated by this generator",
+  "schema": "CioAskNativeWorkflowSet@v1",
+  "workflows": [
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "workflow.native.candidate.json",
+      "graph_sha256": "bd88b01c95e9da76409be0a9e578b89baae4bb8628ea6bdcce7f52759c5e51d6",
+      "health_contract": "config/n8n_health_contracts.json#cio-ask-lifecycle",
+      "id": "tradeai-cio-ask-lifecycle-native",
+      "kind": "native-business",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.switch"
+      ],
+      "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229",
+      "relay_calls": [
+        "GET /due"
+      ],
+      "runbook": "README.txt",
+      "sha256": "d0dfe1965f5d5152bd6eb6f4d3169a6981872ee28cb8d74d1b8598a7dca694eb"
+    }
+  ]
+}
