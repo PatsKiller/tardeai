@@ -199,9 +199,10 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 20.3.0 (MINOR, ratified on #2107) supersedes 20.2.0 (ACTIVE, #2073).
     # 21.0.0 (MAJOR, ratified on #2128) supersedes 20.3.0 (ACTIVE, #2107).
     # 22.0.0 (MAJOR, ratified on #2149) supersedes 21.0.0 (ACTIVE, #2128).
+    # 23.0.0 (MAJOR, ratified on #2185) supersedes 22.0.0 (ACTIVE, #2149).
     allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
                (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}, (20, 2, 0): {"20.1.0"}, (20, 3, 0): {"20.2.0"},
-               (21, 0, 0): {"20.3.0"}, (22, 0, 0): {"21.0.0"}}.get(
+               (21, 0, 0): {"20.3.0"}, (22, 0, 0): {"21.0.0"}, (23, 0, 0): {"22.0.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f

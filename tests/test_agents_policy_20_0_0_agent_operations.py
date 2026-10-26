@@ -346,6 +346,45 @@ def redo_20_0_0(text: str) -> str:
     return text
 
 
+#: header of the 22.0.0-ACTIVE tip, restored by pre_23_0_0 after stripping 23.0.0
+_PRE_23_HEADER = {
+    "Policy-Version": "22.0.0",
+    "Status": "ACTIVE",
+    "Effective-Date": "2026-10-25",
+    "Last-Reviewed": "2026-10-25T18:37:00-04:00",
+    "Supersedes": "21.0.0",
+}
+
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+_REMOTE_APPROVAL_PRE_23 = (_FIXTURES / "agents_remote_approval_pre_23_0_0.md").read_text(encoding="utf-8")
+_REMOTE_APPROVAL_23 = (_FIXTURES / "agents_remote_approval_23_0_0_retired.md").read_text(encoding="utf-8")
+
+
+def pre_23_0_0(text: str) -> str:
+    """Strip the 23.0.0 soft-adds (banner, remote-approval section replace, history row) and restore the
+    22.0.0-ACTIVE header so older digest / tip pins stay stable after ratification.
+    Idempotent: absent soft-adds are a no-op; header rewrite only runs when a 23.0.0 row was present."""
+    had_23 = bool(re.search(r"^\| 23\.0\.0 \|", text, re.M)) or "**23.0.0 is " in text
+    for marker in ("**23.0.0 is ACTIVE", "**23.0.0 is PROPOSED"):
+        if marker in text:
+            b = text.index(marker)
+            text = text[:b] + text[text.index("**22.0.0 is ", b):]
+            break
+    if _REMOTE_APPROVAL_23 in text:
+        text = text.replace(_REMOTE_APPROVAL_23, _REMOTE_APPROVAL_PRE_23, 1)
+    text = re.sub(r"^\| 23\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
+    if had_23:
+        for k, v in _PRE_23_HEADER.items():
+            text = re.sub(
+                rf"^({re.escape(k)}:\s+).*$",
+                lambda m, v=v: m.group(1) + v,
+                text,
+                count=1,
+                flags=re.M,
+            )
+    return text
+
+
 #: header of the 21.0.0-ACTIVE tip (a91e0806c), restored by pre_22_0_0 after stripping 22.0.0
 _PRE_22_HEADER = {
     "Policy-Version": "21.0.0",
@@ -360,6 +399,7 @@ def pre_22_0_0(text: str) -> str:
     """Strip the 22.0.0 soft-adds (banner, §17 paragraph, §25.3 bullet, history row) and restore the
     21.0.0-ACTIVE header so older digest / STATE.check pins stay stable after ratification.
     Idempotent: absent soft-adds are a no-op; header rewrite only runs when a 22.0.0 row was present."""
+    text = pre_23_0_0(text)
     had_22 = bool(re.search(r"^\| 22\.0\.0 \|", text, re.M)) or "**22.0.0 is " in text
     for marker in ("**22.0.0 is ACTIVE", "**22.0.0 is PROPOSED"):
         if marker in text:
