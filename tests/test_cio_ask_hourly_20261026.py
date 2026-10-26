@@ -595,3 +595,25 @@ def test_canonical_source_admission_keeps_schedules_inactive_and_caps_shared():
         assert contracts[lane]["status"] == "REVIEWED"
         assert contracts[lane]["review"]["reviewed_by"].startswith("codex-")
         assert "SOURCE_AND_SYNTHETIC_ONLY" in contracts[lane]["evidence"]["acceptance"]
+
+
+def test_native_source_rows_parse_and_pass_real_r1_admission():
+    """Native triggers still dispatch through the existing closed host admission."""
+    import json
+    from pathlib import Path
+    from scripts.lib.lane_dispatch import parse_dispatch_block, r1_class_admission
+
+    root = Path(__file__).resolve().parents[1]
+    lanes = {r["lane_id"]: r for r in json.loads((root / "config/lane_registry.json").read_text())["lanes"]}
+    allowed = {r["lane_id"]: r for r in json.loads((root / "config/n8n_run_allowlist.json").read_text())["lanes"]}
+    processes = {r["id"] for r in json.loads((root / "config/llm_process_registry.json").read_text())["processes"]}
+    policies = json.loads((root / "config/n8n_retry_policies.json").read_text())["policies"]
+    for lane in ("cio-ask-lifecycle", "cio-ask-material-events"):
+        row = lanes[lane]
+        block = parse_dispatch_block(row)
+        assert block.wave == "W5" and block.klass == "llm"
+        assert block.klass in policies[block.retry_policy]["permitted_classes"]
+        assert row["scheduler"]["expression"] == "dispatcher"
+        assert row["scheduler"]["workflow_id"] == "tradeai-cio-ask-lifecycle-native"
+        ok, reason = r1_class_admission(row, allowed[lane], process_ids=processes)
+        assert ok, reason

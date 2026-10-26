@@ -25576,12 +25576,13 @@
       "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
       "scheduler": {
         "kind": "n8n",
-        "expression": "native",
+        "expression": "dispatcher",
         "workflow_id": "tradeai-cio-ask-lifecycle-native",
         "match": "scripts/cio_ask_lifecycle.py --once",
         "cadence": "0 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow"
+        "stage": "shadow",
+        "wave": "W5"
       },
       "expected_cadence_hours": 1,
       "active_days": [
@@ -25608,7 +25609,8 @@
         "tz": "America/New_York",
         "class": "llm",
         "priority": 4,
-        "retry_policy": "transient-2"
+        "retry_policy": "llm-transient",
+        "wave": "W5"
       },
       "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
       "reason_confidence": "ESTABLISHED",
@@ -25624,12 +25626,13 @@
       "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
       "scheduler": {
         "kind": "n8n",
-        "expression": "native",
+        "expression": "dispatcher",
         "workflow_id": "tradeai-cio-ask-lifecycle-native",
         "match": "scripts/cio_ask_lifecycle.py --once --events-only",
         "cadence": "*/5 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow"
+        "stage": "shadow",
+        "wave": "W5"
       },
       "expected_cadence_hours": 0.08333333333333333,
       "active_days": [
@@ -25656,7 +25659,8 @@
         "tz": "America/New_York",
         "class": "llm",
         "priority": 4,
-        "retry_policy": "transient-2"
+        "retry_policy": "llm-transient",
+        "wave": "W5"
       },
       "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
       "reason_confidence": "ESTABLISHED",
