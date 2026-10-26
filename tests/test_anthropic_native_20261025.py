@@ -76,7 +76,7 @@ def test_durable_db_backstop_refuses_even_if_local_journal_was_lost(monkeypatch,
     monkeypatch.setattr(lc,'ledger_paid_usd_today',lambda *a,**k:0)
     with pytest.raises(RuntimeError,match=reason):
         lc.reprice_reservation(1,'fixture',0.02,process_config={'daily_cost_cap_usd':1},
-            global_cap=None,funding_source='anthropic_promotional_credit',paid_component_usd=0,credit_policy=load_policy())
+            global_cap=None,funding_source='anthropic_promotional_credit',paid_component_usd=0,credit_policy={**load_policy(),'daily_cap_overrides':[]})
     assert conn.rollback.called and not conn.commit.called
     assert 'pg_advisory_xact_lock' in cur.execute.call_args_list[0].args[0]
     assert not any('UPDATE llm_cost_reservations SET projected' in c.args[0] for c in cur.execute.call_args_list)
