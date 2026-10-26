@@ -88,6 +88,8 @@ def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = 
         head += ["", "This is a weekly update. The previous verdict was: "
                  + json.dumps(previous.get("verdict_line") or "")[:400]
                  + ". Rewrite only the listed sections from the current facts and say what changed."]
+    from .extensions import prompt_lines
+    head += prompt_lines(bundle)
     if bundle.gaps:
         head += ["", "Known data gaps: " + "; ".join(bundle.gaps)]
     tail = ["", "FACTS (id | label | value or text | source | as of):"]
@@ -492,6 +494,8 @@ def finish_doc(bundle: Bundle, text: str, prov: dict, *, gate: dict, settings: d
     blocks = dict(bundle.blocks)
     blocks["scenarios"] = scenarios
     apply_notes(blocks, notes)
+    from .extensions import finalize  # my history / fund profile blocks (PR #2205); the batch path shares this
+    finalize(blocks, parsed, bundle, log)
     doc = {
         "schema": SCHEMA, "symbol": bundle.symbol, "name": bundle.name, "scope": bundle.scope,
         "version": version, "generated_at": now.isoformat(), "mode": mode,

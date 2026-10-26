@@ -499,7 +499,7 @@ def _hooks_wired() -> bool:
     import inspect
     from scripts.lib.prospectus import domains, render
     return ("attach_extensions" in inspect.getsource(domains.full_assemble)
-            and "finalize(" in inspect.getsource(gen.write) and "ext.top_tables" in inspect.getsource(render.html))
+            and "finalize(" in inspect.getsource(getattr(gen, "finish_doc", gen.write)) and "ext.top_tables" in inspect.getsource(render.html))
 
 
 @pytest.mark.skipif(not _hooks_wired(), reason="extension hooks not wired into domains/generate/render yet")

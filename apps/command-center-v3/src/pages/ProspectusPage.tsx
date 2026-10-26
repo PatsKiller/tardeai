@@ -14,6 +14,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { inlineMarkdown } from '../components/PolicyRuleParts'
 import ProspectusCharts from '../components/prospectus/ProspectusCharts'
+import { FundProfileBlock, MyHistoryBlock } from '../components/prospectus/MyHistoryBlock'
 import {
   CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, MacroBlock, OptionsBlock, OwnershipBlock, PeerComparisonBlock,
   RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
@@ -396,6 +397,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
       {hasReport && doc && (
         <>
           <VerdictTiles doc={doc} />
+          <MyHistoryBlock blocks={blocks} symbol={symbol} phone={phone} />
           <section className="psp-card psp-summary-card" data-testid="prospectus-summary" aria-label="Summary">
             <h2 className="psp-card-title">Summary</h2>
             {(doc.verdict_line || row?.verdict_line) && <p className="psp-verdict-banner" data-testid="prospectus-verdict-banner">{doc.verdict_line || row?.verdict_line}</p>}
@@ -420,6 +422,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                 </details>
               )}
               <div className="psp-sections">{narrative.map(s => <SectionBlock key={s.id} s={s} phone />)}</div>
+              <FundProfileBlock blocks={blocks} />
               <CoverageBlock doc={doc} />
               {isOperator && <div className="psp-rewrite-row"><RewriteButton symbol={symbol} onQueued={() => setNonce(n => n + 1)} big /></div>}
             </>
@@ -439,6 +442,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                 <CallBlock blocks={blocks} />
                 <OptionsBlock blocks={blocks} />
               </div>
+              <FundProfileBlock blocks={blocks} />
               <CoverageBlock doc={doc} />
               {cites.length > 0 && (
                 <section className="psp-card" aria-label="Sources" data-testid="prospectus-sources">

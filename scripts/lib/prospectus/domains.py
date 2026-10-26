@@ -553,4 +553,6 @@ def full_assemble(sources: Any, symbol: str, scope: str, *, cfg: dict, holding: 
         b.blocks["stop_plan"] = {"gaps": ["stop plan: scripts/lib/prospectus/stops.py not installed yet"]}
     else:
         b.blocks["stop_plan"] = stop_plan(sources, b, holding=holding, cfg=cfg, now=now)
+    from .extensions import attach as attach_extensions  # my_history + fund category / profile / house scenarios / macro effect
+    attach_extensions(sources, b, cfg=cfg, holding=holding, now=now, bars=bars or [])
     return b
