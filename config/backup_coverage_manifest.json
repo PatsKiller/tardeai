@@ -308,7 +308,8 @@
     "store:model_chooser_receipts",
     "store:supervisor_ladder_receipts",
     "store:supervisor_recoveries",
-    "store:web_search"
+    "store:web_search",
+    "store:anthropic_promotional_credit"
    ]
   },
   {
