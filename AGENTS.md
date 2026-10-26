@@ -2141,6 +2141,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **news_sentiment** | ingested | `runtime/alpha_vantage/news_sentiment_latest.json` | `scripts/alpha_vantage_owner.py` | 14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them | 3h | `news_sentiment` | alpha_vantage | — | newsapi, finnhub, polygon, fmp | `say_so` | operator 2026-10-10 |
 | **cio_prospect** | derived | `cio_prospect` | `scripts/lib/cio_instrument_record.py` | */30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes | 0.5h | `cio_prospect` | derived | — | — | `say_so` | operator 2026-10-22 |
 | **cio_asks** | native | `data/cio/cio_ask_events.jsonl` | `scripts/lib/cio_ask_store.py` | event-driven (operator ask on CC or Telegram; material-change re-answer) | 168h | — | internal | — | — | `say_so` | operator 2026-10-24 |
+| **anthropic_promotional_credit** | native | `runtime/provider_cost/anthropic_credit.jsonl` | `scripts/lib/anthropic_credit.py` | before each governed promotional request; settle after usage; existing llm-provider-health observations | 0.25h | — | — | durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock | — | `Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available` | operator 2026-10-25 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
