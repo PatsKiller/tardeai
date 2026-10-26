@@ -14,6 +14,7 @@ from typing import Any
 
 from . import charts as ch
 from . import tables as tb
+from .stops import stop_plan_table
 
 CITE_RE = re.compile(r"\[(F\d+(?:\s*,\s*F\d+)*)\]")
 
@@ -184,7 +185,7 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
         parts.append(section_html(sections[0]))
     parts.append('<div class="pc-charts">' + "".join(figs.pop(k) for k in ("price_1y", "analyst_targets", "position_pl")
                                                        if k in figs) + "</div>")
-    for t in tb.top_tables(doc):
+    for t in tb.top_tables(doc) + stop_plan_table(doc):
         parts.append(table_html(t))
     for sec in sections[1:]:
         parts.append(section_html(sec))
@@ -305,7 +306,7 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
                 run.font.size = Pt(8)
                 run.font.color.rgb = rgb(light["muted"])
 
-    for t in tb.top_tables(doc) + tb.bottom_tables(doc):
+    for t in tb.top_tables(doc) + stop_plan_table(doc) + tb.bottom_tables(doc):
         add_table(t)
     d.add_heading("Sources and facts", level=1)
     facts = doc.get("facts") or []
