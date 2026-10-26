@@ -110,6 +110,9 @@ def budget(root: Path) -> dict:
                 "status": "UNAVAILABLE", "error": type(exc).__name__}
 
 
+QUEUE_STATUS = {"running": "running", "failed": "failed", "blocked_data": "blocked_data"}
+
+
 def index_payload(root: Path, *, now: datetime | None = None, operator: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     cfg = load_config()
@@ -124,7 +127,7 @@ def index_payload(root: Path, *, now: datetime | None = None, operator: bool = F
         e = idx.get(sym) or {}
         q = queue.get(sym)
         if q is not None:
-            status = {"running": "running", "failed": "failed"}.get(q.get("state"), "queued")
+            status = QUEUE_STATUS.get(q.get("state"), "queued")
         else:
             status = e.get("status") if e.get("status") in store.STATUSES else ("ready" if e.get("version") else "missing")
             if status in ("queued", "running"):
@@ -137,8 +140,11 @@ def index_payload(root: Path, *, now: datetime | None = None, operator: bool = F
                       "cost_usd": e.get("cost_usd"), "status": status, "stale": stale, "next_due": due,
                       "verdict_line": e.get("verdict_line"),
                       "failure_reason": ((q or {}).get("last_error") or e.get("failure_reason")) if status == "failed" else None,
-                      "partial_gaps": (e.get("partial_gaps") or []) if status == "partial" else []})
-    totals = {k: sum(1 for i in items if i["status"] == k) for k in ("ready", "partial", "queued", "running", "missing", "failed")}
+                      "partial_gaps": (e.get("partial_gaps") or []) if status == "partial" else [],
+                      # data-quality gate (scripts/lib/prospectus/quality_gate.py): pass / soft_fail / hard_fail + why
+                      "gate_status": e.get("gate_status"), "gate_reasons": e.get("gate_reasons") or [],
+                      "gate_checked_at": e.get("gate_checked_at")})
+    totals = {k: sum(1 for i in items if i["status"] == k) for k in ("ready", "partial", "queued", "running", "missing", "failed", "blocked_data")}
     return {"items": items, "totals": totals, "budget": budget(root), "viewer": {"operator": bool(operator)}}
 
 
@@ -194,12 +200,16 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
     if doc is None:
         q = next((r for r in store.read_queue(base)["items"] if r.get("symbol") == sym), None)
         return 404, {"ok": False, "error": "NOT_FOUND", "symbol": sym,
-                     "status": ({"running": "running", "failed": "failed"}.get(q.get("state"), "queued") if q else "missing"),
+                     "status": (QUEUE_STATUS.get(q.get("state"), "queued") if q else "missing"),
                      "failure_reason": (q or {}).get("last_error"), "viewer": {"operator": bool(_safe_operator(ctx))}}
     doc["versions"] = [{k: r.get(k) for k in ("version", "generated_at", "model")} for r in store.versions(base, sym)]
     doc["viewer"] = {"operator": bool(_safe_operator(ctx))}
     entry = store.read_index(base)["items"].get(sym) or {}
     doc.setdefault("failure_reason", entry.get("failure_reason") if entry.get("status") == "failed" else None)
+    doc["gate_status"] = (doc.get("gate") or {}).get("status") or entry.get("gate_status")
+    doc["gate_reasons"] = (doc.get("gate") or {}).get("reasons") or entry.get("gate_reasons") or []
+    if entry.get("status") == "blocked_data":  # a newer attempt was blocked on data; the stored version predates it
+        doc["latest_attempt"] = {"status": "blocked_data", "gate_reasons": entry.get("gate_reasons") or []}
     return 200, doc
 
 
