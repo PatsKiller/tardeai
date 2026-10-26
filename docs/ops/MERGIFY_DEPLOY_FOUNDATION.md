@@ -1,38 +1,42 @@
 Status: ACTIVE
 as_of: 2026-10-26
-Measured at: design for AGENTS.md 24.0.0 PROPOSED (Mergify replaces custom release train)
+Measured at: AGENTS.md 24.0.0 ACTIVE · Approve-only Mergify (PatsKiller Approve; no merge-ready)
 Canonical repo path: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
-Authority: operator-approved plan mergify_replace_train (2026-10-26)
-Supersedes: docs/ops/RELEASE_TRAIN_GITHUB_APP.md, docs/ops/RELEASE_TRAIN_OPERATOR_RUNBOOK.md (train merge path)
-See also: docs/ops/EMERGENCY_MANUAL_PROMOTE.md · docs/ops/MERGIFY_CUTOVER_CHECKLIST_20261026.md · AGENTS.md §25.10
+Authority: operator-approved plan mergify_replace_train (2026-10-26); Approve-only plan 2026-10-26
+Supersedes: docs/ops/RELEASE_TRAIN_GITHUB_APP.md, docs/ops/RELEASE_TRAIN_OPERATOR_RUNBOOK.md (train merge path); merge-ready as Mergify gate
+See also: docs/ops/AGENT_MERGIFY_HANDOFF.md · docs/ops/EMERGENCY_MANUAL_PROMOTE.md · docs/ops/MERGIFY_CUTOVER_CHECKLIST.md · AGENTS.md §25.10
 
 # Mergify + host deploy — foundation
 
 ## One-sentence version
 
-**Mergify merges green PRs on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
+**Mergify merges ready green PRs after PatsKiller’s GitHub Approve on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
 
 ## Authority split
 
 | Actor | May | Must not |
 |---|---|---|
-| Coding agents | Open PRs, push feature branches under push budget | Merge, push `main`/`train/*`, promote, release |
-| Mergify | Merge eligible PRs when required checks are green and schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
+| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra` | Merge, push `main`/`train/*`, promote, release, use `merge-ready` as a gate |
+| Mergify | Merge eligible PRs when PatsKiller Approve + required checks green + not draft + schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
 | Host `deploy_on_main` poller | Promote CURRENT to the new `origin/main` SHA when STOP is clear and deploy delegation is armed | Merge, push remotes, run without STOP/lock checks |
-| Operator (host) | Emergency promote, STOP/resume, arm deploy delegation, install Mergify | Delegate live broker authority |
+| Operator (host) | GitHub Approve once; emergency promote; STOP/resume; arm deploy delegation; install Mergify | Delegate live broker authority |
 
 ## Normal path
 
 ```
-PR opened → CI green (cio-hardening, agent-governance, release-readiness, ci-gate)
+Ready PR opened (not draft; solo/shared-infra labels if needed)
+         → CI green (cio-hardening, agent-governance, release-readiness, ci-gate)
+         → Operator PatsKiller GitHub Approve (one tap)
          → Mergify queue (ET schedule windows)
-         → merge to main
+         → squash-merge to main
          → deploy_on_main poller sees new origin/main SHA
          → STOP absent + GlobalReleaseLock + standing deploy delegation
          → cio_phase2_exact_main_deploy.sh prepare+promote
          → post_release_tester verify
          → DeployOnMainReceipt@v1 (path=poller)
 ```
+
+Go signal in `.mergify.yml`: `approved-reviews-by=PatsKiller` + `draft=false`. The `merge-ready` label is **not** a queue condition.
 
 ## Standing deploy delegation
 

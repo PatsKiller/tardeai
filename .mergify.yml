@@ -2,6 +2,7 @@
 # Mergify merges to main inside ET windows; the host deploy_on_main poller promotes CURRENT.
 # Agents never merge. Installing / re-permissioning the Mergify GitHub App is §17.
 #
+# Go signal: GitHub Approve by PatsKiller only (not merge-ready label, not Telegram, not chat LGTM).
 # Required checks must match GitHub check names exactly.
 # Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
 
@@ -23,15 +24,15 @@ pull_request_rules:
           Held: broker / Active Trader / MBI / secrets paths are never Mergify-merged
           (AGENTS.md §0 rules 1–2, §25.10). Operator merge only.
 
-  - name: Queue default when CI green and merge-ready
+  - name: Queue default when CI green and PatsKiller Approve
     conditions:
       - base=main
-      - "#approved-reviews-by>=1"
+      - draft=false
+      - approved-reviews-by=PatsKiller
       - check-success=cio-hardening
       - check-success=agent-governance
       - check-success=release-readiness
       - check-success=ci-gate
-      - label=merge-ready
       - label!=held
       - label!=broker
       - label!=broker_active_trader
@@ -49,7 +50,8 @@ pull_request_rules:
   - name: Queue solo / shared-infra one-at-a-time
     conditions:
       - base=main
-      - "#approved-reviews-by>=1"
+      - draft=false
+      - approved-reviews-by=PatsKiller
       - check-success=cio-hardening
       - check-success=agent-governance
       - check-success=release-readiness
