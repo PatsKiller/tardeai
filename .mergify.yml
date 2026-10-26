@@ -45,7 +45,6 @@ pull_request_rules:
     actions:
       queue:
         name: default
-        method: squash
 
   - name: Queue solo / shared-infra one-at-a-time
     conditions:
@@ -69,11 +68,11 @@ pull_request_rules:
     actions:
       queue:
         name: solo
-        method: squash
 
 queue_rules:
   - name: default
     batch_size: 5
+    merge_method: squash
     merge_conditions:
       - check-success=cio-hardening
       - check-success=agent-governance
@@ -87,6 +86,7 @@ queue_rules:
 
   - name: solo
     batch_size: 1
+    merge_method: squash
     merge_conditions:
       - check-success=cio-hardening
       - check-success=agent-governance
