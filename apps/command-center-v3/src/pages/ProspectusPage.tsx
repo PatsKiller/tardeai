@@ -16,7 +16,7 @@ import { inlineMarkdown } from '../components/PolicyRuleParts'
 import ProspectusCharts from '../components/prospectus/ProspectusCharts'
 import {
   CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, MacroBlock, OptionsBlock, OwnershipBlock, PeerComparisonBlock,
-  RelativePerformanceBlock, RiskBlock, ScenariosBlock, VerdictTiles,
+  RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
 } from '../components/prospectus/ProspectusBlocks'
 import {
   SECTION_TONE, SUMMARY_SECTION, allCitations, budgetView, detailPath, detailState, filePath, filterItems, indexPath,
@@ -412,6 +412,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
               <EstimatesBlock blocks={blocks} withCall />
               <OptionsBlock blocks={blocks} withOwnership />
               <RiskBlock blocks={blocks} phone />
+              <StopPlanBlock blocks={blocks} />
               {(doc.charts ?? []).length > 0 && (
                 <details className="psp-section psp-details psp-accent-info" data-testid="prospectus-charts-details">
                   <summary className="psp-summary psp-tone-info">Charts</summary>
@@ -429,6 +430,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                 <OwnershipBlock blocks={blocks} />
                 <RiskBlock blocks={blocks} />
               </div>
+              <StopPlanBlock blocks={blocks} />
               <ScenariosBlock blocks={blocks} price={price} />
               <div className="psp-sections psp-grid2">{narrative.map(s => <SectionBlock key={s.id} s={s} phone={false} />)}</div>
               <div className="psp-grid2">
