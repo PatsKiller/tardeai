@@ -39,6 +39,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/rec-intel', label: 'Rec Intelligence', restored: true },
       { to: '/reports', label: 'Reports', restored: true },
       { to: '/communications', label: 'Communications' },
+      // Ticker Prospectus (operator 2026-10-26): appended; nothing above moved.
+      { to: '/prospectus', label: 'Prospectus' },
     ],
   },
   {
