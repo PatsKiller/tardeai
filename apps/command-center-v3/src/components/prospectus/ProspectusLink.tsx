@@ -1,10 +1,10 @@
 /** "Prospectus" entry point for ticker cards and the shared ticker modal (operator 2026-10-26). Opens
  *  /v3/prospectus/:symbol. Inside the router it navigates in-app; outside one (isolated fixtures) it is a plain link.
- *  Clicks never bubble into the card that hosts it. Height: 28px desktop, 44px on a phone (pages/Prospectus.css). */
+ *  Clicks never bubble into the card that hosts it. Height: 28px desktop, 44px on a phone (pages/Prospectus.css,
+ *  loaded with the app bundle; not imported here so isolated esbuild harnesses without a CSS output still build). */
 import { Link, useInRouterContext } from 'react-router-dom'
 import { pageRoute, normSymbol } from '../../lib/prospectusModel'
 import { RADIUS, TYPE } from '../../lib/designTokens'
-import '../../pages/Prospectus.css'
 
 const style: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0 8px', minWidth: 28,
