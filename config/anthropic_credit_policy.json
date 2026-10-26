@@ -11,6 +11,12 @@
       "from": "2026-10-26",
       "until": "2026-10-29",
       "approved_by": "operator 2026-10-26: \"$25/day for 3 days\" (Ticker Prospectus first build); UTC days 2026-10-26..2026-10-28, then the $10 base"
+    },
+    {
+      "usd": "40",
+      "from": "2026-10-26",
+      "until": "2026-10-27",
+      "approved_by": "operator 2026-10-26: \"I rather finish right now\" (prospectus first build); UTC day 2026-10-26 only, total cap unchanged"
     }
   ],
   "renewal": {
