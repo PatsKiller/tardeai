@@ -414,9 +414,22 @@ def test_partial_when_a_key_source_is_missing_and_gap_is_named(base):
             return [] if sym == "ZZCC" else super().bars(sym, days)
     src = NoPrices()
     b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
+    # Quality gate (2026-10-26): no price at all is below minimum coverage → blocked before any model call.
+    from scripts.lib.prospectus.quality_gate import DataBlocked
+    calls = []
+    with pytest.raises(DataBlocked) as err:
+        gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
+                  generate_fn=lambda *a, **k: calls.append(1), now=NOW, version=store.stamp(NOW))
+    assert "no_price" in str(err.value) and calls == []
+    # A key source that is missing but not minimum coverage (the CIO record) still writes a partial report.
+    class NoCio(FakeSources):
+        def cio(self, sym):
+            return {}
+    src = NoCio()
+    b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
     doc = gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
                     generate_fn=stub_generate(src), now=NOW, version=store.stamp(NOW))
-    assert doc["status"] == "partial" and any(g.startswith("price_history: empty") for g in doc["partial_gaps"])
+    assert doc["status"] == "partial" and any(g.startswith("cio_record: empty") for g in doc["partial_gaps"])
     assert "Partial:" in __import__("scripts.lib.prospectus.render", fromlist=["html"]).html(doc)
 
 

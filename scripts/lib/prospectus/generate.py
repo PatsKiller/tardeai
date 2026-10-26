@@ -91,6 +91,8 @@ def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = 
     lines = []
     for f in facts:
         val = f"{f['value']}{(' ' + f['unit']) if f.get('unit') else ''}" if "value" in f else f.get("text", "")
+        if f.get("unreliable"):  # quality gate SOFT_FAIL: the writer never sees the number
+            val = f"NOT RELIABLE ({f['unreliable']}) - do not cite"
         lines.append(f"{f['id']} | {f['label']} | {val} | {f['source']} | {f.get('as_of') or 'n/a'}")
     prompt = "\n".join(head + tail + lines)
     while len(prompt.encode("utf-8")) > max_bytes and lines:
@@ -123,6 +125,8 @@ def allowed_values(bundle: Bundle) -> list[float]:
     mod = _cio_ask()
     out: list[float] = []
     for f in bundle.facts:
+        if f.get("unreliable"):
+            continue  # quality gate: a sentence carrying an unreliable number is dropped like an ungrounded one
         if "value" in f:
             out += [f["value"], abs(f["value"])]
         for m in mod._NUM_TOKEN_RE.finditer(f.get("text") or ""):
@@ -410,9 +414,23 @@ def source_coverage(bundle: Bundle, web: dict) -> dict:
 def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full", previous: dict | None = None,
           cfg: dict, generate_fn: Callable[..., tuple[str, dict]] = governed_generate, manual: bool = False,
           now: datetime | None = None, version: str, search_fn: Callable | None = None,
-          allowance_fn: Callable[[bool], int] | None = None) -> dict:
-    """Produce one validated Prospectus@v1 document, or raise QueueLater / GenerationFailed."""
+          allowance_fn: Callable[[bool], int] | None = None, ai_fn: Any = "auto") -> dict:
+    """Produce one validated Prospectus@v1 document, or raise QueueLater / GenerationFailed / DataBlocked.
+
+    The data-quality gate (``quality_gate``) runs first, before the web-search planning turn or any other paid call:
+    a HARD_FAIL raises ``DataBlocked`` (no model call); a SOFT_FAIL tags the unreliable facts and blocks.
+    ``ai_fn="auto"`` uses the governed Haiku read in production and skips it when the writer is stubbed.
+    """
+    from . import quality_gate as qg
     now = now or datetime.now(timezone.utc)
+    if ai_fn == "auto":
+        ai_fn = qg.governed_ai_call if generate_fn is governed_generate else None
+    settings = qg.load_settings()
+    gate = qg.pre_write(qg.packet_from_bundle(bundle, now=now), settings=settings, ai_fn=ai_fn)
+    if gate["status"] == qg.HARD:
+        raise qg.DataBlocked(gate)
+    if gate["status"] == qg.SOFT:
+        qg.apply_unreliable(bundle, gate)
     max_tokens = int(cfg.get("delta_max_output_tokens" if mode == "delta" else "max_output_tokens", 16000))
     order = [processes["premium"], processes["standard"]] if premium else [processes["standard"]]
     fallback: Optional[dict] = None
@@ -446,14 +464,23 @@ def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full",
         coverage = source_coverage(bundle, web)
         cost = prov.get("estimated_cost_usd")
         if cost is not None:
-            cost = round(float(cost) + float(web.get("plan_cost_usd") or 0), 6)
+            cost = round(float(cost) + float(web.get("plan_cost_usd") or 0)
+                         + float((gate["layers"].get("ai") or {}).get("cost_usd") or 0), 6)
+        post = qg.post_write(sections, bundle.facts, settings=settings)
+        gate["layers"]["post_write"] = post
+        gate["rewrite_requested"] = bool(post["rewrite"])
+        if post["rewrite"]:
+            gate["status"] = qg.SOFT
+            gate["reasons"].append(f"post_write_unmatched: {post['unmatched_count']} number(s) match no cited fact "
+                                   f"(limit {post['limit']})")
+        partial = list(coverage["key_gaps"]) + [f"data quality: {r}" for r in gate["reasons"]]
         blocks = dict(bundle.blocks)
         blocks["scenarios"] = scenarios
         apply_notes(blocks, notes)
         return {
             "schema": SCHEMA, "symbol": bundle.symbol, "name": bundle.name, "scope": bundle.scope,
             "version": version, "generated_at": now.isoformat(), "mode": mode,
-            "status": "partial" if coverage["key_gaps"] else "ready", "partial_gaps": coverage["key_gaps"],
+            "status": "partial" if partial else "ready", "partial_gaps": partial, "gate": gate,
             "model": prov.get("returned_model") or prov.get("requested_model_id") or prov.get("model_id"),
             "process_id": process_id, "provider": prov.get("provider"), "cost_usd": cost,
             "usage": {"input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")},
