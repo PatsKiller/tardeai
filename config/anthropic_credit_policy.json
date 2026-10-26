@@ -71,6 +71,12 @@
   "input_framing_margin_tokens": 4096,
   "prompt_cache_ttl": "5m",
   "batch_mode": "explicit_asynchronous_caller_only",
+  "batch_tiers": [
+    "bulk",
+    "standard",
+    "long_form"
+  ],
+  "batch_tiers_note": "operator 2026-10-26 (\"implement this cost savings right now\"): prospectus Watch reports go through the Message Batches API at 50%; long_form (Opus 5.5) added so the byte-bounded batch projection fits the per-call cap.",
   "excluded_processes": {
     "grok_stop_review": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
     "stop_drift_alert": "protected stop path; unchanged",

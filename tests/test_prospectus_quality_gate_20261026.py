@@ -293,7 +293,7 @@ def test_run_queue_blocked_data_status_repairs_and_api(tmp_path, monkeypatch):
     store.write_universe(base, [{"symbol": "ZZCC", "scope": "watch", "premium": False}])
     store.enqueue(base, [{"symbol": "ZZCC", "scope": "watch", "priority": 1000}], now=NOW)
     out = pl.run_queue(base, src, load_config(), limit=3, holdings={}, generate_fn=stub_generate(src),
-                       now_fn=lambda: NOW, log=lambda m: None)
+                       now_fn=lambda: NOW, log=lambda m: None, batch_enabled=False)
     assert out["blocked_data"] == ["ZZCC"] and repairs == ["ZZCC"] and out["done"] == []
     entry = store.read_index(base)["items"]["ZZCC"]
     assert entry["status"] == "blocked_data" and entry["gate_status"] == qg.HARD and entry["gate_reasons"]

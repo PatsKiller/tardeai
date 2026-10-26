@@ -33,7 +33,8 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
         sys.path.insert(0, _p)
 
 from scripts.lib.prospectus import load_config, store  # noqa: E402
-from scripts.lib.prospectus.generate import build_prompt  # noqa: E402
+from scripts.lib.prospectus import batch  # noqa: E402
+from scripts.lib.prospectus.generate import writer_prompt  # noqa: E402
 from scripts.lib.prospectus.domains import full_assemble  # noqa: E402
 from scripts.lib.prospectus.inputs import HouseSources, key_gaps  # noqa: E402
 from scripts.lib.prospectus.pipeline import (  # noqa: E402
@@ -64,6 +65,8 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--first-build", action="store_true", help="enqueue the whole universe in first-build order")
     ap.add_argument("--due", action="store_true", help="enqueue what the cadence and triggers say is due")
     ap.add_argument("--manual", action="store_true", help="operator-initiated run (manual trigger)")
+    ap.add_argument("--no-batch", action="store_true", help="write Watch rows synchronously this run (no batch)")
+    ap.add_argument("--batch-now", action="store_true", help="submit every queued Watch row now (ignore size/wait)")
     ap.add_argument("--gate-only", action="store_true",
                     help="run the data-quality gate over EXISTING stored reports and list which need a rewrite")
     ap.add_argument("--all", action="store_true", help="--gate-only: every stored report (default when no --symbols)")
@@ -84,8 +87,8 @@ def dry_run(args: argparse.Namespace, sources, cfg: dict, base: Path) -> dict:
     for row in order[: max(0, args.limit)]:
         b = full_assemble(sources, row["symbol"], row["scope"], cfg=cfg, holding=holdings.get(row["symbol"]),
                           request_refresh=False)
-        prompt = build_prompt(b, max_bytes=int(cfg.get("max_prompt_bytes", 60000)))
-        est = estimate(prompt, cfg, premium=row["premium"], pricing=pricing)
+        prompt = writer_prompt(b, cfg, mode="full", previous=None)
+        est = estimate(prompt, cfg, premium=row["premium"], pricing=pricing, scope=row["scope"])
         rows.append({"symbol": row["symbol"], "scope": row["scope"], "premium": row["premium"],
                      "reason": row.get("reason"), "facts": len(b.facts), "gaps": b.gaps, "key_gaps": key_gaps(b),
                      "registry_coverage": {s: [r["domain"] for r in b.context.get("registry_coverage") or [] if r["status"] == s]
@@ -119,7 +122,13 @@ def apply(args: argparse.Namespace, sources, cfg: dict, base: Path) -> dict:
                                         "premium": (by_sym.get(store.norm_symbol(s)) or {}).get("premium", False),
                                         "priority": PRIORITY_OPERATOR, "mode": "full", "reason": "operator_cli",
                                         "requested_by": "cli"} for s in symbols], now=now)
-    summary = run_queue(base, sources, cfg, limit=max(0, args.limit), manual=args.manual)
+    summary = run_queue(base, sources, cfg, limit=max(0, args.limit), manual=args.manual,
+                        batch_enabled=not args.no_batch)
+    if not args.no_batch:  # Watch rows: collect what finished, then submit what is due (gate first, then submit)
+        from scripts.lib.prospectus.pipeline import handle_blocked
+        summary["batch_collect"] = batch.collect(base, cfg, now=datetime.now(timezone.utc))
+        summary["batch_submit"] = batch.submit_due(base, sources, cfg, now=datetime.now(timezone.utc),
+                                                   force=args.batch_now, on_blocked=handle_blocked)
     signal = {"ok_at": datetime.now(timezone.utc).isoformat(), "lane": LANE, "enqueued": queued, **summary,
               "queue_depth": len(store.read_queue(base)["items"])}
     store.write_json(Path(state_root()) / "data/runtime" / f"{LANE}_last.json", signal)

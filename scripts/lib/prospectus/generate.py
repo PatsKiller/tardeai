@@ -46,7 +46,8 @@ def _cio_ask():
 
 
 # ── prompt ────────────────────────────────────────────────────────────────────────────────────────────────────
-def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = None, max_bytes: int = 60000) -> str:
+def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = None, max_bytes: int = 60000,
+                 section_words: str = "120-260") -> str:
     ids = sections_for(bundle.scope) if mode == "full" else tuple(
         s for s in DELTA_SECTION_IDS if s in sections_for(bundle.scope))
     facts = list(bundle.facts)
@@ -68,7 +69,9 @@ def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = 
         '{"verdict_line": "<one sentence, at most 25 words>", "sections": [{"id": "<section id>", "title": "<title>", '
         '"body_md": "<markdown: short paragraphs and bullet lists>", "citations": ["F1", "F2"]}], "scenarios": [...], "notes": {...}}',
         "Sections, in this order: " + ", ".join(f"{s} ({SECTION_TITLES[s]})" for s in ids) + ".",
-        "Aim for 120-260 words per section; thesis_breakers is a bullet list of observable conditions that would "
+        f"Aim for {section_words} words per section"
+        + ("" if section_words == "120-260" else " (a concise report: every section, no padding)")
+        + "; thesis_breakers is a bullet list of observable conditions that would "
         "prove the thesis wrong. Use the macro, SEC filing, ownership, peer and relative-performance facts where they "
         "bear on the name; cite web facts (W-prefixed sources) with their fact ids like any other fact.",
         "Also return \"scenarios\": three objects {\"case\": \"bear\"|\"base\"|\"bull\", \"price_fact\": <the fact "
@@ -411,6 +414,103 @@ def source_coverage(bundle: Bundle, web: dict) -> dict:
                        for s in ("used", "stale", "empty", "failed", "not_applicable")}}
 
 
+GEN_CONFIG_REL = "config/prospectus_generation.json"
+GEN_DEFAULTS = {"holding": {"effort": "high", "max_output_tokens": 16000, "batch": False, "section_words": "120-260",
+                            "expected_output_tokens": 9000},
+                "watch": {"effort": "high", "max_output_tokens": 16000, "batch": False, "section_words": "120-260",
+                          "expected_output_tokens": 9000}}
+
+
+def generation_config(root: Any = None) -> dict:
+    """Per-scope generation settings (config/prospectus_generation.json); defaults are the pre-2026-10-26 behaviour."""
+    from pathlib import Path
+    path = Path(root or Path(__file__).resolve().parents[3]) / GEN_CONFIG_REL
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = {}
+    out = {"generation": {k: dict(v) for k, v in GEN_DEFAULTS.items()}, "batch": dict(doc.get("batch") or {})}
+    for scope, row in (doc.get("generation") or {}).items():
+        out["generation"].setdefault(scope, {}).update(row or {})
+    return out
+
+
+def scope_settings(scope: str, gen: dict | None = None) -> dict:
+    gen = gen or generation_config()
+    return dict(gen["generation"].get("holding" if scope == "holding" else "watch") or GEN_DEFAULTS["watch"])
+
+
+def run_gate(bundle: Bundle, *, now: datetime, ai_fn: Any) -> tuple[dict, dict]:
+    """The data-quality gate: raises ``DataBlocked`` on HARD_FAIL, tags unreliable facts on SOFT_FAIL."""
+    from . import quality_gate as qg
+    settings = qg.load_settings()
+    gate = qg.pre_write(qg.packet_from_bundle(bundle, now=now), settings=settings, ai_fn=ai_fn)
+    if gate["status"] == qg.HARD:
+        raise qg.DataBlocked(gate)
+    if gate["status"] == qg.SOFT:
+        qg.apply_unreliable(bundle, gate)
+    return gate, settings
+
+
+def max_tokens_for(bundle: Bundle, cfg: dict, mode: str, gen: dict | None = None) -> int:
+    if mode == "delta":
+        return int(cfg.get("delta_max_output_tokens", 6000))
+    return int(scope_settings(bundle.scope, gen).get("max_output_tokens") or cfg.get("max_output_tokens", 16000))
+
+
+def writer_prompt(bundle: Bundle, cfg: dict, *, mode: str, previous: dict | None, gen: dict | None = None) -> str:
+    words = str(scope_settings(bundle.scope, gen).get("section_words") or "120-260")
+    return build_prompt(bundle, mode=mode, previous=previous, max_bytes=int(cfg.get("max_prompt_bytes", 60000)),
+                        section_words=words)
+
+
+def finish_doc(bundle: Bundle, text: str, prov: dict, *, gate: dict, settings: dict, web: dict, mode: str,
+               previous: dict | None, now: datetime, version: str, process_id: str,
+               fallback: Optional[dict] = None, batch: Optional[dict] = None) -> dict:
+    """Parse, guard and assemble one Prospectus@v1 document from the writer's text (sync or batch)."""
+    from . import quality_gate as qg
+    if str(prov.get("finish_reason") or "") == "refusal":
+        raise GenerationFailed("REFUSAL")
+    parsed = parse_output(text)
+    sections, verdict, log = validate(parsed, bundle, mode=mode, previous=previous)
+    scenarios = validate_scenarios(parsed.get("scenarios"), bundle, log=log)
+    notes = validate_notes(parsed.get("notes"), bundle, log=log)
+    usage = prov.get("usage") or {}
+    coverage = source_coverage(bundle, web)
+    cost = prov.get("estimated_cost_usd")
+    if cost is not None:
+        cost = round(float(cost) + float(web.get("plan_cost_usd") or 0)
+                     + float((gate["layers"].get("ai") or {}).get("cost_usd") or 0), 6)
+    post = qg.post_write(sections, bundle.facts, settings=settings)
+    gate["layers"]["post_write"] = post
+    gate["rewrite_requested"] = bool(post["rewrite"])
+    if post["rewrite"]:
+        gate["status"] = qg.SOFT
+        gate["reasons"].append(f"post_write_unmatched: {post['unmatched_count']} number(s) match no cited fact "
+                               f"(limit {post['limit']})")
+    partial = list(coverage["key_gaps"]) + [f"data quality: {r}" for r in gate["reasons"]]
+    blocks = dict(bundle.blocks)
+    blocks["scenarios"] = scenarios
+    apply_notes(blocks, notes)
+    doc = {
+        "schema": SCHEMA, "symbol": bundle.symbol, "name": bundle.name, "scope": bundle.scope,
+        "version": version, "generated_at": now.isoformat(), "mode": mode,
+        "status": "partial" if partial else "ready", "partial_gaps": partial, "gate": gate,
+        "model": prov.get("returned_model") or prov.get("requested_model_id") or prov.get("model_id"),
+        "process_id": process_id, "provider": prov.get("provider"), "cost_usd": cost,
+        "usage": {"input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")},
+        "verdict_line": verdict, "sections": sections, "charts": build_charts(bundle), "blocks": blocks,
+        "source_coverage": coverage, "facts": bundle.facts, "gaps": bundle.gaps, "guard_log": log,
+        "fallback": fallback,
+        "inputs_digest": {k: bundle.context.get(k) for k in ("cio_stance", "cio_stage", "stop_levels", "next_earnings_date",
+                                                             "latest_news_at", "day_move_pct")},
+        "advisory": "READ_ONLY_ADVISORY: research only; no sizing, orders, stops or weights. Analysis, not an order.",
+    }
+    if batch:
+        doc["batch"] = batch
+    return doc
+
+
 def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full", previous: dict | None = None,
           cfg: dict, generate_fn: Callable[..., tuple[str, dict]] = governed_generate, manual: bool = False,
           now: datetime | None = None, version: str, search_fn: Callable | None = None,
@@ -421,17 +521,13 @@ def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full",
     a HARD_FAIL raises ``DataBlocked`` (no model call); a SOFT_FAIL tags the unreliable facts and blocks.
     ``ai_fn="auto"`` uses the governed Haiku read in production and skips it when the writer is stubbed.
     """
-    from . import quality_gate as qg
     now = now or datetime.now(timezone.utc)
     if ai_fn == "auto":
+        from . import quality_gate as qg
         ai_fn = qg.governed_ai_call if generate_fn is governed_generate else None
-    settings = qg.load_settings()
-    gate = qg.pre_write(qg.packet_from_bundle(bundle, now=now), settings=settings, ai_fn=ai_fn)
-    if gate["status"] == qg.HARD:
-        raise qg.DataBlocked(gate)
-    if gate["status"] == qg.SOFT:
-        qg.apply_unreliable(bundle, gate)
-    max_tokens = int(cfg.get("delta_max_output_tokens" if mode == "delta" else "max_output_tokens", 16000))
+    gate, settings = run_gate(bundle, now=now, ai_fn=ai_fn)
+    gen = generation_config()
+    max_tokens = max_tokens_for(bundle, cfg, mode, gen)
     order = [processes["premium"], processes["standard"]] if premium else [processes["standard"]]
     fallback: Optional[dict] = None
     last_error: Optional[str] = None
@@ -443,15 +539,11 @@ def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full",
                 web = web_loop(bundle, process_id=process_id, cfg=cfg, generate_fn=generate_fn, search_fn=search_fn,
                                allowance_fn=allowance_fn, manual=manual, now=now)
                 web_done = True
-            prompt = build_prompt(bundle, mode=mode, previous=previous, max_bytes=int(cfg.get("max_prompt_bytes", 60000)))
+            prompt = writer_prompt(bundle, cfg, mode=mode, previous=previous, gen=gen)
             text, prov = generate_fn(prompt, process_id=process_id, max_tokens=max_tokens,
                                      timeout=float(cfg.get("timeout_s", 900)), manual=manual)
-            if str(prov.get("finish_reason") or "") == "refusal":
-                raise GenerationFailed("REFUSAL")
-            parsed = parse_output(text)
-            sections, verdict, log = validate(parsed, bundle, mode=mode, previous=previous)
-            scenarios = validate_scenarios(parsed.get("scenarios"), bundle, log=log)
-            notes = validate_notes(parsed.get("notes"), bundle, log=log)
+            return finish_doc(bundle, text, prov, gate=gate, settings=settings, web=web, mode=mode, previous=previous,
+                              now=now, version=version, process_id=process_id, fallback=fallback)
         except Exception as exc:  # noqa: BLE001 - classified below
             if _credit_refusal(exc) and not isinstance(exc, GenerationFailed):
                 raise QueueLater(str(exc)[:200]) from exc
@@ -460,35 +552,4 @@ def write(bundle: Bundle, *, processes: dict, premium: bool, mode: str = "full",
                 fallback = {"from": process_id, "to": processes["standard"], "reason": last_error}
                 continue
             raise GenerationFailed(last_error) from exc
-        usage = prov.get("usage") or {}
-        coverage = source_coverage(bundle, web)
-        cost = prov.get("estimated_cost_usd")
-        if cost is not None:
-            cost = round(float(cost) + float(web.get("plan_cost_usd") or 0)
-                         + float((gate["layers"].get("ai") or {}).get("cost_usd") or 0), 6)
-        post = qg.post_write(sections, bundle.facts, settings=settings)
-        gate["layers"]["post_write"] = post
-        gate["rewrite_requested"] = bool(post["rewrite"])
-        if post["rewrite"]:
-            gate["status"] = qg.SOFT
-            gate["reasons"].append(f"post_write_unmatched: {post['unmatched_count']} number(s) match no cited fact "
-                                   f"(limit {post['limit']})")
-        partial = list(coverage["key_gaps"]) + [f"data quality: {r}" for r in gate["reasons"]]
-        blocks = dict(bundle.blocks)
-        blocks["scenarios"] = scenarios
-        apply_notes(blocks, notes)
-        return {
-            "schema": SCHEMA, "symbol": bundle.symbol, "name": bundle.name, "scope": bundle.scope,
-            "version": version, "generated_at": now.isoformat(), "mode": mode,
-            "status": "partial" if partial else "ready", "partial_gaps": partial, "gate": gate,
-            "model": prov.get("returned_model") or prov.get("requested_model_id") or prov.get("model_id"),
-            "process_id": process_id, "provider": prov.get("provider"), "cost_usd": cost,
-            "usage": {"input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")},
-            "verdict_line": verdict, "sections": sections, "charts": build_charts(bundle), "blocks": blocks,
-            "source_coverage": coverage, "facts": bundle.facts, "gaps": bundle.gaps, "guard_log": log,
-            "fallback": fallback,
-            "inputs_digest": {k: bundle.context.get(k) for k in ("cio_stance", "cio_stage", "stop_levels", "next_earnings_date",
-                                                                 "latest_news_at", "day_move_pct")},
-            "advisory": "READ_ONLY_ADVISORY: research only; no sizing, orders, stops or weights. Analysis, not an order.",
-        }
     raise GenerationFailed(last_error or "NO_MODEL_RESULT")
