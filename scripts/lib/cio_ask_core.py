@@ -209,8 +209,8 @@ def _default_telegram_send(text: str) -> dict:
 
     from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: PLC0415
 
-    nid = "ntf_ask_" + uuid.uuid4().hex[:16]
     body = str(text or "")[:3800]
+    nid = "ntf_ask_" + hashlib.sha256(body.encode("utf-8")).hexdigest()[:24]
     note = {
         "notification_id": nid,
         "message_class": "advisory",
@@ -226,8 +226,28 @@ def _default_telegram_send(text: str) -> dict:
         "financial_action": False,
         "parse_mode": None,
     }
-    NotificationOutbox().enqueue(note, actor_id="cio_ask", actor_type="agent", authority="advisory")
-    return {"ok": True, "queued": nid, "message_id": None}
+    event = NotificationOutbox().enqueue(note, actor_id="cio_ask", actor_type="agent", authority="advisory")
+    actual_ref = (event.get("payload") or {}).get("notification_id") or event.get("stream_id")
+    return {"ok": bool(actual_ref), "queued": actual_ref, "message_id": None}
+
+
+def _default_delivery_read(notification_id: str) -> dict:
+    """Read the existing outbox projection; absence never creates a new outbox."""
+    from scripts.lib.cio_notification_outbox import NotificationOutbox
+
+    path = REPO_ROOT / "data" / "cio" / "operator_notification_outbox.jsonl"
+    if not path.is_file() or path.stat().st_size == 0:
+        return {"state": "queued", "ref": notification_id, "reason": "OUTBOX_READBACK_UNAVAILABLE"}
+    try:
+        row = NotificationOutbox(event_store_path=path).get_notification(notification_id) or {}
+        status = row.get("current_status")
+        if status == "DELIVERED" and row.get("external_message_id") is not None and row.get("transport_receipt_hash"):
+            return {"state": "delivered", "ref": notification_id, "message_id": row["external_message_id"], "transport_receipt_hash": row["transport_receipt_hash"]}
+        if status in {"DEAD_LETTERED", "EXPIRED", "CANCELLED"}:
+            return {"state": "failed", "ref": notification_id, "reason": "OUTBOX_" + status}
+        return {"state": "queued", "ref": notification_id, "reason": "OUTBOX_" + str(status or "READBACK_UNAVAILABLE")}
+    except Exception as exc:
+        return {"state": "queued", "ref": notification_id, "reason": "OUTBOX_READBACK:" + type(exc).__name__}
 
 
 def _default_deep_provider() -> Optional[Callable[[AskResearchContext], AskAnswer]]:
@@ -250,6 +270,7 @@ class AskDeps:
     deep_provider: Optional[Callable[[AskResearchContext], AskAnswer]] = None
     telegram_send: Optional[Callable[[str], dict]] = None
     run_async: bool = True
+    delivery_read: Optional[Callable[[str], dict]] = None
 
 
 _DEPS_OVERRIDE: Optional[AskDeps] = None
@@ -282,6 +303,7 @@ def default_deps() -> AskDeps:
         config=cfg,
         deep_provider=_default_deep_provider(),
         telegram_send=_default_telegram_send,
+        delivery_read=_default_delivery_read,
     )
 
 

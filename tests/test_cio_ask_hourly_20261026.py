@@ -193,7 +193,7 @@ def test_queued_manual_intent_drains_under_native_process_binding(tmp_path):
     )
     result = run(d, events_only=True)
     assert result["research_count"] == 1
-    assert calls[0]["manual_trigger"] is True and calls[0]["process_id"] == life.AUTO_PROCESS
+    assert calls[0]["manual_trigger"] is False and calls[0]["process_id"] == life.AUTO_PROCESS
     assert life.request_deep(TID, ASK, deps=d, request_id="queued-manual", now=NOW)["status"] == "deep_done"
     assert len(calls) == 1
 
@@ -508,3 +508,46 @@ def test_failed_research_marks_aggregate_failed_but_preserves_successful_source_
     assert row["lifecycle"] == canonical
     assert canonical["last_checked_at"] == life.stamp(NOW)
     assert d.store.cost_today(day="2026-10-26") == 0.25
+
+
+def test_queued_delivery_reconciles_native_receipt_without_new_send_or_model(tmp_path):
+    calls = []
+    d = fixture(tmp_path, provider=provider(calls))
+    aid = life.latest_answer(d.store.thread(TID))["answer_id"]
+    life.append(
+        d.store,
+        "ask.delivery_status",
+        {"thread_id": TID, "answer_id": aid, "delivery": {"state": "queued", "ref": "fixture-outbox"}},
+        key=("queued",),
+        now=NOW,
+    )
+    d.delivery_read = lambda ref: {
+        "state": "delivered",
+        "ref": ref,
+        "message_id": "receipt-1",
+        "transport_receipt_hash": "fixture",
+    }
+
+    def no_send(*a):
+        raise AssertionError("reconciliation must not re-send")
+
+    d.telegram_send = no_send
+    run(d, events_only=True)
+    assert not calls
+    projected = life.project_lifecycle(d.store.thread(TID), d.store.events(thread_id=TID), now=NOW)
+    assert projected["delivery"]["state"] == "delivered"
+
+
+def test_queued_earlier_turn_cannot_answer_newer_follow_up(tmp_path):
+    calls, reads = [], []
+    d = fixture(tmp_path, provider=provider(calls))
+    life.append(d.store, 'ask.check_requested', {'thread_id': TID, 'ask_id': ASK, 'request_id': 'older-turn', 'manual_trigger': True}, key=('older-turn',), now=NOW)
+    life.append(d.store, 'ask.asked', {'thread_id': TID, 'ask_id': 'ask_follow_up', 'question': 'Different follow-up question', 'channel': 'cc'}, key=('followup',), now=NOW)
+    def collect(req):
+        reads.append(req['question'])
+        return evidence(req, 'changed')
+    result = run(d, events_only=True, collect=collect)
+    assert result['research_count'] == 1
+    assert reads == ['What changed at Example Robotics?']
+    assert calls[0]['context'].request.question == reads[0]
+    assert len(d.store.thread(TID)['turns'][1]['answers']) == 0

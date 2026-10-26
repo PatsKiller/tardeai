@@ -685,7 +685,17 @@ def _retry_publication(d, thread, events, *, now):
                 {"thread_id": tid, "answer_id": aid, "at": stamp(now), "memory_sync": receipt},
                 event_id=key,
             )
-    if deliveries and deliveries[-1].get("delivery", {}).get("state") == "failed":
+    latest_delivery = deliveries[-1].get("delivery", {}) if deliveries else {}
+    if latest_delivery.get("state") == "queued" and latest_delivery.get("ref") and d.delivery_read:
+        receipt = d.delivery_read(latest_delivery["ref"])
+        if receipt != latest_delivery:
+            key = event_id_for("delivery_readback", aid, latest_delivery["ref"], json.dumps(receipt, sort_keys=True))
+            d.store.append(
+                "ask.delivery_status",
+                {"thread_id": tid, "answer_id": aid, "at": stamp(now), "delivery": receipt},
+                event_id=key,
+            )
+    if latest_delivery.get("state") == "failed" and not latest_delivery.get("ref"):
         key = event_id_for("delivery_retry", aid, minute_slot)
         if not any(e.get("event_id") == key for e in events):
             receipt = core._post_to_telegram(d, tid, f"Deep answer (v{answer['version']})\n\n{answer['summary']}")
@@ -841,6 +851,11 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 else {"request_id": event_id_for("hourly_check", tid, slot), "manual_trigger": False}
             )
             rid = requested["request_id"]
+            turn = latest_turn(thread, requested.get("ask_id"))
+            if not turn:
+                report["failed_count"] += 1
+                report["source_errors"].append(tid + ":QUEUED_ASK_NOT_FOUND")
+                continue
             append(
                 store,
                 "ask.check_requested",
@@ -967,7 +982,7 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                             turn["ask_id"],
                             deps=synchronous,
                             request_id=research_id,
-                            automated=not requested.get("manual_trigger"),
+                            automated=True,
                             prepared_evidence=evidence,
                             job_id=job_id,
                             now=now,

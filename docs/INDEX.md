@@ -1042,6 +1042,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-w9-nonops-pages.md` | DSN-20261024-w9-nonops-pages.md |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/DSN-20261025-anthropic-first.md` | DSN-20261025 Anthropic-first governed routing |
+| `docs/designs/DSN-20261026-ask-hourly.md` | Hourly Ask lifecycle |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -1794,6 +1795,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/APPROVALS_UI_20261024.md` | Approvals UI — boards 19–21, 2026-10-24 |
 | `docs/ops/ASK_CIO_READABLE_20261024.md` | Ask CIO: readable canonical answers and live completion |
 | `docs/ops/ASK_CIO_TRACKING_CANONICAL_20261024.md` | Ask-CIO tracking: canonical My Watchlist readback |
+| `docs/ops/ASK_HOURLY_LIFECYCLE_20261026.md` | Hourly Ask the CIO lifecycle |
 | `docs/ops/ASK_THE_CIO.md` | Ask the CIO: open questions with persistent CIO memory (Phases 8–11) |
 | `docs/ops/ASK_THE_CIO_RESEARCH.md` | Ask the CIO — Phase 9: the research pipeline |
 | `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
@@ -2239,6 +2241,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/anthropic-first-20261025/OWNER_HANDOFF.md` | Anthropic review handoff |
 | `docs/ops/packets/anthropic-first-20261025/dry-run-table.md` | dry-run-table.md |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
+| `docs/ops/packets/ask-hourly-20261026/providers/README.md` | Ask hourly provider slice — source handoff |
 | `docs/ops/packets/c1-company-catalyst-20261024/REMAINING_CATALYST_GAPS.md` | Remaining catalyst gaps |
 | `docs/ops/packets/c1-company-population-20261024/RUNBOOK.md` | C1 company-facts population operator packet |
 | `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
