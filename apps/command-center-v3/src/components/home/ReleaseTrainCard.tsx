@@ -54,7 +54,7 @@ export default function ReleaseTrainCard() {
           <Chip tone="warning" title={s.degraded.join(' · ')}>{s.degraded.length} field{s.degraded.length > 1 ? 's' : ''} STALE/UNAVAILABLE</Chip>
         )}
         <span style={{ flex: 1 }} />
-        <Link to="/coordination?tab=release" style={{ fontSize: TYPE.xs, fontWeight: 700, color: TOKENS.info, textDecoration: 'none' }}>Coordination → Release train</Link>
+        <Link to="/system/releases" style={{ fontSize: TYPE.xs, fontWeight: 700, color: TOKENS.info, textDecoration: 'none' }}>Releases &amp; Schedules →</Link>
       </div>
       {sumF.state === 'UNAVAILABLE' && (
         <div style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>

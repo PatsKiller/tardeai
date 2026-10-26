@@ -6,17 +6,17 @@
  *  STOP, Agents & Hermes, News & movers). Drawer bodies mount only when opened, so a closed drawer polls nothing.
  *
  *  Sources (every number's tooltip names its own): /api/v2/overview (header, movers, cash; holdings.json),
- *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, unprotected, heat; risk snapshot +
- *  desk-truth coverage), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
+ *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, heat), /api/v2/cio/pages
+ *  (categorized stop protection, shared with Risk), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
  *  /api/v3/opportunities, /api/v2/system/platform-health, release-train summary, /api/v2/command.
- *  positions_current is not read: no approved reader batch covers Home (batch #1 = Watch held flag).
+ *  Protection uses the categorized CIO positions read model, shared with Risk; summary performance uses overview/performance.
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  doNowFrom, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
+  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -31,6 +31,8 @@ import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
 import { AiIntelligenceBriefing, ExecutiveBriefCard, HermesGatewayLine } from '../components/home/HomeTrustRender'
 import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
+import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
+import { readableTime, readableTimesInText } from '../lib/readableTime'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -63,19 +65,24 @@ function HeadFact({ name, value, color, tip, big, testId }: { name: string; valu
 }
 
 function Drawer({ id, title, summary, right, children }: { id: string; title: string; summary: ReactNode; right?: (open: () => void, isOpen: boolean) => ReactNode; children: () => ReactNode }) {
-  const [open, setOpen] = useState(false)
+  const [expanded, setOpen] = useState(false)
+  const detail = useMobilePageDetail('home-drawer')
+  const open = detail.mobile ? detail.id === id : expanded
+  const show = () => detail.mobile ? detail.open(id) : setOpen(true)
+  const close = () => detail.mobile ? detail.close() : setOpen(false)
   return (
     <div data-testid={`home-drawer-${id}`} style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingRight: right ? 12 : 0 }}>
-        <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+        <button type="button" aria-expanded={open} onClick={() => open ? close() : show()}
           style={{ flex: '1 1 260px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, background: 'none', border: 'none',
             color: TOKENS.text[0], padding: '12px 14px', cursor: 'pointer', fontSize: TYPE.md, minHeight: 46, textAlign: 'left', fontFamily: 'inherit', minWidth: 0 }}>
           <span style={{ minWidth: 0 }}><b>{title}</b> <span style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>· {summary}</span></span>
           <span aria-hidden style={{ color: TOKENS.info, whiteSpace: 'nowrap', fontSize: TYPE.base }}>{open ? 'Hide ▴' : 'Show ▾'}</span>
         </button>
-        {right?.(() => setOpen(true), open)}
+        {right?.(show, open)}
       </div>
-      {open && <div style={{ borderTop: `1px solid ${TOKENS.border}`, padding: '12px 14px', fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1] }}>{children()}</div>}
+      {open && (detail.mobile ? <MobileDetailSheet title={title} onBack={close}>{children()}</MobileDetailSheet>
+        : <div style={{ borderTop: `1px solid ${TOKENS.border}`, padding: '12px 14px', fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1] }}>{children()}</div>)}
     </div>
   )
 }
@@ -113,7 +120,8 @@ export default function HomeDoNow() {
   const now = useNow(30_000)
   const openSymbol = useOpenSymbol()
   const doNowApi = useApi<any>('/api/v2/home/do-now', 60_000)
-  const { data: overview, loading: ovLoading } = useApi<any>('/api/v2/overview', 60_000)
+  const cioApi = useApi<any>('/api/v2/cio/pages', 60_000)
+  const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
@@ -124,7 +132,10 @@ export default function HomeDoNow() {
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
   const cmd = command?.data ?? command ?? {}
 
-  const dn = doNowFrom(doNowApi.data, { loading: doNowApi.loading, error: doNowApi.error, nowMs: now })
+  const cio = unwrap(cioApi.data)
+  const dn = homeWithCurrentTruth(doNowFrom(doNowApi.data, { loading: doNowApi.loading,
+    error: doNowApi.error ?? (doNowApi.stale ? 'queue refresh failed; showing the last answer' : undefined), nowMs: now }),
+    cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError })
   const pos = positionsFreshness(overview, now)
   const pv: number | null = overview?.portfolio_value ?? null
   const todayChg: number | null = overview?.today_change ?? null
@@ -158,9 +169,9 @@ export default function HomeDoNow() {
       tone: scanStale || setup.degraded || setup.healthDegraded ? 'warning' : 'success', tip: `/api/v2/trade-ai/summary · ${setup.population || 'population unknown'}${setup.runHealthStatus ? ` · ${setup.runHealthStatus}` : ''}` },
     { k: 'Data health', v: overview ? `${overview.pipeline_status ?? 'unknown'}${notFresh.length ? ` · ${notFresh.length} not fresh` : ''}` : '—', to: '/system?tab=Data%20Sources',
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
-    { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered`, to: '/health',
-      tone: dn.unavailableSources.length ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
-    { k: 'Release train', v: `${rt.stop.text} · next ${rt.nextWindow.text}`, to: '/coordination?tab=release',
+    { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',
+      tone: dn.unavailableSources.length || dn.staleSources.length || dn.state === 'STALE' ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
+    { k: 'Release train', v: `${rt.stop.text} · next ${rt.nextWindow.text}`, to: '/system/releases',
       tone: rt.stop.effective ? 'danger' : rtF.state === 'OK' ? 'neutral' : 'warning', tip: `release-train summary · ${rtF.state}${rtF.reason ? ` · ${rtF.reason}` : ''}` },
   ]
 
@@ -169,9 +180,13 @@ export default function HomeDoNow() {
   const briefSummary = briefText || (command ? 'no briefing in /api/v2/command' : 'loading…')
   const agentsN = (cmd.agent_health ?? []).length
   const newsN = (cmd.top_news ?? []).length
+  const stops = cio?.stops
+  const stopsGap = readableTimesInText(typeof stops?.gap === 'string' ? stops.gap : stops?.gap?.reason
+    ?? (stops?.stale ? 'Stop data is out of date — counts are from the last broker read.' : ''))
 
   return (
     <div data-testid="home-do-now-page" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1392, margin: '0 auto' }}>
+      <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
@@ -281,7 +296,7 @@ export default function HomeDoNow() {
           </section>
 
           <section data-testid="home-numbers" aria-label="Three numbers" style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, textAlign: 'center' }}>
-            <div title={n.available ? `${n.unprotected} positions, ${money(n.unprotectedValue)} in total. Basis: ${n.unprotectedBasis}. Positions: ${n.positionsSource}.${n.stale ? ' STALE.' : ''}` : 'Unavailable: the do-now risk source did not answer.'}
+            <div title={n.unprotected != null ? `${n.unprotected} positions, ${money(n.unprotectedValue)} in total. Basis: ${n.unprotectedBasis}. Positions: ${n.positionsSource}.${n.stale ? ' STALE.' : ''}` : 'Unavailable: current categorized CIO positions did not answer.'}
               style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} data-testid="num-unprotected">
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.unprotected ? TOKENS.danger : TOKENS.text[0] }}>{n.unprotected ?? '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>unprotected positions</span>
@@ -291,12 +306,17 @@ export default function HomeDoNow() {
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.heatPct != null && n.heatPct > n.heatLimitPct ? TOKENS.warning : TOKENS.text[0] }}>{n.heatPct != null ? `${n.heatPct.toFixed(1)}%` : '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>portfolio heat (limit {n.heatLimitPct}%)</span>
             </div>
-            <div title={cash != null ? `Cash ${money(overview?.total_cash)} of ${money(pv)} (/api/v2/overview total_cash ÷ portfolio_value; holdings.json, positions_current not yet approved for Home).` : 'Unavailable: /api/v2/overview has no total_cash or portfolio_value.'}
+            <div title={cash != null ? `Cash ${money(overview?.total_cash)} of ${money(pv)} (/api/v2/overview total_cash ÷ portfolio_value; overview total_cash and portfolio_value).` : 'Unavailable: /api/v2/overview has no total_cash or portfolio_value.'}
               style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} data-testid="num-cash">
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }}>{cash != null ? `${cash.toFixed(1)}%` : '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>cash</span>
             </div>
           </section>
+          {stops && <div style={{ color: TOKENS.text[2], fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>
+            <span data-testid="home-stops-as-of">As of last broker read {stops.last_broker_read_label ?? readableTime(stops.last_broker_read_at ?? stops.as_of) ?? 'time unavailable'}</span>
+            {stopsGap && <p role="status" style={{ color: TOKENS.warning }}>{stopsGap}</p>}
+            {!!stops.filled_awaiting_sync?.length && <p data-testid="home-filled-awaiting-sync">{stops.filled_awaiting_sync.map((p: any) => `${p.symbol}: stop filled · awaiting holdings sync`).join('; ')}</p>}
+          </div>}
         </aside>
       </div>
 
@@ -365,8 +385,8 @@ export default function HomeDoNow() {
         </Drawer>
       </div>
       <div style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}
-        title="Positions, cash and movers read holdings.json through /api/v2/overview and the risk snapshot. positions_current (the broker-synced store) is approved for the Watch held flag only; Home moves to it when the operator approves a reader batch that covers Home.">
-        Do-now as of {dn.asOf ?? '—'}{dn.asOf ? ` (${ageLabel((now - Date.parse(dn.asOf)) / 1000)} ago)` : ''} · positions from holdings.json (positions_current not yet approved for Home)
+        title="Summary, cash and movers use overview. Protection uses categorized CIO positions, shared with Risk. Each retains its own source clock.">
+        Do-now as of <time dateTime={dn.asOf ?? undefined}>{readableTime(dn.asOf) ?? '—'}</time>{dn.asOf ? ` (${ageLabel((now - Date.parse(dn.asOf)) / 1000)} ago)` : ''} · positions: {readableTimesInText(n.positionsSource)}
       </div>
     </div>
   )
