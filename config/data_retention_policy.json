@@ -1892,7 +1892,8 @@
     "scripts/scrub_ticker_price_outliers.py",
     "scripts/quarantine_template_identity_links.py",
     "scripts/purge_error_synthesis.py",
-    "scripts/archive_trade_closed_probe_rows.py"
+    "scripts/archive_trade_closed_probe_rows.py",
+    "scripts/ops/quarantine_bad_price_bars.py"
    ],
    "kind": "DB_PURGE",
    "targets": "condition rows (price spikes, outliers, template links, error syntheses, probe trades)",

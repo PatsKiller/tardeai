@@ -281,8 +281,16 @@ def account_name(raw: Any) -> str:
     return _plib("account_display").account_label(raw)
 
 
+def _etf_peer_groups() -> dict:
+    try:
+        from . import load_config
+        return load_config().get("etf_peer_groups") or {}
+    except (OSError, ValueError):
+        return {}
+
+
 def _cohort(cache: dict, industry: str | None, sym: str) -> dict[str, float]:
-    if not industry:
+    if not industry or str(industry).strip().lower() == bk.ETF_INDUSTRY:  # the Finviz ETF cohort is not a peer set
         return {}
     peers = [r for k, r in cache.items() if isinstance(r, dict) and k != sym and r.get("industry") == industry]
     out = {}
@@ -359,8 +367,11 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
         b.add("catalyst", "Next earnings date", text=_iso(prof["next_earnings_date"])[:10], source=prof_src,
               as_of=prof.get("earnings_updated_at") or prof.get("updated_at"))
         b.context["next_earnings_date"] = _iso(prof["next_earnings_date"])[:10]
+    if prof.get("last_earnings_date"):
+        b.context["last_earnings_date"] = _iso(prof["last_earnings_date"])[:10]
     for key, label in PROFILE_KEYS + GROWTH_KEYS:
-        b.add("fundamental", label, value=rec.get(key), unit="%" if key.endswith("_pct") else "",
+        raw = bk.market_cap_billions(rec) if key == "market_cap_b" else rec.get(key)  # cache field is $M
+        b.add("fundamental", label, value=raw, unit="%" if key.endswith("_pct") else "",
               source="Finviz enrichment cache", as_of=rec.get("cached_at"))
 
     # dossier sections: catalysts, news, house agents, synthesis, IV, dividends, sector/industry, research, thesis
@@ -436,17 +447,27 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
             if _f(r.get("close")) is not None]
     price_src = "ticker_prices (data_broker.daily_bars)"
     last = _f(bars[-1]["close"]) if bars else None
+    quality = bk.series_quality(bars)
     if bars:
         _stale(b, "price_history", bars[-1]["price_date"], now)
-        year = bars[-253:]
-        b.series["price_1y"] = [(str(r["price_date"])[:10], _f(r["close"])) for r in year]
+        year = quality["series"][-253:]  # clean segment only: bad bars and pre-break history never reach a fact
+        b.series["price_1y"] = year
         at = bars[-1]["price_date"]
-        closes = [_f(r["close"]) for r in year]
+        closes = [c for _, c in year]
         b.add("price", "Last close", value=last, unit="$", source=price_src, as_of=at)
-        b.add("price", "1-year high close", value=max(closes), unit="$", source=price_src, as_of=at)
-        b.add("price", "1-year low close", value=min(closes), unit="$", source=price_src, as_of=at)
-        if closes[0]:
-            b.add("price", "1-year price change %", value=(last / closes[0] - 1) * 100, unit="%", source=price_src, as_of=at)
+        if quality["notes"]:
+            b.add("price", "Price history quality", text="; ".join(quality["notes"]), source=price_src, as_of=at)
+        if len(closes) >= 240:
+            b.add("price", "1-year high close", value=max(closes), unit="$", source=price_src, as_of=at)
+            b.add("price", "1-year low close", value=min(closes), unit="$", source=price_src, as_of=at)
+            if closes[0]:
+                b.add("price", "1-year price change %", value=(last / closes[0] - 1) * 100, unit="%", source=price_src, as_of=at)
+        elif closes:
+            since = f"since {year[0][0]} ({len(closes)} clean sessions)"
+            b.add("price", f"High close {since}", value=max(closes), unit="$", source=price_src, as_of=at)
+            b.add("price", f"Low close {since}", value=min(closes), unit="$", source=price_src, as_of=at)
+            b.add("price", "1-year price change %", text=f"not reliable: only {len(closes)} clean sessions since "
+                  f"{year[0][0]}", source=price_src, as_of=at)
         if len(closes) >= 2 and closes[-2]:
             b.context["day_move_pct"] = round((closes[-1] / closes[-2] - 1) * 100, 2)
     etf = bk.SECTOR_ETFS.get(str(sector or "").strip().lower())
@@ -488,7 +509,13 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
             val = json.dumps(val, default=str)[:300]
         if val not in (None, ""):
             b.add("cio", label, text=str(val), source=cio_src, as_of=cio.get("evidence_at"))
-    b.add("cio", "CIO conviction", value=cio.get("conviction"), source=cio_src, as_of=cio.get("evidence_at"))
+    # ONE canonical conviction: the CIO prospect record (§26.1). The opportunity projection's score is an input to
+    # that record and is not offered to the writer as a second "conviction" (domains.r_opportunity).
+    conv = _f(cio.get("conviction"))
+    b.add("cio", "CIO conviction (CIO prospect record, 0-100)", value=conv, source=cio_src, as_of=cio.get("evidence_at"))
+    if conv is not None:
+        b.blocks.setdefault("verdict_tiles", {})["verdict"] = {
+            "sub": f"CIO conviction {round(conv)}/100 (CIO prospect record)", "source": "cio_prospect.conviction"}
     b.context["cio_stance"], b.context["cio_stage"] = cio.get("stance"), cio.get("stage")
     b.context["security_guid"] = cio.get("security_guid") or cio.get("subject_guid")
     view = _call(b, "cio_lineage_origin", lambda: sources.position_view(sym), default={}) or {}
@@ -585,7 +612,7 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
         b.cover("benchmark_SPY", "empty", key=True, detail="SPY series missing from the house price store")
     consensus = _call(b, "peer_consensus", lambda: sources.consensus(
         [k for k, r in cache.items() if isinstance(r, dict) and r.get("industry") == industry][:60]), default={}) or {}
-    peers = bk.peer_comparison(sym, cache, consensus=consensus)
+    peers = bk.peer_comparison(sym, cache, consensus=consensus, etf_groups=_etf_peer_groups())
     for row in peers.get("rows") or []:
         for key, label in bk.PEER_FIELDS:
             b.add("peers", f"{row['symbol']} {label}", value=row.get(key), source="Finviz enrichment cache (peer)",
@@ -600,13 +627,19 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
         b.add("ownership", label, value=own.get(key), unit="" if key == "days_to_cover" else "%",
               source="Finviz enrichment cache", as_of=rec.get("cached_at"))
     ohlc = _call(b, "ohlc", lambda: sources.ohlc(sym), default=[]) or []
-    risk = bk.risk_technicals(bars, ohlc=ohlc, spy=bench.get("SPY"), book=book, rec=rec)
+    risk = bk.risk_technicals(bars, ohlc=ohlc, spy=bench.get("SPY"), book=book, rec=rec, subject=sym)
     for key, label in (("beta_1y", "Beta (1Y vs SPY)"), ("vol_annualized_pct", "Annualized volatility %"),
                        ("max_drawdown_1y_pct", "Max drawdown 1Y %"), ("correlation_to_book", "Correlation to the book (1Y)"),
                        ("px_vs_sma50_pct", "Price vs 50-day average %"), ("px_vs_sma200_pct", "Price vs 200-day average %"),
                        ("rsi14", "RSI (14)"), ("atr20", "ATR (20)")):
+        at = bars[-1]["price_date"] if bars else None
+        if key in (risk.get("unreliable") or {}):  # no number reaches the writer; the reason does
+            b.add("risk", label, text=f"not reliable ({risk['unreliable'][key]})", source=risk.get("basis") or "house closes", as_of=at)
+            continue
         b.add("risk", label, value=risk.get(key), unit="%" if key.endswith("_pct") else "",
-              source=risk.get("basis") or "computed from house closes", as_of=bars[-1]["price_date"] if bars else None)
+              source=(risk.get("basis") or "computed from house closes")
+              + (f"; vs {risk['correlation_basis']}" if key == "correlation_to_book" and risk.get("correlation_basis") else ""),
+              as_of=at)
     b.blocks.update({"relative_performance": rel, "peer_comparison": peers, "estimates": est,
                      "ownership_flows": own, "risk_technicals": risk})
     b.context["block_fact_ids"] = b.fact_range(start)
