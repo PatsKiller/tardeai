@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeskPage, { DeskGap } from '../components/DeskPage'
+import PolicyVersions from '../components/PolicyVersions'
 import { GOVERNANCE, askAboutRule, governanceRequest, useGovernance, type Policy } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 import { AuditLastLine, PolicyCountTiles, RuleMarkdown, sectionOption, type RulebookPolicy } from '../components/PolicyRuleParts'
@@ -42,10 +43,17 @@ export default function PolicyHub() {
     } catch (err) { setNotice((err as Error).message) } finally { setBusy(false) }
   }
   return <div className="approvals"><DeskPage title="Rulebook" purpose="Every rule, what it means, and the evidence that it is enforced."
-    sources={[{ id: 'policy', label: 'Committed policy', gap: 'Enforcement evidence is measured separately from the document.' }]}
+    sources={[
+      // The served AGENTS.md changes only when the release train deploys a merged main commit; its clock is that commit.
+      { id: 'policy', label: 'Committed policy', asOf: data?.committed_at, laneIds: ['release-train-claim'],
+        gap: data && !data.committed_at ? 'The commit time of the served policy could not be read.' : undefined },
+      { id: 'enforcement-audit', label: 'Enforcement audit', asOf: data?.audit.last_audit, laneIds: ['policy-enforcement-audit'],
+        gap: 'Enforcement evidence is measured separately from the document.' },
+    ]}
     decisionGap="Questions go to the CIO. Disagreements propose a change for review.">
     {error && <DeskGap title="Rulebook unavailable" reason={error}><button onClick={refresh}>Try again</button></DeskGap>}
     {notice && !selected && <p ref={noticeElement} role="status" className="panel">{notice}</p>}
+    <PolicyVersions />
     {!data && !error && <p role="status">Loading rules…</p>}
     {data && <>
       <PolicyCountTiles data={data} />
