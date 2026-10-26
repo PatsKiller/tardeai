@@ -104,9 +104,10 @@ class AskDeps:
     telegram_send: Optional[Callable[[str], dict]] = None
     run_async: bool = True
     delivery_read: Optional[Callable[[str], dict]] = None
+    notification_enqueue: Optional[Callable[[str], dict]] = None
 
 
-def _default_telegram_send(text: str) -> dict:
+def _default_notification_enqueue(text: str) -> dict:
     """Queue a CIO-origin advisory message in the CIO notification outbox. Never a direct send: the CIO send
     entrypoints are a shrink-only allowlist (tests/test_cio_origin_gate_20260916.py), and delivery (live or shadow)
     stays governed by the outbox's delivery worker. Cross-channel follow-up does not need the outbound message id:
@@ -298,37 +299,20 @@ def sync_answer_memory(ans: AskAnswer, *, deps: Optional[AskDeps] = None) -> dic
 
 
 def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> dict:
-    if not d.telegram_send:
-        return {"state": "not_configured", "reason": "NO_CHANNEL_TARGET"}
+    """Native publication only queues an intent; transport acknowledgement is not delivery."""
+    if not d.notification_enqueue:
+        return {"state": "not_configured", "reason": "NO_NOTIFICATION_ENQUEUE"}
     has_tg = any(x.get("channel") == "telegram" for x in d.store.channel_links(thread_id))
     if not (has_tg or d.config.get("mirror_cc_to_telegram")):
         return {"state": "not_required", "reason": "NO_CHANNEL_TARGET"}
     try:
-        res = d.telegram_send(f"{text}\n\nThread {thread_id}") or {}
-        if res.get("message_id") is not None:
-            link_channel(
-                d.store,
-                thread_id=thread_id,
-                channel="telegram",
-                chat_id=str(
-                    res.get("chat_id")
-                    or next(
-                        (
-                            r.get("chat_id")
-                            for r in reversed(d.store.channel_links(thread_id))
-                            if r.get("channel") == "telegram"
-                        ),
-                        "cc:operator",
-                    )
-                ),
-                message_id=res["message_id"],
-            )
-            return {"state": "delivered", "ref": str(res["message_id"])}
-        if res.get("ok") is True and res.get("queued"):
-            return {"state": "queued", "ref": str(res["queued"])}
-        return {"state": "failed", "reason": "DELIVERY_NOT_ACKNOWLEDGED"}
-    except Exception as exc:  # noqa: BLE001
-        return {"state": "failed", "reason": "DELIVERY_FAILED:" + type(exc).__name__}
+        res = d.notification_enqueue(f"{text}\n\nThread {thread_id}") or {}
+        ref = res.get("queued")
+        if res.get("ok") is True and isinstance(ref, str) and ref.strip():
+            return {"state": "queued", "ref": ref}
+        return {"state": "failed", "reason": "NOTIFICATION_INTENT_NOT_ACKNOWLEDGED"}
+    except Exception as exc:
+        return {"state": "failed", "reason": "NOTIFICATION_ENQUEUE_FAILED:" + type(exc).__name__}
 
 
 def default_deps():
@@ -345,7 +329,7 @@ def default_deps():
         cost=CostGate(cfg, store),
         config=cfg,
         deep_provider=_default_deep_provider(),
-        telegram_send=_default_telegram_send,
+        notification_enqueue=_default_notification_enqueue,
         delivery_read=_default_delivery_read,
         run_async=False,
     )

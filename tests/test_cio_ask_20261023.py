@@ -143,6 +143,14 @@ def make_deps(
     cfg["reanswer"]["mode"] = reanswer_mode
     store = AskEventStore(tmp_path / "cio_ask_events.jsonl")
     directives = FakeDirectives()
+    telegram = Telegram()
+
+    def enqueue(text):
+        # Synthetic outbox seam: retains body assertions without simulating a
+        # native transport acknowledgement or selecting a live outbox.
+        telegram.sent.append(text)
+        return {"ok": True, "queued": "fixture-outbox-" + str(len(telegram.sent))}
+
     deps = core.AskDeps(
         store=store,
         memory=memory if memory is not None else FakeMemory(),
@@ -164,7 +172,8 @@ def make_deps(
         ),
         config=cfg,
         deep_provider=deep_provider,
-        telegram_send=Telegram(),
+        telegram_send=telegram,
+        notification_enqueue=enqueue,
         run_async=False,
     )
     deps._directives = directives  # type: ignore[attr-defined]
@@ -317,7 +326,7 @@ def test_ask_core_never_calls_the_cio_send_entrypoint_directly():
     import inspect
     shared = inspect.getsource(cio_ask_runtime)
     assert "send_cio_message(" not in src + shared
-    assert core._default_telegram_send is cio_ask_runtime._default_telegram_send
+    assert core._default_telegram_send is cio_ask_runtime._default_notification_enqueue
     assert "NotificationOutbox" in inspect.getsource(core._default_telegram_send)
 
 

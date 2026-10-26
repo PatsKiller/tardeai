@@ -50,6 +50,9 @@ without recollecting sources or rerunning models. Memory sink acknowledgement,
 not a planned-write count, proves synchronization. Failed notification enqueue
 can retry from saved answer bytes. Queued delivery remains queued until a genuine
 delivery receipt exists; it never appears as delivered by inference.
+The native worker has an enqueue-only dependency and never falls back to the
+operator transport callback. It requires an affirmative durable outbox ID;
+`message_id` alone cannot establish delivery or create a native channel link.
 
 ## Operator surface and health
 
@@ -109,10 +112,12 @@ review timestamp is an availability observation, not a new source event every
 hour. Private-entity memory acknowledgement requires the exact answer and entity
 to be read back from the canonical Ask ledger.
 
-Two runtime blockers remain separate from source validation. The installed
-deploy poller resolves its default Git repository to a release without Git
-metadata; the separate deploy-repo fix also aligns clean canonical source before
-native prepare. Installing/bootstrap-testing that correction is still required.
+Runtime readiness remains separate from source validation. The first readback
+found the installed deploy poller using a release without Git metadata. At
+19:40Z, the installed unit had an explicit canonical `--repo` and its receipt
+said `noop/already_served`; this task made no host change. Source-template parity
+and clean target alignment before native prepare remain in the separate
+deploy-repo fix. A new-release advance has not been proven by that no-op.
 The mandatory n8n import gate requires authenticated runtime evidence even for
 inactive imports, but its semantic verifier currently implements only L5b.
 Unsupported obligation adapters and the authenticated bootstrap path must be
@@ -121,14 +126,15 @@ that requirement. Exact conditional checks and the unresolved boundary are in
 `packets/ask-hourly-20261026/n8n/OPERATOR_READINESS.txt`.
 
 
-Local verification on 2026-10-26: the integration-correction suite passed 815
-hidden-PostgreSQL tests with one skip. After the final memory-acknowledgement
-review fix, all 224 affected Ask/research/health tests passed, including nine
-negative cases for zero-count failed or unmeasured retries. These are overlapping
-runs, not additive totals. The unchanged UI has a successful integrated build and
-12 fixture-browser cases with 23 screenshots at 1440, 412 and 390 px. Workflow
-source/framework checks, registry checks, docs index, Ruff and both test ratchets
-pass. No live provider or scheduler acceptance is implied. The archived scheduler
-snapshot was used only in reconciler CHECK mode; it is an offline structural
-proof, not a fresh host census. Current host schedules were never read or changed
-in this task.
+Local verification on 2026-10-26: after the final enqueue-only separation,
+230 affected Ask/research/health tests and 71 sender-policy/transitive-capability
+tests passed with PostgreSQL hidden. These two groups are disjoint. The policy
+gate and its baseline were not changed. An earlier integration revision passed
+815 tests with one skip; its subsequent GitHub run exposed the inherited sender
+callback, now removed from the native graph. The unchanged UI has a successful
+integrated build and 12 fixture-browser cases with 23 screenshots at 1440, 412
+and 390 px. Workflow source/framework checks, registry checks, docs index, Ruff
+and both test ratchets pass. No live provider or scheduler acceptance is implied.
+The archived scheduler snapshot was used only in reconciler CHECK mode; it is an
+offline structural proof, not a fresh host census. Current host schedules were
+never read or changed in this task.

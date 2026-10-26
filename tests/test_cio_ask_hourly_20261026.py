@@ -55,7 +55,7 @@ def fixture(tmp_path, *, answer=True, partial=False, provider=None):
         cost=core.CostGate(cfg, store, lambda *_: {"allow": True}),
         config=cfg,
         deep_provider=provider,
-        telegram_send=lambda _: {"ok": True, "queued": "fixture-outbox"},
+        notification_enqueue=lambda _: {"ok": True, "queued": "fixture-outbox"},
         run_async=False,
     )
     life.append(
@@ -531,7 +531,7 @@ def test_queued_delivery_reconciles_native_receipt_without_new_send_or_model(tmp
     def no_send(*a):
         raise AssertionError("reconciliation must not re-send")
 
-    d.telegram_send = no_send
+    d.notification_enqueue = no_send
     run(d, events_only=True)
     assert not calls
     projected = life.project_lifecycle(d.store.thread(TID), d.store.events(thread_id=TID), now=NOW)
@@ -712,3 +712,52 @@ def test_shared_runtime_preserves_operator_global_precheck(tmp_path, monkeypatch
     native = runtime.default_deps()
     assert native.resolver is None and native.sizing is None and native.tracker is None
     assert native.run_async is False
+    assert native.telegram_send is None
+    assert native.notification_enqueue is runtime._default_notification_enqueue
+
+
+def test_native_publication_never_falls_back_to_operator_transport(tmp_path):
+    from scripts.lib import cio_ask_runtime as runtime
+
+    d = fixture(tmp_path)
+    d.notification_enqueue = None
+
+    def transport(_):
+        raise AssertionError("native publication cannot invoke an operator transport")
+
+    d.telegram_send = transport
+    out = runtime._post_to_telegram(d, TID, "Synthetic answer")
+    assert out == {"state": "not_configured", "reason": "NO_NOTIFICATION_ENQUEUE"}
+    assert d.store.channel_links(TID) == []
+
+
+@pytest.mark.parametrize(
+    "ack",
+    [
+        {"ok": True, "message_id": "transport-only"},
+        {"ok": True, "queued": True},
+        {"ok": True, "queued": " "},
+        {"ok": False, "queued": "outbox-fixture"},
+    ],
+)
+def test_native_publication_requires_durable_intent_acknowledgement(tmp_path, ack):
+    from scripts.lib import cio_ask_runtime as runtime
+
+    d = fixture(tmp_path)
+    d.notification_enqueue = lambda text: ack
+    out = runtime._post_to_telegram(d, TID, "Synthetic answer")
+    assert out["state"] == "failed"
+    assert d.store.channel_links(TID) == []
+
+
+def test_native_publication_only_queues_even_with_transport_fields(tmp_path):
+    from dataclasses import replace
+    from scripts.lib import cio_ask_runtime as runtime
+
+    d = fixture(tmp_path)
+    d.notification_enqueue = lambda text: {"ok": True, "queued": "outbox-fixture", "message_id": "not-proof"}
+    copied = replace(d)
+    assert copied.notification_enqueue is d.notification_enqueue
+    out = runtime._post_to_telegram(copied, TID, "Synthetic answer")
+    assert out == {"state": "queued", "ref": "outbox-fixture"}
+    assert d.store.channel_links(TID) == []

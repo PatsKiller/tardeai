@@ -153,7 +153,7 @@ class DefaultResolver:
         return out
 
 
-from scripts.lib.cio_ask_runtime import _default_telegram_send as _default_telegram_send
+from scripts.lib.cio_ask_runtime import _default_notification_enqueue as _default_telegram_send
 
 
 from scripts.lib.cio_ask_runtime import _default_delivery_read as _default_delivery_read
@@ -195,6 +195,7 @@ def default_deps() -> AskDeps:
         config=cfg,
         deep_provider=_default_deep_provider(),
         telegram_send=_default_telegram_send,
+        notification_enqueue=_default_telegram_send,
         delivery_read=_default_delivery_read,
     )
 
@@ -777,7 +778,38 @@ def sync_answer_memory(ans: AskAnswer, *, deps: Optional[AskDeps] = None) -> dic
     return shared_sync(ans, deps=_deps(deps))
 
 
-from scripts.lib.cio_ask_runtime import _post_to_telegram as _post_to_telegram
+def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> dict:
+    if not d.telegram_send:
+        return {"state": "not_configured", "reason": "NO_CHANNEL_TARGET"}
+    has_tg = any(x.get("channel") == "telegram" for x in d.store.channel_links(thread_id))
+    if not (has_tg or d.config.get("mirror_cc_to_telegram")):
+        return {"state": "not_required", "reason": "NO_CHANNEL_TARGET"}
+    try:
+        res = d.telegram_send(f"{text}\n\nThread {thread_id}") or {}
+        if res.get("message_id") is not None:
+            link_channel(
+                d.store,
+                thread_id=thread_id,
+                channel="telegram",
+                chat_id=str(
+                    res.get("chat_id")
+                    or next(
+                        (
+                            r.get("chat_id")
+                            for r in reversed(d.store.channel_links(thread_id))
+                            if r.get("channel") == "telegram"
+                        ),
+                        "cc:operator",
+                    )
+                ),
+                message_id=res["message_id"],
+            )
+            return {"state": "delivered", "ref": str(res["message_id"])}
+        if res.get("ok") is True and res.get("queued"):
+            return {"state": "queued", "ref": str(res["queued"])}
+        return {"state": "failed", "reason": "DELIVERY_NOT_ACKNOWLEDGED"}
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "failed", "reason": "DELIVERY_FAILED:" + type(exc).__name__}
 
 
 # ── untrack ────────────────────────────────────────────────────────────────────────────────────────────────────────
