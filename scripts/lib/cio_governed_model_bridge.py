@@ -2555,6 +2555,10 @@ def execute_governed_call(
     else:
         # Operator questions retain their original pre-provider process/question/global admission.
         _admission_model = resolve_model_policy(process_id, routing_policy=selected_policy_id)["model_id"] if _caller_bound else model_id
+        if _caller_bound and _tier == "high":
+            _admission_candidate, _ = reasoning_lane_candidate(process_id, selected_policy_id, ds_pols)
+            if _admission_candidate is not None:
+                _admission_model = POLICY_RESOLUTION[_admission_candidate["policy_name"]]["model_id"]
         worst_case = crm.projected_max_cost_usd(
             model_id=_admission_model,
             max_input_tokens=cfg.get("max_input_tokens") or 32000,

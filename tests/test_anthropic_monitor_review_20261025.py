@@ -295,3 +295,45 @@ def test_runtime_health_caller_survives_projection_failure(monkeypatch, tmp_path
     provider = next(c for c in result['checks'] if c['check'] == 'anthropic_provider')
     assert provider['provider_state'] == 'UNAVAILABLE'
     assert provider['status'] == 'WARN'
+
+
+@pytest.mark.parametrize('status,continuous,severity', [
+    ('DEGRADED', True, 'P1'), ('PAUSED_TODAY', False, 'P2'),
+])
+def test_api_inbox_registers_and_evaluates_anthropic(monkeypatch, status, continuous, severity):
+    """Exercise the production API probe map without importing API bootstrap or other sources."""
+    from scripts.lib import needs_action
+
+    payload = {'status': status, 'p1_continuous_failure': continuous,
+               'as_of': NOW.isoformat(), 'digest_line': 'Synthetic provider evidence'}
+    calls = []
+
+    def probe():
+        calls.append('anthropic')
+        return payload
+
+    def unused(*args, **kwargs):
+        pytest.fail('An unrelated live source was invoked')
+
+    def aggregate(probes):
+        assert probes['anthropic'] is probe
+        return needs_action.rule_anthropic(probes['anthropic'](), NOW)
+
+    fake = SimpleNamespace(aggregate=aggregate, probe_anthropic=probe,
+                           **{name: unused for name in (
+                               'probe_failed_units', 'probe_pr_hygiene', 'probe_desk_truth',
+                               'read_release_window_state', 'probe_macro_calendar')})
+    lib = ModuleType('lib')
+    lib.needs_action = fake
+    monkeypatch.setitem(sys.modules, 'lib', lib)
+    namespace = {'_NEEDS_ACTION_CACHE': {}, **{name: unused for name in (
+        '_health_agent_dashboard', '_queue_summary', '_system_data_plausibility',
+        '_data_source_health', '_communications_delivery_summary', '_system_pipeline_failures')}}
+    inbox = function('scripts/api_v2.py', '_needs_action', namespace)
+    result = inbox()
+    assert calls == ['anthropic']
+    assert result[0]['source'] == 'anthropic'
+    assert result[0]['severity'] == severity
+    assert result[0]['where'] == '/v3/consumption'
+    assert inbox() == result
+    assert calls == ['anthropic']  # The ordinary 30-second cache remains in force.

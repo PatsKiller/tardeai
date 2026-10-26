@@ -30791,6 +30791,7 @@ def _needs_action(query=None):
         "release_window": _na.read_release_window_state,
         # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).
         "macro_calendar": _na.probe_macro_calendar,
+        "anthropic": _na.probe_anthropic,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)

@@ -224,3 +224,25 @@ def test_expiry_growth_uses_same_promotion_decimal_components(monkeypatch, tagge
         global_cap=2,funding_source='anthropic_promotional_credit',paid_component_usd=new_paid,credit_policy=p)
     assert any('SELECT CURRENT_TIMESTAMP >=' in c.args[0] for c in cur.execute.call_args_list) is expiry_checked
     assert conn.commit.called
+
+
+def test_deep_question_admission_keeps_original_high_reasoning_projection(monkeypatch):
+    from tests.test_cio_ask_process_registration_20261024 import ledger, call, transports, DEPTH, bridge
+    from lib import anthropic_routing as promo
+    from lib import consumption_run_manual as crm
+    from lib import llm_consumption as lc
+    monkeypatch.setattr(promo, 'active', lambda *a, **k: True)
+    grok, chat, ds = transports(monkeypatch)
+    high_model = bridge.POLICY_RESOLUTION['PRO_THINK']['model_id']
+    seen_models = []
+    with ledger(monkeypatch) as seen:
+        def project(**kw):
+            seen_models.append(kw['model_id'])
+            return 0.02 if kw['model_id'] == high_model else 0.001
+        monkeypatch.setattr(crm, 'projected_max_cost_usd', project)
+        monkeypatch.setattr(lc, 'calibrated_projected_usd', lambda pid, worst: {'projected_usd': worst})
+        result = call(**bridge.caller_reasoning_options('advisory_desk', DEPTH), budget={'cost_ceiling_usd': 0.01})
+    assert result['error']['code'] == 'COST_CEILING_EXCEEDED'
+    assert seen_models == [high_model]
+    assert seen['reserve'].call_count == 0
+    assert grok.calls == [] and chat.calls == [] and ds.calls == []
