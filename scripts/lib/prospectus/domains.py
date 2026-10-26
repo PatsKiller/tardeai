@@ -13,12 +13,15 @@ data-gap queue (``data_broker.gap_hook.enqueue_gap`` → the data-gap-resolver l
 """
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import json
+import re
 import statistics
 from typing import Any, Callable, Optional
 
+from . import blocks as bk
 from .inputs import Bundle, _f, _iso, _plib
 
 FRED = {"FEDFUNDS": "Fed funds rate %", "DGS10": "10-year Treasury yield %", "T10Y2Y": "10y-2y Treasury spread %",
@@ -41,6 +44,51 @@ def registry_domains(root=None) -> list[str]:
     from . import ROOT
     doc = json.loads(((root or ROOT) / "config/data_source_authority.json").read_text(encoding="utf-8"))
     return [d["domain"] for d in doc.get("domains") or [] if isinstance(d, dict) and d.get("domain")]
+
+
+def _label_of(item: Any) -> str:
+    """A plain label for one SEC item/label entry: dict, dict-like string, list or str (never a raw repr)."""
+    if isinstance(item, str) and item.strip().startswith(("{", "[")):
+        try:
+            item = ast.literal_eval(item.strip())
+        except (ValueError, SyntaxError):
+            return re.sub(r"[{}\[\]'\"]", "", item).strip()
+    if isinstance(item, dict):
+        code, label = item.get("item"), item.get("label") or item.get("title") or item.get("description")
+        if code and label and str(code) != str(label):
+            return f"Item {code} {label}" if re.match(r"^\d+\.\d+$", str(code)) else str(label)
+        return str(label or code or "").strip()
+    if isinstance(item, (list, tuple)):
+        return ", ".join(x for x in (_label_of(i) for i in item) if x)
+    return str(item or "").strip()
+
+
+def filing_change_label(event: dict) -> str | None:
+    """What a filing changed, in words: 8-K items with their labels ("Item 2.02 Results of operations, Item 9.01"),
+    a 10-Q/10-K as its form label ("Quarterly report")."""
+    labels = event.get("labels") or []
+    labels = labels if isinstance(labels, list) else [labels]
+    by_item = {}
+    for lab in labels:
+        if isinstance(lab, str) and lab.strip().startswith("{"):
+            try:
+                lab = ast.literal_eval(lab.strip())
+            except (ValueError, SyntaxError):
+                pass
+        if isinstance(lab, dict) and lab.get("item"):
+            by_item[str(lab["item"])] = lab
+    parts = []
+    items = event.get("items") or []
+    for it in items if isinstance(items, list) else [items]:
+        key = str(it.get("item") if isinstance(it, dict) else it)
+        parts.append(_label_of(by_item.pop(key, None) or ({"item": key} if not isinstance(it, dict) else it)))
+        if parts[-1] and re.match(r"^\d+\.\d+$", parts[-1]):
+            parts[-1] = f"Item {parts[-1]}"
+    parts += [_label_of(v) for v in by_item.values()]
+    parts += [_label_of(lab) for lab in labels if not (isinstance(lab, dict) and lab.get("item"))
+              and not (isinstance(lab, str) and lab.strip().startswith("{") and "item" in lab)]
+    text = ", ".join(dict.fromkeys(p for p in parts if p))
+    return text[:200] or None
 
 
 def _db(ctx: Ctx) -> Callable:
@@ -148,7 +196,7 @@ def r_macro(ctx: Ctx):
         block["series"][sid] = {"label": label, "value": last[1], "as_of": last[0], "chg_3m": chg,
                                 "trend": None if chg is None else ("rising" if chg > 0 else "falling" if chg < 0 else "flat")}
     ten = dict(by.get("DGS10", []))
-    closes = [(str(b.get("price_date"))[:10], _f(b.get("close"))) for b in ctx.bars[-253:] if _f(b.get("close"))]
+    closes = bk.series_quality(ctx.bars)["series"][-253:]  # bad bars / pre-break history excluded
     pairs = []
     for (d0, c0), (d1, c1) in zip(closes, closes[1:]):
         if d0 in ten and d1 in ten and ten[d0] is not None and ten[d1] is not None:
@@ -235,7 +283,7 @@ def r_sec(ctx: Ctx):
         form = str(e.get("form") or "").upper()
         if form in {f.upper() for f in SEC_FORMS} and len([f for f in filings if f["form"] == form]) < 2:
             filings.append({"form": form, "filed_at": str(e.get("filed_at") or "")[:10], "url": e.get("sec_url"),
-                            "what_changed": ", ".join(str(i) for i in (e.get("items") or e.get("labels") or []))[:200] or None,
+                            "what_changed": filing_change_label(e),
                             "catalyst_type": e.get("catalyst_type")})
             ctx.bundle.add("sec", f"SEC {form} filed", text=f"{str(e.get('filed_at'))[:10]} {filings[-1]['what_changed'] or ''}",
                            source="SEC EDGAR via sec_filings_feed", as_of=e.get("filed_at"), url=e.get("sec_url"))
@@ -292,13 +340,19 @@ def r_opportunity(ctx: Ctx):
         (r for r in items or [] if isinstance(r, dict) and str(r.get("symbol") or "").upper() == ctx.bundle.symbol), None)
     at = (row or {}).get("as_of") or (doc.get("as_of") if isinstance(doc, dict) else None)
     if row:
-        for k in ("conviction", "upside_pct", "momentum_score", "rank"):
-            ctx.bundle.add("cio", f"Opportunity assessment: {k.replace('_', ' ')}", value=row.get(k),
-                           source="cio_opportunity_projection.json", as_of=at)
+        # Its "conviction" is an INPUT to the CIO prospect record, not a second conviction: the one canonical value
+        # is "CIO conviction (CIO prospect record)" (inputs.assemble). It is never offered to the writer, and
+        # rationale sentences quoting it are dropped, so the report cannot print two convictions.
+        src = "cio_opportunity_projection.json (input to the CIO prospect record)"
+        for k in ("upside_pct", "momentum_score", "rank"):
+            ctx.bundle.add("cio", f"Opportunity screen: {k.replace('_', ' ')}", value=row.get(k), source=src, as_of=at)
         for k in ("stance", "technical_condition", "stance_rationale"):
-            if row.get(k):
-                ctx.bundle.add("cio", f"Opportunity assessment: {k.replace('_', ' ')}", text=str(row[k])[:300],
-                               source="cio_opportunity_projection.json", as_of=at)
+            text = str(row.get(k) or "")
+            if k == "stance_rationale":
+                text = " ".join(x for x in re.split(r"(?<=[.;!?])\s+", text) if "conviction" not in x.lower())
+                text = text if len(re.sub(r"[^A-Za-z0-9]", "", text)) >= 15 else ""  # a stub like "Owned;" says nothing
+            if text.strip():
+                ctx.bundle.add("cio", f"Opportunity screen: {k.replace('_', ' ')}", text=text[:300], source=src, as_of=at)
     return ([row] if row else []), at, {}
 
 
@@ -339,11 +393,51 @@ def r_transcripts(ctx: Ctx):
                      "WHERE (title ~* %s OR matched_keywords::text ~* %s) AND publish_date >= %s "
                      "ORDER BY publish_date DESC LIMIT 3",
                 (rf"\m{ctx.bundle.symbol}\M", rf"\m{ctx.bundle.symbol}\M", (ctx.now - timedelta(days=120)).date()))
+    kept, rejected = [], []
     for r in rows:
+        why = transcript_rejection(r, ctx.bundle.symbol, ctx.bundle.name, ctx.bundle.context.get("last_earnings_date"))
+        if why:
+            rejected.append({"title": str(r.get("title") or "")[:120], "reason": why})
+            continue
+        kept.append(r)
         ctx.bundle.add("earnings_call", f"Transcript: {str(r.get('title') or '')[:80]} ({r.get('channel_name')})",
                        text=str(r.get("excerpt") or "")[:350], source="youtube_transcripts (transcript_processor)",
                        as_of=r.get("publish_date"), url=r.get("url"))
-    return rows, rows[0].get("publish_date") if rows else None, {}
+    ctx.bundle.context["transcripts_rejected"] = rejected
+    return kept, kept[0].get("publish_date") if kept else None, {}
+
+
+EARNINGS_CALL_RE = re.compile(r"(?i)\bearnings\s+(?:call|conference)|\bconference\s+call\b|\bQ[1-4]\b[^\n]{0,40}\b(?:call|results|earnings)\b"
+                              r"|\b(?:first|second|third|fourth)\s+quarter\b[^\n]{0,40}\b(?:call|results)\b")
+#: Words in a company name that say nothing about which issuer it is.
+_NAME_STOP = {"inc", "inc.", "corp", "corp.", "corporation", "co", "co.", "company", "ltd", "plc", "holdings", "group",
+              "the", "class", "a", "b", "trust", "series", "etf", "fund", "&", "and", "of"}
+TRANSCRIPT_MAX_DAYS_FROM_REPORT = 21
+
+
+def transcript_rejection(row: dict, sym: str, name: str | None, report_date: str | None) -> str | None:
+    """None when a transcript row is a real earnings call for this issuer; else why it was rejected.
+
+    Accepted only when the title names the issuer (ticker as a word, or the first distinctive word of its name), reads
+    as an earnings call ("earnings call", "conference call", "Q3 … results/call"), and — when the house knows the last
+    report date — was published within TRANSCRIPT_MAX_DAYS_FROM_REPORT days of it."""
+    title = str(row.get("title") or "")
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z.&'-]+", str(name or "")) if w.lower() not in _NAME_STOP]
+    names_issuer = bool(re.search(rf"(?<![A-Za-z0-9$#]){re.escape(sym)}(?![A-Za-z0-9])", title)) or bool(
+        words and re.search(rf"(?i)\b{re.escape(words[0])}\b", title))
+    if not names_issuer:
+        return "title does not name the issuer"
+    if not EARNINGS_CALL_RE.search(title):
+        return "not an earnings call (title has no earnings-call / quarter marker)"
+    if report_date and row.get("publish_date"):
+        try:
+            pub = datetime.fromisoformat(str(_iso(row["publish_date"]))[:10])
+            rep_d = datetime.fromisoformat(str(report_date)[:10])
+            if abs((pub - rep_d).days) > TRANSCRIPT_MAX_DAYS_FROM_REPORT:
+                return f"published {abs((pub - rep_d).days)} days from the last report date"
+        except ValueError:
+            pass
+    return None
 
 
 READERS: dict[str, Callable] = {
@@ -425,8 +519,12 @@ def options_sentiment_block(b: Bundle, blocks: dict) -> dict:
 
 def earnings_call_block(b: Bundle) -> dict:
     rows = [f for f in b.facts if f["kind"] == "earnings_call"]
+    rejected = b.context.get("transcripts_rejected") or []
+    gap = "no earnings-call transcript for this symbol in the house; the writer may cite web sources"
+    if rejected:
+        gap += f" ({len(rejected)} video(s) rejected: " + "; ".join(r["reason"] for r in rejected[:3]) + ")"
     return {"transcripts": [{"id": f["id"], "label": f["label"], "as_of": f.get("as_of"), "url": f.get("url")} for f in rows],
-            "gaps": [] if rows else ["no earnings-call transcript for this symbol in the house; the writer may cite web sources"]}
+            "rejected": rejected[:5], "gaps": [] if rows else [gap]}
 
 
 def full_assemble(sources: Any, symbol: str, scope: str, *, cfg: dict, holding: dict | None = None,
