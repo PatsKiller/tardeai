@@ -16,6 +16,9 @@ on:
       - 'apps/command-center-v3/src/components/NavRail.tsx'
       - 'apps/command-center-v3/src/App.tsx'
       - 'apps/command-center-v3/e2e/prospectus.spec.ts'
+      - 'apps/command-center-v3/e2e/prospectus-my-history.spec.ts'
+      - 'apps/command-center-v3/src/lib/myHistoryModel.ts'
+      - 'apps/command-center-v3/src/fixtures/prospectusMyHistory.fixture.ts'
   workflow_dispatch:
 permissions:
   contents: read
@@ -58,7 +61,7 @@ jobs:
           const p=await preview({configFile:false,envDir:process.env.PROSPECTUS_EMPTY_ENV,base:'/v3/',preview:{host:'127.0.0.1',port:0,strictPort:true,proxy:{}}});
           try {
             const code=await new Promise((resolve,reject)=>{
-              const child=spawn(process.execPath,['node_modules/@playwright/test/cli.js','test','e2e/prospectus.spec.ts','--project=chromium','--reporter=line'],{stdio:'inherit',env:{...process.env,PLAYWRIGHT_BASE_URL:'http://127.0.0.1:'+p.httpServer.address().port}});
+              const child=spawn(process.execPath,['node_modules/@playwright/test/cli.js','test','e2e/prospectus.spec.ts','e2e/prospectus-my-history.spec.ts','--project=chromium','--reporter=line'],{stdio:'inherit',env:{...process.env,PLAYWRIGHT_BASE_URL:'http://127.0.0.1:'+p.httpServer.address().port}});
               child.on('error',reject);child.on('exit',code=>resolve(code));
             });
             process.exitCode=code;
