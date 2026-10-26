@@ -7,7 +7,8 @@
       "provider_concurrency": {
         "deepseek": 6,
         "grok": 2,
-        "chatgpt": 2
+        "chatgpt": 2,
+        "anthropic": 2
       },
       "on_health_unknown": "route",
       "processes": {
@@ -26,7 +27,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 1.25
+          "cost_ceiling_usd": 1.25,
+          "anthropic_first": true
         },
         "advisory_desk_synthesis": {
           "primary": {
@@ -43,7 +45,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "aegis_steph_review": {
           "primary": {
@@ -60,7 +63,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "aegis_synthesis": {
           "primary": {
@@ -77,7 +81,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "alex_cio_escalation": {
           "primary": {
@@ -94,7 +99,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.15
+          "cost_ceiling_usd": 0.15,
+          "anthropic_first": true
         },
         "alex_cio_synthesis": {
           "primary": {
@@ -111,7 +117,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.4
+          "cost_ceiling_usd": 0.4,
+          "anthropic_first": true
         },
         "architecture_review": {
           "primary": {
@@ -128,7 +135,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "broker_cloud_oversight": {
           "primary": {
@@ -163,7 +171,8 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.4,
-          "transport_failover": true
+          "transport_failover": true,
+          "anthropic_first": true
         },
         "cio_operator_reply": {
           "primary": {
@@ -180,7 +189,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.6
+          "cost_ceiling_usd": 0.6,
+          "anthropic_first": true
         },
         "cio_plan_enrichment": {
           "primary": {
@@ -198,7 +208,8 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.5,
-          "transport_failover": true
+          "transport_failover": true,
+          "anthropic_first": true
         },
         "cio_policy_field_advisor": {
           "primary": {
@@ -215,7 +226,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "cio_prompt_judge": {
           "primary": {
@@ -232,7 +244,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "cloud_consensus_verdict": {
           "primary": {
@@ -249,7 +262,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "cloud_review": {
           "primary": {
@@ -266,7 +280,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "contradiction_adjudicator": {
           "primary": {
@@ -283,7 +298,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.5
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": true
         },
         "deepseek_flash_operator_smoke": {
           "primary": {
@@ -323,7 +339,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "grok_execution_review": {
           "primary": {
@@ -357,7 +374,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.2
+          "cost_ceiling_usd": 0.2,
+          "anthropic_first": true
         },
         "hermes_analyst_coverage": {
           "primary": {
@@ -380,7 +398,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "hermes_cloud_json": {
           "primary": {
@@ -398,7 +417,8 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.3,
-          "transport_failover": true
+          "transport_failover": true,
+          "anthropic_first": true
         },
         "hermes_cross_source_synthesizer": {
           "primary": {
@@ -421,7 +441,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "hermes_external_research": {
           "primary": {
@@ -444,7 +465,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "hermes_golden_judge": {
           "primary": {
@@ -461,7 +483,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "hermes_scalp_review": {
           "primary": {
@@ -478,7 +501,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "hermes_tag_engine": {
           "primary": {
@@ -501,7 +525,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "hermes_usefulness_score": {
           "primary": {
@@ -518,7 +543,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.3
+          "cost_ceiling_usd": 0.3,
+          "anthropic_first": true
         },
         "holding_protection_advisor": {
           "primary": {
@@ -575,7 +601,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "iris_taxonomy_agent": {
           "primary": {
@@ -592,7 +619,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "journal_ask": {
           "primary": {
@@ -609,7 +637,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "l3_independent_critic": {
           "primary": {
@@ -626,7 +655,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "l3_judgment_author": {
           "primary": {
@@ -643,7 +673,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.25
+          "cost_ceiling_usd": 0.25,
+          "anthropic_first": true
         },
         "ledger_tax_critique": {
           "primary": {
@@ -660,7 +691,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.2
+          "cost_ceiling_usd": 0.2,
+          "anthropic_first": true
         },
         "llm_intelligence_enrichment": {
           "primary": {
@@ -677,7 +709,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "local_llm_compat": {
           "primary": {
@@ -694,7 +727,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.25
+          "cost_ceiling_usd": 0.25,
+          "anthropic_first": true
         },
         "maria_research_critique": {
           "primary": {
@@ -711,7 +745,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.3
+          "cost_ceiling_usd": 0.3,
+          "anthropic_first": true
         },
         "morgan_wealth_synthesis": {
           "primary": {
@@ -728,7 +763,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.2
+          "cost_ceiling_usd": 0.2,
+          "anthropic_first": true
         },
         "multi_tier_trade_reviewer": {
           "primary": {
@@ -745,7 +781,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "n8n_lane_failure_diagnosis": {
           "primary": {
@@ -768,7 +805,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "n8n_material_digest_draft": {
           "primary": {
@@ -791,7 +829,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "n8n_ops_summary_draft": {
           "primary": {
@@ -814,7 +853,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "oauth_lane_keepalive": {
           "primary": {
@@ -848,7 +888,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.5
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": true
         },
         "paper_trade_advisory": {
           "primary": {
@@ -865,7 +906,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "pipeline_health_diagnosis": {
           "primary": {
@@ -882,7 +924,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "portfolio_ai_analyst": {
           "primary": {
@@ -899,7 +942,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "portfolio_ask": {
           "primary": {
@@ -916,7 +960,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "portfolio_monthly_report": {
           "primary": {
@@ -933,7 +978,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "portfolio_orchestrator": {
           "primary": {
@@ -950,7 +996,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "portfolio_weekly_report": {
           "primary": {
@@ -967,7 +1014,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "reflective_critic_flash": {
           "primary": {
@@ -984,7 +1032,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "reporting_grok_editorial": {
           "primary": {
@@ -1001,7 +1050,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "research_circle_analyzer": {
           "primary": {
@@ -1018,7 +1068,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         },
         "ri_narrative_enrich": {
           "primary": {
@@ -1041,7 +1092,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "rotation_grok_review": {
           "primary": {
@@ -1058,7 +1110,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "rotation_oversight": {
           "primary": {
@@ -1075,7 +1128,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "steph_allocation_review": {
           "primary": {
@@ -1092,7 +1146,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.3
+          "cost_ceiling_usd": 0.3,
+          "anthropic_first": true
         },
         "stop_drift_alert": {
           "primary": {
@@ -1126,7 +1181,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "think_tank_signal_miner": {
           "primary": {
@@ -1143,7 +1199,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "topic_curator": {
           "primary": {
@@ -1160,7 +1217,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "topic_ingestion": {
           "primary": {
@@ -1183,7 +1241,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "topic_research_synthesizer": {
           "primary": {
@@ -1206,7 +1265,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "unregistered": {
           "primary": {
@@ -1246,7 +1306,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "watchlist_agent_flash_extract": {
           "primary": {
@@ -1269,7 +1330,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "watchlist_agent_oauth_fallback": {
           "primary": {
@@ -1286,7 +1348,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 1.0
+          "cost_ceiling_usd": 1.0,
+          "anthropic_first": true
         },
         "watchlist_cio_synthesis": {
           "primary": {
@@ -1303,7 +1366,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "anthropic_first": true
         },
         "watchlist_cio_synthesis_cron": {
           "primary": {
@@ -1326,7 +1390,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "grok_stop_review": {
           "primary": {
@@ -1367,7 +1432,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "watchlist_maria_flash_narrative": {
           "primary": {
@@ -1390,7 +1456,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "watchlist_maria_priority": {
           "primary": {
@@ -1407,7 +1474,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 5.0
+          "cost_ceiling_usd": 5.0,
+          "anthropic_first": true
         },
         "watchlist_risk_flash_narrative": {
           "primary": {
@@ -1430,7 +1498,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "watchlist_steph_flash_narrative": {
           "primary": {
@@ -1453,7 +1522,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "options_thesis_cio_review": {
           "primary": {
@@ -1476,7 +1546,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "incubator_llm_screener": {
           "primary": {
@@ -1499,7 +1570,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "journal_review_builder": {
           "primary": {
@@ -1522,7 +1594,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "portfolio_lookthrough_themes": {
           "primary": {
@@ -1545,7 +1618,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "hermes_usefulness_score_n8n": {
           "primary": {
@@ -1568,7 +1642,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "proposal_llm_review": {
           "primary": {
@@ -1591,7 +1666,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "defense_weekly_oversight": {
           "primary": {
@@ -1614,7 +1690,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "analyst_report_editorial": {
           "primary": {
@@ -1637,7 +1714,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "analyst_report_critique": {
           "primary": {
@@ -1660,7 +1738,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "due_diligence_questions": {
           "primary": {
@@ -1683,7 +1762,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "blind_review_runner": {
           "primary": {
@@ -1706,7 +1786,8 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         },
         "cio_ask_deep_research": {
           "primary": {
@@ -1729,9 +1810,11 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          }
+          },
+          "anthropic_first": true
         }
       }
     }
-  }
+  },
+  "anthropic_credit_policy": "config/anthropic_credit_policy.json"
 }

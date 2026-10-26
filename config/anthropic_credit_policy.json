@@ -1,0 +1,186 @@
+{
+  "schema": "AnthropicCreditPolicy@v1",
+  "enabled": false,
+  "promotion_id": "operator-promo-20261025",
+  "credit_usd": "200",
+  "total_cap_usd": "190",
+  "daily_cap_usd": "10",
+  "starts_at": "2026-10-25T00:00:00Z",
+  "expires_at": "2026-11-16T00:00:00Z",
+  "approved_by": "operator 2026-10-25; REQUIREMENTS.md sections 2-4",
+  "provider_order": [
+    "anthropic",
+    "grok",
+    "chatgpt",
+    "deepseek"
+  ],
+  "models": {
+    "bulk": "claude-haiku-5-5",
+    "standard": "claude-opus-5-5",
+    "high": "claude-opus-5-5",
+    "highest": "claude-opus-5-5"
+  },
+  "policy_tiers": {
+    "FAST": "standard",
+    "FAST_THINK": "standard",
+    "PRO": "standard",
+    "PRO_THINK": "high",
+    "PRO_MAX": "highest"
+  },
+  "per_call_caps_usd": {
+    "bulk": "0.10",
+    "standard": "0.25",
+    "high": "0.50",
+    "highest": "0.50"
+  },
+  "retry": {
+    "max_attempts": 2,
+    "max_delay_seconds": 2
+  },
+  "input_framing_margin_tokens": 4096,
+  "prompt_cache_ttl": "5m",
+  "batch_mode": "explicit_asynchronous_caller_only",
+  "excluded_processes": {
+    "grok_stop_review": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "stop_drift_alert": "protected stop path; unchanged",
+    "broker_cloud_oversight": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "grok_execution_review": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "holding_protection_advisor": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "holding_protection_advisor_batch": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "deepseek_flash_operator_smoke": "must probe the named provider",
+    "oauth_lane_keepalive": "must probe OAuth providers",
+    "unregistered": "Legacy calls without process_id; sentinel is not a governed task and remains unchanged",
+    "cloud_consensus_verdict": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "cloud_review": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "directive_keyword_enhancer": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "l3_independent_critic": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "multi_tier_trade_reviewer": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "options_ensemble": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "paper_trade_advisory": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "portfolio_ai_analyst": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "reporting_grok_editorial": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "rotation_grok_review": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "rotation_oversight": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "watchlist_cio_synthesis": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "watchlist_cio_synthesis_cron": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "blind_review_runner": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes."
+  },
+  "pricing": {
+    "claude-haiku-5-5": {
+      "input": "0.10",
+      "output": "0.50",
+      "cache_read": "0.01",
+      "cache_write_5m": "0.125",
+      "cache_write_1h": "0.20",
+      "long_context_threshold": 100000,
+      "long_context": {
+        "input": "0.50",
+        "output": "2.50",
+        "cache_read": "0.05",
+        "cache_write_5m": "0.625",
+        "cache_write_1h": "1"
+      },
+      "batch_multiplier": "0.5"
+    },
+    "claude-sonnet-5-5": {
+      "input": "2",
+      "output": "10",
+      "cache_read": "0.10",
+      "cache_write_5m": "2.50",
+      "cache_write_1h": "4",
+      "batch_multiplier": "0.5"
+    },
+    "claude-opus-5-5": {
+      "input": "4",
+      "output": "20",
+      "cache_read": "0.20",
+      "cache_write_5m": "5",
+      "cache_write_1h": "8",
+      "batch_multiplier": "0.5"
+    }
+  },
+  "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "models_source": "https://platform.claude.com/docs/en/models/overview",
+  "pricing_verified_at": "2026-10-25",
+  "pacing_timezone": "UTC",
+  "credit_is_promotional": true,
+  "threshold_notes": [
+    50,
+    80
+  ],
+  "expiry_notice_days": 3,
+  "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner.",
+  "milestone_dedupe_minutes": 43200,
+  "activation_note": "Enable only after operator verifies the promotional organization and the tier canaries pass.",
+  "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable",
+  "thinking_controls": {
+    "claude-haiku-5-5": {
+      "enabled": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "output_config": {
+          "effort": "high"
+        }
+      },
+      "disabled": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "output_config": {
+          "effort": "low"
+        }
+      }
+    },
+    "claude-sonnet-5-5": {
+      "enabled": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "output_config": {
+          "effort": "high"
+        }
+      },
+      "disabled": {
+        "thinking": {
+          "type": "between_tools"
+        },
+        "output_config": {
+          "effort": "low"
+        }
+      }
+    },
+    "claude-opus-5-5": {
+      "enabled": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "output_config": {
+          "effort": "high"
+        }
+      },
+      "disabled": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "output_config": {
+          "effort": "low"
+        }
+      }
+    }
+  },
+  "thinking_note": "Opus 5.5 adaptive thinking is always on; ordinary calls use low effort, not a claim that thinking is disabled.",
+  "bulk_processes": [
+    "hermes_tag_engine",
+    "iris_taxonomy_agent",
+    "topic_ingestion",
+    "watchlist_agent_flash_extract",
+    "hermes_cloud_json",
+    "hermes_usefulness_score",
+    "hermes_usefulness_score_n8n",
+    "incubator_llm_screener",
+    "n8n_material_digest_draft",
+    "n8n_ops_summary_draft",
+    "topic_curator"
+  ]
+}

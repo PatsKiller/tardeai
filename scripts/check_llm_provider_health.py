@@ -232,7 +232,7 @@ def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list[str
     print(f"[provider-health] ALERT UNDELIVERED ({reason}) — recorded to {HEARTBEAT_PATH.name}", file=sys.stderr)
 
 
-def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) -> bool:
+def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str], *, dedupe_minutes: int | None = None) -> bool:
     """The one transport call. True when accepted; a failure is recorded on the heartbeat, never only logged."""
     try:
         from telegram_alert import send_telegram
@@ -243,6 +243,7 @@ def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) ->
             message,
             priority=priority if priority in ("P1", "P2", "P3") else "P2",
             producer="check_llm_provider_health",
+            **({"dedupe_minutes": dedupe_minutes} if dedupe_minutes is not None else {}),
         )
     except Exception as e:
         _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", labels)
@@ -252,6 +253,40 @@ def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) ->
         _record_delivery_failure(heartbeat, "send_telegram returned falsy", labels)
         return False
     return True
+
+
+
+def _publish_anthropic_notes(anthropic: dict, policy: dict, heartbeat: dict) -> None:
+    from lib.anthropic_monitoring import due_notes, note_is_due
+
+    identity = policy.get("promotion_id")
+    if not identity:
+        return
+    state = _load_state()
+    if not isinstance(state, dict):
+        state = {}
+    now = time.time()
+    pause_key = "anthropic:" + identity + ":paused-since"
+    before = dict(state)
+    if anthropic.get("status") == "PAUSED_TODAY":
+        state.setdefault(pause_key, datetime.fromtimestamp(now, timezone.utc).isoformat())
+    else:
+        state.pop(pause_key, None)
+    if state != before:
+        _save_state(state)
+    for note in due_notes(anthropic, policy, paused_since=state.get(pause_key)):
+        key = "anthropic:" + identity + ":" + note["key"]
+        # Billing and all P2 notes are one-shot for this promotion. Only
+        # continuous authentication failure retains the six-hour repeat.
+        if not note_is_due(note, state.get(key), now=now, auth_repeat_seconds=DEDUPE_SECONDS):
+            continue
+        # Stable messages keep notification-intent dedupe independent of changing
+        # daily usage. Durable promotion keys enforce the one-shot lifetime.
+        dedupe_minutes = (max(int(policy.get("milestone_dedupe_minutes", 43200)), 1)
+                          if note.get("repeat_auth") is not True else None)
+        if _deliver(note["message"], note["priority"], heartbeat, [key], dedupe_minutes=dedupe_minutes):
+            state[key] = now
+            _save_state(state)
 
 
 def main() -> int:
@@ -270,6 +305,15 @@ def main() -> int:
         print(f"[provider-health] ledger query failed: {e}", file=sys.stderr)
         return 2
 
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot
+    _anthropic_policy = {}
+    try:
+        from lib.anthropic_transport import load_policy as anthropic_policy
+        from lib.anthropic_routing import state_root
+        _anthropic_policy = anthropic_policy()
+        anthropic = anthropic_snapshot(state_root(), policy=_anthropic_policy)
+    except Exception:
+        anthropic = unavailable_snapshot()
     findings = evaluate(rows, min_calls=args.min_calls, fail_rate=args.fail_rate)
     # A lane that failed earlier in the window but is answering again is reported
     # everywhere below and paged nowhere: the operator already fixed it.
@@ -328,6 +372,7 @@ def main() -> int:
                         for f in findings
                     ],
                     "stall_findings": stall_rows,
+                    "anthropic": anthropic,
                 },
                 indent=2,
             )
@@ -348,13 +393,15 @@ def main() -> int:
             )
 
     stall_critical = any(s.severity == STALL_CRITICAL for s in live_stalls)
-    critical = any(f.severity == "CRITICAL" for f in live) or stall_critical
+    critical = any(f.severity == "CRITICAL" for f in live) or stall_critical or anthropic["p1_continuous_failure"]
     heartbeat = {
+        "anthropic": anthropic,
+        "digest_line": anthropic["digest_line"],
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "window_hours": args.hours,
         "calls_examined": len(rows),
         # Stays in OK / WARN / CRITICAL: the bridge's routing selector reads this word.
-        "worst_severity": ("CRITICAL" if critical else "WARN" if (live or live_stalls) else "OK"),
+        "worst_severity": ("CRITICAL" if critical else "WARN" if (live or live_stalls or anthropic["status"] in {"UNAVAILABLE", "DEGRADED", "PAUSED_TODAY", "EXHAUSTED"}) else "OK"),
         "balance": balance,
         "findings": [
             {
@@ -374,6 +421,11 @@ def main() -> int:
     }
     if not args.dry_run:
         _write_heartbeat(heartbeat)
+        # Optional promotional reporting cannot suppress the native provider alerts.
+        try:
+            _publish_anthropic_notes(anthropic, _anthropic_policy, heartbeat)
+        except Exception as exc:
+            print(f"[provider-health] Anthropic notes unavailable: {type(exc).__name__}", file=sys.stderr)
     if live and not args.dry_run:
         now = time.time()
         state = _load_state()
