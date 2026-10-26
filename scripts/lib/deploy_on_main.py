@@ -4,7 +4,7 @@ Promote-only: if origin/main tip ≠ CURRENT pin, STOP is absent, GlobalReleaseL
 and the standing deploy delegation is armed, run cio_phase2_exact_main_deploy.sh prepare+promote
 for that SHA, then post_release_tester, and write DeployOnMainReceipt@v1 (path=poller).
 
-Never merges, never pushes remotes. Soft-add: live until 24.0.0 is ACTIVE stays the release train;
+Never merges PRs or pushes remotes; local source advances only by exact-main fast-forward. Soft-add: live until 24.0.0 is ACTIVE stays the release train;
 this module is the target path.
 """
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -209,18 +210,63 @@ def write_receipt(
     return dest
 
 
+def _align_checkout(repo: Path, sha: str) -> tuple[int, str]:
+    """Clean fast-forward to the selected exact main commit; never reset or discard.
+
+    This runs only inside the admitted poller's GlobalReleaseLock. Existing Git
+    and native deployment grants remain binding; no authority flags are minted.
+    """
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return 2, "checkout_target_invalid"
+
+    def git(*args: str):
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
+
+    status = git("status", "--porcelain")
+    if status.returncode != 0:
+        return status.returncode, "checkout_unreadable"
+    if status.stdout.strip():
+        return 2, "checkout_dirty"
+    main = git("rev-parse", "refs/remotes/origin/main")
+    if main.returncode != 0 or main.stdout.strip() != sha:
+        return 2, "checkout_target_not_current_main"
+    head = git("rev-parse", "HEAD")
+    if head.returncode != 0:
+        return head.returncode, "checkout_head_unreadable"
+    if head.stdout.strip() == sha:
+        return 0, "checkout_already_at_target"
+    ancestor = git("merge-base", "--is-ancestor", "HEAD", sha)
+    if ancestor.returncode != 0:
+        return ancestor.returncode, "checkout_not_fast_forward"
+    moved = git("merge", "--ff-only", "--no-edit", sha)
+    if moved.returncode != 0:
+        return moved.returncode, "checkout_fast_forward_refused"
+    actual = git("rev-parse", "HEAD")
+    if actual.returncode != 0 or actual.stdout.strip() != sha:
+        return 2, "checkout_head_mismatch"
+    status = git("status", "--porcelain")
+    if status.returncode != 0 or status.stdout.strip():
+        return 2, "checkout_dirty_after_fast_forward"
+    return 0, "checkout_fast_forwarded"
+
+
 def run_deploy_script(repo: Path, sha: str, *, dry_run: bool = False) -> tuple[int, str]:
     script = repo / "scripts" / "cio_phase2_exact_main_deploy.sh"
     if not script.is_file():
         return 127, f"missing:{script}"
     if dry_run:
         return 0, "dry_run:would_prepare_promote"
-    # Detach onto the exact SHA is the deploy script's job when ROOT matches origin/main.
-    # Poller only invokes prepare then promote; it never sets TRADEAI_EMERGENCY_RELEASE_SHA.
+    # Native prepare refuses a stale checkout; it does not advance HEAD itself.
+    # Align only by clean fast-forward to the exact selected origin/main SHA.
+    rc, alignment = _align_checkout(repo, sha)
+    if rc != 0:
+        return rc, alignment
+    # Native prepare/promote retain their own exact-main CI and grant checks.
+    # The poller never injects emergency/train/grant-bypass authority.
     env = os.environ.copy()
     env.pop("TRADEAI_EMERGENCY_RELEASE_SHA", None)
     env.pop("TRADEAI_RELEASE_TRAIN_SHA", None)
-    logs: list[str] = []
+    logs: list[str] = [alignment]
     for action in ("prepare", "promote"):
         r = subprocess.run(
             ["bash", str(script), action],
@@ -313,6 +359,21 @@ def poll_once(
                 )
                 result["outcome"] = "refuse"
                 result["reason"] = f"stop_under_lock:{stop_detail}"
+                return result
+
+            # A delegation revoked while waiting for the lock cannot authorize
+            # either the local checkout advance or a native prepare/promote.
+            armed, arm_detail = deploy_delegation_armed()
+            if not armed:
+                result["outcome"] = "refuse"
+                result["reason"] = f"delegation_under_lock:{arm_detail}"
+                write_receipt(
+                    path_kind=PATH_POLLER,
+                    outcome="refuse",
+                    main_sha=decision.main_sha,
+                    current_sha_before=decision.current_sha,
+                    reason=result["reason"],
+                )
                 return result
 
             t0 = time.monotonic()
