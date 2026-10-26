@@ -522,6 +522,8 @@
     "unit:tradeai-portfolio-report-ms.timer",
     "unit:tradeai-portfolio-weekly-cadence.service",
     "unit:tradeai-portfolio-weekly-cadence.timer",
+    "unit:tradeai-prospectus-deliver.service",
+    "unit:tradeai-prospectus-deliver.timer",
     "unit:tradeai-provider-cost-reconcile.service",
     "unit:tradeai-provider-cost-reconcile.timer",
     "unit:tradeai-research-lane-health.service",

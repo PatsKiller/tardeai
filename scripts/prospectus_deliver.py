@@ -67,8 +67,8 @@ def run(apply: bool, cfg: dict, root: Path, *, send_text=None, send_document=Non
     if apply and send_text is None:
         send_text, send_document, send_email = transports()
     noop = lambda *a, **k: False  # noqa: E731 - dry run: never called
-    out = delivery.deliver(base, cfg, send_text=send_text or noop, send_document=send_document or noop,
-                           send_email=send_email or noop, apply=apply)
+    out = delivery.deliver(base, cfg, text_fn=send_text or noop, file_fn=send_document or noop,
+                           mail_fn=send_email or noop, apply=apply)
     code = 0
     if apply:
         max_attempts = int(delivery.delivery_cfg(cfg).get("max_attempts", 3))

@@ -227,10 +227,12 @@ def plan_email(record: dict, cfg: dict) -> dict:
     return {"subject": subject, "body": "\n".join(out)}
 
 
-def deliver(base: Path, cfg: dict, *, send_text: Callable[[str], bool], send_document: Callable[[str, str], bool],
-            send_email: Callable[[str, str], bool], apply: bool, log: Callable[[str], None] = print,
+def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: Callable[[str, str], bool],
+            mail_fn: Callable[[str, str], bool], apply: bool, log: Callable[[str], None] = print,
             now: datetime | None = None) -> dict:
-    """Deliver every pending outbox record. Dry (``apply=False``) returns the plan and sends nothing."""
+    """Deliver every pending outbox record through the injected transports (the host sender passes the chokepoints).
+
+    Dry (``apply=False``) returns the plan and calls no transport."""
     now = now or datetime.now(timezone.utc)
     dcfg = delivery_cfg(cfg)
     tel_on, mail_on = bool(dcfg.get("telegram", {}).get("enabled", True)), bool(dcfg.get("email", {}).get("enabled", True))
@@ -252,13 +254,13 @@ def deliver(base: Path, cfg: dict, *, send_text: Callable[[str], bool], send_doc
             if apply:
                 ok = True
                 if plan["text"]:
-                    if send_text(plan["text"]):
+                    if text_fn(plan["text"]):
                         for k in plan["summary_keys"]:
                             ledger["reports"].setdefault(k, {})["telegram_summary"] = now.isoformat()
                     else:
                         ok = False
                 for d in plan["documents"]:
-                    if send_document(d["path"], d["caption"]):
+                    if file_fn(d["path"], d["caption"]):
                         files = ledger["reports"].setdefault(d["key"], {}).setdefault("telegram_files", [])
                         files.append(d["kind"])
                     else:
@@ -272,7 +274,7 @@ def deliver(base: Path, cfg: dict, *, send_text: Callable[[str], bool], send_doc
             plan = plan_email(record, cfg)
             rec["email"] = {"subject": plan["subject"], "chars": len(plan["body"])}
             if apply:
-                if send_email(plan["subject"], plan["body"]):
+                if mail_fn(plan["subject"], plan["body"]):
                     run["email"] = now.isoformat()
                     for i in record.get("items") or []:
                         ledger["reports"].setdefault(item_key(i), {})["email"] = now.isoformat()
