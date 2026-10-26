@@ -25567,6 +25567,54 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "prospectus-build",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/prospectus_build.py",
+        "cadence": "10 8-20/2 * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 2.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-26",
+      "state_reason": "operator 2026-10-26 Ticker Prospectus; SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (assembles inputs for the due tickers and estimates cost; no model call, no writes).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/prospectus_build.py dry run (tests/test_prospectus_build_20261026.py::test_cli_dry_run_writes_nothing_and_calls_no_model).",
+      "review_by": "2026-11-09",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/prospectus-build_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Ticker Prospectus (docs/ops/PROSPECTUS_BACKEND.md). Every 2 h 08:10-20:10 ET: enqueue what the cadence and triggers say is due (holdings monthly full + weekly delta + earnings / >=8% day move / stop event / CIO stance change / material news; watch quarterly + earnings + news + proposal), then write up to 12 through the governed Anthropic credit path (prospectus_writer / prospectus_writer_premium). Credit paused -> the queue waits for the next run. First build: scripts/prospectus_build.py --apply --first-build (operator-run).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "10 8-20/2 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
     }
   ],
   "freshness_contracts": [
