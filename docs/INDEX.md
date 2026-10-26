@@ -2055,6 +2055,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron |
 | `docs/ops/PROSPECTUS_BACKEND.md` | Ticker Prospectus — backend |
+| `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate before any model call |
+| `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check |
 | `docs/ops/PUSH_POLICY_V2_CI.md` | Push policy v2 — the CI half: draft PRs are cheap, ready PRs run everything |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed |
