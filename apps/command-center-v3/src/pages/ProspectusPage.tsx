@@ -179,7 +179,7 @@ function RewriteButton({ symbol, onQueued }: { symbol: string; onQueued: () => v
       const j = await r.json().catch(() => ({}))
       const d = j?.data ?? j
       if (!r.ok || d?.ok === false) throw new Error(d?.error || d?.reason || `HTTP ${r.status}`)
-      setMsg({ ok: true, text: d?.message || 'Rewrite queued' })
+      setMsg({ ok: true, text: d?.message || `Rewrite queued${d?.position != null ? ` · #${d.position} in line` : ''}` })
       onQueued()
     } catch (e: any) {
       setMsg({ ok: false, text: `Not queued: ${String(e?.message || e).slice(0, 120)}` })
