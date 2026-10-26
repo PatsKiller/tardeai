@@ -122,10 +122,10 @@ export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNod
       </nav>
       {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
         <div style={{ display: 'grid', gap: 12 }}>
-          {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
-              release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
+          {/* Three surfaces: this tab observes + emergency STOP; Ops → Controls acts (Run now / Arm / Resume);
+              Releases & schedules is the PR census + n8n/cron timeline. */}
           <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Serving release, what releases next, train windows, shipped history, release errors and the next 3 hours of n8n and cron are on one page.</div>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>This tab shows the train. To force a canary, use Ops → Controls. Serving release, PR census, shipped history and the next 3 hours of n8n/cron are on Releases &amp; schedules.</div>
             <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
           </div>
           <ReleaseTrainTab />

@@ -135,7 +135,13 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
         <p style={muted}>Not covered: {errs.not_covered}</p>
       </> : null}
     </Section>
-    <p style={muted}>Lifecycle chambers, incubator lights and Run now live on <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Lifecycle and Run now →</Link> (Coordination → Release train). This tab stays the PR census; STOP RELEASES is on that page too.</p>
+    <p style={muted} data-testid="rs-where-to-act">
+      Lifecycle and train status:{' '}
+      <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Release train</Link>
+      {' '}· Force a canary now:{' '}
+      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Run now</Link>
+      . This tab is the PR census and schedule timeline only.
+    </p>
   </div>
 }
 
