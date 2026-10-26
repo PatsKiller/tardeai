@@ -48,7 +48,7 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +        "priority": 4,
 +        "retry_policy": "transient-2"
 +      },
-+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires cio_ask_reanswer route/process/authority admission and verified per-thread check, memory/readback/delivery."
++      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
 +    },
 +    {
 +      "lane_id": "cio-ask-material-events",
@@ -92,14 +92,14 @@ diff --git a/config/lane_registry.json b/config/lane_registry.json
 +        "priority": 4,
 +        "retry_policy": "transient-2"
 +      },
-+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires cio_ask_reanswer route/process/authority admission and verified per-thread check, memory/readback/delivery."
++      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
      }
    ],
    "freshness_contracts": [
 diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 --- a/config/n8n_run_allowlist.json
 +++ b/config/n8n_run_allowlist.json
-@@ -4518,6 +4518,71 @@
+@@ -4518,6 +4518,81 @@
        "env_evidence": "scripts/cio_ask_research.py reads CIO_ASK_REQUESTS_DIR, CIO_ASK_ANSWERS_DIR and the executor-set TRADEAI_RUN_ID; scripts/lib/cio_ask_research.py reads CIO_ASK_RESEARCH_PER_QUESTION_USD. Its read closure (identity registry, data broker readers, db_adapter, search_router, llm_consumption) resolves the state root and DB settings; the dry run opens no DB and no provider. No broker, messaging or provider credential name.",
        "env_report_reason": "New lane (2026-10-23): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing; the live closure (db_adapter, search_router, governed_cloud_generation) is re-inventoried for enforce at canary.",
        "source": "operator 2026-10-23 (Ask the CIO, Phase 9 approved: research pipeline 'runnable as an n8n lane cio-ask-research registered at SHADOW with a DRAFT contract (operator reviews)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR, after the operator approves the cio_ask_deep_research spend cap): []. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0)."
@@ -123,7 +123,12 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +      "output_receipt": "v2",
 +      "llm_route": {
 +        "via": "cio-governed-bridge",
-+        "process_id": "cio_ask_reanswer"
++        "process_ids": [
++          "cio_ask_reanswer",
++          "cio_ask_critique_deepseek",
++          "cio_ask_critique_grok",
++          "cio_ask_critique_chatgpt"
++        ]
 +      },
 +      "env_names": [
 +        "PROJECT_ROOT",
@@ -132,7 +137,7 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +        "TRADEAI_PERSISTENT_STATE_ROOT"
 +      ],
 +      "env_allowlist_mode": "report",
-+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
++      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
 +      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
 +      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
 +    },
@@ -156,7 +161,12 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +      "output_receipt": "v2",
 +      "llm_route": {
 +        "via": "cio-governed-bridge",
-+        "process_id": "cio_ask_reanswer"
++        "process_ids": [
++          "cio_ask_reanswer",
++          "cio_ask_critique_deepseek",
++          "cio_ask_critique_grok",
++          "cio_ask_critique_chatgpt"
++        ]
 +      },
 +      "env_names": [
 +        "PROJECT_ROOT",
@@ -165,7 +175,7 @@ diff --git a/config/n8n_run_allowlist.json b/config/n8n_run_allowlist.json
 +        "TRADEAI_PERSISTENT_STATE_ROOT"
 +      ],
 +      "env_allowlist_mode": "report",
-+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
++      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
 +      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
 +      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
      }
@@ -213,10 +223,10 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
 +        },
 +        {
-+          "name": "cio-governed-bridge / cio_ask_reanswer",
++          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
 +          "kind": "provider",
 +          "direction": "calls",
-+          "source": "Automated process admission, existing caps and exclusion rules; never manual operator-intent header"
++          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
 +        },
 +        {
 +          "name": "data/runtime/cio-ask-lifecycle_last.json",
@@ -414,10 +424,10 @@ diff --git a/config/n8n_health_contracts.json b/config/n8n_health_contracts.json
 +          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
 +        },
 +        {
-+          "name": "cio-governed-bridge / cio_ask_reanswer",
++          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
 +          "kind": "provider",
 +          "direction": "calls",
-+          "source": "Automated process admission, existing caps and exclusion rules; never manual operator-intent header"
++          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
 +        },
 +        {
 +          "name": "data/runtime/cio-ask-material-events_last.json",

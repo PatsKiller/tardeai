@@ -33,10 +33,10 @@
         "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
       },
       {
-        "name": "cio-governed-bridge / cio_ask_reanswer",
+        "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
         "kind": "provider",
         "direction": "calls",
-        "source": "Automated process admission, existing caps and exclusion rules; never manual operator-intent header"
+        "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
       },
       {
         "name": "data/runtime/cio-ask-lifecycle_last.json",
@@ -234,10 +234,10 @@
         "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
       },
       {
-        "name": "cio-governed-bridge / cio_ask_reanswer",
+        "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
         "kind": "provider",
         "direction": "calls",
-        "source": "Automated process admission, existing caps and exclusion rules; never manual operator-intent header"
+        "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
       },
       {
         "name": "data/runtime/cio-ask-material-events_last.json",

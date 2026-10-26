@@ -41,7 +41,7 @@
       "priority": 4,
       "retry_policy": "transient-2"
     },
-    "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires cio_ask_reanswer route/process/authority admission and verified per-thread check, memory/readback/delivery."
+    "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
   },
   {
     "lane_id": "cio-ask-material-events",
@@ -85,6 +85,6 @@
       "priority": 4,
       "retry_policy": "transient-2"
     },
-    "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires cio_ask_reanswer route/process/authority admission and verified per-thread check, memory/readback/delivery."
+    "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery."
   }
 ]

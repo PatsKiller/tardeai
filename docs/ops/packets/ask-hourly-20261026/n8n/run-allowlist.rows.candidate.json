@@ -18,7 +18,12 @@
     "output_receipt": "v2",
     "llm_route": {
       "via": "cio-governed-bridge",
-      "process_id": "cio_ask_reanswer"
+      "process_ids": [
+        "cio_ask_reanswer",
+        "cio_ask_critique_deepseek",
+        "cio_ask_critique_grok",
+        "cio_ask_critique_chatgpt"
+      ]
     },
     "env_names": [
       "PROJECT_ROOT",
@@ -27,7 +32,7 @@
       "TRADEAI_PERSISTENT_STATE_ROOT"
     ],
     "env_allowlist_mode": "report",
-    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
     "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
     "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
   },
@@ -51,7 +56,12 @@
     "output_receipt": "v2",
     "llm_route": {
       "via": "cio-governed-bridge",
-      "process_id": "cio_ask_reanswer"
+      "process_ids": [
+        "cio_ask_reanswer",
+        "cio_ask_critique_deepseek",
+        "cio_ask_critique_grok",
+        "cio_ask_critique_chatgpt"
+      ]
     },
     "env_names": [
       "PROJECT_ROOT",
@@ -60,7 +70,7 @@
       "TRADEAI_PERSISTENT_STATE_ROOT"
     ],
     "env_allowlist_mode": "report",
-    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
     "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
     "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
   }

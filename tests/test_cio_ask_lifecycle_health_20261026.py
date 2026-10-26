@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKET = ROOT / 'docs/ops/packets/ask-hourly-20261026/n8n'
 NOW = datetime(2026, 10, 26, 17, 10, tzinfo=timezone.utc)
 CHECKED = NOW.replace(minute=0)
+PROCESSES = ('cio_ask_reanswer', 'cio_ask_critique_deepseek', 'cio_ask_critique_grok', 'cio_ask_critique_chatgpt')
 
 
 def evidence():
@@ -300,11 +301,13 @@ def test_config_rows_are_packet_only_shadow_llm_and_preserve_same_lock_and_autom
     assert all(r['active_days'] == list(range(7)) for r in registry)
     assert {r['lock'] for r in allowlist} == {'/tmp/cio_ask_lifecycle.lock'}
     assert all(r['live_arg'] is None and r['dry_run_arg'] == ['--dry-run'] for r in allowlist)
-    assert all(r['llm_route'] == {'via': 'cio-governed-bridge', 'process_id': 'cio_ask_reanswer'} for r in allowlist)
+    assert all(r['llm_route'] == {'via': 'cio-governed-bridge', 'process_ids': list(PROCESSES)} for r in allowlist)
     assert '--events-only' in next(r for r in allowlist if r['lane_id'] == health.EVENT_LANE)['command']
     admission = json.loads((PACKET / 'automated-process-admission.candidate.json').read_text())
     assert admission['operator_intent'] is False
     assert admission['process_id'] == 'cio_ask_reanswer'
+    assert admission['process_ids'] == list(PROCESSES)
+    assert [route['process_id'] for route in admission['routes']] == list(PROCESSES)
 
 
 def test_complete_contract_candidates_validate_without_forged_review():
@@ -402,3 +405,33 @@ def test_refreshing_an_older_turn_uses_latest_produced_answer_across_the_thread(
     value['receipt']['threads'][0]['consumer_readback']['answer_id'] = 'fixture_latest'
     sync(value)
     assert health.evaluate(**value)['ok']
+
+
+@pytest.mark.parametrize('lane', [health.LANE, health.EVENT_LANE])
+def test_native_allowlist_binds_complete_panel_set_through_real_executor_and_bridge(monkeypatch, lane):
+    from scripts import n8n_run_executor as executor
+    from scripts.lib import governed_process_routes as routes
+    from scripts.lib import llm_bridge_route as bridge
+
+    rows = json.loads((PACKET / 'run-allowlist.rows.candidate.json').read_text())
+    entry = next(row for row in rows if row['lane_id'] == lane)
+    # Synthetic route admission only; no provider, DB, child spawn, or shared write.
+    def registered(process_id):
+        return ('advisory_desk', process_id) if process_id in {*PROCESSES, 'fixture_outside_panel'} else None
+    monkeypatch.setattr(routes, 'route_for_process', registered)
+    monkeypatch.setattr(bridge, 'route_for_process', registered)
+    assert executor.validate_entry(entry) is None
+    assert executor.llm_route_process_ids(entry['llm_route']) == PROCESSES
+    bound = executor._bind_llm_route({executor.LLM_PROCESS_ENV: 'fixture_stale_single'}, entry)
+    assert executor.LLM_PROCESS_ENV not in bound
+    assert bound[executor.LLM_PROCESS_SET_ENV] == ','.join(PROCESSES)
+    assert bound[executor.LLM_BRIDGE_ENV] == '1'
+    monkeypatch.delenv(bridge.PROCESS_ENV, raising=False)
+    monkeypatch.setenv(bridge.PROCESS_SET_ENV, bound[executor.LLM_PROCESS_SET_ENV])
+    assert all(bridge.process_admitted(process_id) for process_id in PROCESSES)
+    assert not bridge.process_admitted('fixture_outside_panel')
+    assert not bridge.process_admitted('cio_ask_deep_research')
+    assert entry['live_arg'] is None
+    # The executor refuses before launch if even one critique process is absent.
+    monkeypatch.setattr(routes, 'route_for_process', lambda pid: None if pid == PROCESSES[-1] else registered(pid))
+    assert executor.validate_entry(entry) == 'llm_process_route_not_registered'

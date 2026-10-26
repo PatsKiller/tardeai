@@ -34,7 +34,14 @@ Shared-config proposal files (PACKET ONLY, do not auto-apply):
     dispatch.mode dry_run, timezone America/New_York, active_days 0..6.
   run-allowlist.rows.candidate.json — N8nRunAllowlist lane rows, command above,
     dry_run_arg [--dry-run], live_arg null, output_receipt v2, timeout600s,
-    llm_route via cio-governed-bridge / process_id cio_ask_reanswer.
+    llm_route via cio-governed-bridge / process_ids:
+      cio_ask_reanswer
+      cio_ask_critique_deepseek
+      cio_ask_critique_grok
+      cio_ask_critique_chatgpt
+    The executor binds the exact complete set in TRADEAI_LLM_PROCESS_IDS;
+    no singular process_id is present. Each critic keeps its separately
+    registered provider identity and existing spend/request gates.
   health-contracts.candidate.json — complete N8nHealthContract@v1 bodies,
     DRAFT, null reviewer, structurally checked both as DRAFT and as a copied
     REVIEWED candidate. N8nExpectedOutput@v1 uses typed empty reasons only.
@@ -42,8 +49,9 @@ Shared-config proposal files (PACKET ONLY, do not auto-apply):
   shared-config.proposed.patch — exact additive proposals for the three
     currently claimed shared files. Root reconciles against their owners.
   automated-process-admission.candidate.json — caller/task/process identity,
-    not a spend grant. The root/policy owner must admit cio_ask_reanswer in
-    governed_process_routes and the process routing/cap registry. This packet
+    not a spend grant. The root/policy owner must admit all four process_ids in
+    governed_process_routes and the process routing/cap registry. Missing any
+    critic route refuses the entire lane before a child can run. This packet
     changes no request/USD limit and never borrows the manual deep-research
     operator-intent header. Missing route remains llm_process_route_not_registered.
 
@@ -79,7 +87,10 @@ a host store.
 Actual health registration: scripts/lib/research_lane_health.py collect_report
 calls collect_cio_ask_lifecycle_health beside the CIO Hermes collector and folds
 its lane into firing/ok. That existing report feeds health_agent's research
-heartbeat. The integration regression invokes the DEFAULT registered collector
+heartbeat. The executor-binding regression validates both proposed entries against an
+injected route registry, binds the full set using the actual executor helper,
+and verifies bridge admission for all four IDs and refusal outside the set.
+The integration regression invokes the DEFAULT registered collector
 with synthetic readers, proving registration instead of merely testing a helper.
 A separate standalone CLI prints the same read-only projection; --strict exits3
 for a finding, not CPython crash1.

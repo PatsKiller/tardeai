@@ -2,17 +2,45 @@
   "schema": "AskAutomatedProcessAdmissionProposal@v1",
   "operative": false,
   "process_id": "cio_ask_reanswer",
+  "process_ids": [
+    "cio_ask_reanswer",
+    "cio_ask_critique_deepseek",
+    "cio_ask_critique_grok",
+    "cio_ask_critique_chatgpt"
+  ],
+  "routes": [
+    {
+      "caller": "advisory_desk",
+      "task": "cio_ask_reanswer",
+      "process_id": "cio_ask_reanswer"
+    },
+    {
+      "caller": "advisory_desk",
+      "task": "cio_ask_critique_deepseek",
+      "process_id": "cio_ask_critique_deepseek"
+    },
+    {
+      "caller": "advisory_desk",
+      "task": "cio_ask_critique_grok",
+      "process_id": "cio_ask_critique_grok"
+    },
+    {
+      "caller": "advisory_desk",
+      "task": "cio_ask_critique_chatgpt",
+      "process_id": "cio_ask_critique_chatgpt"
+    }
+  ],
   "caller": "advisory_desk",
   "task": "cio_ask_reanswer",
   "operator_intent": false,
   "requires": [
-    "governed_process_routes caller/task map",
+    "governed_process_routes caller/task entries for every process_ids member",
     "LLM routing/process registration and operator-approved existing per-process request/USD caps",
     "Ask ledger writer/data-source authority",
     "bridge process identity accepted by executor llm_route",
     "material feed reader/cursor source inventory",
     "per-attempt output and memory/consumer/delivery proof"
   ],
-  "money": "No cap or budget change in this packet; root/policy owner supplies approved process row. No reuse of manual cio_ask_deep_research intent.",
+  "money": "No cap or budget change in this packet; root/policy owner supplies the four approved process rows, preserving separate provider identities for critics. No reuse of manual cio_ask_deep_research intent.",
   "expected_unadmitted_result": "llm_process_route_not_registered; fail closed until the separately owned process route lands."
 }

@@ -1,7 +1,7 @@
 {
   "schema": "AskLifecycleHealthSyntheticProof@v1",
   "source_base": "ddc4c1a444aa70836bec16eb9b73ed262d8f2404",
-  "test_evidence": "96 passed (56 new health/packet regressions + existing research and CI gate registry tests), psycopg2 hidden",
+  "test_evidence": "98 passed (58 new health/packet regressions + existing research and CI gate registry tests), psycopg2 hidden",
   "dry_run": {
     "exit_code": 3,
     "fixture_writes": 0,
@@ -47,5 +47,6 @@
   },
   "registration": "Default research_lane_health.collect_report imports/invokes the Ask business collector; integration test substitutes only synthetic reader and other source collectors.",
   "live_evidence": "NOT_MEASURED; no provider/DB/sender/activation/natural-slot execution",
-  "task_status": "IMPLEMENTED_LOCALLY_PENDING_COORDINATOR_INTEGRATION_AND_LIVE_PROOF"
+  "task_status": "IMPLEMENTED_LOCALLY_PENDING_COORDINATOR_INTEGRATION_AND_LIVE_PROOF",
+  "process_set_binding": "Both candidate native allowlist entries validate against an injected admitted route registry; actual executor process_ids binding admits reanswer plus all three provider-pinned critics, rejects outside processes, and refuses the full lane if any critic route is missing."
 }
