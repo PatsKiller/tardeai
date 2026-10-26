@@ -22,6 +22,7 @@ export interface QuestionGroup {
   key: string; label: string; sub: string | null; symbol: string | null; security_guid: string | null
   questions: GroupQuestion[]; thread_ids: string[]; symbols: string[]
   counts: { questions: number; threads: number; names: number }; memory: GroupMemory
+  lifecycle?: unknown
 }
 export interface GroupedQuestions {
   group_by: GroupBy; q: string; channel: string | null; groups: QuestionGroup[]
@@ -61,11 +62,13 @@ export function countsText(g: QuestionGroup, groupBy: GroupBy): string {
   const n = groupBy !== 'security' && g.counts.names > 1 ? ` · ${g.counts.names} names` : ''
   return `${q} · ${t}${n}`
 }
-/** "CIO memory: HOLD · conviction 61 · last answer <when>" — each part from a server field or its stated gap. */
+/** Saved answer history and current per-security stance are independent receipts. */
 export function memoryText(m: GroupMemory, when: (iso: string) => string, withStance = true): string {
-  const last0 = m.last_answer_at ? `last answer ${when(m.last_answer_at)}` : (m.last_answer_missing_reason || 'no answer recorded yet')
-  if (!withStance) return `CIO memory: ${last0}`  // stance is per security; a sector/theme group shows answer recency only
-  const stance = m.stance ? `${m.stance}${m.conviction == null ? '' : ` · conviction ${Math.round(m.conviction)}`}` : (m.stance_missing_reason || 'CIO stance unavailable')
-  const last = m.last_answer_at ? `last answer ${when(m.last_answer_at)}` : (m.last_answer_missing_reason || 'no answer recorded yet')
-  return `CIO memory: ${stance} · ${last}`
+  const saved = m?.last_answer_at ? `Question memory: answer recorded ${when(m.last_answer_at)}`
+    : `Question memory: ${m?.last_answer_missing_reason || 'not measured'}`
+  if (!withStance) return saved
+  const shadow = /shadow/i.test(`${m?.stance_source ?? ''} ${m?.stance_missing_reason ?? ''}`)
+  const stance = m?.stance && !shadow ? `${m.stance}${m.conviction == null ? '' : ` · conviction ${Math.round(m.conviction)}`}`
+    : `unavailable${shadow ? ' (shadow record)' : ''}${m?.stance_missing_reason ? ` — ${m.stance_missing_reason}` : ''}`
+  return `${saved} · Current stance: ${stance}`
 }
