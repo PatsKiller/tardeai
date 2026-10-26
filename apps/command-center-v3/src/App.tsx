@@ -29,6 +29,7 @@ import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
+import ProspectusPage from './pages/ProspectusPage'
 import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
 import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
@@ -275,6 +276,8 @@ function Shell() {
             <Route path="rotation" element={<RouteErrorBoundary route="/v3/rotation"><RotationIntelligence /></RouteErrorBoundary>} />
             <Route path="redeploy" element={<RouteErrorBoundary route="/v3/redeploy"><RedeployDeskIntegrated /></RouteErrorBoundary>} />
             <Route path="advisor-changes" element={<RouteErrorBoundary route="/v3/advisor-changes"><Navigate to="/rotation?tab=advisor-guide" replace /></RouteErrorBoundary>} />
+            <Route path="prospectus" element={<RouteErrorBoundary route="/v3/prospectus"><ProspectusPage /></RouteErrorBoundary>} />
+            <Route path="prospectus/:symbol" element={<RouteErrorBoundary route="/v3/prospectus/:symbol"><ProspectusPage /></RouteErrorBoundary>} />
             <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
             <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />

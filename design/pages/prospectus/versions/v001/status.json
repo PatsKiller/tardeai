@@ -1,0 +1,86 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "prospectus",
+  "version": "v001",
+  "state": "DRAFT",
+  "title": "Prospectus: list + report sheet (first build, fixture data)",
+  "created": "2026-10-26",
+  "approval": null,
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/prospectus",
+    "note": "Private, never committed. Fixture-run screenshots at 1440/412/390; the operator-approved mockup will be added as role mockups.",
+    "files": [
+      {
+        "path": "v001/evidence/prospectus-detail-1440.png",
+        "sha256": "105d5a1a1ceb9ebee627bdb7726b429d57017b912d24b1f756db3a2c94172a20",
+        "bytes": 202555,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-390-sections.png",
+        "sha256": "90693d9ba5dda96d4d8d07d9ad3def47fe5a16ccdc14e3d9402e6004437f26b5",
+        "bytes": 64582,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-390.png",
+        "sha256": "047e20729d52ce6f9d4068dafe45ea2464deba59b615e9f8b472dad2be05310e",
+        "bytes": 43337,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-412-sections.png",
+        "sha256": "7735ccf7af382596ccdd78953550ab48be9f7b53fd89e63f2f48707d62f8aa71",
+        "bytes": 72781,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-detail-412.png",
+        "sha256": "d393cabdb2a49335647df4155254e1f4796c23aadfbe3d45b23c74811a39e6d4",
+        "bytes": 47243,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-list-1440.png",
+        "sha256": "4c5f06f1105e442066bd3a40883e4acee323e275c0cb8c5431c970573ff94d51",
+        "bytes": 165528,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-list-390.png",
+        "sha256": "6f2b5b0b6984e45b65c8a3ca6aeab00f012cc665507a84c969493e46b596c757",
+        "bytes": 82205,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      },
+      {
+        "path": "v001/evidence/prospectus-list-412.png",
+        "sha256": "399e03455be2cc12176c6b55f47ab9df0477ffcdd18793d33f33defeef924cd5",
+        "bytes": 96224,
+        "role": "evidence",
+        "source": "e2e/prospectus.spec.ts fixture run (synthetic data)"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "implementation": {
+    "state": "IMPLEMENTING",
+    "note": "Built on fixtures; awaiting the operator's mockup approval in Approvals -> Designs (\u00a728.13)."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-10-26",
+      "by": "agent"
+    }
+  ]
+}
