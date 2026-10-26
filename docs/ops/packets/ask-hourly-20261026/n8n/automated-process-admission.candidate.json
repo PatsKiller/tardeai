@@ -1,0 +1,18 @@
+{
+  "schema": "AskAutomatedProcessAdmissionProposal@v1",
+  "operative": false,
+  "process_id": "cio_ask_reanswer",
+  "caller": "advisory_desk",
+  "task": "cio_ask_reanswer",
+  "operator_intent": false,
+  "requires": [
+    "governed_process_routes caller/task map",
+    "LLM routing/process registration and operator-approved existing per-process request/USD caps",
+    "Ask ledger writer/data-source authority",
+    "bridge process identity accepted by executor llm_route",
+    "material feed reader/cursor source inventory",
+    "per-attempt output and memory/consumer/delivery proof"
+  ],
+  "money": "No cap or budget change in this packet; root/policy owner supplies approved process row. No reuse of manual cio_ask_deep_research intent.",
+  "expected_unadmitted_result": "llm_process_route_not_registered; fail closed until the separately owned process route lands."
+}

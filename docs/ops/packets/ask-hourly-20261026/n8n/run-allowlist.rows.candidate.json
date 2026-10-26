@@ -1,0 +1,67 @@
+[
+  {
+    "lane_id": "cio-ask-lifecycle",
+    "command": [
+      "$PY",
+      "scripts/cio_ask_lifecycle.py",
+      "--once"
+    ],
+    "dry_run_arg": [
+      "--dry-run"
+    ],
+    "live_arg": null,
+    "lock": "/tmp/cio_ask_lifecycle.lock",
+    "lock_kind": "flock",
+    "timeout_s": 600,
+    "market_gate": false,
+    "output_signal": "data/runtime/cio-ask-lifecycle_last.json",
+    "output_receipt": "v2",
+    "llm_route": {
+      "via": "cio-governed-bridge",
+      "process_id": "cio_ask_reanswer"
+    },
+    "env_names": [
+      "PROJECT_ROOT",
+      "TRADEAI_ROOT",
+      "TRADEAI_STATE_ROOT",
+      "TRADEAI_PERSISTENT_STATE_ROOT"
+    ],
+    "env_allowlist_mode": "report",
+    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+    "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
+    "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+  },
+  {
+    "lane_id": "cio-ask-material-events",
+    "command": [
+      "$PY",
+      "scripts/cio_ask_lifecycle.py",
+      "--once",
+      "--events-only"
+    ],
+    "dry_run_arg": [
+      "--dry-run"
+    ],
+    "live_arg": null,
+    "lock": "/tmp/cio_ask_lifecycle.lock",
+    "lock_kind": "flock",
+    "timeout_s": 600,
+    "market_gate": false,
+    "output_signal": "data/runtime/cio-ask-material-events_last.json",
+    "output_receipt": "v2",
+    "llm_route": {
+      "via": "cio-governed-bridge",
+      "process_id": "cio_ask_reanswer"
+    },
+    "env_names": [
+      "PROJECT_ROOT",
+      "TRADEAI_ROOT",
+      "TRADEAI_STATE_ROOT",
+      "TRADEAI_PERSISTENT_STATE_ROOT"
+    ],
+    "env_allowlist_mode": "report",
+    "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer; provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+    "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
+    "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+  }
+]

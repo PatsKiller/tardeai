@@ -1,0 +1,51 @@
+{
+  "schema": "AskLifecycleHealthSyntheticProof@v1",
+  "source_base": "ddc4c1a444aa70836bec16eb9b73ed262d8f2404",
+  "test_evidence": "87 passed (47 new health/packet regressions + existing research and CI gate registry tests), psycopg2 hidden",
+  "dry_run": {
+    "exit_code": 3,
+    "fixture_writes": 0,
+    "projection": {
+      "as_of": "2026-10-26T17:10:00+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "chain": {
+        "consumer_readback": false,
+        "delivery": false,
+        "host_receipt": false,
+        "memory_sync": false,
+        "thread_check": false,
+        "trigger": false
+      },
+      "conditions": [
+        {
+          "code": "evidence_read_failed",
+          "severity": "UNAVAILABLE"
+        }
+      ],
+      "filters_last_real": false,
+      "firing": [
+        "evidence_read_failed"
+      ],
+      "lane": "cio-ask-lifecycle",
+      "ok": false,
+      "provider_calls": false,
+      "reads_raw_store": true,
+      "schema": "CioAskLifecycleHealth@v1",
+      "sends": false,
+      "status": "UNAVAILABLE",
+      "tracked_threads": 0,
+      "writes": false
+    }
+  },
+  "checks": {
+    "memory_chokepoint": "pass, baseline unchanged",
+    "provider_chokepoint": "pass, zero non-approved egress",
+    "comms_gateway_enforcement": "pass, Telegram/provider/intent ratchets held",
+    "shared_patch_apply_check": "pass, read-only check only",
+    "python_compile": "pass",
+    "git_diff_check": "pass"
+  },
+  "registration": "Default research_lane_health.collect_report imports/invokes the Ask business collector; integration test substitutes only synthetic reader and other source collectors.",
+  "live_evidence": "NOT_MEASURED; no provider/DB/sender/activation/natural-slot execution",
+  "task_status": "IMPLEMENTED_LOCALLY_PENDING_COORDINATOR_INTEGRATION_AND_LIVE_PROOF"
+}
