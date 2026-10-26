@@ -306,8 +306,9 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     before={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
     monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
     rows,total=report(tmp_path,observed)
-    assert len(rows)==92  # + prospectus_writer, prospectus_writer_premium (operator 2026-10-26)
-    assert len([r for r in rows if r['new'].startswith('anthropic')])==69
+    assert len(rows)==94  # + prospectus_writer, prospectus_writer_premium, prospectus_fact_check(_oauth) (2026-10-26)
+    assert len([r for r in rows if r['new'].startswith('anthropic')])==70  # + prospectus_fact_check (Haiku)
+    assert next(r for r in rows if r['process']=='prospectus_fact_check')['new']=='anthropic / claude-haiku-5-5'
     prospectus={r['process']:r for r in rows if r['process'].startswith('prospectus_writer')}
     assert prospectus['prospectus_writer_premium']['new']=='anthropic / claude-fable-5-1'
     assert {r['no_key_or_expired'] for r in prospectus.values()}=={'QUEUED (anthropic-only)'}

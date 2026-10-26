@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import render, store
+from . import quality_gate, render, store
 from .generate import GenerationFailed, QueueLater, governed_generate, write
 from .blocks import book_returns
 from .domains import full_assemble
@@ -179,6 +179,15 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
             summary["stopped_reason"] = str(exc)[:200]
             log(f"QUEUED {sym}: credit unavailable ({str(exc)[:120]}) — stopping for this run")
             break
+        except quality_gate.DataBlocked as exc:
+            # Data-quality gate HARD_FAIL: no model was called. Park the row (no retry loop), file the repair.
+            repairs = quality_gate.request_repairs(sym, exc.gate)
+            store.mark(base, sym, state="blocked_data", error=str(exc)[:240])
+            store.update_index(base, sym, status="blocked_data", last_error=str(exc)[:240], failure_reason=None,
+                               gate_repairs=repairs, **quality_gate.index_fields(exc.gate))
+            summary.setdefault("blocked_data", []).append(sym)
+            log(f"BLOCKED_DATA {sym}: {str(exc)[:160]}")
+            continue
         except GenerationFailed as exc:
             attempts = int(row.get("attempts", 0)) + 1
             final = attempts >= int(cfg.get("max_attempts_per_day", 2))
@@ -194,10 +203,15 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
                  "model": doc["model"], "cost_usd": doc["cost_usd"], "status": doc.get("status") or "ready",
                  "verdict_line": doc["verdict_line"], "partial_gaps": doc.get("partial_gaps") or [], "failure_reason": None,
                  "earnings_date": bundle.context.get("next_earnings_date"), "last_error": None,
-                 "inputs_digest": doc["inputs_digest"], "formats": sorted(k.split(".")[-1] for k in files if "/" not in k)}
+                 "inputs_digest": doc["inputs_digest"], "formats": sorted(k.split(".")[-1] for k in files if "/" not in k),
+                 **quality_gate.index_fields(doc.get("gate") or {}, (doc.get("gate") or {}).get("layers", {}).get("post_write"))}
         entry["next_due"] = next_due(entry, cfg)
         store.update_index(base, sym, **entry)
         store.mark(base, sym, state="done", done=True)
+        if (doc.get("gate") or {}).get("rewrite_requested") and row.get("reason") != "gate_rewrite":
+            store.enqueue(base, [{"symbol": sym, "scope": scope, "premium": bool(row.get("premium")), "mode": "full",
+                                  "priority": PRIORITY_WATCH + 500, "reason": "gate_rewrite",
+                                  "requested_by": "quality_gate"}], now=now)  # one rewrite, never a loop
         summary["done"].append(sym)
         summary["cost_usd"] += float(doc.get("cost_usd") or 0)
         log(f"READY {sym} {version} model={doc['model']} cost=${float(doc.get('cost_usd') or 0):.4f}")
