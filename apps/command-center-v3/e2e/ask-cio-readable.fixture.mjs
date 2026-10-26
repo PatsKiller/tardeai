@@ -157,6 +157,11 @@ try{
   }
   for(const memory of await groups.getByTestId('mq-group-memory').all())await expect(memory).toContainText('Current stance: unavailable (shadow record)')
   const capture=async state=>{const geometry=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));assert(geometry.document<=geometry.viewport+1);await page.screenshot({path:path.join(out,`impl-hourly-${state}-${width}.png`),fullPage:true,animations:'disabled'});return geometry}
+  const evidence=groups.getByTestId('ask-research-evidence').first(),disclosure=evidence.locator('summary')
+  if(mobile)await disclosure.tap();else await disclosure.click()
+  await expect(evidence).toHaveAttribute('open','');await expect(evidence).toContainText('Synthetic primary');await expect(evidence).toContainText('Synthetic independent critique')
+  if(mobile)await disclosure.tap();else await disclosure.click()
+  await expect(evidence).not.toHaveAttribute('open','')
   const geometry=await capture('current')
   const refreshes=groups.getByTestId(`ask-refresh-${thread.thread_id}`).getByRole('button')
   await expect(refreshes).toHaveCount(2)

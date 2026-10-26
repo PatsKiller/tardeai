@@ -147,7 +147,7 @@ function LifecycleReceipt({ raw, lastAnswer, compact = false }: { raw: unknown; 
       <span>{l.monitoring_active === null ? 'Monitoring: not measured' : l.monitoring_active ? 'Monitoring active · hourly checks and material events' : 'Monitoring inactive'}</span>
       <span>Question memory: {l.memory_sync.state ?? 'not measured'}{l.memory_sync.reason ? ` — ${l.memory_sync.reason}` : ''}</span>
       <span>Delivery: {l.delivery.state ?? 'not measured'}{l.delivery.reason ? ` — ${l.delivery.reason}` : ''}</span>
-      <details data-testid="ask-research-evidence"><summary>Research evidence</summary>
+      <details data-testid="ask-research-evidence"><summary style={{ minHeight: 44, minWidth: 44, boxSizing: 'border-box', padding: '12px 0', cursor: 'pointer' }}>Research evidence</summary>
         {(['sources', 'providers'] as const).map(kind => <div key={kind}><b>{kind === 'sources' ? 'Sources' : 'Providers'}</b>
           {l[kind].length ? <ul>{l[kind].map((entry, i) => <li key={i}>{entry.label}{entry.state ? ` · ${entry.state}` : ''}{entry.as_of ? ` · ${time(entry.as_of)}` : ''}{entry.reason ? ` — ${entry.reason}` : ''}</li>)}</ul> : ' — not measured'}
         </div>)}
