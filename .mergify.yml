@@ -39,10 +39,9 @@ pull_request_rules:
       - label!=solo
       - label!=shared-infra
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
     actions:
       queue:
         name: default
@@ -63,10 +62,9 @@ pull_request_rules:
       - label!=broker
       - label!=broker_active_trader
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
     actions:
       queue:
         name: solo
@@ -82,10 +80,9 @@ queue_rules:
       - check-success=ci-gate
       - label=operator-merge
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
 
   - name: solo
     batch_size: 1
@@ -97,7 +94,6 @@ queue_rules:
       - check-success=ci-gate
       - label=operator-merge
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]

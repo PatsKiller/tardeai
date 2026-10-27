@@ -24,15 +24,19 @@ export type MainCi = { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'OK' | 'NOT_GR
   checked_at?: string | null; age_s?: number | null; stale?: boolean; checks?: number; success?: number
   not_success?: Array<{ name?: string; conclusion?: string | null }>
   workflows?: Array<{ name?: string; state?: string; url?: string | null; updated_at?: string | null }> }
-export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds: number; role: string | null; enabled: boolean; note: string | null
-  slot: string; state: 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null; last_shadow_request_at: string | null; last_shadow_receipt_state: string | null
+export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds?: number; role: string | null; enabled: boolean; note: string | null
+  slot: string; state: 'OPEN' | 'NEXT' | 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null
+  ends_local?: string | null; ends_at?: string | null; schedule?: string | null
+  last_shadow_request_at?: string | null; last_shadow_receipt_state?: string | null
   last_shadow?: LastShadow | null }
-// The newest shadow tick's ShadowTrainReport@v1 summary (release_train_window_view.shadow_coverage). Absent values
-// stay null: a missing count is never shown as 0.
+// Legacy shadow tick summary (release train). Mergify windows leave these null.
 export type LastShadow = { request_id: string | null; outcome: string | null; reason: string | null; queue_open: number | null
   queue_complete: boolean | null; riding: number | null; candidate_sha: string | null; train_id: string | null; has_report: boolean }
 export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
-  stop: { state?: string; effective_stop?: boolean } | null; policy_version: string | null; manual_path: string }
+  stop: { state?: string; effective_stop?: boolean } | null; policy_version?: string | null; manual_path: string
+  preset?: string | null; preset_label?: string | null; open_now?: boolean | null; market_freeze?: boolean | null
+  schedules?: string[]; setting_key?: string | null
+  presets_available?: Array<{ id: string; label?: string; description?: string | null }> }
 export type QueueRow = { pr_number?: number; title?: string | null; state?: string; class?: string | null; census_bucket?: string | null; [k: string]: unknown }
 export type OpenPr = { pr: number; title: string | null; bucket: string; why_not_riding: string; riding: boolean }
 export type Queue = { store: { freshness?: string; reason?: string | null; as_of?: string | null; total?: number | null; rows?: QueueRow[] | null }
@@ -124,7 +128,7 @@ export function kpiDisplay(k: Kpi | undefined, current: boolean): { value: strin
   return { value, detail: k.detail ?? '', tone: k.freshness === 'STALE' ? 'warning' : k.tone }
 }
 
-export const WINDOW_TONE: Record<string, Tone> = { LIVE: 'success', SHADOW: 'info', OFF: 'neutral', STOPPED: 'danger' }
+export const WINDOW_TONE: Record<string, Tone> = { OPEN: 'success', NEXT: 'info', LIVE: 'success', SHADOW: 'info', OFF: 'neutral', STOPPED: 'danger' }
 export const STAGE_TONE: Record<string, Tone> = { LIVE: 'success', CUTOVER: 'success', CANARY: 'info', SHADOW: 'ai', PAUSED: 'warning', 'NOT LIVE': 'neutral', UNKNOWN: 'warning' }
 export function stageTone(stage: string | null | undefined): Tone { return STAGE_TONE[String(stage ?? 'UNKNOWN')] ?? 'neutral' }
 export function windowTone(state: string | null | undefined): Tone { return WINDOW_TONE[String(state ?? '')] ?? 'warning' }

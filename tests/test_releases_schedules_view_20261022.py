@@ -175,21 +175,29 @@ def test_kpis_and_n8n_today_from_ledger(host):
     k = {x["key"]: x for x in d["kpis"]}
     assert k["serving"]["value"] == SHA_B[:9] and k["n8n_runs"]["value"] == 4
     assert k["n8n_errors"]["value"] == "1 · 1"
-    assert k["next_window"]["value"] == "18:00" and "SHADOW" in k["next_window"]["detail"]
+    # NOW is 15:00 ET Thu = market freeze; next Mergify open is 16:15 after-hours.
+    assert k["next_window"]["value"] == "16:15"
+    assert "NEXT" in k["next_window"]["detail"] or "mergify" in (k["next_window"]["detail"] or "")
+    assert k["next_window"]["tone"] == "warning"  # market_freeze
 
 
-def test_windows_state_and_reason_from_host_gate(host):
+def test_windows_mergify_after_hours_not_train_shadow(host):
+    """Mergify windows replace train SHADOW/OFF; STOP is deploy promote, not window state."""
     w = _build(host)["windows"]["value"]
-    assert w["windows"][0]["local_time"] == "18:00"
-    assert all(x["state"] == "SHADOW" and "simulate only" in x["reason"] for x in w["windows"])
-    stopped = dict(host["readiness"]())
-    stopped["stop"] = {"state": "SET", "effective_stop": True}
-    w2 = R.read_windows(NOW, rw_state_dir=host["rw"], readiness=lambda: stopped)["value"]
-    assert {x["state"] for x in w2["windows"]} == {"STOPPED"}
-    off = dict(host["readiness"]())
-    off["shadow_enabled"] = False
-    w3 = R.read_windows(NOW, rw_state_dir=host["rw"], readiness=lambda: off)["value"]
-    assert {x["state"] for x in w3["windows"]} == {"OFF"}
+    assert w["preset"] == "after_hours"
+    assert w["open_now"] is False and w["market_freeze"] is True
+    assert w["windows"][0]["local_time"] == "16:15"
+    assert w["windows"][0]["state"] == "NEXT"
+    assert all(x["state"] in ("OPEN", "NEXT") for x in w["windows"])
+    assert "Mergify" in (w["manual_path"] or "")
+    assert "SHADOW" not in {x["state"] for x in w["windows"]}
+    # Latch file is still read; window cards stay OPEN/NEXT (not STOPPED/OFF).
+    (host["rw"] / "STOP.json").write_text(
+        json.dumps({"latched_at": NOW.isoformat(), "reason": "test"}), encoding="utf-8"
+    )
+    w2 = R.read_windows(NOW, rw_state_dir=host["rw"])["value"]
+    assert w2["windows"][0]["state"] == "NEXT"
+    assert w2["stop"].get("state") in ("SET", "ABSENT", "UNREADABLE") or "effective_stop" in w2["stop"]
 
 
 def test_timeline_merges_cron_paused_and_n8n(host):

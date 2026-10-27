@@ -12,7 +12,7 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, shadowLine, stageTone, verifyLabel, windowTone,
+  sectionView, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
@@ -23,7 +23,7 @@ const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const cell: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm }
-const TABS = [['train', 'Release train'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
+const TABS = [['train', 'Mergify windows'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
 type TabKey = (typeof TABS)[number][0]
 
 function useNow(ms: number): number {
@@ -73,22 +73,21 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const nx = s.next_release.value as NextRelease | null
   const stop = w?.stop
   return <div style={{ display: 'grid', gap: 12 }}>
-    <Section title="Next windows" testId="rs-windows" v={s.windows}
-      sub={w ? `train ${w.armed ? 'ARMED' : 'UNARMED'} · delegation ${w.delegation?.state ?? 'UNAVAILABLE'} · STOP latch ${stop?.state ?? 'UNAVAILABLE'}` : undefined}>
+    <Section title="Mergify merge windows (ET)" testId="rs-windows" v={s.windows}
+      sub={w ? `preset ${w.preset_label ?? w.preset ?? '—'} · ${w.open_now ? 'OPEN now' : w.market_freeze ? 'market freeze' : 'closed'} · deploy STOP ${stop?.state ?? 'UNAVAILABLE'}` : undefined}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
         {(w?.windows ?? []).map((x, i) => (
-          <div key={x.window_id} style={{ background: TOKENS.bg[2], border: `1px solid ${i === 0 ? toneVars(windowTone(x.state)).border : TOKENS.border}`, borderRadius: RADIUS.sm, padding: '10px 12px', display: 'grid', gap: 4 }}>
+          <div key={x.window_id} data-testid={`rs-window-${x.slot}`} style={{ background: TOKENS.bg[2], border: `1px solid ${i === 0 ? toneVars(windowTone(x.state)).border : TOKENS.border}`, borderRadius: RADIUS.sm, padding: '10px 12px', display: 'grid', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ ...mono, fontSize: TYPE.lg, fontWeight: 700, color: TOKENS.text[0] }}>{x.local_time}</span>
+              <span style={{ ...mono, fontSize: TYPE.lg, fontWeight: 700, color: TOKENS.text[0] }}>{x.local_time}{x.ends_local ? `–${x.ends_local}` : ''}</span>
               <Pill tone={windowTone(x.state)}>{x.state}</Pill>
             </div>
-            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{x.role ?? '—'} window · {etDateTime(x.starts_at)}</span>
+            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Mergify · {etDateTime(x.starts_at)}</span>
             <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{x.reason ?? (x.enabled ? 'enabled' : 'not enabled')}{x.note ? ` · ${x.note}` : ''}</span>
-            <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>last shadow tick: {x.last_shadow_request_at ? `${etDateTime(x.last_shadow_request_at)} · ${x.last_shadow_receipt_state ?? 'no receipt'}` : 'never'}</span>
-            {x.last_shadow ? <span data-testid={`rs-shadow-${x.slot}`} style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{shadowLine(x.last_shadow)}</span> : null}
           </div>
         ))}
       </div>
+      {w?.schedules?.length ? <p style={{ ...muted, ...mono }} data-testid="rs-mergify-schedules">{(w.schedules).join(' · ')}</p> : null}
       {w ? <p style={muted}>{w.manual_path}</p> : null}
     </Section>
 

@@ -529,62 +529,43 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
                  _iso(now), "OK", src, None, now=now)
 
 
-def _window_state(snapshot: Mapping[str, Any]) -> tuple[str, Optional[str]]:
-    try:
-        from lib import release_train_window as RTW
-    except ImportError:  # pragma: no cover
-        from scripts.lib import release_train_window as RTW  # type: ignore[no-redef]
-    d = RTW.decide(snapshot, "on_window", shadow_only=False)
-    if d["disposition"] == "no_op":
-        if d["no_op_reason"] in ("stop_set", "stop_unreadable"):
-            return "STOPPED", "release STOP latch " + ("set" if d["no_op_reason"] == "stop_set" else "unreadable")
-        return "OFF", "train not armed and shadow disabled"
-    if d["shadow"]:
-        why = {"train_not_armed": "train not armed (simulate only)",
-               "delegation_not_active": f"delegation {snapshot.get('delegation_state')} (simulate only)",
-               "window_not_enabled": "window not enabled in the policy (simulate only)"}
-        return "SHADOW", why.get(d["shadow_reason"], str(d["shadow_reason"]))
-    return "LIVE", None
-
-
 def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping[str, Any]] = None,
                  readiness: Optional[Callable[[], Mapping[str, Any]]] = None) -> dict[str, Any]:
-    src = "config/release_train_policy.json + release_train_window.readiness_view (STOP, delegation, shadow)"
-    policy, perr = RTV._load_policy()
-    if policy is None:
-        return _unavailable(src, perr or "policy_unreadable", now)
-    if readiness is None:
+    """Mergify ET windows for the Releases page (train windows retired after Mergify cutover).
+
+    ``rw_state_dir`` / ``readiness`` are kept for call-site compatibility; STOP latch is still
+    surfaced from the release-window state dir when readable.
+    """
+    src = "config/mergify_windows.json + .mergify.yml schedules (America/New_York)"
+    try:
         try:
-            from lib import release_train_window as RTW
+            from lib import mergify_windows as MW
         except ImportError:  # pragma: no cover
-            from scripts.lib import release_train_window as RTW  # type: ignore[no-redef]
-        rd = RTW.readiness_view(now, stop_dir=rw_state_dir)
-    else:
-        rd = readiness()
-    if not isinstance(rd, Mapping) or rd.get("state") != "OK":
-        return _unavailable(src, "readiness " + str((rd or {}).get("reason") or "unavailable"), now)
-    stop = rd.get("stop") or {}
-    deleg = (rd.get("delegation") or {}).get("state")
-    coverage = {c.get("slot"): c for c in rd.get("shadow_coverage") or [] if isinstance(c, Mapping)}
-    out = []
-    for w in RTV.upcoming_windows(policy, now):
-        slot = str(w["local_time"]).replace(":", "")
-        snap = {"stop_state": stop.get("state"), "armed": rd.get("armed") is True,
-                "shadow_enabled": rd.get("shadow_enabled") is True, "delegation_state": deleg,
-                "window_enabled": bool(w.get("enabled"))}
-        state, reason = _window_state(snap)
-        cov = coverage.get(slot) or {}
-        out.append({**w, "slot": slot, "state": state, "reason": reason,
-                    "last_shadow_request_at": cov.get("last_requested_at"),
-                    "last_shadow_receipt_state": cov.get("receipt_state"),
-                    "last_shadow": {k: cov.get(k) for k in ("request_id", "outcome", "reason", "queue_open",
-                                                            "queue_complete", "riding", "candidate_sha", "train_id",
-                                                            "has_report")} if cov.get("request_id") else None})
-    value = {"windows": out, "armed": rd.get("armed"), "shadow_enabled": rd.get("shadow_enabled"),
-             "delegation": rd.get("delegation"), "stop": stop, "policy_version": rd.get("policy_version"),
-             "manual_path": "Until the train is armed, releases are manual: scripts/release_window.py 12:00 / 17:30 "
-                            "ET windows under a release-write grant naming the SHA (AGENTS.md §25.1, §24.8)."}
-    return field(value, rd.get("as_of") or _iso(now), "OK", src, None, now=now)
+            from scripts.lib import mergify_windows as MW  # type: ignore[no-redef]
+        view = MW.view_for_ops(now)
+    except Exception as exc:  # noqa: BLE001 — surface as UNAVAILABLE, never raise
+        return _unavailable(src, f"mergify_windows: {exc}", now)
+    stop: dict[str, Any] = {"state": "ABSENT", "effective_stop": False}
+    try:
+        stop = RTV.read_stop(rw_state_dir) or stop
+    except Exception:  # noqa: BLE001
+        stop = {"state": "UNREADABLE", "effective_stop": True}
+    value = {
+        "windows": view.get("windows") or [],
+        "armed": None,
+        "shadow_enabled": None,
+        "delegation": None,
+        "stop": stop,
+        "preset": view.get("preset"),
+        "preset_label": view.get("preset_label"),
+        "open_now": view.get("open_now"),
+        "market_freeze": view.get("market_freeze"),
+        "schedules": view.get("schedules") or [],
+        "setting_key": view.get("setting_key"),
+        "presets_available": view.get("presets_available") or [],
+        "manual_path": view.get("manual_path"),
+    }
+    return field(value, view.get("as_of") or _iso(now), "OK", src, None, now=now)
 
 
 def census_attempt(ledger: Optional[Path], registry: Optional[Path], now: datetime) -> dict[str, Any]:
@@ -993,9 +974,12 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
                                                      "danger" if ci.get("state") in ("FAILURE", "NOT_GREEN") else
                                                      "warning"),
              sections["next_release"]),
-        _kpi("next_window", "Next train window", nxt.get("local_time") if nxt else None,
-             (f"{nxt.get('role')} · {nxt.get('state')}" + (f" · {nxt.get('reason')}" if nxt.get("reason") else ""))
-             if nxt else None, "info" if nxt and nxt.get("state") == "SHADOW" else "neutral", sections["windows"]),
+        _kpi("next_window", "Next Mergify window", nxt.get("local_time") if nxt else None,
+             (f"{nxt.get('role') or 'mergify'} · {nxt.get('state')}"
+              + (f" · {nxt.get('reason')}" if nxt.get("reason") else ""))
+             if nxt else ("open now" if (wn.get("open_now") is True) else None),
+             "success" if wn.get("open_now") else ("warning" if wn.get("market_freeze") else "neutral"),
+             sections["windows"]),
         _kpi("n8n_runs", "n8n runs today", td.get("total"),
              ", ".join(f"{v} {k}" for k, v in sorted(by_mode.items())) or None, "neutral", sections["n8n_today"]),
         _kpi("n8n_errors", "n8n errors · skips",
@@ -1022,7 +1006,7 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
     }, timeout_s, executor=ex)
     sources = {
         "serving": "CURRENT symlink + BUILD_SHA pins", "history": "release_pins + deploy_receipt.json",
-        "windows": "config/release_train_policy.json + readiness", "queue": "postgres:release_queue + census",
+        "windows": "config/mergify_windows.json", "queue": "postgres:release_queue + census",
         "n8n_today": "sqlite:n8n_coordination_ledger", "stop": "file:release_window/STOP.json",
     }
     sec: dict[str, Any] = {}
