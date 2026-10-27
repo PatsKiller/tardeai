@@ -88,6 +88,7 @@ try:
     from scripts.lib import release_train_drain as DR
     from scripts.lib import release_train_timing as TM
     from scripts.lib import release_grant_binding as RGB
+    from scripts.lib import release_train_solo as SOLO
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -100,6 +101,7 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import release_train_drain as DR  # type: ignore[no-redef]
     from lib import release_train_timing as TM  # type: ignore[no-redef]
     from lib import release_grant_binding as RGB  # type: ignore[no-redef]
+    from lib import release_train_solo as SOLO  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -148,6 +150,12 @@ PROTECTED_SURFACES = (
     "scripts/lib/ff_dev_tree.sh",
 
     "config/release_train_policy.json",
+    # Solo shared-infra trains (AGENTS.md 20.4.0, 2026-10-25): the solo rules, their module and the policy gate.
+    "config/release_train_solo_shared_infra.json",
+    "scripts/lib/release_train_solo.py",
+    "scripts/lib/hands_off_policy.py",
+    "scripts/check_shared_infra_pr.py",
+    "config/shared_infra_paths.json",
     # Phase 7 window gates (2026-10-22): the 06:00 drain probe, its policy, and the measured-duration history.
     "scripts/lib/release_train_drain.py",
     "scripts/lib/release_train_timing.py",
@@ -1022,6 +1030,34 @@ def check_evidence(runs: list[dict], sha: str, required: tuple = REQUIRED_CHECKS
             "collected_at": utc_iso(now), "required": list(required)}
 
 
+#: The census's own pass/fail vocabulary (scripts/pr_hygiene_audit.py CHECK_PASS / CHECK_FAIL), for the live re-census.
+CENSUS_CHECK_PASS = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
+CENSUS_CHECK_FAIL = frozenset({"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR",
+                               "STALE"})
+
+
+def live_required_status(runs: list[dict], sha: str, required: tuple = REQUIRED_CHECKS) -> str:
+    """The census verdict (pr_hygiene_audit.required_checks_status semantics) from live check runs on exactly
+    ``sha`` from a trusted app, latest run per name: PASS only when every required context passed; FAIL when any
+    failed; else PENDING (missing or in flight)."""
+    latest: dict[str, dict] = {}
+    for r in runs or []:
+        if not isinstance(r, dict) or r.get("name") not in required or r.get("head_sha") != sha:
+            continue
+        if r.get("app") not in TRUSTED_CHECK_APPS:
+            continue
+        prev = latest.get(r["name"])
+        if prev is None or int(r.get("id") or 0) > int(prev.get("id") or 0):
+            latest[r["name"]] = r
+    states = {n: (str(r.get("conclusion") or "").upper() if r.get("status") == "completed" else "PENDING")
+              for n, r in latest.items()}
+    if any(states.get(n) in CENSUS_CHECK_FAIL for n in required):
+        return "FAIL"
+    if all(states.get(n) in CENSUS_CHECK_PASS for n in required):
+        return "PASS"
+    return "PENDING"
+
+
 def evidence_verdict(ev: dict, required: tuple = REQUIRED_CHECKS) -> tuple[str, list[str]]:
     """GREEN only when every required check's latest trusted run on the SHA is completed/success. Missing or in
     flight is PENDING; neutral, skipped, cancelled, stale, timed_out or failure is RED. Never "not failure"."""
@@ -1108,6 +1144,19 @@ class GhCliReader:
             return self._get(f"repos/{self.repository}/git/ref/{ref}", ".object.sha | tojson")
         except (RuntimeError, ValueError):
             return None
+
+    def pr_text(self, pr: int) -> Optional[dict]:
+        """Solo shared-infra selection (GET only): the PR title, body and its first 100 conversation comments.
+        None when unreadable (the PR cannot ride solo)."""
+        try:
+            head = self._get(f"repos/{self.repository}/pulls/{int(pr)}", "{title, body} | tojson")
+            comments = self._get(f"repos/{self.repository}/issues/{int(pr)}/comments?per_page=100",
+                                 "[.[] | {body, author: .user.login}] | tojson")
+        except (RuntimeError, ValueError):
+            return None
+        if not isinstance(head, dict) or not isinstance(comments, list):
+            return None
+        return {"title": head.get("title") or "", "body": head.get("body") or "", "comments": comments}
 
 
 class GitHubWriter(Protocol):
@@ -1765,6 +1814,19 @@ class TrainController:
         self.forced: Optional[dict] = None             # an operator-forced canary run's record (finding 8)
         #: The repo policy the live window gate reads (config/release_train_policy.json; tests may substitute one).
         self.policy: Optional[dict] = None
+        #: Solo shared-infra trains (AGENTS.md 20.4.0 hands-off delivery; scripts/lib/release_train_solo.py). The
+        #: policy gate reads this code tree's AGENTS.md at call time; the PR text and check runs are GitHub GETs; the
+        #: coordinator claim is read from the agent claim board. Every seam is injectable for tests.
+        self.solo_policy_state: Callable[[], dict] = lambda: SOLO.policy_state(_CODE_ROOT)
+        self.solo_config: Callable[[], dict] = SOLO.load_config
+        self.solo_pr_text: Callable[[int], Optional[dict]] = lambda pr: (
+            getattr(self.github, "pr_text", None) or (lambda _n: None))(pr)
+        self.solo_claim_rows: Callable[[], list] = SOLO.claim_rows
+        self.solo_verify: Callable[[Path, Path], dict] = lambda new, prev: SOLO.verify_release(
+            new, prev, python=str(getattr(self.host, "python", "python3")), env=self.env)
+        self.train_kind: str = SOLO.TRAIN_KIND_BATCH
+        self.recensused: list[int] = []
+        self.solo_verdict: Optional[dict] = None
         self.inject: Optional[str] = None
         self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
         self._inject_detail: dict = {}
@@ -2334,6 +2396,7 @@ class TrainController:
         if self.live:
             self._unreleased_on_main_gate(base, classifier, rec)
         eligible, excluded = [], {}
+        solo_pool: list[tuple] = []
         for e in sorted(snap.entries, key=pipeline_rank):
             why = self._pre_exclusion(e)
             if why:
@@ -2356,6 +2419,8 @@ class TrainController:
                         {"risk_class": risk}, subject_kind="pr", pr=e.pr)
             if risk != "eligible":
                 excluded[e.pr] = f"{risk}:{'; '.join(reasons)[:160]}"
+                if risk == "needs_operator":
+                    solo_pool.append((e, change, reasons))
                 continue
             eligible.append(e)
         ordered, dep_excl = order_members(eligible)
@@ -2366,8 +2431,10 @@ class TrainController:
             ordered = [e for e in ordered[: self.cfg.max_prs]]
             ordered, more = order_members(ordered)
             excluded.update(more)
+        ordered = self._solo_select(ordered, solo_pool, excluded, classifier, rec)
         self.tstate["select_excluded"] = {str(k): v for k, v in excluded.items()}
         rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()},
+                            "train_kind": self.train_kind, "recensused": list(self.recensused),
                             "next_batch": [e.pr for e in snap.entries
                                            if isinstance((e.census.get("pipeline") or {}).get("next_batch"), int)]}
         self.say(f"select: {len(ordered)} eligible {[e.pr for e in ordered]}; {len(excluded)} not riding")
@@ -2377,6 +2444,92 @@ class TrainController:
         if not ordered:
             raise Halt(NO_OP, "NOTHING_ELIGIBLE", f"{len(excluded)} open PRs, none eligible")
         return ordered, excluded
+
+    def _solo_select(self, ordered: list, pool: list, excluded: dict, classifier: Any, rec: dict) -> list:
+        """AGENTS.md 20.4.0: pick the train kind. ``ordered`` is the eligible batch; ``pool`` the needs_operator PRs
+        as (entry, change, reasons). Returns the members: the batch unchanged, or exactly one solo PR. Never mixed.
+        Off (returns ``ordered`` untouched, no GitHub read) unless the policy gate is ACTIVE."""
+        self.train_kind = SOLO.TRAIN_KIND_BATCH
+        if not pool:
+            return ordered
+        try:
+            state = self.solo_policy_state()
+        except Exception as exc:  # noqa: BLE001 - an unreadable gate is off
+            state = {"active": False, "detail": f"gate error {type(exc).__name__}"}
+        if not state.get("active"):
+            rec["solo"] = {"state": "NOT_ACTIVE", "detail": state.get("detail"), "candidates": len(pool)}
+            return ordered
+        try:
+            cfg = self.solo_config()
+        except (OSError, ValueError) as exc:
+            rec["solo"] = {"state": "CONFIG_UNREADABLE", "detail": type(exc).__name__}
+            return ordered
+        errs = SOLO.validate_config(cfg)
+        if errs:
+            rec["solo"] = {"state": "CONFIG_INVALID", "detail": "; ".join(errs)[:200]}
+            return ordered
+        precedence = cfg.get("precedence", "batch_first")
+        if ordered and precedence == "batch_first":
+            for e, _c, _r in pool:
+                excluded[e.pr] = f"{excluded.get(e.pr, 'needs_operator')[:150]}; SOLO_DEFERRED_BATCH_FIRST"
+            rec["solo"] = {"state": "DEFERRED_BATCH_FIRST", "candidates": [e.pr for e, _c, _r in pool]}
+            self.say(f"select: {len(pool)} needs_operator PR(s) wait: an eligible batch goes first (batch_first)")
+            return ordered
+        rows = self.solo_claim_rows()
+        train_policy = getattr(classifier, "policy", None)
+        if not isinstance(train_policy, dict):
+            try:
+                train_policy = json.loads((_CODE_ROOT / "config" / "release_train_policy.json").read_text("utf-8"))
+            except (OSError, ValueError):
+                train_policy = None
+        verdicts, ready = [], []
+        for e, change, reasons in pool:
+            full = reasons
+            if hasattr(classifier, "m") and change:
+                try:
+                    full = classifier.m.classify_change(change, classifier.policy, tiers=classifier.tiers,
+                                                        impact_map=classifier.impact_map).get("reasons") or reasons
+                except Exception:  # noqa: BLE001 - fall back to the summarized reasons
+                    full = reasons
+            try:
+                runs = self.github.check_runs(e.head_sha)
+            except (RuntimeError, ValueError):
+                runs = []
+            v = SOLO.evaluate(pr=e.pr, head_sha=e.head_sha, title=e.title, risk="needs_operator", reasons=full,
+                              paths=[str(p.get("path")) for p in (change or {}).get("paths") or []],
+                              pr_text=self.solo_pr_text(e.pr), runs=runs, claim_rows=rows, cfg=cfg,
+                              policy_state=state, train_policy=train_policy, is_protected=is_protected,
+                              statuses={str(p.get("path")): str(p.get("status") or "")[:1]
+                                        for p in (change or {}).get("paths") or []})
+            verdicts.append({k: v.get(k) for k in ("pr", "eligible", "why", "receipt")})
+            self._event("classified", "classified", {"risk_class": "needs_operator", "head_sha": e.head_sha,
+                                                     "reasons": ["solo:" + ("eligible" if v["eligible"] else
+                                                                            ",".join(v["why"])[:180])],
+                                                     "classifier": "release_train_solo/1"},
+                        subject_kind="pr", pr=e.pr)
+            if v["eligible"]:
+                ready.append((e, v))
+            else:
+                excluded[e.pr] = f"{excluded.get(e.pr, 'needs_operator')[:100]}; solo:{','.join(v['why'])[:120]}"
+        kind, members, deferred = SOLO.choose(ordered, [e for e, _v in ready], precedence)
+        for pr, why in deferred.items():
+            excluded[pr] = why
+        rec["solo"] = {"state": "EVALUATED", "precedence": precedence, "verdicts": verdicts, "train_kind": kind}
+        if kind != SOLO.TRAIN_KIND_SOLO:
+            return ordered
+        pick = members[0]
+        solo, dep = order_members([pick])
+        if not solo:
+            excluded.update(dep)
+            rec["solo"]["state"] = "SOLO_DEPENDENCY_NOT_IN_TRAIN"
+            return ordered
+        self.train_kind = SOLO.TRAIN_KIND_SOLO
+        self.solo_verdict = next(v for e, v in ready if e.pr == pick.pr)
+        excluded.pop(pick.pr, None)
+        self.tstate["train_kind"] = SOLO.TRAIN_KIND_SOLO
+        self.tstate["solo_ride_ref"] = SOLO.ride_ref(self.solo_verdict)
+        self.say(f"select: SOLO shared-infra train: #{pick.pr} rides alone ({self.tstate['solo_ride_ref']})")
+        return solo
 
     def _unreleased_on_main_gate(self, base: str, classifier: Any, rec: dict) -> None:
         """Review finding F2: the train promotes main at ``base``, so everything merged since CURRENT's BUILD_SHA goes
@@ -2438,20 +2591,38 @@ class TrainController:
             # FAIL recorded for an older head is not applied, the head has moved since the census).
             return "CHECKS_FAILING:" + ",".join(str(x) for x in (rc.get("failed") or [])[:4])
         if e.census.get("green_required"):
-            # D7: the census-first source rides only PRs whose required checks the census saw PASS on this exact head
-            # (a next-batch PR too). Pending, unknown, no census row, or a verdict for an older head: not this train.
+            # D7: the census-first source rides only PRs whose required checks are PASS on this exact head (a
+            # next-batch PR too). 2026-10-25 (first live train rt-20261025-1500-461185 skipped 6 PRs opened after the
+            # T-20 census and 4 whose CI finished after it): when the census has no PASS for this exact head (no row,
+            # pending, unknown, or an older head), the selection re-reads the head's required checks live (GitHub GET,
+            # census semantics) instead of skipping it; a census FAIL on this head is never re-read (above).
+            why = None
             if not isinstance(rc, dict):
-                return "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
-            status = str(rc.get("status") or "UNKNOWN").upper()
-            if status != "PASS":
-                return f"NOT_GREEN_ON_HEAD:{status}"
-            if rc.get("head") != e.head_sha:
-                return f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
+                why = "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
+            elif str(rc.get("status") or "UNKNOWN").upper() != "PASS":
+                why = f"NOT_GREEN_ON_HEAD:{str(rc.get('status') or 'UNKNOWN').upper()}"
+            elif rc.get("head") != e.head_sha:
+                why = f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
+            if why is not None:
+                live = self._recensus(e)
+                if live != "PASS":
+                    return f"{why};RECENSUS_{live}"
+                self.recensused.append(e.pr)
         if e.files is not None:
             bad = [f for f in e.files if is_protected(f)]
             if bad:
                 return f"BLOCKED_SELF_MODIFICATION:{bad[:3]}"
         return None
+
+    def _recensus(self, e: QueueEntry) -> str:
+        """The census verdict for ``e``'s exact head, read live: PASS / PENDING / FAIL / STACKED / UNREADABLE."""
+        if (e.base_ref or "main") != "main":
+            return "STACKED"
+        try:
+            runs = self.github.check_runs(e.head_sha)
+        except (RuntimeError, ValueError):
+            return "UNREADABLE"
+        return live_required_status(runs, e.head_sha)
 
     def _freeze(self, w: TrainWindow, members: list[QueueEntry], dv: RD.DelegationVerdict, rec: dict) -> dict:
         base = self.github.main_head()
@@ -2474,11 +2645,15 @@ class TrainController:
             "queue_source": (rec.get("queue") or {}).get("source"), "queue_as_of": (rec.get("queue") or {}).get("as_of"),
             "frozen_at": utc_iso(self._ts()),
         }
+        if self.train_kind == SOLO.TRAIN_KIND_SOLO:
+            if len(heads) != 1:
+                raise Halt(NO_OP, "SOLO_TRAIN_NOT_ONE_MEMBER", str([e.pr for e in heads]))
+            manifest["train_kind"] = SOLO.TRAIN_KIND_SOLO
+            manifest["solo_ride_ref"] = self.tstate.get("solo_ride_ref")
         manifest["manifest_digest"] = digest({k: v for k, v in manifest.items() if k != "frozen_at"})
         tc = {"schema": TC.TRAIN_CANDIDATE, "train_id": self.train_id, "window_id": w.window_id,
               "repo": getattr(self.github, "repository", RD.REPOSITORY), "base_sha": base,
-              "members": [{"pr_number": e.pr, "head_sha": e.head_sha, "risk_class": "eligible", "order": i + 1}
-                          for i, e in enumerate(heads)],
+              "members": [self._candidate_member(e, i) for i, e in enumerate(heads)],
               "dependency_graph": {str(e.pr): sorted(set(e.depends_on)) for e in heads if e.depends_on},
               "policy_version": self.tstate.get("classifier_policy_version") or "none",
               "classifier_version": str(rec.get("classifier_version") or "none")[:60],
@@ -2502,6 +2677,12 @@ class TrainController:
                  ", ".join(f"#{m['pr']}@{m['head_sha'][:9]}" for m in manifest["members"]) +
                  f"; checks {list(REQUIRED_CHECKS)}; manifest {manifest['manifest_digest'][:19]}")
         return manifest
+
+    def _candidate_member(self, e: QueueEntry, i: int) -> dict:
+        if self.train_kind == SOLO.TRAIN_KIND_SOLO:
+            return {"pr_number": e.pr, "head_sha": e.head_sha, "risk_class": "needs_operator", "order": i + 1,
+                    "ride_approval_ref": self.tstate.get("solo_ride_ref")}
+        return {"pr_number": e.pr, "head_sha": e.head_sha, "risk_class": "eligible", "order": i + 1}
 
     # -- integrate + local test ------------------------------------------------------------------------
     def _integrate_and_test(self, manifest: dict, rec: dict) -> dict:
@@ -3052,6 +3233,9 @@ class TrainController:
             self._boundary("activation")
             self.say("WOULD verify: promote exit, CURRENT, BUILD_SHA, units, /api/health, served copy, CC pages "
                      f"{list(RW.VERIFY_PAGES)}, platform-health, needs-action")
+            if self.train_kind == SOLO.TRAIN_KIND_SOLO:
+                self.say(f"WOULD verify (solo shared-infra) {list(SOLO.VERIFY_CHECKS)} against the promoted release, "
+                         "previous release as baseline")
             self.say("WOULD on failure: rollback <bound target>, latch STOP, quarantine the artifact")
             self._check_latest_preview()
             raise Halt("DRY_RUN_COMPLETE", "DRY_RUN_COMPLETE", "nothing was claimed, issued, pushed or written",
@@ -3148,6 +3332,12 @@ class TrainController:
             t_ver = self._ts()
             runner = RW.Runner(self.host, self.state, env=self.env, units=tuple(units))
             checks = runner._verify(prepared, merged, before, promote_rc=rc)
+            if self.train_kind == SOLO.TRAIN_KIND_SOLO:
+                # AGENTS.md 20.4.0: a solo shared-infra train also proves the scheduler surfaces it may change.
+                for name, res_ in (self.solo_verify(prepared, Path(str(prev))) or {}).items():
+                    checks[f"solo_{name}"] = dict(res_ or {}, ok=bool((res_ or {}).get("ok")))
+                for name in SOLO.VERIFY_CHECKS:
+                    checks.setdefault(f"solo_{name}", {"ok": False, "reason": "NOT_RUN"})
             t_done = self._ts()
         except Exception as exc:  # noqa: BLE001
             res.uncertain({"error": type(exc).__name__})

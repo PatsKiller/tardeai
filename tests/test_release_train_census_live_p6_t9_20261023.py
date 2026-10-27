@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_release_train_controller_20261021 import NOW, StaticQueue, World  # noqa: E402
+from tests.test_release_train_controller_20261021 import NOW, StaticQueue, World, runs_for  # noqa: E402
 from scripts.lib import release_train_controller as T  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -235,15 +235,53 @@ def test_only_prs_green_on_their_exact_head_ride(tmp_path):
         },
     )
     path = _batch_queue(tmp_path, next_batch=(11,))  # a red next-batch PR is still ejected
+    # 2026-10-25 live re-census: a head without a census PASS is re-read live; here the live checks are not green.
+    w.gh.runs[h[12]] = runs_for(h[12], status="in_progress", conclusion=None)
+    w.gh.runs[h[13]] = runs_for(h[13], conclusion="failure")
+    w.gh.runs[h[14]] = []
+    w.gh.runs[h[15]] = runs_for(h[15], app="some-bot")
     code, rec = w.controller(live=False, queue=_source(w, census=census, path=path)).run(NOW)
     assert rec["selection"]["members"] == [16]
     assert rec["selection"]["excluded"] == {
         "11": "CHECKS_FAILING:ci-gate",
-        "12": "NOT_GREEN_ON_HEAD:PENDING",
-        "13": "NOT_GREEN_ON_HEAD:HEAD_MOVED:eeeeeeeee",
-        "14": "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW",
-        "15": "NOT_GREEN_ON_HEAD:UNKNOWN",
+        "12": "NOT_GREEN_ON_HEAD:PENDING;RECENSUS_PENDING",
+        "13": "NOT_GREEN_ON_HEAD:HEAD_MOVED:eeeeeeeee;RECENSUS_FAIL",
+        "14": "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW;RECENSUS_PENDING",
+        "15": "NOT_GREEN_ON_HEAD:UNKNOWN;RECENSUS_PENDING",
     }
+    assert w.gh.runs.get(h[11]) is None  # a census FAIL on this head is final: never re-read
+
+
+def test_heads_the_census_missed_are_re_read_live_and_ride_when_green(tmp_path):
+    """First live train rt-20261025-1500-461185: PRs opened after the T-20 census (no row) or whose CI finished after
+    it (PENDING) were skipped. They are now re-read live on their exact head (trusted app, census semantics)."""
+    prs = [(n, {f"docs/{n}.md": f"{n}\n"}) for n in (12, 13, 14, 15)]
+    w = World(tmp_path, prs=prs)
+    h = w.repo.heads
+    census = _census(
+        w,
+        per_pr={
+            12: {"required_checks": {"status": "PENDING", "head": h[12]}},
+            13: {"required_checks": _green("e" * 40)},
+            14: {},
+            15: {"required_checks": {"status": "UNKNOWN", "head": h[15]}},
+        },
+    )
+    w.gh.runs[h[15]] = runs_for(h[15], conclusion="skipped")  # the census counts SKIPPED as passed
+    code, rec = w.controller(live=False, queue=_source(w, census=census)).run(NOW)
+    assert rec["selection"]["members"] == [12, 13, 14, 15]
+    assert rec["selection"]["recensused"] == [12, 13, 14, 15]
+
+
+def test_live_required_status_uses_census_semantics_on_the_exact_head():
+    sha = "a" * 40
+    assert T.live_required_status(runs_for(sha), sha) == "PASS"
+    assert T.live_required_status(runs_for(sha, conclusion="neutral"), sha) == "PASS"
+    assert T.live_required_status(runs_for(sha, conclusion="cancelled"), sha) == "FAIL"
+    assert T.live_required_status(runs_for("b" * 40), sha) == "PENDING"
+    assert T.live_required_status(runs_for(sha)[:3], sha) == "PENDING"
+    newer_red = runs_for(sha) + runs_for(sha, conclusion="failure", start_id=500)[:1]
+    assert T.live_required_status(newer_red, sha) == "FAIL"
 
 
 def test_drafts_hygiene_holds_and_census_conflicts_stay_out(tmp_path):
