@@ -41,7 +41,7 @@ export default function ConflictRules() {
   const decisionsEnabled = proposalList?.decisions_enabled === true
 
   return <div className="conflict-rules" data-testid="conflict-rules">
-    <DeskPage title="Conflict rules" purpose="How the Command Center decides when two sources disagree: the binding resolution matrix, in plain words."
+    <DeskPage title="Conflicts" purpose="How the Command Center decides when two data sources disagree — the resolution matrix, not AGENTS.md. Agent operating rules live in the Rulebook."
       sources={[{id: 'rulebook', label: 'Conflict rulebook', gap: view ? undefined : 'Rulebook not loaded yet.'},
         {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
       decisions={pending.map(proposal => ({id: proposal.proposal_id, title: `Proposed rule: ${proposal.summary || proposal.plain_rule || 'review the AI proposal'} →`,
