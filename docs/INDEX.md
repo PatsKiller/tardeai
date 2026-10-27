@@ -2059,6 +2059,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron |
 | `docs/ops/PROSPECTUS_ACCURACY_AUDIT.md` | Ticker Prospectus — accuracy auditor |
 | `docs/ops/PROSPECTUS_BACKEND.md` | Ticker Prospectus — backend |
+| `docs/ops/PROSPECTUS_INSTITUTIONAL.md` | Ticker Prospectus — institutional ("Street") blocks and the validation badge |
 | `docs/ops/PROSPECTUS_MY_HISTORY.md` | Ticker Prospectus — My history and fund gaps |
 | `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate |
 | `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |

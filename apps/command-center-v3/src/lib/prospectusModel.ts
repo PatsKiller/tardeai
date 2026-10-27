@@ -247,13 +247,28 @@ export function orderedSections(sections: ProspectusSection[] | null | undefined
 }
 
 /** Markdown blocks (no HTML is ever injected): headings, bullet / numbered items, paragraphs. */
-export type MdBlock = { kind: 'h' | 'li' | 'oli' | 'p'; text: string; level?: number }
+export type MdBlock = { kind: 'h' | 'li' | 'oli' | 'p' | 'table'; text: string; level?: number; head?: string[]; rows?: string[][] }
+const MD_ROW_RE = /^\|.*\|$/
+const MD_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/
+const mdCells = (l: string) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
 export function mdBlocks(md: string): MdBlock[] {
   const out: MdBlock[] = []
   let para: string[] = []
   const flush = () => { if (para.length) { out.push({ kind: 'p', text: para.join(' ') }); para = [] } }
-  for (const raw of String(md ?? '').replace(/\r\n/g, '\n').split('\n')) {
-    const line = raw.trim()
+  const lines = String(md ?? '').replace(/\r\n/g, '\n').split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    // A markdown pipe table (header, separator, rows) renders as a table, never as raw "| a | b |" text.
+    if (MD_ROW_RE.test(line) && i + 1 < lines.length && MD_SEP_RE.test(lines[i + 1].trim()) && lines[i + 1].includes('|')) {
+      flush()
+      const head = mdCells(line)
+      const rows: string[][] = []
+      let j = i + 2
+      for (; j < lines.length && MD_ROW_RE.test(lines[j].trim()); j++) rows.push([...mdCells(lines[j].trim()), ...head.map(() => '')].slice(0, head.length))
+      out.push({ kind: 'table', text: '', head, rows })
+      i = j - 1
+      continue
+    }
     if (!line) { flush(); continue }
     if (/^([-*•]|\d+[.)])$/.test(line)) { flush(); continue }  // an empty bullet is never rendered
     const h = /^(#{1,4})\s+(.*)$/.exec(line)
@@ -585,11 +600,64 @@ export type Presentation = {
   section_footnotes?: Record<string, number[]>
   fund_structure?: FundStructure | null
   coverage?: { groups: Record<CoverageGroupId, CoverageItem[]>; counts: Record<CoverageGroupId, number>; hidden: number; key_gaps?: string[] } | null
+  validation?: Validation | null
+  street?: StreetTable[]
+}
+
+/** The one validation statement shown instead of citations (presentation.validation). */
+export type Validation = {
+  status: 'validated' | 'partial' | 'unchecked'
+  line: string
+  figures?: number
+  sources?: number
+  not_validated?: number
+  by_source?: Record<string, number>
+  unreliable?: { id: string; label: string; reason: string }[]
+  reasons?: string[]
+  as_of?: string | null
+  gate_status?: string | null
+}
+
+/** A Street table (tables.street_tables): analyst coverage, action log, estimates, catalysts, positioning, valuation. */
+export type StreetTable = {
+  id: string
+  title: string
+  columns: string[]
+  rows: string[][]
+  kpis?: [string, string][]
+  note?: string | null
+  highlight?: number | null
+}
+
+export function validationOf(doc: ProspectusDoc | null | undefined): Validation | null {
+  const v = presentationOf(doc)?.validation
+  return v && v.line ? v : null
+}
+
+export function validationTone(v: Validation | null | undefined): 'success' | 'warning' | 'neutral' {
+  return v?.status === 'validated' ? 'success' : v?.status === 'partial' ? 'warning' : 'neutral'
+}
+
+export function streetTables(doc: ProspectusDoc | null | undefined): StreetTable[] {
+  const t = presentationOf(doc)?.street
+  return Array.isArray(t) ? t.filter(x => x && x.id && Array.isArray(x.columns)) : []
+}
+
+/** Blank cells ("n/a", "—", "n/a · n/a") never print; a row whose value cells are all blank folds into one note. */
+export function streetRows(t: StreetTable): { rows: string[][]; absent: string[] } {
+  const keyed = ['Measure'].includes(t.columns[0])
+  const rows: string[][] = []
+  const absent: string[] = []
+  for (const r of t.rows ?? []) {
+    if (keyed && r.slice(1).every(c => isBlankValue(c))) absent.push(String(r[0]))
+    else rows.push(r)
+  }
+  return { rows, absent }
 }
 
 /** One bracket group of citation ids: "[F7]", "[F7, F8]", "[^c1]" (same rule as presentation.GROUP_RE). */
 const CITE_GROUP_RE = /\[\^?([A-Za-z][\w.:-]*(?:\s*[,;]\s*\^?[A-Za-z][\w.:-]*)*)\](?!\()/g
-const FACT_ID_RE = /^F\d+$/
+const FACT_ID_RE = /^[FW]\d+$/  // internal fact (F7) and web-fact (W2) ids; never shown
 export const UNRELIABLE_RE = /(?:statistically\s+)?(?:not reliable|unreliable)(?:\s*\([^)]*\)|:\s*[^;.\n\][]+)?/gi
 
 function groupIds(g: string): string[] { return g.split(/[,;]/).map(s => s.trim().replace(/^\^/, '')).filter(Boolean) }
@@ -662,7 +730,7 @@ export function splitFootnotes(text: string, byId: Map<string, Footnote>): TextP
     if (!ids.length || !ids.every(i => FACT_ID_RE.test(i) || byId.has(i))) continue
     pushText(text.slice(last, m.index).replace(/\s+$/, ''))
     const notes = ids.map(i => byId.get(i)).filter((x): x is Footnote => !!x)
-    if (notes.length) out.push({ notes, ids })
+    out.push({ notes, ids })
     last = m.index! + m[0].length
   }
   pushText(text.slice(last))

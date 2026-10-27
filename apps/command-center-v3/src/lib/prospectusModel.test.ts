@@ -133,5 +133,9 @@ eq('stop tile concise; other accounts not in the tile', [stopTiles[3].value, sto
 eq('footnote label compresses runs', [footnoteLabel([117, 118, 119, 120, 121]), footnoteLabel([3, 4]), footnoteLabel([1, 2, 3, 7])], ['117–121', '3,4', '1–3,7'])
 eq('my history cites come right after the verdict', footnotes({ symbol: 'Z', verdict_line: 'x [F1]', sections: [{ id: 'summary_verdict', title: 's', body_md: 'y [F3]' }], blocks: { scenarios: { cases: [{ case: 'base', narrative: 'z [F4]' }] }, my_history: { writer_note: { summary: 'w [F2]' } } } as never }).map(f => f.id), ['F1', 'F2', 'F3', 'F4'])
 
+const mdt = mdBlocks('Intro line\n| Metric | Value |\n|---|---:|\n| P/E | 26.8 [F3] |\n| Yield | 0.7% |\nAfter')
+eq('markdown pipe table → a table block, never raw pipes', mdt.map(b => b.kind), ['p', 'table', 'p'])
+eq('pipe table cells', [mdt[1].head, mdt[1].rows], [['Metric', 'Value'], [['P/E', '26.8 [F3]'], ['Yield', '0.7%']]])
+
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -19,43 +19,23 @@ from . import tables as tb
 from .stops import stop_plan_table
 
 CITE_RE = pr.GROUP_RE  # kept for callers; matches "[F7]" and "[F7, F8]"
+_CITE_ID = re.compile(r"^[FW]\d+$")  # internal fact (F7) and web-fact (W2) ids; never shown to the reader
 NA_CELL_RE = re.compile(r"^[\s·/|,()—-]*(?:(?:n/a|none|not available(?: yet)?|—|-|unknown)[\s·/|,()—-]*)*$", re.IGNORECASE)
 
 
-def _fn_title(e: dict) -> str:
-    bits = [e.get("label") or ""]
-    if e.get("value"):
-        bits[0] += f": {e['value']}"
-    if e.get("source"):
-        bits.append(str(e["source"]))
-    if e.get("as_of"):
-        bits.append(f"as of {str(e['as_of'])[:10]}")
-    return " · ".join(b for b in bits if b)
-
-
-def _sup(ids: list[str], notes: dict[str, dict]) -> str:
-    """One citation group as superscript footnote numbers; the internal fact id stays in data-fact-id."""
-    links = []
-    for i in ids:
-        e = notes.get(i)
-        if not e:
-            continue
-        links.append(f'<a href="#fn-{e["n"]}" data-fact-id="{escape(i)}" title="{escape(_fn_title(e))}">{e["n"]}</a>')
-    return f'<sup class="pc-fn">{",".join(links)}</sup>' if links else ""
-
-
 def _cites(s: str, notes: dict[str, dict] | None) -> str:
-    """Replace citation groups in already-escaped text (numbers when known, removed otherwise)."""
+    """Remove citation groups from already-escaped text (operator 2026-10-27: no visible citations). The fact ids stay
+    in a hidden ``data-fact-id`` marker for the gate, the layer-3 check and the accuracy auditor."""
     known = set(notes or {})
 
     def rep(m: re.Match) -> str:
         ids = pr.split_ids(m.group(1))
-        if not all(pr.FACT_ID_RE.match(i) or i in known for i in ids):
+        if not all(_CITE_ID.match(i) or i in known for i in ids):
             return m.group(0)
-        return _sup(ids, notes or {})
+        return f'<span class="pc-cite" data-fact-id="{escape(" ".join(ids))}" hidden></span>'
 
     out = pr.GROUP_RE.sub(rep, s)
-    return re.sub(r"\s+(<sup class=\"pc-fn\">)", r"\1", out)
+    return re.sub(r"\s+(<span class=\"pc-cite\")", r"\1", out)
 
 
 def _inline(text: str, notes: dict[str, dict] | None = None) -> str:
@@ -82,7 +62,16 @@ def md_to_html(md: str, notes: dict[str, dict] | None = None) -> str:
         items, kind = [], None
 
     para: list[str] = []
-    for line in pr.clean_prose(md).splitlines() + [""]:
+    for seg, line in pr.md_segments(pr.clean_prose(md)) + [("text", "")]:
+        if seg == "table":
+            flush()
+            if para:
+                out.append(f"<p>{_inline(' '.join(para), notes)}</p>")
+                para = []
+            head = "".join(f"<th>{_inline(c, notes)}</th>" for c in line["head"])
+            body = "".join("<tr>" + "".join(f"<td>{_inline(c, notes)}</td>" for c in r) + "</tr>" for r in line["rows"])
+            out.append(f'<div class="pc-tw"><table class="pc-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
+            continue
         bullet = re.match(r"^\s*[-*•]\s+(.*)$", line)
         number = re.match(r"^\s*\d{1,2}[.)]\s+(.*)$", line)
         if bullet or number:
@@ -178,15 +167,10 @@ h1{font-size:26px;margin:0}h1 small{color:var(--muted);font-weight:500;font-size
 .pc-badge.holding{color:var(--success)}.pc-badge.watch{color:var(--info)}
 section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin:14px 0}
 section h2{font-size:18px;margin:0 0 6px;color:var(--text)}
-.pc-fn{font-size:10px;line-height:0;margin-left:1px;white-space:nowrap}
-.pc-fn a{color:var(--info);text-decoration:none;padding:0 1px}.pc-fn a:hover{text-decoration:underline}
 .pc-mute{color:var(--muted);font-style:italic}
 details>summary{cursor:pointer;list-style:none}details>summary::-webkit-details-marker{display:none}
 details>summary h2{display:inline}details>summary::before{content:"\\25B8  ";color:var(--muted)}details[open]>summary::before{content:"\\25BE  "}
-.pc-srcs{margin-top:8px;font-size:12px;color:var(--muted)}.pc-srcs summary{font-size:12px;color:var(--muted);padding:6px 0;min-height:32px}
-ol.pc-fnlist{margin:4px 0 0;padding-left:28px;font-size:12px;color:var(--text2)}ol.pc-fnlist li{margin:2px 0;word-break:break-word}
-.pc-fn-s{color:var(--muted)}ol.pc-fnlist a{color:var(--info)}
-.pc-appendix h2 small,section h2 small{color:var(--muted);font-weight:500;font-size:13px}
+section h2 small{color:var(--muted);font-weight:500;font-size:13px}
 .pc-cov{margin:6px 0;font-size:12px;line-height:2}.pc-cov b{color:var(--text2);margin-right:4px}
 :target{scroll-margin-top:16px}li:target{background:var(--surface2)}
 figure{margin:14px 0;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px}
@@ -210,8 +194,20 @@ tr.pc-hl td{background:var(--surface2);font-weight:600}
 .pc-st{padding:1px 7px;border-radius:999px;font-size:11px;background:var(--surface2)}
 .pc-st-used{color:var(--success)}.pc-st-stale,.pc-st-empty{color:var(--warning)}.pc-st-failed{color:var(--danger)}
 .pc-st-not_applicable{color:var(--muted)}
+.pc-valid{margin:8px 0 0;font-size:12px;color:var(--text2)}.pc-valid summary{cursor:pointer;min-height:32px;padding:6px 0}
+.pc-valid-ok summary,p.pc-valid-ok{color:var(--success)}.pc-valid-warn summary,p.pc-valid-warn{color:var(--warning)}
+ul.pc-vlist{margin:2px 0 6px;padding-left:18px;font-size:12px;color:var(--text2)}
 @media print{body{background:#fff}section,figure{break-inside:avoid}}
 """
+
+
+def drawable(chart: dict) -> bool:
+    """False for a chart too thin to draw honestly: an EPS-surprise chart of fewer than 3 quarters (one quarter drew a
+    page-wide bar). Stored reports are filtered at render time; the estimates table still lists every quarter."""
+    if chart.get("id") == "eps_surprise":
+        pts = [p for s in chart.get("series") or [] for p in (s.get("points") or []) if len(p) > 1 and p[1] is not None]
+        return len(pts) >= 3
+    return True
 
 
 def css() -> str:
@@ -235,17 +231,6 @@ def _when(v: Any) -> str:
     return str(v or "")[:10]
 
 
-def _fn_item(e: dict, *, anchor: bool = True) -> str:
-    label = escape(e.get("label") or "")
-    val = f": {escape(e['value'])}" if e.get("value") else ""
-    src = escape(e.get("source") or "")
-    when = f" · {escape(_when(e.get('as_of')))}" if e.get("as_of") else ""
-    link = f' <a href="{escape(str(e["url"]))}">link</a>' if str(e.get("url") or "").startswith("https://") else ""
-    ident = f' id="fn-{e["n"]}"' if anchor else ""
-    return (f'<li{ident} value="{e["n"]}" data-fact-id="{escape(e["id"])}"><span class="pc-fn-l">{label}{val}</span>'
-            f'<span class="pc-fn-s"> — {src}{when}</span>{link}</li>')
-
-
 def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | None = None,
          print_mode: bool | None = None) -> str:
     """Self-contained HTML. With ``png_charts`` the figures embed PNGs (for PDF); otherwise inline SVG.
@@ -254,7 +239,6 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
     pres = pr.present(doc)
     notes_list = pres.get("footnotes") or []
     notes = {e["id"]: e for e in notes_list}
-    by_n = {e["n"]: e for e in notes_list}
     sym = escape(doc.get("symbol", ""))
     shown_name = pres.get("display_name") or doc.get("name") or ""
     name = escape(shown_name) if str(shown_name).upper() != str(doc.get("symbol", "")).upper() else ""
@@ -267,9 +251,11 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
              f'<span class="pc-badge {scope}">{"Holding" if scope == "holding" else "Watch list"}</span>'
              f'<span>Version {escape(str(doc.get("version", "")))}</span><span>Generated {escape(str(doc.get("generated_at", ""))[:16])} UTC</span>'
              f'<span>Model {escape(str(doc.get("model") or "n/a"))}</span><span>Cost {_money(doc.get("cost_usd"))}</span>'
-             f"</div></header>"]
+             f"</div>{validation_html(pres.get('validation') or {}, printing)}</header>"]
     figs: dict[str, str] = {}
     for chart in doc.get("charts") or []:
+        if not drawable(chart):
+            continue
         if png_charts is not None:
             data = png_charts.get(chart["id"])
             body = (f'<img alt="{escape(chart.get("title", ""))}" style="width:100%" '
@@ -283,16 +269,10 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
     if status == "partial":
         parts.append('<p class="pc-partial">Partial: ' + escape("; ".join(doc.get("partial_gaps") or [])) + "</p>")
     sections = pr.ordered_sections(doc)
-    sec_notes = pres.get("section_footnotes") or {}
 
     def section_html(sec: dict) -> str:
-        used = [by_n[n] for n in sec_notes.get(str(sec.get("id")), []) if n in by_n]
-        srcs = ""
-        if used and not printing:
-            srcs = (f'<details class="pc-srcs"><summary>Sources ({len(used)})</summary><ol class="pc-fnlist">'
-                    + "".join(_fn_item(e, anchor=False) for e in used) + "</ol></details>")
-        return (f'<section id="{escape(sec["id"])}"><h2>{escape(sec.get("title", ""))}</h2>{md_to_html(sec.get("body_md", ""), notes)}'
-                + srcs + "</section>")
+        return (f'<section id="{escape(sec["id"])}"><h2>{escape(sec.get("title", ""))}</h2>'
+                f'{md_to_html(sec.get("body_md", ""), notes)}</section>')
 
     def table_html(t: dict) -> str:
         head = "".join(f"<th>{escape(c)}</th>" for c in t["columns"])
@@ -304,7 +284,7 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
                 if k == t.get("status_col"):
                     text = f'<span class="pc-st pc-st-{escape(str(cell))}">{escape(str(cell))}</span>'
                 elif str(cell).startswith("https://"):
-                    text = f'<a href="{escape(str(cell))}">EDGAR</a>'
+                    text = f'<a href="{escape(str(cell))}">{"EDGAR" if "sec.gov" in str(cell) else "link"}</a>'
                 else:
                     text = cell_html(cell, notes)
                 cells.append(f"<td>{text}</td>")
@@ -334,20 +314,28 @@ def html(doc: dict, *, png_charts: dict[str, bytes] | None = None, theme: str | 
     if figs:
         parts.append('<div class="pc-charts">' + "".join(figs.values()) + "</div>")
     parts.append(coverage_html(pres.get("coverage") or {}, printing))
-    if notes_list:
-        items = "".join(_fn_item(e) for e in notes_list)
-        if printing:
-            parts.append(f'<section id="sources" class="pc-appendix"><h2>Sources</h2><ol class="pc-fnlist">{items}</ol></section>')
-        else:
-            parts.append(f'<section id="sources" class="pc-appendix"><details class="pc-app-d" open><summary><h2>Sources '
-                         f'<small>({len(notes_list)})</small></h2></summary><ol class="pc-fnlist">{items}</ol></details></section>'
-                         "<script>try{if(matchMedia('(max-width:820px)').matches)document.querySelector('.pc-app-d').open=false;"
-                         "document.querySelectorAll('.pc-fn a').forEach(function(a){a.addEventListener('click',function(){"
-                         "var d=document.querySelector('.pc-app-d');if(d)d.open=true})})}catch(e){}</script>")
     gaps = "; ".join(escape(g) for g in doc.get("gaps") or [])
     parts.append(f'<p class="pc-foot">{escape(doc.get("advisory", ""))}'
                  + (f"<br>Data gaps: {gaps}" if gaps else "") + "</p></main></body></html>")
     return "".join(parts)
+
+
+def validation_html(v: dict, printing: bool) -> str:
+    """ONE validation statement under the header; on screen it opens a compact summary (counts by source type and
+    any unreliable fields) — never a citation list."""
+    if not v or not v.get("line"):
+        return ""
+    cls = {"validated": "ok", "partial": "warn"}.get(str(v.get("status")), "info")
+    line = escape(str(v["line"]))
+    if printing:
+        return f'<p class="pc-valid pc-valid-{cls}" data-validation="{escape(str(v.get("status")))}">{line}</p>'
+    rows = "".join(f"<li>{escape(k)} <b>{int(n)}</b></li>" for k, n in (v.get("by_source") or {}).items())
+    bad = "".join(f"<li>{escape(u['label'])} — {escape(u['reason'])}</li>" for u in v.get("unreliable") or [])
+    reasons = "".join(f"<li>{escape(r)}</li>" for r in v.get("reasons") or [])
+    body = (f'<p class="pc-note">Figures checked by source type</p><ul class="pc-vlist">{rows}</ul>'
+            + (f'<p class="pc-note">Not validated</p><ul class="pc-vlist">{bad}{reasons}</ul>' if (bad or reasons) else ""))
+    return (f'<details class="pc-valid pc-valid-{cls}" data-validation="{escape(str(v.get("status")))}">'
+            f"<summary>{line}</summary>{body}</details>")
 
 
 def coverage_html(cov: dict, printing: bool) -> str:
@@ -373,6 +361,8 @@ def coverage_html(cov: dict, printing: bool) -> str:
 def chart_pngs(doc: dict) -> dict[str, bytes]:
     out = {}
     for chart in doc.get("charts") or []:
+        if not drawable(chart):
+            continue
         data = ch.png(chart, theme="light")
         if data:
             out[chart["id"]] = data
@@ -388,7 +378,7 @@ def pdf(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
 
 
 def _runs(para: Any, text: str, notes: dict[str, dict], rgb: Any, light: dict, *, size: Any = None) -> None:
-    """Add ``text`` to a python-docx paragraph: **bold** runs, citation groups as superscript footnote numbers,
+    """Add ``text`` to a python-docx paragraph: **bold** runs, citation groups removed (kept in the JSON),
     "not reliable (…)" notes muted and italic."""
     text = pr.clean_prose(text)
     known = set(notes)
@@ -396,7 +386,7 @@ def _runs(para: Any, text: str, notes: dict[str, dict], rgb: Any, light: dict, *
     pieces: list[tuple[str, str]] = []
     for m in pr.GROUP_RE.finditer(text):
         ids = pr.split_ids(m.group(1))
-        if not all(pr.FACT_ID_RE.match(i) or i in known for i in ids):
+        if not all(_CITE_ID.match(i) or i in known for i in ids):
             continue
         pieces.append(("t", text[pos:m.start()].rstrip(" ")))
         pieces.append(("n", ",".join(str(notes[i]["n"]) for i in ids if i in notes)))
@@ -405,10 +395,7 @@ def _runs(para: Any, text: str, notes: dict[str, dict], rgb: Any, light: dict, *
     for kind, chunk in pieces:
         if not chunk:
             continue
-        if kind == "n":
-            r = para.add_run(chunk)
-            r.font.superscript = True
-            r.font.color.rgb = rgb(light["info"])
+        if kind == "n":  # citations are not shown (operator 2026-10-27); they stay in the JSON
             continue
         for sub in re.split(r"(\*\*.+?\*\*)", chunk):
             if not sub:
@@ -468,6 +455,13 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
     for run in meta.runs:
         run.font.color.rgb = rgb(light["muted"])
         run.font.size = Pt(8.5)
+    val = pres.get("validation") or {}
+    if val.get("line"):
+        vp = d.add_paragraph(str(val["line"]))
+        for run in vp.runs:
+            run.font.size = Pt(9)
+            run.font.color.rgb = rgb(light["success"] if val.get("status") == "validated" else light["warning"]
+                                     if val.get("status") == "partial" else light["muted"])
 
     def add_table(t: dict) -> None:
         d.add_heading(t["title"], level=1)
@@ -504,7 +498,16 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
         h = d.add_heading(sec.get("title", ""), level=1)
         for run in h.runs:
             run.font.color.rgb = rgb(light["text"])
-        for block in pr.clean_prose(sec.get("body_md", "")).split("\n"):
+        for seg, block in pr.md_segments(pr.clean_prose(sec.get("body_md", ""))):
+            if seg == "table":
+                tbl = d.add_table(rows=1, cols=len(block["head"]))
+                tbl.style = "Light Grid Accent 1"
+                for cell, label in zip(tbl.rows[0].cells, block["head"]):
+                    _runs(cell.paragraphs[0], label, notes, rgb, light)
+                for r in block["rows"]:
+                    for cell, val in zip(tbl.add_row().cells, r):
+                        _runs(cell.paragraphs[0], val, notes, rgb, light)
+                continue
             text = block.strip()
             if not text:
                 continue
@@ -531,19 +534,6 @@ def docx(doc: dict, pngs: dict[str, bytes]) -> bytes | None:
                 r.font.size = Pt(8.5)
                 r2 = cp.add_run(", ".join(x["label"] for x in items))
                 r2.font.size = Pt(8.5)
-    if notes_list:
-        d.add_heading("Sources", level=1)
-        for e in notes_list:
-            fp_ = d.add_paragraph()
-            r = fp_.add_run(f"{e['n']}. ")
-            r.bold = True
-            r.font.size = Pt(8)
-            r = fp_.add_run(f"{e['label']}{': ' + e['value'] if e.get('value') else ''}")
-            r.font.size = Pt(8)
-            r = fp_.add_run(f" — {e.get('source') or ''}{(' · ' + _when(e.get('as_of'))) if e.get('as_of') else ''}")
-            r.font.size = Pt(8)
-            r.font.color.rgb = rgb(light["muted"])
-            fp_.paragraph_format.space_after = Pt(1)
     foot = d.add_paragraph(doc.get("advisory", ""))
     for run in foot.runs:
         run.font.size = Pt(8)
