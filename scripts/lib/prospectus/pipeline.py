@@ -113,6 +113,26 @@ def due_rows(universe: list[dict], index: dict, sources: Any, cfg: dict, *, now:
     return out
 
 
+_HOLDINGS_MEMO: dict[str, Any] = {"sources": None, "holdings": {}}
+
+
+def _stop_or_position_change(sources: Any, sym: str, digest: dict) -> str | None:
+    """``stop_event``: the resting stop levels differ from the ones the stored report was written with (a stop moved,
+    filled or was placed), or the name is no longer held. config/prospectus.json enabled this trigger but nothing read
+    it, so a report kept showing the old share count and stop after a stop fill (accuracy audit 2026-10-26)."""
+    if _HOLDINGS_MEMO["sources"] is not sources:  # one holdings read per due_rows pass (same sources object)
+        _HOLDINGS_MEMO.update(sources=sources, holdings=sources.holdings() or {})
+    hold = _HOLDINGS_MEMO["holdings"].get(sym)
+    if not hold:
+        return "position_closed"
+    if "stop_levels" not in digest:
+        return None
+    levels = sorted(round(float(s["stop_price"]), 4) for s in (sources.stops(sym, hold.get("accounts") or []) or [])
+                    if s.get("stop_price") is not None)
+    was = sorted(round(float(v), 4) for v in (digest.get("stop_levels") or []) if v is not None)
+    return "stop_event" if levels != was else None
+
+
 def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, trig: dict) -> str | None:
     try:
         if trig.get("material_news"):
@@ -123,6 +143,10 @@ def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, tr
             bars = [b for b in (sources.bars(sym) or [])[-2:] if b.get("close")]
             if len(bars) == 2 and abs(float(bars[1]["close"]) / float(bars[0]["close"]) - 1) * 100 >= float(trig["day_move_abs_pct"]):
                 return "day_move"
+        if scope == "holding" and trig.get("stop_event"):
+            reason = _stop_or_position_change(sources, sym, digest)
+            if reason:
+                return reason
         cio = sources.cio(sym) or {}
         if scope == "holding" and trig.get("cio_stance_change") and digest.get("cio_stance") != cio.get("stance") and cio.get("stance"):
             return "cio_stance_change"

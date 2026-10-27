@@ -24,7 +24,7 @@ from typing import Any, Callable, Optional
 from . import blocks as bk
 from .inputs import Bundle, _f, _iso, _plib
 
-FRED = {"FEDFUNDS": "Fed funds rate %", "DGS10": "10-year Treasury yield %", "T10Y2Y": "10y-2y Treasury spread %",
+FRED = {"FEDFUNDS": "Fed funds rate %", "DFF": "Fed funds effective rate %", "DGS10": "10-year Treasury yield %", "T10Y2Y": "10y-2y Treasury spread %",
         "CPIAUCSL": "CPI index", "PCEPILFE": "Core PCE index", "UNRATE": "Unemployment rate %",
         "PAYEMS": "Nonfarm payrolls (thousands)", "BAMLH0A0HYM2": "High-yield OAS spread %",
         "DTWEXBGS": "Trade-weighted dollar index", "DCOILWTICO": "WTI crude $/bbl", "VIXCLS": "VIX"}
@@ -126,15 +126,27 @@ def r_quote(ctx: Ctx):
     return ([q] if q else []), (q or {}).get("as_of"), {}
 
 
+#: Snapshot keys that duplicate a house fact (the close) or carry a scraper placeholder when empty.
+TECH_SKIP = {"price"}
+TECH_PLACEHOLDER_ZERO = {"target", "change_pct"}
+
+
 def r_technicals(ctx: Ctx):
+    """technical_snapshot.json rows, dated by ``_meta.last_updated``. The snapshot's own ``price`` is not offered (the
+    house close is the price of record; the snapshot's is a pre-market copy of an earlier session) and a zero
+    ``target`` / ``change_pct`` is a scraper placeholder, not a value (accuracy audit 2026-10-26)."""
     doc = json.loads((ctx.sources.state_root / "data/portfolios/state/technical_snapshot.json").read_text(encoding="utf-8"))
     row = (doc.get("symbols") or doc).get(ctx.bundle.symbol) if isinstance(doc, dict) else None
+    meta = doc.get("_meta") if isinstance(doc, dict) and isinstance(doc.get("_meta"), dict) else {}
+    as_of = (doc.get("as_of") or doc.get("generated_at") or meta.get("last_updated")) if isinstance(doc, dict) else None
     if isinstance(row, dict):
-        for k, v in list(row.items())[:12]:
-            if _f(v) is not None:
-                ctx.bundle.add("technicals", f"Technical snapshot: {k}", value=v, source="technical_snapshot.json",
-                               as_of=doc.get("as_of") or doc.get("generated_at"))
-    return ([row] if row else []), (doc or {}).get("as_of") if isinstance(doc, dict) else None, {}
+        n = 0
+        for k, v in row.items():
+            if n >= 12 or k in TECH_SKIP or _f(v) is None or (k in TECH_PLACEHOLDER_ZERO and _f(v) == 0.0):
+                continue
+            ctx.bundle.add("technicals", f"Technical snapshot: {k}", value=v, source="technical_snapshot.json", as_of=as_of)
+            n += 1
+    return ([row] if row else []), as_of, {}
 
 
 def r_regime(ctx: Ctx):
@@ -211,11 +223,11 @@ def r_macro(ctx: Ctx):
                            value=block["rate_beta_10y"] * 100, source="derived: ticker_prices vs FRED DGS10", as_of=closes[-1][0])
     try:
         cal = json.loads((ctx.sources.state_root / "data/runtime/macro_calendar.json").read_text(encoding="utf-8"))
-        events = cal.get("events") if isinstance(cal, dict) else cal
-        upcoming = [e for e in events or [] if isinstance(e, dict) and str(e.get("date") or e.get("at") or "") >= ctx.now.date().isoformat()
-                    and any(k in json.dumps(e).upper() for k in ("CPI", "FOMC", "PCE", "PAYROLL", "JOBS"))][:6]
+        upcoming = [e for e in calendar_events(cal) if str(e.get("date") or "") >= ctx.now.date().isoformat()
+                    and any(k in json.dumps(e).upper() for k in ("CPI", "FOMC", "PCE", "PAYROLL", "JOBS", "EMPLOYMENT"))][:6]
         for e in upcoming:
-            ctx.bundle.add("macro", f"Upcoming macro event: {e.get('name') or e.get('event')}", text=str(e.get("date") or e.get("at"))[:10],
+            ctx.bundle.add("macro", f"Upcoming macro event: {e.get('name') or e.get('event')}", text=str(e.get("date"))[:10]
+                           + (f" {e['time_et']} ET" if e.get("time_et") else ""),
                            source="macro_calendar.json (macro_calendar_refresh)", as_of=cal.get("generated_at") if isinstance(cal, dict) else None)
         block["next_events"] = upcoming
     except (OSError, ValueError, AttributeError):
@@ -223,23 +235,83 @@ def r_macro(ctx: Ctx):
     return rows, max((r[-1][0] for r in by.values() if r), default=None), {"macro_sensitivity": block}
 
 
+FUNDAMENTAL_MAX_AGE_DAYS = 30
+XBRL_METRICS = ("revenue", "operating_income", "net_income", "eps_diluted", "gross_profit", "operating_cash_flow",
+                "capex", "cash", "long_term_debt", "shares_outstanding", "remaining_performance_obligation")
+
+
 def r_fundamentals(ctx: Ctx):
-    rows = _sql(ctx, "SELECT source, metric_name, metric_value, period FROM fundamental_data WHERE upper(symbol) = %s "
-                     "ORDER BY metric_name LIMIT 60", (ctx.bundle.symbol,))
+    """fundamental_data rows dated by ``fetched_at``; rows older than FUNDAMENTAL_MAX_AGE_DAYS are withheld (the
+    alpha_vantage rows were six months old and undated, so a stale 52-week high and 50-day average contradicted the
+    house closes), plus SEC XBRL statement lines (latest two periods per metric) from ``sec_xbrl``."""
+    rows = _sql(ctx, "SELECT source, metric_name, metric_value, period, fetched_at FROM fundamental_data "
+                     "WHERE upper(symbol) = %s ORDER BY metric_name LIMIT 60", (ctx.bundle.symbol,))
+    fresh, withheld = [], []
     for r in rows:
+        at = _dt_any(r.get("fetched_at"))
+        if at is not None and (ctx.now - at).days > FUNDAMENTAL_MAX_AGE_DAYS:
+            withheld.append(r)
+            continue
+        fresh.append(r)
         ctx.bundle.add("fundamental", f"{r.get('metric_name')} ({r.get('period') or 'latest'})", value=r.get("metric_value"),
-                       source=f"fundamental_data ({r.get('source')})")
+                       source=f"fundamental_data ({r.get('source')})", as_of=r.get("fetched_at"))
+    if withheld:
+        srcs = sorted({str(r.get("source")) for r in withheld})
+        ctx.bundle.gaps.append(f"fundamental_data: {len(withheld)} row(s) from {', '.join(srcs)} older than "
+                               f"{FUNDAMENTAL_MAX_AGE_DAYS} days withheld")
     xbrl = []
     try:
-        xbrl = _sql(ctx, "SELECT * FROM sec_xbrl WHERE upper(symbol) = %s ORDER BY 1 DESC LIMIT 12", (ctx.bundle.symbol,))
-        for r in xbrl:
-            name, val = r.get("concept") or r.get("tag") or r.get("metric"), r.get("value") or r.get("val")
-            if name and _f(val) is not None:
-                ctx.bundle.add("fundamental", f"SEC XBRL {name} ({r.get('period') or r.get('fy') or ''})", value=val,
-                               source="sec_xbrl (sec_fundamentals_ingest)", as_of=r.get("filed") or r.get("filed_at"))
+        xbrl = _sql(ctx, "SELECT metric_name, metric_value, unit, period_start, period_end, filing_date, form_type, sec_url "
+                         "FROM sec_xbrl WHERE upper(symbol) = %s ORDER BY period_end DESC, filing_date DESC LIMIT 80",
+                    (ctx.bundle.symbol,))
     except Exception:  # noqa: BLE001 - optional companion table
-        pass
-    return rows + xbrl, None, {}
+        xbrl = []
+    kept: list[dict] = []
+    for metric in XBRL_METRICS:
+        periods: list[str] = []
+        for r in xbrl:
+            pe = str(r.get("period_end") or "")[:10]
+            if r.get("metric_name") != metric or _f(r.get("metric_value")) is None or pe in periods or len(periods) >= 2:
+                continue
+            periods.append(pe)
+            kept.append(r)
+            span = f"{str(r.get('period_start') or '')[:10]}–{pe}" if r.get("period_start") else f"as of {pe}"
+            ctx.bundle.add("fundamental", f"SEC XBRL {metric.replace('_', ' ')} ({span}, {r.get('form_type') or 'filing'})",
+                           value=r.get("metric_value"), unit="$" if metric not in ("shares_outstanding",) else "",
+                           source="sec_xbrl (sec_fundamentals_ingest)", as_of=r.get("filing_date"), url=r.get("sec_url"))
+    as_of = max((str(r.get("fetched_at")) for r in fresh if r.get("fetched_at")), default=None)
+    return fresh + kept, as_of, {}
+
+
+def _dt_any(v: Any) -> Optional[datetime]:
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        out = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return out if out.tzinfo else out.replace(tzinfo=timezone.utc)
+
+
+def calendar_events(cal: Any) -> list[dict]:
+    """Events from ``MacroCalendar@v1`` (``dates: {YYYY-MM-DD: {events: [...]}}`` plus ``fomc_decisions``), or from a
+    flat ``events`` list. The reader used to look only for a top-level ``events`` key, which the calendar never has."""
+    out: list[dict] = []
+    if isinstance(cal, list):
+        return [e for e in cal if isinstance(e, dict)]
+    if not isinstance(cal, dict):
+        return out
+    for e in cal.get("events") or []:
+        if isinstance(e, dict):
+            out.append(dict(e, date=str(e.get("date") or e.get("at") or "")[:10]))
+    for day, entry in sorted((cal.get("dates") or {}).items()):
+        for e in (entry or {}).get("events") or []:
+            if isinstance(e, dict):
+                out.append(dict(e, date=str(day)[:10]))
+    for day in cal.get("fomc_decisions") or []:
+        if not any(e.get("date") == str(day)[:10] and "FOMC" in json.dumps(e).upper() for e in out):
+            out.append({"date": str(day)[:10], "event": "FOMC", "name": "FOMC rate decision"})
+    return sorted(out, key=lambda e: (e.get("date") or "", str(e.get("time_et") or "")))
 
 
 def r_agent_debate(ctx: Ctx):
@@ -555,4 +627,54 @@ def full_assemble(sources: Any, symbol: str, scope: str, *, cfg: dict, holding: 
         b.blocks["stop_plan"] = stop_plan(sources, b, holding=holding, cfg=cfg, now=now)
     from .extensions import attach as attach_extensions  # my_history + fund category / profile / house scenarios / macro effect
     attach_extensions(sources, b, cfg=cfg, holding=holding, now=now, bars=bars or [])
+    try:
+        dividend_guard(b, sources)
+    except Exception as exc:  # noqa: BLE001 - a guard failure is a recorded gap, never a failed prospectus
+        b.gaps.append(f"dividend cross-check not run: {type(exc).__name__}")
     return b
+
+
+DIVIDEND_TOLERANCE = 0.25  # annual $/share vs the trailing year of ex-dates
+
+
+def dividend_guard(b: Bundle, sources: Any) -> Optional[dict]:
+    """Cross-check ``ticker_dividend_data.annual_dividend_per_share`` against the ex-date history.
+
+    The fmp_api rows in ticker_dividend_data (last written 2026-09-11) carry 3–5x the real annual distribution for
+    several funds; the prospectus printed them as
+    the annual dividend (accuracy audit 2026-10-26). The reference is the fund profile's trailing-12-month
+    distribution when present, else the sum of ``ticker_dividends`` ex-dates in the 350 days up to the newest one. On a
+    disagreement beyond DIVIDEND_TOLERANCE the number is withheld (the fact keeps the reason, the tile prints n/a)."""
+    rows = []
+    try:
+        rows = [dict(r) for r in (sources.db()("SELECT ex_date, amount FROM ticker_dividends WHERE upper(symbol) = %s "
+                                               "ORDER BY ex_date DESC LIMIT 24", (b.symbol,), fetch="all") or [])]
+    except Exception:  # noqa: BLE001
+        rows = []
+    pts = [(str(r.get("ex_date"))[:10], _f(r.get("amount"))) for r in rows if _f(r.get("amount"))]
+    ttm = None
+    if pts:
+        newest = max(d for d, _ in pts)
+        cut = (datetime.fromisoformat(newest) - timedelta(days=350)).date().isoformat()
+        ttm = round(sum(a for d, a in pts if cut < d <= newest), 4)
+        b.add("fundamental", "Dividends paid, trailing year to the latest ex-date ($/share)", value=ttm, unit="$",
+              source="ticker_dividends (ex-date history)", as_of=newest)
+    fund_ttm = _f(((b.blocks.get("fund_profile") or {}).get("ttm_distribution")))
+    ref, ref_src = (fund_ttm, "fund trailing-12-month distribution") if fund_ttm else (ttm, "ex-date history")
+    dps = next((f for f in b.facts if f.get("label") == "Annual dividend per share" and "value" in f), None)
+    if not dps or not ref:
+        return None
+    if abs(dps["value"] - ref) / ref <= DIVIDEND_TOLERANCE:
+        return None
+    bad = dps["value"]
+    dps.pop("value", None)
+    dps.pop("unit", None)
+    dps["unreliable"] = "dividend_cross_source"
+    dps["text"] = (f"not reliable (dividend_cross_source): ticker_dividend_data says {bad:g} $/share; the {ref_src} "
+                   f"is {ref:g} $/share")
+    osd = (b.blocks.get("options_sentiment_dividends") or {}).get("dividend")
+    if isinstance(osd, dict):
+        osd["annual_per_share"] = None
+        osd["annual_per_share_unreliable"] = dps["text"]
+    b.gaps.append(f"dividends: annual dividend per share withheld — {dps['text']}")
+    return {"withheld": bad, "reference": ref, "basis": ref_src}
