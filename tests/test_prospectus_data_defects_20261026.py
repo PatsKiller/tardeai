@@ -34,7 +34,7 @@ QUARANTINE_SCRIPT = "scripts/ops/quarantine_bad_price_bars.py"
 def _days(start: date, n: int) -> list[str]:
     out, d = [], start
     while len(out) < n:
-        if d.weekday() < 5:
+        if bk.is_session(d):  # NYSE sessions only (weekends and holidays are not bars)
             out.append(d.isoformat())
         d += timedelta(days=1)
     return out

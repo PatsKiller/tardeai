@@ -36,6 +36,20 @@ turn, which is the first paid call) and `pipeline.run_queue()`. READ_ONLY_ADVISO
 | `filing_cik_mismatch` | SOFT | a filing under a different CIK than the issuer's |
 | `no_stop_state` | SOFT | holding with no recorded stop state |
 | `no_analyst_or_fund_profile` | SOFT | neither analyst coverage nor a fund profile |
+| `dividend_cross_source` | SOFT | annual dividend $/share more than 25% off what was paid in the trailing year |
+| `stale_fundamental_rows` | SOFT | a `fundamental_data` fact undated or older than 30 days |
+| `stale_technical_snapshot` | SOFT | technical snapshot price more than 3% off the last close |
+| `quote_close_contradiction` | SOFT | latest quote and last close more than 20% apart |
+| `position_arithmetic` | SOFT | market value ≠ shares × price (1%), or P/L ≠ value − cost ($1) |
+| `stop_level_contradiction` | SOFT | a stop level in the position facts differs from the stop plan's broker row |
+| `non_session_bars` | SOFT | a Saturday, Sunday or NYSE-holiday bar in the price series |
+| `fund_lookthrough_dropped` | SOFT | the fund profile shows no top holdings while the look-through block lists them |
+| `open_lot_pl_missing` | SOFT | an open lot with value and cost but no unrealized P/L |
+
+The last nine codes come from the accuracy audit of 2026-10-26. Each is the packet-only form of a defect that the
+audit found by recomputing a written report from the primary stores. The ceiling for `market_cap_units` rose from
+$5T to $50T in the same change, because two real mega-caps had crossed $5T and their caps were being marked not
+reliable.
 
 Thresholds: `DEFAULTS` in the module, overridable by an optional `config/prospectus_quality_gate.json`. Where the
 concurrent data-defect fixes exist (`blocks.series_quality`, `domains.transcript_rejection`) the gate calls them;

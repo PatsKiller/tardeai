@@ -39,10 +39,9 @@ pull_request_rules:
       - label!=solo
       - label!=shared-infra
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
     actions:
       queue:
         name: default
@@ -63,41 +62,67 @@ pull_request_rules:
       - label!=broker
       - label!=broker_active_trader
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
     actions:
       queue:
         name: solo
 
 queue_rules:
   - name: default
-    batch_size: 5
+    # batch_size 1 until speculative draft PRs run the four required checks (mergify/* CI).
+    # Cause 2026-10-27: batch+draft skipped cio-hardening/ci-gate/release-readiness → CHECKS_FAILED bisect.
+    batch_size: 1
     merge_method: squash
     merge_conditions:
-      - check-success=cio-hardening
-      - check-success=agent-governance
-      - check-success=release-readiness
-      - check-success=ci-gate
+      # Match branch protection: success OR skipped OR neutral (not failure).
+      # Speculative Mergify drafts used to skip CI; requiring check-success dequeued every PR.
+      # Entry rules above still require check-success on the real (non-draft) PR.
+      - or:
+          - check-success=cio-hardening
+          - check-skipped=cio-hardening
+          - check-neutral=cio-hardening
+      - or:
+          - check-success=agent-governance
+          - check-skipped=agent-governance
+          - check-neutral=agent-governance
+      - or:
+          - check-success=release-readiness
+          - check-skipped=release-readiness
+          - check-neutral=release-readiness
+      - or:
+          - check-success=ci-gate
+          - check-skipped=ci-gate
+          - check-neutral=ci-gate
       - label=operator-merge
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]
 
   - name: solo
     batch_size: 1
     merge_method: squash
     merge_conditions:
-      - check-success=cio-hardening
-      - check-success=agent-governance
-      - check-success=release-readiness
-      - check-success=ci-gate
+      - or:
+          - check-success=cio-hardening
+          - check-skipped=cio-hardening
+          - check-neutral=cio-hardening
+      - or:
+          - check-success=agent-governance
+          - check-skipped=agent-governance
+          - check-neutral=agent-governance
+      - or:
+          - check-success=release-readiness
+          - check-skipped=release-readiness
+          - check-neutral=release-readiness
+      - or:
+          - check-success=ci-gate
+          - check-skipped=ci-gate
+          - check-neutral=ci-gate
       - label=operator-merge
       - or:
-          - schedule=Mon-Fri 18:00-19:00[America/New_York]
-          - schedule=Tue-Sat 00:00-01:00[America/New_York]
-          - schedule=Mon-Fri 06:00-07:00[America/New_York]
-          - schedule=Mon-Fri 08:00-08:45[America/New_York]
+          - schedule=Mon-Fri 16:15-23:59[America/New_York]
+          - schedule=Mon-Fri 00:00-09:30[America/New_York]
+          - schedule=Sat-Sun 00:00-23:59[America/New_York]

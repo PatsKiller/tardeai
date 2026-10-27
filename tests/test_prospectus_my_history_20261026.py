@@ -199,7 +199,7 @@ def test_lessons_are_deterministic_stats():
     block = my_history.build(FakeHistoryReader(), _bundle(), holding={"shares": 40}, now=NOW)
     stats = {s["id"]: s for s in block["lessons"]["stats"]}
     assert stats["payoff"]["value"] == pytest.approx(round(127.5 / 150.0, 2))
-    assert stats["stop_rate"]["value"] == pytest.approx(100.0)  # both journaled trips ended at a stop
+    assert stats["stop_rate"]["value"] == pytest.approx(66.7)  # 2 of 3 round trips ended at a stop (journal or broker fill)
     assert stats["reentry_after_loss"]["value"] == 1
     assert stats["hold_median"]["value"] == 60
     assert {n["trip"] for n in block["lessons"]["journal_notes"]} == {2, 3}
@@ -532,7 +532,7 @@ def test_end_to_end_writer_note_house_scenarios_and_renders(tmp_path):
     assert "scenarios_house" not in doc["blocks"]
     html = render.html(doc)
     assert html.index('id="block-my_history"') < html.index('id="summary_verdict"')
-    assert 'id="block-fund_profile"' in html and "Trip" not in html.split('id="block-my_history"')[0]
+    assert 'id="block-fund_structure"' in html and "Trip" not in html.split('id="block-my_history"')[0]
     assert "fixture_" not in html
     data = render.docx(doc, {})
     if data is not None:
