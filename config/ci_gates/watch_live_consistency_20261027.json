@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_live_consistency_20261027",
+  "files": [
+    "tests/test_watch_live_consistency_20261027.py"
+  ],
+  "anchor": "WATCH_LIVE_CONSISTENCY_20261027",
+  "comment": [
+    "ANCHOR: WATCH_LIVE_CONSISTENCY_20261027; canonical readiness, retained resolved history, and source factor provenance."
+  ]
+}

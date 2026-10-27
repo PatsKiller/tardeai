@@ -76,21 +76,28 @@ export function conflictSection(row: ProspectRow): ConflictSection {
  *  with, or used to classify, engine findings. */
 export function legacyConflicts(row: ProspectRow) {
   const section = conflictSection(row)
-  return !section.headline && section.gap ? row.conflicts || [] : []
+  return !section.headline && section.gap ? (row.conflicts || []).filter(c => c.resolved !== true) : []
 }
 
 function LegacyConflictFlags({ r, cio }: { r: ProspectRow; cio: CioReviewController }) {
   const flags = legacyConflicts(r)
-  if (!flags.length) return null
+  const section = conflictSection(r)
+  const history = !section.headline && section.gap ? (r.conflicts || []).filter(c => c.resolved === true) : []
+  if (!flags.length && !history.length) return null
   const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
   return <div data-testid="watch-detail-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-    <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>
+    {flags.length > 0 && <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>}
     {flags.map((c, i) => <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
       <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
       <div><b>{String(c.a?.value ?? '—')}</b> · {c.a?.source || '—'} · {when(c.a?.at ?? null)}</div>
       <div><b>{String(c.b?.value ?? '—')}</b> · {c.b?.source || '—'} · {when(c.b?.at ?? null)}</div>
     </div>)}
-    <CioReviewPanel row={r} cio={cio} />
+    {history.map((c, i) => <div key={`history-${i}`} data-testid="watch-resolved-history" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>
+      <b>Resolved history: {c.summary}</b>
+      <div>{String(c.a?.value ?? '—')} · {c.a?.source || '—'} · {when(c.a?.at ?? null)}</div>
+      <div>{String(c.b?.value ?? '—')} · {c.b?.source || '—'} · {when(c.b?.at ?? null)}</div>
+    </div>)}
+    {flags.length > 0 && <CioReviewPanel row={r} cio={cio} />}
   </div>
 }
 
@@ -211,22 +218,34 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
   const own = useCioReview()
   const cio = shared || own
   if (!r) return <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a symbol to see its full record and where it appears.</div>
+  const sourceFactors = r.conviction_components_scope === 'lower_source_factors'
+  const sourceScore = r.source_signal?.conviction
   return (
     <div data-testid="watch-detail" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.lg + 2 }}>{r.symbol}</span>
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{companyDisplayName({ value: r.company ?? null, display_name: r.company_facts?.company?.display_name }) || ''}</span>
       </div>
-      <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>
+        {sourceFactors && <b>Source setup context: </b>}{r.summary}
+      </div>
       <div><ProspectusLink symbol={r.symbol} testId="watch-detail-prospectus" /></div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />
       <div data-testid="watch-detail-why" style={{ fontSize: TYPE.base, lineHeight: 1.5 }}><b>Why here:</b> {r.why}</div>
       {(r as ListRow).expiry_suggestion && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Review suggested: {(r as ListRow).expiry_suggestion?.suggest}</div>}
       <PositionDetail r={r as ListRow} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-components">
-        <span style={label} title={TOOLTIPS.conviction}>
-          Conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of
+        {sourceFactors && <span data-testid="watch-canonical-conviction" style={label}>
+          CIO conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} · {fmtAsOf(r.conviction_as_of) || 'time unavailable'}
+        </span>}
+        <span style={label} title={TOOLTIPS.conviction} data-testid="watch-factor-heading">
+          {sourceFactors
+            ? `Source factor scores · source conviction ${sourceScore == null ? 'unavailable' : sourceScore.toFixed(0)}`
+            : `Conviction ${r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of`}
         </span>
+        {sourceFactors && <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }} data-testid="watch-factor-asof">
+          Source evidence {fmtAsOf(r.source_signal?.as_of) || 'time unavailable'}
+        </span>}
         {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>Conviction factors not recorded.</span>}
         {r.conviction_components.map(c => (
           <div key={c.key} title={[c.detail, c.source ? `source: ${c.source}` : null, c.weight != null ? `weight ${Math.round(c.weight * 100)}%` : null].filter(Boolean).join(' · ')}

@@ -8,7 +8,7 @@ authority and concurrency checks. Readers never invoke this module.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -21,7 +21,30 @@ def pending_request(root, symbol):
     if not state.get("open") or not state.get("request_id"):
         return None
     rows = queue._rows(Path(root).joinpath(*queue.RELPATH))
-    return next((r for r in reversed(rows) if r.get("request_id") == state["request_id"]), None)
+    request = next(
+        (r for r in reversed(rows) if r.get("request_id") == state["request_id"] and r.get("symbol") == symbol), None
+    )
+    # Pre-GUID requests contained only a symbol. Revalidate those through the existing
+    # registry at processing time; never rewrite their queue history or treat an
+    # explicitly unresolved/changed modern request as a legacy one (2026-10-27).
+    if not request or any(key in request for key in ("identity_status", "security_guid", "identity_binding")):
+        return request
+    from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity
+
+    identity = resolve_security_identity(symbol, root=root)
+    guid = identity.get("security_guid")
+    if identity.get("identity_status") != "CONFIRMED" or not is_registry_guid(guid):
+        return request
+    return {
+        **request,
+        "identity_status": "CONFIRMED",
+        "security_guid": guid,
+        "identity_binding": {
+            "basis": "current_registry_readback_for_legacy_request",
+            "security_guid": guid,
+            "bound_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
 
 
 def request_blocker(root, request, *, identity_resolver=None):

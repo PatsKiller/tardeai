@@ -29,7 +29,7 @@ export function rowZone(row: ListRow): [number | null, number | null] {
 }
 
 export function blockingReasons(row: ListRow): string[] {
-  const ranked = [...row.conflicts].sort((a, b) => (a.kind === 'trade_ai_block' ? 0 : 1) - (b.kind === 'trade_ai_block' ? 0 : 1))
+  const ranked = row.conflicts.filter(c => c.resolved !== true).sort((a, b) => (a.kind === 'trade_ai_block' ? 0 : 1) - (b.kind === 'trade_ai_block' ? 0 : 1))
   const reasons = ranked.map(c => c.summary).filter(Boolean)
   const state = String(row.trade_ai_state || '').toUpperCase()
   if (!reasons.length && ['DETERMINISTIC_FAIL', 'BLOCK', 'BLOCKED', 'NOGO', 'NO_GO', 'AVOID'].includes(state)) reasons.push(`Trade AI ${state.replace(/_/g, ' ').toLowerCase()}`)
@@ -38,7 +38,7 @@ export function blockingReasons(row: ListRow): string[] {
 }
 
 export function cardRail(row: ListRow): RailState {
-  if (row.conflicts.length) return 'breach'
+  if (row.conflicts.some(c => c.resolved !== true)) return 'breach'
   if (blockingReasons(row).length || ['resolve_conflict', 'cio_missing', 'review_add', 'decide'].includes(row.next_action.kind)) return 'attention'
   return row.lane === 'actionable' ? 'favorable' : 'neutral'
 }
