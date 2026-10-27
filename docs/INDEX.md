@@ -2009,6 +2009,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan |
 | `docs/ops/HOME_DO_NOW_2026-10-22.md` | Command Center Home — the "Do now" layout (2026-10-22) |
 | `docs/ops/HOME_REVERT_20261025.md` | Home: restore the pre-Board-14 Do now page |
+| `docs/ops/INCIDENT_LEDGER.md` | Incident ledger, watchers and supervisor |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
 | `docs/ops/JSONL_ARCHIVE_ROTATION.md` | JSONL archive rotation — the oversized append-only stores |
@@ -2061,8 +2062,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROSPECTUS_BACKEND.md` | Ticker Prospectus — backend |
 | `docs/ops/PROSPECTUS_MY_HISTORY.md` | Ticker Prospectus — My history and fund gaps |
 | `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate |
-| `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md` | Ticker Prospectus — run windows and delivery |
+| `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check |
 | `docs/ops/PUSH_POLICY_V2_CI.md` | Push policy v2 — the CI half: draft PRs are cheap, ready PRs run everything |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed |
