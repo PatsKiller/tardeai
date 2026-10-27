@@ -97,6 +97,35 @@ def test_classify_conflicts():
     assert "rebase" in plan.message.lower()
 
 
+def test_classify_cleared_conflict_auto_requeues_after_hotfix():
+    """Historical CONFLICTS dequeue + now MERGEABLE + green checks → resubmit, not dead end."""
+    green = {
+        "cio-hardening": "SUCCESS",
+        "agent-governance": "SUCCESS",
+        "release-readiness": "SUCCESS",
+        "ci-gate": "SUCCESS",
+    }
+    waiting = classify_dequeue(
+        reason_code="CONFLICTS",
+        body="Conflicts with base branch",
+        mergeable="MERGEABLE",
+        checks=green,
+        hotfix_on_main=False,
+    )
+    assert waiting.action == "wait_hotfix"
+    assert waiting.requeue is False
+    ready = classify_dequeue(
+        reason_code="CONFLICTS",
+        body="Conflicts with base branch",
+        mergeable="MERGEABLE",
+        checks=green,
+        hotfix_on_main=True,
+    )
+    assert ready.classification == "CLEARED_READY"
+    assert ready.action == "auto_requeue"
+    assert ready.requeue is True
+
+
 def test_hotfix_landed_detects_skip_tolerant_yml():
     assert hotfix_landed("merge_conditions:\n  - check-skipped=cio-hardening\n") is True
     assert hotfix_landed("batch_size: 5\ncheck-success=*\n") is False
