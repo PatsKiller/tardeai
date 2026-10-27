@@ -1,0 +1,13 @@
+{
+  "schema": "ProspectusPrintConfig@v1",
+  "_note": "PDF + Word downloads made from the HTML report (scripts/lib/prospectus/print_render.py, docs/ops/PROSPECTUS_PRINT.md): headless Chromium print-to-PDF and LibreOffice HTML->DOCX; any failure falls back to WeasyPrint / python-docx with a logged reason. Build job only, one render at a time. Own file so it does not collide with concurrent edits to config/prospectus.json.",
+  "enabled": true,
+  "paper": "Letter",
+  "margin_in": {"top": 0.75, "bottom": 0.7, "left": 0.6, "right": 0.6},
+  "chromium_timeout_s": 90,
+  "soffice_timeout_s": 120,
+  "lock_wait_s": 300,
+  "chart_scale": 2,
+  "docx_font": "Calibri",
+  "docx_image_width_px": 672
+}

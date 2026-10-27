@@ -548,10 +548,8 @@ def render_all(doc: dict) -> dict[str, bytes]:
     files = {"prospectus.html": html(doc).encode("utf-8")}
     for cid, data in pngs.items():
         files[f"charts/{cid}.png"] = data
-    pdf_bytes = pdf(doc, pngs)
-    if pdf_bytes:
-        files["prospectus.pdf"] = pdf_bytes
-    docx_bytes = docx(doc, pngs)
-    if docx_bytes:
-        files["prospectus.docx"] = docx_bytes
+    # PDF / Word downloads: Chromium print + LibreOffice from the same HTML (print_render); each format falls back
+    # to the WeasyPrint / python-docx renderer below with a logged reason.
+    from . import print_render  # noqa: PLC0415
+    files.update(print_render.render_print(doc, pngs, fallback_pdf=pdf, fallback_docx=docx))
     return files
