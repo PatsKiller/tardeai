@@ -407,6 +407,7 @@ REQUIRED_HELD = [
     "scripts/pr_merge_digest.py", ".mergify.yml", "config/merge_hold_paths.json",
     "scripts/lib/deploy_on_main.py", "scripts/deploy_on_main_poll.py", "scripts/cio_phase2_exact_main_deploy.sh",
     "scripts/emergency_manual_promote.sh", "scripts/lib/release_grant_binding.py",
+    "scripts/lib/deploy_delegation_binding.py",
 ]
 
 NOT_HELD = ["docs/ops/x.md", "scripts/lib/news_feed.py", "apps/command-center-v3/src/pages/Home.tsx",

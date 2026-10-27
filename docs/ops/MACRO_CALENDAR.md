@@ -1,8 +1,8 @@
 # Macro calendar — may the release train use the 08:00 ET window?
 
 ```
-Status:      PROPOSED (branch feat/macro-calendar-20261021; lane macro-calendar-refresh at SHADOW, contract DRAFT)
-as_of:       2026-10-21T21:30:00-04:00
+Status:      ACTIVE (lane macro-calendar-refresh at CANARY, dispatch live since 2026-10-26; contract REVIEWED 2026-10-21)
+as_of:       2026-10-26T23:35:00-04:00
 Measured at: base d55da84d0 (origin/main); FRED live dry run NOT measured — FRED in maintenance (§8)
 Owner:       platform
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
@@ -25,7 +25,7 @@ host controller decides, and the calendar fails closed.**
 | Overrides | `config/macro_calendar_overrides.json` (`MacroCalendarOverrides@v1`) | FOMC decision dates for 2026–2027, plus operator `add` / `remove` rows. Each row needs a reason. |
 | Calendar | `<state root>/data/runtime/macro_calendar.json` (`MacroCalendar@v1`) | Per-date events, the 08:30 flag, the 08:00 skip flag, source receipts, `fetched_at` and `valid_through`. |
 | Reader | `scripts/lib/macro_calendar.py` | `skip_0800(day) -> (skip, reason)`, `verdict(day, now)` and `ReleaseTrainCalendar`. Pure stdlib, no network, never writes. |
-| Lane | `macro-calendar-refresh` (n8n dispatcher, ingest class, daily `5 5 * * *` ET, SHADOW) | Registry row, allowlist entry (`--dry-run`, `live_arg` null, env enforce), DRAFT health contract and cron-inventory row. No crontab line. |
+| Lane | `macro-calendar-refresh` (n8n dispatcher, ingest class, daily `5 5 * * *` ET, CANARY / dispatch live since 2026-10-26) | Registry row, allowlist entry (`--dry-run`, `live_arg` `[]`, env enforce), REVIEWED health contract and cron-inventory row. No crontab line. |
 | Inbox | `GET /api/v2/needs-action` source `macro_calendar` | "08:00 release window skipped: calendar stale" or "…: calendar missing": P2 when 08:00 is enabled and the train armed, else P3 (info). |
 
 ## 2. The FRED release ids
@@ -135,7 +135,8 @@ until 08:00 is enabled and the train is armed, and from then on a missing calend
 
 ## 7. The lane and the key
 
-- Run argv `$PY scripts/macro_calendar_refresh.py`. The dry run adds `--dry-run`, and `live_arg` is null at shadow.
+- Run argv `$PY scripts/macro_calendar_refresh.py`. The dry run adds `--dry-run`; `live_arg` is `[]` (canary, 2026-10-26): the
+  script with no flag writes the calendar and its receipt.
   Lock `/tmp/tradeai_macro_calendar_refresh.lock` (flock). Timeout 300 s.
 - Env enforce: `FRED_API_KEY` and `TRADEAI_PERSISTENT_STATE_ROOT`. The other names it reads are executor base names.
   The import closure is 5 modules (`macro_calendar_refresh`, `lib/macro_calendar`, `lib/lane_last_receipt`,
@@ -181,9 +182,13 @@ written and no key was printed. This section is updated when a live dry run succ
 2. **First live FRED dry run** (read-only, after FRED's maintenance ends):
    `python3 scripts/macro_calendar_refresh.py --dry-run`. Confirm that all nine ids print `OK`, that coverage is at
    least 60 days, and that the upcoming `SKIP 08:00` days match the agencies' published schedules.
-3. **Going live** is the operator's word. It sets the registry row's `scheduler.stage` and `dispatch.mode`, and sets
-   the allowlist `live_arg` (for example `[]`) under the §23 stage rules. It also needs `FRED_API_KEY` present in the
-   n8n run-executor's environment, a host change. The agent did not read or check the rendered env file.
+3. **Going live — DONE in code 2026-10-26** on the operator decision (verbatim: "1. macro-calendar job: switch it from
+   test mode to live … yes."): registry `scheduler.stage` canary, `dispatch.mode` live, allowlist `live_arg` `[]`,
+   contract stage canary. Two host steps remain before a fire runs live: add `macro-calendar-refresh` to
+   `TRADEAI_N8N_RELAY_LIVE_LANES` (until then fires run dry), and have `FRED_API_KEY` present in the n8n
+   run-executor's environment (otherwise a live fire exits 1 `no_credentials`, writes a failed receipt and no
+   calendar). The agent did not read or check the rendered env file. Rollback: revert the promotion commit, or drop
+   the lane from `TRADEAI_N8N_RELAY_LIVE_LANES`.
 4. **Controller wiring.** Make the one-line change in §5 on the release-train controller branch.
 5. **Proposed:** a `macro_release_calendar` domain row in `config/data_source_authority.json`, plus the AGENTS.md
    §7A re-render (§7).

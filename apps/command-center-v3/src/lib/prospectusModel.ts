@@ -79,6 +79,29 @@ export type ProspectusDoc = {
   inputs_digest?: Record<string, unknown>
   next_due?: string | null
   mode?: string
+  /** "Since this report" (operator 2026-10-27): what happened after this version was written. Latest version only. */
+  since_report?: SinceReport | null
+}
+
+export type SinceImpact = 'none' | 'watch' | 'thesis' | 'breaker' | 'stop'
+export type SinceItem = {
+  id: string; at?: string | null; kind?: string | null; title?: string | null; source?: string | null; url?: string | null
+  material: boolean; badge: string; status: string
+  note?: { impact?: SinceImpact | null; which_breaker?: string | null; one_line?: string | null; at?: string | null } | null
+}
+export type SinceReport = {
+  written_at?: string | null; checked_at?: string | null; items: SinceItem[]; item_count?: number
+  hidden?: Record<string, number>
+  price?: { at_report?: number | null; last_close?: number | null; as_of?: string | null; move_pct?: number | null } | null
+  stop_events?: { kind: string; at_report?: number[] | null; now?: number[] | null; status?: string }[]
+  rewrite?: { reason?: string | null; status?: string | null } | null
+  next_window?: { id?: string; start?: string; time?: string | null; label?: string | null } | null
+}
+
+/** Tone for a CIO news-note impact (never hex). */
+export function impactTone(impact: unknown): 'danger' | 'warning' | 'info' | 'neutral' {
+  const i = String(impact ?? '')
+  return i === 'breaker' || i === 'stop' ? 'danger' : i === 'thesis' ? 'warning' : i === 'watch' ? 'info' : 'neutral'
 }
 
 export const API_BASE = '/api/v2/prospectus'

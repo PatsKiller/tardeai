@@ -1907,6 +1907,44 @@
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.05
         },
+        "prospectus_news_classify": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.02,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
+        "prospectus_cio_news_note": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
         "cio_ask_reanswer": {
           "primary": {
             "provider": "deepseek",

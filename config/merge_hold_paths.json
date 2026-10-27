@@ -94,6 +94,7 @@
         "scripts/emergency_manual_promote.sh",
         "scripts/ci_outage_emergency_release.py",
         "scripts/lib/release_grant_binding.py",
+        "scripts/lib/deploy_delegation_binding.py",
         "scripts/release_grant_preflight.py",
         "config/systemd/user/tradeai-deploy-on-main.*",
         "config/systemd/user/tradeai-pr-merge-*"

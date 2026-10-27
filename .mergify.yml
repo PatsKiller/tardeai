@@ -64,6 +64,7 @@ pull_request_rules:
           - files~=^scripts/emergency_manual_promote\.sh$
           - files~=^scripts/ci_outage_emergency_release\.py$
           - files~=^scripts/lib/release_grant_binding\.py$
+          - files~=^scripts/lib/deploy_delegation_binding\.py$
           - files~=^scripts/release_grant_preflight\.py$
           - files~=^config/systemd/user/tradeai\-deploy\-on\-main\.[^/]*$
           - files~=^config/systemd/user/tradeai\-pr\-merge\-[^/]*$

@@ -39,6 +39,7 @@ from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
 from tests.support import release_train_h0 as RTH0  # noqa: E402
 from tests.support import cio_prospect_canary_20261025 as CPC  # noqa: E402
+from tests.support import macro_calendar_canary_20261026 as MCC  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -151,6 +152,9 @@ def _scope() -> set[str]:
     canary -= set(RTH0.LIVE)
     # 2026-10-25 cio-prospect-shadow canary (tests/support/cio_prospect_canary_20261025.py): n8n-native, overwrite-only.
     canary -= set(CPC.LIVE)
+    # 2026-10-26 macro-calendar-refresh canary (tests/support/macro_calendar_canary_20261026.py): n8n-native,
+    # overwrite-only.
+    canary -= set(MCC.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 

@@ -25,22 +25,42 @@ def _receipts_dir() -> Path:
     return root / "data" / "runtime" / "delivery_failure_alerts"
 
 
-def page_p1(*, kind: str, message: str, detail: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Send a P1 (dedupe off) and write a receipt. Returns the receipt body."""
-    text = f"[P1] {kind}: {message}"
+def page_p1(*, kind: str, message: str, detail: dict[str, Any] | None = None, priority: str = "P1",
+            resolving: bool = False) -> dict[str, Any]:
+    """Send a P1 (intent dedupe off) and write a receipt. Returns the receipt body.
+
+    ``delivered`` is the TRANSPORT truth (Telegram returned a message id), not send_telegram's
+    "accepted". 2026-10-27: 386 deploy_on_main pages were receipted delivered:true while the comms
+    editor held every one after the first as a 20h duplicate (the SHA is stripped from its
+    fingerprint), so the operator saw one message at 15:50 ET and nothing after. ``delivery_status``
+    (DELIVERED / HELD / ROUTED / FAILED / …) now says which.
+    """
+    text = f"[{priority}] {kind}: {message}"
     delivered: bool | None = None
+    accepted: bool | None = None
+    status = ""
     err = ""
     try:
         from scripts.telegram_alert import send_telegram  # type: ignore
 
-        delivered = bool(
+        accepted = bool(
             send_telegram(
                 text,
-                priority="P1",
+                priority=priority,
                 dedupe_minutes=0,
                 producer=f"delivery_failure_alerts:{kind}",
+                resolving=resolving,
             )
         )
+        try:
+            from scripts.telegram_alert import delivery_outcome  # type: ignore
+
+            outcome = delivery_outcome(accepted)
+            status = str(outcome.get("status") or "")
+            delivered = bool(outcome.get("delivered"))
+        except Exception as exc:  # noqa: BLE001 — older transport: fall back to accepted
+            delivered = accepted
+            status = f"UNKNOWN:{type(exc).__name__}"
     except Exception as exc:  # noqa: BLE001
         delivered = None
         err = f"{type(exc).__name__}:{exc}"[:200]
@@ -51,6 +71,9 @@ def page_p1(*, kind: str, message: str, detail: dict[str, Any] | None = None) ->
         "kind": kind,
         "message": message,
         "delivered": delivered,
+        "accepted": accepted,
+        "delivery_status": status,
+        "priority": priority,
         "error": err,
         "detail": detail or {},
     }
