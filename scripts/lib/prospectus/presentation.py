@@ -306,7 +306,7 @@ def _holdings(fp: dict, lt: dict) -> list[dict]:
     for h in (lt.get("top_holdings") or fp.get("top_holdings") or []):
         if not isinstance(h, dict):
             continue
-        w = _f(h.get("pct") if h.get("pct") is not None else h.get("weight_pct"))
+        w = _f(next((h.get(k) for k in ("pct", "weight_pct", "weight") if h.get(k) is not None), None))
         sym = str(h.get("ticker") or h.get("symbol") or "").upper() or None
         name = str(h.get("name") or sym or "").strip()
         if name:
