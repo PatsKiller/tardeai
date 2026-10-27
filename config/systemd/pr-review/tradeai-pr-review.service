@@ -1,0 +1,27 @@
+# Independent PR reviewer every 5 minutes (Design approvals-pr-review/v001; docs/ops/PR_REVIEW_MODAL_SPEC.md §7).
+# One review per (PR, head): Sonnet 5.5 normal, Opus 5.5 + free OAuth second read for held/shared-infra; $2/day total
+# on the Anthropic credit; waits when the credit is unusable; never DeepSeek. Writes only its own store
+# (data/coordination/pr_reviews, refused until the pr_reviews store row is approved). Never merges, labels or approves.
+# Host timer, not n8n. Install: scripts/pr_independent_review.py docstring / PR body "Operator activation".
+
+[Unit]
+Description=Trade AI independent PR reviewer (head-bound PrReview@v1)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+EnvironmentFile=-/run/user/%U/tradeai/env
+# D4: the narrow commit-status token (Commit statuses: write only) the operator provisions; absent = status not posted.
+EnvironmentFile=-%h/.config/tradeai/pr_review_status.env
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TMPDIR=%h/.cache/agent-tmp/pr-review-units
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/agent-tmp/pr-review-units
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pr_independent_review.py --apply
+Nice=10
+TimeoutStartSec=1500
+
+[Install]
+WantedBy=default.target

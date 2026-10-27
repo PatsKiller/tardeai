@@ -57,7 +57,9 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
     assert p["premium_tier_processes"] == ["prospectus_writer_premium"]
     assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "prospectus_fact_check",
                                                   "prospectus_accuracy_review", "cio_ask_reanswer",
-                                                  "prospectus_news_classify", "prospectus_cio_news_note"}
+                                                  "prospectus_news_classify", "prospectus_cio_news_note",
+                                                  # operator D3 2026-10-27: PR reviews wait for the credit, no paid fallback
+                                                  "pr_independent_review", "pr_independent_review_deep"}
     assert p["thinking_controls"]["claude-fable-5-1"]["enabled"] == {"thinking": None, "output_config": {"effort": "high"}}
 
 

@@ -5,8 +5,12 @@ import AmendmentReader from '../components/AmendmentReader'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
+import PrReviewSheet from './PrReviewSheet'
+import MergesTab from '../components/approvals/MergesTab'
+import type { MergesSummary } from '../lib/prReview'
 
-const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
+// "Merges" (Design approvals-pr-review/v001): added after "Waiting on you"; nothing removed or moved.
+const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'MERGE', label: 'Merges' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
   { id: 'SPEND', label: 'Spending caps' }, { id: 'ACTIVATE', label: 'Activations' }, { id: 'DESIGN', label: 'Designs' },
   { id: 'CONFLICT', label: 'Conflicts' }, { id: 'FINANCIAL', label: 'Trade reviews' }, { id: 'history', label: 'Decision history' }]
 
@@ -15,17 +19,23 @@ const isRuleProposal = (item: ApprovalItem) => item.source === 'conflict_rule_pr
 
 export default function ApprovalsHub() {
   const { id } = useParams()
+  // A PR review (id "pr:<N>", from the Merges list or the digest's "Review #N" link) opens as a sheet over the
+  // Merges list; every other kind keeps the existing reader.
+  if (id && id.startsWith('pr:')) return <><Queue defaultTab="MERGE" /><PrReviewSheet id={id} /></>
   if (id) return <AmendmentReader id={id} />
   return <Queue />
 }
 
-function Queue() {
-  const [active] = useDeskTab(tabs)
+function Queue({ defaultTab }: { defaultTab?: string }) {
+  const { data: merges } = useGovernance<MergesSummary>(`${GOVERNANCE}/pr-reviews/summary`)
+  const mergeCount = merges ? Object.values(merges.counts).reduce((a, b) => a + b, 0) : null
+  const shown = tabs.map(t => t.id === 'MERGE' && mergeCount ? { ...t, label: `Merges · ${mergeCount}` } : t)
+  const [active] = useDeskTab(shown, defaultTab)
   const [offset, setOffset] = useState(0)
   useEffect(() => setOffset(0), [active])
   const { data, error, refresh } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${offset}&kind=${active === 'waiting' || active === 'history' ? '' : active}`)
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
-    tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
+    tabs={shown} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
       gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
     decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
     {active => <div className="stack">
@@ -35,7 +45,7 @@ function Queue() {
         {data.gaps.length > 0 && <DeskGap title="Some sources need attention" reason={`${data.known_pending_count} known items. The full total is unavailable.`}>
           <details><summary>Source details</summary><ul>{data.gaps.map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
         </DeskGap>}
-        {active === 'history' ? <section className="panel"><h2>Decision history</h2>{data.recent.length ? data.recent.map((record, i) => <article key={i} className="rule">
+        {active === 'MERGE' ? <MergesTab queue={data} summary={merges} /> : active === 'history' ? <section className="panel"><h2>Decision history</h2>{data.recent.length ? data.recent.map((record, i) => <article key={i} className="rule">
           <strong>{record.decision.replace(/_/g, ' ')}</strong><p>{record.actor} · {new Date(record.at).toLocaleString()}</p>
           <details><summary>Exact version and comment</summary><code>{record.document_sha}</code><p>{record.comment}</p></details>
         </article>) : <p>No recorded decisions were returned.</p>}</section> : <div className="columns">
@@ -47,7 +57,7 @@ function Queue() {
                 // Rule proposals are decided only on the conflict rules page (single approval channel). Opening the
                 // sheet from here marks the history entry so its ← Back returns to this queue.
                 ? <Link className="primary" data-testid="approvals-rule-proposal-link" to={item.governed_href!} state={{ w9DetailOpened: true }}>Review proposal →</Link>
-                : <Link className="primary" to={`/approvals/${encodeURIComponent(item.id)}`}>Read &amp; decide</Link>}
+                : <Link className="primary" to={item.kind === 'MERGE' ? `/approvals/${item.id}` : `/approvals/${encodeURIComponent(item.id)}`}>{item.kind === 'MERGE' ? 'Review →' : <>Read &amp; decide</>}</Link>}
             </article>)}
             {!data.items.some(item => active === 'waiting' || item.kind === active) && <p>No items in this view. {data.complete ? '' : 'Some sources are still unavailable.'}</p>}
             <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
