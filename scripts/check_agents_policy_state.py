@@ -23,9 +23,15 @@ Rules
 4. On a branch (pre-merge) ``PROPOSED`` is always allowed; ``ACTIVE`` is
    allowed only for a version that is already on main or rides a prior
    ratification.
+5. (25.0.0) Every change to AGENTS.md bumps the version: when the text differs
+   from the base revision, ``Policy-Version`` and ``Last-Reviewed`` must both
+   differ from the base and the new version must have a history row. Why: PR
+   #2208 (2026-10-26) rewrote §25.10 and §28.12 with no bump and no token, and
+   nothing failed (review 2026-10-27 H2). The base is ``--base REF`` or, in a
+   pull_request CI run, the merge-base of HEAD and ``origin/$GITHUB_BASE_REF``.
 
 Usage:  python3 scripts/check_agents_policy_state.py [--path AGENTS.md]
-                 [--on-main | --on-branch]
+                 [--on-main | --on-branch] [--base REF]
 Default ref detection: GITHUB_REF == refs/heads/main => on-main, else branch.
 Exit 0 = ok, 1 = violations (printed). Reads one file; writes nothing.
 """
@@ -35,6 +41,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -107,16 +114,62 @@ def check(text: str, *, on_main: bool) -> list[str]:
     return errors
 
 
+def check_bump(text: str, base_text: str | None) -> list[str]:
+    """Rule 5: a changed AGENTS.md carries a new Policy-Version, a new Last-Reviewed and that version's row."""
+    if base_text is None or base_text == text:
+        return []
+    errors: list[str] = []
+    cb, old = control_block(text), control_block(base_text)
+    version, old_version = cb.get("Policy-Version"), old.get("Policy-Version")
+    if not version or version == old_version:
+        errors.append(
+            f"AGENTS.md changed but Policy-Version is still {old_version}; every change bumps the version "
+            "(document version policy)"
+        )
+    if cb.get("Last-Reviewed") == old.get("Last-Reviewed"):
+        errors.append("AGENTS.md changed but Last-Reviewed did not")
+    if version and not any(r["version"] == version for r in version_rows(text)):
+        errors.append(f"AGENTS.md changed but has no version-history row for {version}")
+    return errors
+
+
+def _git(*args: str) -> str | None:
+    try:
+        out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def base_text_for(base: str | None, rel_path: str) -> tuple[str | None, str]:
+    """The AGENTS.md text at the base revision, or None when no base applies (push to main, local run)."""
+    if not base:
+        ref = os.environ.get("GITHUB_BASE_REF")
+        if not ref:
+            return None, "no base"
+        base = f"origin/{ref}"
+    mb = _git("merge-base", "HEAD", base)
+    rev = mb.strip() if mb else base
+    text = _git("show", f"{rev}:{rel_path}")
+    if text is None:
+        return None, f"base {base} unreadable"
+    return text, rev[:12]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--path", default="AGENTS.md")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--on-main", action="store_true")
     g.add_argument("--on-branch", action="store_true")
+    ap.add_argument("--base", default=None, help="git ref to compare against (rule 5); default merge-base with "
+                    "origin/$GITHUB_BASE_REF in a pull_request run, else no comparison")
     args = ap.parse_args(argv)
     on_main = args.on_main or (not args.on_branch and os.environ.get("GITHUB_REF") == "refs/heads/main")
     text = Path(args.path).read_text(encoding="utf-8")
     errors = check(text, on_main=on_main)
+    base_text, base_label = base_text_for(args.base, args.path)
+    errors += check_bump(text, base_text)
     where = "main" if on_main else "branch"
     if errors:
         print(f"AGENTS policy state FAILED ({where}):")
@@ -125,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         f"AGENTS policy state ok ({where}): {control_block(text).get('Policy-Version')} "
-        f"{control_block(text).get('Status')}"
+        f"{control_block(text).get('Status')} (version bump vs {base_label}: ok)"
     )
     return 0
 
