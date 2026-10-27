@@ -256,7 +256,8 @@ def test_run_queue_writes_private_layout_index_and_all_formats(base):
     assert {"prospectus.json", "prospectus.html", "charts"} <= names
     doc = json.loads((vdir / "prospectus.json").read_text())
     assert doc["schema"] == "Prospectus@v1" and doc["model"] == "claude-fable-5-1"
-    assert {c["id"] for c in doc["charts"]} == {"price_1y", "relative_performance", "revenue_eps_trend", "eps_surprise",
+    # eps_surprise needs >= 3 quarters (one quarter drew a page-wide bar, 2026-10-27); this fixture has one
+    assert {c["id"] for c in doc["charts"]} == {"price_1y", "relative_performance", "revenue_eps_trend",
                                                "valuation_vs_peers", "analyst_targets", "position_pl"}
     price = next(c for c in doc["charts"] if c["id"] == "price_1y")
     assert {a["kind"] for a in price["annotations"]} == {"stop", "entry", "target"}
@@ -280,9 +281,9 @@ def test_run_queue_writes_private_layout_index_and_all_formats(base):
     assert doc["status"] == "ready" and doc["partial_gaps"] == []
     html = (vdir / "prospectus.html").read_text()
     assert "prefers-color-scheme: dark" in html and "<svg" in html and "http" not in html.split("<body>")[0]
-    for title in ("Relative performance", "Peer comparison", "Estimates and earnings surprises", "Ownership and flows",
+    for title in ("Relative performance", "Peer comparison", "Estimates · consensus and revisions", "Ownership and flows",
                   "Risk and technicals", "Scenarios · 12 months", "Macro sensitivity · FRED", "Filings · SEC EDGAR",
-                  "Earnings call", "Options, sentiment and dividends", "Source coverage", "Sources"):
+                  "Earnings call", "Options, sentiment and dividends", "Source coverage", "data-validation="):
         assert title in html, title
     assert "Scenario analysis, not an order" in html
     if (vdir / "prospectus.pdf").exists():

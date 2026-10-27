@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Request a Telegram Approve for a PR (Mergify go-signal).
 
+DEFAULT (2026-10-27): add the PR to the NEXT DIGEST and print when it goes. The operator
+approves once per digest (scripts/pr_merge_digest.py); no per-PR Telegram prompt is sent.
+Agents: open the PR and stop — you do not need to run this at all; the digest finds every
+ready PR. ``--single`` keeps the coordinator's ad-hoc one-PR prompt (the old behaviour).
+
 Usage
 -----
-  .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208
+  .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208            # next digest
+  .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --single   # ad-hoc prompt
   .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --wait
   .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --native
   .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --dry-run
@@ -43,7 +49,7 @@ def _pr_view(pr: int, repo: str) -> dict:
             "--repo",
             repo,
             "--json",
-            "number,title,url,headRefOid,state,labels",
+            "number,title,url,headRefOid,state,labels,files",
         ],
         capture_output=True,
         text=True,
@@ -80,6 +86,11 @@ def main(argv: list[str] | None = None) -> int:
         help="After send, wait for Telegram Approve and apply operator-merge",
     )
     p.add_argument("--timeout", type=int, default=900, help="--wait timeout seconds (default 900)")
+    p.add_argument(
+        "--single",
+        action="store_true",
+        help="Coordinator ad-hoc: send a per-PR Approve prompt now instead of adding to the next digest",
+    )
     args = p.parse_args(argv)
 
     from scripts.lib import pr_merge_telegram as pmt
@@ -101,6 +112,44 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(out, indent=2) if args.as_json else f"skip: #{args.pr} already has {pmt.LABEL}")
         return 0
+
+    if not args.single:
+        from scripts.lib import pr_merge_digest as pmd
+
+        when = pmd.next_digest_at()
+        out = {
+            "ok": True,
+            "pr_number": int(view["number"]),
+            "action": "would_add_to_next_digest" if args.dry_run else "added_to_next_digest",
+            "next_digest_at": when,
+            "note": "The digest lists the PR only when READY (not draft, four checks green on the head, "
+            "not held). Coordinator can send now: scripts/pr_merge_digest.py --apply --now",
+        }
+        if not args.dry_run:
+            pmd.nominate(
+                int(view["number"]),
+                head_sha=str(view.get("headRefOid") or ""),
+                title=str(view.get("title") or ""),
+                reason=args.reason,
+            )
+        if args.as_json:
+            print(json.dumps(out, indent=2))
+        else:
+            print(f"pr=#{out['pr_number']} {out['action']} — next digest {when}")
+        return 0
+
+    from scripts.lib import merge_hold_paths as mhp
+
+    held = sorted(labels & mhp.hold_labels()) + sorted(
+        mhp.held_classes([str(f.get("path") if isinstance(f, dict) else f) for f in (view.get("files") or [])])
+    )
+    if held:
+        print(
+            f"refused: #{args.pr} is held ({', '.join(held)}) — needs operator merge; "
+            f"no Telegram Approve is offered (config/merge_hold_paths.json)",
+            file=sys.stderr,
+        )
+        return 3
 
     kw = dict(
         pr_number=int(view["number"]),

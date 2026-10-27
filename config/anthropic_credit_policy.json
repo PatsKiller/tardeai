@@ -63,7 +63,8 @@
     "high": "0.50",
     "highest": "0.50",
     "long_form": "2.00",
-    "premium": "4.00"
+    "premium": "4.00",
+    "mid": "0.10"
   },
   "retry": {
     "max_attempts": 2,
@@ -248,6 +249,10 @@
     "topic_curator"
   ],
   "activation_approved_by": "operator 2026-10-25: \"what disable enable and test call\"",
+  "ops_process_tiers": {
+    "_why": "Operations processes pinned to a credit tier, read by anthropic_routing.tier_for after process_tiers. incident_supervisor: operator 2026-10-27 incident ledger + supervisor brief (\"Sonnet 5.5; <= $1/day; fallback OAuth grok read-only triage; never DeepSeek\"); the $1/day cap is daily_cost_cap_usd in config/llm_process_registry.json.",
+    "incident_supervisor": "mid"
+  },
   "process_tiers": {
     "prospectus_writer": "long_form",
     "prospectus_writer_premium": "premium",

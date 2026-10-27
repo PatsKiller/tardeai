@@ -324,6 +324,35 @@ class DecisionLedger:
                            "decision": choice, "comment": comment, "request_id": request, "policy_token": token,
                            "effect": "RECORD_ONLY", "governed_href": it["governed_href"]})
 
+    def incident_decision(self, actor: str, body: dict) -> dict:
+        """Operator acknowledge / close-as-won't-fix on an IncidentRecord@v1 (Ops → Incidents, 2026-10-27).
+
+        RECORD_ONLY, same chain and the same store-approval gate as every other decision. The incident ledger row
+        that follows (scripts/lib/incidents.py ``ack``/``close``) cites this row's ``hash_self``.
+        """
+        choice = body.get("decision")
+        if choice not in ("ACKNOWLEDGE", "CLOSE_WONT_FIX"):
+            raise Refused("INVALID_DECISION", 400)
+        incident = body.get("incident_id")
+        if not isinstance(incident, str) or not re.fullmatch(r"INC-\d{6}-[g-z]{6}", incident):
+            raise Refused("INCIDENT_ID_REQUIRED", 400)
+        request = body.get("request_id")
+        if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+            raise Refused("REQUEST_ID_REQUIRED", 400)
+        comment = body.get("comment") or ""
+        if not isinstance(comment, str) or len(comment) > 4000:
+            raise Refused("COMMENT_TOO_LONG", 400)
+        if choice == "CLOSE_WONT_FIX" and not comment.strip():
+            raise Refused("COMMENT_REQUIRED", 400)
+        with self._transaction() as (rows, append):
+            for r in rows:
+                if r.get("event") == "INCIDENT_DECISION" and r.get("request_id") == request:
+                    if (r["actor"], r["item_id"], r["decision"], r["comment"]) == (actor, f"incident:{incident}", choice, comment):
+                        return r
+                    raise Refused("IDEMPOTENCY_CONFLICT")
+            return append({"event": "INCIDENT_DECISION", "actor": actor, "item_id": f"incident:{incident}",
+                           "decision": choice, "comment": comment, "request_id": request, "effect": "RECORD_ONLY"})
+
     def feedback(self, actor: str, current_policy: Callable[[], dict], body: dict) -> dict:
         if body.get("position") not in ("AGREE", "QUESTION", "DISAGREE"):
             raise Refused("INVALID_POSITION", 400)

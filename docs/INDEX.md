@@ -1788,7 +1788,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ADVISORY_SCHEDULE_TRUTH_20261024.md` | Advisory schedule: advertise observed fires only |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
-| `docs/ops/AGENT_MERGIFY_HANDOFF.md` | Agent handoff — Telegram Approve, Mergify merges |
+| `docs/ops/AGENT_MERGIFY_HANDOFF.md` | Agent handoff — open PR, stop; the digest handles approval |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
 | `docs/ops/ANTHROPIC_FIRST_20261025.md` | Anthropic-first: routing, review and caller inventory |
 | `docs/ops/APPROVALS_CENTER_20261024.md` | Approvals Center — boards 19–21, 2026-10-24 |
@@ -2008,6 +2008,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan |
 | `docs/ops/HOME_DO_NOW_2026-10-22.md` | Command Center Home — the "Do now" layout (2026-10-22) |
 | `docs/ops/HOME_REVERT_20261025.md` | Home: restore the pre-Board-14 Do now page |
+| `docs/ops/INCIDENT_LEDGER.md` | Incident ledger, watchers and supervisor |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
 | `docs/ops/JSONL_ARCHIVE_ROTATION.md` | JSONL archive rotation — the oversized append-only stores |
@@ -2058,7 +2059,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron |
 | `docs/ops/PROSPECTUS_ACCURACY_AUDIT.md` | Ticker Prospectus — accuracy auditor |
 | `docs/ops/PROSPECTUS_BACKEND.md` | Ticker Prospectus — backend |
+| `docs/ops/PROSPECTUS_INSTITUTIONAL.md` | Ticker Prospectus — institutional ("Street") blocks and the validation badge |
 | `docs/ops/PROSPECTUS_MY_HISTORY.md` | Ticker Prospectus — My history and fund gaps |
+| `docs/ops/PROSPECTUS_PRINT.md` | Ticker Prospectus — PDF and Word that look like the HTML report |
 | `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate |
 | `docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md` | Ticker Prospectus — run windows and delivery |
 | `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |

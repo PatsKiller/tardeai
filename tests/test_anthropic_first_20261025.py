@@ -140,9 +140,11 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     p = json.loads((root / "config/anthropic_credit_policy.json").read_text())
     assert p["total_cap_usd"] == "190" and p["daily_cap_usd"] == "10"
     assert set(p["models"].values()) == {"claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-sonnet-5-5"}
-    # operator 2026-10-27 (prospectus news methodology): Sonnet 5.5 only as tier "mid", for the CIO news note
+    # operator 2026-10-27: Sonnet 5.5 only as tier "mid" — prospectus news methodology (CIO news note, process_tiers)
+    # and the incident supervisor (ops_process_tiers, #2238)
     assert [t for t, m in p["models"].items() if m == "claude-sonnet-5-5"] == ["mid"]
     assert [k for k, t in p["process_tiers"].items() if t == "mid"] == ["prospectus_cio_news_note"]
+    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "mid"}
     assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 

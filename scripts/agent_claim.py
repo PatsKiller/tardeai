@@ -279,6 +279,31 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
     return 0
 
 
+def _incident_warning(session: str) -> int:
+    """Incident ledger (2026-10-27): warn when this session leaves an incident open/fixing. Returns the rc to add.
+
+    WARNING today; INCIDENT_CHECK_ENFORCE=1 turns it into a refusal (rc 3). Never blocks on its own failure."""
+    if not session:
+        return 0
+    try:
+        from scripts.check_open_incidents import check, message
+    except ImportError:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from scripts.check_open_incidents import check, message  # type: ignore[no-redef]
+        except Exception:  # noqa: BLE001
+            return 0
+    try:
+        res = check(session)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARN: incident check could not run ({type(exc).__name__})", file=sys.stderr)
+        return 0
+    if res["ok"]:
+        return 0
+    print(("REFUSED: " if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else "WARN: ") + message(res), file=sys.stderr)
+    return 3 if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else 0
+
+
 def cmd_stage(a: argparse.Namespace) -> int:
     try:
         doc = _board(a, observe=False).stage(a.claim_id, a.stage, session=_session(a), pr=a.pr, note=a.note)
@@ -288,7 +313,7 @@ def cmd_stage(a: argparse.Namespace) -> int:
     print(
         json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} {a.stage} {doc['stages'][a.stage]}"
     )
-    return 0
+    return _incident_warning(_session(a)) if a.stage == "pr_open" else 0
 
 
 def cmd_sync(a: argparse.Namespace) -> int:
@@ -850,7 +875,7 @@ def cmd_release(a: argparse.Namespace) -> int:
     print(
         json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} {doc['status']} {doc['ended_at']}"
     )
-    return 0
+    return _incident_warning(session) if a.status == "done" else 0
 
 
 def cmd_list(a: argparse.Namespace) -> int:

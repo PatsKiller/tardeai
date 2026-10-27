@@ -8,11 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-POLICY = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
+AGENTS = read_pre_25("AGENTS.md")
+POLICY = read_pre_25("AI_WORK_POLICY.md")
 TOKEN = "APPROVE_AGENTS_POLICY_21_0_0"
 
 

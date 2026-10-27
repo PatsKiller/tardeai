@@ -72,6 +72,14 @@ DEFAULTS: dict[str, Any] = {
     "position_pl_abs_usd": 1.0,       # unrealized P/L vs market value - cost
     "quote_close_rel_max": 0.2,       # latest quote vs last close
     "post_write_rel_tol": 0.006,
+    # Street blocks (street.py, 2026-10-27)
+    "street_targets_max_age_days": 10,     # a consensus row older than this, shown without its age, is SOFT
+    "street_options_max_age_days": 5,
+    "street_implied_move_max_pct": 60.0,   # a one-sd move to the first expiry above this is a units error
+    "street_pe_max": 1000.0,
+    "street_iv_range": [1.0, 400.0],       # ATM IV % outside this is a units error (a fraction recorded as %)
+    "street_pc_max": 25.0,
+    "street_rating_count_ratio_max": 2.5,  # distribution total vs the consensus analyst count
     "ai": {"enabled": True, "max_tokens": 1200, "timeout_s": 60, "max_packet_chars": 18000,
            "est_input_tokens": 5500, "est_output_tokens": 600},
 }
@@ -537,8 +545,85 @@ def check_news_collisions(packet: dict, s: dict) -> list[dict]:
                      f"that shares the ticker {sym}", facts=bad, repair="catalyst_news")]
 
 
+def check_street(packet: dict, s: dict) -> list[dict]:
+    """The Street blocks (street.py): staleness shown without its age, units, and internal consistency."""
+    out: list[dict] = []
+    blocks = packet.get("blocks") or {}
+    facts = packet.get("facts") or []
+    now = _d(packet.get("as_of")) or date.today()
+
+    def ids(pred: Callable[[str], bool]) -> list[str]:
+        return [f["id"] for f in facts if pred(str(f.get("label") or ""))]
+
+    ac = blocks.get("analyst_coverage") or {}
+    tg = ac.get("targets") or {}
+    age = (now - _d(tg.get("as_of"))).days if _d(tg.get("as_of")) else None
+    if age is not None and age > int(s["street_targets_max_age_days"]) and not tg.get("stale"):
+        out.append(_finding("street_targets_stale", SOFT, f"price-target consensus is {age} days old and not labelled stale",
+                            facts=ids(lambda l: l.startswith(("Mean price target", "Target dispersion"))),
+                            blocks=[["analyst_coverage", "targets", "mean"]], repair="analyst_opinion"))
+    mean_fact = _one(facts, "Analyst target mean")
+    if tg.get("mean") is not None and _num(mean_fact) is not None and abs(tg["mean"] - _num(mean_fact)) > 0.02 * abs(_num(mean_fact)):
+        out.append(_finding("street_target_mismatch", SOFT, f"target trend mean {tg['mean']} differs from the analyst "
+                            f"target fact {_num(mean_fact)}", facts=[mean_fact["id"]], repair="analyst_opinion"))
+    cur = ((ac.get("distribution") or {}).get("current") or {})
+    n = _f(tg.get("analysts"))
+    if cur.get("total") and n and max(cur["total"], n) / max(min(cur["total"], n), 1) > float(s["street_rating_count_ratio_max"]):
+        out.append(_finding("street_rating_count_mismatch", SOFT, f"rating distribution counts {cur['total']} analysts, the "
+                            f"consensus row {int(n)}", facts=ids(lambda l: l.startswith(("Rating distribution", "Analysts rating buy"))),
+                            repair="analyst_opinion"))
+    for h in (blocks.get("estimates") or {}).get("eps_surprises") or []:
+        a, e, sp = _f(h.get("actual")), _f(h.get("estimate")), _f(h.get("surprise_pct"))
+        if a is not None and e not in (None, 0) and sp is not None and (a - e) * sp < 0:
+            out.append(_finding("street_surprise_sign", SOFT, f"{h.get('date')}: surprise {sp}% has the wrong sign for "
+                                f"actual {a} vs estimate {e}", facts=ids(lambda l: l.startswith("Average EPS surprise")),
+                                repair="analyst_opinion"))
+            break
+    for e in (blocks.get("catalyst_calendar") or {}).get("forward") or []:
+        mv = _f((e.get("implied_move") or {}).get("move_pct"))
+        if mv is not None and not 0 < mv <= float(s["street_implied_move_max_pct"]):
+            out.append(_finding("street_implied_move_units", SOFT, f"implied move {mv}% to {e['date']} is implausible",
+                                facts=ids(lambda l: l.startswith("Options-implied move")), repair="options_iv"))
+    opt = (blocks.get("positioning") or {}).get("options") or {}
+    iv = _f(opt.get("atm_iv_pct"))
+    lo, hi = s["street_iv_range"]
+    bad_opt = []
+    if iv is not None and not lo <= iv <= hi:
+        bad_opt.append(f"ATM IV {iv}%")
+    for k in ("put_call_oi", "put_call_volume"):
+        v = _f(opt.get(k))
+        if v is not None and not 0 <= v <= float(s["street_pc_max"]):
+            bad_opt.append(f"{k} {v}")
+    if bad_opt:
+        out.append(_finding("street_options_units", SOFT, "; ".join(bad_opt),
+                            facts=ids(lambda l: l.startswith(("Put/call", "IV rank", "IV percentile", "25-delta"))),
+                            repair="options_iv"))
+    oage = (now - _d(opt.get("as_of"))).days if _d(opt.get("as_of")) else None
+    if oage is not None and oage > int(s["street_options_max_age_days"]) and not opt.get("stale"):
+        out.append(_finding("street_options_stale", SOFT, f"options positioning is {oage} days old and not labelled stale",
+                            facts=ids(lambda l: l.startswith(("Put/call", "IV rank", "IV percentile", "25-delta"))),
+                            repair="options_iv"))
+    pe = ((blocks.get("valuation_history") or {}).get("pe") or {})
+    if pe and not (0 < (_f(pe.get("current")) or -1) <= float(s["street_pe_max"])
+                   and (_f(pe.get("min")) or 0) <= (_f(pe.get("current")) or 0) <= (_f(pe.get("max")) or 0)):
+        out.append(_finding("street_pe_range", SOFT, f"trailing P/E {pe.get('current')} outside its own range "
+                            f"{pe.get('min')}–{pe.get('max')} or implausible", facts=ids(lambda l: l.startswith("Trailing P/E")),
+                            repair="fundamentals"))
+    for q in (blocks.get("fundamentals_xbrl") or {}).get("quarters") or []:
+        m = _f(q.get("operating_margin_pct"))
+        if m is not None and not -500 <= m <= 100:
+            out.append(_finding("street_xbrl_margin", SOFT, f"operating margin {m}% for {q.get('period_end')} is impossible",
+                                facts=ids(lambda l: l.startswith(f"SEC XBRL quarter ending {q.get('period_end')}")),
+                                repair="fundamentals"))
+        if q.get("net_debt") is not None and q.get("cash") is not None and q.get("long_term_debt") is not None \
+                and abs(q["net_debt"] - (q["long_term_debt"] - q["cash"])) > 1:
+            out.append(_finding("street_net_debt", SOFT, f"net debt for {q.get('period_end')} is not debt − cash",
+                                repair="fundamentals"))
+    return out
+
+
 CHECKS = (check_coverage, check_series, check_units, check_cross_source, check_peers, check_sources, check_accuracy,
-          check_news_collisions)
+          check_news_collisions, check_street)
 
 
 def deterministic(packet: dict, settings: dict | None = None) -> dict:

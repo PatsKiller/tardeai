@@ -61,6 +61,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/conflicts/rules', label: 'Conflicts' },
       { to: '/system/ops-controls', label: 'Ops Controls' },
       { to: '/system', label: 'System', exact: true },
+      // Incident ledger (operator 2026-10-27): appended; nothing above moved.
+      { to: '/ops/incidents', label: 'Incidents' },
     ],
   },
 ]

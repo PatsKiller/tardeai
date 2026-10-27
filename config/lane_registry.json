@@ -7969,7 +7969,7 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_macro_calendar_20261021.py (FRED HTTP mocked: id verification, paging, maintenance page, mapping, coverage, overrides merge; reader fail-closed cases, Thursday claims, CPI day, DST; needs-action source; registry/allowlist/contract pins; closure: no sender/broker/order/DB reach).",
       "review_by": "2026-10-28",
-      "note": "Read-only toward FRED: GET /fred/releases (id verification) and GET /fred/releases/dates (realtime_start..realtime_end, include_release_dates_with_no_data=true), about 2-3 requests a day, free. FRED_API_KEY is never printed or stored. A real run writes data/runtime/macro_calendar.json atomically and its receipt; a failed run writes no calendar (the previous one ages to STALE after 72 h and the 08:00 window is skipped). Reader: scripts/lib/macro_calendar.py skip_0800(date) / ReleaseTrainCalendar.verdict(day, now) for the release-train controller; GET /api/v2/needs-action source macro_calendar raises P2 when the calendar is missing or stale. No DB, no model, no sender, no broker. Exit 0 = calendar written; 1 = FRED unavailable / non-JSON / id verification failed / overrides invalid / no key.",
+      "note": "Read-only toward FRED: GET /fred/releases (id verification) and GET /fred/releases/dates (realtime_start..realtime_end, include_release_dates_with_no_data=true), about 2-3 requests a day, free. FRED_API_KEY is never printed or stored. A real run writes data/runtime/macro_calendar.json atomically and its receipt; a failed run writes no calendar (the previous one ages to STALE after 72 h and the 08:00 window is skipped). Reader: scripts/lib/macro_calendar.py skip_0800(date) / verdict(day, now) (CIO and prospectus readers; the release-train adapter was removed 2026-10-27); GET /api/v2/needs-action source macro_calendar raises P3 information when the calendar is missing or stale. No DB, no model, no sender, no broker. Exit 0 = calendar written; 1 = FRED unavailable / non-JSON / id verification failed / overrides invalid / no key.",
       "severity": "Low",
       "dispatch": {
         "mode": "live",
@@ -18622,6 +18622,44 @@
       "reason_evidence": "tests/test_pr_merge_telegram_20261026.py; config/systemd/user/tradeai-pr-merge-notify.{service,timer}; docs/ops/MERGIFY_DEPLOY_FOUNDATION.md; AGENTS.md §25.10",
       "value_class": "Platform",
       "recommendation": "SCHEDULE_AFTER_GRANT"
+    },
+    {
+      "lane_id": "pr-merge-digest",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-digest.timer"
+      },
+      "expected_cadence_hours": 12.0,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); unit files live in config/systemd/user. Installing the user timer is an operator act (§17). Flip to ACTIVE in the install PR once `systemctl --user list-timers` shows it.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-digest.timer is new in this PR; not installed on the host at merge time.",
+      "note": "One Telegram message per digest (weekdays 08:00/12:00/16:30 ET, weekends every 3h); Approve all labels operator-merge; scripts/pr_merge_digest.py --apply writes digest_last_run.json each run."
+    },
+    {
+      "lane_id": "pr-merge-reconcile",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-reconcile.timer"
+      },
+      "expected_cadence_hours": 0.1,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_reconcile_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); installing the user timer is an operator act (§17). Flip to ACTIVE once installed.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-reconcile.timer is new in this PR; not installed on the host at merge time.",
+      "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
     },
     {
       "lane_id": "prospectus-build",

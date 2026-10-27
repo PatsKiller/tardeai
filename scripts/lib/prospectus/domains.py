@@ -631,6 +631,11 @@ def full_assemble(sources: Any, symbol: str, scope: str, *, cfg: dict, holding: 
         dividend_guard(b, sources)
     except Exception as exc:  # noqa: BLE001 - a guard failure is a recorded gap, never a failed prospectus
         b.gaps.append(f"dividend cross-check not run: {type(exc).__name__}")
+    # The institutional ("Street") blocks: analyst coverage + action log, estimates / revisions / beat-miss, catalyst
+    # calendar, positioning, valuation history, SEC XBRL quarters (scripts/lib/prospectus/street.py).
+    from . import street  # noqa: PLC0415
+    from .presentation import is_fund as _is_fund  # noqa: PLC0415
+    street.attach(sources, b, now=now, fund=_is_fund({"blocks": b.blocks}) or bool((holding or {}).get("is_fund")))
     return b
 
 
