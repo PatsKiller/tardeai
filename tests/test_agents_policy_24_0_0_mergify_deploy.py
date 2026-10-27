@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-AIWP = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
+AGENTS = read_pre_25("AGENTS.md")
+AIWP = read_pre_25("AI_WORK_POLICY.md")
 FOUNDATION = ROOT / "docs" / "ops" / "MERGIFY_DEPLOY_FOUNDATION.md"
 EMERGENCY = ROOT / "docs" / "ops" / "EMERGENCY_MANUAL_PROMOTE.md"
 

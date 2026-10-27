@@ -40,9 +40,14 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
    route (AGENTS.md §24.11).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
-   budget.
+   budget. Never skip a hook: no `--no-verify`, no `core.hooksPath` or other hook-disabling override.
+   Never edit, stage or commit in the canonical checkout the host runs from; work in a worktree off
+   fresh `origin/main` (AGENTS.md §28.12 step 3). The deploy poller saves stray edits there to a patch
+   and alerts.
 4. **A checkpoint is `git commit`, not `git push`.** Remote sync requires
    `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent — `AI_WORK_POLICY.md`.
+   An operator-approved plan or scope is that intent for fast-forward pushes of the agent's own
+   non-`main` branches within the push budget (AGENTS.md §28.15 item 8); `main` never.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
 6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.

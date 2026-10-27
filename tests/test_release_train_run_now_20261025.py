@@ -45,10 +45,14 @@ def test_market_hours_open(when, expected):
     assert RN.market_hours_open(when) is expected
 
 
-def test_policy_gate_on_live_agents_is_active_after_22_ratified():
+def test_policy_gate_on_live_agents_is_retired_by_25_0_0():
+    """AGENTS.md 25.0.0 removed the release train (operator 2026-10-27): the 22.0.0 row reads RETIRED and the
+    ``release_train.run_now`` anchor is gone, so the Run now gate fails closed on the live file."""
     st = RN.policy_gate(ROOT / "AGENTS.md")
-    assert st["state"] == "ACTIVE"
-    assert RN.require_policy_active(ROOT / "AGENTS.md")["state"] == "ACTIVE"
+    assert st["state"] != "ACTIVE"
+    with pytest.raises(OpsError) as ei:
+        RN.require_policy_active(ROOT / "AGENTS.md")
+    assert ei.value.code == "POLICY_NOT_ACTIVE"
 
 
 def test_policy_gate_refuses_proposed_fixture(tmp_path):
@@ -66,13 +70,16 @@ def test_policy_gate_refuses_proposed_fixture(tmp_path):
     assert ei.value.code == "POLICY_NOT_ACTIVE"
 
 
-def test_readiness_blocks_while_controller_build_only(monkeypatch):
+def test_readiness_blocks_while_controller_build_only(monkeypatch, tmp_path):
     """readiness never mutates; BUILD_ONLY still refuses even when policy is ACTIVE."""
     monkeypatch.setattr(RN, "TRAIN_CONTROLLER_STATUS", "BUILD_ONLY")
     monkeypatch.setattr(RN, "forced_canary_policy", lambda: {
         "operator_forced_off_window": True, "slots": ["1800"],
     })
-    out = RN.readiness(agents_path=ROOT / "AGENTS.md", now=datetime(2026, 10, 25, 20, 0, tzinfo=TZ))
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text("# AGENTS.md\n\n| 22.0.0 | 2026-10-25 | ACTIVE | MAJOR | run now |\nrelease_train.run_now\n",
+                      encoding="utf-8")  # the 22.0.0-ACTIVE shape; the live file retired it in 25.0.0
+    out = RN.readiness(agents_path=agents, now=datetime(2026, 10, 25, 20, 0, tzinfo=TZ))
     assert out["kind"] == RN.KIND
     assert out["allowed"] is False
     assert out["block_reason"]
