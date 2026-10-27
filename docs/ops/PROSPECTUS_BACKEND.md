@@ -85,6 +85,13 @@ Inputs are read from these stores:
   gaps. These are typically lots that arrived by transfer and have no basis.
 - **Macro calendar.** The reader takes `MacroCalendar@v1` (`dates.*.events` and `fomc_decisions`). The Fed funds rate
   is read from the house series `DFF`.
+- **Fund block (2026-10-27).** The header uses the look-through fund name when the Finviz cache has no company
+  name. The fund profile carries the asset class and last reconstitution, distribution growth (annualized, trailing
+  year against 2 or 3 years earlier, from `ticker_dividends`) and `book_overlap`: the share of the fund's top-holding
+  weight the book already owns, directly or through another held fund. AUM, index, issuer, inception, holdings count
+  and premium/discount stay a named gap until the `yfinance_info_snapshot` domain has a producer.
+- **Journal accounts.** The FIFO and the position store are matched by canonical account key. A trip counts as
+  stopped out when the journal says so or a broker stop fill is dated on its exit.
 - **Rewrite trigger.** `stop_event` rewrites a held name when its resting stop levels differ from the stored report,
   and `position_closed` rewrites one that is no longer held.
 
