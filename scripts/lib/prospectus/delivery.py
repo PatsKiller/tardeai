@@ -1,8 +1,11 @@
 """Prospectus delivery: the window outbox (lane side) and the message plan (host sender side).
 
 Operator 2026-10-26: reports "should be sent out both in Word and PDF as a notification [on] Telegram and [email]";
-clarified the same day: EMAIL is "just the audit" — a summary of each run (which reports were written, trigger
-reasons, verdict changes, gate status, the run's cost and the running monthly spend, links), no attachments.
+clarified the same day: EMAIL is the run audit — a summary of each run (which reports were written, trigger reasons,
+verdict changes, gate status, the run's cost and the running monthly spend, links). Go-live direction the same day:
+the email ALSO attaches the PDF and Word files of HOLDINGS reports (``delivery.email.attach_scopes``, default
+``["holding"]``); Watch reports are linked, not attached; the attachments of one email stay under
+``delivery.email.max_attachment_bytes`` (~20 MB) and whatever does not fit is linked instead.
 TELEGRAM carries the summary plus each report's PDF and Word file.
 
 Split on purpose (AGENTS.md §23.14, §24.1: an n8n lane is never a sender):
@@ -32,6 +35,7 @@ LEDGER_SCHEMA = "ProspectusDeliveryLedger@v1"
 DEFAULT_LINK = "https://ms01-openclaw.tail163d14.ts.net/v3/prospectus/{symbol}"
 TELEGRAM_FILE_MAX_BYTES = 50 * 1024 * 1024  # Bot API sendDocument limit
 TELEGRAM_TEXT_MAX = 3800  # one message, under the 4,096 UTF-16 limit with room for the provenance footer
+EMAIL_ATTACH_MAX_BYTES = 20 * 1024 * 1024  # per email; base64 grows it ~4/3, still under the Gmail API send limit
 
 
 def delivery_cfg(cfg: dict) -> dict:
@@ -194,9 +198,46 @@ def plan_telegram(record: dict, cfg: dict, ledger: dict, base: Path) -> dict:
             "linked_only": linked_only}
 
 
-def plan_email(record: dict, cfg: dict) -> dict:
-    """The run audit: what was written, why, verdict changes, gate status, cost and the month's spend, links."""
+def plan_email_attachments(items: list[dict], cfg: dict, base: Path) -> tuple[list[dict], list[str]]:
+    """The files one run email attaches: PDF + Word of the ``attach_scopes`` reports (default holdings), in run order
+    (holdings by $ value), each report whole, while the running total stays under the per-email cap; a report that
+    does not fit is linked (a smaller later one may still be attached)."""
+    ecfg = delivery_cfg(cfg).get("email") or {}
+    if not ecfg.get("attachments", True):
+        return [], []
+    scopes = set(ecfg.get("attach_scopes") or ["holding"])
+    formats = ecfg.get("formats") or ["pdf", "docx"]
+    cap = int(ecfg.get("max_attachment_bytes") or EMAIL_ATTACH_MAX_BYTES)
+    attached: list[dict] = []
+    over_cap: list[str] = []
+    used = 0
+    for i in items:
+        if i.get("scope", "watch") not in scopes:
+            continue
+        files = [(kind, (i.get("files") or {}).get(kind)) for kind in formats if (i.get("files") or {}).get(kind)]
+        if not files:
+            continue
+        size = sum(int(meta.get("bytes") or 0) for _, meta in files)
+        if used + size > cap:  # a report is attached whole (PDF + Word) or linked whole
+            over_cap.append(i["symbol"])
+            continue
+        used += size
+        for kind, meta in files:
+            attached.append({"key": item_key(i), "symbol": i["symbol"], "kind": kind,
+                             "label": "PDF" if kind == "pdf" else "Word", "bytes": int(meta.get("bytes") or 0),
+                             "path": str(base / meta["rel"])})
+    return attached, over_cap
+
+
+def plan_email(record: dict, cfg: dict, base: Path | None = None) -> dict:
+    """The run audit (what was written, why, verdict changes, gate status, cost and the month's spend, links) plus
+    the PDF and Word attachments of the holdings reports, within the per-email size cap."""
     items = [i for i in record.get("items") or [] if scope_enabled(cfg, i.get("scope", "watch"))]
+    attached, over_cap = plan_email_attachments(items, cfg, base if base is not None else Path("."))
+    by_sym: dict[str, list[str]] = {}
+    for a in attached:
+        by_sym.setdefault(a["symbol"], []).append(a["label"])
+    cap_mb = int((delivery_cfg(cfg).get("email") or {}).get("max_attachment_bytes") or EMAIL_ATTACH_MAX_BYTES) / 1048576
     subject = f"[Trade AI] {_title(record)}: {len(items)} report(s), run cost {_money(record.get('cost_usd'))}"
     out = [_title(record), "=" * len(_title(record)), "",
            f"Window: {record.get('window_id')} (started {record.get('started_at')}, finished {record.get('finished_at')})",
@@ -218,17 +259,24 @@ def plan_email(record: dict, cfg: dict) -> dict:
             out.append(f"               Now: {i.get('verdict_line')}")
         else:
             out.append(f"  Verdict: {i.get('verdict_line')}")
-        out.append(f"  {i['link']}")
+        files = by_sym.get(i["symbol"])
+        out.append(f"  {i['link']}" + (f"   (attached: {' + '.join(files)})" if files else "   (linked)"))
         out.append("")
     for f in record.get("failed") or []:
         out.append(f"FAILED {f.get('symbol')}: {f.get('error') or 'see the Prospectus page'}")
-    out += ["", "PDF and Word files are on the Prospectus page and in Telegram.",
-            "Research only — not an order (READ_ONLY_ADVISORY)."]
-    return {"subject": subject, "body": "\n".join(out)}
+    out.append("")
+    if attached:
+        out.append(f"Attached: PDF and Word of {len(by_sym)} holdings report(s) "
+                   f"({sum(a['bytes'] for a in attached) / 1048576:.1f} MB).")
+    if over_cap:
+        out.append(f"Over the {cap_mb:.0f} MB email cap, linked instead: {', '.join(over_cap)}.")
+    out += ["Watch reports are linked, not attached; every PDF and Word file is on the Prospectus page and in "
+            "Telegram.", "Research only — not an order (READ_ONLY_ADVISORY)."]
+    return {"subject": subject, "body": "\n".join(out), "attachments": attached, "linked_over_cap": over_cap}
 
 
 def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: Callable[[str, str], bool],
-            mail_fn: Callable[[str, str], bool], apply: bool, log: Callable[[str], None] = print,
+            mail_fn: Callable[..., bool], apply: bool, log: Callable[[str], None] = print,
             now: datetime | None = None) -> dict:
     """Deliver every pending outbox record through the injected transports (the host sender passes the chokepoints).
 
@@ -271,13 +319,18 @@ def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: C
         elif not tel_on:
             rec["telegram"] = "disabled"
         if mail_on and (record.get("items") or record.get("failed")) and not run.get("email"):
-            plan = plan_email(record, cfg)
-            rec["email"] = {"subject": plan["subject"], "chars": len(plan["body"])}
+            plan = plan_email(record, cfg, base)
+            paths = [a["path"] for a in plan["attachments"]]
+            rec["email"] = {"subject": plan["subject"], "chars": len(plan["body"]), "attachments": len(paths),
+                            "attachment_bytes": sum(a["bytes"] for a in plan["attachments"]),
+                            "linked_over_cap": plan["linked_over_cap"]}
             if apply:
-                if mail_fn(plan["subject"], plan["body"]):
+                if mail_fn(plan["subject"], plan["body"], attachments=paths):
                     run["email"] = now.isoformat()
                     for i in record.get("items") or []:
                         ledger["reports"].setdefault(item_key(i), {})["email"] = now.isoformat()
+                    for a in plan["attachments"]:
+                        ledger["reports"].setdefault(a["key"], {}).setdefault("email_files", []).append(a["kind"])
                 else:
                     summary["failures"].append({"outbox": path.name, "channel": "email"})
                 write_ledger(base, ledger)

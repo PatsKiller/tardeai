@@ -520,7 +520,7 @@ N8N_NATIVE_SHADOW = frozenset(
         # Approved source registration only: two native inactive Ask proposals, never host cron or live mode.
         "cio-ask-lifecycle",
         "cio-ask-material-events",
-        # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 2 h 08:10-20:10 ET dry_run
+        # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 15 min (windows 17:45 / 07:00 ET) dry_run
         # (tests/test_prospectus_build_lane_20261026.py).
         "prospectus-build",
         "momentum-lifecycle-monitor",

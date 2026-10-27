@@ -102,11 +102,12 @@
     },
     "watch_batch": {
       "enabled": true,
-      "note": "watch rows go to scripts.lib.prospectus.batch.submit_window when the cost-settings PR provides it; synchronous until then"
+      "max_submit": 20,
+      "note": "Watch rows use the Message Batches API (scripts/lib/prospectus/batch.py, 50% price; generation config watch.batch): each window first collects finished batch results (batch.collect; delivered with that run), and a window covering the watch scope submits up to max_submit queued Watch rows (batch.submit_due, gate + web planning first). false = the window writes Watch rows synchronously."
     }
   },
   "delivery": {
-    "note": "Host sender scripts/prospectus_deliver.py (timer tradeai-prospectus-deliver.timer). Operator 2026-10-26: Telegram = summary + each report's PDF and Word; email = 'just the audit' (no attachments).",
+    "note": "Host sender scripts/prospectus_deliver.py (timer tradeai-prospectus-deliver.timer). Operator 2026-10-26: Telegram = summary + each report's PDF and Word; email = the run audit PLUS the PDF and Word of HOLDINGS reports (attach_scopes), at most max_attachment_bytes per email (the rest linked); Watch reports are linked, not attached.",
     "telegram": {
       "enabled": true,
       "formats": [
@@ -117,7 +118,15 @@
     },
     "email": {
       "enabled": true,
-      "attachments": false
+      "attachments": true,
+      "attach_scopes": [
+        "holding"
+      ],
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attachment_bytes": 20971520
     },
     "scopes": {
       "holding": true,

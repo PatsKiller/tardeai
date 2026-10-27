@@ -55,6 +55,12 @@ OPERATOR_RULING_DD01_REASON = (
 #: Read-only monitors; no direct_sender (the n8n entry scripts never reference the chokepoint; the dispatcher sender
 #: gate tests/test_agents_policy_7_0_0_advisory_market_data.py stays green). Reviewed addition, not a ruling widening.
 DATA_INTEGRITY_MONITORS_20261018 = frozenset({"n8n-data-plausibility-audit", "n8n-gap-resolution-audit"})
+#: 2026-10-26 prospectus go-live PR (shared-infra, operator merge): the n8n lane prospectus-build
+#: (scripts/prospectus_window.py) reaches broker_module / order_placement only through the same LAZY shared chain
+#: llm_consumption -> db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport (at_import=false),
+#: via the governed credit path (prospectus batch + data-quality gate). No direct_sender; the lane writes an outbox
+#: and the host timer prospectus-deliver sends. Reviewed addition under the DD01 ruling, not a ruling widening.
+PROSPECTUS_BUILD_20261026 = frozenset({"prospectus-build"})
 
 FROZEN_20261015 = {
     "broker_module": frozenset(
@@ -130,7 +136,8 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | PROSPECTUS_BUILD_20261026,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -206,7 +213,8 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | PROSPECTUS_BUILD_20261026,
 }
 
 

@@ -14,6 +14,11 @@ Every lane fire (n8n dispatcher, every 15 minutes) does exactly one of:
 * **an operator drain** otherwise: only "Rewrite now" rows (operator POST, priority 1) run, so that button stays
   immediate. With no operator row the fire reads the queue file and exits.
 
+Watch rows use the Message Batches API (``run_windows.watch_batch.enabled``, 50% price): every window first collects
+the finished batch results (``batch.collect``; they are delivered with this run), and a window that covers the watch
+scope submits the queued Watch rows (``batch.submit_due``, at most ``watch_batch.max_submit``). Holdings and operator
+rewrites stay synchronous.
+
 Each run that wrote or failed a report leaves one delivery outbox record; the host sender
 ``scripts/prospectus_deliver.py`` sends it (Telegram summary + PDF + Word; email audit). This lane sends nothing.
 
@@ -79,16 +84,16 @@ def pick_window(cfg: dict, base: Path, now: datetime, forced: str = "") -> dict 
     return schedule.due_window(cfg, base, now)
 
 
-def _eligible_for(win: dict | None, skip: set[str]) -> Callable[[dict], bool]:
+def _eligible_for(win: dict | None) -> Callable[[dict], bool]:
     if win is None:
         return schedule.is_operator_row
     scopes = set(win.get("scopes") or ["holding", "watch"])
-    return lambda row: row.get("symbol") not in skip and (
-        schedule.is_operator_row(row) or row.get("scope", "watch") in scopes)
+    return lambda row: schedule.is_operator_row(row) or row.get("scope", "watch") in scopes
 
 
 def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Callable[[Path, bool], Any],
-        run_queue_fn: Callable | None = None, log: Callable[[str], None] = print) -> dict:
+        run_queue_fn: Callable | None = None, batch_submit_fn: Callable | None = None,
+        batch_collect_fn: Callable | None = None, log: Callable[[str], None] = print) -> dict:
     base = store.base_dir(root, cfg)
     now = _now(args)
     zone = schedule.tz(cfg)
@@ -113,7 +118,7 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
             out["would_run_max"] = int(win.get("max_reports", 12))
         return out
 
-    from scripts.lib.prospectus.pipeline import run_queue
+    from scripts.lib.prospectus.pipeline import handle_blocked, run_queue
     run_queue_fn = run_queue_fn or run_queue
     schedule.release_held(base)  # a crashed earlier fire never strands a parked row
     if win is None and not operator_rows:
@@ -122,8 +127,26 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
     started = now
     sources = sources_factory(root, False)
     holdings = sources.holdings() or {}
-    enqueued, skip, batch = 0, set(), {"enabled": bool((schedule.window_cfg(cfg).get("watch_batch") or {}).get("enabled")),
-                                       "used": False}
+    use_batch = schedule.watch_batch_enabled(cfg)
+    enqueued, batch = 0, {"enabled": use_batch, "used": False}
+    before = dict(store.read_index(base)["items"])
+    rows: dict[str, dict] = {}
+    collected: list[str] = []
+    extra_cost = 0.0
+    if win and use_batch:  # every window first collects finished Watch batch results (no model call)
+        if batch_collect_fn is None:
+            from scripts.lib.prospectus import batch as batch_mod
+            batch_collect_fn = batch_mod.collect
+            pending = batch_mod.read_state(base)["items"]
+        else:
+            pending = {}
+        res = batch_collect_fn(base, cfg, now=now) or {}
+        collected = list(res.get("written") or [])
+        for sym in collected:
+            rows[sym] = dict((pending.get(sym) or {}).get("row") or {}, scope="watch")
+        extra_cost = float(res.get("cost_usd") or 0)
+        batch.update(collected=collected, requeued=res.get("requeued") or [], collect_failed=res.get("failed") or [],
+                     pending=res.get("pending") or [])
     if win:
         universe = schedule.plan_universe(holdings, sources.watch_symbols() if "watch" in (win.get("scopes") or [])
                                           else [], cfg)
@@ -135,22 +158,24 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
                                          triggers=win.get("triggers") or "all", scopes=win.get("scopes"),
                                          holdings=holdings)
         enqueued = store.enqueue(base, due, now=now)
-        hook = schedule.batch_hook(cfg)
-        if hook is not None and "watch" in (win.get("scopes") or []):
-            watch_rows = [r for r in store.read_queue(base)["items"]
-                          if r.get("scope") == "watch" and r.get("state") in ("queued", None)
-                          and not schedule.is_operator_row(r)]
-            if watch_rows:
-                res = hook(base, watch_rows, cfg) or {}
-                skip = set(res.get("submitted") or [])
-                batch.update(used=True, submitted=sorted(skip))
+        if use_batch and "watch" in (win.get("scopes") or []):
+            if batch_submit_fn is None:
+                from scripts.lib.prospectus import batch as batch_mod
+                batch_submit_fn = batch_mod.submit_due
+            res = schedule.submit_watch_batch(base, sources, cfg, now=now, submit_due_fn=batch_submit_fn,
+                                              on_blocked=handle_blocked)
+            batch.update(used=True, submitted=sorted(res.get("submitted") or []),
+                         blocked_data=res.get("blocked_data") or [], submit_failed=res.get("failed") or [],
+                         submit_stopped=res.get("stopped_reason"))
         limit = int(win.get("max_reports", 12))
     else:
         limit = int((schedule.window_cfg(cfg).get("operator_rewrite") or {}).get("max_per_fire", 3))
-    before = dict(store.read_index(base)["items"])
-    rows = {r["symbol"]: r for r in store.read_queue(base)["items"]}
-    summary = schedule.drain(base, sources, cfg, limit=limit, eligible=_eligible_for(win, skip),
-                             run_queue_fn=run_queue_fn, holdings=holdings, manual=bool((win or {}).get("manual")))
+    rows.update({r["symbol"]: r for r in store.read_queue(base)["items"]})
+    summary = schedule.drain(base, sources, cfg, limit=limit, eligible=_eligible_for(win),
+                             run_queue_fn=run_queue_fn, holdings=holdings, manual=bool((win or {}).get("manual")),
+                             batch_enabled=use_batch)
+    summary["done"] = collected + [s for s in summary.get("done") or [] if s not in collected]
+    summary["cost_usd"] = float(summary.get("cost_usd") or 0) + extra_cost
     universe_by = {r["symbol"]: r for r in store.read_universe(base)}
     items = [it for it in (delivery.report_item(base, cfg, s, row=rows.get(s) or {}, before=before,
                                                  universe=universe_by) for s in summary.get("done") or []) if it]
@@ -161,6 +186,7 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
     cost = float(summary.get("cost_usd") or 0)
     finished = datetime.now(timezone.utc)
     receipt = {"done": summary.get("done"), "failed": summary.get("failed"), "queued": summary.get("queued"),
+               "blocked_data": summary.get("blocked_data") or [],
                "stopped_reason": summary.get("stopped_reason"), "cost_usd": round(cost, 4), "enqueued": enqueued,
                "finished_at": finished.isoformat()}
     state = schedule.record_window(base, (win or {}).get("key") or "", receipt, month=month, cost_usd=cost)
@@ -183,6 +209,23 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
     return out
 
 
+def empty_reason_for(out: dict) -> str | None:
+    """The typed reason a live fire wrote no report (the health contract's ``empty_allowed_reasons``); None when the
+    fire failed reports and wrote none, so the executor marks it RUN_FAILED empty_output."""
+    if int(out.get("produced_count") or 0):
+        return None
+    if out.get("failed"):
+        return None
+    if out.get("stopped_reason"):
+        return "credit_cap_reached"
+    b = out.get("batch") or {}
+    if b.get("submitted"):
+        return "deferred_to_batch"
+    if out.get("blocked_data") or b.get("blocked_data"):
+        return "data_blocked"
+    return "no_new_input"
+
+
 def write_receipt(root: Path, out: dict, started: str) -> None:
     try:
         from scripts.lib.lane_last_receipt import write_lane_receipt
@@ -191,11 +234,12 @@ def write_receipt(root: Path, out: dict, started: str) -> None:
     produced = int(out.get("produced_count") or 0)
     write_lane_receipt(
         LANE, ok=True, exit_code=0, started_at=started, script="scripts/prospectus_window.py",
-        summary={k: out.get(k) for k in ("ran", "window", "window_key", "enqueued", "done", "failed", "queue_left",
-                                         "cost_usd", "month_spend_usd", "stopped_reason", "outbox")},
+        summary={k: out.get(k) for k in ("ran", "window", "window_key", "enqueued", "done", "failed", "blocked_data",
+                                         "queue_left", "cost_usd", "month_spend_usd", "stopped_reason", "outbox",
+                                         "batch")},
         produced_count=produced, attempted_count=produced + len(out.get("failed") or []),
         output_evidence=[{"kind": "file_artifact", "ref": out["outbox"]}] if out.get("outbox") else [],
-        empty_reason=None if produced else "no_new_input",
+        empty_reason=empty_reason_for(out),
         path=root / "data/runtime" / f"{LANE}_last.json")
 
 

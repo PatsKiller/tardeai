@@ -2,7 +2,8 @@
 
 "Those new reports shouldn't just run ad hoc independently. They should be queued up and run a certain time of the
 day, like if something moves plus or minus the 8% threshold; also those reports should be sent out both in Word and
-PDF as a notification [on] Telegram and [email]." Email clarified the same day: "just the audit", no attachments.
+PDF as a notification [on] Telegram and [email]." Email = the run audit; at go-live (same day) the email also attaches
+the PDF and Word of HOLDINGS reports (Watch linked), capped per email with links beyond the cap.
 
 Synthetic symbols and values only; every store lives under a temp state root; transports are stubs.
 """
@@ -21,9 +22,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from scripts.lib.prospectus import delivery, load_config, schedule, store  # noqa: E402
+from scripts.lib.prospectus import batch as BATCH, delivery, load_config, schedule, store  # noqa: E402
 import prospectus_window as PW  # noqa: E402
 import prospectus_deliver as PD  # noqa: E402
+
+COVERS = ["scripts/prospectus_deliver.py"]  # alarm firing coverage: the production transports are exercised below
+
+
+@pytest.fixture(autouse=True)
+def no_real_batch(monkeypatch):
+    """The window's Watch batch path never reaches the provider in tests; tests that exercise it inject stubs."""
+    monkeypatch.setattr(BATCH, "collect", lambda base, cfg, *, now, **_: {"written": [], "cost_usd": 0.0})
+    monkeypatch.setattr(BATCH, "submit_due", lambda base, sources, cfg, *, now, **_: {"submitted": []})
 
 
 def Z(s: str) -> datetime:
@@ -53,7 +63,10 @@ def test_config_defaults(cfg):
     assert "day_move" not in wins["pre_market"]["triggers"]
     d = cfg["delivery"]
     assert d["telegram"]["enabled"] and d["telegram"]["formats"] == ["pdf", "docx"]
-    assert d["email"]["enabled"] and d["email"]["attachments"] is False  # operator: email = audit only
+    assert d["email"]["enabled"] and d["email"]["attachments"] is True  # go-live: holdings PDF + Word attached
+    assert d["email"]["attach_scopes"] == ["holding"] and d["email"]["formats"] == ["pdf", "docx"]
+    assert d["email"]["max_attachment_bytes"] == 20 * 1024 * 1024
+    assert cfg["run_windows"]["watch_batch"]["enabled"] and cfg["run_windows"]["watch_batch"]["max_submit"] == 20
     assert d["scopes"]["holding"] and d["scopes"]["watch"]
     assert cfg["cadence"]["triggers"]["day_move_abs_pct"] == 8.0
 
@@ -181,14 +194,17 @@ def test_cadence_monthly_quarterly_weekly(cfg):
 # ── draining a window ─────────────────────────────────────────────────────────────────────────────────────────
 def fake_run_queue(calls, *, stop_after=None, cost=0.5, big=False):
     """A stand-in for pipeline.run_queue: same queue semantics, writes a synthetic version per row."""
-    def run_queue(base, sources, cfg, *, limit, holdings=None, manual=False, **_):
-        calls.append({"limit": limit, "states": {r["symbol"]: r.get("state") for r in store.read_queue(base)["items"]}})
+    def run_queue(base, sources, cfg, *, limit, holdings=None, manual=False, batch_enabled=None, **_):
+        calls.append({"limit": limit, "batch_enabled": batch_enabled,
+                      "states": {r["symbol"]: r.get("state") for r in store.read_queue(base)["items"]}})
         summary = {"done": [], "queued": [], "failed": [], "stopped_reason": None, "cost_usd": 0.0}
         for row in list(store.read_queue(base)["items"]):
             if len(summary["done"]) >= limit:
                 break
             if row.get("state") not in ("queued", None):
                 continue
+            if batch_enabled and BATCH.is_batch_row(row):
+                continue  # as pipeline.run_queue: Watch batch rows are left for batch.submit_due
             if stop_after is not None and len(summary["done"]) >= stop_after:
                 summary["stopped_reason"] = "PAUSED_TODAY"
                 summary["queued"].append(row["symbol"])
@@ -306,16 +322,25 @@ class Stubs:
         self.docs.append((Path(path).name, caption))
         return True
 
-    def mail(self, subject, body):
-        self.mails.append((subject, body))
+    def mail(self, subject, body, attachments=None):
+        for p in attachments or []:
+            assert Path(p).is_file()
+        self.mails.append((subject, body, [Path(p).parent.parent.name + "/" + Path(p).name for p in attachments or []]))
         return not self.fail_mail
+
+
+def sync_cfg(cfg):
+    """The window config with the Watch batch path off, so synthetic Watch rows are written in the window."""
+    out = json.loads(json.dumps(cfg))
+    out["run_windows"]["watch_batch"]["enabled"] = False
+    return out
 
 
 def run_window(cfg, root, syms, *, now="2026-10-26T21:50:00Z", big=False, scope="holding"):
     base = base_of(root, cfg)
     seed_queue(base, [{"symbol": s, "scope": scope, "priority": 100 + i, "reason": "monthly_due"}
                       for i, s in enumerate(syms)])
-    return PW.run(args(now=now), cfg, root, sources_factory=lambda r, ro: FakeSources(),
+    return PW.run(args(now=now), sync_cfg(cfg), root, sources_factory=lambda r, ro: FakeSources(),
                   run_queue_fn=fake_run_queue([], big=big))
 
 
@@ -328,9 +353,10 @@ def test_delivery_telegram_files_email_audit_and_idempotent(cfg, root):
     msg = s.texts[0]
     assert "AAA" in msg and "CIO conviction 71" in msg and "monthly_due" in msg and "gate not gated" in msg
     assert "https://ms01-openclaw.tail163d14.ts.net/v3/prospectus/AAA" in msg
-    subject, body = s.mails[0]
+    subject, body, files = s.mails[0]
     assert "run cost $1.00" in subject and "Month to date (2026-10): $1.00" in body
-    assert "no attachments" not in body and "PDF and Word files are on the Prospectus page" in body
+    assert sorted(files) == ["AAA/prospectus.docx", "AAA/prospectus.pdf", "BBB/prospectus.docx", "BBB/prospectus.pdf"]
+    assert "Attached: PDF and Word of 2 holdings report(s)" in body and "(attached: PDF + Word)" in body
     assert "account" not in (msg + body).lower()
     base = base_of(root, cfg)
     assert delivery.pending_outbox(base) == [] and list(delivery.sent_dir(base).glob("*.json"))
@@ -343,7 +369,7 @@ def test_delivery_telegram_files_email_audit_and_idempotent(cfg, root):
 def test_verdict_change_in_email_audit(cfg, root):
     run_window(cfg, root, ["AAA"])
     PD.run(True, cfg, root, **dict(zip(("send_text", "send_document", "send_email"),
-                                       (lambda *a: True, lambda *a: True, lambda *a: True))))
+                                       (lambda *a: True, lambda *a: True, lambda *a, **k: True))))
     run_window(cfg, root, ["AAA"], now="2026-10-27T21:50:00Z")
     s = Stubs()
     PD.run(True, cfg, root, send_text=s.text, send_document=s.doc, send_email=s.mail)
@@ -356,8 +382,8 @@ def test_over_ten_reports_attach_holdings_and_link_watch(cfg, root):
     run_window(cfg, root, [f"H{i:02d}" for i in range(6)])
     base = base_of(root, cfg)
     seed_queue(base, [{"symbol": f"W{i:02d}", "scope": "watch", "priority": 1000, "reason": "missing"} for i in range(6)])
-    PW.run(args(now="2026-10-26T21:50:00Z", window="post_close"), cfg, root, sources_factory=lambda r, ro: FakeSources(),
-           run_queue_fn=fake_run_queue([]))
+    PW.run(args(now="2026-10-26T21:50:00Z", window="post_close"), sync_cfg(cfg), root,
+           sources_factory=lambda r, ro: FakeSources(), run_queue_fn=fake_run_queue([]))
     # merge both runs into one record to exercise > 10 in one window
     recs = [json.loads(p.read_text()) for p in delivery.pending_outbox(base)]
     merged = dict(recs[0], items=recs[0]["items"] + recs[1]["items"])
@@ -433,3 +459,149 @@ def test_deliver_lane_registered_and_units_shipped():
     unit = (ROOT / "config/systemd/user/tradeai-prospectus-deliver.service").read_text()
     assert "prospectus_deliver.py --apply" in unit and "portfolio-server/CURRENT" in unit
     assert (ROOT / "config/systemd/user/tradeai-prospectus-deliver.timer").is_file()
+
+
+# ── go-live: email attachments (holdings), the size cap, the production transports ───────────────────────────
+def test_email_attaches_holdings_links_watch(cfg, root):
+    seed_queue(base_of(root, cfg), [{"symbol": "WWW", "scope": "watch", "priority": 1000, "reason": "missing"}])
+    run_window(cfg, root, ["HHH"])
+    s = Stubs()
+    PD.run(True, cfg, root, send_text=s.text, send_document=s.doc, send_email=s.mail)
+    (_, body, files), = s.mails
+    assert sorted(files) == ["HHH/prospectus.docx", "HHH/prospectus.pdf"]  # watch: linked, never attached
+    assert "WWW (WWW Corp)" in body and "/v3/prospectus/WWW   (linked)" in body
+    assert "/v3/prospectus/HHH   (attached: PDF + Word)" in body
+    assert sorted(n for n, _ in s.docs).count("prospectus.pdf") == 2  # Telegram unchanged: both reports' files
+
+
+def test_email_size_cap_links_the_rest(cfg, root):
+    small = json.loads(json.dumps(cfg))
+    small["delivery"]["email"]["max_attachment_bytes"] = 30  # each synthetic PDF is 10 bytes, Word 2 bytes
+    run_window(small, root, ["AAA", "BBB", "CCC"])
+    base = base_of(root, small)
+    rec = json.loads(delivery.pending_outbox(base)[0].read_text())
+    plan = delivery.plan_email(rec, small, base)
+    got = [(a["symbol"], a["kind"]) for a in plan["attachments"]]
+    assert got == [("AAA", "pdf"), ("AAA", "docx"), ("BBB", "pdf"), ("BBB", "docx")]  # 24 bytes <= 30
+    assert sum(a["bytes"] for a in plan["attachments"]) <= 30
+    assert plan["linked_over_cap"] == ["CCC"]  # a report is attached whole or linked whole
+    assert "email cap, linked instead: CCC." in plan["body"] and "CCC (CCC Corp)" in plan["body"]
+    off = json.loads(json.dumps(small))
+    off["delivery"]["email"]["attachments"] = False
+    assert delivery.plan_email(rec, off, base)["attachments"] == []
+
+
+def test_production_transports_fire_the_chokepoints(cfg, root, monkeypatch):
+    """Firing test (COVERS): the real transports() reach telegram_alert / email_notifier with the files."""
+    import types
+    sent = {"text": [], "doc": [], "mail": []}
+    tg = types.ModuleType("telegram_alert")
+    tg.send_telegram = lambda msg, **kw: sent["text"].append((msg, kw)) or True
+    tg.send_telegram_document = lambda path, **kw: sent["doc"].append((path, kw)) or True
+    em = types.ModuleType("email_notifier")
+    em.send_email = lambda subject, body, attachments=None: sent["mail"].append((subject, attachments)) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", tg)
+    monkeypatch.setitem(sys.modules, "email_notifier", em)
+    run_window(cfg, root, ["AAA"])
+    out, code = PD.run(True, cfg, root)
+    assert code == 0 and len(sent["text"]) == 1 and "AAA" in sent["text"][0][0]
+    assert sent["text"][0][1]["priority"] == "P2" and sent["text"][0][1]["dedupe_minutes"] == 0
+    assert sorted(Path(p).name for p, _ in sent["doc"]) == ["prospectus.docx", "prospectus.pdf"]
+    (subject, attachments), = sent["mail"]
+    assert "Ticker Prospectus" in subject and sorted(Path(p).name for p in attachments) == ["prospectus.docx",
+                                                                                         "prospectus.pdf"]
+    # the failure alert reaches send_telegram too
+    run_window(cfg, root, ["BBB"], now="2026-10-27T21:50:00Z")
+    em.send_email = lambda *a, **k: False
+    for _ in range(3):
+        out, code = PD.run(True, cfg, root)
+    assert code == 1 and any("delivery FAILED" in m for m, _ in sent["text"])
+
+
+def test_email_notifier_passes_attachments(monkeypatch, tmp_path):
+    import email_notifier as EN
+    pdf = tmp_path / "r.pdf"
+    pdf.write_bytes(b"%PDF")
+    calls = []
+
+    class R:
+        returncode = 0
+        stderr = ""
+    monkeypatch.setattr(EN, "_get_keyring_password", lambda: "x")
+    monkeypatch.setattr(EN, "_gog_bin", lambda: "/bin/gog")
+    monkeypatch.setattr(EN.subprocess, "run", lambda argv, **kw: calls.append((argv, kw)) or R())
+    assert EN.send_email("s", "b", attachments=[str(pdf)])
+    argv, kw = calls[0]
+    assert argv[-2:] == ["--attach", str(pdf)] and kw["timeout"] == 120
+    assert EN.send_email("s", "b") and "--attach" not in calls[1][0] and calls[1][1]["timeout"] == 15
+    assert not EN.send_email("s", "b", attachments=[str(tmp_path / "missing.pdf")]) and len(calls) == 2
+
+
+# ── go-live: Watch rows through the Message Batches API at the window ─────────────────────────────────────────
+def test_window_collects_and_submits_watch_batch(cfg, root, monkeypatch):
+    base = base_of(root, cfg)
+    seed_queue(base, [{"symbol": "HLD", "scope": "holding", "priority": 100, "reason": "monthly_due"}]
+               + [{"symbol": f"W{i}", "scope": "watch", "priority": 1000, "reason": "missing"} for i in range(3)])
+    small = json.loads(json.dumps(cfg))
+    small["run_windows"]["watch_batch"]["max_submit"] = 2
+    seen = {}
+
+    def collect(b, c, *, now, **_):
+        if store.read_index(b)["items"].get("BAT"):
+            return {"written": [], "cost_usd": 0.0}
+        # a batch result written earlier lands through the same store path as a synchronous report
+        store.write_version(b, "BAT", "20261026T200000Z", {"symbol": "BAT", "verdict_line": "batch verdict"},
+                            {"prospectus.pdf": b"%PDF", "prospectus.docx": b"PK"})
+        store.update_index(b, "BAT", name="BAT Corp", scope="watch", version="20261026T200000Z", status="ready",
+                           verdict_line="batch verdict", cost_usd=0.25)
+        return {"written": ["BAT"], "pending": ["OLD"], "requeued": [], "failed": [], "cost_usd": 0.25}
+
+    def submit(b, sources, c, *, now, force, on_blocked=None):
+        seen["force"] = force
+        seen["queued"] = sorted(r["symbol"] for r in store.read_queue(b)["items"] if r.get("state") in ("queued", None))
+        return {"submitted": seen["queued"], "blocked_data": [], "failed": [], "stopped_reason": None}
+    calls = []
+    out = PW.run(args(now="2026-10-26T21:50:00Z"), small, root, sources_factory=lambda r, ro: FakeSources(),
+                 run_queue_fn=fake_run_queue(calls), batch_submit_fn=submit, batch_collect_fn=collect)
+    assert seen == {"force": True, "queued": ["W0", "W1"]}  # watch only, capped, the rest parked for the call
+    assert out["batch"]["submitted"] == ["W0", "W1"] and out["batch"]["collected"] == ["BAT"]
+    assert calls[0]["batch_enabled"] is True  # run_queue skips batch rows itself
+    assert out["done"][0] == "BAT" and "HLD" in out["done"]
+    rec = json.loads((base / out["outbox"]).read_text())
+    assert {i["symbol"] for i in rec["items"]} >= {"BAT", "HLD"} and rec["cost_usd"] == 0.75
+    # pre-market (holdings only): collects, never submits
+    seen.clear()
+    out = PW.run(args(now="2026-10-27T11:05:00Z"), small, root, sources_factory=lambda r, ro: FakeSources(),
+                 run_queue_fn=fake_run_queue([]), batch_submit_fn=submit, batch_collect_fn=collect)
+    assert out["window"] == "pre_market" and seen == {} and out["batch"]["used"] is False
+
+
+def test_window_batch_off_writes_watch_synchronously(cfg, root):
+    off = json.loads(json.dumps(cfg))
+    off["run_windows"]["watch_batch"]["enabled"] = False
+    calls = []
+
+    def boom(*a, **k):
+        raise AssertionError("batch disabled: no submit or collect")
+    seed_queue(base_of(root, off), [{"symbol": "WWW", "scope": "watch", "priority": 1000, "reason": "missing"}])
+    out = PW.run(args(now="2026-10-26T21:50:00Z"), off, root, sources_factory=lambda r, ro: FakeSources(),
+                 run_queue_fn=fake_run_queue(calls), batch_submit_fn=boom, batch_collect_fn=boom)
+    assert calls[0]["batch_enabled"] is False and out["done"] == ["WWW"]
+
+
+@pytest.mark.parametrize("out,reason", [
+    ({"produced_count": 2}, None),
+    ({"produced_count": 0, "failed": ["AAA"]}, None),  # failures, nothing written -> RUN_FAILED empty_output
+    ({"produced_count": 0, "stopped_reason": "PAUSED_TODAY"}, "credit_cap_reached"),
+    ({"produced_count": 0, "batch": {"submitted": ["W0"]}}, "deferred_to_batch"),
+    ({"produced_count": 0, "blocked_data": ["AAA"]}, "data_blocked"),
+    ({"produced_count": 0, "ran": "nothing_due"}, "no_new_input"),
+])
+def test_empty_reason_matches_the_health_contract(out, reason):
+    assert PW.empty_reason_for(out) == reason
+    contract = next(c for c in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+                    if c["id"] == "prospectus-build")
+    eo = contract["expected_output"]
+    assert eo["rule"] == "empty_allowed"
+    if reason:
+        assert reason in eo["empty_allowed_reasons"]

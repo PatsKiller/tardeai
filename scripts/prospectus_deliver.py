@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Deliver Ticker Prospectus run outboxes — host sender (operator 2026-10-26).
 
-Operator: reports "should be sent out both in Word and PDF as a notification [on] Telegram and [email]"; clarified
-the same day: email is "just the audit" (no attachments); Telegram carries the PDF and Word files.
+Operator: reports "should be sent out both in Word and PDF as a notification [on] Telegram and [email]". Email is the
+run audit plus the PDF and Word files of the HOLDINGS reports (go-live direction 2026-10-26; ``delivery.email
+.attach_scopes``), capped per email (``max_attachment_bytes``, ~20 MB; the rest linked); Watch reports are linked.
+Telegram carries the summary plus each report's PDF and Word file.
 
 The n8n lane ``prospectus-build`` (scripts/prospectus_window.py) writes one outbox record per run and sends nothing
 (AGENTS.md §23.14, §24.1). This host job sends them through the existing chokepoints only:
 
 * Telegram: ``telegram_alert.send_telegram`` (summary) and ``telegram_alert.send_telegram_document`` (each PDF and
   Word file), as P2 notification intents with the job's own ledger as dedupe (``dedupe_minutes=0``).
-* Email: ``email_notifier.send_email`` (gog Gmail, the path the digests use): one plain-text audit per run.
+* Email: ``email_notifier.send_email`` (gog Gmail, the path the digests use): one plain-text audit per run, with the
+  holdings reports' PDF and Word files attached (``attachments=``).
 
 Idempotent per (symbol, version) and per run (``<state>/data/prospectus/delivery/ledger.json``). A record that still
 fails after ``delivery.max_attempts`` raises one P2 failure alert and the job exits 1 (the unit shows failed; the
@@ -56,8 +59,8 @@ def transports():
     def document(path: str, caption: str) -> bool:
         return bool(send_telegram_document(path, caption=caption, priority="P2", dedupe_minutes=0, producer=PRODUCER))
 
-    def mail(subject: str, body: str) -> bool:
-        return bool(send_email(subject, body))
+    def mail(subject: str, body: str, attachments: list[str] | None = None) -> bool:
+        return bool(send_email(subject, body, attachments=attachments or None))
 
     return text, document, mail
 

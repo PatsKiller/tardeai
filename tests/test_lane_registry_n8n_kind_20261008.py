@@ -362,7 +362,7 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # Hourly Ask/source polling proposals remain native, shadow and inactive; no host schedule is retired.
         "cio-ask-lifecycle",
         "cio-ask-material-events",
-        # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 2 h 08:10-20:10 ET dry_run
+        # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 15 min (windows 17:45 / 07:00 ET) dry_run
         # (no host line; tests/test_prospectus_build_lane_20261026.py).
         "prospectus-build",
         "heartbeat-watch",

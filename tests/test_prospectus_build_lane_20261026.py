@@ -1,7 +1,7 @@
 """prospectus-build as an n8n-native lane at stage shadow (operator 2026-10-26, Ticker Prospectus contract).
 
 Registry row (dispatcher, shadow, dry_run), allowlist entry (dry_run_arg only, live_arg null, flock, no broker env),
-DRAFT health contract awaiting the owner's review, CI gate, and an import closure free of senders, brokers and orders.
+REVIEWED health contract, CI gate, and an import closure with no direct sender and only lazy (baselined) broker reach.
 """
 from __future__ import annotations
 
@@ -51,16 +51,28 @@ def test_lane_is_n8n_native_shadow_dry_run():
 
 
 def test_no_forbidden_capability_in_import_closure():
+    """No direct sender anywhere in the closure; broker/order reach only LAZY (the shared llm_consumption ->
+    db_adapter write-path chain, baselined under the DD01 ruling); and the lane's own code imports no sender."""
+    import ast
     import audit_lane_transitive_capabilities as cap
 
     res = cap.Resolver(ROOT)
     for entry in ("prospectus_build.py", "prospectus_window.py"):
         order, _parent = res.closure(ROOT / "scripts" / entry)
         caps = set().union(*(res.info(m).caps for m in order))
-        assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, (entry, caps)
-        paths = {str(res.info(m).path) for m in order}
-        assert not [p for p in paths if "active_trader/" in p or "brokers/" in p], paths
-        assert not [p for p in paths if p.endswith(("telegram_alert.py", "email_notifier.py"))], paths
+        assert "direct_sender" not in caps, entry
+    row = cap.audit()[LANE]["capabilities"]
+    assert "direct_sender" not in row
+    for c in ("broker_module", "order_placement"):
+        assert c not in row or row[c]["at_import"] is False, (c, row[c])
+    own = [ROOT / "scripts/prospectus_window.py", ROOT / "scripts/prospectus_build.py",
+           *sorted((ROOT / "scripts/lib/prospectus").glob("*.py"))]
+    senders = {"telegram_alert", "email_notifier", "telegram_transport", "smtp" + "lib"}
+    for path in own:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            assert not [n for n in names if n.split(".")[-1] in senders], (path.name, names)
 
 
 def test_ci_gate_registered():

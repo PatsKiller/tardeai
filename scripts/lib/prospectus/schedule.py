@@ -12,6 +12,10 @@ certain time of the day, like if something moves plus or minus the 8% threshold"
   the drain for the day at its cap (``QueueLater``). Whatever is left stays queued for the next window.
 * **"Rewrite now"** (operator POST, priority 1) stays immediate: every lane fire that is not a window drains only the
   operator rows.
+* **Watch rows go through the Message Batches API** (``run_windows.watch_batch.enabled``): a window that includes the
+  watch scope submits the queued Watch batch rows (``batch.submit_due``, capped at ``watch_batch.max_submit``) and
+  every window first collects finished batch results (``batch.collect`` -> ``pipeline.persist_doc``), so they are
+  delivered with that window's run. Holdings and operator rewrites stay synchronous.
 * **Delivery is not done here.** A run writes one outbox record (``delivery.write_outbox``); the host sender
   ``scripts/prospectus_deliver.py`` sends it. This module and its lane import no sender (AGENTS.md §23.14, §24.1).
 
@@ -20,7 +24,6 @@ READ_ONLY_ADVISORY (MBI_BEHAVIOR=0): nothing here sizes, orders, stops or weight
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-import importlib
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -275,30 +278,45 @@ def release_held(base: Path) -> int:
     return released
 
 
-def batch_hook(cfg: dict) -> Callable | None:
-    """The Batch submitter for watch rows, when the cost-settings PR provides one; None means run synchronously.
+def watch_batch_cfg(cfg: dict) -> dict:
+    return window_cfg(cfg).get("watch_batch") or {}
 
-    Contract (for that PR): ``scripts.lib.prospectus.batch.submit_window(base, rows, cfg) -> {"submitted": [sym]}``.
+
+def watch_batch_enabled(cfg: dict) -> bool:
+    """Watch rows go through the Message Batches API (``batch.submit_due`` / ``batch.collect``) when on."""
+    return bool(watch_batch_cfg(cfg).get("enabled"))
+
+
+def submit_watch_batch(base: Path, sources: Any, cfg: dict, *, now: datetime, submit_due_fn: Callable,
+                       on_blocked: Callable | None = None) -> dict:
+    """Submit the queued Watch batch rows at a window, capped at ``watch_batch.max_submit`` (default 20).
+
+    The window is the batching point, so the size / wait threshold of ``batch.due`` is bypassed (``force``); rows past
+    the cap and every non-batch row are parked for the call and released after, so they wait for the next window.
     """
-    if not ((window_cfg(cfg).get("watch_batch") or {}).get("enabled")):
-        return None
-    for name in ("scripts.lib.prospectus.batch", "lib.prospectus.batch"):
-        try:
-            mod = importlib.import_module(name)
-        except ImportError:
-            continue
-        fn = getattr(mod, "submit_window", None)
-        if callable(fn):
-            return fn
-    return None
+    cap = max(0, int(watch_batch_cfg(cfg).get("max_submit", 20)))
+    queue = [r for r in store.read_queue(base)["items"] if r.get("state") in ("queued", None)
+             and r.get("scope", "watch") == "watch" and not is_operator_row(r) and r.get("mode") != "delta"]
+    take = {r["symbol"] for r in queue[:cap]}
+    if not take:
+        return {"submitted": [], "blocked_data": [], "failed": [], "stopped_reason": None}
+    hold_rows(base, lambda row: row.get("symbol") in take)
+    try:
+        return submit_due_fn(base, sources, cfg, now=now, force=True, on_blocked=on_blocked)
+    finally:
+        release_held(base)
 
 
 def drain(base: Path, sources: Any, cfg: dict, *, limit: int, eligible: Callable[[dict], bool],
-          run_queue_fn: Callable, holdings: dict, manual: bool = False) -> dict:
-    """Run ``run_queue`` over the eligible rows only, in queue (priority) order, up to ``limit``."""
+          run_queue_fn: Callable, holdings: dict, manual: bool = False, batch_enabled: bool = True) -> dict:
+    """Run ``run_queue`` over the eligible rows only, in queue (priority) order, up to ``limit``.
+
+    ``batch_enabled`` is passed through: when on, ``run_queue`` skips Watch batch rows (they were submitted, or wait
+    for the next window's submit); when off, the window writes them synchronously."""
     hold_rows(base, eligible)
     try:
-        return run_queue_fn(base, sources, cfg, limit=max(0, int(limit)), holdings=holdings, manual=manual)
+        return run_queue_fn(base, sources, cfg, limit=max(0, int(limit)), holdings=holdings, manual=manual,
+                            batch_enabled=batch_enabled)
     finally:
         release_held(base)
 

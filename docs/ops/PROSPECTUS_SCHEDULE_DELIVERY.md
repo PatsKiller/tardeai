@@ -1,15 +1,16 @@
 # Ticker Prospectus — run windows and delivery
 
 ```
-Status:      DRAFT
-as_of:       2026-10-26T22:00:00Z
-Measured at: branch feat/prospectus-schedule-delivery-20261026, stacked on #2193 (feat/prospectus-lane 59576417e); not live
+Status:      DRAFT (go-live PR; lane at shadow until the steps in "Going live")
+as_of:       2026-10-27T03:30:00Z
+Measured at: branch feat/prospectus-schedule-live-20261026 (supersedes #2193 and #2207), on main 25d759908; not live
 ```
 
 Operator 2026-10-26: "Those new reports shouldn't just run ad hoc independently. They should be queued up and run a
 certain time of the day, like if something moves plus or minus the 8% threshold; also those reports should be sent
-out both in Word and PDF as a notification [on] Telegram and [email]." Clarified the same day: email is "just the
-audit" — no attachments.
+out both in Word and PDF as a notification [on] Telegram and [email]." Email is the run audit; at go-live the same
+day the operator added the PDF and Word files of HOLDINGS reports as attachments (Watch reports linked), with a size
+cap per email and links beyond it.
 
 ## What runs when
 
@@ -17,7 +18,7 @@ The n8n lane `prospectus-build` fires every 15 minutes and runs `scripts/prospec
 
 | Fire | What it does |
 |---|---|
-| A window is due | Evaluate cadence and triggers, **enqueue** what is due with a reason, then drain the queue |
+| A window is due | Collect finished Watch batch results, evaluate cadence and triggers, **enqueue** what is due with a reason, submit queued Watch rows to the batch (watch windows), then drain the queue |
 | No window, an operator "Rewrite now" row is queued | Drain only operator rows (at most `operator_rewrite.max_per_fire`, default 3) |
 | Neither | Read the queue file and exit; no house store is read |
 
@@ -52,7 +53,14 @@ Windows (`config/prospectus.json` → `run_windows`, America/New_York wall clock
 - A window takes at most `max_reports`. The governed credit path stops it at the daily cap (`QueueLater`).
 - Rows a window may not take (watch rows in `pre_market`) are parked as `held_for_window` for the run and restored after. Every fire restores any parked row first.
 - Leftovers stay queued for the next window.
-- Batch for watch rows: `run_windows.watch_batch.enabled`. It is used when the cost-settings PR provides `scripts.lib.prospectus.batch.submit_window(base, rows, cfg)`. Until then watch rows run synchronously.
+- Watch rows use the Message Batches API (`run_windows.watch_batch.enabled`, default on; 50% price;
+  `scripts/lib/prospectus/batch.py`). A window covering the watch scope submits up to `watch_batch.max_submit` (20)
+  queued Watch rows (`batch.submit_due`: data-quality gate and web planning first); `pipeline.run_queue` skips them.
+  Every window first collects finished results (`batch.collect` -> `pipeline.persist_doc`, which also writes the CIO
+  memory), and those reports are delivered with that window's run. Holdings and operator rewrites stay synchronous.
+  `enabled: false` makes the window write Watch rows synchronously.
+- Receipt `empty_reason` when a live fire wrote nothing: `no_new_input`, `deferred_to_batch`, `credit_cap_reached`,
+  `data_blocked`; failures with nothing written carry no reason (RUN_FAILED `empty_output`, health contract).
 
 ## Delivery
 
@@ -69,8 +77,15 @@ systemd timer `tradeai-prospectus-deliver.timer` every 10 minutes (lane `prospec
 - If a run has more than 10 reports, only the holdings' files are attached; the rest are linked.
 - A file over 50 MB is linked instead of attached.
 
-**Email** goes through `email_notifier.send_email` (gog Gmail). It is one plain-text audit per run with no
-attachments. It contains:
+**Email** goes through `email_notifier.send_email` (gog Gmail; `attachments=` passes one `--attach` per file). It is
+one plain-text audit per run, plus the PDF and Word files of the run's HOLDINGS reports:
+
+- `delivery.email.attach_scopes` (default `["holding"]`), `formats` (`pdf`, `docx`), `attachments` (on).
+- `delivery.email.max_attachment_bytes` (20 MB): reports are attached whole (PDF + Word), in run order (holdings by $
+  value), while the total fits; a report that does not fit is linked and listed under "Over the 20 MB email cap".
+- Watch reports are linked, never attached (they still get their files in Telegram).
+
+The audit contains:
 
 - the reports written, with each one's trigger reason, gate status, status and CIO conviction
 - each verdict, and for a changed verdict both the old and new text
@@ -104,3 +119,40 @@ python3 scripts/prospectus_deliver.py --apply                          # send pe
 ```
 
 `scripts/prospectus_build.py` remains the operator CLI for first builds and named symbols. The lane no longer calls it.
+
+## Going live (operator steps, in order)
+
+The PR ships the lane at **shadow** (`live_arg` null, dispatch `dry_run`) and the delivery timer **not installed**
+(registry row `prospectus-deliver` `NEVER_SCHEDULED`). The health contract `prospectus-build` is `REVIEWED`.
+
+1. **Merge** (shared-infra: operator squash-merge), then let the host deploy poller promote the merged `main` SHA
+   (§25.10) and confirm `CURRENT` serves it.
+
+   ```bash
+   gh pr merge <PR> --squash
+   readlink -f ~/trade-ai-releases/portfolio-server/CURRENT      # must name the merged SHA before step 2
+   ```
+
+2. **Install and enable the delivery timer** (needs a `service` grant). Copy from the served release, never a worktree.
+
+   ```bash
+   cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild && G=bin/guard && SHA=$(git rev-parse origin/main)
+   $G grant service --for 4h --uses 4 --reason "PR #<PR> sha $SHA: install + enable tradeai-prospectus-deliver.timer from CURRENT; never delete"
+   CUR=$(readlink -f ~/trade-ai-releases/portfolio-server/CURRENT)
+   for u in tradeai-prospectus-deliver.service tradeai-prospectus-deliver.timer; do install -m 0644 $CUR/config/systemd/user/$u ~/.config/systemd/user/$u; done
+   systemctl --user daemon-reload && systemctl --user enable --now tradeai-prospectus-deliver.timer
+   systemctl --user list-timers --all | grep prospectus-deliver
+   cd $CUR && ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/prospectus_deliver.py   # dry run: the plan, sends nothing
+   ```
+
+3. **Flip the lane live** (config-write; a follow-up PR the operator merges, then deploy): in
+   `config/n8n_run_allowlist.json` set `prospectus-build` `live_arg` to `["--apply"]`; in `config/lane_registry.json`
+   set row `prospectus-build` `scheduler.stage` `canary` and `dispatch.mode` `live` (the executor's stage clamp keeps
+   a `shadow` row at `dry_run` whatever `live_arg` says), and row `prospectus-deliver` `state` `ACTIVE`
+   (`state_since` the install date). Update `tests/test_prospectus_build_lane_20261026.py` (it pins shadow /
+   `live_arg` null) in the same PR.
+
+   Proof after the first window (17:45 or 07:00 ET): `jq '{ok_at, produced_count, empty_reason, summary}'
+   $STATE_ROOT/data/runtime/prospectus-build_last.json`, one `delivery/outbox` record moved to `delivery/sent/`, the
+   Telegram summary + files, the email with the holdings PDF + Word attached, and
+   `$STATE_ROOT/data/runtime/prospectus-deliver_last.json` `ok: true`.
