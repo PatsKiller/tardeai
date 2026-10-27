@@ -521,7 +521,24 @@ def check_accuracy(packet: dict, s: dict) -> list[dict]:
     return out
 
 
-CHECKS = (check_coverage, check_series, check_units, check_cross_source, check_peers, check_sources, check_accuracy)
+def check_news_collisions(packet: dict, s: dict) -> list[dict]:
+    """A catalyst / news fact about a DIFFERENT security that shares the ticker (operator 2026-10-27: "Xaar
+    (LON:XAR)" on the US ETF XAR) is rejected from the report facts: SOFT, the facts are marked not reliable and the
+    writer is told not to cite them. ``inputs.assemble`` already drops them; this is the backstop for stored reports
+    (``--gate-only``) and any other path."""
+    from .news_gate import collision_reason, load_collisions  # noqa: PLC0415
+    cfg = load_collisions()
+    sym, name = str(packet.get("symbol") or ""), packet.get("name")
+    bad = [f["id"] for f in packet.get("facts") or [] if f.get("kind") in ("catalyst", "news")
+           and collision_reason(f"{f.get('label') or ''} {f.get('text') or ''}", sym, {"name": name}, collisions=cfg)]
+    if not bad:
+        return []
+    return [_finding("news_symbol_collision", SOFT, f"{len(bad)} news/catalyst item(s) are about another company "
+                     f"that shares the ticker {sym}", facts=bad, repair="catalyst_news")]
+
+
+CHECKS = (check_coverage, check_series, check_units, check_cross_source, check_peers, check_sources, check_accuracy,
+          check_news_collisions)
 
 
 def deterministic(packet: dict, settings: dict | None = None) -> dict:

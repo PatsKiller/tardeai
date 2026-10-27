@@ -15,6 +15,7 @@ import { useApi } from '../hooks/useApi'
 import { inlineMarkdown } from '../components/PolicyRuleParts'
 import ProspectusCharts from '../components/prospectus/ProspectusCharts'
 import { FundProfileBlock, MyHistoryBlock } from '../components/prospectus/MyHistoryBlock'
+import SinceReportStrip from '../components/prospectus/SinceReportStrip'
 import {
   CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, FundStructureBlock, MacroBlock, OptionsBlock, OwnershipBlock,
   PeerComparisonBlock, RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
@@ -345,6 +346,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
   return (
     <article className={`psp-report${phone ? ' psp-report-phone' : ''}`} data-testid="prospectus-report" data-state={state} aria-labelledby="psp-report-title">
       {header}
+      {hasReport && doc?.since_report && <SinceReportStrip since={doc.since_report} phone={phone} />}
       {state === 'partial' && (
         <div className="psp-banner psp-tone-warning psp-bg-soft-warning" data-testid="prospectus-partial-banner" role="note">
           Partial: {(doc?.partial_gaps ?? doc?.source_coverage?.key_gaps ?? []).join('; ') || 'a key source was missing'}.

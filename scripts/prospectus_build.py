@@ -45,13 +45,13 @@ LANE = "prospectus-build"
 
 
 def state_root() -> Path:
-    from scripts.lib.anthropic_routing import state_root as resolve
-    return Path(resolve())
+    from scripts.lib.prospectus.inputs import _imp_any
+    return Path(_imp_any("scripts.lib.anthropic_routing", "lib.anthropic_routing").state_root())
 
 
 def _pricing() -> dict:
-    from scripts.lib.anthropic_transport import load_policy
-    return load_policy().get("pricing") or {}
+    from scripts.lib.prospectus.inputs import _imp_any
+    return _imp_any("scripts.lib.anthropic_transport", "lib.anthropic_transport").load_policy().get("pricing") or {}
 
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
