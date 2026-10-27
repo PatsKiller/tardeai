@@ -19,6 +19,10 @@ A real run writes ``<state_root>/data/runtime/materialize-income-engine_last.jso
 import json, os, sys
 from datetime import datetime, date
 from pathlib import Path
+try:
+    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -419,7 +423,7 @@ def materialize(dry_run=False):
         cost = data["cost_basis"]
 
         # Dividend data — DB first (ticker_dividend_data), then in-code seed fallback
-        cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s", (sym,))
+        cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s AND " + _DIV_TRUSTED, (sym,))
         db_div = cur.fetchone()
         if db_div:
             annual_div = float(db_div.get("annual_dividend_per_share", 0) or 0)
@@ -529,7 +533,8 @@ def materialize(dry_run=False):
     # Aggressive: historical growth + reinvestment compounding
     # Build div data lookup from DB for scenarios
     _div_db = {}
-    cur.execute("SELECT symbol, annual_dividend_per_share, dividend_growth_5y FROM ticker_dividend_data")
+    cur.execute("SELECT symbol, annual_dividend_per_share, dividend_growth_5y FROM ticker_dividend_data WHERE "
+                + _DIV_TRUSTED)
     for _dr in cur.fetchall():
         _div_db[_dr["symbol"]] = {
             "annual_div": float(_dr.get("annual_dividend_per_share", 0) or 0),

@@ -23,6 +23,10 @@ Usage:
 import json, logging, os, sys
 from datetime import datetime
 from pathlib import Path
+try:
+    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +216,7 @@ def _build_position_context(symbol: str) -> dict:
     income = cur.fetchone()
 
     # Dividend data
-    cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s", (symbol,))
+    cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s AND " + _DIV_TRUSTED, (symbol,))
     div_data = cur.fetchone()
 
     conn.close()
