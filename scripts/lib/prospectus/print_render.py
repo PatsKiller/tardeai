@@ -70,6 +70,7 @@ _CITE_PATTERNS = (
     re.compile(r'<details class="pc-srcs">.*?</details>', re.S),
     re.compile(r'<section id="sources"[^>]*>.*?</section>', re.S),
     re.compile(r"<script\b.*?</script>", re.S),
+    re.compile(r'<span class="pc-cite"[^>]*></span>'),  # the hidden citation marker (2026-10-27, #2237)
     re.compile(r'\sdata-fact-id="[^"]*"'),
     re.compile(r"\s*\[F\d+(?:\s*,\s*F\d+)*\]"),
 )

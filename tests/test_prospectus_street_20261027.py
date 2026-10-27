@@ -509,3 +509,16 @@ def test_docx_pipe_table_is_a_word_table(built):
     text = "\n".join(p.text for p in d.paragraphs)
     cells = [c.text for t in d.tables for r in t.rows for c in r.cells]
     assert "| Firm" not in text and "Upgrade" in cells and "[F2]" not in " ".join(cells)
+
+
+def test_print_render_path_keeps_validation_line_and_drops_citation_markers(built):
+    """#2234's Chromium / LibreOffice path (print_render.print_html, word_html) after the merge: one validation line,
+    no hidden citation markers or fact ids, pipe tables and Street tables intact."""
+    from scripts.lib.prospectus import print_render
+    doc = report_doc(built)
+    doc["sections"][1]["body_md"] = "| Firm | Action |\n|---|---|\n| Example Securities | Upgrade [F2] |"
+    for html in (print_render.print_html(doc), print_render.word_html(doc, {})):
+        text = re.sub(r"<[^>]+>", " ", html)
+        assert "✓ Validated — 2 figures checked against 2 sources" in html
+        assert "pc-cite" not in html and "data-fact-id" not in html and "[F" not in text
+        assert "Example Securities" in text and "| Firm" not in text and "Analyst action log" in text
