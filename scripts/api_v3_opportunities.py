@@ -14,6 +14,7 @@ SymbolThesisPriorityRequest in the CIO's existing symbol-thesis priority queue (
 by the governed acquisition run, weekdays 17:17 ET). Advisory memory only: no order, no size, no broker. Adding to the
 watchlist uses the existing operator path POST /api/v2/watch/directives (kind=ticker).
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -46,11 +47,18 @@ def review_state(sym: str) -> dict[str, Any]:
     try:
         stp = _priority()
         q = stp.open_requests_ranked()
-        reqs = [r for r in stp._rows(stp._root(None).joinpath(*stp.RELPATH)) if str(r.get("symbol") or "").upper() == sym]
+        reqs = [
+            r for r in stp._rows(stp._root(None).joinpath(*stp.RELPATH)) if str(r.get("symbol") or "").upper() == sym
+        ]
         last = max(reqs, key=lambda r: str(r.get("requested_at") or "")) if reqs else None
-        return {"open": sym in q, "queue_position": (q.index(sym) + 1) if sym in q else None, "queue_length": len(q),
-                "requested_at": (last or {}).get("requested_at"), "requested_by": (last or {}).get("source"),
-                "next_run": REVIEW_RUN}
+        return {
+            "open": sym in q,
+            "queue_position": (q.index(sym) + 1) if sym in q else None,
+            "queue_length": len(q),
+            "requested_at": (last or {}).get("requested_at"),
+            "requested_by": (last or {}).get("source"),
+            "next_run": REVIEW_RUN,
+        }
     except Exception as e:  # noqa: BLE001
         return {"open": False, "error": type(e).__name__}
 
@@ -69,8 +77,9 @@ def _conflict_root():
     return _root()
 
 
-def _link_conflict(sym: str, key: str, *, request_id: str, root=None, now=None, ledger=None,
-                   memory_writer=None) -> dict[str, Any]:
+def _link_conflict(
+    sym: str, key: str, *, request_id: str, root=None, now=None, ledger=None, memory_writer=None
+) -> dict[str, Any]:
     """Record review_queued on the conflict ledger for a request filed with a conflict key.
 
     Guarded: a missing ledger, an unknown key or an unproven identity is a no-op with a named reason; the
@@ -106,8 +115,14 @@ def _link_conflict(sym: str, key: str, *, request_id: str, root=None, now=None, 
         return rows[-1] if rows else None
 
     try:
-        event = record_review_queued(ledger, key, request_id=request_id, queue_readback=readback,
-                                     at=now or datetime.now(timezone.utc), apply=True)
+        event = record_review_queued(
+            ledger,
+            key,
+            request_id=request_id,
+            queue_readback=readback,
+            at=now or datetime.now(timezone.utc),
+            apply=True,
+        )
     except KeyError:
         return {"recorded": False, "reason": "conflict key not found in the ledger"}
     except ValueError as e:
@@ -119,8 +134,6 @@ def _link_conflict(sym: str, key: str, *, request_id: str, root=None, now=None, 
 
 def _identity(sym: str, key: str | None) -> dict[str, Any]:
     """Registry identity for a conflict-linked request; never guessed from the conflict record itself."""
-    if not key:
-        return {}
     try:
         from scripts.lib.identity_carriage import resolve_security_identity
 
@@ -150,10 +163,21 @@ def request_review(symbol: str, body: dict | None = None, *, identity=None, link
     note = str((body or {}).get("note") or "").strip()[:240]
     request_id = "rr_" + uuid.uuid4().hex[:20]
     extra = {"request_id": request_id, "conflict_key": key, **(identity or _identity)(sym, key)}
-    _priority().request(sym, reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
-                        source=REVIEW_SOURCE, extra=extra)
-    out = {"ok": True, "already_open": bool(state.get("open")), "symbol": sym, "request_id": request_id,
-           "review": review_state(sym), "review_state": request_state(sym), "authority": "READ_ONLY_ADVISORY"}
+    _priority().request(
+        sym,
+        reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
+        source=REVIEW_SOURCE,
+        extra=extra,
+    )
+    out = {
+        "ok": True,
+        "already_open": bool(state.get("open")),
+        "symbol": sym,
+        "request_id": request_id,
+        "review": review_state(sym),
+        "review_state": request_state(sym),
+        "authority": "READ_ONLY_ADVISORY",
+    }
     if key:
         out["conflict_ledger"] = (link or _link_conflict)(sym, key, request_id=request_id)
     return 200, out
@@ -162,11 +186,18 @@ def request_review(symbol: str, body: dict | None = None, *, identity=None, link
 def watch_state(sym: str) -> dict[str, Any]:
     """On the watchlist? (watchlist_items, any status but removed) — drives the modal's Add-to-watchlist button."""
     try:
-        r = _db_query("""SELECT status, in_directive_watch FROM watchlist_items
+        r = _db_query(
+            """SELECT status, in_directive_watch FROM watchlist_items
                           WHERE upper(symbol) = %s AND status <> 'removed'
-                          ORDER BY (status = 'active') DESC LIMIT 1""", (sym,), fetch="one")
-        return {"on_watchlist": bool(r), "status": (r or {}).get("status"),
-                "directive": bool((r or {}).get("in_directive_watch"))}
+                          ORDER BY (status = 'active') DESC LIMIT 1""",
+            (sym,),
+            fetch="one",
+        )
+        return {
+            "on_watchlist": bool(r),
+            "status": (r or {}).get("status"),
+            "directive": bool((r or {}).get("in_directive_watch")),
+        }
     except Exception as e:  # noqa: BLE001
         return {"on_watchlist": None, "error": type(e).__name__}
 
@@ -197,9 +228,11 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
         page = max(1, int(q.get("page") or 1))
     except (TypeError, ValueError):
         page = 1
-    rows = ranked[(page - 1) * limit: page * limit]
-    facets = {k: dict(Counter(str(a.get(k)) for a in matched if a.get(k)))
-              for k in ("type", "technical_condition", "cap_band", "position_status", "stance", "sector")}
+    rows = ranked[(page - 1) * limit : page * limit]
+    facets = {
+        k: dict(Counter(str(a.get(k)) for a in matched if a.get(k)))
+        for k in ("type", "technical_condition", "cap_band", "position_status", "stance", "sector")
+    }
     return {
         "ok": True,
         "schema": "OpportunityList@v1",
@@ -236,9 +269,22 @@ def _thesis(symbol: str) -> dict[str, Any] | None:
         return None
     if not t:
         return None
-    keep = ("thesis_version", "summary", "stance", "why_owned_or_watched", "evidence_for", "counter_evidence",
-            "invalidation_conditions", "what_changes_my_mind", "catalysts", "updated_at", "created_at", "owner_agent",
-            "write_provenance", "investment_brief")
+    keep = (
+        "thesis_version",
+        "summary",
+        "stance",
+        "why_owned_or_watched",
+        "evidence_for",
+        "counter_evidence",
+        "invalidation_conditions",
+        "what_changes_my_mind",
+        "catalysts",
+        "updated_at",
+        "created_at",
+        "owner_agent",
+        "write_provenance",
+        "investment_brief",
+    )
     return {k: t.get(k) for k in keep if t.get(k) not in (None, "", [])}
 
 
@@ -264,8 +310,9 @@ def _catalysts(sym: str) -> list[dict[str, Any]]:
         from lib.data_broker.catalyst_record import get_symbol_catalysts
 
         c = _modal_cfg()
-        return get_symbol_catalysts(_db_query, sym, days=int(c.get("catalyst_days") or 90),
-                                    limit=int(c.get("catalyst_limit") or 5))
+        return get_symbol_catalysts(
+            _db_query, sym, days=int(c.get("catalyst_days") or 90), limit=int(c.get("catalyst_limit") or 5)
+        )
     except Exception:
         return []
 
@@ -308,29 +355,53 @@ def get_detail(symbol: str) -> dict[str, Any]:
         "live_assessment": live,
         "profile": ctx.get("profile") or {},
         "market": {
-            "price": q.get("price"), "prev_close": q.get("prev_close"), "day_change_pct": q.get("day_change_pct"),
-            "change_1w_pct": st.get("change_1w_pct"), "change_1m_pct": st.get("change_1m_pct"),
-            "high_52w": st.get("high_52w"), "low_52w": st.get("low_52w"), "range_source": st.get("range_source"),
-            "avg_volume_30d": st.get("avg_volume_30d"), "relative_volume": st.get("relative_volume") or ind.get("volume_ratio"),
-            "volume": q.get("volume"), "quote_as_of": q.get("as_of"), "stats_as_of": st.get("as_of"),
+            "price": q.get("price"),
+            "prev_close": q.get("prev_close"),
+            "day_change_pct": q.get("day_change_pct"),
+            "change_1w_pct": st.get("change_1w_pct"),
+            "change_1m_pct": st.get("change_1m_pct"),
+            "high_52w": st.get("high_52w"),
+            "low_52w": st.get("low_52w"),
+            "range_source": st.get("range_source"),
+            "avg_volume_30d": st.get("avg_volume_30d"),
+            "relative_volume": st.get("relative_volume") or ind.get("volume_ratio"),
+            "volume": q.get("volume"),
+            "quote_as_of": q.get("as_of"),
+            "stats_as_of": st.get("as_of"),
         },
         "technical": {
-            "support_1": levels.get("s1") or _num(strat.get("support")), "support_2": levels.get("s2"),
-            "resistance_1": levels.get("r1") or _num(strat.get("resistance")), "resistance_2": levels.get("r2"),
-            "levels_source": "pivots_weekly" if levels.get("s1") else ("strategy_card" if strat.get("support") else None),
-            "trend": "bullish" if trend == "bullish" else ("bearish" if trend == "bearish" else ("neutral" if trend else None)),
-            "rsi": ind.get("rsi"), "rsi_status": ind.get("rsi_status"),
-            "macd_signal": ind.get("macd_signal"), "macd_histogram_direction": ind.get("macd_histogram_direction"),
-            "sma_20": st.get("sma_20") or ind.get("sma_20"), "sma_50": st.get("sma_50") or ind.get("sma_50"),
-            "sma_200": st.get("sma_200"), "ma_alignment": st.get("ma_alignment") or ind.get("alignment"),
-            "atr": ind.get("atr"), "as_of": _iso((ctx.get("as_of") or {}).get("indicators")),
+            "support_1": levels.get("s1") or _num(strat.get("support")),
+            "support_2": levels.get("s2"),
+            "resistance_1": levels.get("r1") or _num(strat.get("resistance")),
+            "resistance_2": levels.get("r2"),
+            "levels_source": "pivots_weekly"
+            if levels.get("s1")
+            else ("strategy_card" if strat.get("support") else None),
+            "trend": "bullish"
+            if trend == "bullish"
+            else ("bearish" if trend == "bearish" else ("neutral" if trend else None)),
+            "rsi": ind.get("rsi"),
+            "rsi_status": ind.get("rsi_status"),
+            "macd_signal": ind.get("macd_signal"),
+            "macd_histogram_direction": ind.get("macd_histogram_direction"),
+            "sma_20": st.get("sma_20") or ind.get("sma_20"),
+            "sma_50": st.get("sma_50") or ind.get("sma_50"),
+            "sma_200": st.get("sma_200"),
+            "ma_alignment": st.get("ma_alignment") or ind.get("alignment"),
+            "atr": ind.get("atr"),
+            "as_of": _iso((ctx.get("as_of") or {}).get("indicators")),
         },
         "analyst": {
-            "consensus": an.get("recommendation_key"), "recommendation_mean": an.get("recommendation_mean"),
-            "analyst_count": an.get("analyst_count"), "target_mean": an.get("target_mean"),
-            "target_high": an.get("target_high"), "target_low": an.get("target_low"),
-            "upside_pct": live.get("upside_pct"), "upside_flag": live.get("upside_flag"),
-            "source": an.get("source"), "as_of": _iso((ctx.get("as_of") or {}).get("analyst")),
+            "consensus": an.get("recommendation_key"),
+            "recommendation_mean": an.get("recommendation_mean"),
+            "analyst_count": an.get("analyst_count"),
+            "target_mean": an.get("target_mean"),
+            "target_high": an.get("target_high"),
+            "target_low": an.get("target_low"),
+            "upside_pct": live.get("upside_pct"),
+            "upside_flag": live.get("upside_flag"),
+            "source": an.get("source"),
+            "as_of": _iso((ctx.get("as_of") or {}).get("analyst")),
         },
         **_news_and_catalysts(sym),
         "position": ctx.get("position") or {},

@@ -262,8 +262,8 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
       <div data-testid="watch-detail-next" style={{ display: 'grid', gap: 8, fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
         <span><b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}</span>
         {/* Never a dead end: a step that asks the CIO always carries the button (the flags block carries it when shown). */}
-        {asksCio(r.next_action.kind) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
-        {!asksCio(r.next_action.kind) && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
+        {(asksCio(r.next_action.kind) || currentReviewState(r, cio)?.publication_verified) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
+        {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
       <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
         Evidence {r.evidence_at ? r.evidence_at.slice(0, 16).replace('T', ' ') : '—'} · expires {r.expires_at ? r.expires_at.slice(0, 16).replace('T', ' ') : '—'}

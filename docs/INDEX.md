@@ -2061,8 +2061,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROSPECTUS_BACKEND.md` | Ticker Prospectus — backend |
 | `docs/ops/PROSPECTUS_MY_HISTORY.md` | Ticker Prospectus — My history and fund gaps |
 | `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate |
-| `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md` | Ticker Prospectus — run windows and delivery |
+| `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check |
 | `docs/ops/PUSH_POLICY_V2_CI.md` | Push policy v2 — the CI half: draft PRs are cheap, ready PRs run everything |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed |
