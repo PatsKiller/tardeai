@@ -2,11 +2,12 @@ import './WatchCompanyFacts.css'
 import type { CompanyFacts, CompanyFact } from '../../lib/watchProspectsModel'
 import type { ReactNode } from 'react'
 import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
+import { fmtAsOf } from '../../lib/asOfDisplay'
 
 function sourceNote(f?: CompanyFact) {
   const at = f?.observed_at
   const clock = f?.clock_kind?.replace(/_/g, ' ') || 'source observation'
-  return `${f?.source || 'No source on file'}${at ? ` · ${clock} ${at}` : ' · source time unavailable'}${f?.missing_reason ? ` · ${f.missing_reason.replace(/_/g, ' ')}` : ''}`
+  return `${f?.source || 'No source on file'}${at ? ` · ${clock} ${fmtAsOf(at) || 'time unknown'}` : ' · source time unavailable'}${f?.missing_reason ? ` · ${f.missing_reason.replace(/_/g, ' ')}` : ''}`
 }
 function dateLabel(value?: string | null) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString().slice(0, 10) : null
@@ -36,6 +37,13 @@ export function WatchCompanyFacts({ facts, symbol, part = 'full', ticker, owners
   const name = companyDisplayName(facts?.company)
   const legal = facts?.company?.legal_name || facts?.company?.value || null
   const why = noneReason(cat, facts)
+  const missingFields = (['company', 'description', 'sector', 'industry'] as const)
+    .filter(k => !facts?.[k]?.value)
+    .map(k => `${k}: ${(facts?.[k]?.missing_reason || facts?.missing_reason || 'not on CIO record').replace(/_/g, ' ')}`)
+  const sourceClocks = [facts?.company, facts?.description, facts?.sector, facts?.industry].map(f => f?.observed_at ? Date.parse(f.observed_at) : NaN)
+  const oldest = sourceClocks.every(Number.isFinite) ? Math.min(...sourceClocks) : null
+  const ageHours = oldest == null ? null : Math.max(0, (Date.now() - oldest) / 3_600_000)
+  const ageText = ageHours == null ? 'company sources undated' : ageHours >= 24 ? `oldest source ${Math.floor(ageHours / 24)} d ago` : `oldest source ${Math.floor(ageHours)} h ago`
   const news = part === 'full' ? (facts?.recent_news || []).filter(n => n?.headline).slice(0, 3) : []
   // Only the CIO record projection supplies these values. No upstream fallback.
   const url = cat?.url && /^https?:\/\//i.test(cat.url) ? cat.url : null
@@ -78,9 +86,11 @@ export function WatchCompanyFacts({ facts, symbol, part = 'full', ticker, owners
       </li>)}</ul>
     </div>}
     </>}
-    {(part === 'full' || part === 'company' && (!facts || facts.status === 'MISSING')) &&
+    {(part === 'full' || part === 'company') &&
     <small className="watch-company-provenance" title={['company', 'description', 'sector', 'industry'].map(k => `${k}: ${sourceNote(facts?.[k as 'company'])}`).join('\n')}>
-      CIO record · {facts?.status === 'MISSING' || !facts ? (facts?.missing_reason || 'company facts not on CIO record').replace(/_/g, ' ') : 'stored source evidence'}
+      Company facts · {facts?.status === 'MISSING' || !facts ? (facts?.missing_reason === 'cio_record_missing' ? 'no company facts saved for this security GUID' : (facts?.missing_reason || 'company facts not on CIO record').replace(/_/g, ' ')) : 'stored source evidence'}
+      {' · '}{ageText}
+      {missingFields.length > 0 && <span data-testid="watch-company-missing"> · Missing {missingFields.join('; ')}</span>}
       {facts?.conflicts?.length ? ` · ${facts.conflicts.length} source conflict(s)` : ''}
     </small>}
   </section>
