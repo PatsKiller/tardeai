@@ -1031,6 +1031,9 @@ def test_libraries_are_wired_into_nothing():
         # Mergify cutover soft-add (AGENTS 24.0.0 PROPOSED): deploy-on-main reuses the STOP latch and
         # GlobalReleaseLock from release_control only — never capability, delegation, or train merge.
         "scripts/lib/deploy_on_main.py",
+        # deploy-on-main autonomy (2026-10-27): the poller's deploy-delegation binding reads the STOP latch and the
+        # GlobalReleaseLock name (read-only) to verify the poller holds the lock — never capability or train merge.
+        "scripts/lib/deploy_delegation_binding.py",
         "scripts/emergency_manual_promote.sh",
         "scripts/deploy_on_main_poll.py",
         "config/systemd/user/tradeai-deploy-on-main.service",
