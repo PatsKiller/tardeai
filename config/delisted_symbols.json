@@ -9,7 +9,7 @@
   "explicit": [
     {
       "symbol": "SRNE",
-      "reason": "Sorrento Therapeutics — delisted (bankruptcy); the house close 0.0001 and the quote 0.2954 disagree ~3000x (prospectus accuracy audit 2026-10-26, A6). Operator 2026-10-26: \"remove SRNE and any delisted\". Its bad price rows are kept for the quarantine script (#2202), never deleted here.",
+      "reason": "Sorrento Therapeutics — delisted (bankruptcy); its house price series is not usable (two price stores disagree by orders of magnitude). Operator 2026-10-26: \"remove SRNE and any delisted\". Its bad price rows are kept for the quarantine script (#2202), never deleted here.",
       "since": "2026-10-26"
     }
   ],
