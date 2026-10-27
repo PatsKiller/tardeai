@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "delisted_exclusion_20261026",
+  "files": [
+    "tests/test_delisted_exclusion_20261026.py"
+  ],
+  "anchor": "DELISTED_EXCLUSION_20261026",
+  "comment": [
+    "ANCHOR: DELISTED_EXCLUSION_20261026 — delisted / inactive names (operator 2026-10-26: \"remove SRNE and any delisted\"): config/delisted_symbols.json (explicit SRNE, thresholds); lib/delisted_symbols detectors (explicit, house delisted flag / identity listing status, no house close for N sessions behind the freshest close, near-zero and terminal last close; no-bars is a gap); prospectus plan_universe excludes, run_queue marks stored reports 'delisted — excluded' and drops queued rows, persist_doc stores no new version; scripts/watch_archive_delisted.py dry run by default, --apply archives through the My Watchlist remove command with star_write=False (nothing deleted), --undo restores. Synthetic tickers; DB stubbed."
+  ]
+}
