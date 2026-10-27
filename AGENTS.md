@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      25.0.0
+Policy-Version:      25.0.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-27
-Last-Reviewed:       2026-10-27T10:45:00-04:00
+Last-Reviewed:       2026-10-27T17:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          24.0.0
+Supersedes:          25.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -1589,6 +1589,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **cio_prospect** | derived | `cio_prospect` | `scripts/lib/cio_instrument_record.py` | */30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes | 0.5h | `cio_prospect` | derived | — | — | `say_so` | operator 2026-10-22 |
 | **cio_asks** | native | `data/cio/cio_ask_events.jsonl` | `scripts/lib/cio_ask_store.py` | event-driven (operator ask on CC or Telegram; material-change re-answer) | 168h | — | internal | — | — | `say_so` | operator 2026-10-24 |
 | **anthropic_promotional_credit** | native | `runtime/provider_cost/anthropic_credit.jsonl` | `scripts/lib/anthropic_credit.py` | before each governed promotional request; settle after usage; existing llm-provider-health observations | 0.25h | — | — | durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock | — | `Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available` | operator 2026-10-25 |
+| **operator_decisions** | native | `governance/operator_decisions.jsonl` | `scripts/lib/operator_approvals.py` | event-driven authenticated operator review and separately governed audit proposals | 720h | — | native | — | — | `say_so` | operator 2026-10-27 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
@@ -6568,6 +6569,7 @@ can come back to". Items 1 and 2 bind every agent on ratification; the watchers,
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator session, verbatim: "D1–D7 as recommended", D5 = turn on the decision store). No change to required behaviour. | PATCH — operator merge of this held-class PR (§20, §25.10). Effective 2026-10-27. |
 | 25.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation (operator 2026-10-27: "Get everything in line as the senior developer and coordinator."): owner clause (§20); every MAJOR plus §0/§2/§17/role-authority needs the token and every AGENTS.md change is a held-class operator merge (§20, version policy); one-tap digest "Approve all" bound to head SHAs, held classes from `config/merge_hold_paths.json` never in it, Mergify in ET windows with the market-hours freeze, ratifying or superseding #2208's unratified §25.10 text (§25.10); `deploy_on_main` promotes under the armed standing deploy delegation with no per-SHA grant, SOFT refused outside tests, stuck deploys page P1, emergency promote operator-only or a coordinator on the operator's own in-session instruction (§25.10, §24.8); canonical checkout and hooks (§0 rule 3); pushes of own non-`main` branches under an approved plan (§0 rule 4, §28.15 item 8); no self-review (§23.19, §28.15 items 2, 3, 10); incidents, no silent drop (§28.16); paid and LLM run discipline (§29); release train removed (operator 2026-10-27; §25.1–§25.9, §17, §24.5, §24.8, §27, §28 references); version banners and ratifying edits moved to this appendix; 5.2.0 §8.1 binding, 4.2.0 withdrawn; CI fails an AGENTS.md diff without a version bump. §0 rules 1, 2, 5–11, §2, §2A, §7A, §22 and §23.14 unchanged; `MBI_BEHAVIOR = 0`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_25_0_0 2236 78a919464a2213ea221ae12b43476bb8072d9a28` (operator, verbatim, in the coordinator Claude Code session 2026-10-27, §28.4; recorded on PR #2236 comment 6445698813); ratified by this edit, which set the header, banner and row to ACTIVE and changed nothing else. Effective 2026-10-27. |
 | 24.0.0 | 2026-10-26 | ACTIVE | MAJOR | §25.10 Mergify + host deploy: Mergify merges green PRs on ET schedules; host `deploy_on_main` poller promotes exact `main` SHAs under STOP + GlobalReleaseLock + standing deploy (promote-only) delegation; emergency is operator `emergency_manual_promote.sh` + `release-write` naming SHA + `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents stay PR-only. Retires train live merge/`train/*`, Ops Run now, train UI; replaces `AI_WORK_POLICY.md` §28 train-push exception. Numbered 24.0.0 after ACTIVE 22.0.0; 23.x reserved. §0/§2/§2A/§7A/§22/§23.14 byte-identical. | **ACTIVE** — operator 2026-10-26 in session (approved 24.0.0 PROPOSED, directed install/configure/commit); bind `APPROVE_AGENTS_POLICY_24_0_0 <pr> <head_sha>` on the cutover PR (§20). Effective 2026-10-26. |
 | 22.0.0 | 2026-10-25 | RETIRED 2026-10-27 | MAJOR | Release train Run now. Release train retired 2026-10-27 by operator; replaced by §25.10. | Ratified `APPROVE_AGENTS_POLICY_22_0_0 2149 a91e0806cbd92fbbd6f09f971ed13fbb35338fa1`; retired by 25.0.0. |
