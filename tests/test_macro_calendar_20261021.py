@@ -657,38 +657,41 @@ def _row():
     )
 
 
-def test_registry_row_is_n8n_native_ingest_shadow_daily_0505():
+def test_registry_row_is_n8n_native_ingest_canary_live_daily_0505():
+    # Promoted shadow -> canary (dispatch live) on the operator decision of 2026-10-26.
     row = _row()
     sch, d = row["scheduler"], row["dispatch"]
-    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "shadow")
+    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "canary")
     assert sch["match"] == "scripts/macro_calendar_refresh.py"
-    assert d["mode"] == "dry_run" and d["cron"] == ["5 5 * * *"] and d["tz"] == "America/New_York"
+    assert d["mode"] == "live" and d["cron"] == ["5 5 * * *"] and d["tz"] == "America/New_York"
     assert d["class"] == "ingest" and d["retry_policy"] == "none" and row["owner"] == "platform"
     assert (row["output_signal"]["path"], row["output_signal"]["key"]) == (RECEIPT, "ok_at")
+    assert row["canary"]["since"] == "2026-10-26" and "rollback" in row["canary"]
     from scripts.lib.lane_dispatch import dispatch_eligible
 
     ok = dispatch_eligible(row)
     assert ok[0] if isinstance(ok, tuple) else ok
 
 
-def test_allowlist_entry_is_shadow_enforced_and_names_only_what_the_lane_reads():
+def test_allowlist_entry_is_live_enforced_and_names_only_what_the_lane_reads():
     a = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
     e = next(x for x in a["lanes"] if x["lane_id"] == LANE)
     assert e["command"] == ["$PY", "scripts/macro_calendar_refresh.py"]
-    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
+    # live_arg [] = the script with no flag: writes the calendar and its receipt, nothing else.
+    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == []
     assert e["lock_kind"] == "flock" and e["output_signal"] == RECEIPT and e["output_receipt"] == "v2"
     assert e["env_allowlist_mode"] == "enforce"
     assert e["env_names"] == ["FRED_API_KEY", "TRADEAI_PERSISTENT_STATE_ROOT"]
     assert LANE not in json.dumps(a.get("never"))
 
 
-def test_health_contract_is_a_draft_for_the_operator_to_review():
+def test_health_contract_is_reviewed_and_at_canary():
     c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
     k = next(x for x in c["contracts"] if x["id"] == LANE)
     # An agent may not mark its own contract REVIEWED (AGENTS.md §23.19): the operator does.
-    assert k["status"] in ("DRAFT", "REVIEWED") and k["owner"] == "platform" and k["stage"] == "shadow"
-    if k["status"] == "REVIEWED":
-        assert k["review"]["reviewed_by"].startswith("operator ")
+    assert k["status"] == "REVIEWED" and k["owner"] == "platform" and k["stage"] == "canary"
+    assert k["target_reason"] == "stage:canary"
+    assert k["review"]["reviewed_by"].startswith("operator ")
     assert k["evidence"]["receipt"] == RECEIPT and k["expected_output"]["rule"] == "min_produced"
     from scripts.lib import n8n_output_verdict as V
 

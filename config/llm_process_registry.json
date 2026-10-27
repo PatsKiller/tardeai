@@ -2121,6 +2121,64 @@
       "notes": "Grok is an external provider (AGENTS.md 2A egress): the packet carries fundamentals, price and position figures for one symbol. daily_cost_cap_usd 0.05 exists so the gate's cost check has a declared ceiling."
     },
     {
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "advisory_only": true,
+      "anthropic_first": true,
+      "allowed_lanes": [
+        "fast"
+      ],
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "deepseek_default_policy": "FAST",
+      "circuit_breaker": true,
+      "dedupe_policy": "request_id_only",
+      "default_mode": "automated",
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "max_input_tokens": 6000,
+      "max_output_tokens": 600,
+      "reasoning_tier": "standard",
+      "registered_at": "2026-10-27T14:00:00Z",
+      "registered_by": "prospectus-news-methodology (operator 2026-10-27: \"Implement these fixes … I need this to execute quickly\" (Prospectus NEWS methodology))",
+      "id": "prospectus_news_classify",
+      "name": "Prospectus news relevance/materiality read (Haiku 5.5)",
+      "description": "Prospectus NEWS relevance gate (scripts/lib/prospectus/news_gate.py + news_note.classify): ONE read per symbol per run window of the headlines the deterministic gate could not decide (issuer named? material?), returning {id, relevant, material, why}. Holdings and watch list only, inside the 07:00 / 17:45 ET windows. Claude Haiku 5.5, bulk tier, Anthropic promotional credit ONLY (anthropic_only_processes): the legacy DeepSeek lane listed here is never taken; when the credit is unusable the items wait for the next window (no other provider). READ_ONLY_ADVISORY.",
+      "daily_cost_cap_usd": 0.25,
+      "daily_soft_cap": 300,
+      "notes": "operator 2026-10-27: cheap Haiku classifier, <= $0.25/day. One call carries <= 12 headlines (~1.5k input + <= 600 output tokens, ~ $0.004 at Haiku 5.5 list price); 300/day covers two windows over the ~120-symbol universe."
+    },
+    {
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "advisory_only": true,
+      "anthropic_first": true,
+      "allowed_lanes": [
+        "fast"
+      ],
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "deepseek_default_policy": "FAST",
+      "circuit_breaker": true,
+      "dedupe_policy": "request_id_only",
+      "default_mode": "automated",
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "max_input_tokens": 6000,
+      "max_output_tokens": 400,
+      "reasoning_tier": "standard",
+      "registered_at": "2026-10-27T14:00:00Z",
+      "registered_by": "prospectus-news-methodology (operator 2026-10-27: \"Implement these fixes … I need this to execute quickly\" (Prospectus NEWS methodology))",
+      "id": "prospectus_cio_news_note",
+      "name": "Prospectus CIO news note (Sonnet 5.5)",
+      "description": "CIO note on a material, relevant news item against the latest Ticker Prospectus (thesis breakers, house stop plan, scenarios) — scripts/lib/prospectus/news_note.cio_note. Returns {impact: none|watch|thesis|breaker|stop, which_breaker, one_line}; stored in CIO memory (security_research_spine silo cio, kind prospectus_news_note). impact thesis/breaker/stop enqueues a prospectus rewrite; none/watch is a note only. Claude Sonnet 5.5 (credit tier mid), Anthropic promotional credit ONLY: never DeepSeek, never another provider; when the credit or a cap refuses, the note waits for the next window. Per symbol <= $0.10/day and <= 3 notes/day (config/prospectus.json news). MBI_BEHAVIOR=0: a note never sizes, orders, stops or weights. READ_ONLY_ADVISORY.",
+      "daily_cost_cap_usd": 1.5,
+      "daily_soft_cap": 120,
+      "notes": "operator 2026-10-27: Sonnet 5.5, <= $0.10/day per symbol, <= $1.50/day total. One note ~2k input + <= 400 output tokens (~ $0.01 at Sonnet 5.5 list price)."
+    },
+    {
       "id": "cio_ask_reanswer",
       "name": "Ask CIO hourly/material re-answer",
       "category": "CIO",

@@ -187,10 +187,8 @@ def _stop_or_position_change(sources: Any, sym: str, digest: dict) -> str | None
 
 def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, trig: dict) -> str | None:
     try:
-        if trig.get("material_news"):
-            cats = sources.catalysts(sym) or []
-            if any((_dt(c.get("at")) or gen) > gen for c in cats):
-                return "material_news"
+        # material_news: no longer "any new catalyst row" (operator 2026-10-27). News reaches a rewrite only through
+        # the window's news review (news_note: relevance gate + CIO note impact thesis / breaker / stop).
         if scope == "holding" and trig.get("day_move_abs_pct"):
             bars = [b for b in (sources.bars(sym) or [])[-2:] if b.get("close")]
             if len(bars) == 2 and abs(float(bars[1]["close"]) / float(bars[0]["close"]) - 1) * 100 >= float(trig["day_move_abs_pct"]):

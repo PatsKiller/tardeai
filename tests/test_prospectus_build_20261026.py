@@ -374,7 +374,7 @@ def test_due_rows_cadence_earnings_and_triggers():
     due = {r["symbol"]: (r["reason"], r["mode"]) for r in pl.due_rows(uni, index, src, cfg, now=NOW)}
     assert due["ZZBB"] == ("cadence_full", "full")
     assert due["ZZCC"] == ("after_earnings", "full")
-    assert due["ZZAA"][0] in {"material_news", "cio_stance_change"}
+    assert due["ZZAA"][0] == "cio_stance_change"  # a fresh catalyst row alone no longer fires (2026-10-27)
     assert pl.due_rows(uni, {"items": {}}, src, cfg, now=NOW)[0]["reason"] == "missing"
 
 

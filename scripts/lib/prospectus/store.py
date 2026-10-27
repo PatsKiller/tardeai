@@ -193,6 +193,8 @@ def enqueue(base: Path, rows: list[dict], *, now: datetime | None = None) -> int
                                "premium": bool(row.get("premium")), "mode": row.get("mode", "full"),
                                "reason": row.get("reason", "scheduled"), "requested_by": row.get("requested_by", "schedule"),
                                "requested_at": now.isoformat(), "attempts": 0, "last_error": None, "state": "queued"}
+                if row.get("item"):  # the news item behind a news-driven rewrite (the Since-this-report strip)
+                    by_sym[sym]["item"] = row["item"]
                 added += 1
             else:
                 current["priority"] = min(int(current.get("priority", 500)), int(row.get("priority", 500)))
@@ -202,6 +204,8 @@ def enqueue(base: Path, rows: list[dict], *, now: datetime | None = None) -> int
                 if current.get("state") in ("failed", "blocked_data"):  # re-requested: the gate runs again
                     current["state"] = "queued"
                 current["reason"] = row.get("reason", current.get("reason"))
+                if row.get("item"):
+                    current["item"] = row["item"]
         doc["items"] = sorted(by_sym.values(), key=lambda r: (int(r.get("priority", 500)), r["symbol"]))
         write_json(base / "queue.json", doc)
     return added
