@@ -1,0 +1,5 @@
+# Portfolio — changelog
+
+One line per version: date · version · state · what changed · approval ref.
+
+- 2026-10-24 · v001 · APPROVED · Board 12 Look-through (Portfolio › Look-through tab) · operator "I approve the markups. Give it to Codex." (recorded in handoff, back-filled 2026-10-25)
