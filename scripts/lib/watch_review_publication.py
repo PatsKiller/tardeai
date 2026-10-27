@@ -136,7 +136,7 @@ def link_publication(root, request, result, *, store=None, backend=None, registr
         "reason": str(thesis.get("summary") or "Research published; CIO decision pending")[:1200],
     }
     research = {**deepcopy(record.get("research") or {}), "review_lifecycle": lifecycle}
-    pg_requested = str((os.environ if env is None else env).get(ir.PROSPECT_DUAL_WRITE_ENV) or "") == "1"
+    pg_requested = str((os.environ if env is None else env).get(ir.PROSPECT_DUAL_WRITE_ENV) or "").strip() == "1"
     same_lifecycle = record.get("research", {}).get("review_lifecycle") == lifecycle
     if same_lifecycle and not pg_requested:
         return {

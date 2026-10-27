@@ -24,16 +24,19 @@ NOW = datetime(2026, 10, 27, 18, tzinfo=timezone.utc)
 GUID = "12345678-1234-5234-8234-123456789001"
 
 
-def test_review_failures_open_one_safe_incident_and_never_echo_exception_text(tmp_path):
+def test_review_failures_open_one_safe_incident_and_never_echo_exception_text(tmp_path, monkeypatch):
     from scripts.lib.watch_review_incidents import record_failure
     from scripts.lib import incidents
 
+    alternate = tmp_path / "alternate-ledger"
+    monkeypatch.setenv("TRADEAI_INCIDENTS_DIR", str(alternate))
     one = record_failure("progress", OSError("synthetic private exception text"), root=tmp_path)
     two = record_failure("progress", OSError("other private exception text"), root=tmp_path)
     assert one and one == two
-    rows = incidents.load_records(incidents.incidents_dir(tmp_path))
+    rows = incidents.load_records(tmp_path / incidents.DEFAULT_REL)
     assert len(rows) == 1
     assert "private exception text" not in str(rows)
+    assert not alternate.exists(), "An inherited environment cannot redirect the explicit fixture root"
 
 
 def test_queue_write_failure_is_visible_and_incident_traced(monkeypatch):
@@ -270,7 +273,8 @@ def test_acquisition_publication_links_to_shared_cio_research_without_changing_j
     assert store.path.read_bytes() == original, "memory receipt retry is idempotent"
 
 
-def test_requested_pg_unavailable_refuses_before_canonical_append(tmp_path, monkeypatch):
+@pytest.mark.parametrize("flag", ["1", " 1 "])
+def test_requested_pg_unavailable_refuses_before_canonical_append(tmp_path, monkeypatch, flag):
     from scripts.lib.watch_review_publication import link_publication
 
     ir, request, _, store, _, result = _seed_link_case(tmp_path, monkeypatch)
@@ -281,7 +285,7 @@ def test_requested_pg_unavailable_refuses_before_canonical_append(tmp_path, monk
 
     original = store.path.read_bytes()
     out = link_publication(
-        tmp_path, request, result, backend=Backend(), registry={}, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"}
+        tmp_path, request, result, backend=Backend(), registry={}, env={ir.PROSPECT_DUAL_WRITE_ENV: flag}
     )
     assert not out["ok"] and out["reason"] == "canonical_pg_preflight_failed"
     assert store.path.read_bytes() == original

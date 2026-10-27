@@ -9,6 +9,7 @@ LOG = logging.getLogger(__name__)
 def record_failure(scope, error, *, root=None):
     """Never leak exception text; fixture/source checkouts cannot write host state."""
     kind = type(error).__name__
+    explicit_root = root is not None
     LOG.warning("watch_review_failure", extra={"stage": scope, "error_class": kind})
     try:
         from scripts.lib import incidents
@@ -27,7 +28,7 @@ def record_failure(scope, error, *, root=None):
             evidence=["error_class:" + kind, "surface:watch-system-suggests"],
             owner="watch-review",
             actor="watch-review",
-            d=incidents.incidents_dir(root),
+            d=Path(root) / incidents.DEFAULT_REL if explicit_root else incidents.incidents_dir(),
         )
         return rec["id"]
     except Exception as exc:
