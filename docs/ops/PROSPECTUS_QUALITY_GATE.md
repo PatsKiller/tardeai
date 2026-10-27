@@ -45,6 +45,16 @@ turn, which is the first paid call) and `pipeline.run_queue()`. READ_ONLY_ADVISO
 | `non_session_bars` | SOFT | a Saturday, Sunday or NYSE-holiday bar in the price series |
 | `fund_lookthrough_dropped` | SOFT | the fund profile shows no top holdings while the look-through block lists them |
 | `open_lot_pl_missing` | SOFT | an open lot with value and cost but no unrealized P/L |
+| `street_targets_stale` | SOFT | the price-target consensus is older than 10 days and the block does not say so |
+| `street_target_mismatch` | SOFT | the target-trend mean differs from the analyst target fact by more than 2% |
+| `street_rating_count_mismatch` | SOFT | the rating distribution counts more than 2.5x more or fewer analysts than the consensus row |
+| `street_surprise_sign` | SOFT | an EPS surprise % has the wrong sign for actual vs estimate |
+| `street_implied_move_units` | SOFT | an options-implied move outside (0, 60]% |
+| `street_options_units` | SOFT | ATM IV outside [1, 400]% or a put/call ratio outside [0, 25] |
+| `street_options_stale` | SOFT | options positioning older than 5 days and not labelled stale |
+| `street_pe_range` | SOFT | trailing P/E outside its own range, or implausible |
+| `street_xbrl_margin` | SOFT | an SEC XBRL operating margin outside [-500, 100]% |
+| `street_net_debt` | SOFT | net debt is not long-term debt − cash |
 
 The last nine codes come from the accuracy audit of 2026-10-26. Each is the packet-only form of a defect that the
 audit found by recomputing a written report from the primary stores. The ceiling for `market_cap_units` rose from

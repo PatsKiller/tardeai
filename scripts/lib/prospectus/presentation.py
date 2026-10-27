@@ -34,7 +34,7 @@ CONFIG_REL = "config/prospectus_presentation.json"
 # One bracket group of citation ids: "[F7]", "[F7, F8]", "[^c1]". An id is accepted when it is a known citation /
 # fact id or has the internal fact-id shape (F + digits); anything else ("[x]", "[link](url)") stays prose.
 GROUP_RE = re.compile(r"\[\^?([A-Za-z][\w.:-]*(?:\s*[,;]\s*\^?[A-Za-z][\w.:-]*)*)\](?!\()")
-FACT_ID_RE = re.compile(r"^F\d+$")
+FACT_ID_RE = re.compile(r"^[FW]\d+$")  # internal fact (F7) and web-fact (W2) ids
 UNRELIABLE_RE = re.compile(
     r"(?:statistically\s+)?(?:not reliable|unreliable)(?:\s*\([^)]*\)|:\s*[^;.\n\]\[]+)?", re.IGNORECASE)
 
@@ -87,6 +87,37 @@ def clean_prose(text: Any) -> str:
         lines.append((lead if re.match(r"^([-*•]|\d{1,2}[.)])\s", body) else "") + body.rstrip())
     out = "\n".join(lines)
     return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+
+
+def table_cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def md_segments(md: str) -> list[tuple[str, Any]]:
+    """Prose split into ("text", line) and ("table", {"head": [...], "rows": [[...]]}) segments: a markdown pipe table
+    (header row, separator row, body rows) renders as a table, never as raw "| a | b |" text."""
+    lines = str(md or "").split("\n")
+    out: list[tuple[str, Any]] = []
+    i = 0
+    while i < len(lines):
+        if (TABLE_ROW_RE.match(lines[i]) and i + 1 < len(lines) and TABLE_SEP_RE.match(lines[i + 1])
+                and "|" in lines[i + 1]):
+            head = table_cells(lines[i])
+            rows, j = [], i + 2
+            while j < len(lines) and TABLE_ROW_RE.match(lines[j]):
+                cells = table_cells(lines[j])
+                rows.append((cells + [""] * len(head))[:len(head)])
+                j += 1
+            out.append(("table", {"head": head, "rows": rows}))
+            i = j
+            continue
+        out.append(("text", lines[i]))
+        i += 1
+    return out
 
 
 def split_ids(group: str) -> list[str]:
@@ -426,7 +457,10 @@ def fund_structure(doc: dict) -> dict | None:
 
 
 #: Blocks that do not apply to a fund (hidden, never "not available"): replaced by fund_structure.
-FUND_HIDDEN_BLOCKS = ("estimates", "ownership_flows", "earnings_call", "fund_profile", "fund_lookthrough")
+FUND_HIDDEN_BLOCKS = ("estimates", "ownership_flows", "earnings_call", "fund_profile", "fund_lookthrough",
+                      # the Street blocks that describe an operating company (street.FUND_HIDDEN + their tables)
+                      "analyst_coverage", "analyst_targets_trend", "analyst_actions", "estimates_history",
+                      "valuation_history", "fundamentals_xbrl")
 
 
 # ── coverage ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -461,6 +495,87 @@ def coverage(doc: dict, root: Path | None = None) -> dict:
             "key_gaps": list((doc.get("source_coverage") or {}).get("key_gaps") or [])}
 
 
+# ── validation (operator 2026-10-27: "there's a lot of citations … We don't need to see it on the frontend … If
+#    it's been validated, that's good.") ────────────────────────────────────────────────────────────────────────────
+#: Citations stay in the JSON (sections[].citations, the [F7] groups in body_md) and in data-fact-id attributes for the
+#: gate, the layer-3 check and the accuracy auditor. The reader sees ONE validation statement instead.
+
+def source_family(source: Any) -> str:
+    """"Finviz enrichment cache (peer)" → "Finviz enrichment cache"; "catalyst_events / google_news" → "catalyst_events";
+    "derived: last close vs stop" → "Derived from house data"."""
+    s = str(source or "").strip()
+    if not s:
+        return "Unrecorded"
+    if s.lower().startswith(("derived", "computed")):
+        return "Derived from house data"
+    if s.upper().startswith("W") and re.match(r"^W\d+", s):
+        return "Web"
+    if s.lower().startswith(("web", "http")):
+        return "Web"
+    s = re.split(r"\s+\(|\s+/\s+|:\s|;\s", s, maxsplit=1)[0]
+    return s.strip() or "Unrecorded"
+
+
+def _n(k: int, word: str) -> str:
+    return f"{k} {word}{'' if k == 1 else 's'}"
+
+
+def _human_reason(r: str) -> str:
+    code, _, msg = str(r).partition(": ")
+    return (msg or code).strip()
+
+
+def validation(doc: dict, notes: list[dict] | None = None) -> dict:
+    """{status: validated | partial | unchecked, line, figures, sources, by_source, unreliable, reasons, as_of}.
+
+    ``figures`` = distinct cited facts in the report text; ``sources`` = distinct source families among them. Partial
+    when the data-quality gate flagged facts (SOFT / HARD) or the post-write check found numbers that match no cited
+    fact; ``not_validated`` counts both."""
+    notes = footnotes(doc) if notes is None else notes
+    known = _known(doc)
+    cited = [known.get(n["id"]) or n for n in notes]
+    numeric = [f for f in cited if isinstance(f, dict) and isinstance(f.get("value"), (int, float))]
+    figures = len(numeric) or len(cited)
+    by_source: dict[str, int] = {}
+    for f in (numeric or cited):
+        fam = source_family((f or {}).get("source"))
+        by_source[fam] = by_source.get(fam, 0) + 1
+    gate = doc.get("gate") if isinstance(doc.get("gate"), dict) else {}
+    post = ((gate.get("layers") or {}).get("post_write") or {}) if gate else {}
+    unreliable = []
+    for fid, code in sorted((gate.get("unreliable") or {}).items(), key=lambda kv: int(re.sub(r"\D", "", kv[0]) or 0)):
+        f = known.get(fid) or {}
+        unreliable.append({"id": fid, "label": str(f.get("label") or fid), "reason": str(code).replace("_", " ")})
+    unmatched = int(post.get("unmatched_count") or 0)
+    reasons = [_human_reason(r) for r in gate.get("reasons") or [] if not str(r).startswith("post_write_unmatched")]
+    if unmatched:
+        reasons.append(f"{unmatched} number(s) in the text match no checked figure")
+    k = len(unreliable) + unmatched
+    as_of = gate.get("checked_at") or doc.get("generated_at")
+    when = str(as_of or "")[:16].replace("T", " ")
+    m = len(by_source)
+    if not gate:
+        status = "unchecked"
+        line = f"Checked against sources — {_n(figures, 'figure')} from {_n(m, 'source')} (no gate record for this version)"
+    elif gate.get("status") in ("soft_fail", "hard_fail") or unmatched:
+        status = "partial"
+        line = f"⚠ Partial — {k} figure{'s' if k != 1 else ''} not validated: " + "; ".join(reasons[:3])
+    else:
+        status = "validated"
+        line = f"✓ Validated — {_n(figures, 'figure')} checked against {_n(m, 'source')} · as of {when} UTC"
+    return {"status": status, "line": line, "figures": figures, "sources": m, "not_validated": k,
+            "by_source": dict(sorted(by_source.items(), key=lambda kv: (-kv[1], kv[0]))),
+            "unreliable": unreliable, "reasons": reasons, "as_of": as_of, "gate_status": gate.get("status")}
+
+
+def _street(doc: dict) -> list[dict]:
+    from .tables import street_tables  # noqa: PLC0415 - tables never imports presentation
+    try:
+        return street_tables(doc, hidden=FUND_HIDDEN_BLOCKS if is_fund(doc) else ())
+    except Exception:  # noqa: BLE001 - a block that cannot be tabulated is simply absent on the page
+        return []
+
+
 # ── the whole presentation ─────────────────────────────────────────────────────────────────────────────────────────
 
 def present(doc: dict, root: Path | None = None) -> dict:
@@ -469,7 +584,9 @@ def present(doc: dict, root: Path | None = None) -> dict:
         notes = footnotes(doc)
         return {"schema": SCHEMA, "display_name": display_name(doc, root), "is_fund": is_fund(doc),
                 "footnotes": notes, "section_footnotes": section_notes(doc, notes),
-                "fund_structure": fund_structure(doc), "coverage": coverage(doc, root)}
+                "fund_structure": fund_structure(doc), "coverage": coverage(doc, root),
+                "validation": validation(doc, notes), "street": _street(doc)}
     except Exception as exc:  # noqa: BLE001 - presentation never breaks reading the report
         return {"schema": SCHEMA, "error": type(exc).__name__, "display_name": str(doc.get("symbol") or ""),
-                "is_fund": False, "footnotes": [], "section_footnotes": {}, "fund_structure": None, "coverage": None}
+                "is_fund": False, "footnotes": [], "section_footnotes": {}, "fund_structure": None, "coverage": None,
+                "validation": None}

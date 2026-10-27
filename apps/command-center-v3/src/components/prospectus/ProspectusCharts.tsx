@@ -127,7 +127,9 @@ function RangeView({ chart }: { chart: ProspectusChart }) {
 }
 
 export default function ProspectusCharts({ charts, symbol }: { charts: ProspectusChart[]; symbol?: string }) {
-  const list = (charts ?? []).filter(c => c && (nonEmptySeries(c.series).length || c.annotations?.length))
+  // An EPS-surprise chart needs ≥3 quarters (one quarter drew a page-wide bar); the estimates table lists them all.
+  const list = (charts ?? []).filter(c => c && (nonEmptySeries(c.series).length || c.annotations?.length)
+    && (c.id !== 'eps_surprise' || (c.series ?? []).flatMap(x => x.points ?? []).filter(p => p[1] != null).length >= 3))
   if (!list.length) return null
   return (
     <section className="psp-charts" aria-label="Charts" data-testid="prospectus-charts">

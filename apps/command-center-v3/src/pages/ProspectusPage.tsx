@@ -20,11 +20,12 @@ import {
   CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, FundStructureBlock, MacroBlock, OptionsBlock, OwnershipBlock,
   PeerComparisonBlock, RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
 } from '../components/prospectus/ProspectusBlocks'
-import { CiteText, FootnoteProvider, SectionSources, SourcesAppendix } from '../components/prospectus/Citations'
+import { CiteText, FootnoteProvider } from '../components/prospectus/Citations'
+import { StreetBlocks, ValidationBadge } from '../components/prospectus/StreetBlocks'
 import {
   SECTION_TONE, SUMMARY_SECTION, budgetView, cleanProse, detailPath, detailState, displayName, filePath, filterItems,
   footnotes, indexPath, isFundDoc, mdBlocks, modelLabel, normSymbol, orderedSections, pageRoute, presentationOf,
-  refreshPath, rowStatus, scopeCounts, statusOf, toNumber, totals, whenEt,
+  refreshPath, rowStatus, scopeCounts, statusOf, streetTables, toNumber, totals, whenEt,
   type ProspectusDoc, type ProspectusIndex, type ProspectusIndexItem, type ProspectusSection, type ScopeFilter,
 } from '../lib/prospectusModel'
 import './Prospectus.css'
@@ -159,14 +160,21 @@ function SectionBody({ s }: { s: ProspectusSection }) {
       return
     }
     flush()
+    if (b.kind === 'table') {
+      items.push(
+        <div key={i} className="psp-table-wrap psp-md-table" data-testid="prospectus-md-table">
+          <table className="psp-table psp-table-left">
+            <thead><tr>{(b.head ?? []).map((c, k) => <th key={k}><CiteText text={c} /></th>)}</tr></thead>
+            <tbody>{(b.rows ?? []).map((r, k) => <tr key={k}>{r.map((c, m) => <td key={m}><CiteText text={c} /></td>)}</tr>)}</tbody>
+          </table>
+        </div>)
+      return
+    }
     items.push(b.kind === 'h' ? <h4 key={i} className="psp-h"><CiteText text={b.text} /></h4> : <p key={i}><CiteText text={b.text} /></p>)
   })
   flush()
   return (
-    <>
-      <div className="psp-body">{items}</div>
-      <SectionSources s={s} />
-    </>
+    <div className="psp-body">{items}</div>
   )
 }
 
@@ -279,6 +287,8 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
   const fund = isFundDoc(doc)
   const pres = presentationOf(doc)
   const notes = useMemo(() => footnotes(doc), [doc])
+  const street = useMemo(() => streetTables(doc), [doc])
+  const hasStreet = street.length > 0
   const blocks = doc?.blocks
   const price = toNumber((doc?.facts ?? []).find(f => /^Last close/i.test(f.label))?.value)
   const backRef = useRef<HTMLButtonElement>(null)
@@ -317,6 +327,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
         {state !== 'loading' && <StatusChip it={{ status: doc?.status ?? row?.status ?? (hasReport ? 'ready' : 'missing'), stale }} testId="prospectus-detail-status" />}
         {stale && <span data-testid="prospectus-detail-stale" hidden>stale</span>}
       </div>
+      {hasReport && <ValidationBadge doc={doc} />}
       {dl && <div className="psp-dl3" data-testid="prospectus-actions">{dl}</div>}
     </header>
   ) : (
@@ -333,6 +344,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
             {state !== 'loading' && <StatusChip it={{ status: doc?.status ?? row?.status ?? (hasReport ? 'ready' : 'missing'), stale }} testId="prospectus-detail-status" />}
             {stale && <span data-testid="prospectus-detail-stale" hidden>stale</span>}
           </div>
+          {hasReport && <ValidationBadge doc={doc} />}
         </div>
         <div className="psp-actions" data-testid="prospectus-actions">
           {dl}
@@ -396,10 +408,12 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
           <PeerComparisonBlock blocks={blocks} phone={phone} />
           {phone ? (
             <>
+              {hasStreet && <StreetBlocks tables={street} phone only={['analyst_coverage', 'analyst_targets_trend', 'analyst_actions', 'estimates', 'estimates_history', 'catalyst_calendar']} />}
               <ScenariosBlock blocks={blocks} price={price} />
               <MacroBlock blocks={blocks} />
               <FilingsBlock blocks={blocks} />
-              {fund ? <FundStructureBlock doc={doc} /> : <EstimatesBlock blocks={blocks} withCall />}
+              {fund ? <FundStructureBlock doc={doc} /> : hasStreet ? <CallBlock blocks={blocks} /> : <EstimatesBlock blocks={blocks} withCall />}
+              {hasStreet && <StreetBlocks tables={street} phone only={['catalyst_history', 'positioning', 'valuation_history', 'fundamentals_xbrl']} />}
               <OptionsBlock blocks={blocks} withOwnership={!fund} fund={fund} />
               <RiskBlock blocks={blocks} phone />
               <StopPlanBlock blocks={blocks} />
@@ -412,7 +426,6 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
               <div className="psp-sections">{narrative.map(s => <SectionBlock key={s.id} s={s} phone />)}</div>
               {!(fund && pres?.fund_structure) && <FundProfileBlock blocks={blocks} />}
               <CoverageBlock doc={doc} />
-              <SourcesAppendix notes={notes} phone />
               {isOperator && <div className="psp-rewrite-row"><RewriteButton symbol={symbol} onQueued={() => setNonce(n => n + 1)} big /></div>}
             </>
           ) : (
@@ -422,6 +435,11 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                   <FundStructureBlock doc={doc} wide />
                   <RiskBlock blocks={blocks} />
                 </div>
+              ) : hasStreet ? (
+                <div className="psp-grid2">
+                  <OwnershipBlock blocks={blocks} />
+                  <RiskBlock blocks={blocks} />
+                </div>
               ) : (
                 <div className="psp-grid3">
                   <EstimatesBlock blocks={blocks} />
@@ -429,6 +447,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                   <RiskBlock blocks={blocks} />
                 </div>
               )}
+              {hasStreet && <StreetBlocks tables={street} phone={false} />}
               <StopPlanBlock blocks={blocks} />
               <ScenariosBlock blocks={blocks} price={price} />
               <div className="psp-sections psp-grid2">{narrative.map(s => <SectionBlock key={s.id} s={s} phone={false} />)}</div>
@@ -440,7 +459,6 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
               </div>
               {!(fund && pres?.fund_structure) && <FundProfileBlock blocks={blocks} />}
               <CoverageBlock doc={doc} />
-              <SourcesAppendix notes={notes} phone={false} />
             </>
           )}
         </FootnoteProvider>
