@@ -27,8 +27,10 @@ export default function ApprovalsHub() {
 }
 
 function Queue({ defaultTab }: { defaultTab?: string }) {
-  const { data: merges } = useGovernance<MergesSummary>(`${GOVERNANCE}/pr-reviews/summary`)
-  const mergeCount = merges ? Object.values(merges.counts).reduce((a, b) => a + b, 0) : null
+  const { data: summary } = useGovernance<MergesSummary>(`${GOVERNANCE}/pr-reviews/summary`)
+  // An absent or older summary shape must never take the Approvals page down: no counts → no badge, strip says so.
+  const merges = summary && typeof summary.counts === 'object' && summary.counts !== null && summary.spend && summary.digest ? summary : null
+  const mergeCount = merges ? Object.values(merges.counts).reduce((a, b) => a + (Number(b) || 0), 0) : null
   const shown = tabs.map(t => t.id === 'MERGE' && mergeCount ? { ...t, label: `Merges · ${mergeCount}` } : t)
   const [active] = useDeskTab(shown, defaultTab)
   const [offset, setOffset] = useState(0)
