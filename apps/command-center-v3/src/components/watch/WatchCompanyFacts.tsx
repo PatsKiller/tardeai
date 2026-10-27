@@ -43,7 +43,7 @@ export function WatchCompanyFacts({ facts, symbol, part = 'full', ticker, owners
   const sourceClocks = [facts?.company, facts?.description, facts?.sector, facts?.industry].map(f => f?.observed_at ? Date.parse(f.observed_at) : NaN)
   const oldest = sourceClocks.every(Number.isFinite) ? Math.min(...sourceClocks) : null
   const ageHours = oldest == null ? null : Math.max(0, (Date.now() - oldest) / 3_600_000)
-  const ageText = ageHours == null ? 'source time unknown' : ageHours >= 24 ? `oldest source ${Math.floor(ageHours / 24)} d ago` : `oldest source ${Math.floor(ageHours)} h ago`
+  const ageText = ageHours == null ? 'company sources undated' : ageHours >= 24 ? `oldest source ${Math.floor(ageHours / 24)} d ago` : `oldest source ${Math.floor(ageHours)} h ago`
   const news = part === 'full' ? (facts?.recent_news || []).filter(n => n?.headline).slice(0, 3) : []
   // Only the CIO record projection supplies these values. No upstream fallback.
   const url = cat?.url && /^https?:\/\//i.test(cat.url) ? cat.url : null
