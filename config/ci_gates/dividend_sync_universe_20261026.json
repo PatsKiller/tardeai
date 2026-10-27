@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "dividend_sync_universe_20261026",
+  "files": [
+    "tests/test_dividend_sync_universe_20261026.py"
+  ],
+  "anchor": "DIVIDEND_SYNC_UNIVERSE_20261026",
+  "comment": [
+    "ANCHOR: DIVIDEND_SYNC_UNIVERSE_20261026 — dividend refresh universe (operator 2026-10-26: \"widen the dividend refresh to cover everything you hold or watch\"): held + Watch + prospectus symbols first, capped rotation stalest-first, pacing and run budget, trailingAnnualDividendRate fallback; retired-provider ticker_dividend_data rows replaced on refresh, filtered from every reader, superseded by migration and never deleted. Synthetic symbols; DB and yfinance stubbed."
+  ]
+}

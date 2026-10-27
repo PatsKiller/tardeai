@@ -21,6 +21,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 import json
 from typing import Any, Callable
+try:
+    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
 
 CONTRACT = "StreetDetail@v1"
 
@@ -183,7 +187,8 @@ def dividends(db_query: Callable, symbol: str) -> dict:
     hist = _rows(db_query, """SELECT ex_date, amount FROM ticker_dividends WHERE upper(symbol) = %s
                                ORDER BY ex_date DESC LIMIT 16""", (symbol.upper(),))
     rec = _rows(db_query, """SELECT ex_div_date, updated_at FROM ticker_dividend_data WHERE upper(symbol) = %s
-                              ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (symbol.upper(),))
+                              AND """ + _DIV_TRUSTED + """ ORDER BY updated_at DESC NULLS LAST LIMIT 1""",
+                (symbol.upper(),))
     return {"history": [{"ex_date": str(r.get("ex_date"))[:10], "amount": r.get("amount")} for r in hist],
             "recorded_next_ex": str((rec[0] if rec else {}).get("ex_div_date") or "")[:10] or None}
 

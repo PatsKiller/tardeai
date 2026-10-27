@@ -40,6 +40,10 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Callable
+try:
+    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
 
 from . import subjects
 
@@ -199,7 +203,8 @@ def holdings_findings(*, rm_path: Path | str | None = None,
             """SELECT UPPER(symbol) AS symbol, annual_dividend_per_share
                FROM ticker_dividend_data
                WHERE UPPER(symbol) = ANY(%s)
-                 AND annual_dividend_per_share IS NOT NULL""", (held,))
+                 AND annual_dividend_per_share IS NOT NULL
+                 AND """ + _DIV_TRUSTED, (held,))
         adps = {r["symbol"]: float(r["annual_dividend_per_share"] or 0)
                 for r in div_rows}
         income: dict[str, float] = {}

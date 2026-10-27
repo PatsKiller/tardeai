@@ -34,6 +34,10 @@ from pathlib import Path
 import re
 import statistics
 from typing import Any, Callable, Iterable, Optional
+try:
+    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
 
 SCHEMA = "ProspectusAccuracyAudit@v1"
 P1, P2, P3 = "P1", "P2", "P3"
@@ -167,7 +171,7 @@ def db_primary(query: Callable, state_root: Path) -> Primary:
         return truth.stop_for(account, sym, broker_rows=broker_rows, planned=None)
 
     def dividend_data(sym: str):
-        out = rows("SELECT * FROM ticker_dividend_data WHERE upper(symbol) = %s", (sym,))
+        out = rows("SELECT * FROM ticker_dividend_data WHERE upper(symbol) = %s AND " + _DIV_TRUSTED, (sym,))
         return (out or [None])[0] if out is not None else None
 
     return Primary(
