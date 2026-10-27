@@ -408,7 +408,16 @@ def capture_readonly_inputs(root: Path, query, *, now=None, suggestion_reader=No
     return {
         "catalyst_events": catalyst_events,
         "captured_at": now.isoformat(),
-        "database_read_only": True,
+        # The injected query is READ ONLY, but the existing in-process CC
+        # selection opens its own SELECT sessions. Do not attribute our
+        # connection's server setting to those independently sourced reads.
+        "database_read_only": False,
+        "capture_query_read_only": True,
+        "suggestion_selection": {
+            "source": "CC watch-curation broker",
+            "database_transaction_read_only": "not_proven",
+            "provider_calls": 0,
+        },
         "snapshot_coherence": "PER_QUERY_TRANSACTIONS; original observation clocks retained",
         "my_watchlist": sorted(membership["names"]),
         "held": held,

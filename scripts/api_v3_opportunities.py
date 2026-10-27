@@ -60,7 +60,9 @@ def review_state(sym: str) -> dict[str, Any]:
             "next_run": REVIEW_RUN,
         }
     except Exception as e:  # noqa: BLE001
-        return {"open": False, "error": type(e).__name__}
+        from scripts.lib.watch_review_incidents import record_failure
+
+        return {"open": False, "error": type(e).__name__, "incident_id": record_failure("queue_read", e)}
 
 
 def request_state(sym: str) -> dict[str, Any] | None:
@@ -157,18 +159,33 @@ def request_review(symbol: str, body: dict | None = None, *, identity=None, link
         return 400, {"ok": False, "error": "bad_symbol"}
     key = str((body or {}).get("conflict_key") or "").strip()[:300] or None
     state = review_state(sym)
+    if state.get("error"):
+        return 503, {
+            "ok": False,
+            "error": "CIO review queue unavailable — retry after recovery",
+            "incident_id": state.get("incident_id"),
+        }
     current = request_state(sym)
     if state.get("open") and not (key and (current or {}).get("conflict_key") != key):
         return 200, {"ok": True, "already_open": True, "symbol": sym, "review": state, "review_state": current}
     note = str((body or {}).get("note") or "").strip()[:240]
     request_id = "rr_" + uuid.uuid4().hex[:20]
     extra = {"request_id": request_id, "conflict_key": key, **(identity or _identity)(sym, key)}
-    _priority().request(
-        sym,
-        reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
-        source=REVIEW_SOURCE,
-        extra=extra,
-    )
+    try:
+        _priority().request(
+            sym,
+            reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
+            source=REVIEW_SOURCE,
+            extra=extra,
+        )
+    except Exception as exc:
+        from scripts.lib.watch_review_incidents import record_failure
+
+        return 503, {
+            "ok": False,
+            "error": "CIO review could not be queued — retry after recovery",
+            "incident_id": record_failure("queue_write", exc),
+        }
     out = {
         "ok": True,
         "already_open": bool(state.get("open")),

@@ -24,6 +24,52 @@ NOW = datetime(2026, 10, 27, 18, tzinfo=timezone.utc)
 GUID = "12345678-1234-5234-8234-123456789001"
 
 
+def test_review_failures_open_one_safe_incident_and_never_echo_exception_text(tmp_path):
+    from scripts.lib.watch_review_incidents import record_failure
+    from scripts.lib import incidents
+
+    one = record_failure("progress", OSError("synthetic private exception text"), root=tmp_path)
+    two = record_failure("progress", OSError("other private exception text"), root=tmp_path)
+    assert one and one == two
+    rows = incidents.load_records(incidents.incidents_dir(tmp_path))
+    assert len(rows) == 1
+    assert "private exception text" not in str(rows)
+
+
+def test_queue_write_failure_is_visible_and_incident_traced(monkeypatch):
+    from scripts import api_v3_opportunities as api
+    from scripts.lib import watch_review_incidents
+
+    monkeypatch.setattr(api, "review_state", lambda _s: {"open": False})
+    monkeypatch.setattr(api, "request_state", lambda _s: None)
+
+    class BrokenQueue:
+        def request(self, *_a, **_k):
+            raise OSError("synthetic private detail")
+
+    monkeypatch.setattr(api, "_priority", lambda: BrokenQueue())
+    monkeypatch.setattr(watch_review_incidents, "record_failure", lambda *_a, **_k: "INC-synthetic")
+    code, body = api.request_review("ZZAA", identity=lambda *_a: {"identity_status": "UNRESOLVED"})
+    assert code == 503 and not body["ok"] and body["incident_id"] == "INC-synthetic"
+    assert "private detail" not in str(body)
+
+
+def test_legacy_success_has_consistent_queue_and_display_state(tmp_path):
+    import json
+    from scripts.lib import symbol_thesis_priority as queue
+
+    request = {"symbol": "ZZAA", "requested_at": (NOW - timedelta(hours=2)).isoformat()}
+    attempt = {"symbol": "ZZAA", "status": "PUBLISHED", "as_of": (NOW - timedelta(hours=1)).isoformat()}
+    for rel, row in ((queue.RELPATH, request), (queue.LEDGER_RELPATH, attempt)):
+        path = tmp_path.joinpath(*rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row) + "\n")
+    assert queue.open_requests(root=tmp_path, now=NOW) == []
+    state = queue.review_states(["ZZAA"], root=tmp_path, now=NOW)["ZZAA"]
+    assert state["status"] == "answered" and not state["open"]
+    assert "cio_link" not in state["last_attempt"]
+
+
 def source_row():
     row = prospects.no_record_row("ZZAA")
     return {
@@ -140,11 +186,9 @@ def test_later_failed_attempt_never_dates_an_older_success_as_current():
     assert "18 d ago" in out["label"]
 
 
-def test_acquisition_publication_links_to_shared_cio_research_without_changing_judgment(tmp_path, monkeypatch):
+def _seed_link_case(tmp_path, monkeypatch):
     import json
     from scripts.lib import cio_instrument_record as records, identity_carriage
-    from scripts.lib.watch_review_publication import link_publication
-    from scripts.lib.data_broker.cio_company_facts import load_snapshot
 
     request = {
         "symbol": "ZZAA",
@@ -195,6 +239,14 @@ def test_acquisition_publication_links_to_shared_cio_research_without_changing_j
         )
     )
     result = {"status": "PUBLISHED", "review": {"new_version": version}}
+    return records, request, rec, store, version, result
+
+
+def test_acquisition_publication_links_to_shared_cio_research_without_changing_judgment(tmp_path, monkeypatch):
+    from scripts.lib.watch_review_publication import link_publication
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot
+
+    records, request, rec, store, version, result = _seed_link_case(tmp_path, monkeypatch)
     out = link_publication(tmp_path, request, result, registry={}, env={})
     assert out["ok"] and out["state"] == "ANSWERED_PENDING_CIO"
     saved = records.InstrumentRecordStore(store.path).load(rec["subject_key"])
@@ -210,9 +262,129 @@ def test_acquisition_publication_links_to_shared_cio_research_without_changing_j
         ask.ResearchContext("What happened to ZZAA review?", state_root=tmp_path, now=NOW),
     )
     assert any(version in f.claim for f in facts), "Ask the CIO reads the same saved review outcome"
+    assert any("Fictional catalyst researched." in f.claim for f in facts)
     original = store.path.read_bytes()
-    assert link_publication(tmp_path, request, result, registry={}, env={})["ok"]
+    assert link_publication(
+        tmp_path, request, {**result, "as_of": (NOW + timedelta(days=1)).isoformat()}, registry={}, env={}
+    )["ok"]
     assert store.path.read_bytes() == original, "memory receipt retry is idempotent"
+
+
+def test_requested_pg_unavailable_refuses_before_canonical_append(tmp_path, monkeypatch):
+    from scripts.lib.watch_review_publication import link_publication
+
+    ir, request, _, store, _, result = _seed_link_case(tmp_path, monkeypatch)
+
+    class Backend:
+        def table_present(self):
+            return False
+
+    original = store.path.read_bytes()
+    out = link_publication(
+        tmp_path, request, result, backend=Backend(), registry={}, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"}
+    )
+    assert not out["ok"] and out["reason"] == "canonical_pg_preflight_failed"
+    assert store.path.read_bytes() == original
+
+
+@pytest.mark.parametrize("status,newer", [("CONFLICT_RESOLVED", False), ("RESEARCHING", True)])
+def test_delayed_publication_cannot_downgrade_cio_lifecycle(tmp_path, monkeypatch, status, newer):
+    from scripts.lib.watch_review_publication import link_publication
+
+    ir, request, rec, store, version, result = _seed_link_case(tmp_path, monkeypatch)
+    lifecycle = {
+        "status": status,
+        "request_id": "rr_newer" if newer else request["request_id"],
+        "requested_at": (NOW + timedelta(hours=1)).isoformat() if newer else request["requested_at"],
+        "research_id": version,
+        "reason": "Later CIO outcome must survive",
+    }
+    updated, _ = ir.apply_prospect(rec, prospect={"research": {"review_lifecycle": lifecycle}})
+    store.upsert_prospect(updated, registry={}, env={})
+    before = store.path.read_bytes()
+    out = link_publication(tmp_path, request, result, registry={}, env={})
+    assert not out["ok"]
+    assert out["reason"] == (
+        "newer_canonical_review_preserved" if newer else "canonical_review_finalized_owner_readback_required"
+    )
+    assert store.path.read_bytes() == before
+
+
+def test_pg_failure_repairs_same_published_result_without_new_research(tmp_path, monkeypatch):
+    from scripts.lib.watch_review_publication import link_publication
+
+    ir, request, rec, store, _, result = _seed_link_case(tmp_path, monkeypatch)
+    registry = {"domains": [{"domain": "cio_prospect", "approval": {"approved_by": "synthetic operator"}}]}
+
+    class Backend:
+        calls, row = 0, None
+
+        def table_present(self):
+            return True
+
+        def write(self, row, *_args):
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("synthetic PG outage")
+            self.row = row
+            return {"ok": True, "upserted": 1}
+
+    backend = Backend()
+    reader = lambda *_a: {"ok": True, "source": {"kind": "store"}, "prospect": backend.row}
+    options = {"backend": backend, "registry": registry, "env": {ir.PROSPECT_DUAL_WRITE_ENV: "1"}, "pg_reader": reader}
+    assert not link_publication(tmp_path, request, result, **options)["ok"]
+    saved = ir.InstrumentRecordStore(store.path).load(rec["subject_key"])
+    repaired = link_publication(tmp_path, request, result, **options)
+    assert repaired["ok"] and backend.calls == 2
+    assert backend.row["revision"] == saved["prospect_revision"]
+    assert backend.row["stance"] == rec["stance"] and backend.row["conviction"] == rec["conviction"]
+    options["pg_reader"] = lambda *_a: {"ok": True, "source": {"kind": "store"}, "prospect": {}}
+    assert link_publication(tmp_path, request, result, **options)["reason"] == "canonical_pg_readback_pending"
+
+
+@pytest.mark.parametrize(
+    "ok,classification,expected",
+    [
+        (False, None, "BLOCKED"),
+        (True, "INSUFFICIENT_DATA", "BLOCKED"),
+        (True, "NO_MATERIAL_CHANGE", "SYNTHESIZED_NO_MATERIAL_CHANGE"),
+    ],
+)
+def test_real_acquisition_classification_does_not_answer_failed_review(
+    tmp_path, monkeypatch, ok, classification, expected
+):
+    import scripts.run_symbol_thesis_acquisition as acq
+
+    monkeypatch.setattr(acq, "thesis_fields_for_symbol", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        acq, "build_evidence_catalog", lambda *_a, **_k: {"sufficiency": {"sufficient_for_synthesis": True}}
+    )
+    monkeypatch.setattr(acq, "build_acquisition_plan", lambda *_a, **_k: {})
+    monkeypatch.setattr(acq, "build_synthesis_packet", lambda *_a, **_k: {"gate": "READY_FOR_SYNTHESIS"})
+    monkeypatch.setattr(acq, "offpeak_wait", lambda: None)
+    monkeypatch.setattr(acq, "synthesize_thesis_via_flash", lambda *_a, **_k: {"ok": True, "synthesis_result": {}})
+    monkeypatch.setattr(
+        acq,
+        "apply_synthesis_to_thesis",
+        lambda *_a, **_k: {
+            "ok": ok,
+            "review": {"classification": classification, "version_published": False, "new_version": "old_fixture@v1"},
+        },
+    )
+    out = acq._run_one_impl(
+        "ZZAA",
+        root=tmp_path,
+        apply=True,
+        skip_acquire=True,
+        skip_embed=True,
+        skip_synthesize=False,
+        skip_publish=False,
+        enqueue_refresh=False,
+        llm_budget_left=[1],
+    )
+    assert out["status"] == expected
+    if expected == "SYNTHESIZED_NO_MATERIAL_CHANGE":
+        assert out["review"]["reviewed_at"] == out["as_of"]
 
 
 def test_no_valid_cio_prospect_is_explicit_link_pending_not_a_minted_judgment(tmp_path, monkeypatch):

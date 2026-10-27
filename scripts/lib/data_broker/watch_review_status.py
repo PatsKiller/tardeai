@@ -105,6 +105,9 @@ def review_status(query=None, *, priority_reader=None, stance_reader=None, now=N
         states = priority_reader(names)
         truths = stance_reader(names)
     except Exception as exc:  # no credentials or raw exception text in a surface
+        from scripts.lib.watch_review_incidents import record_failure
+
+        incident = record_failure("progress", exc)
         LOG.warning(
             "watch_review_status_unavailable",
             extra={"error_class": type(exc).__name__, "projection": "watch_review_status"},
@@ -114,6 +117,7 @@ def review_status(query=None, *, priority_reader=None, stance_reader=None, now=N
             "schema": "WatchReviewStatus@v1",
             "error": "review_status_unavailable",
             "reason": type(exc).__name__,
+            "incident_id": incident,
             "rows": {},
             "provider_calls": 0,
             "read_only": True,

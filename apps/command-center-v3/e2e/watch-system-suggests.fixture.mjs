@@ -48,8 +48,13 @@ try {
     const traffic = {posts: [], external: [], unexpected: [], errors: []}
     let state = null, polls = 0
     const rows = () => [
-      {...baseRow('ZZAA'), review_state: state},
-      {...baseRow('ZZBB'), company_facts: {...facts('ZZBB'), catalyst: {status: 'NONE_ON_FILE', reason: 'No dated issuer event on file'}}},
+      {...baseRow('ZZAA'), ...(state?.publication_verified ? {
+        conviction: 76, conviction_as_of: '2026-10-27T18:00:20Z', conviction_stale: false, stance: 'WATCH',
+        whats_missing: [], next_action: {kind: 'set_alert', label: 'Set alert', reason: 'Watch the recorded trigger'},
+      } : {}), review_state: state},
+      {...baseRow('ZZBB'), company_facts: {...facts('ZZBB'),
+        industry: {...field(null), missing_reason: 'profile_industry_not_recorded'},
+        catalyst: {status: 'NONE_ON_FILE', reason: 'No dated issuer event on file'}}},
       {...baseRow('ZZCC'), review_state: {status: 'answered', open: false, publication_verified: false,
         label: 'Previous research published 2026-10-09 · 18 d ago — current CIO linkage unavailable; refresh'}},
     ]
@@ -95,6 +100,7 @@ try {
     await expect(page.getByTestId('watch-reload-notice')).toBeVisible()
     await expect(page.getByTestId('watch-suggests')).toContainText('Fictional Instruments')
     await expect(page.getByTestId('watch-suggests')).toContainText('18 d ago')
+    await expect(page.getByTestId('watch-company-missing')).toContainText('industry: profile industry not recorded')
     await expect(page.getByTestId('watch-suggests')).not.toContainText('cio record missing')
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No sideways page scroll')
     await page.screenshot({path: path.join(output, `suggests-rows-${width}.png`), fullPage: true, animations: 'disabled'})
@@ -110,6 +116,7 @@ try {
     await expect(record.getByTestId('watch-review-state')).toContainText('Researching')
     await page.clock.fastForward(10_000)
     await expect(record.getByTestId('watch-cio-answer')).toContainText('fictional product event')
+    await expect(record).not.toContainText('CIO record needed')
     assert.equal(traffic.posts.length, 1, 'One tap queues once; progress never posts')
     await page.screenshot({path: path.join(output, `suggests-answered-${width}.png`), animations: 'disabled'})
     await tap(record.getByRole('button', {name: width < 821 ? '← Back' : 'Back to list', exact: true}))

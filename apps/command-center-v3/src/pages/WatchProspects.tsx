@@ -26,6 +26,7 @@ import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountL
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { fmtAsOf } from '../lib/asOfDisplay'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
   LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, drawers, headerChips, laneById,
@@ -226,7 +227,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         <span style={label} title={TOOLTIPS.conviction}>
           Conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of
         </span>
-        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>No components — not in the CIO curator universe yet.</span>}
+        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>Conviction factors not recorded.</span>}
         {r.conviction_components.map(c => (
           <div key={c.key} title={[c.detail, c.source ? `source: ${c.source}` : null, c.weight != null ? `weight ${Math.round(c.weight * 100)}%` : null].filter(Boolean).join(' · ')}
             style={{ display: 'grid', gridTemplateColumns: '120px 1fr 40px', gap: 8, alignItems: 'center', fontSize: TYPE.base }}>
@@ -266,7 +267,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
       <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
-        Evidence {r.evidence_at ? r.evidence_at.slice(0, 16).replace('T', ' ') : '—'} · expires {r.expires_at ? r.expires_at.slice(0, 16).replace('T', ' ') : '—'}
+        Evidence {fmtAsOf(r.evidence_at) || '—'} · expires {fmtAsOf(r.expires_at) || '—'}
         {r.stale ? ' · stale' : ''}. The CIO sets stance and priority; it never sizes or places orders.
       </span>
     </div>

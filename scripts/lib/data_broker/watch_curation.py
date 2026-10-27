@@ -443,6 +443,13 @@ def read_suggestion_targets(*, root, now, max_n=30):
     rows = suggests.get("rows") or []
     if out.get("ok") is not True or out.get("provider_calls", 0) != 0 or suggests.get("payload_gap"):
         raise ValueError("suggestion_broker_selection_unavailable")
+    ranking = out.get("ranking") or {}
+    if suggests.get("dismissed_status") != "ok":
+        raise ValueError("suggestion_dismissal_source_unavailable")
+    if not isinstance(ranking.get("count"), int) or ranking["count"] <= 0 or _ts(ranking.get("as_of")) is None:
+        raise ValueError("suggestion_ranking_source_unavailable")
+    if out.get("held", {}).get("source") in {None, "unavailable"}:
+        raise ValueError("suggestion_held_source_unavailable")
     expected_n = min(int(suggests.get("eligible") or 0), min(30, max_n))
     if len(rows) != expected_n:
         raise ValueError("suggestion_broker_selection_incomplete")

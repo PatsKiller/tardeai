@@ -181,7 +181,7 @@ def _attempts(path: Path) -> dict[str, list[dict[str, Any]]]:
                 "request_id": r.get("request_id"),
                 "security_guid": r.get("security_guid"),
                 "publication": r.get("publication"),
-                "cio_link": r.get("cio_link"),
+                **({"cio_link": r["cio_link"]} if "cio_link" in r else {}),
             }
         )
     _STATE_CACHE["attempts"] = (sig, out)

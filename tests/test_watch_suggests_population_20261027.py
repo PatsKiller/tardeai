@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 for folder in (ROOT, ROOT / "scripts"):
@@ -15,6 +16,56 @@ for folder in (ROOT, ROOT / "scripts"):
 from scripts.lib import cio_company_population as population
 
 NOW = datetime(2026, 10, 27, 18, tzinfo=timezone.utc)
+
+
+def test_stored_calendar_keeps_capture_clock_when_report_is_rebuilt(tmp_path):
+    from datetime import timedelta
+    from scripts.lib.data_broker.street_detail import extended, dividends
+    from scripts.lib.prospectus.street import catalyst_calendar, Closes
+
+    observed = NOW - timedelta(days=3)
+
+    def db(sql, _params, **_kwargs):
+        if "data->'extended'" in sql:
+            assert "created_at" in sql
+            return [
+                {
+                    "snapshot_date": "2026-10-24",
+                    "created_at": observed,
+                    "extended": {"earnings_dates": [{"index": "2026-11-04T08:00:00-05:00"}]},
+                }
+            ]
+        if "ticker_dividend_data" in sql:
+            return [{"ex_div_date": "2026-11-06", "updated_at": observed}]
+        return []
+
+    raw = {"extended": extended(db, "ZZAA"), "dividends": dividends(db, "ZZAA")}
+    ctx = {"symbol": "ZZAA", "name": "Fictional Instruments", "profile": {}}
+    first = catalyst_calendar(raw, ctx, Closes([]), now=NOW, root=tmp_path, fund=False, eps_hist=[])
+    rebuilt = catalyst_calendar(
+        raw, ctx, Closes([]), now=NOW + timedelta(days=1), root=tmp_path, fund=False, eps_hist=[]
+    )
+    issuer = lambda cal: [e for e in cal["forward"] if e["kind"] != "macro"]
+    assert len(issuer(first)) == 2
+    assert [e["source_observed_at"] for e in issuer(first)] == [observed.isoformat()] * 2
+    assert issuer(rebuilt) == issuer(first)
+    assert issuer(first)[1]["estimated"] is False
+
+
+def test_calendar_missing_capture_clock_never_borrows_report_or_event_time(tmp_path):
+    from scripts.lib.prospectus.street import catalyst_calendar, Closes
+
+    calendar = catalyst_calendar(
+        {},
+        {"symbol": "ZZAA", "name": "Fictional Instruments", "next_earnings_date": "2026-11-04"},
+        Closes([]),
+        now=NOW,
+        root=tmp_path,
+        fund=False,
+        eps_hist=[],
+    )
+    earnings = next(e for e in calendar["forward"] if e["kind"] == "earnings")
+    assert earnings["source_observed_at"] is None
 
 
 def test_population_retains_legacy_groups_and_adds_suggestions():
@@ -92,6 +143,37 @@ def test_production_reader_refuses_fixture_root_before_any_broker_call(tmp_path,
     monkeypatch.setattr(site_payload_reads, "read_curation", lambda *a, **k: pytest.fail("fixture reached production"))
     with pytest.raises(ValueError, match="state_root_mismatch"):
         read_suggestion_targets(root=tmp_path, now=NOW)
+
+
+@pytest.mark.parametrize("gap", [None, "ranking", "dismissals", "held", "truncated"])
+def test_production_adapter_validates_real_broker_source_statuses(tmp_path, monkeypatch, gap):
+    from scripts.lib.data_broker.watch_curation import read_suggestion_targets
+    from scripts.lib import site_payload_reads, canonical_store_registry
+    from lib import watchlist_intelligence
+
+    monkeypatch.setattr(canonical_store_registry, "production_state_root", lambda: tmp_path)
+    monkeypatch.setattr(watchlist_intelligence, "PROJECT_ROOT", tmp_path)
+    payload = {
+        "ok": True,
+        "provider_calls": 0,
+        "ranking": {"count": 1, "as_of": NOW.isoformat()},
+        "held": {"source": "synthetic stored snapshot"},
+        "suggests": {"dismissed_status": "ok", "eligible": 1, "rows": [{"symbol": "ZZAA"}]},
+    }
+    if gap == "ranking":
+        payload["ranking"] = {}
+    elif gap == "dismissals":
+        payload["suggests"]["dismissed_status"] = "error:OSError"
+    elif gap == "held":
+        payload["held"]["source"] = "unavailable"
+    elif gap == "truncated":
+        payload["suggests"]["rows"] = []
+    monkeypatch.setattr(site_payload_reads, "read_curation", lambda *_a, **_k: payload)
+    if gap:
+        with pytest.raises(ValueError, match="suggestion_"):
+            read_suggestion_targets(root=tmp_path, now=NOW)
+    else:
+        assert read_suggestion_targets(root=tmp_path, now=NOW) == ["ZZAA"]
 
 
 def test_missing_suggestion_source_cannot_be_complete(tmp_path, monkeypatch):

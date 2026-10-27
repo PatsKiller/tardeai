@@ -575,8 +575,12 @@ def _run_one_impl(
     }
     if review.get("ok") and (review.get("review") or {}).get("version_published"):
         out["status"] = "PUBLISHED"
-    else:
+    elif review.get("ok") and (review.get("review") or {}).get("classification") == "NO_MATERIAL_CHANGE":
         out["status"] = "SYNTHESIZED_NO_MATERIAL_CHANGE"
+        out["review"]["reviewed_at"] = out["as_of"]
+    else:
+        out["status"] = "BLOCKED"
+        out["block_reason"] = (review.get("review") or {}).get("classification") or "THESIS_REVIEW_FAILED"
     return out
 
 

@@ -23,6 +23,10 @@ Synthetic fixtures cover desktop1440 and phones412/390 with all traffic intercep
 
 Producer registration, independent health-contract review, native framework admission and host receipt proof are separate from code/browser correctness. No host schedules, live flags, relay live list, broker, orders, sizing or stops are changed by these read-model fixes. Do not interpret existing records or a fresh failure receipt as a successful producer run.
 
-The coordinator must release the active registry-file claim before the producer source rows can be included. Calendar integration depends on the institutional calendar producer in PR2237; do not publish this tranche as complete before that dependency and its original-source-clock integration are accepted.
+Stored calendar events carry their original analyst-capture or dividend-record observation times. Rebuilding a prospectus does not refresh those observations. Events without an original source clock remain explicitly unavailable to company-fact curation; estimated dates retain their estimate label.
+
+Population captures distinguish the injected server-enforced read-only query from the existing in-process CC suggestion selector's independent SELECT sessions. `capture_query_read_only` covers the injected query only; `suggestion_selection.database_transaction_read_only=not_proven` records the remaining admission proof. It must not be presented as proof that all capture sessions share a read-only transaction.
+
+Review queue-write and progress-read failures are recorded through the existing incident ledger with deduplicated fingerprints and safe error classes. An unproven runtime root refuses host-ledger writes and emits a structured warning. No exception message is copied into the operator surface or incident record.
 
 If the incident CLI is available in the merged base, errors use it. Until then structured private warnings and the coordination worklog retain status, owner and next step. Follow-up: integrate the incident ledger from PR2238 after it lands; no local substitute is declared authoritative.

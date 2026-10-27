@@ -199,8 +199,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "street",
         "contract_version": "StreetDetail@v1",
         "description": "Prospectus institutional blocks: target / rating history, the extended Yahoo analyst capture "
-                       "(actions, consensus, revisions, earnings dates), analyst catalysts, option chain summaries, "
-                       "SEC XBRL / Form 4 / 13F, dividend ex-dates. Stored data only.",
+        "(actions, consensus, revisions, earnings dates), analyst catalysts, option chain summaries, "
+        "SEC XBRL / Form 4 / 13F, dividend ex-dates. Stored data only.",
         "read_only": True,
         "provider_calls": 0,
         "consumers": ["Ticker Prospectus"],
