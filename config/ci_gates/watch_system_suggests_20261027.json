@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_system_suggests_20261027",
+  "files": [
+    "tests/test_watch_system_suggests_20261027.py",
+    "tests/test_watch_suggests_population_20261027.py"
+  ],
+  "anchor": "WATCH_SYSTEM_SUGGESTS_20261027",
+  "comment": [
+    "ANCHOR: WATCH_SYSTEM_SUGGESTS_20261027; synthetic identity, shared facts, age and review progress regressions."
+  ]
+}

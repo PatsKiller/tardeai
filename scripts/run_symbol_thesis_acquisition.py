@@ -16,6 +16,7 @@ Dry by default. --apply opts into real acquisition, embedding (db-write), Flash
 (llm), and thesis publish (CIOThesisStore). A JSONL ledger makes runs resumable
 and idempotent (no duplicate acquisition within 72h; no duplicate publish).
 """
+
 from __future__ import annotations
 
 import sys as _dr_sys
@@ -35,8 +36,10 @@ if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
         "Flash-synthesize (--max-llm) and, with --apply, publish symbol theses and append the acquisition "
         "ledger"
     )
-    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
-          "nothing read from env/DB/network, no model call, no send, no file write")
+    print(
+        f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
+        "nothing read from env/DB/network, no model call, no send, no file write"
+    )
     _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="symbol"))
     raise SystemExit(0)
 
@@ -217,8 +220,10 @@ def blocked_backoff(ledger: list[dict[str, Any]], sym: str, *, now: Optional[dat
         return None
     if len({json.dumps(r.get("catalog") or {}, sort_keys=True) for r in tail}) != 1:
         return None
-    return (f"BACKOFF_BLOCKED: {BLOCKED_REPEAT_LIMIT} BLOCKED runs since {tail[0].get('as_of')} on unchanged evidence "
-            f"{json.dumps(tail[-1].get('catalog') or {}, sort_keys=True)}")
+    return (
+        f"BACKOFF_BLOCKED: {BLOCKED_REPEAT_LIMIT} BLOCKED runs since {tail[0].get('as_of')} on unchanged evidence "
+        f"{json.dumps(tail[-1].get('catalog') or {}, sort_keys=True)}"
+    )
 
 
 def offpeak_wait(task_type: str = "cio_synthesis") -> Optional[str]:
@@ -282,8 +287,9 @@ def _stanceless_runs(root: Path, sym: str) -> int:
     return n
 
 
-def choose_question(sym: str, fields: dict[str, Any], *, root: Path, memberships: list[str], role: str,
-                    thesis_state: str) -> tuple[str, str]:
+def choose_question(
+    sym: str, fields: dict[str, Any], *, root: Path, memberships: list[str], role: str, thesis_state: str
+) -> tuple[str, str]:
     """The question for this run, and why it was chosen (2026-09-27).
 
     DELL's thesis was re-synthesized four times on "DELL's exact AI server backlog dollar
@@ -302,10 +308,12 @@ def choose_question(sym: str, fields: dict[str, Any], *, root: Path, memberships
         q = _specific_question(sym, gap, memberships=memberships, role=role, thesis_state=thesis_state)
         if asked.get(_digest(sym, q), 0) < GAP_RETRY_LIMIT:
             return q, "first_open_gap"
-    return (f"Form a thesis stance for {sym} (hold / watch / add / trim / avoid) from the reported "
-            f"fundamentals and dated evidence on file. State the bull and bear case, what would change "
-            f"the stance, and list any narrower figure the filings do not break out as a research gap "
-            f"rather than a reason to leave the stance empty."), "gaps_exhausted_form_stance"
+    return (
+        f"Form a thesis stance for {sym} (hold / watch / add / trim / avoid) from the reported "
+        f"fundamentals and dated evidence on file. State the bull and bear case, what would change "
+        f"the stance, and list any narrower figure the filings do not break out as a research gap "
+        f"rather than a reason to leave the stance empty."
+    ), "gaps_exhausted_form_stance"
 
 
 def _prior_state(root: Path, question_digest: str) -> dict[str, Any]:
@@ -319,6 +327,7 @@ def _thesis_conn(root: Path):
     """Postgres connection from root/.env (same pattern as symbol_universe). Fail-soft."""
     try:
         import psycopg2
+
         pw = os.environ.get("DB_PASSWORD", "")
         env_path = root / ".env"
         if not pw and env_path.exists():
@@ -357,8 +366,13 @@ def run_one(
             from lib import intelligence_client as _ic
         except ImportError:
             from scripts.lib import intelligence_client as _ic  # type: ignore
-        _ic_ctx = _ic.shadow_open("symbol-thesis-acquisition", [str(sym or "")], "RESEARCH", root=root,
-                                  question={"text": "symbol thesis acquisition", "question_class": "thesis"})
+        _ic_ctx = _ic.shadow_open(
+            "symbol-thesis-acquisition",
+            [str(sym or "")],
+            "RESEARCH",
+            root=root,
+            question={"text": "symbol thesis acquisition", "question_class": "thesis"},
+        )
     except Exception:  # noqa: BLE001
         _ic_ctx = None
     conn = _thesis_conn(root)
@@ -377,7 +391,15 @@ def run_one(
         )
         try:
             if _ic_ctx and isinstance(_res, dict):
-                _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": str(_res.get("question_digest") or ""), "status": str(_res.get("status") or "")}, root=root)
+                _ic.shadow_commit(
+                    _ic_ctx,
+                    {
+                        "kind": "RESEARCHED",
+                        "ref": str(_res.get("question_digest") or ""),
+                        "status": str(_res.get("status") or ""),
+                    },
+                    root=root,
+                )
         except Exception:  # noqa: BLE001
             pass
         return _res
@@ -403,8 +425,9 @@ def _run_one_impl(
     memberships = list(fields.get("memberships") or [])
     role = str(fields.get("portfolio_role") or "UNKNOWN")
     thesis_state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
-    question, gap_note = choose_question(sym, fields, root=root, memberships=memberships, role=role,
-                                         thesis_state=thesis_state)
+    question, gap_note = choose_question(
+        sym, fields, root=root, memberships=memberships, role=role, thesis_state=thesis_state
+    )
     qd = _digest(sym, question)
     prior = _prior_state(root, qd)
 
@@ -440,7 +463,8 @@ def _run_one_impl(
     # news under the symbol_news_curation rules before re-reading the catalog.
     curated: dict[str, Any] = {}
     gaps_now = set((catalog.get("sufficiency") or {}).get("remaining_evidence_gaps") or []) | set(
-        (catalog.get("sufficiency") or {}).get("gaps") or [])
+        (catalog.get("sufficiency") or {}).get("gaps") or []
+    )
     if apply and conn is not None and "no_approved_primary_or_news" in gaps_now:
         try:
             try:
@@ -448,6 +472,7 @@ def _run_one_impl(
             except ImportError:  # pragma: no cover
                 from scripts.lib import symbol_news_curation as snc  # type: ignore
             import psycopg2.extras
+
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as ccur:
                 curated = snc.curate_symbol(ccur, sym, snc.settings(), apply=True)
             conn.commit()
@@ -483,7 +508,7 @@ def _run_one_impl(
     )
     gate = packet.get("gate")
     out["gate"] = gate
-    out["sufficiency"] = (final_catalog.get("sufficiency") or {})
+    out["sufficiency"] = final_catalog.get("sufficiency") or {}
     out["catalog"] = {
         "supporting_n": len(final_catalog.get("supporting") or []),
         "contradictory_n": len(final_catalog.get("contradictory") or []),
@@ -493,12 +518,9 @@ def _run_one_impl(
     if gate != "READY_FOR_SYNTHESIS":
         out["status"] = "BLOCKED"
         out["block_reason"] = gate
-        out["remaining_gaps"] = (
-            (final_catalog.get("sufficiency") or {}).get("remaining_evidence_gaps") or []
-        )
+        out["remaining_gaps"] = (final_catalog.get("sufficiency") or {}).get("remaining_evidence_gaps") or []
         out["pending_curation_n"] = sum(
-            1 for a in acquired
-            if (a.get("rag_status") or "pending") == "pending" and not a.get("error")
+            1 for a in acquired if (a.get("rag_status") or "pending") == "pending" and not a.get("error")
         )
         refresh_request = final_catalog.get("refresh_request")
         if refresh_request:
@@ -553,8 +575,12 @@ def _run_one_impl(
     }
     if review.get("ok") and (review.get("review") or {}).get("version_published"):
         out["status"] = "PUBLISHED"
-    else:
+    elif review.get("ok") and (review.get("review") or {}).get("classification") == "NO_MATERIAL_CHANGE":
         out["status"] = "SYNTHESIZED_NO_MATERIAL_CHANGE"
+        out["review"]["reviewed_at"] = out["as_of"]
+    else:
+        out["status"] = "BLOCKED"
+        out["block_reason"] = (review.get("review") or {}).get("classification") or "THESIS_REVIEW_FAILED"
     return out
 
 
@@ -599,18 +625,52 @@ def run(
         if skip:
             results.append({"symbol": sym, "status": "BACKOFF_BLOCKED", "note": skip, "authority": AUTHORITY})
             continue
-        rec = run_one(
-            sym,
-            root=root,
-            apply=apply,
-            skip_acquire=skip_acquire,
-            skip_embed=skip_embed,
-            skip_synthesize=skip_synthesize,
-            skip_publish=skip_publish,
-            enqueue_refresh=enqueue_refresh,
-            llm_budget_left=llm_budget,
+        request = None
+        published = None
+        if apply:
+            from scripts.lib.watch_review_publication import pending_request, published_for_request, request_blocker
+
+            request = pending_request(root, sym)
+            blocker = request_blocker(root, request)
+            if blocker:
+                rec = {
+                    "schema": "SymbolThesisAcquisitionRun@v1",
+                    "as_of": _now(),
+                    "symbol": sym,
+                    "status": "BLOCKED",
+                    "block_reason": blocker,
+                    "request_id": request["request_id"],
+                    "security_guid": request.get("security_guid"),
+                    "authority": AUTHORITY,
+                    "financial_action": False,
+                }
+                _append_ledger(root, rec)
+                results.append(rec)
+                continue
+            published = published_for_request(root, request)
+        rec = (
+            {**published, "as_of": _now(), "publication_link_retry": True}
+            if published
+            else run_one(
+                sym,
+                root=root,
+                apply=apply,
+                skip_acquire=skip_acquire,
+                skip_embed=skip_embed,
+                skip_synthesize=skip_synthesize,
+                skip_publish=skip_publish,
+                enqueue_refresh=enqueue_refresh,
+                llm_budget_left=llm_budget,
+            )
         )
         if apply:
+            if request:
+                rec["request_id"], rec["security_guid"] = request.get("request_id"), request.get("security_guid")
+                if rec.get("status") in {"PUBLISHED", "SYNTHESIZED_NO_MATERIAL_CHANGE"}:
+                    from scripts.lib.watch_review_publication import link_publication
+
+                    rec["cio_link"] = link_publication(root, request, rec)
+                    rec["publication"] = rec["cio_link"].get("publication")
             _append_ledger(root, rec)
         results.append(rec)
 
@@ -664,9 +724,17 @@ def main() -> int:
         enqueue_refresh=a.enqueue_refresh,
     )
 
-    print(json.dumps({"mode": batch["mode"], "queued": batch["queued"],
-                      "statuses": batch["statuses"],
-                      "llm_calls_used": batch["llm_calls_used"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "mode": batch["mode"],
+                "queued": batch["queued"],
+                "statuses": batch["statuses"],
+                "llm_calls_used": batch["llm_calls_used"],
+            },
+            indent=2,
+        )
+    )
     for r in batch["results"]:
         extra = ""
         if r.get("review"):

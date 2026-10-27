@@ -48,6 +48,14 @@ export type ReviewState = {
   last_attempt?: { status: string; at: string; block_reason?: string | null; reason?: string; remaining_gaps?: string[] } | null
   conflict_key?: string | null
   request_id?: string | null
+  updated_at?: string | null
+  next_run?: string | null
+  publication_verified?: boolean
+  research_link_verified?: boolean
+  answered_at?: string | null
+  answer_age_hours?: number | null
+  answer_summary?: string | null
+  research_id?: string | null
 }
 export type SurfaceRow = { surface: string; value: string; source: string | null; joined: boolean }
 export type ProspectRow = {
