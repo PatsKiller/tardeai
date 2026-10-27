@@ -393,10 +393,8 @@ def _send(message: str, *, priority: str, reply_markup: dict[str, Any] | None = 
             return False, [], f"telegram_alert unavailable: {exc}"
     try:
         ta.reset_last_message_ids()
-        kwargs: dict[str, Any] = {"priority": priority, "dedupe_minutes": 0, "producer": PRODUCER}
-        if reply_markup:
-            kwargs["reply_markup"] = reply_markup
-        ok = ta.send_telegram(message, **kwargs)
+        ok = ta.send_telegram(message, priority=priority, dedupe_minutes=0, producer=PRODUCER,
+                              reply_markup=reply_markup or None)
         ids = [str(i) for i in (ta.last_message_ids() or []) if i is not None]
     except Exception as exc:  # noqa: BLE001
         return False, [], f"{type(exc).__name__}: {exc}"
