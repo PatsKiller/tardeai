@@ -358,6 +358,16 @@ export type MacroSensitivity = { series?: Record<string, MacroSeries>; rate_beta
 export type SecFiling = { form: string; filed_at?: string | null; url?: string | null; what_changed?: string | null }
 export type SecFilings = { filings?: SecFiling[]; form4_90d?: { buys?: Num; sells?: Num } | null; gaps?: string[] }
 export type EarningsCall = { bullets?: string[]; transcripts?: { id?: string; label: string; as_of?: string | null; url?: string | null }[]; gaps?: string[] }
+/** House stop policy's recommended stop beside the broker stop and its state (backend scripts/lib/prospectus/stops.py). */
+export type StopPlan = {
+  not_applicable?: string
+  recommended?: { level?: Num; method?: string | null; distance_pct?: Num; usd_at_risk?: Num; policy?: string; as_of?: string | null;
+    band?: { label?: string | null; stop_min_pct?: Num; stop_max_pct?: Num; levels?: Num[] } }
+  broker?: { level?: Num; state?: 'active' | 'resting' | 'filled' | 'none' | 'unknown'; as_of?: string | null; source?: string }
+  comparison?: string
+  advisory?: string
+  gaps?: string[]
+}
 export type ProspectusBlocks = {
   relative_performance?: RelativePerformance
   peer_comparison?: PeerComparison
@@ -369,6 +379,7 @@ export type ProspectusBlocks = {
   sec_filings?: SecFilings
   earnings_call?: EarningsCall
   options_sentiment_dividends?: Record<string, unknown>
+  stop_plan?: StopPlan
   verdict_tiles?: Partial<Record<VerdictTileId, { value?: string | null; sub?: string | null; tone?: string | null }>>
 }
 export type CoverageDomain = { domain: string; status: string; reason?: string | null; as_of?: string | null; label?: string | null }

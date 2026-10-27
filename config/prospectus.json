@@ -294,5 +294,151 @@
     },
     "plan_max_output_tokens": 4000,
     "note": "governed search_router (free tier first, then Brave under its budget); the job's daily paid-search allowance is brave.daily_limit"
+  },
+  "etf_peer_groups": {
+    "_note": "ETF peers by category/style (the Finviz enrichment cache files every ETF under one industry, 'Exchange Traded Fund', which sorts alphabetically and is not a peer set). An ETF in no group shows 'peers not available (reason)'.",
+    "us_large_cap_growth": [
+      "SCHG",
+      "VUG",
+      "IWF",
+      "SPYG",
+      "MGK",
+      "VONG",
+      "IWY",
+      "QQQ",
+      "QQQM"
+    ],
+    "us_large_cap_blend": [
+      "SPY",
+      "VOO",
+      "IVV",
+      "SPLG",
+      "SCHX",
+      "VV",
+      "IWB",
+      "SCHK"
+    ],
+    "us_total_market": [
+      "VTI",
+      "ITOT",
+      "SCHB",
+      "SPTM",
+      "IWV"
+    ],
+    "us_large_cap_value": [
+      "VTV",
+      "IWD",
+      "SCHV",
+      "SPYV",
+      "VONV",
+      "MGV"
+    ],
+    "us_dividend": [
+      "SCHD",
+      "VYM",
+      "DVY",
+      "DGRO",
+      "HDV",
+      "NOBL",
+      "VIG",
+      "SDY"
+    ],
+    "us_small_cap": [
+      "IWM",
+      "VB",
+      "SCHA",
+      "IJR",
+      "VTWO",
+      "SPSM"
+    ],
+    "us_mid_cap": [
+      "VO",
+      "IJH",
+      "SCHM",
+      "MDY",
+      "IWR",
+      "SPMD"
+    ],
+    "international_developed": [
+      "VEA",
+      "EFA",
+      "IEFA",
+      "SCHF",
+      "SPDW",
+      "VXUS",
+      "IXUS"
+    ],
+    "emerging_markets": [
+      "VWO",
+      "IEMG",
+      "EEM",
+      "SCHE",
+      "SPEM"
+    ],
+    "us_aggregate_bond": [
+      "BND",
+      "AGG",
+      "SCHZ",
+      "SPAB",
+      "IUSB"
+    ],
+    "short_treasury_cash": [
+      "SGOV",
+      "BIL",
+      "SHV",
+      "SHY",
+      "SCHO",
+      "VGSH",
+      "USFR"
+    ],
+    "technology_sector": [
+      "XLK",
+      "VGT",
+      "FTEC",
+      "IYW"
+    ],
+    "semiconductors": [
+      "SMH",
+      "SOXX",
+      "XSD",
+      "PSI"
+    ],
+    "financials_sector": [
+      "XLF",
+      "VFH",
+      "IYF",
+      "FNCL"
+    ],
+    "health_care_sector": [
+      "XLV",
+      "VHT",
+      "IYH",
+      "FHLC"
+    ],
+    "energy_sector": [
+      "XLE",
+      "VDE",
+      "IYE",
+      "FENY"
+    ],
+    "industrials_sector": [
+      "XLI",
+      "VIS",
+      "IYJ",
+      "FIDU"
+    ],
+    "gold": [
+      "GLD",
+      "IAU",
+      "GLDM",
+      "SGOL"
+    ],
+    "bitcoin": [
+      "IBIT",
+      "FBTC",
+      "GBTC",
+      "BITB",
+      "ARKB"
+    ]
   }
 }

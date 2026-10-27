@@ -26,7 +26,7 @@ from . import INDEX_SCHEMA, QUEUE_SCHEMA
 SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
 STAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
 FILE_KINDS = {"html": "prospectus.html", "pdf": "prospectus.pdf", "docx": "prospectus.docx"}
-STATUSES = ("ready", "partial", "queued", "running", "failed", "missing")
+STATUSES = ("ready", "partial", "queued", "running", "failed", "missing", "blocked_data")
 
 
 def norm_symbol(symbol: Any) -> str | None:
@@ -199,7 +199,7 @@ def enqueue(base: Path, rows: list[dict], *, now: datetime | None = None) -> int
                 current["premium"] = bool(current.get("premium") or row.get("premium"))
                 if row.get("mode") == "full":
                     current["mode"] = "full"
-                if current.get("state") == "failed":
+                if current.get("state") in ("failed", "blocked_data"):  # re-requested: the gate runs again
                     current["state"] = "queued"
                 current["reason"] = row.get("reason", current.get("reason"))
         doc["items"] = sorted(by_sym.values(), key=lambda r: (int(r.get("priority", 500)), r["symbol"]))
