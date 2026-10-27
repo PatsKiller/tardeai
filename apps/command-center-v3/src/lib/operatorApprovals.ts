@@ -18,6 +18,10 @@ const messages: Record<string, string> = {
   POLICY_BINDING_REQUIRED: 'The exact policy PR and commit must be verified before approval.',
   CSRF_REFUSED: 'This request could not be verified. Reload the page and try again.',
   AGENT_CALLER_REFUSED: 'Only your authenticated operator session can record a decision.',
+  REVIEW_STALE: 'A new push arrived. Approve waits for the review of the new head.',
+  REVIEW_REQUIRED: 'There is no finished review of this head yet.',
+  REVIEW_CANNOT_REVIEW: 'This PR could not be reviewed; merge it yourself on GitHub if you want it.',
+  CHECKS_NOT_GREEN: 'The required checks are not green on this head.',
 }
 
 /** Decision/question request ids. crypto.randomUUID exists only in secure contexts; getRandomValues works everywhere
@@ -60,7 +64,7 @@ export function waitingSince(value: string | null) {
   return minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 1440)} d`
 }
 
-export const KIND_LABEL: Record<string, string> = { POLICY: 'Policy', RELEASE: 'Release', SPEND: 'Spending', ACTIVATE: 'Activation', DESIGN: 'Design', CONFLICT: 'Conflict', FINDING: 'Finding', FINANCIAL: 'Trade review' }
+export const KIND_LABEL: Record<string, string> = { POLICY: 'Policy', RELEASE: 'Release', SPEND: 'Spending', ACTIVATE: 'Activation', DESIGN: 'Design', CONFLICT: 'Conflict', FINDING: 'Finding', FINANCIAL: 'Trade review', MERGE: 'Merge' }
 
 export async function askAboutRule(question: string, section: string, text: string, documentSha: string, sourceSha: string): Promise<string | null> {
   const answer = await governanceRequest<{ thread_id?: string }>('/api/v2/cio/ask', {

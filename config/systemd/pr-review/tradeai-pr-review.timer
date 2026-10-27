@@ -1,0 +1,13 @@
+# Independent PR reviewer every 5 minutes (Design approvals-pr-review/v001). Advisory only; never merges or labels.
+
+[Unit]
+Description=Trade AI independent PR reviewer timer
+
+[Timer]
+OnCalendar=*:1/5
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-pr-review.service
+
+[Install]
+WantedBy=timers.target

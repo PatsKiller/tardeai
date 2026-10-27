@@ -363,9 +363,21 @@ def _default_sources(root: Path) -> dict:
             out[-1]["financial_kind"] = row["kind"]
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
+    def pr_reviews():
+        # Approvals → Merges (Design approvals-pr-review/v001): one MERGE item per PR from the independent reviewer's
+        # store and its open-PR snapshot. Reads only; the reviewer timer is the store's single writer.
+        from scripts.lib import pr_review_view
+        return pr_review_view.merge_items(state_root=state_root(), root=root, code_sha="")
+
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
-    return {"packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": policy_prs,
+    return {"pr_reviews": pr_reviews, "packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": policy_prs,
             "guard_requests": guard_requests, "design_decisions": designs, "financial_queues": financial}
+
+
+def state_root() -> Path:
+    """The persistent-state root the decision ledger lives under (``<root>/data/governance``)."""
+    from scripts.lib.approval_package import governance_dir
+    return governance_dir().parent.parent
 
 
 def iso_timestamp(value) -> str | None:
@@ -514,10 +526,22 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                     data["view"] = "paged"
                 data["positions"] = [r for r in ctx.ledger.rows() if r.get("event") == "RULE_FEEDBACK"][-100:]
                 return 200, {"ok": True, "data": data}
+            if sub == "/pr-reviews/summary":
+                from scripts.lib import pr_review_view
+                items = [r for r in queue(ctx)["items"] if r["kind"] == "MERGE"]
+                return 200, {"ok": True, "data": pr_review_view.summary(
+                    state_root=state_root(), root=ROOT, items=items,
+                    decisions_approved=lambda: ctx.ledger.approved())}
             if sub.startswith("/approvals/"):
                 # The reader encodes ids ("policy:42" -> "policy%3A42"); the server does not decode paths.
                 ident = unquote(sub[len("/approvals/"):])
-                return 200, {"ok": True, "data": _current(ctx, ident)()}
+                data = _current(ctx, ident)()
+                if data["kind"] == "MERGE":
+                    from scripts.lib import pr_review_view
+                    data = {**data, "thread": pr_review_view.thread(state_root=state_root(), root=ROOT, pr=int(data["pr"]),
+                                                                     ledger_rows=ctx.ledger.rows()),
+                            "decisions_store_approved": bool(ctx.ledger.approved())}
+                return 200, {"ok": True, "data": data}
             raise core.Refused("NOT_FOUND", 404)
         if method != "POST":
             raise core.Refused("METHOD_NOT_ALLOWED", 405)
@@ -541,6 +565,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
             result = ctx.ledger.marker(actor, current, body)
         elif parts[2] == "decide":
             result = ctx.ledger.decide(actor, current, body)
+        elif parts[2] == "question":
+            result = ctx.ledger.question(actor, current, body)
         else:
             raise core.Refused("NOT_FOUND", 404)
         return 200, {"ok": True, "data": result}

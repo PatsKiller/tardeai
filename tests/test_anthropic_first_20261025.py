@@ -144,7 +144,10 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     # and the incident supervisor (ops_process_tiers, #2238)
     assert [t for t, m in p["models"].items() if m == "claude-sonnet-5-5"] == ["mid"]
     assert [k for k, t in p["process_tiers"].items() if t == "mid"] == ["prospectus_cio_news_note"]
-    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "mid"}
+    # + the independent PR reviewer (operator D2 2026-10-27, Design approvals-pr-review/v001): Sonnet 5.5 for normal
+    # PRs, Opus 5.5 (tier high) for held and shared-infra PRs
+    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {
+        "incident_supervisor": "mid", "pr_independent_review": "mid", "pr_independent_review_deep": "high"}
     assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 
