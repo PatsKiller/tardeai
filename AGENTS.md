@@ -6548,9 +6548,25 @@ for live force. Foundation docs: `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md`, `docs/
   comment, not an agent-applied label. Draft PRs never queue (`draft=false`). Leftover single-PR cards for PRs
   already in a digest settle as SUPERSEDED — tap the digest only.
 - **Mergify is the merge actor.** Required checks (`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`)
-  must be exactly `success` on the head. Queues and `schedule` windows are America/New_York (DST-aware) in `.mergify.yml`.
-  Exclusions (broker / Active Trader / MBI, secrets, AGENTS.md / AI_WORK_POLICY / hooks / guard without the solo review
-  path) stay held for the operator. Installing or re-permissioning Mergify is §17.
+  must be exactly `success` on the real PR head (success|skipped|neutral are accepted on Mergify speculative drafts —
+  see `.mergify.yml` `merge_conditions`). Queues and `schedule` windows are America/New_York (DST-aware) in
+  `.mergify.yml`. Exclusions (broker / Active Trader / MBI, secrets, AGENTS.md / AI_WORK_POLICY / hooks / guard without
+  the solo review path) stay held for the operator. Installing or re-permissioning Mergify is §17.
+- **Not done until Mergify-merged.** An agent that requested Telegram Approve (or whose PR is in a digest) does **not**
+  stop at "Approve sent", "queued", or "Dequeued". The work is finished only when the PR is **merged to `main`**
+  (or the operator denies / the claim is abandoned with a recorded next step). While the PR is open with
+  `operator-merge` or in Mergify Dequeued, the owning agent (or the claim takeover) keeps the claim alive: fix the
+  block, push, `@mergifyio queue` / refresh, and stay until merged. *Cause (§20): operator 2026-10-27 — agents stopped
+  at submit; Dequeued sat with Checks Failed / Conflicts and nothing resubmitted.*
+- **Dequeued is not a dead end — classify, fix, resubmit.** `scripts/mergify_queue_monitor.py` (lib
+  `scripts/lib/mergify_queue_monitor.py`) watches open `operator-merge` PRs. On Dequeued it classifies:
+  (1) **draft-skip false fail** (checks failed on a `mergify/merge-queue/*` speculative draft while the real head is
+  green) → once the skip-tolerant `.mergify.yml` + `mergify/*` CI gates are on `main`, auto `@mergifyio queue`;
+  (2) **real CI fail** → wake the claim owner with the red checks and "do not stop until merged";
+  (3) **Conflicts** → wake the claim owner to rebase onto `origin/main`, push, then `@mergifyio queue`.
+  Never leave a Dequeued row idle. Default dry-run; `--apply` comments / requeues / pages P1. *Cause (§20): operator
+  2026-10-27 Dequeued screenshot — "Make sure none of those forms arrive, because resubmit it in error process for
+  resubmitting."*
 - **Host `deploy_on_main` promotes only.** Timer `tradeai-deploy-on-main` runs `scripts/deploy_on_main_poll.py`: if
   `origin/main` SHA ≠ CURRENT pin, STOP is absent, GlobalReleaseLock is free, and the standing **deploy** delegation is
   armed, it runs `cio_phase2_exact_main_deploy.sh` prepare+promote for that SHA, then `scripts/post_release_tester.py`,
