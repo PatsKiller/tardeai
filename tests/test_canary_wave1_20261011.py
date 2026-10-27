@@ -40,6 +40,7 @@ from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
 from tests.support import release_train_h0 as RTH0  # noqa: E402
 from tests.support import cio_prospect_canary_20261025 as CPC  # noqa: E402
+from tests.support import macro_calendar_canary_20261026 as MCC  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -157,7 +158,7 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) add their promoted lanes (tests/support/n8n_cutover_waves.py).
     assert canary == sorted(({"heartbeat-watch", *CANARY_WAVE_20261014} | {
         lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"}
-        | set(HL.LIVE) | set(CIL.LIVE) | set(DHN.LIVE) | set(DIM.LIVE) | set(ATMW.LIVE) | set(RRT.LIVE) | set(HSC.LIVE) | set(RTH0.LIVE) | set(CPC.LIVE)) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2
+        | set(HL.LIVE) | set(CIL.LIVE) | set(DHN.LIVE) | set(DIM.LIVE) | set(ATMW.LIVE) | set(RRT.LIVE) | set(HSC.LIVE) | set(RTH0.LIVE) | set(CPC.LIVE) | set(MCC.LIVE)) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2
     # (tests/support/hermes_learning_cutover.py) + comms-intent consumer live 2026-10-17
     # (tests/support/comms_intent_consumer_live.py) + disk hygiene / disk-usage monitor 2026-10-18
     # (tests/support/disk_hygiene_n8n.py; operator approval 2026-10-18: "a script with rules that's repeatable, n8n

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_on_main_autonomy_20261027",
+  "files": [
+    "tests/test_deploy_on_main_autonomy_20261027.py"
+  ],
+  "comment": [
+    "deploy_on_main autonomy (2026-10-27): the poller's prepare/promote bind on the armed standing deploy delegation",
+    "(poller ticket + lock holder + STOP + origin/main + green checks; matched_by deploy_delegation), dirty canonical",
+    "checkout preserved (patch + tagged stash) with a deduped P1, one P1 per >=3 deploy_failed streak + one OK on recovery,",
+    "and page_p1 recording transport truth. Temp Git fixtures, stub native deploy, no Telegram."
+  ]
+}
