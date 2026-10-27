@@ -69,16 +69,6 @@
         }
       ]
     },
-    "release-windows-20261016": {
-      "live_when": [
-        {
-          "lane": "release-train-claim",
-          "state": "ACTIVE",
-          "scheduler": "systemd"
-        }
-      ],
-      "note": "The 12:00/17:30 windows run through release_window.py train-claim, installed by the release-train packet that builds on this one."
-    },
     "tmp-hygiene-auto-apply-20261022": {
       "live_when": [
         {
