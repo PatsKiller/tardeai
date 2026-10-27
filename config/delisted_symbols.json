@@ -1,0 +1,32 @@
+{
+  "schema": "DelistedSymbolsPolicy@v1",
+  "approved_by": "operator 2026-10-26 (verbatim): \"widen the dividend refresh to cover everything you hold or watch; Yahoo Finance feed ... switched on: yes, and remove SRNE and any delisted\"",
+  "reader": "scripts/lib/delisted_symbols.py",
+  "consumers": [
+    "scripts/lib/prospectus/pipeline.py (plan_universe excludes; run_queue marks stored reports 'delisted — excluded' and drops queued rows; persist_doc refuses to store a new version)",
+    "scripts/watch_archive_delisted.py (lists delisted names in My Watchlist; --apply archives them through the existing My Watchlist remove command, reversible with --undo)"
+  ],
+  "explicit": [
+    {
+      "symbol": "SRNE",
+      "reason": "Sorrento Therapeutics — delisted (bankruptcy); its house price series is not usable (two price stores disagree by orders of magnitude). Operator 2026-10-26: \"remove SRNE and any delisted\". Its bad price rows are kept for the quarantine script (#2202), never deleted here.",
+      "since": "2026-10-26"
+    }
+  ],
+  "never_exclude": [],
+  "never_exclude_note": "Symbols listed here are never auto-excluded (an operator override when a detector is wrong). Cash sweeps are not in the prospectus universe and need no entry.",
+  "inactive_identity_statuses": [
+    "DELISTED",
+    "INACTIVE",
+    "TERMINATED",
+    "SUSPENDED"
+  ],
+  "no_price_sessions": 10,
+  "no_price_sessions_note": "Weekday sessions between the symbol's last house daily close and the freshest house close among the names checked (never the wall clock, so a house-wide ingest outage excludes nothing). 10 covers a holiday week plus a late ingest; a symbol with NO bars at all is not excluded (a new add or an ingest gap is a data gap, not a delisting).",
+  "near_zero_close_usd": 0.001,
+  "terminal_collapse": {
+    "max_ratio_to_prior_median": 0.02,
+    "prior_sessions": 20,
+    "note": "The last close at or below 2% of the median of the prior 20 closes (a 98% one-step collapse) is a terminal bar."
+  }
+}
