@@ -1,12 +1,22 @@
 /** Ticker Prospectus charts — rendered from the prospectus `charts[]` (contract 2026-10-26).
  *  line → price with stop / entry reference lines; bar → grouped bars; range → analyst target range bar.
  *  Colours come from CHART_HEX per resolved theme (recharts props cannot read CSS vars); chrome uses tokens. */
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CHART_HEX, RADIUS, TOKENS, TYPE, numStyle } from '../../lib/designTokens'
 import { useTheme } from '../../hooks/useTheme'
-import { chartKind, chartRows, priceLines, targetRange, type ProspectusChart } from '../../lib/prospectusModel'
+import { chartKind, chartRows, monthLabel, monthTicks, nonEmptySeries, priceLines, targetRange, whenEt, type ProspectusChart } from '../../lib/prospectusModel'
 
 const H = 220
+
+/** One legend style for every chart (same swatches as the relative-performance block). */
+function SeriesLegend({ names, colors }: { names: string[]; colors: string[] }) {
+  if (names.length < 2) return null
+  return (
+    <div className="psp-legend" data-testid="prospectus-chart-legend">
+      {names.map((n, i) => <span key={n} className="psp-legend-item"><span className="psp-legend-swatch" aria-hidden="true" style={{ background: colors[i] }} />{n}</span>)}
+    </div>
+  )
+}
 
 function ChartFrame({ chart, children }: { chart: ProspectusChart; children: React.ReactNode }) {
   return (
@@ -20,10 +30,12 @@ function ChartFrame({ chart, children }: { chart: ProspectusChart; children: Rea
 function LineChartView({ chart }: { chart: ProspectusChart }) {
   const [, , theme] = useTheme()
   const hex = CHART_HEX[theme]
-  const rows = chartRows(chart.series)
+  const series = nonEmptySeries(chart.series)
+  const rows = chartRows(series)
+  const ticks = monthTicks(rows.map(r => String(r.x)))
   const lines = priceLines(chart)
   const lineHex = { danger: hex.danger, success: hex.success, warning: hex.warning, info: hex.series[0] }
-  const ys = [...rows.flatMap(r => chart.series.map(s => r[s.name])).filter((v): v is number => typeof v === 'number'), ...lines.map(l => l.y)]
+  const ys = [...rows.flatMap(r => series.map(s => r[s.name])).filter((v): v is number => typeof v === 'number'), ...lines.map(l => l.y)]
   const lo = ys.length ? Math.min(...ys) : 0, hi = ys.length ? Math.max(...ys) : 1
   const pad = (hi - lo) * 0.08 || 1
   return (
@@ -32,10 +44,11 @@ function LineChartView({ chart }: { chart: ProspectusChart }) {
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
             <CartesianGrid stroke={hex.grid} strokeDasharray="3 3" />
-            <XAxis dataKey="x" tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} minTickGap={16} />
+            <XAxis dataKey="x" tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} interval={0}
+              ticks={ticks.length ? ticks : undefined} tickFormatter={monthLabel} minTickGap={ticks.length ? 0 : 16} />
             <YAxis domain={[lo - pad, hi + pad]} tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} tickFormatter={v => Number(v).toFixed(0)} />
-            <Tooltip contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
-            {chart.series.map((s, i) => <Line key={s.name} type="monotone" dataKey={s.name} stroke={hex.series[(i + 0) % hex.series.length]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />)}
+            <Tooltip labelFormatter={v => (ticks.length ? whenEt(v) : String(v))} contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
+            {series.map((s, i) => <Line key={s.name} type="monotone" dataKey={s.name} stroke={hex.series[(i + 0) % hex.series.length]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />)}
             {lines.map((l, i) => (
               <ReferenceLine key={i} y={l.y} stroke={lineHex[l.tone]} strokeDasharray="5 4" strokeWidth={1.5}
                 label={{ value: l.label, position: 'insideTopRight', fill: lineHex[l.tone], fontSize: TYPE.xs }} />
@@ -43,6 +56,7 @@ function LineChartView({ chart }: { chart: ProspectusChart }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <SeriesLegend names={series.map(s => s.name)} colors={series.map((_, i) => hex.series[i % hex.series.length])} />
       {lines.length > 0 && (
         <div className="psp-chart-legend" data-testid="prospectus-chart-levels">
           {lines.map((l, i) => <span key={i} className={`psp-level psp-tone-${l.tone}`}>{l.label}</span>)}
@@ -55,11 +69,12 @@ function LineChartView({ chart }: { chart: ProspectusChart }) {
 function BarChartView({ chart, highlight }: { chart: ProspectusChart; highlight?: string }) {
   const [, , theme] = useTheme()
   const hex = CHART_HEX[theme]
-  const rows = chartRows(chart.series)
+  const series = nonEmptySeries(chart.series)
+  const rows = chartRows(series)
   // Two series on very different scales (revenue vs EPS): the second gets its own right-hand axis so it stays readable.
   const maxOf = (name: string) => Math.max(0, ...rows.map(r => Math.abs(Number(r[name]) || 0)))
-  const dual = chart.series.length === 2 && maxOf(chart.series[0].name) > 0 && maxOf(chart.series[1].name) > 0
-    && Math.max(maxOf(chart.series[0].name), maxOf(chart.series[1].name)) / Math.min(maxOf(chart.series[0].name), maxOf(chart.series[1].name)) > 4
+  const dual = series.length === 2 && maxOf(series[0].name) > 0 && maxOf(series[1].name) > 0
+    && Math.max(maxOf(series[0].name), maxOf(series[1].name)) / Math.min(maxOf(series[0].name), maxOf(series[1].name)) > 4
   return (
     <ChartFrame chart={chart}>
       <div style={{ width: '100%', height: H }}>
@@ -70,17 +85,17 @@ function BarChartView({ chart, highlight }: { chart: ProspectusChart; highlight?
             <YAxis yAxisId="l" tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} />
             {dual && <YAxis yAxisId="r" orientation="right" tick={{ fill: hex.series[1], fontSize: TYPE.xs }} stroke={hex.grid} />}
             <Tooltip cursor={{ fill: hex.grid, opacity: 0.3 }} contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
-            {chart.series.length > 1 && <Legend wrapperStyle={{ fontSize: TYPE.sm, color: hex.text }} />}
-            {chart.series.map((s, i) => (
+            {series.map((s, i) => (
               <Bar key={s.name} yAxisId={dual && i === 1 ? 'r' : 'l'} dataKey={s.name} fill={hex.series[i % hex.series.length]} radius={[3, 3, 0, 0]} isAnimationActive={false}>
                 {/* Single-series peer bars: this ticker in amber, the rest muted (approved design). */}
-                {chart.series.length === 1 && highlight && rows.some(r => r.x === highlight)
+                {series.length === 1 && highlight && rows.some(r => r.x === highlight)
                   ? rows.map(r => <Cell key={String(r.x)} fill={r.x === highlight ? hex.warning : hex.grid} />) : null}
               </Bar>
             ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <SeriesLegend names={series.map(s => s.name)} colors={series.map((_, i) => hex.series[i % hex.series.length])} />
     </ChartFrame>
   )
 }
@@ -112,7 +127,7 @@ function RangeView({ chart }: { chart: ProspectusChart }) {
 }
 
 export default function ProspectusCharts({ charts, symbol }: { charts: ProspectusChart[]; symbol?: string }) {
-  const list = (charts ?? []).filter(c => c && (c.series?.length || c.annotations?.length))
+  const list = (charts ?? []).filter(c => c && (nonEmptySeries(c.series).length || c.annotations?.length))
   if (!list.length) return null
   return (
     <section className="psp-charts" aria-label="Charts" data-testid="prospectus-charts">
