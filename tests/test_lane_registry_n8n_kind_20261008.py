@@ -362,6 +362,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # Hourly Ask/source polling proposals remain native, shadow and inactive; no host schedule is retired.
         "cio-ask-lifecycle",
         "cio-ask-material-events",
+        # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 15 min (windows 17:45 / 07:00 ET) dry_run
+        # (no host line; tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
@@ -388,8 +391,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-21 pr-hygiene-audit: n8n-native dispatcher row at shadow, daily 06:30 dry_run (no
         # host line; tests/test_pr_hygiene_audit_20261021.py). Added in the release-1 integration.
         "pr-hygiene-audit",
-        # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row at shadow, daily 05:05
-        # dry_run (no host line; tests/test_macro_calendar_20261021.py).
+        # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row, daily 05:05 (no host line;
+        # tests/test_macro_calendar_20261021.py); shadow 2026-10-21, canary (dispatch live) 2026-10-26.
         "macro-calendar-refresh",
         # WP-21: restored n8n-native shadow builder after removing forbidden transitive imports.
         # No host line; tests/test_cio_prospect_shadow_readonly_20261023.py.

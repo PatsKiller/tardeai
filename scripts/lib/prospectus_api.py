@@ -1,7 +1,7 @@
 """Ticker Prospectus — portfolio-server API (contract: coordination/handoffs/prospectus-20261026/CONTRACT.md).
 
     GET  /api/v2/prospectus/index                         {items, totals, budget}
-    GET  /api/v2/prospectus/<SYMBOL>                      latest prospectus.json + {versions}
+    GET  /api/v2/prospectus/<SYMBOL>                      latest prospectus.json + {versions, since_report}
     GET  /api/v2/prospectus/<SYMBOL>/file/<html|pdf|docx>?version=<stamp>   file from disk (Content-Disposition)
     POST /api/v2/prospectus/<SYMBOL>/refresh              queue a rewrite (operator tailnet identity only)
 
@@ -66,8 +66,8 @@ def _default_ctx() -> Ctx:
 def _state_root(ctx: Ctx) -> Path:
     if ctx.state_root is not None:
         return Path(ctx.state_root)
-    from scripts.lib.anthropic_routing import state_root
-    return Path(state_root())
+    from scripts.lib.prospectus.inputs import _imp_any
+    return Path(_imp_any("scripts.lib.anthropic_routing", "lib.anthropic_routing").state_root())
 
 
 def _err(status: int, code: str, detail: str = "") -> tuple[int, dict]:
@@ -213,7 +213,32 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
         doc["latest_attempt"] = {"status": "blocked_data", "gate_reasons": entry.get("gate_reasons") or []}
     # Read-time presentation (footnote numbers, display name, fund layout, relevant coverage); never stored.
     doc["presentation"] = presentation.present(doc)
+    if version is None or version == (doc.get("versions") or [{}])[0].get("version"):
+        doc["since_report"] = since_report(base, sym, doc)
     return 200, doc
+
+
+def since_report(base: Path, sym: str, doc: dict, *, now: datetime | None = None) -> dict | None:
+    """"Since this report" (operator 2026-10-27): relevant headlines / filings with a material badge, the price move
+    since the report, stop events and status, read from the news log the window lane keeps. No model, no DB.
+    Never fails the page: an unreadable log returns None."""
+    try:
+        from scripts.lib.prospectus import news_note, schedule
+        cfg = load_config()
+        now = now or datetime.now(timezone.utc)
+        q = next((r for r in store.read_queue(base)["items"] if r.get("symbol") == sym
+                  and r.get("state") in ("queued", None, schedule.HELD)), None)
+        scope = "holding" if doc.get("scope") == "holding" else "watch"
+        wins = {w.get("id"): w for w in schedule.window_cfg(cfg).get("windows") or []}
+        win = None
+        for nxt in schedule.next_windows(cfg, now, 6):  # the next window that covers this report's scope
+            w = wins.get(nxt["id"]) or {}
+            if scope in (w.get("scopes") or ["holding", "watch"]):
+                win = {"id": nxt["id"], "start": nxt["start"], "time": w.get("time"), "label": w.get("label")}
+                break
+        return news_note.since_report(base, sym, doc, cfg=cfg, queue_row=q, next_window=win)
+    except Exception:  # noqa: BLE001 - the strip degrades; the report still renders
+        return None
 
 
 def stream_file(handler: Any, result: FileResult, *, chunk: int = 256 * 1024) -> None:
