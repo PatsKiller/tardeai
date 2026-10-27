@@ -4595,6 +4595,32 @@
       "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
       "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+    },
+    {
+      "lane_id": "prospectus-build",
+      "command": [
+        "$PY",
+        "scripts/prospectus_window.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/prospectus_build.lock",
+      "lock_kind": "flock",
+      "timeout_s": 7200,
+      "market_gate": false,
+      "output_signal": "data/runtime/prospectus-build_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "ANTHROPIC_API_KEY",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
+      "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
+      "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
     }
   ],
   "blocked_reasons": {

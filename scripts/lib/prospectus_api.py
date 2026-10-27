@@ -65,8 +65,8 @@ def _default_ctx() -> Ctx:
 def _state_root(ctx: Ctx) -> Path:
     if ctx.state_root is not None:
         return Path(ctx.state_root)
-    from scripts.lib.anthropic_routing import state_root
-    return Path(state_root())
+    from scripts.lib.prospectus.inputs import _imp_any
+    return Path(_imp_any("scripts.lib.anthropic_routing", "lib.anthropic_routing").state_root())
 
 
 def _err(status: int, code: str, detail: str = "") -> tuple[int, dict]:

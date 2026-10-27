@@ -125,10 +125,12 @@ class HouseSources:
     # -- plumbing
     def db(self) -> Callable:
         if self._db is None:
-            from db_adapter import _execute  # type: ignore
+            # Dynamic import (house pattern, cf. cio_ask_research._imp): keeps the lane's static import closure
+            # to its own read path; db_adapter is the shared read-only query adapter.
+            dba = _imp_any("db_adapter", "scripts.db_adapter")
 
             def query(sql, params=None, fetch="all"):
-                return _execute(sql, params, fetch=fetch)
+                return dba._execute(sql, params, fetch=fetch)
             self._db = query
         return self._db
 
@@ -172,8 +174,8 @@ class HouseSources:
             pass
         try:
             if not self.read_only:  # symbol_thesis_attach refreshes data/cio/cio_theses_projection.json
-                from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol  # noqa: PLC0415
-                thesis_fn = lambda s: thesis_fields_for_symbol(s, root=self.state_root)  # noqa: E731
+                attach = _imp_any("scripts.lib.symbol_thesis_attach", "lib.symbol_thesis_attach")
+                thesis_fn = lambda s: attach.thesis_fields_for_symbol(s, root=self.state_root)  # noqa: E731
         except Exception:  # noqa: BLE001
             pass
         return sd.gather([sym], db_query=self.db(), runtime_dir=self.state_root / "data/runtime",
@@ -277,11 +279,18 @@ class HouseSources:
 
 
 def _plib(name: str):
+    return _imp_any(f"lib.{name}", f"scripts.lib.{name}")
+
+
+def _imp_any(*names: str):
     import importlib
-    try:
-        return importlib.import_module(f"lib.{name}")
-    except ImportError:
-        return importlib.import_module(f"scripts.lib.{name}")
+    last: Exception | None = None
+    for name in names:
+        try:
+            return importlib.import_module(name)
+        except ImportError as exc:
+            last = exc
+    raise last or ImportError(names[0])
 
 
 def account_name(raw: Any) -> str:
