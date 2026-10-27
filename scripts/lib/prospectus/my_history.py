@@ -128,7 +128,9 @@ class HouseHistoryReader:
             vp = pp.value_and_pl(r, mark)
             out.append({"account": r.get("account") or r.get("account_id"), "shares": qty,
                         "avg_cost": pp.per_share_cost(r), "cost_basis": vp.get("cost_basis"),
-                        "market_value": vp.get("market_value"), "unrealized_pl": vp.get("unrealized_pl", vp.get("pl")),
+                        "market_value": vp.get("market_value"),
+                        # value_and_pl names it gain_loss (reading "unrealized_pl" left every open lot without P/L)
+                        "unrealized_pl": vp.get("gain_loss", vp.get("unrealized_pl")),
                         "as_of": doc.get("as_of") or doc.get("data_as_of"), "mark": mark.get("price")})
         return out
 
@@ -230,10 +232,18 @@ def _closes(bars: Iterable[Any]) -> list[tuple[date, float]]:
     for b in bars or []:
         d = _d(b.get("price_date") if isinstance(b, dict) else b[0])
         c = _f(b.get("close") if isinstance(b, dict) else b[1])
-        if d and c and c > 0:
+        if d and c and c > 0 and _is_session(d):
             out.append((d, c))
     out.sort()
     return out
+
+
+def _is_session(d: date) -> bool:
+    try:
+        from .blocks import is_session
+    except ImportError:  # loaded outside the package (tests import the module directly)
+        return d.weekday() < 5
+    return is_session(d)
 
 
 def _idx_on_or_after(s: list[tuple[date, float]], d: date) -> Optional[int]:
@@ -345,12 +355,14 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
     trips_raw = read("Rec Intelligence lifecycle", lambda: reader.trips(sym), [])
     attrs = read("rec_ticker_attribution", lambda: reader.attributions(sym), [])
     fills = read("stop_last_known", lambda: reader.stop_fills(sym), [])
+    txs_for_fills = txs
     first_needed = min([d for d in (_d(t.get("open_date")) for t in trips_raw) if d] + [today])
     days_needed = (today - first_needed).days + 400
     bars = read("price history", lambda: reader.bars(sym, days=max(1100, days_needed)), [])
     s = _closes(bars)
     if s and s[0][0] > first_needed:
         gaps.append(f"house price history starts {s[0][0].isoformat()}; events and reactions before it are not available")
+    fills = date_stop_fills(fills, txs_for_fills)
     if not positions and not trips_raw and not txs:
         block["scope"] = "never_traded"
         return block
@@ -540,6 +552,17 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
     elif block["trips"]:
         gaps.append("round trips on record carry no P/L (trade_closed pnl empty)")
 
+    # ── sells the round trips do not cover (lots that arrived by transfer / ACATS carry no basis in trade_closed) ──
+    sold = round(sum(abs(_f(r.get("quantity")) or 0) for r in txs if str(r.get("action") or "").strip().lower().startswith("sell")), 4)
+    tripped = round(sum(t.get("shares") or 0 for t in block["trips"]), 4)
+    if sold > 0 and sold - tripped > max(0.01, 0.001 * sold):
+        missing = round(sold - tripped, 4)
+        block["unmatched_sells"] = {"shares_sold": sold, "shares_in_round_trips": tripped, "shares_without_basis": missing}
+        facts.add("My history: shares sold that are NOT in the round trips (no recorded basis)", value=missing,
+                  source=f"derived: trade_transactions sells ({sold:g}) − round-trip shares ({tripped:g})")
+        gaps.append(f"realized P/L covers {tripped:g} of {sold:g} shares sold; {missing:g} sold shares are not in the round "
+                    "trips (no recorded basis, e.g. lots that arrived by transfer) and are not in the totals")
+
     # ── lessons (deterministic) ──
     block["lessons"]["stats"] = _lessons(block["trips"], facts, sym)
 
@@ -585,11 +608,15 @@ def _window_events(reader: Any, sym: str, s: list, start: date, end: date, thres
                     "headline": head[:200], **reaction(s, d)})
     out += big_moves(s, start, end, threshold)
     for f in fills or []:
-        d = _d(f.get("captured_at"))
-        if d and start <= d <= end + timedelta(days=1) and (raw_account is None or str(f.get("account") or "") == raw_account):
+        d = _d(f.get("fill_date"))
+        if d and start <= d <= end + timedelta(days=1) and (raw_account is None or _acct_key(f.get("account")) == _acct_key(raw_account)):
             out.append({"date": d.isoformat(), "kind": "stop_fill", "type": "stop filled",
-                        "headline": f"Stop filled at {_f(f.get('stop_price'))} ({account_name(f.get('account'))})",
+                        "headline": f"Stop filled at {_f(f.get('stop_price'))} ({account_name(f.get('account'))}); "
+                                    f"sold {f.get('fill_qty'):g} @ {f.get('fill_price')} per the journal",
                         **reaction(s, d)})
+        elif not d and f.get("captured_at") and "stop fill dates" not in " ".join(gaps):
+            gaps.append("stop fill dates: a filled stop in stop_last_known has no matching journal sell, so it is not "
+                        "placed on the timeline (stop_last_known.captured_at is the snapshot time, not the fill time)")
     priority = {"stop_fill": 0, "earnings": 1, "big_move": 2, "catalyst": 3}
     out.sort(key=lambda e: (priority.get(e["kind"], 9), -abs(e.get("move_pct") or e.get("five_day_pct") or 0)))
     out = sorted(out[:MAX_EVENTS_PER_WINDOW], key=lambda e: e["date"])
@@ -606,6 +633,36 @@ def _window_events(reader: Any, sym: str, s: list, start: date, end: date, thres
                               text=f"{what}; " + ", ".join(bits) if bits else what,
                               source=SRC_CAT if e["kind"] in ("catalyst", "earnings") else
                               ("stop_last_known" if e["kind"] == "stop_fill" else SRC_PX), as_of=e["date"])
+    return out
+
+
+def _acct_key(raw: Any) -> str:
+    """Canonical account key (holdings say ``schwab_roth``, stop rows ``schwab_roth_ira``)."""
+    try:
+        return _plib("account_display").canonical_key(raw)
+    except Exception:  # noqa: BLE001
+        return str(raw or "").lower().replace("_ira", "").replace("-", "_")
+
+
+def date_stop_fills(fills: Iterable[dict], txs: Iterable[dict], *, price_tol: float = 0.01) -> list[dict]:
+    """Date each filled stop by its matching journal SELL (same account, price within 1 % of the stop, on or before
+    the observation), never by ``stop_last_known.captured_at``: that column is the time the read snapshot was taken —
+    every row of one read carries the same instant — so an older fill showed up as "today" with a reaction computed
+    from the wrong day (accuracy audit 2026-10-26). An unmatched fill keeps ``fill_date`` None."""
+    sells = [t for t in txs or [] if str(t.get("action") or "").strip().lower().startswith("sell")]
+    out = []
+    for f in fills or []:
+        row = dict(f)
+        stop = _f(f.get("stop_price"))
+        seen = _d(f.get("captured_at"))
+        cands = [t for t in sells if stop and _f(t.get("price")) and abs(_f(t["price"]) / stop - 1) <= price_tol
+                 and _acct_key(t.get("account")) == _acct_key(f.get("account"))
+                 and (seen is None or (_d(t.get("trade_date")) or date.max) <= seen)]
+        best = max(cands, key=lambda t: str(t.get("trade_date") or ""), default=None)
+        row["fill_date"] = _d(best.get("trade_date")) if best else None
+        row["fill_qty"] = abs(_f(best.get("quantity")) or 0) if best else None
+        row["fill_price"] = _f(best.get("price")) if best else None
+        out.append(row)
     return out
 
 

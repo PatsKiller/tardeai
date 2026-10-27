@@ -57,7 +57,11 @@
     "us_large_growth": {"label": "US large-cap growth", "sector": null, "sector_etf": null, "peers": ["SCHG", "VUG", "IWF"],
                         "keywords": ["large-cap growth", "large cap growth", "large growth"]},
     "us_total_bond": {"label": "US investment-grade bonds", "sector": null, "sector_etf": null, "peers": ["BND", "AGG"],
-                      "keywords": ["aggregate bond", "bond index", "fixed income", "investment grade bond"]}
+                      "keywords": ["aggregate bond", "bond index", "fixed income", "investment grade bond"]},
+    "us_sector_materials": {"label": "US materials sector (SPDR sector fund)", "sector": "Materials", "sector_etf": null,
+                            "peers": ["VAW", "IYM"], "keywords": ["materials select sector"]},
+    "us_sector_industrials": {"label": "US industrials sector (SPDR sector fund)", "sector": "Industrials",
+                              "sector_etf": null, "peers": ["VIS", "IYJ"], "keywords": ["industrial select sector"]}
   },
   "symbols": {
     "XAR": "aerospace_defense", "ITA": "aerospace_defense", "PPA": "aerospace_defense", "SHLD": "aerospace_defense",
@@ -75,7 +79,9 @@
     "JEPI": "covered_call_income", "JEPQ": "covered_call_income", "QYLD": "covered_call_income", "XYLD": "covered_call_income",
     "SCHD": "dividend_us_equity", "VYM": "dividend_us_equity", "DVY": "dividend_us_equity", "DIV": "dividend_us_equity",
     "SCHG": "us_large_growth", "VUG": "us_large_growth", "IWF": "us_large_growth",
-    "BND": "us_total_bond", "AGG": "us_total_bond"
+    "BND": "us_total_bond", "AGG": "us_total_bond",
+    "XLB": "us_sector_materials", "VAW": "us_sector_materials", "IYM": "us_sector_materials",
+    "XLI": "us_sector_industrials", "VIS": "us_sector_industrials", "IYJ": "us_sector_industrials"
   },
   "scenarios": {
     "method": "volatility_band",

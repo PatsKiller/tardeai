@@ -29,6 +29,8 @@ import math
 import statistics
 from typing import Any, Callable, Optional
 
+from . import blocks as bk
+
 CONFIG_REL = "config/prospectus_etf_categories.json"
 SCENARIO_FOOTER = "Scenario analysis, not an order or a recommendation to trade."
 MACRO_SERIES = {"DGS10": ("rates", "10-year Treasury yield", "daily", 100.0, "bp"),
@@ -54,14 +56,7 @@ def load_categories(root=None) -> dict:
 
 
 def _series(bars: Any) -> list[tuple[str, float]]:
-    out = []
-    for b in bars or []:
-        d, c = (b.get("price_date"), b.get("close")) if isinstance(b, dict) else (b[0], b[1])
-        c = _f(c)
-        if d and c and c > 0:
-            out.append((str(d)[:10], c))
-    out.sort()
-    return out
+    return bk._series(bars)  # NYSE sessions only (weekend / holiday quote copies dropped), one close per date
 
 
 # ── reads ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -250,16 +245,15 @@ def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthroug
         out["gaps"].append("distribution history: no ticker_dividends rows for this fund")
     lt = (lookthrough or {}).get("fund") or {}
     top = lt.get("top_holdings") or (lookthrough or {}).get("holdings") or {}
-    items = list(top.items()) if isinstance(top, dict) else [
-        (str(t.get("symbol") or t.get("name")), t.get("weight")) for t in top if isinstance(t, dict)]
-    rows = []
-    for name, w in items[:10]:
-        w = w.get("weight") if isinstance(w, dict) else w
-        if _f(w) is not None:
-            rows.append({"name": name, "weight_pct": _f(w)})
+    rows = lookthrough_rows(top)
     out["top_holdings"] = rows
     if rows:
         out["top_holdings_as_of"] = lt.get("fetched_date")
+        if not any(str(f.get("label") or "").startswith("Fund top holding") for f in bundle.facts):
+            for r in rows:
+                bundle.add("lookthrough", f"Fund top holding: {r['name']} %", value=r["weight_pct"], unit="%",
+                           source="fund look-through (fund_lookthrough.json / fund_holdings_cache.json)",
+                           as_of=lt.get("fetched_date"))
         out["top10_weight_pct"] = round(sum(r["weight_pct"] for r in rows), 2)
         bundle.add("fund", "Fund top-10 holdings combined weight %", value=out["top10_weight_pct"], unit="%",
                    source="fund look-through (fund_lookthrough.json / fund_holdings_cache.json)", as_of=lt.get("fetched_date"))
@@ -274,6 +268,25 @@ def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthroug
             lt_up, "%", "symbol_profiles (etf_analyst_enrich)", fund.get("updated_at"))
         out["analyst_basis"] = fund.get("analyst_basis")
     return out
+
+
+def lookthrough_rows(top: Any, limit: int = 10) -> list[dict]:
+    """Top holdings as [{name, weight_pct}] from either look-through shape: {name: weight} / {name: {weight}} or a list
+    of rows keyed ``symbol``/``ticker``/``name`` with ``weight``/``pct``. fund_lookthrough.json writes ticker + pct;
+    reading only symbol + weight dropped every row and printed "no look-through entry" beside a look-through table
+    that listed them (accuracy audit 2026-10-26)."""
+    if isinstance(top, dict):
+        items = list(top.items())
+    else:
+        items = [(str(t.get("symbol") or t.get("ticker") or t.get("name")),
+                  t.get("weight") if t.get("weight") is not None else t.get("pct"))
+                 for t in top or [] if isinstance(t, dict)]
+    rows = []
+    for name, w in items[:limit]:
+        w = (w.get("weight") if w.get("weight") is not None else w.get("pct")) if isinstance(w, dict) else w
+        if _f(w) is not None and name and name != "None":
+            rows.append({"name": name, "weight_pct": _f(w)})
+    return rows
 
 
 # ── house scenarios (no analyst targets) ──────────────────────────────────────────────────────────────────────────
@@ -461,6 +474,14 @@ def attach(sources: Any, bundle: Any, *, bars: list, holding: dict | None, now: 
             rebuild_relative(bundle, sources, bars, cls, cache=cache)
         last = _f(bars[-1].get("close")) if bars and isinstance(bars[-1], dict) else None
         bundle.blocks["fund_profile"] = fund_profile(bundle, sources, fund, cls, lookthrough=lt, last=last)
+        osd = (bundle.blocks.get("options_sentiment_dividends") or {}).get("dividend")
+        fp = bundle.blocks["fund_profile"]
+        if isinstance(osd, dict):  # the dividends tile was built before the fund profile: give it the fund's figures
+            if osd.get("yield_pct") is None and fp.get("dividend_yield_pct") is not None:
+                osd["yield_pct"] = fp["dividend_yield_pct"]
+                osd["yield_basis"] = "fund distribution yield (symbol_profiles)"
+            if fp.get("ttm_distribution") is not None:
+                osd["ttm_distribution"] = fp["ttm_distribution"]
     has_targets = any(f.get("label") in ("Analyst target low", "Analyst target mean", "Analyst target high")
                       for f in bundle.facts)
     if not has_targets:
