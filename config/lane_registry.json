@@ -18873,6 +18873,27 @@
       ]
     },
     {
+      "lane_id": "pr-merge-telegram-notify",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-notify.timer",
+        "match": "scripts/notify_pr_merge_ready.py --apply"
+      },
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/notify_receipt.json"
+      },
+      "note": "Scans open PRs; sends Telegram Approve when CI green; settle adds operator-merge (AGENTS.md §25.10). Install of the user timer is operator-only (§17). NEVER_SCHEDULED until granted.",
+      "state_since": "2026-10-26",
+      "state_reason": "Telegram go-signal for Mergify: notify_pr_merge_ready scans open PRs with green required checks and sends an Approve-merge interrupt; settle adds label operator-merge (§25.10). Install of tradeai-pr-merge-notify.timer is operator-only (§17). NEVER_SCHEDULED until the operator grants the user unit install; then ACTIVE.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_pr_merge_telegram_20261026.py; config/systemd/user/tradeai-pr-merge-notify.{service,timer}; docs/ops/MERGIFY_DEPLOY_FOUNDATION.md; AGENTS.md §25.10",
+      "value_class": "Platform",
+      "recommendation": "SCHEDULE_AFTER_GRANT"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

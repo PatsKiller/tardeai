@@ -193,6 +193,44 @@ def handle_callback_query(cb):
                         f"({r['uses']} uses) — {now_short}")
         return {**result, "outcome": "GRANTED"}
 
+    # ── PR merge go-signal (prmapprove:<request_id> / prmdeny:<request_id>) ──
+    # Telegram tap is the operator decision. On Approve the host adds the
+    # ``operator-merge`` label; Mergify queues when CI is green in an ET window.
+    # No GitHub Approve UI. See scripts/lib/pr_merge_telegram.py (AGENTS.md §25.10).
+    if action in ("prmapprove", "prmdeny"):
+        try:
+            from scripts.lib import pr_merge_telegram as _pmt
+        except ImportError:
+            from lib import pr_merge_telegram as _pmt  # type: ignore
+
+        rid = parts[1] if len(parts) > 1 else ""
+        result = {"kind": "pr_merge", "action": action, "request_id": rid}
+        out = _pmt.settle_by_request_id(
+            rid,
+            approve=(action == "prmapprove"),
+            chat_id=chat_id,
+            allowed_chats=_allowed_chat_ids(),
+            telegram={
+                "message_id": message_id,
+                "from_id": user_id,
+                "from_username": user.get("username"),
+                "text": data,
+            },
+        )
+        if not out.get("ok"):
+            answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
+            return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
+        r = out["request"]
+        prn = r.get("pr_number")
+        if action == "prmdeny":
+            answer_callback(cb_id, f"Denied merge for PR #{prn}. Label cleared.")
+            return {**result, "outcome": "DENIED", "pr_number": prn}
+        answer_callback(
+            cb_id,
+            f"Approved PR #{prn} — operator-merge set. Mergify queues when CI is green — {now_short}",
+        )
+        return {**result, "outcome": "APPROVED", "pr_number": prn}
+
     # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
     # ── Coordination acknowledgement (ack:<idempotency_key>) — roadmap Phase 1, 2026-10-07 ──
     # The tap records an OPERATOR consumer receipt on a coordination event (an open incident
