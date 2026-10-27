@@ -34951,6 +34951,231 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "prospectus-build",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "operator_approved_shadow_20261026",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close, 07:00 ET pre-market for holdings) enqueue what the cadence and triggers say is due and write it through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave a delivery outbox for the host sender. At shadow a fire only plans (dry run).",
+        "business_function": "research",
+        "source": "scripts/prospectus_window.py module docstring; operator 2026-10-26 ('queued up and run a certain time of the day')"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/prospectus_window.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/prospectus_build.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/prospectus_build.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/prospectus-build_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 (lane_last_receipt.write_lane_receipt; live run only)"
+        },
+        {
+          "name": "position store, data-broker projections (daily bars, catalysts, CIO prospect, stops display), Finviz cache (read-only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/prospectus/inputs.py, domains.py, schedule.py"
+        },
+        {
+          "name": "governed LLM generation as prospectus_writer / prospectus_writer_premium (Anthropic credit only) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/generate.py governed_generate"
+        },
+        {
+          "name": "search_router caller prospectus_writer (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "generate.web_loop"
+        },
+        {
+          "name": "<state>/data/prospectus/{queue,index,universe,windows}.json, <SYMBOL>/<version>/**, delivery/outbox/*.json (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/prospectus/store.py, schedule.py, delivery.write_outbox"
+        },
+        {
+          "name": "prospectus-deliver (host systemd timer) reads delivery/outbox; this lane sends nothing",
+          "kind": "service",
+          "direction": "write",
+          "source": "scripts/prospectus_deliver.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/prospectus-build_last.json (AGENTS.md \u00a76)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "off-window fire <= 60 s; window fire <= 5760 s (80% of timeout_s 7200)"
+        },
+        {
+          "check": "window_ran_once",
+          "text": "once live: data/prospectus/windows.json has one run per enabled window per weekday (key <date>:<window id>) with a finished_at inside start + catch_up_minutes"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: each window that enqueued work writes >= 1 version and one delivery/outbox record (produced_count = reports written)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 30 min (2x the 15 min cadence) once live"
+        },
+        {
+          "check": "slow",
+          "text": "window fire above 5760 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "credit_stop",
+          "text": "a window stopped early on the credit cap (receipt stopped_reason set) with rows left queued (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 2 h once the lane runs live"
+        },
+        {
+          "check": "window_missed",
+          "text": "once live: a weekday passes with an enabled window absent from windows.json (not machine-checked yet)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0 reports for a reason other than no_new_input (nothing due / no operator row), or skipped for a fatal reason -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 2.0,
+        "freshness_rule": "the lane fires every 15 min around the clock and writes its receipt on every live fire, windows or not",
+        "timeout_s": 7200,
+        "class": "report",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled; window duration bounded by max_reports (12) x per-report generation (allowlist timeout_s 7200).",
+        "runs_considered": null,
+        "duration_degraded_above_s": 5760.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; advisory research answers for the operator, nothing applied by code",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/prospectus-build_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='prospectus-build' ORDER BY requested_at DESC LIMIT 5\"",
+          "jq '.runs | to_entries | .[-5:]' $STATE_ROOT/data/prospectus/windows.json",
+          "ls $STATE_ROOT/data/prospectus/delivery/outbox $STATE_ROOT/data/prospectus/delivery/sent",
+          "jq '{ok_at, produced_count, summary}' $STATE_ROOT/data/runtime/prospectus-build_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "derived 2026-10-26 from scripts/prospectus_window.py write_receipt(): produced_count = reports written this fire; 0 with empty_reason no_new_input when no window is due and no operator row is queued, or when a window found nothing due."
+      },
+      "review_by": "2026-11-06",
+      "review": {
+        "status": "PENDING",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "note": "Fields re-proposed 2026-10-26 for run windows (PR stacked on #2193). Needs the owner's review (AGENTS.md \u00a723.19) before this lane may merge: DRAFT_NOT_GRANDFATHERED."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "Ticker Prospectus versions written",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/prospectus-build_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/prospectus-build/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "$STATE_ROOT/data/prospectus/delivery/outbox/<run_key>.json (one per run that wrote or failed a report)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {

@@ -38,11 +38,8 @@ class GenerationFailed(RuntimeError):
 
 
 def _cio_ask():
-    try:
-        from lib import cio_ask_research as mod  # type: ignore
-    except ImportError:
-        from scripts.lib import cio_ask_research as mod  # type: ignore
-    return mod
+    from .inputs import _imp_any
+    return _imp_any("lib.cio_ask_research", "scripts.lib.cio_ask_research")
 
 
 # ── prompt ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -257,10 +254,8 @@ def build_charts(bundle: Bundle) -> list[dict]:
 def governed_generate(prompt: str, *, process_id: str, max_tokens: int, timeout: float,
                       manual: bool = False) -> tuple[str, dict]:
     """One call through the governed credit path. Never a direct provider call."""
-    try:
-        from lib import llm_consumption as lc  # type: ignore
-    except ImportError:
-        from scripts.lib import llm_consumption as lc  # type: ignore
+    from .inputs import _imp_any
+    lc = _imp_any("lib.llm_consumption", "scripts.lib.llm_consumption")
     cfg = lc.get_process_config(process_id)
     lane = (cfg.get("allowed_lanes") or ["pro"])[0]
     text, prov = lc.gate_and_generate(prompt, process_id=process_id, lane=lane, max_tokens=max_tokens,
