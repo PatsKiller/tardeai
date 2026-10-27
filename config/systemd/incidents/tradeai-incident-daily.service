@@ -1,0 +1,22 @@
+# Daily 08:00 ET incidents one-liner via the Telegram chokepoint.
+# Host timer, not n8n (AGENTS.md §28.14 item 1, §23.14). Install: docs/ops/INCIDENT_LEDGER.md §Install.
+
+[Unit]
+Description=Trade AI incident daily brief
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+EnvironmentFile=-/run/user/%U/tradeai/env
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TMPDIR=%h/.cache/agent-tmp/incident-units
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/agent-tmp/incident-units
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/incident_daily_brief.py --apply
+Nice=10
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

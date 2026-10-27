@@ -1978,6 +1978,24 @@
             "provider": "chatgpt",
             "policy": "FAST"
           }
+        },
+        "incident_supervisor": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         }
       }
     }

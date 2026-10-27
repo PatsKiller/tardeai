@@ -61,6 +61,21 @@ Steps:
    the next picker's worklog continues yours. If a **free** task's work already shipped (its PR merged, its batch released), close it
    without taking it: `task done <task-id> --evidence-only --summary "<what shipped>" --evidence <PR or receipt link>`.
 
+**When something breaks, log it — never drop it** (operator 2026-10-27: agents "can't just drop and leave it. They
+need to fix it and report it somewhere in a log that you could come back in as a coordinator and look at it"). An
+error you hit and do not fix in the same step becomes an incident in the ledger (`docs/ops/INCIDENT_LEDGER.md`):
+
+```bash
+python3 scripts/incident.py open --title "<what failed>" --where <file/job> --evidence <receipt/log/PR> # uses $AGENT_CLAIM_SESSION
+python3 scripts/incident.py update <INC-id> --status fixing --note "<what you are trying>"
+python3 scripts/incident.py fix <INC-id> --ref pr:<N> [--ref commit:<sha>]          # fixed: name what fixed it
+python3 scripts/incident.py block <INC-id> --reason "<why you cannot>" --handoff "<exact next step, for whom>"
+python3 scripts/check_open_incidents.py --session "$AGENT_CLAIM_SESSION"            # exit 1 = you left one open
+```
+
+`stage … pr_open` and `release` print a warning while your session has an incident `open` or `fixing`
+(`INCIDENT_CHECK_ENFORCE=1` will make it a refusal). `blocked` with a handoff is a valid way to stop.
+
 **Shared files never block you.** `docs/INDEX.md`, `docs/DOCUMENTATION_INDEX.md`,
 `apps/command-center-v3/package.json` and the docs/AGENTS update backlog are *shared-additive*
 (`config/agent_claim_shared_paths.json`). Any number of sessions may claim them, and a commit that stages them only
