@@ -34,7 +34,7 @@ def retired_providers(path: Path | None = None) -> tuple[str, ...]:
 
 
 def is_retired_source(source: object, providers: tuple[str, ...] | None = None) -> bool:
-    """``fmp`` / ``fmp_api`` / ``fmp-legacy`` are retired when ``fmp`` is; ``yfinance`` is not."""
+    """A source equal to a retired provider name, or that name plus a ``_``/``-`` suffix, is retired."""
     s = str(source or "").strip().lower()
     return any(s == p or s.startswith(p + "_") or s.startswith(p + "-") for p in (providers or retired_providers()))
 
