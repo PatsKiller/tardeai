@@ -195,8 +195,10 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
 
 
 _ACTIVE_STOP_STATES = {"active", "working", "open", "new", "accepted", "partially_filled"}
+# Schwab reports a resting STOP order as AWAITING_STOP_CONDITION; brokers/order_lifecycle.py maps it to
+# pending_activation. Missing here, a resting stop showed as state "unknown" on Risk and in the prospectus stop plan.
 _PENDING_STOP_STATES = {"pending_activation", "pending", "awaiting_parent_order", "awaiting_condition",
-                        "pending_new", "queued", "awaiting_manual_review"}
+                        "awaiting_stop_condition", "pending_new", "queued", "awaiting_manual_review"}
 _DEAD_STOP_STATES = {"canceled", "cancelled", "rejected", "expired", "replaced", "not_in_read"}
 
 

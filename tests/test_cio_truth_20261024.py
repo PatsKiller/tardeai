@@ -89,6 +89,8 @@ def test_missing_holdings_or_day_value_is_unknown(holdings):
 @pytest.mark.parametrize("status,state,protected", [
     ("WORKING", "active", True), ("pending_activation", "pending_activation", False),
     ("FILLED", "filled", False), ("CANCELED", "none", False), (None, "unknown", False),
+    # Schwab's status for a resting STOP order (accuracy audit 2026-10-26: it showed as "unknown")
+    ("AWAITING_STOP_CONDITION", "pending_activation", False),
 ])
 def test_stop_state_is_independent_of_stop_price(status, state, protected):
     rows = [{"account": "schwab_roth", "symbol": "SPCX", "stop_price": 90, "status": status,

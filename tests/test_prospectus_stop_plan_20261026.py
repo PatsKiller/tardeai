@@ -90,7 +90,9 @@ def test_contract_shape_and_house_level(monkeypatch):
 def test_states_match_risk_categories(monkeypatch):
     cases = {"pending_activation": ("resting", "$90.00", "resting, pending activation · house $92.00"),
              "FILLED": ("filled", "Filled", "broker stop filled · house $92.00"),
-             "awaiting_stop_condition": ("unknown", "$90.00", "state not reported · house $92.00")}
+             # Schwab's resting-STOP status is a resting order (it read "unknown" until 2026-10-26)
+             "awaiting_stop_condition": ("resting", "$90.00", "resting, pending activation · house $92.00"),
+             "fixture_unmapped_status": ("unknown", "$90.00", "state not reported · house $92.00")}
     for status, (state, value, sub) in cases.items():
         b, plan = _build(Src([_row(status)], advisory=_adv()), monkeypatch=monkeypatch)
         assert plan["broker"]["state"] == state, status
@@ -114,7 +116,7 @@ def test_strongest_state_wins_across_accounts_and_names_only(monkeypatch):
     assert "other accounts:" in b.blocks["verdict_tiles"]["stop"]["sub"]
     # a stop on record without a reported state still outranks a fill elsewhere (it may still be working)
     rows = [_row("FILLED", 85.0, account="fixture_ira", order="a"),
-            _row("awaiting_stop_condition", 95.0, account="fixture_brokerage", order="b")]
+            _row("fixture_unmapped_status", 95.0, account="fixture_brokerage", order="b")]
     _, plan = _build(Src(rows, advisory=_adv()), monkeypatch=monkeypatch)
     assert plan["broker"]["state"] == "unknown" and plan["broker"]["level"] == 95.0
 
