@@ -24,6 +24,11 @@ NOW = datetime(2026, 10, 27, 18, tzinfo=timezone.utc)
 GUID = "12345678-1234-5234-8234-123456789001"
 
 
+def test_minimal_queued_state_preserves_absence_of_observation_clock():
+    original = {"status": "queued"}
+    assert progress.presentation_state(original, {}, now=NOW) == original
+
+
 def test_review_failures_open_one_safe_incident_and_never_echo_exception_text(tmp_path, monkeypatch):
     from scripts.lib.watch_review_incidents import record_failure
     from scripts.lib import incidents

@@ -31,7 +31,8 @@ def presentation_state(state, truth, *, now=None):
     publication = out.get("last_publication") or (last if last.get("status") == "PUBLISHED" else {})
     proof = publication.get("publication") or {}
     at = _time(proof.get("published_at") or publication.get("at"))
-    out["updated_at"] = last.get("at") or out.get("queued_at")
+    if last.get("at") or out.get("queued_at"):
+        out["updated_at"] = last.get("at") or out.get("queued_at")
     if out.get("status") != "answered":
         if out.get("status") == "queued" and out.get("identity_status") and out["identity_status"] != "CONFIRMED":
             out.update(status="blocked", label="Identity confirmation needed — no model call will run")
