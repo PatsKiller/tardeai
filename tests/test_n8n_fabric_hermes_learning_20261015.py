@@ -58,7 +58,9 @@ PROCESS_GRAPH_PIN = "f1d0984c64b0"  # cutover PR-2 (2026-10-15): MODE live (was 
 #: 2026-10-21 Release Train v2 Phase 4 moved it ON PURPOSE (was c6750b96ada4...): the policy now names the
 #: release-train workflow's relay calls and three new n8n intent kinds. Graph hashes of the imported fabric workflows are
 #: unchanged, so `build-fabric --verify` of their exports still passes (verify checks graph, not meta policy).
-POLICY_PIN = "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
+#: 2026-10-27: the retired release train's relay calls and intent kinds were removed (operator directive), which moves
+#: the policy back to exactly its pre-train value c6750b96ada4...; graph hashes again unchanged.
+POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
 def _wf() -> dict:

@@ -20,11 +20,11 @@ for (const width of [1440, 412, 390]) {
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('below its stop')
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('99 positions')
     await expect(page.getByTestId('do-now-item')).toHaveCount(7)
-    await expect(page.getByRole('link', { name: /Deploy hold/ })).toHaveAttribute('href', '/v3/system/releases')
+    await expect(page.getByRole('link', { name: /Deploys/ }).first()).toHaveAttribute('href', '/v3/system/releases')
     await expect(page.getByTestId('home-pulse').getByRole('link').last()).toHaveAttribute('href', '/v3/system/releases')
     await expect(page.getByTestId('home-do-now-page')).toContainText('Do-now as of Mar 10')
     await expect(page.getByTestId('home-do-now-page')).not.toContainText('2031-03-10T')
-    for (const id of ['briefing', 'release', 'agents', 'news']) await expect(page.getByTestId(`home-drawer-${id}`).getByRole('button', { expanded: false }).first()).toBeVisible()
+    for (const id of ['briefing', 'deploys', 'agents', 'news']) await expect(page.getByTestId(`home-drawer-${id}`).getByRole('button', { expanded: false }).first()).toBeVisible()
     await expect(page.getByTestId('home-major-news')).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
     expect(overflow).toBeLessThanOrEqual(1)
@@ -77,7 +77,7 @@ test('412: every queue row, filter, Show all and four drawers responds to taps',
     expect((await row.getByTestId('do-now-action').boundingBox())!.height).toBeGreaterThanOrEqual(44)
   }
   await q.getByTestId('do-now-show-all').tap(); await expect(rows).toHaveCount(7)
-  for (const [id, title] of [['briefing', 'AI briefing'], ['release', 'Deploy on main'], ['agents', 'Agents and Hermes'], ['news', 'Market movers']]) {
+  for (const [id, title] of [['briefing', 'AI briefing'], ['deploys', 'Deploys'], ['agents', 'Agents and Hermes'], ['news', 'Market movers']]) {
     await page.getByTestId(`home-drawer-${id}`).getByRole('button', { expanded: false }).first().tap()
     const sheet = page.getByRole('dialog', { name: title }); await expect(sheet).toBeVisible()
     if (process.env.HOME_REVERT_PROOF_DIR) await page.screenshot({ path: `${process.env.HOME_REVERT_PROOF_DIR}/impl-home-drawer-${id}-412.png` })

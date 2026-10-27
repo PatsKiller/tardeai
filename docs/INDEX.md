@@ -1001,7 +1001,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers |
 | `docs/designs/DSN-20261010-db-retention-iris.md` | DSN-20261010-db-retention-iris.md |
 | `docs/designs/DSN-20261021-release-batches.md` | DSN-20261021-release-batches.md |
-| `docs/designs/DSN-20261021-release-train.md` | DSN-20261021-release-train.md |
 | `docs/designs/DSN-20261022-cio-prospect-store.md` | DSN-20261022-cio-prospect-store.md |
 | `docs/designs/DSN-20261022-data-domains.md` | DSN-20261022-data-domains.md |
 | `docs/designs/DSN-20261022-dependency-upgrades.md` | DSN-20261022-dependency-upgrades.md |
@@ -2092,10 +2091,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/REGISTRY_CAPTURE_REVIEW_20261024.md` | Registry reconciliation: actual-capture review proposals |
 | `docs/ops/REGISTRY_RECONCILE_SEMANTIC_AUDIT_20261024.md` | Registry reconciliation: frozen-input audit and unresolved live-input diff |
 | `docs/ops/RELEASES_SCHEDULES_PAGE.md` | Releases & schedules — Command Center page and read model |
-| `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) |
-| `docs/ops/RELEASE_TRAIN_GITHUB_APP.md` | Release train GitHub App: operator setup (decision D2) |
-| `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) |
-| `docs/ops/RELEASE_TRAIN_UI_CONTRACT.md` | Release train: Command Center UI contract and the STOP RELEASES endpoint |
 | `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | Research coverage snapshot — 2026-08-22 10:24 ET |
 | `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine Flash-first failure — 2026-08-20 |
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) |
@@ -2137,7 +2132,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) |
 | `docs/ops/TRADE_AI_SCALP_CADENCE_2026-10-23.md` | Trade AI scalp cadence: 5 minutes from 06:00 to 12:00 ET (2026-10-23) |
 | `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
-| `docs/ops/TRAIN_CANONICAL_HEAD_ALIGNMENT_20261024.md` | WP-08: align the clean canonical verifier before train preparation |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
@@ -2302,11 +2296,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/registry-reconcile-audit-20261024/OPERATOR_CAPTURE.md` | Operator-only capture of the missing reconciliation inputs |
 | `docs/ops/packets/registry-reconcile-audit-20261024/README.md` | Registry reconciliation evidence packet |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
-| `docs/ops/packets/release-train-20261021/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
-| `docs/ops/packets/release-train-arming-20261021/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
-| `docs/ops/packets/release-train-canary-arm-20261025/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
-| `docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md` | Proposal: a §23.24 bootstrap exception for arming step F |
-| `docs/ops/packets/release-train-host-trigger-20261023/README.md` | SUPERSEDED — Mergify cutover 2026-10-26 |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) |
@@ -2339,8 +2328,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis |
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard |
-| `docs/ops/train-smoke/T1.md` | Release train smoke job T1: proves select → merge → release |
-| `docs/ops/train-smoke/T2.md` | Release train smoke job T2: proves select → merge → release |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) |
 | `docs/options-module.md` | Options Module — Architecture & Operations |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory |

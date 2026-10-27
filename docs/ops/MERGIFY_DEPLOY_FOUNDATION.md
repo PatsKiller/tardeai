@@ -153,6 +153,10 @@ No agent, n8n job, or Mergify rule may set that env or consume that grant.
 
 ## What this retires
 
+All of the train items below were also removed from the code and the Command Center on 2026-10-27 (operator
+directive; PR #2240, archived under `archive/release_train_20261026/`). The deploy STOP is Home → Deploys and Ops → Controls
+`deploy.stop` / `deploy.resume`.
+
 - Custom train controller live merge/push of `train/*`
 - Release-train GitHub App as merge actor (Mergify’s App replaces it for merge)
 - Ops → Controls **Run now** / Release train tab as a live force path

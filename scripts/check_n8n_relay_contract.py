@@ -77,11 +77,11 @@ _UNSUPPORTED_REASONS = frozenset({"relay_bad_path", "relay_bad_query"})
 #: An n8n expression inside a probed query is replaced by this well-formed run id (RUN_ID_RE: 16-128 chars).
 EXPR_RE = re.compile(r"\{\{.*?\}\}")
 PROBE_EXPR_VALUE = "contract-probe-run-0000000001"
-#: 2026-10-22 (release-train arming step E): a query that is ONE expression with no key (the Release Train
-#: workflow's `GET /release-train-window?{{ $json.query }}`, which builds `run_id=…` or `slot=…` at run time) has no
-#: shape to substitute into; probe it with a well-formed sample for that path instead of a bare value the relay
-#: must refuse as relay_bad_query. A path missing here keeps the old behaviour (and is refused).
-WHOLE_QUERY_EXPR_SAMPLES = {"/release-train-window": f"run_id={PROBE_EXPR_VALUE}"}
+#: 2026-10-22: a query that is ONE expression with no key (e.g. `GET /path?{{ $json.query }}`, built at run time) has
+#: no shape to substitute into; probe it with a well-formed sample for that path instead of a bare value the relay
+#: must refuse as relay_bad_query. A path missing here keeps the old behaviour (and is refused). Empty since the
+#: retired release-train workflow (its only user, GET /release-train-window) was removed 2026-10-27.
+WHOLE_QUERY_EXPR_SAMPLES: dict[str, str] = {}
 GATEWAY_UNIT_REL = Path("config") / "systemd" / "user" / "tradeai-n8n-coordination-gateway.service"
 CONCURRENCY_MIN = 3
 CONCURRENCY_MARGIN = 0.5  # every call must finish inside half the relay timeout
