@@ -2188,6 +2188,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP37_HOT_LIST_CAPTURE_RECONCILIATION_20261024.md` | WP-37: hot-list registry matches the operator-captured command |
 | `docs/ops/WP39_RETENTION_RULINGS_AUDIT_20261023.md` | WP-39: retention rulings source and runtime evidence |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
+| `docs/ops/YFINANCE_INFO_SNAPSHOT.md` | yfinance snapshot feed — one Yahoo `.info` per symbol, read by the prospectus fund block |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report |
