@@ -54,13 +54,17 @@ def _receipt_lib():
 
 
 def _get_conn():
+    """The one place the DB driver is imported: dict rows are a property of the connection, so sync() and
+    preview() never import psycopg2 themselves (CI has no psycopg2; tests inject a fake connection here)."""
     import psycopg2
+    import psycopg2.extras
     if str(PROJECT_ROOT / "scripts") not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from lib.env_bootstrap import load_env
     load_env(names=("DB_PASSWORD",))
     pw = os.environ.get("DB_PASSWORD", "")
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
+                            cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def _fetch_yf_dividend(symbol: str) -> dict:
@@ -203,13 +207,12 @@ def _has_superseded_column(cur) -> bool:
 
 def preview(symbols: list = None) -> dict:
     """Dry run (AGENTS.md §6): READ ONLY session, universe SELECTs only; no yfinance call, no INSERT."""
-    import psycopg2.extras
     conn = _get_conn()
     pri = {"symbols": [], "sources": {}}
     try:
         _receipt_lib().enforce_readonly(conn)
         if not symbols:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur = conn.cursor()
             rotation = _universe(cur)
             pri = priority_universe(cur, conn=conn)
             symbols = plan_batch(pri["symbols"], rotation)
@@ -244,10 +247,9 @@ def _upsert_sql(clear_superseded: bool) -> str:
 
 
 def sync(symbols: list = None) -> dict:
-    import psycopg2.extras
     _FETCH_ERRORS.clear()
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
     pri = {"symbols": [], "sources": {}}
     if symbols:
         batch = list(symbols)[:SYMBOL_CAP]
