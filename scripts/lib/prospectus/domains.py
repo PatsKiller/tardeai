@@ -640,7 +640,7 @@ DIVIDEND_TOLERANCE = 0.25  # annual $/share vs the trailing year of ex-dates
 def dividend_guard(b: Bundle, sources: Any) -> Optional[dict]:
     """Cross-check ``ticker_dividend_data.annual_dividend_per_share`` against the ex-date history.
 
-    The fmp_api rows in ticker_dividend_data (last written 2026-09-11) carry 3–5x the real annual distribution for
+    Rows from a retired vendor in ticker_dividend_data (last written 2026-09-11) carry 3–5x the real annual distribution for
     several funds; the prospectus printed them as
     the annual dividend (accuracy audit 2026-10-26). The reference is the fund profile's trailing-12-month
     distribution when present, else the sum of ``ticker_dividends`` ex-dates in the 350 days up to the newest one. On a

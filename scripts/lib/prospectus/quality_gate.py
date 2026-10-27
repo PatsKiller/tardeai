@@ -444,7 +444,7 @@ def check_accuracy(packet: dict, s: dict) -> list[dict]:
     stores after the fact; these are the packet-only forms, so the same defect can never reach a writer silently)."""
     out, facts = [], packet["facts"]
     blocks = packet.get("blocks") or {}
-    # 1. annual dividend vs what was actually paid in the trailing year (fmp rows carried 3-5x the real figure)
+    # 1. annual dividend vs what was actually paid in the trailing year (stale vendor rows carried 3-5x the real figure)
     dps = _one(facts, "Annual dividend per share")
     ref = _one(facts, "Fund distributions, trailing 12 months ($/share)") or \
         _one(facts, "Dividends paid, trailing year to the latest ex-date ($/share)")
