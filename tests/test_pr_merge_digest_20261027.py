@@ -433,8 +433,12 @@ def test_every_order_placing_module_is_held():
 def test_agents_25_10_exclusions_still_name_these_classes():
     """If §25.10 grows a new exclusion class, this test must be extended with it."""
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    sec = agents.split("## 25.10 Mergify + host deploy", 1)[1].split("\n## ", 1)[0]
-    assert "Exclusions (broker / Active Trader / MBI, secrets, AGENTS.md / AI_WORK_POLICY / hooks / guard" in " ".join(sec.split())
+    sec = agents.split("\n## 25.10 ", 1)[1].split("\n## ", 1)[0]
+    flat = " ".join(sec.split())
+    assert "Held classes are never in \"Approve all\"." in flat
+    for name in ("broker", "Active Trader", "MBI", "secrets", "`AGENTS.md`", "`AI_WORK_POLICY.md`",
+                 "hooks and guard", "`bin/guard`", "`.mergify.yml`", "`config/merge_hold_paths.json`"):
+        assert name in flat, name
 
 
 def test_mergify_queue_rules_unchanged_for_solo_and_default():
