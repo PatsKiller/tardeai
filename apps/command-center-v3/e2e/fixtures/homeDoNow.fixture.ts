@@ -18,6 +18,17 @@ export function currentCio(stale = false) {
       filled_awaiting_sync: [{ symbol: 'DEMOC', account_label: 'Example Income' }] } }
 }
 
+/** Synthetic Deploys status (GET /api/v2/ops/deploys): latest DeployOnMainReceipt@v1 + the deploy STOP latch. */
+export function deploysFixture(latch: 'ABSENT' | 'SET' = 'ABSENT') {
+  const r = (ago: number, outcome: string) => ({ schema: 'DeployOnMainReceipt@v1', as_of: iso(ago), path: 'poller', outcome,
+    main_sha: 'f'.repeat(40), current_sha_before: 'e'.repeat(9), current_sha_after: outcome === 'verified' ? 'f'.repeat(9) : '', reason: '', detail: {} })
+  return { schema: 'DeploysStatus@v1', generated_at: iso(), latest: r(60_000, 'verified'), latest_error: null,
+    recent: [r(60_000, 'verified'), r(600_000, 'noop')],
+    stop: { schema: 'DeployStopStatus@v1', as_of: iso(), latch: { status: latch, body: latch === 'SET' ? { reason: 'fixture hold' } : null },
+      window_run_lock: 'FREE', resume: { command: 'python3 scripts/release_window.py clear-stop --reason "<why>"' } },
+    stop_error: null, stop_effective: latch !== 'ABSENT', how: 'fixture' }
+}
+
 export async function homeFixtures(page: Page, opts: { stale?: boolean; unavailable?: boolean } = {}) {
   const writes: string[] = []
   await page.clock.install({ time: new Date(NOW) })
@@ -44,6 +55,8 @@ export async function homeFixtures(page: Page, opts: { stale?: boolean; unavaila
     if (p === '/api/v2/trade-ai/summary') return json({ vix: 18, run_label: '0900', run_date: iso().slice(0, 10) })
     if (p === '/api/v2/defense/posture') return json({ momentum: { rows: [{ sector: 'Example sector', state: 'LAGGING', book_pct: 12 }] } })
     if (p === '/api/v3/opportunities') return json({ ok: true, data: { items: [{ symbol: 'DEMOW', type: 'new_position', conviction: 82, risk_reward: { rr: 3.2 } }] } })
+    if (p === '/api/v2/ops/deploys') return json({ ok: true, data: deploysFixture() })
+    if (p === '/api/v2/ops/deploys/stop') return json({ ok: true, data: deploysFixture().stop })
     if (p === '/api/v2/command') return json({ llm_intelligence: { portfolio_risk: 'Synthetic briefing for fixture proof.' }, agent_health: [{ agent: 'Example analyst', total_30d: 3 }] })
     return json({ ok: true, items: [], rows: [], data: {} })
   })

@@ -351,7 +351,8 @@ def test_code_named_in_section_25_exists_and_agrees():
                  "scripts/lib/release_control.py", "scripts/release_control_cli.py",
                  "config/release_train_delegation.example.json", "config/schemas/release_delegation_v1.schema.json",
                  "docs/ops/RELEASE_TRAIN_GITHUB_APP.md", "tests/test_release_train_authority_20261021.py"):
-        assert (ROOT / path).exists(), path
+        # 2026-10-27: the retired release train's docs moved to archive/release_train_20261026/ (operator directive).
+        assert (ROOT / path).exists() or (ROOT / "archive" / "release_train_20261026" / path).exists(), path
         assert path.split("/")[-1] in s25 or path.startswith("config/schemas"), path
     # the four 17.0.0 windows plus the 2026-10-25 schedule slots (weekdays 12:00; weekends every three hours)
     assert set(RD.WINDOW_IDS) == {"0000", "0300", "0600", "0800", "0900", "1200", "1500", "1800", "2100"}

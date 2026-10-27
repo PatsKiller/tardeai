@@ -86,17 +86,9 @@ export type OpsControlsState = {
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
   // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only
   data_approvals: Section & Omit<DataApprovals, 'state' | 'reason'>
-  release_train: Section & {
+  /** The deploy STOP latch + release control (scripts/lib/ops_controls_api.deploy_view). */
+  deploy: Section & {
     mode?: string; epoch?: number | null; latch?: string; stop_phase?: string | null; stop_reason?: string | null
-    /** AGENTS 22.0.0 Run now readiness (scripts/lib/release_train_run_now.readiness). Absent on older servers. */
-    run_now?: {
-      kind?: string; allowed?: boolean; block_reason?: string | null
-      policy?: { state?: string; detail?: string; required?: string }
-      controller_status?: string; canary_force_allowed?: boolean
-      slots?: string[]; default_slot?: string | null
-      epoch?: number | null; mode?: string | null; latch?: string | null
-      phrase_example?: string; market_hours_open?: boolean
-    }
   }
   passkeys: Passkey[]
   audit: Section & { rows?: AuditRow[] }
@@ -122,12 +114,6 @@ export function actBlockReason(state: OpsControlsState | null | undefined, kind:
   const k = kindFor(state, kind)
   if (!k) return `Unknown change kind ${kind}`
   if (!k.supported) return `Host terminal only: ${k.reason || 'not supported here'}`
-  // Run now needs 22.0.0 ACTIVE (and the readiness gates). Never a silent enable while PROPOSED.
-  if (kind === 'release_train.run_now') {
-    const rn = state.release_train?.run_now
-    if (!rn) return 'Run now readiness UNAVAILABLE'
-    if (rn.allowed === false) return rn.block_reason || 'Run now not allowed'
-  }
   return null
 }
 export function canAct(state: OpsControlsState | null | undefined, kind: string): boolean {

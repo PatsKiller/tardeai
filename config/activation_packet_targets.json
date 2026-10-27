@@ -69,56 +69,6 @@
         }
       ]
     },
-    "release-train-20261021": {
-      "live_when": [
-        {
-          "lane": "release-train-claim",
-          "state": "ACTIVE",
-          "scheduler": "systemd"
-        }
-      ],
-      "note": "Operator item O7: claim units installed and enabled."
-    },
-    "release-train-arming-20261021": {
-      "live_when": [
-        {
-          "lane": "release-train-request-1800",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-0000",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-0600",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-0800",
-          "state": "ACTIVE"
-        }
-      ]
-    },
-    "release-train-host-trigger-20261023": {
-      "live_when": [
-        {
-          "lane": "release-train-request-timer-1800",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-timer-0000",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-timer-0600",
-          "state": "ACTIVE"
-        },
-        {
-          "lane": "release-train-request-timer-0800",
-          "state": "ACTIVE"
-        }
-      ]
-    },
     "release-windows-20261016": {
       "live_when": [
         {

@@ -30809,9 +30809,9 @@ def _needs_action(query=None):
         "pr_hygiene": _na.probe_pr_hygiene,
         # 2026-10-22: the three desk-truth monitor lanes' receipts (read-only; scripts/desk_truth_monitor.py)
         "desk_truth": _na.probe_desk_truth,
-        # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
+        # 2026-10-21: a failed release window / the deploy STOP latch is an inbox item.
         "release_window": _na.read_release_window_state,
-        # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).
+        # 2026-10-21 macro calendar: a missing/stale calendar is information (P3; read-only).
         "macro_calendar": _na.probe_macro_calendar,
         "anthropic": _na.probe_anthropic,
     }
@@ -49342,33 +49342,40 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
-    # Release Train v2 STOP (2026-10-21, Phase 2 pulled forward): GET reads the release-window STOP latch back;
-    # POST SETS it (scripts/lib/release_train_stop.py; the same STOP.json scripts/release_window.py obeys). Set-only:
-    # every other command under release-train is refused — resume is host-CLI-only (decision D3). Actor = the
-    # authenticated cc_auth principal, never the body; same-origin enforced here regardless of report_only; no
-    # step-up (declined). Separate from the trading kill switch, which this never touches.
-    _rt_base = base_path.rstrip("/")
-    if _rt_base == "/api/v2/coordination/release-train/stop" or (
-        method != "GET"
-        and (
-            _rt_base == "/api/v2/coordination/release-train"
-            or _rt_base.startswith("/api/v2/coordination/release-train/")
-        )
+    # Deploys (AGENTS.md §25.10; operator directive 2026-10-27 removed the retired release train): GET
+    # /api/v2/ops/deploys is the read-only status (latest DeployOnMainReceipt@v1 + the deploy STOP latch,
+    # scripts/lib/deploys_view.py). GET .../deploys/stop reads the latch back; POST .../deploys/stop SETS it
+    # (scripts/lib/deploy_stop.py; the same STOP.json the host deploy_on_main poller and emergency promote refuse on).
+    # Set-only: every other command under /api/v2/ops/deploys is refused -- resume is Ops -> Controls (passkey) or
+    # the host CLI. Actor = the authenticated cc_auth principal, never the body; same-origin enforced here regardless
+    # of report_only; no step-up (declined). Separate from the trading kill switch, which this never touches.
+    _dp_base = base_path.rstrip("/")
+    if _dp_base == "/api/v2/ops/deploys" and method == "GET":
+        try:
+            try:
+                from lib import deploys_view as _dpv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploys_view as _dpv
+            return _dpv.handle(base_path, method)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+    if _dp_base == "/api/v2/ops/deploys/stop" or (
+        method != "GET" and (_dp_base == "/api/v2/ops/deploys" or _dp_base.startswith("/api/v2/ops/deploys/"))
     ):
         try:
-            from lib import release_train_stop as _rts
+            from lib import deploy_stop as _rts
             from lib import cc_auth as _rt_auth
         except ImportError:  # pragma: no cover - imported as scripts.api_v2
-            from scripts.lib import release_train_stop as _rts
+            from scripts.lib import deploy_stop as _rts
             from scripts.lib import cc_auth as _rt_auth
-        if _rt_base == "/api/v2/coordination/release-train/stop" and method == "GET":
+        if _dp_base == "/api/v2/ops/deploys/stop" and method == "GET":
             try:
                 return 200, {"ok": True, "data": _rts.status()}
             except Exception as e:
                 return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
         _rt_actor = _rt_auth.current_principal()
         _rt_csrf_ok, _rt_csrf_why = _rt_auth.command_csrf_check(_rt_auth.load_config(), method, base_path)
-        if _rt_base != "/api/v2/coordination/release-train/stop" or method != "POST":
+        if _dp_base != "/api/v2/ops/deploys/stop" or method != "POST":
             # Any clear / resume / other command route: refused and audited. There is no resume endpoint.
             return _rts.request_stop(
                 actor=_rt_actor,
@@ -49394,7 +49401,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "outcome": "STOP_NOT_CONFIRMED",
                 "error": type(e).__name__,
                 "detail": str(e)[:200],
-                "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
+                "fallback": "host: python3 scripts/lib/deploy_stop.py stop --reason TEXT",
             }
 
     # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
@@ -49442,27 +49449,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         # Future: auth + paper_trade_proposals insert only — never orders
         return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
 
-    # Release Train v2, Phase 1 (2026-10-21): read-only view. GET /api/v2/coordination/release-train (summary),
-    # /queue, /trains, /trains/{id}, /events — contract docs/ops/RELEASE_TRAIN_API.md. Every source is read in a
-    # worker pool with its own deadline (scripts/lib/release_train_view.py, the needs-action / platform-health
-    # pattern); missing data is null + UNAVAILABLE, never 0/green. GET only: non-GET and .../stop fall through
-    # (handle() returns None for them) to the STOP block, which owns them.
-    if method == "GET" and base_path.rstrip("/").startswith("/api/v2/coordination/release-train"):
-        try:
-            try:
-                from lib import release_train_view as _rtv
-            except ImportError:  # pragma: no cover - imported as scripts.api_v2
-                from scripts.lib import release_train_view as _rtv
-            _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
-            if _rtv_out is not None:
-                return _rtv_out
-        except Exception as e:
-            return 500, {"ok": False, "error": type(e).__name__}
-
     # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
-    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
-    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
-    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # schedules — serving release, main HEAD, shipped history, release errors, n8n today and the next 3 hours of
+    # cron + n8n (release-train sections removed 2026-10-27). scripts/lib/releases_schedules_view.py (each source
+    # in a worker with its own deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
     # docs/ops/RELEASES_SCHEDULES_PAGE.md.
     if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
         try:

@@ -47,13 +47,12 @@ DEFAULT_MINUTES = 60
 HARD_MAX_MINUTES = 120
 IDLE_S = 15 * 60
 FACTOR = "sudo_window"
-#: Kinds that need a fresh passkey assertion even inside an open window (operator decision 2026-10-22, plus the
-#: release-train operator kinds, which AGENTS.md 19.0.0 §25.4 makes "a WebAuthn passkey and a typed phrase" act and
-#: whose release-train proof hook accepts only factor ``passkey``).
+#: Kinds that need a fresh passkey assertion even inside an open window (operator decision 2026-10-22, plus deploy
+#: resume, a "WebAuthn passkey and a typed phrase" act whose release-control proof hook accepts only factor
+#: ``passkey``; AGENTS.md §25.10 / §27.3).
 ALWAYS_FRESH_KINDS = frozenset({
     "grant.issue", "kill_switch.clear", "passkey.register", "passkey.revoke",
-    "release_train.resume", "release_train.arm", "release_train.run_now",
-    "release_train.change_scope", "release_train.revoke",
+    "deploy.resume",
 })
 
 

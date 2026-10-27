@@ -168,7 +168,7 @@ def _default_email_sender() -> EmailSender:
             subject=subject,
             producer="incident_notifier",
             subject_key=f"{identity}:email",
-            event_type="release_train_digest_email",
+            event_type="comms_intent_digest_email",
             message_class="ops",
             retention_class="operational_30d",
             deliver=True,

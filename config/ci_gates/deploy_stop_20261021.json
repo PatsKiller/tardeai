@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_stop_20261021",
+  "files": [
+    "tests/test_deploy_stop_20261021.py",
+    "tests/test_deploys_view_20261027.py"
+  ],
+  "anchor": "DEPLOY_STOP_20261021",
+  "comment": [
+    "ANCHOR: DEPLOY_STOP_20261021 — Command Center deploy STOP: POST /api/v2/ops/deploys/stop SETS",
+    "release_window.py's STOP.json (scripts/lib/deploy_stop.py), the latch the host deploy_on_main poller and",
+    "emergency promote refuse on. Tailnet operator principal only, CSRF enforced (gate hard route + handler",
+    "command_csrf_check, never report_only), no step-up, actor from the server, set-only (clear/resume refused),",
+    "idempotent per key, append-only audit. GET /api/v2/ops/deploys (scripts/lib/deploys_view.py) reads the latest",
+    "DeployOnMainReceipt@v1 + the latch. Moved off the retired release-train route 2026-10-27 (operator directive).",
+    "Hermetic: tmp state dir, temp cc_auth config, ephemeral loopback listeners; psycopg2/dotenv stubbed."
+  ]
+}

@@ -13,7 +13,7 @@ let n = 0
 function t(name: string, fn: () => void) { fn(); n++; console.log(`  [PASS] ${name}`) }
 
 const ITEMS: WorkItem[] = [
-  { id: 'DSN-20261021-release-train-P5-T1', title: 'phase 5 dry run', source: 'design', stage: 'open', areas: ['scripts/release_train.py'] },
+  { id: 'DSN-20261021-example-P5-T1', title: 'phase 5 dry run', source: 'design', stage: 'open', areas: ['scripts/example_lane.py'] },
   { id: 'T-20261023-aaaaaa', title: 'fix chip', source: 'operator', stage: 'claimed', holder: 'codex:s1' },
   { id: '20261023T1-claude-x', title: 'claim only', source: 'claim', stage: 'in_progress', holder: 'claude:2e7e1d01' },
   { id: 'PR-1994', title: 'claim board', source: 'open PR', stage: 'in_review', holder: 'github:PatsKiller' },
@@ -24,7 +24,7 @@ const ITEMS: WorkItem[] = [
 t('six stage columns; unknown stage lands in open', () => {
   const g = groupWork(ITEMS)
   eq(Object.keys(g), WORK_STAGES)
-  eq(g.open.map(i => i.id), ['DSN-20261021-release-train-P5-T1', 'T-3'])
+  eq(g.open.map(i => i.id), ['DSN-20261021-example-P5-T1', 'T-3'])
   eq(g.in_review[0].id, 'PR-1994')
 })
 
@@ -32,12 +32,12 @@ t('filters: source, stage, holder prefix, text', () => {
   eq(filterWork(ITEMS, { source: 'operator' }).map(i => i.id), ['T-20261023-aaaaaa'])
   eq(filterWork(ITEMS, { stage: 'in_review' }).length, 1)
   eq(filterWork(ITEMS, { holder: 'claude' }).map(i => i.id), ['20261023T1-claude-x'])
-  eq(filterWork(ITEMS, { text: 'release_train' }).length, 1)
+  eq(filterWork(ITEMS, { text: 'example_lane' }).length, 1)
   eq(sourcesOf(ITEMS), ['agent', 'claim', 'design', 'open PR', 'operator'])
 })
 
 t('take command only for open board tasks', () => {
-  eq(takeCommand(ITEMS[0]), 'python3 scripts/agent_claim.py take DSN-20261021-release-train-P5-T1')
+  eq(takeCommand(ITEMS[0]), 'python3 scripts/agent_claim.py take DSN-20261021-example-P5-T1')
   eq(takeCommand(ITEMS[1]), null)
   eq(takeCommand({ id: 'PR-1', source: 'open PR', stage: 'open' }), null)
   eq(holderLabel(ITEMS[0]), 'nobody — take it')

@@ -50,8 +50,9 @@ def _node(wf: dict, name: str) -> dict:
 
 #: Process workflows (2026-10-15, config/n8n_fabric_processes.json; tests/test_n8n_fabric_hermes_learning_20261015.py).
 PROCESS_IDS = ("tradeai-fabric-hermes-learning",)
-#: 2026-10-21 Release Train v2 Phase 4: coordination workflows rendered by FABRIC_BUILDERS after the four primitives.
-COORD_IDS = (T.RELEASE_TRAIN_ID,)
+#: Coordination workflows rendered by FABRIC_BUILDERS after the four primitives. Empty since the retired release-train
+#: workflow (never imported) was removed 2026-10-27 (operator directive).
+COORD_IDS: tuple[str, ...] = ()
 
 
 def test_committed_fabric_files_equal_a_fresh_render():
@@ -336,7 +337,7 @@ def test_manual_trigger_is_the_run_lane_probe_start_node_and_nowhere_else():
     # 2026-10-15: a process workflow also carries one Manual Trigger, for the operator's CLI proof run.
     assert [w for w, r in rows.items() if "n8n-nodes-base.manualTrigger" in r["node_types"]] == [
         T.FABRIC_PROBE_ID,
-        *COORD_IDS,  # 2026-10-21: the release-train Manual Trigger is the forced shadow tick (contract §10)
+        *COORD_IDS,
         *PROCESS_IDS,
     ]
 
@@ -353,10 +354,7 @@ GRAPH_PINS = {
     # never imported yet, so no imported copy stops verifying.
     # hermes-learning cutover PR-2 (2026-10-15): spec MODE live; still never imported, so nothing stops verifying.
     "tradeai-fabric-hermes-learning": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
-    # 2026-10-21 Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md); never imported. Adding it moves
-    # none of the pins above. Re-pinned 2026-10-21 (operator "rtw yes"): the gate node mints the host-validated
-    # rtw:<slot>:<window date>:<shadow|live> key for live runs; still never imported, so nothing stops verifying.
-    T.RELEASE_TRAIN_ID: "4c3a912e283c16fa7b2631337b34fa59029f05512cb08997668f5ea4636324ca",
+    # The release-train workflow (never imported) was removed 2026-10-27; removing it moves none of the pins above.
 }
 
 

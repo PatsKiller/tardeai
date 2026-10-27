@@ -1,6 +1,6 @@
-"""Release train arming finding 4 (ANCHOR RELEASE_WINDOW_STATUS_STATE_DIR_20261021): ``release_window.py status``
-prints the ``state_dir`` it reads and where that path came from, so step G compares the runner's STOP latch
-directory with the CC's ``GET /stop`` ``state_dir`` from the status output itself.
+"""ANCHOR RELEASE_WINDOW_STATUS_STATE_DIR_20261021: ``release_window.py status`` prints the ``state_dir`` it reads and
+where that path came from, so the deploy STOP latch directory can be compared with the CC's ``GET /api/v2/ops/deploys/
+stop`` ``state_dir``. (The release-train arming step-G and packet pins were archived with the train 2026-10-27.)
 
 Hermetic: release_window is imported in a subprocess with a controlled environment and a tmp state dir. No network,
 DB, systemd or broker.
@@ -14,12 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
-
-from tests.test_release_train_arming_20261021 import Sandbox  # noqa: E402
 
 
 def _status(env_over: dict) -> dict:
@@ -64,33 +60,6 @@ def test_runner_status_with_an_explicit_root_says_argument(tmp_path):
     runner = RW.Runner(RW.Host(checkout=tmp_path, releases=tmp_path, canonical=tmp_path), RW.State(tmp_path / "x"))
     code, body = runner.status()
     assert body["state_dir"] == str(tmp_path / "x") and body["state_dir_source"] == "argument"
-
-
-def test_train_status_names_the_state_dir_too(tmp_path):
-    from scripts import release_window as RW
-    from scripts.lib import release_train_controller as T
-
-    body = T.status(RW.State(tmp_path / "s"))
-    assert body["state_dir"] == str(tmp_path / "s") and body["state_dir_source"] == "argument"
-
-
-@pytest.fixture
-def sb(tmp_path):
-    return Sandbox(tmp_path)
-
-
-def test_step_g_reads_the_runner_dir_from_status(sb):
-    r = sb.run("G")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "release_window.py status state_dir (claimer env)" in r.stdout
-    line = next(x for x in r.stdout.splitlines() if "release_window.py status state_dir" in x)
-    assert str(sb.state_dir) in line and "[default]" in line and "verdict: MATCH" in r.stdout
-
-
-def test_packet_finding_4_is_marked_fixed():
-    text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("4. **`release_window.py status` reports no `state_dir`.**") :]
-    assert "**Status: FIXED**" in seg[:1200]
 
 
 def test_gate_file_registers_this_test():
