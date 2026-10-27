@@ -25,5 +25,6 @@ PDF / Word / HTML downloads, and an operator-only rewrite.
 | Version | State | Approved | Notes |
 |---|---|---|---|
 | v001 | IMPLEMENTING | 2026-10-26 | Approved mockup (five boards); built on fixtures |
+| v001.1 | PROPOSED | — | Polish of v001 (footnotes, fund structure, compact gaps, coverage, charts, tiles); ledger decision pending |
 
 How to change this page: design/README.md (propose a new version; never edit an approved one).
