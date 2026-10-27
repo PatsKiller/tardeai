@@ -332,10 +332,24 @@ class DecisionLedger:
             raise Refused("COMMENT_TOO_LONG", 400)
         if body["position"] != "AGREE" and not comment.strip():
             raise Refused("COMMENT_REQUIRED", 400)
+        # Propose a new AGENTS.md section (Rulebook "Add section") — no existing rule_id.
+        add_section = body.get("action") == "add_section"
+        if add_section:
+            if body.get("position") != "DISAGREE":
+                raise Refused("INVALID_POSITION", 400)
+            title = body.get("section_title") or ""
+            if not isinstance(title, str) or not title.strip() or len(title) > 200:
+                raise Refused("SECTION_TITLE_REQUIRED", 400)
         with self._transaction() as (rows, append):
             policy = current_policy()
             if body.get("document_sha") != policy["document_sha"]:
                 raise Refused("DOCUMENT_CHANGED")
+            if add_section:
+                return append({"event": "RULE_FEEDBACK", "actor": actor, "document_sha": policy["document_sha"],
+                               "source_sha": policy["source_sha"], "rule_id": None,
+                               "section": title.strip(), "rule_text": "", "position": "DISAGREE",
+                               "comment": comment, "action": "add_section",
+                               "proposal_id": "feedback_" + secrets.token_hex(12), "effect": "PROPOSAL_ONLY"})
             rule = next((r for r in policy["rules"] if r["id"] == body.get("rule_id")), None)
             if not rule:
                 raise Refused("RULE_UNAVAILABLE", 404)
@@ -356,9 +370,14 @@ class DecisionLedger:
                 continue
             if row.get("event") != "RULE_FEEDBACK" or row.get("position") != "DISAGREE":
                 continue
-            doc = document(f"{row['section']}\n\n{row['rule_text']}\n\nRequested change:\n{row['comment']}",
-                           source_sha=row["source_sha"], version=row["document_sha"])
-            out.append(item(ident=row["proposal_id"], kind="DESIGN", title="Proposed rule change: " + row["section"],
+            if row.get("action") == "add_section":
+                body = f"Proposed new section: {row['section']}\n\n{row['comment']}"
+                title = "Proposed new section: " + row["section"]
+            else:
+                body = f"{row['section']}\n\n{row.get('rule_text') or ''}\n\nRequested change:\n{row['comment']}"
+                title = "Proposed rule change: " + row["section"]
+            doc = document(body, source_sha=row["source_sha"], version=row["document_sha"])
+            out.append(item(ident=row["proposal_id"], kind="DESIGN", title=title,
                             proposed_by=row["actor"], created_at=row["at"], source="operator_decisions", doc=doc))
         return out
 
@@ -388,8 +407,23 @@ class DecisionLedger:
 
 _LIST_ITEM = re.compile(r"^(?P<indent> {0,3})(?P<marker>[-*+]|\d{1,3}[.)])\s+(?P<body>\S.*)$")
 _SECTION_NUMBER = re.compile(r"^(?:§\s*)?\d+[A-Z]?\s*(?:·|\.|\s)")
+_SECTION_SORT = re.compile(r"^(?:§\s*)?(\d+)([A-Z])?\b")
 _HISTORY_SECTION = re.compile(r"\b(?:version history|changelog|change log)\b", re.I)
+_POLICY_VERSION = re.compile(r"^Policy-Version:\s*(\S+)\s*$", re.M)
+_LAST_REVIEWED = re.compile(r"^Last-Reviewed:\s*(\S+)\s*$", re.M)
 AUDIT_NOT_RUN = "The enforcement audit has not run against this policy version, so no rule has measured evidence yet."
+
+
+def _section_sort_key(title: str) -> tuple:
+    """AGENTS.md chapter order: numbered sections first (§0, 1, 2, 2A…), meta headings last.
+
+    Document-order alone put 'Document version policy' ahead of §0, so the Rulebook opened on
+    meta before the ten rules an agent must actually follow.
+    """
+    match = _SECTION_SORT.match(title.strip())
+    if match:
+        return (0, int(match.group(1)), match.group(2) or "", title)
+    return (1, 0, "", title)
 
 
 def _rule_items(text: str) -> list[dict]:
@@ -543,16 +577,20 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
     counts = {"RULES": len(rules)}
     for name in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED"):
         counts[name] = sum(r["status"] == name for r in rules) if measured or name == "WRITTEN-only" else None
-    sections = list(per_section)
+    sections = sorted(per_section, key=_section_sort_key)
     section_status = {}
     rank = {"VIOLATED": 0, "WRITTEN-only": 1, "TESTED": 2, "ENFORCED": 3}
     for rule in rules:
         prior = section_status.get(rule["section"])
         if prior is None or rank[rule["status"]] < rank[prior]:
             section_status[rule["section"]] = rule["status"]
+    version_match = _POLICY_VERSION.search(text)
+    reviewed_match = _LAST_REVIEWED.search(text)
     return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": sections,
             "section_counts": per_section, "section_status": section_status if measured else {},
             "rules": rules, "counts": counts, "counts_measured": measured,
+            "policy_version": version_match.group(1) if version_match else (doc.get("version") or None),
+            "last_reviewed": reviewed_match.group(1) if reviewed_match else None,
             "audit": {"state": "NOT_MEASURED", "last_audit": None, "last_run": None, "reason": AUDIT_NOT_RUN}}
 
 
