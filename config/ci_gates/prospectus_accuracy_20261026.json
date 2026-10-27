@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "prospectus_accuracy_20261026",
   "files": [
-    "tests/test_prospectus_accuracy_20261026.py"
+    "tests/test_prospectus_accuracy_20261026.py",
+    "tests/test_prospectus_fund_history_20261027.py"
   ],
   "anchor": "PROSPECTUS_ACCURACY_20261026",
   "comment": [
