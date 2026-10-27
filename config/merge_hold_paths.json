@@ -84,6 +84,7 @@
         "scripts/lib/merge_hold_paths.py",
         "scripts/lib/pr_merge_telegram.py",
         "scripts/lib/pr_merge_digest.py",
+        "scripts/lib/pr_review_apply.py",
         "scripts/pr_merge_digest.py",
         "scripts/request_pr_merge_approve.py",
         "scripts/notify_pr_merge_ready.py",

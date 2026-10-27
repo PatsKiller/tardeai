@@ -2034,6 +2034,59 @@
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.1,
           "anthropic_first": true
+        },
+        "pr_independent_review": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 240000,
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
+        },
+        "pr_independent_review_deep": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 240000,
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": true
+        },
+        "pr_independent_review_oauth": {
+          "primary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 240000,
+          "cost_ceiling_usd": 0.05
         }
       }
     }

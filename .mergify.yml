@@ -54,6 +54,7 @@ pull_request_rules:
           - files~=^scripts/lib/merge_hold_paths\.py$
           - files~=^scripts/lib/pr_merge_telegram\.py$
           - files~=^scripts/lib/pr_merge_digest\.py$
+          - files~=^scripts/lib/pr_review_apply\.py$
           - files~=^scripts/pr_merge_digest\.py$
           - files~=^scripts/request_pr_merge_approve\.py$
           - files~=^scripts/notify_pr_merge_ready\.py$

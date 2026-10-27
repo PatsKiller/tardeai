@@ -1,0 +1,68 @@
+{
+  "schema": "PrIndependentReviewConfig@v1",
+  "as_of": "2026-10-27",
+  "design": "approvals-pr-review/v001",
+  "spec": "docs/ops/PR_REVIEW_MODAL_SPEC.md",
+  "_note": [
+    "Read by scripts/lib/pr_review.py and scripts/pr_independent_review.py (host timer tradeai-pr-review, every 5 min).",
+    "Operator 2026-10-27, relayed by the coordinator (AGENTS.md 28.4: built to, not ratified here): \"Markups approved.\" and \"D1-D7 as recommended\".",
+    "D2: Sonnet 5.5 for normal PRs, Opus 5.5 for held and shared-infra PRs, plus a free OAuth second read (ChatGPT, then Grok) for held and shared-infra PRs. Never DeepSeek.",
+    "D3: $2/day TOTAL on the Anthropic credit, at most ~20 reviews a day, questions inside that cap. When the credit is expired or unusable, reviews wait; no paid fallback.",
+    "D4: post the tradeai/independent-review commit status (never with the operator's gh token); Mergify does NOT require it.",
+    "D5: the pr_reviews and operator_decisions store rows are approved in a separate coordinator PR; until then writes refuse with STORE_APPROVAL_PENDING.",
+    "D6: held PRs get Approve review only (records, no label); the merge stays the operator's own on GitHub."
+  ],
+  "repo": "PatsKiller/tardeai",
+  "store_rel": "data/coordination/pr_reviews",
+  "store_domain": "pr_reviews",
+  "store_writer": "scripts/pr_independent_review.py",
+  "processes": {
+    "normal": "pr_independent_review",
+    "deep": "pr_independent_review_deep",
+    "second_read": "pr_independent_review_oauth",
+    "question": "pr_independent_review"
+  },
+  "models": {
+    "normal": "Claude Sonnet 5.5",
+    "deep": "Claude Opus 5.5"
+  },
+  "second_read_lanes": ["chatgpt", "grok"],
+  "forbidden_providers": ["deepseek"],
+  "budget": {
+    "combined_daily_cost_cap_usd": 2.0,
+    "max_reviews_per_day": 20,
+    "max_reviews_per_pr_per_day": 3,
+    "max_questions_per_day": 10,
+    "projected_cost_usd": {"normal": 0.10, "deep": 0.40, "question": 0.05}
+  },
+  "settle_minutes": 10,
+  "max_calls_per_review": 3,
+  "input_budget_chars": {"normal": 75000, "deep": 170000},
+  "max_output_tokens": {"normal": 3500, "deep": 6000, "question": 1200},
+  "unexplained_hunk_max_ratio": 0.10,
+  "max_hunks": 400,
+  "max_question_chars": 1000,
+  "retry_after_minutes": 30,
+  "required_checks_source": "scripts/lib/pr_merge_telegram.py REQUIRED_CHECKS",
+  "areas": [
+    {"name": "Command Center UI", "prefixes": ["apps/command-center-v3/"]},
+    {"name": "Tests", "prefixes": ["tests/", "apps/command-center-v3/e2e/"]},
+    {"name": "Operations job", "prefixes": ["scripts/"]},
+    {"name": "Config", "prefixes": ["config/"]},
+    {"name": "Docs", "prefixes": ["docs/", "design/"]}
+  ],
+  "default_area": "Other",
+  "policy_sections": {
+    "always": ["# 0 · If you read nothing else", "## 25.10 Mergify merges, the host promotes (25.0.0)"],
+    "shared_infra": ["## 28.15 Hands-off delivery"],
+    "ui": ["## 28.13 Design lifecycle"],
+    "max_chars_per_section": 12000
+  },
+  "commit_status": {
+    "enabled": true,
+    "context": "tradeai/independent-review",
+    "token_env": "TRADEAI_REVIEW_STATUS_TOKEN",
+    "required_by_mergify": false,
+    "_note": "D4: posted with a narrow commit-status token the operator provisions in the unit's environment (a GitHub App installation token or fine-grained token with Commit statuses: write only). The reviewer never reads the operator's gh token, a key file or any other secret; with no token the status is recorded as not posted (STATUS_IDENTITY_NOT_PROVISIONED)."
+  }
+}

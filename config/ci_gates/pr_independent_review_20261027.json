@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_independent_review_20261027",
+  "files": [
+    "tests/test_pr_independent_review_20261027.py"
+  ],
+  "comment": [
+    "Independent PR review (Design approvals-pr-review/v001): PrReview@v1 harness (hunks, data-quality gate, independence, risk floor, dropped findings, unexplained hunks, BLOCKER->HOLD), D3 combined $2/day preflight, registry rows (Sonnet/Opus/OAuth, never DeepSeek), store refuses until approved, runner dry run/apply with stubbed gh/model/credit/status, MERGE ledger decisions (held = no label, stale refused), QUESTION route, Merges summary. Synthetic PRs only; no network, no token manager."
+  ]
+}

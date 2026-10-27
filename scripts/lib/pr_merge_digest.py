@@ -298,9 +298,23 @@ def build_digest(repo: str, cfg: dict[str, Any]) -> dict[str, Any]:
     for pr in sorted(prs, key=lambda p: int(p["number"])):
         it = classify_pr(pr, repo=repo, cfg=cfg)
         {"ready": ready, "needs_operator": needs}.get(it["status"], skipped).append(it)
+    needs_review: list[dict[str, Any]] = []
+    if _review_gate():
+        # D1 (approvals-pr-review/v001): no independent review of this head, a review that says HOLD or has a
+        # BLOCKER, or the operator's own Hold / Ask-author in the review sheet → not in "Approve all".
+        from scripts.lib import pr_review_apply as pra
+        ready, needs_review = pra.partition(ready)
     cap = int(cfg.get("max_items") or 12)
-    return {"ready": ready[:cap], "overflow": ready[cap:], "needs_operator": needs, "skipped": skipped,
-            "scanned": len(prs)}
+    return {"ready": ready[:cap], "overflow": ready[cap:], "needs_operator": needs, "needs_review": needs_review,
+            "skipped": skipped, "scanned": len(prs)}
+
+
+def _review_gate() -> bool:
+    try:
+        from scripts.lib import pr_review_apply as pra
+        return pra.review_gate_active()
+    except Exception:  # noqa: BLE001 - an unreadable gate keeps the pre-review digest, never a silent approve
+        return False
 
 
 # ── message ──────────────────────────────────────────────────────────────────
@@ -341,6 +355,11 @@ def _format_digest(d: dict[str, Any], *, summaries: bool, needs_cap: Optional[in
             lines.append(f"   \u21b3 {_esc(it['summary'])}")
     if d.get("overflow"):
         lines.append(f"\n+{len(d['overflow'])} more ready — next digest.")
+    review = d.get("needs_review") or []
+    if review:
+        lines.append("\n\U0001f50e *Open the review* (not in Approve all):")
+        for it in review[: needs_cap or len(review)]:
+            lines.append(f"• #{it['pr']} {_esc(it['title'][:70])} — {_esc(it.get('review_reason') or '')}")
     needs = d.get("needs_operator") or []
     if needs:
         lines.append("\n\U0001f512 *Needs operator merge* (no Approve here):")
@@ -359,10 +378,24 @@ def _format_digest(d: dict[str, Any], *, summaries: bool, needs_cap: Optional[in
     return "\n".join(lines)
 
 
+def _review_buttons(d: dict[str, Any], cfg: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    """URL buttons "Review #N" → /v3/approvals/pr:<N>?head=<sha9> (approvals-pr-review/v001), once the reviewer is live."""
+    if not _review_gate():
+        return []
+    from scripts.lib import pr_review_apply as pra
+    out = []
+    for it in ((d.get("ready") or []) + (d.get("needs_review") or []) + (d.get("needs_operator") or []))[: int(cfg.get("max_item_buttons") or 8)]:
+        url = pra.review_url(int(it["pr"]), str(it.get("head_sha") or ""))
+        if url:
+            out.append({"text": f"\U0001f50e Review #{int(it['pr'])}", "url": url})
+    return [out[i:i + 2] for i in range(0, len(out), 2)]
+
+
 def keyboard(d: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any] | None:
     ready = d.get("ready") or []
     if not ready:
-        return None
+        links = _review_buttons(d, cfg)
+        return {"inline_keyboard": links} if links else None
     did = d["digest_id"]
     excluded = set(int(x) for x in d.get("excluded") or [])
     n = len([it for it in ready if int(it["pr"]) not in excluded])
@@ -377,6 +410,7 @@ def keyboard(d: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any] | None:
         per.append({"text": label, "callback_data": f"prdx:{did}:{pr}"})
     for i in range(0, len(per), 2):
         rows.append(per[i:i + 2])
+    rows.extend(_review_buttons(d, cfg))
     return {"inline_keyboard": rows}
 
 
@@ -406,7 +440,8 @@ def _send(message: str, *, priority: str, reply_markup: dict[str, Any] | None = 
 
 def _signature(d: dict[str, Any]) -> list[list[Any]]:
     return sorted([["r", int(i["pr"]), str(i["head_sha"])] for i in d.get("ready") or []]
-                  + [["n", int(i["pr"]), str(i["head_sha"])] for i in d.get("needs_operator") or []])
+                  + [["n", int(i["pr"]), str(i["head_sha"])] for i in d.get("needs_operator") or []]
+                  + [["v", int(i["pr"]), str(i["head_sha"])] for i in d.get("needs_review") or []])
 
 
 def latest_pending(rows: list[dict[str, Any]] | None = None) -> Optional[dict[str, Any]]:
@@ -431,10 +466,11 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
     out: dict[str, Any] = {
         "ok": True, "apply": apply, "scanned": d["scanned"],
         "ready": [i["pr"] for i in d["ready"]], "needs_operator": [i["pr"] for i in d["needs_operator"]],
+        "needs_review": [{"pr": i["pr"], "reason": i.get("review_reason")} for i in d.get("needs_review") or []],
         "overflow": [i["pr"] for i in d["overflow"]],
         "skipped": [{"pr": i["pr"], "reason": i.get("reason")} for i in d["skipped"]],
     }
-    if not d["ready"] and not d["needs_operator"]:
+    if not d["ready"] and not d["needs_operator"] and not d.get("needs_review"):
         out["action"] = "empty_no_message"
         return out
     rows = load_digests()
@@ -455,6 +491,7 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
         "schema": DIGEST_SCHEMA, "digest_id": digest_id, "repo": repo, "status": "PENDING",
         "created_at": now, "expires_at": now + int(cfg.get("ttl_seconds") or 43200),
         "ready": d["ready"], "needs_operator": d["needs_operator"], "overflow": d["overflow"],
+        "needs_review": d.get("needs_review") or [],
         "excluded": [], "signature": sig, "message_ids": [],
     }
     text = format_digest(rec)
@@ -470,8 +507,8 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
             r["superseded_by"] = digest_id
     rec["message_ids"] = ids
     rec["delivery"] = {"accepted": ok, "detail": detail, "at": now}
-    if not markup:
-        rec["status"] = "INFO"  # nothing to approve: only "needs operator merge" lines
+    if not d["ready"]:
+        rec["status"] = "INFO"  # nothing to approve: only "needs operator merge" / "open the review" lines
     rows.append(rec)
     save_digests(rows)
     out.update({"action": "sent" if ok else "send_failed", "ok": ok, "telegram": detail, "message_ids": ids})
@@ -688,6 +725,16 @@ def approved_bindings() -> dict[int, dict[str, Any]]:
             at = 0.0
         for it in a.get("items") or []:
             put(int(it["pr"]), str(it.get("head_sha") or ""), at, f"digest:{a.get('digest_id')}")
+    try:  # the CC review sheet's Approve merge (approvals-pr-review/v001), applied by pr_review_apply
+        from scripts.lib import pr_review_apply as pra
+        for pr, b in pra.bindings().items():
+            try:
+                at = datetime.strptime(b["at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            except (KeyError, ValueError):
+                at = 0.0
+            put(int(pr), str(b.get("head_sha") or ""), at, str(b.get("source")))
+    except Exception:  # noqa: BLE001 - an unreadable cc_review file leaves the digest bindings as they were
+        pass
     for r in pmt._load():  # noqa: SLF001 — read-only
         if r.get("status") == "APPROVED":
             put(int(r.get("pr_number") or 0), str(r.get("head_sha") or ""), float(r.get("settled_at") or 0),
@@ -825,7 +872,14 @@ def reconcile_notes(repo: str, *, apply: bool, cfg: dict[str, Any]) -> dict[str,
 
 def reconcile(*, repo: str = pmt.DEFAULT_REPO, apply: bool = False, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = cfg or load_config()
-    out = {"ok": True, "apply": apply,
+    try:
+        # First: label the operator's CC "Approve merge" decisions (head-bound, held excluded), so the binding
+        # check below already knows them.
+        from scripts.lib import pr_review_apply as pra
+        cc_review = pra.run(repo=repo, apply=apply)
+    except Exception as exc:  # noqa: BLE001 - reported, never blocks the digest reconcile
+        cc_review = [{"outcome": "error", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    out = {"ok": True, "apply": apply, "cc_review": cc_review,
            "head_binding": reconcile_head_binding(repo, apply=apply, cfg=cfg),
            "notes": reconcile_notes(repo, apply=apply, cfg=cfg)}
     if apply:

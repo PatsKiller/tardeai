@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_review_apply_20261027",
+  "files": [
+    "tests/test_pr_review_apply_20261027.py"
+  ],
+  "comment": [
+    "Held part of approvals-pr-review/v001: CC Approve merge label applier (operator tailnet DECIDED rows only, head-bound, held/red/moved refused, once per ledger row, PrMergeHeadBinding@v1 source cc_review kept by reconcile) and D1 in the Telegram digest (missing/HOLD/BLOCKER/operator Hold out of Approve all, Review #N URL buttons) gated on the pr_reviews store approval. Synthetic PRs; gh/Telegram/ledger stubbed."
+  ]
+}
