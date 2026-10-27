@@ -18941,6 +18941,44 @@
       "recommendation": "SCHEDULE_AFTER_GRANT"
     },
     {
+      "lane_id": "pr-merge-digest",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-digest.timer"
+      },
+      "expected_cadence_hours": 12.0,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); unit files live in config/systemd/user. Installing the user timer is an operator act (§17). Flip to ACTIVE in the install PR once `systemctl --user list-timers` shows it.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-digest.timer is new in this PR; not installed on the host at merge time.",
+      "note": "One Telegram message per digest (weekdays 08:00/12:00/16:30 ET, weekends every 3h); Approve all labels operator-merge; scripts/pr_merge_digest.py --apply writes digest_last_run.json each run."
+    },
+    {
+      "lane_id": "pr-merge-reconcile",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-reconcile.timer"
+      },
+      "expected_cadence_hours": 0.1,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_reconcile_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); installing the user timer is an operator act (§17). Flip to ACTIVE once installed.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-reconcile.timer is new in this PR; not installed on the host at merge time.",
+      "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -25735,44 +25773,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "pr-merge-digest",
-      "owner": "platform",
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-27",
-      "reason_confidence": "ESTABLISHED",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-merge-digest.timer"
-      },
-      "expected_cadence_hours": 12.0,
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/pr_merge_telegram/digest_last_run.json"
-      },
-      "state_reason": "Shipped in the digest PR (2026-10-27); unit files live in config/systemd/user. Installing the user timer is an operator act (§17). Flip to ACTIVE in the install PR once `systemctl --user list-timers` shows it.",
-      "reason_evidence": "config/systemd/user/tradeai-pr-merge-digest.timer is new in this PR; not installed on the host at merge time.",
-      "note": "One Telegram message per digest (weekdays 08:00/12:00/16:30 ET, weekends every 3h); Approve all labels operator-merge; scripts/pr_merge_digest.py --apply writes digest_last_run.json each run."
-    },
-    {
-      "lane_id": "pr-merge-reconcile",
-      "owner": "platform",
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-27",
-      "reason_confidence": "ESTABLISHED",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-merge-reconcile.timer"
-      },
-      "expected_cadence_hours": 0.1,
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/pr_merge_telegram/digest_reconcile_last_run.json"
-      },
-      "state_reason": "Shipped in the digest PR (2026-10-27); installing the user timer is an operator act (§17). Flip to ACTIVE once installed.",
-      "reason_evidence": "config/systemd/user/tradeai-pr-merge-reconcile.timer is new in this PR; not installed on the host at merge time.",
-      "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
     }
   ],
   "freshness_contracts": [
