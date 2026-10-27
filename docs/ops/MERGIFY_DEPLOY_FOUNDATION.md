@@ -1,34 +1,38 @@
 Status: ACTIVE
-as_of: 2026-10-26
-Measured at: AGENTS.md 24.0.0 ACTIVE · Telegram go-signal (label=operator-merge)
+as_of: 2026-10-27
+Measured at: AGENTS.md 24.0.0 ACTIVE · Telegram digest go-signal (label=operator-merge, head-SHA bound)
 Canonical repo path: docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
-Authority: operator-approved plan mergify_replace_train (2026-10-26); Telegram automation 2026-10-26
-Supersedes: GitHub Approve-by-PatsKiller as Mergify gate; merge-ready as Mergify gate; train merge path
+Authority: operator-approved plan mergify_replace_train (2026-10-26); Telegram automation 2026-10-26; one-tap digest (operator 2026-10-27)
+Supersedes: GitHub Approve-by-PatsKiller as Mergify gate; merge-ready as Mergify gate; train merge path; per-PR Telegram prompts
 See also: docs/ops/AGENT_MERGIFY_HANDOFF.md · docs/ops/EMERGENCY_MANUAL_PROMOTE.md · docs/ops/MERGIFY_CUTOVER_CHECKLIST.md · AGENTS.md §25.10
 
 # Mergify + host deploy — foundation
 
 ## One-sentence version
 
-**Mergify merges green PRs after a Telegram Approve tap (host adds `operator-merge`) on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
+**Mergify merges green PRs after ONE Telegram digest tap ("Approve all"; host adds `operator-merge` to each PR, bound to its head SHA) on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
+
+Operator 2026-10-27, verbatim: "I only want to be able to approve something once in Telegram. It could be a digest of work and then it gets pushed and merged and on a timer it's approved."
 
 ## Authority split
 
 | Actor | May | Must not |
 |---|---|---|
-| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra`, run `request_pr_merge_approve.py` | Merge, push `main`/`train/*`, promote, release, Approve on GitHub, add `operator-merge` by hand |
+| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra`, then stop (the digest finds the PR) | Merge, push `main`/`train/*`, promote, release, Approve on GitHub, add `operator-merge` by hand |
 | Mergify | Merge eligible PRs when `label=operator-merge` + required checks green + not draft + schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
 | Host `deploy_on_main` poller | Promote CURRENT to the new `origin/main` SHA when STOP is clear and deploy delegation is armed | Merge, push remotes, run without STOP/lock checks |
-| Operator (phone) | Telegram **Approve merge** / Deny; emergency promote; STOP/resume; arm deploy delegation; install Mergify | Delegate live broker authority |
+| Operator (phone) | One digest tap: **Approve all** / **Hold all** / per-item Hold (or reply `hold #N`); merge held-path PRs; emergency promote; STOP/resume; arm deploy delegation; install Mergify and the digest timers | Delegate live broker authority |
 
 ## Normal path
 
 ```
 Ready PR opened (not draft; solo/shared-infra labels if needed)
          → CI green (cio-hardening, agent-governance, release-readiness, ci-gate)
-         → Agent: request_pr_merge_approve.py --pr <N>
-         → Operator Telegram Approve merge (one tap)
-         → Host adds label operator-merge
+         → Agent stops (no per-PR request)
+         → Digest timer (weekdays 08:00 / 12:00 / 16:30 ET, weekends every 3h) lists every READY PR in ONE message
+         → Operator taps Approve all (once) — optional per-item Hold / "hold #N"
+         → Host writes ONE PrMergeDigestApproval@v1 (digest, chat, operator, time, [(PR, head SHA)]) and adds operator-merge to each
+         → Reconcile (every 3 min): head moved off the approved SHA → label removed, PR returns to next digest
          → Mergify queue (ET schedule windows)
          → squash-merge to main
          → deploy_on_main poller sees new origin/main SHA
@@ -36,9 +40,35 @@ Ready PR opened (not draft; solo/shared-infra labels if needed)
          → cio_phase2_exact_main_deploy.sh prepare+promote
          → post_release_tester verify
          → DeployOnMainReceipt@v1 (path=poller)
+         → Telegram: one "Merged N, deploying" note, then one "Live: <sha> — PRs …, post-release tester ok/failed" (failure = P1)
 ```
 
 Go signal in `.mergify.yml`: `label=operator-merge` + `draft=false`. Not GitHub Approve UI. The `merge-ready` label is **not** a queue condition.
+
+## The digest — what is listed, what is never approved
+
+| Bucket | Rule | In the digest |
+|---|---|---|
+| Ready | Open to `main`, not draft, the four required checks `SUCCESS` on the current head, no hold label, no held path, no `operator-merge` yet | Listed with number, title, class (normal / shared-infra / solo), files changed, risk notes (shared infra / config / migrations), head short SHA, one-line summary; covered by **Approve all** |
+| Needs operator merge | Label `held` / `broker` / `broker_active_trader`, or any path in `config/merge_hold_paths.json` (broker / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, merge + deploy control plane) | Listed, **no Approve**; Mergify's hold rule (generated from the same config) labels it `held` |
+| Skipped | Draft, checks not green, already approved | Not listed; reappears when ready |
+
+- Shared-infra / solo PRs approved in a digest queue on the one-at-a-time `solo` queue (the tap is the operator's approval); normal PRs on `default`. Both `batch_size: 1`.
+- No ready PRs and no change in the needs-operator list → no message. An identical pending digest is not re-sent (`--now` forces).
+- A newer digest supersedes the older one; a superseded or expired digest cannot be approved.
+- The `config/merge_hold_paths.json` list is the single source: `.mergify.yml`'s hold rule must equal `scripts/lib/merge_hold_paths.py --print-mergify`, and `tests/test_pr_merge_digest_20261027.py` fails on drift, on an uncovered §0 / §25.10 path class, or on an order-placing module outside the hold.
+
+### Host units (operator install, §17)
+
+| Unit | Schedule | Runs |
+|---|---|---|
+| `tradeai-pr-merge-digest.timer` | Mon–Fri 08:00, 12:00, 16:30 ET; Sat–Sun every 3h | `scripts/pr_merge_digest.py --apply` |
+| `tradeai-pr-merge-reconcile.timer` | every 3 min | `scripts/pr_merge_digest.py --reconcile --apply` |
+| `tradeai-pr-merge-notify.timer` | **retired — do not install** | per-PR prompts (replaced by the digest) |
+
+Coordinator: `scripts/pr_merge_digest.py --dry-run` previews; `--apply --now` sends immediately. Ad-hoc single PR: `scripts/request_pr_merge_approve.py --pr <N> --single` (default adds to the next digest and prints when it goes).
+
+State (persistent-state `data/runtime/pr_merge_telegram/`): `digests.json`, `digest_approvals.jsonl` (append-only approval records), `digest_head_bindings.jsonl`, `digest_notes_state.json`, `digest_last_run.json`, `digest_reconcile_last_run.json`.
 
 ## Standing deploy delegation
 
@@ -134,6 +164,7 @@ No agent, n8n job, or Mergify rule may set that env or consume that grant.
 - Receipt schema: `DeployOnMainReceipt@v1` under persistent-state `data/runtime/deploy_on_main/`
 - Poller unit: `tradeai-deploy-on-main.timer` → `scripts/deploy_on_main_poll.py`
 - Poller binding: `scripts/lib/deploy_delegation_binding.py` (consulted by `scripts/release_grant_preflight.py`); streak/dedupe state `deploy_on_main/alert_state.json`
-- Telegram go-signal: `scripts/lib/pr_merge_telegram.py` · `scripts/request_pr_merge_approve.py` · `scripts/notify_pr_merge_ready.py`
-- Notify timer (operator install §17): `config/systemd/user/tradeai-pr-merge-notify.{timer,service}`
+- Telegram go-signal: `scripts/lib/pr_merge_digest.py` · `scripts/pr_merge_digest.py` (digest + reconcile) · `scripts/lib/pr_merge_telegram.py` (label writes, per-PR ad-hoc) · `scripts/request_pr_merge_approve.py`
+- Hold list: `config/merge_hold_paths.json` · `scripts/lib/merge_hold_paths.py`
+- Digest timers (operator install §17): `config/systemd/user/tradeai-pr-merge-{digest,reconcile}.{timer,service}`; `tradeai-pr-merge-notify.*` retired
 - Config: `.mergify.yml` at repo root

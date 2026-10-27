@@ -1,0 +1,67 @@
+{
+  "schema": "PrMergeDigestConfig@v1",
+  "as_of": "2026-10-27",
+  "_note": [
+    "One-tap Telegram digest approval for Mergify (operator 2026-10-27). Read by scripts/lib/pr_merge_digest.py.",
+    "Schedule lives in config/systemd/user/tradeai-pr-merge-digest.timer (America/New_York);",
+    "next_digest_times mirrors it for the 'next digest at' line request_pr_merge_approve.py prints."
+  ],
+  "digest_priority": "P1",
+  "notes_priority": "P2",
+  "failure_priority": "P1",
+  "ttl_seconds": 43200,
+  "max_items": 10,
+  "max_item_buttons": 8,
+  "summary_chars": 110,
+  "pr_list_limit": 100,
+  "unbound_label_action": "report",
+  "next_digest_times": {
+    "weekday": [
+      "08:00",
+      "12:00",
+      "16:30"
+    ],
+    "weekend": [
+      "00:00",
+      "03:00",
+      "06:00",
+      "09:00",
+      "12:00",
+      "15:00",
+      "18:00",
+      "21:00"
+    ]
+  },
+  "risk_globs": {
+    "shared infra": [
+      "scripts/lib/**",
+      "config/systemd/**",
+      ".github/**",
+      "scripts/run_telegram_callback_poller.py",
+      "scripts/telegram_callback_handler.py",
+      "scripts/telegram_alert*.py",
+      "scripts/api_v2.py"
+    ],
+    "config": [
+      "config/**",
+      "*.json",
+      "*.yaml",
+      "*.yml",
+      "*.toml"
+    ],
+    "migrations": [
+      "migrations/**",
+      "**/*.sql",
+      "**/migrations/**"
+    ]
+  },
+  "receipt_outcomes_notify": [
+    "verified",
+    "verify_failed",
+    "deploy_failed"
+  ],
+  "receipt_outcomes_failed": [
+    "verify_failed",
+    "deploy_failed"
+  ]
+}
