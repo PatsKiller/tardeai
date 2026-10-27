@@ -282,7 +282,7 @@ def test_run_queue_writes_private_layout_index_and_all_formats(base):
     assert "prefers-color-scheme: dark" in html and "<svg" in html and "http" not in html.split("<body>")[0]
     for title in ("Relative performance", "Peer comparison", "Estimates and earnings surprises", "Ownership and flows",
                   "Risk and technicals", "Scenarios · 12 months", "Macro sensitivity · FRED", "Filings · SEC EDGAR",
-                  "Earnings call", "Options, sentiment and dividends", "Source coverage", "Sources and facts"):
+                  "Earnings call", "Options, sentiment and dividends", "Source coverage", "Sources"):
         assert title in html, title
     assert "Scenario analysis, not an order" in html
     if (vdir / "prospectus.pdf").exists():

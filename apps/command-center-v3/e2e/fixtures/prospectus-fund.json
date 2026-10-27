@@ -1,0 +1,1254 @@
+{
+ "_comment": "Synthetic fund prospectus (made-up ticker, names and numbers; public repo). `presentation` is the golden output of scripts/lib/prospectus/presentation.present(doc); tests/test_prospectus_presentation_20261026.py keeps it in sync.",
+ "doc": {
+  "schema": "Prospectus@v1",
+  "symbol": "ZFUND",
+  "name": "ZFUND",
+  "scope": "holding",
+  "version": "20261026T120000Z",
+  "generated_at": "2026-10-26T12:00:00Z",
+  "model": "claude-fable-5-1",
+  "status": "ready",
+  "stale": false,
+  "next_due": "2026-11-26",
+  "verdict_line": "HOLD — cheap, diversified income; the distribution grew slower than price [F1, F2].",
+  "facts": [
+   {
+    "id": "F1",
+    "kind": "fund",
+    "label": "Fund distribution yield %",
+    "value": 3.1,
+    "unit": "%",
+    "source": "synthetic fund store",
+    "as_of": "2026-10-25"
+   },
+   {
+    "id": "F2",
+    "kind": "price",
+    "label": "ZFUND return 1Y %",
+    "value": 14.0,
+    "unit": "%",
+    "source": "synthetic prices",
+    "as_of": "2026-10-26"
+   },
+   {
+    "id": "F3",
+    "kind": "fund",
+    "label": "Fund expense ratio %",
+    "value": 0.07,
+    "unit": "%",
+    "source": "synthetic fund store",
+    "as_of": "2026-10-25"
+   },
+   {
+    "id": "F4",
+    "kind": "profile",
+    "label": "Business description",
+    "text": "Zed Synthetic Dividend Fund invests in made-up dividend payers.",
+    "source": "synthetic profiles",
+    "as_of": "2026-10-20"
+   },
+   {
+    "id": "F5",
+    "kind": "macro",
+    "label": "Macro effect on this name: rates",
+    "text": "not reliable: t -0.4 below 2",
+    "source": "derived",
+    "as_of": "2026-10-23"
+   },
+   {
+    "id": "F6",
+    "kind": "price",
+    "label": "Last close",
+    "value": 30.0,
+    "source": "synthetic prices",
+    "as_of": "2026-10-26"
+   }
+  ],
+  "sections": [
+   {
+    "id": "summary_verdict",
+    "title": "Summary verdict",
+    "body_md": "A low-cost fund [F3] yielding 3.1% [F1].\n\n-\n\nThe sensitivity to rates is not reliable (t -0.4) [F5].  It  closed at $30 [F6] .",
+    "citations": []
+   },
+   {
+    "id": "business_and_moat",
+    "title": "Business and moat",
+    "body_md": "Zed Synthetic Dividend Fund holds made-up dividend payers [F4].\n- Cheap [F3]\n- \n- Diversified",
+    "citations": []
+   },
+   {
+    "id": "risks",
+    "title": "Risks",
+    "body_md": "Concentration in the top ten [F2].",
+    "citations": []
+   }
+  ],
+  "charts": [
+   {
+    "id": "price_1y",
+    "type": "line",
+    "title": "Price, 1 year",
+    "series": [
+     {
+      "name": "Close",
+      "points": [
+       [
+        "2025-01-02",
+        100.0
+       ],
+       [
+        "2025-01-09",
+        100.79
+       ],
+       [
+        "2025-01-16",
+        101.53
+       ],
+       [
+        "2025-01-23",
+        102.16
+       ],
+       [
+        "2025-02-02",
+        102.66
+       ],
+       [
+        "2025-02-09",
+        102.99
+       ],
+       [
+        "2025-02-16",
+        103.16
+       ],
+       [
+        "2025-02-23",
+        103.18
+       ],
+       [
+        "2025-03-02",
+        103.09
+       ],
+       [
+        "2025-03-09",
+        102.91
+       ],
+       [
+        "2025-03-16",
+        102.71
+       ],
+       [
+        "2025-03-23",
+        102.55
+       ],
+       [
+        "2025-04-02",
+        102.46
+       ],
+       [
+        "2025-04-09",
+        102.51
+       ],
+       [
+        "2025-04-16",
+        102.7
+       ],
+       [
+        "2025-04-23",
+        103.06
+       ],
+       [
+        "2025-05-02",
+        103.58
+       ],
+       [
+        "2025-05-09",
+        104.23
+       ],
+       [
+        "2025-05-16",
+        104.98
+       ],
+       [
+        "2025-05-23",
+        105.78
+       ],
+       [
+        "2025-06-02",
+        106.56
+       ],
+       [
+        "2025-06-09",
+        107.29
+       ],
+       [
+        "2025-06-16",
+        107.9
+       ],
+       [
+        "2025-06-23",
+        108.37
+       ],
+       [
+        "2025-07-02",
+        108.68
+       ],
+       [
+        "2025-07-09",
+        108.83
+       ],
+       [
+        "2025-07-16",
+        108.83
+       ],
+       [
+        "2025-07-23",
+        108.72
+       ],
+       [
+        "2025-08-02",
+        108.54
+       ],
+       [
+        "2025-08-09",
+        108.34
+       ],
+       [
+        "2025-08-16",
+        108.18
+       ],
+       [
+        "2025-08-23",
+        108.12
+       ],
+       [
+        "2025-09-02",
+        108.18
+       ],
+       [
+        "2025-09-09",
+        108.4
+       ],
+       [
+        "2025-09-16",
+        108.78
+       ],
+       [
+        "2025-09-23",
+        109.33
+       ],
+       [
+        "2025-10-02",
+        110.0
+       ],
+       [
+        "2025-10-09",
+        110.75
+       ],
+       [
+        "2025-10-16",
+        111.55
+       ],
+       [
+        "2025-10-23",
+        112.33
+       ]
+      ]
+     }
+    ],
+    "annotations": [
+     {
+      "kind": "stop",
+      "label": "Stop 27",
+      "y": 27
+     }
+    ]
+   }
+  ],
+  "blocks": {
+   "relative_performance": {
+    "series": {
+     "1Y": [
+      {
+       "name": "ZFUND",
+       "points": [
+        [
+         "2025-01-02",
+         100.0
+        ],
+        [
+         "2025-01-09",
+         100.84
+        ],
+        [
+         "2025-01-16",
+         101.63
+        ],
+        [
+         "2025-01-23",
+         102.31
+        ],
+        [
+         "2025-02-02",
+         102.86
+        ],
+        [
+         "2025-02-09",
+         103.24
+        ],
+        [
+         "2025-02-16",
+         103.46
+        ],
+        [
+         "2025-02-23",
+         103.53
+        ],
+        [
+         "2025-03-02",
+         103.49
+        ],
+        [
+         "2025-03-09",
+         103.36
+        ],
+        [
+         "2025-03-16",
+         103.21
+        ],
+        [
+         "2025-03-23",
+         103.1
+        ],
+        [
+         "2025-04-02",
+         103.06
+        ],
+        [
+         "2025-04-09",
+         103.16
+        ],
+        [
+         "2025-04-16",
+         103.4
+        ],
+        [
+         "2025-04-23",
+         103.81
+        ],
+        [
+         "2025-05-02",
+         104.38
+        ],
+        [
+         "2025-05-09",
+         105.08
+        ],
+        [
+         "2025-05-16",
+         105.88
+        ],
+        [
+         "2025-05-23",
+         106.73
+        ],
+        [
+         "2025-06-02",
+         107.56
+        ],
+        [
+         "2025-06-09",
+         108.34
+        ],
+        [
+         "2025-06-16",
+         109.0
+        ],
+        [
+         "2025-06-23",
+         109.52
+        ],
+        [
+         "2025-07-02",
+         109.88
+        ],
+        [
+         "2025-07-09",
+         110.08
+        ],
+        [
+         "2025-07-16",
+         110.13
+        ],
+        [
+         "2025-07-23",
+         110.07
+        ],
+        [
+         "2025-08-02",
+         109.94
+        ],
+        [
+         "2025-08-09",
+         109.79
+        ],
+        [
+         "2025-08-16",
+         109.68
+        ],
+        [
+         "2025-08-23",
+         109.67
+        ],
+        [
+         "2025-09-02",
+         109.78
+        ],
+        [
+         "2025-09-09",
+         110.05
+        ],
+        [
+         "2025-09-16",
+         110.48
+        ],
+        [
+         "2025-09-23",
+         111.08
+        ],
+        [
+         "2025-10-02",
+         111.8
+        ],
+        [
+         "2025-10-09",
+         112.6
+        ],
+        [
+         "2025-10-16",
+         113.45
+        ],
+        [
+         "2025-10-23",
+         114.28
+        ]
+       ]
+      },
+      {
+       "name": "SPY",
+       "points": [
+        [
+         "2025-01-02",
+         100.0
+        ],
+        [
+         "2025-01-09",
+         100.72
+        ],
+        [
+         "2025-01-16",
+         101.38
+        ],
+        [
+         "2025-01-23",
+         101.94
+        ],
+        [
+         "2025-02-02",
+         102.36
+        ],
+        [
+         "2025-02-16",
+         102.71
+        ],
+        [
+         "2025-02-23",
+         102.66
+        ],
+        [
+         "2025-03-02",
+         102.49
+        ],
+        [
+         "2025-03-09",
+         102.24
+        ],
+        [
+         "2025-03-23",
+         101.72
+        ],
+        [
+         "2025-04-02",
+         101.56
+        ],
+        [
+         "2025-04-09",
+         101.53
+        ],
+        [
+         "2025-04-16",
+         101.65
+        ],
+        [
+         "2025-05-02",
+         102.38
+        ],
+        [
+         "2025-05-09",
+         102.96
+        ],
+        [
+         "2025-05-16",
+         103.63
+        ],
+        [
+         "2025-05-23",
+         104.35
+        ],
+        [
+         "2025-06-09",
+         105.71
+        ],
+        [
+         "2025-06-16",
+         106.25
+        ],
+        [
+         "2025-06-23",
+         106.65
+        ],
+        [
+         "2025-07-02",
+         106.88
+        ],
+        [
+         "2025-07-16",
+         106.88
+        ],
+        [
+         "2025-07-23",
+         106.69
+        ],
+        [
+         "2025-08-02",
+         106.44
+        ],
+        [
+         "2025-08-09",
+         106.17
+        ],
+        [
+         "2025-08-23",
+         105.79
+        ],
+        [
+         "2025-09-02",
+         105.78
+        ],
+        [
+         "2025-09-09",
+         105.93
+        ],
+        [
+         "2025-09-16",
+         106.23
+        ],
+        [
+         "2025-10-02",
+         107.3
+        ],
+        [
+         "2025-10-09",
+         107.98
+        ],
+        [
+         "2025-10-16",
+         108.7
+        ],
+        [
+         "2025-10-23",
+         109.41
+        ]
+       ]
+      },
+      {
+       "name": "PEERF",
+       "points": [
+        [
+         "2025-02-02",
+         100.0
+        ],
+        [
+         "2025-02-09",
+         100.69
+        ],
+        [
+         "2025-02-16",
+         101.33
+        ],
+        [
+         "2025-02-23",
+         101.86
+        ],
+        [
+         "2025-03-02",
+         102.26
+        ],
+        [
+         "2025-03-09",
+         102.49
+        ],
+        [
+         "2025-03-16",
+         102.56
+        ],
+        [
+         "2025-03-23",
+         102.48
+        ],
+        [
+         "2025-04-02",
+         102.29
+        ],
+        [
+         "2025-04-09",
+         102.01
+        ],
+        [
+         "2025-04-16",
+         101.71
+        ],
+        [
+         "2025-04-23",
+         101.45
+        ],
+        [
+         "2025-05-02",
+         101.26
+        ],
+        [
+         "2025-05-09",
+         101.21
+        ],
+        [
+         "2025-05-16",
+         101.3
+        ],
+        [
+         "2025-05-23",
+         101.56
+        ],
+        [
+         "2025-06-02",
+         101.98
+        ],
+        [
+         "2025-06-09",
+         102.53
+        ],
+        [
+         "2025-06-16",
+         103.18
+        ],
+        [
+         "2025-06-23",
+         103.88
+        ],
+        [
+         "2025-07-02",
+         104.56
+        ],
+        [
+         "2025-07-09",
+         105.19
+        ],
+        [
+         "2025-07-16",
+         105.7
+        ],
+        [
+         "2025-07-23",
+         106.07
+        ],
+        [
+         "2025-08-02",
+         106.28
+        ],
+        [
+         "2025-08-09",
+         106.33
+        ],
+        [
+         "2025-08-16",
+         106.23
+        ],
+        [
+         "2025-08-23",
+         106.02
+        ],
+        [
+         "2025-09-02",
+         105.74
+        ],
+        [
+         "2025-09-09",
+         105.44
+        ]
+       ]
+      },
+      {
+       "name": "EMPTYF",
+       "points": [
+        [
+         "2025-03-02",
+         null
+        ]
+       ]
+      }
+     ]
+    },
+    "returns": [
+     {
+      "name": "ZFUND",
+      "1Y": 14.0
+     },
+     {
+      "name": "SPY",
+      "1Y": 9.0
+     },
+     {
+      "name": "PEERF",
+      "1Y": 6.0
+     },
+     {
+      "name": "PEERG",
+      "1Y": 8.0
+     }
+    ],
+    "benchmarks": [
+     "SPY"
+    ]
+   },
+   "estimates": {
+    "eps_surprises": [],
+    "revisions_90d": {
+     "up": null,
+     "down": null
+    },
+    "next_report": null,
+    "gaps": [
+     "EPS history: none"
+    ]
+   },
+   "ownership_flows": {
+    "institutional_pct": null,
+    "short_float_pct": null,
+    "days_to_cover": null,
+    "insider_buys_90d": null,
+    "insider_sells_90d": null,
+    "etf_flows_30d": null,
+    "top_holders": null
+   },
+   "earnings_call": {
+    "transcripts": [],
+    "tone": "Not in the sources [F2]."
+   },
+   "risk_technicals": {
+    "beta_1y": 0.7,
+    "vol_annualized_pct": 11.0,
+    "max_drawdown_1y_pct": -8.0,
+    "correlation_to_book": null,
+    "px_vs_sma50_pct": 2.0,
+    "px_vs_sma200_pct": 5.0,
+    "rsi14": 61.0,
+    "atr20": null
+   },
+   "scenarios": {
+    "cases": [
+     {
+      "case": "bear",
+      "price": 27,
+      "narrative": "One standard deviation lower [F2]."
+     },
+     {
+      "case": "base",
+      "price": 30,
+      "narrative": "Flat [F6]."
+     },
+     {
+      "case": "bull",
+      "price": 33.5,
+      "narrative": "One standard deviation higher [F2]."
+     }
+    ]
+   },
+   "macro_sensitivity": {
+    "series": {
+     "DGS10": {
+      "label": "10-year Treasury yield",
+      "value": 4.1,
+      "trend": "rising",
+      "effect": "not reliable: t -0.4 below 2"
+     }
+    }
+   },
+   "options_sentiment_dividends": {
+    "iv_pct": 12.0,
+    "iv_rank": null,
+    "put_call": null,
+    "unusual_flow": null,
+    "news_sentiment": {
+     "label": null
+    },
+    "social": null,
+    "dividend": {
+     "yield_pct": null,
+     "annual_per_share": 0.93
+    },
+    "debate": null
+   },
+   "stop_plan": {
+    "recommended": {
+     "level": 27.9,
+     "method": "trailing 7%",
+     "distance_pct": 7.0,
+     "usd_at_risk": 210.0,
+     "band": {
+      "label": "Income",
+      "stop_min_pct": 5,
+      "stop_max_pct": 8,
+      "levels": [
+       27.6,
+       28.5
+      ]
+     }
+    },
+    "broker": {
+     "level": 28.4,
+     "state": "resting",
+     "other_accounts": "Example Account B: filled $29.10"
+    },
+    "comparison": "Resting broker stop $28.40 sits above the house level $27.90.",
+    "advisory": "advisory — no AI places, sizes or stops orders",
+    "gaps": []
+   },
+   "verdict_tiles": {
+    "stop": {
+     "value": "$28.40",
+     "sub": "resting, pending activation · house $27.90 · other accounts: Example Account B: filled $29.10",
+     "tone": "warning"
+    }
+   },
+   "fund_profile": {
+    "category": "Synthetic dividend equity",
+    "peers": [
+     "PEERF",
+     "PEERG"
+    ],
+    "facts": {
+     "expense_ratio_pct": "F3",
+     "dividend_yield_pct": "F1"
+    },
+    "expense_ratio_pct": 0.07,
+    "dividend_yield_pct": 3.1,
+    "ttm_distribution": 0.93,
+    "last_distribution": 0.24,
+    "last_distribution_date": "2026-09-23",
+    "distribution_cadence": "quarterly",
+    "aum_usd": null,
+    "top_holdings": [],
+    "dividend_history": [
+     {
+      "ex_date": "2022-03-20",
+      "amount": 0.183
+     },
+     {
+      "ex_date": "2022-06-20",
+      "amount": 0.186
+     },
+     {
+      "ex_date": "2022-09-20",
+      "amount": 0.189
+     },
+     {
+      "ex_date": "2022-12-20",
+      "amount": 0.192
+     },
+     {
+      "ex_date": "2023-03-20",
+      "amount": 0.193
+     },
+     {
+      "ex_date": "2023-06-20",
+      "amount": 0.196
+     },
+     {
+      "ex_date": "2023-09-20",
+      "amount": 0.199
+     },
+     {
+      "ex_date": "2023-12-20",
+      "amount": 0.202
+     },
+     {
+      "ex_date": "2024-03-20",
+      "amount": 0.203
+     },
+     {
+      "ex_date": "2024-06-20",
+      "amount": 0.206
+     },
+     {
+      "ex_date": "2024-09-20",
+      "amount": 0.209
+     },
+     {
+      "ex_date": "2024-12-20",
+      "amount": 0.212
+     },
+     {
+      "ex_date": "2025-03-20",
+      "amount": 0.213
+     },
+     {
+      "ex_date": "2025-06-20",
+      "amount": 0.216
+     },
+     {
+      "ex_date": "2025-09-20",
+      "amount": 0.219
+     },
+     {
+      "ex_date": "2025-12-20",
+      "amount": 0.222
+     },
+     {
+      "ex_date": "2026-03-20",
+      "amount": 0.223
+     },
+     {
+      "ex_date": "2026-06-20",
+      "amount": 0.226
+     },
+     {
+      "ex_date": "2026-09-20",
+      "amount": 0.229
+     }
+    ]
+   },
+   "fund_lookthrough": {
+    "as_of": "2026-10-04",
+    "sector_weights": {
+     "Synthetic Staples": 21.0,
+     "Synthetic Health": 18.5,
+     "Synthetic Energy": 15.0,
+     "Synthetic Banks": 12.0
+    },
+    "top_holdings": [
+     {
+      "ticker": "ACME",
+      "name": "Acme Synthetic Corp",
+      "pct": 4.4
+     },
+     {
+      "ticker": "PEER1",
+      "name": "Peer One",
+      "pct": 4.1
+     },
+     {
+      "ticker": "PEER2",
+      "name": "Peer Two",
+      "pct": 3.9
+     }
+    ]
+   }
+  },
+  "source_coverage": {
+   "domains": [
+    {
+     "domain": "quote_price",
+     "status": "used"
+    },
+    {
+     "domain": "dividends",
+     "status": "used"
+    },
+    {
+     "domain": "macro",
+     "status": "stale",
+     "as_of": "2026-09-01"
+    },
+    {
+     "domain": "news_sentiment",
+     "status": "empty"
+    },
+    {
+     "domain": "web_search",
+     "status": "failed",
+     "reason": "timeout"
+    },
+    {
+     "domain": "supervisor_heartbeats",
+     "status": "not_applicable",
+     "reason": "not ticker-keyed"
+    },
+    {
+     "domain": "model_chooser_receipts",
+     "status": "not_applicable"
+    },
+    {
+     "domain": "counterfactual_ledger",
+     "status": "failed",
+     "reason": "missing file"
+    }
+   ],
+   "key_gaps": []
+  },
+  "advisory": "Research only — no AI places, sizes or stops orders.",
+  "versions": [
+   {
+    "version": "20261026T120000Z",
+    "generated_at": "2026-10-26T12:00:00Z",
+    "model": "claude-fable-5-1"
+   }
+  ]
+ },
+ "presentation": {
+  "schema": "ProspectusPresentation@v1",
+  "display_name": "Zed Synthetic Dividend Fund",
+  "is_fund": true,
+  "footnotes": [
+   {
+    "n": 1,
+    "id": "F1",
+    "label": "Fund distribution yield %",
+    "source": "synthetic fund store",
+    "as_of": "2026-10-25",
+    "url": null,
+    "value": "3.1%"
+   },
+   {
+    "n": 2,
+    "id": "F2",
+    "label": "ZFUND return 1Y %",
+    "source": "synthetic prices",
+    "as_of": "2026-10-26",
+    "url": null,
+    "value": "14%"
+   },
+   {
+    "n": 3,
+    "id": "F3",
+    "label": "Fund expense ratio %",
+    "source": "synthetic fund store",
+    "as_of": "2026-10-25",
+    "url": null,
+    "value": "0.07%"
+   },
+   {
+    "n": 4,
+    "id": "F5",
+    "label": "Macro effect on this name: rates",
+    "source": "derived",
+    "as_of": "2026-10-23",
+    "url": null,
+    "value": "not reliable: t -0.4 below 2"
+   },
+   {
+    "n": 5,
+    "id": "F6",
+    "label": "Last close",
+    "source": "synthetic prices",
+    "as_of": "2026-10-26",
+    "url": null,
+    "value": "30"
+   },
+   {
+    "n": 6,
+    "id": "F4",
+    "label": "Business description",
+    "source": "synthetic profiles",
+    "as_of": "2026-10-20",
+    "url": null,
+    "value": "Zed Synthetic Dividend Fund invests in made-up dividend payers."
+   }
+  ],
+  "section_footnotes": {
+   "summary_verdict": [
+    1,
+    3,
+    4,
+    5
+   ],
+   "business_and_moat": [
+    3,
+    6
+   ],
+   "risks": [
+    2
+   ]
+  },
+  "fund_structure": {
+   "rows": [
+    {
+     "group": "identity",
+     "label": "Expense ratio",
+     "value": "0.07%",
+     "cites": [
+      "F3"
+     ]
+    },
+    {
+     "group": "identity",
+     "label": "Category · peers",
+     "value": "Synthetic dividend equity · PEERF, PEERG",
+     "cites": []
+    },
+    {
+     "group": "holdings",
+     "label": "Top 3 concentration",
+     "value": "12.4%",
+     "cites": []
+    },
+    {
+     "group": "holdings",
+     "label": "Largest sector",
+     "value": "Synthetic Staples 21.0%",
+     "cites": []
+    },
+    {
+     "group": "distribution",
+     "label": "Distribution yield · TTM",
+     "value": "3.10% · $0.930/share",
+     "cites": [
+      "F1"
+     ]
+    },
+    {
+     "group": "distribution",
+     "label": "Last distribution · cadence",
+     "value": "$0.240 on 2026-09-23 · quarterly",
+     "cites": []
+    },
+    {
+     "group": "distribution",
+     "label": "Distribution growth · 3 years",
+     "value": "+15.4%",
+     "cites": []
+    },
+    {
+     "group": "tracking",
+     "label": "1Y vs category peers",
+     "value": "+7.0 pts vs peer median (PEERF 6.0%, PEERG 8.0%)",
+     "cites": []
+    }
+   ],
+   "top_holdings": [
+    {
+     "symbol": "ACME",
+     "name": "Acme Synthetic Corp",
+     "weight_pct": 4.4
+    },
+    {
+     "symbol": "PEER1",
+     "name": "Peer One",
+     "weight_pct": 4.1
+    },
+    {
+     "symbol": "PEER2",
+     "name": "Peer Two",
+     "weight_pct": 3.9
+    }
+   ],
+   "sectors": [
+    {
+     "name": "Synthetic Staples",
+     "weight_pct": 21.0
+    },
+    {
+     "name": "Synthetic Health",
+     "weight_pct": 18.5
+    },
+    {
+     "name": "Synthetic Energy",
+     "weight_pct": 15.0
+    },
+    {
+     "name": "Synthetic Banks",
+     "weight_pct": 12.0
+    }
+   ],
+   "countries": [],
+   "missing": [
+    "Index tracked",
+    "Issuer",
+    "Inception",
+    "Assets under management",
+    "Number of holdings",
+    "Country weights",
+    "Average daily volume",
+    "Bid-ask spread",
+    "Premium / discount to NAV",
+    "Index tracking gap",
+    "Overlap with your book"
+   ],
+   "as_of": "2026-10-04"
+  },
+  "coverage": {
+   "groups": {
+    "used": [
+     {
+      "domain": "quote_price",
+      "label": "Price quotes",
+      "status": "used",
+      "as_of": null,
+      "reason": null
+     },
+     {
+      "domain": "dividends",
+      "label": "Dividends",
+      "status": "used",
+      "as_of": null,
+      "reason": null
+     }
+    ],
+    "stale": [
+     {
+      "domain": "macro",
+      "label": "Macro (FRED)",
+      "status": "stale",
+      "as_of": "2026-09-01",
+      "reason": null
+     }
+    ],
+    "failed": [
+     {
+      "domain": "web_search",
+      "label": "Web search",
+      "status": "failed",
+      "as_of": null,
+      "reason": "timeout"
+     }
+    ],
+    "missing": [
+     {
+      "domain": "news_sentiment",
+      "label": "News sentiment",
+      "status": "empty",
+      "as_of": null,
+      "reason": null
+     }
+    ]
+   },
+   "counts": {
+    "used": 2,
+    "stale": 1,
+    "failed": 1,
+    "missing": 1
+   },
+   "hidden": 3,
+   "key_gaps": []
+  }
+ }
+}
