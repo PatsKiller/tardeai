@@ -328,6 +328,7 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
         assert routed[pid]['new']=='EXCLUDED / unchanged'
         assert routed[pid]['old'].startswith(provider+' / ')
         assert routed[pid]['no_key_or_expired']=='unchanged / '+provider
+    assert next(r for r in rows if r['process']=='prospectus_fact_check')['new']=='anthropic / claude-haiku-5-5'
     prospectus={r['process']:r for r in rows if r['process'].startswith('prospectus_writer')}
     assert prospectus['prospectus_writer_premium']['new']=='anthropic / claude-fable-5-1'
     assert {r['no_key_or_expired'] for r in prospectus.values()}=={'QUEUED (anthropic-only)'}

@@ -26,6 +26,35 @@ PEER_FIELDS = (("market_cap_b", "Mkt cap ($B)"), ("forward_pe", "Fwd P/E"), ("ev
                ("roe_pct", "ROE %"), ("div_yield_pct", "Div yield %"), ("total_debt_equity", "Debt/Equity"),
                ("perf_year_pct", "1Y return %"))
 
+#: The Finviz enrichment cache's ``market_cap_b`` is Finviz "Market Cap" in MILLIONS of dollars despite its name
+#: (finviz_enrichment.py maps the column as-is; multi_strategy_classifier.py documents and converts the same field).
+#: ``market_cap_usd`` (dollars) is preferred when present. Rule: convert ONLY from the raw cache record through
+#: ``market_cap_billions``; never write the converted value back into a record, so nothing is normalised twice.
+FINVIZ_MARKET_CAP_DIVISOR_TO_B = 1000.0
+
+#: Price-series plausibility (operator 2026-10-26): one pre-listing quote row far below a new listing's first session
+#: produced an impossible beta, volatility, 1Y low and YTD return in a live prospectus. A close more than
+#: ``SERIES_LEVEL_FACTOR`` times away from the median of its next/previous ``SERIES_CONFIRM_SESSIONS`` closes, with
+#: at most ``SERIES_MAX_ISOLATED`` such rows in a row, is an isolated bad bar (pre-listing / symbol reuse / bad
+#: print) and is excluded. A persistent jump of the same size (unadjusted split, symbol reuse) is a series BREAK:
+#: statistics use only the clean segment after the last break.
+SERIES_LEVEL_FACTOR = 3.0
+SERIES_CONFIRM_SESSIONS = 10
+SERIES_MAX_ISOLATED = 2
+#: Minimum clean sessions (closes) before a statistic is printed; below it the value is null with a reason.
+MIN_SESSIONS = {"vol_annualized_pct": 61, "beta_1y": 61, "correlation_to_book": 61, "max_drawdown_1y_pct": 240,
+                "rate_beta_10y": 61}
+
+
+def market_cap_billions(rec: dict | None) -> Optional[float]:
+    """Market cap in $B from a raw enrichment-cache record (see FINVIZ_MARKET_CAP_DIVISOR_TO_B)."""
+    r = rec or {}
+    usd = _f(r.get("market_cap_usd"))
+    if usd is not None and usd > 0:
+        return round(usd / 1e9, 2)
+    raw = _f(r.get("market_cap_b"))
+    return None if raw is None else round(raw / FINVIZ_MARKET_CAP_DIVISOR_TO_B, 2)
+
 
 def _f(v: Any) -> Optional[float]:
     try:
@@ -46,13 +75,89 @@ def _series(bars: Iterable[Any]) -> list[tuple[str, float]]:
     return out
 
 
+def _far(a: float, b: float, factor: float = SERIES_LEVEL_FACTOR) -> bool:
+    return a > 0 and b > 0 and max(a, b) / min(a, b) > factor
+
+
+def clean_series(s: list[tuple[str, float]]) -> tuple[list[tuple[str, float]], list[dict], Optional[dict]]:
+    """(clean segment, excluded bad bars, last break) for a sorted (date, close) series.
+
+    1. Isolated bars: a run of at most SERIES_MAX_ISOLATED closes that is more than SERIES_LEVEL_FACTOR away from the
+       median of the SERIES_CONFIRM_SESSIONS closes on BOTH sides (or on the only side, at the start / end of the
+       series) is excluded with a reason. The neighbours must agree with each other, so a genuine regime is never
+       mistaken for an isolated bar.
+    2. Breaks: a day-over-day jump larger than SERIES_LEVEL_FACTOR that persists (an unadjusted split or a reused
+       symbol) splits the series; only the segment after the last break is returned.
+    """
+    n, k = len(s), SERIES_CONFIRM_SESSIONS
+    excluded: list[dict] = []
+    keep = [True] * n
+    i = 0
+    while i < n:
+        for run in range(1, SERIES_MAX_ISOLATED + 1):
+            j = i + run  # candidate run is s[i:j]
+            if j > n:
+                break
+            before = [c for _, c in s[max(0, i - k):i]]
+            after = [c for _, c in s[j:j + k]]
+            sides = [statistics.median(x) for x in (before, after) if len(x) >= min(3, k)]
+            if not sides or (len(sides) == 2 and _far(sides[0], sides[1])):
+                continue
+            if all(_far(c, m) for _, c in s[i:j] for m in sides):
+                where = "first rows of the series (pre-listing or reused-symbol data)" if i == 0 else (
+                    "last rows of the series" if j == n else "isolated bad print")
+                for d, c in s[i:j]:
+                    excluded.append({"date": d, "close": c, "reason": f"{where}: more than {SERIES_LEVEL_FACTOR:g}x "
+                                                                       f"away from the neighbouring {k} sessions"})
+                for x in range(i, j):
+                    keep[x] = False
+                i = j - 1
+                break
+        i += 1
+    kept = [p for p, ok in zip(s, keep) if ok]
+    brk = None
+    for x in range(1, len(kept)):
+        if _far(kept[x - 1][1], kept[x][1]):
+            brk = {"date": kept[x][0], "from": kept[x - 1][1], "to": kept[x][1],
+                   "reason": "series break (unadjusted split or reused symbol): statistics use the segment after it"}
+    if brk:
+        kept = [p for p in kept if p[0] >= brk["date"]]
+    return kept, excluded, brk
+
+
+def series_quality(bars: Any) -> dict:
+    """Clean series plus a plain-language account of what was excluded (exposed in the blocks)."""
+    raw = _series(bars)
+    clean, excluded, brk = clean_series(raw)
+    notes = []
+    if excluded:
+        notes.append(f"excluded {len(excluded)} bad bar(s): " + "; ".join(f"{e['date']} ({e['reason']})" for e in excluded[:3]))
+    if brk:
+        notes.append(f"series break on {brk['date']}: {brk['reason']}")
+    return {"series": clean, "excluded": excluded, "break": brk, "raw_sessions": len(raw),
+            "clean_sessions": len(clean), "clean_from": clean[0][0] if clean else None, "notes": notes}
+
+
+def unreliable_reason(metric: str, q: dict) -> Optional[str]:
+    """None when the clean series supports ``metric``; else the reason it is not printed."""
+    need = MIN_SESSIONS.get(metric)
+    have = min(int(q.get("clean_sessions") or 0), 253)
+    if need is None or have >= need:
+        return None
+    why = f"only {have} clean sessions since {q.get('clean_from') or 'n/a'} (needs {need})"
+    if q.get("notes"):
+        why += "; " + "; ".join(q["notes"])
+    return why
+
+
 def _start_index(s: list[tuple[str, float]], window: str) -> Optional[int]:
     if not s:
         return None
     if window == "YTD":
         year = s[-1][0][:4]
         idx = next((i for i, (d, _) in enumerate(s) if d[:4] == year), None)
-        return max(0, idx - 1) if idx is not None else None
+        # YTD needs the prior year's last close; a series that starts this year has no YTD figure.
+        return idx - 1 if idx else None
     n = WINDOWS[window]
     return len(s) - 1 - n if len(s) > n else None
 
@@ -72,8 +177,9 @@ def _downsample(points: list, limit: int = 130) -> list:
 
 def relative_performance(sym: str, bars: Any, bench: dict[str, Any], *, cache: dict, industry: Optional[str],
                          sector_row: Optional[dict] = None, industry_row: Optional[dict] = None) -> dict:
-    s = _series(bars)
-    named = {sym: s, **{k: _series(v) for k, v in bench.items()}}
+    quality = series_quality(bars)
+    s = quality["series"]
+    named = {sym: s, **{k: clean_series(_series(v))[0] for k, v in bench.items()}}
     missing = [k for k, v in named.items() if len(v) < 2]
     series = {}
     for w in CHART_WINDOWS:
@@ -109,7 +215,9 @@ def relative_performance(sym: str, bars: Any, bench: dict[str, Any], *, cache: d
     gaps = [f"benchmark series missing: {m}" for m in missing if m != sym]
     if industry_row is None:
         gaps.append("industry-group series: no rebased series in the house (momentum snapshot only)")
-    return {"series": series, "returns": returns, "excess_vs_spy": excess, "rank_in_industry": rank,
+    gaps += [f"{sym} price history: {n}" for n in quality["notes"]]
+    return {"series": series, "series_quality": {k: quality[k] for k in ("excluded", "break", "raw_sessions",
+                                                                           "clean_sessions", "clean_from", "notes")}, "returns": returns, "excess_vs_spy": excess, "rank_in_industry": rank,
             "rs_rating_12m": rs, "rs_basis": "percentile of 1Y return across the Finviz enrichment universe",
             "sector_trend": _trend(sector_row), "industry_trend": _trend(industry_row),
             "benchmarks": list(bench), "missing_benchmarks": [m for m in missing if m != sym], "gaps": gaps}
@@ -123,22 +231,50 @@ def _trend(row: Optional[dict]) -> Optional[dict]:
     return keep or None
 
 
-def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None = None, n: int = 5) -> dict:
+#: Finviz files every ETF under one industry, "Exchange Traded Fund"; that cohort is meaningless as peers (it sorts
+#: alphabetically: AAA, AAAA, AAAC …). ETF peers come only from ``config/prospectus.json`` ``etf_peer_groups``.
+ETF_INDUSTRY = "exchange traded fund"
+
+
+def etf_peer_group(sym: str, groups: dict | None) -> tuple[Optional[str], list[str]]:
+    for name, spec in (groups or {}).items():
+        if str(name).startswith("_") or not isinstance(spec, (list, dict)):
+            continue  # "_note" and other commentary keys
+        members = [str(m).upper() for m in ((spec.get("members") if isinstance(spec, dict) else spec) or [])]
+        if sym in members:
+            return name, [m for m in members if m != sym]
+    return None, []
+
+
+def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None = None, n: int = 5,
+                    etf_groups: dict | None = None) -> dict:
     mine = cache.get(sym) if isinstance(cache.get(sym), dict) else None
     if not mine or not mine.get("industry"):
         return {"rows": [], "median": None, "gaps": ["peers: no industry for this symbol in the enrichment cache"]}
-    cap = _f(mine.get("market_cap_b")) or 0.0
-    cands = [(k, r) for k, r in cache.items() if k != sym and isinstance(r, dict)
-             and r.get("industry") == mine.get("industry")]
-    cands.sort(key=lambda kr: (abs(math.log((_f(kr[1].get("market_cap_b")) or 1e-3) / max(cap, 1e-3))), kr[0]))
     consensus = consensus or {}
 
     def row(k: str, r: dict) -> dict:
         out = {"symbol": k, "is_subject": k == sym}
         for key, _ in PEER_FIELDS:
-            out[key] = _f(r.get(key))
+            out[key] = market_cap_billions(r) if key == "market_cap_b" else _f(r.get(key))
         out["consensus"] = consensus.get(k)
         return out
+
+    group = None
+    if str(mine.get("industry")).strip().lower() == ETF_INDUSTRY:
+        group, members = etf_peer_group(sym, etf_groups)
+        cands = [(k, cache[k]) for k in members if isinstance(cache.get(k), dict)]
+        if not cands:
+            why = (f"peers not available: no member of the '{group}' ETF peer group is in the enrichment cache" if group
+                   else "peers not available: this ETF has no category peer group in config/prospectus.json "
+                        "etf_peer_groups (the Finviz ETF cohort is alphabetical, not a peer set)")
+            return {"industry": mine.get("industry"), "peer_group": group, "rows": [row(sym, mine)], "median": None,
+                    "fields": [k for k, _ in PEER_FIELDS], "labels": dict(PEER_FIELDS), "gaps": [why]}
+    else:
+        cap = market_cap_billions(mine) or 0.0
+        cands = [(k, r) for k, r in cache.items() if k != sym and isinstance(r, dict)
+                 and r.get("industry") == mine.get("industry")]
+        cands.sort(key=lambda kr: (abs(math.log((market_cap_billions(kr[1]) or 1e-3) / max(cap, 1e-3))), kr[0]))
 
     rows = [row(sym, mine)] + [row(k, r) for k, r in cands[:n]]
     med = {}
@@ -148,7 +284,7 @@ def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None =
     gaps = ["EV/EBITDA and net debt/EBITDA are not in the house fundamentals (Debt/Equity shown)"]
     if len(rows) - 1 < n:
         gaps.append(f"only {len(rows) - 1} industry peers in the enrichment cache")
-    return {"industry": mine.get("industry"), "rows": rows, "median": med, "fields": [k for k, _ in PEER_FIELDS],
+    return {"industry": mine.get("industry"), "peer_group": group, "rows": rows, "median": med, "fields": [k for k, _ in PEER_FIELDS],
             "labels": dict(PEER_FIELDS), "gaps": gaps}
 
 
@@ -182,35 +318,57 @@ def _returns(s: list[tuple[str, float]]) -> dict[str, float]:
 
 
 def risk_technicals(bars: Any, *, ohlc: Any = None, spy: Any = None, book: dict[str, float] | None = None,
-                    rec: dict | None = None) -> dict:
-    s = _series(bars)[-253:]
-    out: dict[str, Any] = {"gaps": []}
+                    rec: dict | None = None, subject: str | None = None) -> dict:
+    """Risk statistics over the CLEAN series (``clean_series``). A statistic the clean series cannot support is
+    ``None`` with its reason in ``unreliable`` — never a number computed over bad bars. Correlation to the book uses
+    the book WITHOUT ``subject`` (leave-one-out), so a large holding is not correlated with itself."""
+    quality = series_quality(bars)
+    s = quality["series"][-253:]
+    out: dict[str, Any] = {"gaps": [], "unreliable": {},
+                           "series_quality": {k: quality[k] for k in ("excluded", "break", "raw_sessions",
+                                                                      "clean_sessions", "clean_from", "notes")}}
     if len(s) < 30:
-        return {"gaps": ["price history too short for risk statistics"]}
+        return {**out, "gaps": ["price history too short for risk statistics"] + quality["notes"]}
+
+    def gate(metric: str) -> bool:
+        why = unreliable_reason(metric, quality)
+        if why:
+            out[metric] = None
+            out["unreliable"][metric] = why
+        return why is None
+
     rets = _returns(s)
     vals = list(rets.values())
-    out["vol_annualized_pct"] = round(statistics.pstdev(vals) * math.sqrt(252) * 100, 2)
-    peak, mdd = s[0][1], 0.0
-    for _, c in s:
-        peak = max(peak, c)
-        mdd = min(mdd, c / peak - 1)
-    out["max_drawdown_1y_pct"] = round(mdd * 100, 2)
-    spy_r = _returns(_series(spy)[-253:]) if spy else {}
-    common = [d for d in rets if d in spy_r]
-    if len(common) >= 30:
-        x, y = [spy_r[d] for d in common], [rets[d] for d in common]
-        var = statistics.pvariance(x)
-        out["beta_1y"] = round(sum((a - statistics.fmean(x)) * (b - statistics.fmean(y)) for a, b in zip(x, y))
-                               / len(x) / var, 2) if var else None
-    else:
-        out["beta_1y"] = _f((rec or {}).get("beta"))
-        out["gaps"].append("beta from house fundamentals (SPY series unavailable)")
-    if book:
-        common = [d for d in rets if d in book]
+    if gate("vol_annualized_pct"):
+        out["vol_annualized_pct"] = round(statistics.pstdev(vals) * math.sqrt(252) * 100, 2)
+    if gate("max_drawdown_1y_pct"):
+        peak, mdd = s[0][1], 0.0
+        for _, c in s:
+            peak = max(peak, c)
+            mdd = min(mdd, c / peak - 1)
+        out["max_drawdown_1y_pct"] = round(mdd * 100, 2)
+    if gate("beta_1y"):
+        spy_r = _returns(clean_series(_series(spy))[0][-253:]) if spy else {}
+        common = [d for d in rets if d in spy_r]
         if len(common) >= 30:
-            out["correlation_to_book"] = round(statistics.correlation([rets[d] for d in common],
-                                                                     [book[d] for d in common]), 2)
-    if out.get("correlation_to_book") is None:
+            x, y = [spy_r[d] for d in common], [rets[d] for d in common]
+            var = statistics.pvariance(x)
+            out["beta_1y"] = round(sum((a - statistics.fmean(x)) * (b - statistics.fmean(y)) for a, b in zip(x, y))
+                                   / len(x) / var, 2) if var else None
+        else:
+            out["beta_1y"] = _f((rec or {}).get("beta"))
+            out["gaps"].append("beta from house fundamentals (SPY series unavailable)")
+    if book and gate("correlation_to_book"):
+        series, why = book_without(book, subject)
+        if series is None:
+            out["unreliable"]["correlation_to_book"] = why
+        else:
+            common = [d for d in rets if d in series]
+            if len(common) >= 30:
+                out["correlation_to_book"] = round(statistics.correlation([rets[d] for d in common],
+                                                                         [series[d] for d in common]), 2)
+                out["correlation_basis"] = why
+    if out.get("correlation_to_book") is None and "correlation_to_book" not in out["unreliable"]:
         out["gaps"].append("correlation to book: book return series unavailable")
     closes = [c for _, c in s]
     for n in (50, 200):
@@ -221,7 +379,9 @@ def risk_technicals(bars: Any, *, ohlc: Any = None, spy: Any = None, book: dict[
         losses = [max(0.0, closes[i - 1] - closes[i]) for i in range(len(closes) - 14, len(closes))]
         avg_g, avg_l = sum(gains) / 14, sum(losses) / 14
         out["rsi14"] = round(100.0 if avg_l == 0 else 100 - 100 / (1 + avg_g / avg_l), 1)
-    rows = [r for r in (ohlc or []) if isinstance(r, dict) and all(_f(r.get(k)) for k in ("high", "low", "close"))]
+    first = s[0][0]
+    rows = [r for r in (ohlc or []) if isinstance(r, dict) and all(_f(r.get(k)) for k in ("high", "low", "close"))
+            and str(r.get("price_date") or r.get("date") or first)[:10] >= first]
     if len(rows) >= 21:
         trs = []
         for prev, cur in zip(rows[-21:-1], rows[-20:]):
@@ -231,25 +391,55 @@ def risk_technicals(bars: Any, *, ohlc: Any = None, spy: Any = None, book: dict[
     else:
         out["atr20"] = None
         out["gaps"].append("ATR20: OHLC history unavailable")
-    out["basis"] = "computed from house daily closes (ticker_prices), last 252 sessions"
+    out["gaps"] += [f"{m}: not reliable ({why})" for m, why in out["unreliable"].items()]
+    out["basis"] = (f"computed from house daily closes (ticker_prices), last {len(s)} clean sessions"
+                    + (f" ({len(quality['excluded'])} bad bar(s) excluded)" if quality["excluded"] else ""))
     return out
 
 
-def book_returns(holdings: dict[str, dict], bars_fn) -> dict[str, float]:
-    """Current-weight book proxy: Σ weight × daily return over the last year (house closes)."""
+class BookSeries(dict):
+    """Weighted book daily returns {date: return}, plus each holding's weighted contribution so one holding can be
+    left out (``book_without``)."""
+
+    def __init__(self, *args: Any, **kw: Any):
+        super().__init__(*args, **kw)
+        self.components: dict[str, dict[str, float]] = {}
+        self.weights: dict[str, float] = {}
+
+
+def book_returns(holdings: dict[str, dict], bars_fn) -> BookSeries:
+    """Current-weight book proxy: Σ weight × daily return over the last year (house closes, clean series only)."""
+    acc = BookSeries()
     total = sum(float(r.get("market_value") or 0) for r in holdings.values())
     if total <= 0:
-        return {}
-    acc: dict[str, float] = {}
+        return acc
     for sym, row in holdings.items():
         w = float(row.get("market_value") or 0) / total
         try:
-            rets = _returns(_series(bars_fn(sym))[-253:])
+            rets = _returns(clean_series(_series(bars_fn(sym)))[0][-253:])
         except Exception:  # noqa: BLE001
             continue
+        acc.weights[sym] = w
+        acc.components[sym] = {d: w * r for d, r in rets.items()}
         for d, r in rets.items():
             acc[d] = acc.get(d, 0.0) + w * r
     return acc
+
+
+def book_without(book: dict[str, float], subject: str | None) -> tuple[Optional[dict[str, float]], str]:
+    """(book series excluding ``subject``, basis). Leave-one-out, renormalised to the remaining weight."""
+    comps = getattr(book, "components", None)
+    weights = getattr(book, "weights", None)
+    if comps is None:
+        return dict(book), "current-weight book (per-holding components unavailable; not leave-one-out)"
+    if not subject or subject not in comps:
+        return dict(book), "current-weight book (this symbol is not in it)"
+    rest = 1.0 - float(weights.get(subject) or 0.0)
+    if rest < 0.02:
+        return None, "the book is (almost) only this holding; a correlation with itself is meaningless"
+    mine = comps[subject]
+    return ({d: (v - mine.get(d, 0.0)) / rest for d, v in book.items()},
+            "current-weight book excluding this holding (leave-one-out)")
 
 
 def today() -> date:

@@ -625,8 +625,68 @@ def test_missing_stored_review_clock_does_not_create_hourly_material_change(monk
     entity = research.Entity(label="Synthetic Example", kind="listed", symbol="DEMO", security_guid="fixture-guid")
     now = datetime(2031, 3, 10, 15, tzinfo=timezone.utc)
     first = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now))
-    later = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1)))
+    later = research._src_cio_record_research(
+        entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1))
+    )
     assert research.evidence_fingerprint(first, []) == research.evidence_fingerprint(later, [])
     review["completed_at"] = "2031-03-10T16:00:00Z"
-    changed = research._src_cio_record_research(entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1)))
+    changed = research._src_cio_record_research(
+        entity, research.ResearchContext(question="Synthetic review?", now=now + timedelta(hours=1))
+    )
     assert research.evidence_fingerprint(first, []) != research.evidence_fingerprint(changed, [])
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        None,
+        "section.position_and_plan",
+        "section.business_and_moat",
+        "scenario_bear_price",
+        "cio_conviction_at_writing",
+    ],
+)
+def test_inherited_prospectus_prose_stays_local_in_real_panel_prompt(monkeypatch, field):
+    from types import SimpleNamespace
+    from scripts.lib import cio_ask_research as research
+
+    ent = research.Entity(label="Example Robotics", kind="listed", symbol="EXMP", security_guid="fixture-guid")
+    claim = "We own 317 shares bought at $42; private fixture position"
+    original = research.make_fact(
+        source="internal.prospectus",
+        family="internal",
+        kind="prospectus",
+        subject_key=ent.subject_key,
+        symbol=ent.symbol,
+        claim=claim,
+        as_of="2026-10-26T14:00:00Z",
+        citation={"store": "security_research_spine", "version": "fixture"},
+        field=field,
+    )
+    real_import = research._imp
+
+    def source_import(*names):
+        if "lib.prospectus.cio_memory" in names:
+            return SimpleNamespace(ask_facts=lambda *_: [original])
+        return real_import(*names)
+
+    monkeypatch.setattr(research, "_imp", source_import)
+    facts = research._src_prospectus(ent, research.ResearchContext(question="What changed?"))
+    assert original.egress == "model_ok", "shared producer objects must not be mutated"
+    assert len(facts) == 1 and facts[0].egress == "local_only"
+    assert facts[0].fact_id == original.fact_id and facts[0].claim == claim
+    assert facts[0].citation == original.citation and facts[0].as_of == original.as_of
+    public = research.make_fact(
+        source="market.fixture",
+        family="market",
+        kind="price",
+        subject_key=ent.subject_key,
+        claim="Public fixture quote",
+        as_of="2026-10-26T14:00:00Z",
+        citation={"ref": "fixture"},
+        value=21.5,
+        unit="usd",
+    )
+    prompt = research.build_panel_prompt("What changed?", [ent], facts + [public])
+    assert "317" not in prompt and "private fixture position" not in prompt
+    assert "Public fixture quote" in prompt

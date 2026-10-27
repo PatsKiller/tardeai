@@ -1851,6 +1851,43 @@
           "anthropic_first": true,
           "anthropic_only": true
         },
+        "prospectus_fact_check": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.01,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
+        "prospectus_fact_check_oauth": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "on_health_unknown": "refuse",
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05
+        },
         "cio_ask_reanswer": {
           "primary": {
             "provider": "deepseek",

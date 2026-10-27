@@ -41,14 +41,17 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
     p = _json("config/anthropic_credit_policy.json")
     assert p["daily_cap_usd"] == "10"
     assert [{k: o[k] for k in ("usd", "from", "until")} for o in p["daily_cap_overrides"]] == [
-        {"usd": "25", "from": "2026-10-26", "until": "2026-10-29"}]
+        {"usd": "25", "from": "2026-10-26", "until": "2026-10-29"},
+        # operator 2026-10-26 "I rather finish right now": UTC day 10-26 only, last match wins
+        {"usd": "40", "from": "2026-10-26", "until": "2026-10-27"}]
     assert {k: p["renewal"][k] for k in ("mode", "monthly_allowance_usd", "renews_on_day")} == {
         "mode": "one_time", "monthly_allowance_usd": "190", "renews_on_day": None}
     assert p["admin_cost_verification"]["env_key_name"] == "ANTHROPIC_ADMIN_API_KEY"
     assert p["models"]["premium"] == "claude-fable-5-1" and p["models"]["long_form"] == "claude-opus-5-5"
-    assert p["process_tiers"] == {"prospectus_writer": "long_form", "prospectus_writer_premium": "premium"}
+    assert p["process_tiers"] == {"prospectus_writer": "long_form", "prospectus_writer_premium": "premium",
+                                  "prospectus_fact_check": "bulk"}  # data-quality gate read (Haiku), 2026-10-26
     assert p["premium_tier_processes"] == ["prospectus_writer_premium"]
-    assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "cio_ask_reanswer"}
+    assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "prospectus_fact_check", "cio_ask_reanswer"}
     assert p["thinking_controls"]["claude-fable-5-1"]["enabled"] == {"thinking": None, "output_config": {"effort": "high"}}
 
 
@@ -73,12 +76,12 @@ def test_fable_pricing_and_sonnet_cache_read_consistent_in_all_three_price_confi
                                                                 "cache_write_5m": 12.5, "cache_write_1h": 20.0, "output": 50.0}
 
 
-@pytest.mark.parametrize("now,cap", [(D26, "25.00"), (D28, "25.00"), (D29, "10.00"),
+@pytest.mark.parametrize("now,cap", [(D26, "40.00"), (D28, "25.00"), (D29, "10.00"),
                                      (datetime(2026, 10, 25, 23, tzinfo=timezone.utc), "10.00")])
 def test_daily_cap_override_window_is_utc_and_until_exclusive(tmp_path, now, cap):
     snap = CreditBook(tmp_path, policy()).snapshot(now=now)
     assert snap["daily_cap_usd"] == cap and snap["daily_cap_base_usd"] == "10.00"
-    assert snap["daily_cap_override_active"] is (cap == "25.00")
+    assert snap["daily_cap_override_active"] is (cap != "10.00")
 
 
 def test_override_lets_the_day_spend_past_the_base_cap_then_pauses(tmp_path):
@@ -140,11 +143,11 @@ def test_monitoring_snapshot_shows_config_and_admin_presence_only(tmp_path, monk
     monkeypatch.delenv("ANTHROPIC_ADMIN_API_KEY", raising=False)
     snap = mon.snapshot(tmp_path, policy=policy(), now=D26, configured=True)
     cfg = snap["credit_config"]
-    assert cfg["daily_cap_usd"] == "25.00" and cfg["daily_cap_override_active"] is True
+    assert cfg["daily_cap_usd"] == "40.00" and cfg["daily_cap_override_active"] is True
     assert cfg["renewal"]["mode"] == "one_time" and cfg["models"]["premium"] == "claude-fable-5-1"
     assert cfg["admin_verification"] == {"enabled": True, "key_name": "ANTHROPIC_ADMIN_API_KEY", "configured": False,
                                          "status": "SKIPPED_NO_KEY", "last": None}
-    assert "UTC daily $0.00/$25.00" in snap["digest_line"]
+    assert "UTC daily $0.00/$40.00" in snap["digest_line"]
     monkeypatch.setenv("ANTHROPIC_ADMIN_API_KEY", "sk-ant-admin-SYNTHETIC-never-printed")
     admin = mon.snapshot(tmp_path, policy=policy(), now=D26, configured=True)["credit_config"]["admin_verification"]
     assert admin["configured"] is True and admin["status"] == "NOT_RUN"

@@ -1103,10 +1103,22 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     return out
 
 
+def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """The latest Ticker Prospectus from the CIO memory (security_research_spine.latest_prospectus)."""
+    from dataclasses import replace
+
+    mod = _imp("lib.prospectus.cio_memory", "scripts.lib.prospectus.cio_memory")
+    # Stored prospectuses mix public analysis with personal position/plan prose.
+    # Keep their full cited facts available locally, but do not forward this
+    # unpartitioned source to any panel provider (AGENTS §2A).
+    return [replace(f, egress="local_only") for f in mod.ask_facts(ent, ctx)]
+
+
 def default_sources() -> list[SourceSpec]:
     return [
         SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
+        SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
         SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
         SourceSpec("internal.thesis", "internal", _src_thesis, 6.0),
         SourceSpec("internal.catalysts", "internal", _src_catalysts, 6.0),

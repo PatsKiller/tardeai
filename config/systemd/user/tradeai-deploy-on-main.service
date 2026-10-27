@@ -15,8 +15,9 @@ Environment=PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bi
 Environment=TRADEAI_PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=LLM_DEFER_OFFPEAK=1
+# CURRENT supplies immutable code; Git operations require the separate canonical checkout.
 # --apply: promote when decide() says proceed; STOP / lock / missing delegation still refuse.
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/deploy_on_main_poll.py --apply --json
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/deploy_on_main_poll.py --repo %h/trade-ai-v12-rebuild/trade-ai-v12-rebuild --apply --json
 Nice=10
 TimeoutStartSec=900
 

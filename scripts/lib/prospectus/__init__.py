@@ -35,7 +35,8 @@ DELTA_SECTION_IDS = ("summary_verdict", "catalysts_and_dates", "position_and_pla
 CHART_IDS = ("price_1y", "relative_performance", "revenue_eps_trend", "eps_surprise", "valuation_vs_peers",
              "analyst_targets", "position_pl")
 BLOCK_IDS = ("relative_performance", "peer_comparison", "estimates", "ownership_flows", "risk_technicals", "scenarios",
-             "macro_sensitivity", "sec_filings", "earnings_call", "options_sentiment_dividends", "fund_lookthrough")
+             "macro_sensitivity", "sec_filings", "earnings_call", "options_sentiment_dividends", "fund_lookthrough",
+             "stop_plan")
 
 
 def sections_for(scope: str) -> tuple[str, ...]:
