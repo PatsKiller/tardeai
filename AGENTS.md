@@ -7317,9 +7317,11 @@ verification and failure paging). It removes nothing and does not touch §0, §2
 - **7 Queue.** After CI is green on the exact head, the agent runs
   `scripts/request_pr_merge_approve.py --pr <N>` and stops (§25.10). The operator taps **Approve merge** on Telegram;
   the host adds `operator-merge`. Mergify queues inside its ET windows when the PR is not a draft, the four checks
-  are green, and that label is present — no GitHub Approve UI, no `merge-ready` label. Agent applies
-  `solo` / `shared-infra` at open when required; path rules still auto-hold broker/secrets. Agents never merge,
-  never add `operator-merge` by hand, and never release (§25.1). Full path: `docs/ops/AGENT_MERGIFY_HANDOFF.md`.
+  are green, and that label is present — no GitHub Approve UI, no `merge-ready` label. Until Mergify cutover is the
+  only merge path, `config/release_train_policy.json` still classifies every open PR (`eligible` /
+  `needs_operator` / `held` / `blocked`). Agent applies `solo` / `shared-infra` at open when required; path rules
+  still auto-hold broker/secrets. Agents never merge, never add `operator-merge` by hand, and never release
+  (§25.1). Full path: `docs/ops/AGENT_MERGIFY_HANDOFF.md`.
   *Cause (§20): operator 2026-10-26 — not a GitHub expert; Telegram tap is the go-signal, then automatic queue/merge.*
 - **8 Release.** Mergify squash-merges to `main` in an ET window; host `deploy_on_main` promotes CURRENT under STOP +
   GlobalReleaseLock + the standing **deploy** (promote-only) delegation (§25.10). Emergency remains operator host CLI

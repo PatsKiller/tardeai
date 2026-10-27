@@ -1,4 +1,7 @@
-"""Hermetic tests for Telegram → operator-merge Mergify go-signal (2026-10-26)."""
+"""Hermetic tests for Telegram → operator-merge Mergify go-signal (2026-10-26).
+
+COVERS = ["scripts/lib/pr_merge_telegram.py"]
+"""
 
 from __future__ import annotations
 
@@ -12,6 +15,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+
+COVERS = ["scripts/lib/pr_merge_telegram.py"]
 
 
 @pytest.fixture()
@@ -258,3 +263,37 @@ def test_wait_guard_and_apply_on_approve(store, monkeypatch):
     assert labeled == [55]
     rows = [r for r in pmt._load() if r.get("request_id") == rid]
     assert rows and rows[0]["status"] == "APPROVED"
+
+
+def test_send_interrupt_reaches_send_telegram(store, monkeypatch):
+    """FIRING: send_interrupt hands the operator message to send_telegram."""
+    pmt = store
+    captured: list[dict] = []
+
+    class FakeTA:
+        @staticmethod
+        def reset_last_message_ids() -> None:
+            return None
+
+        @staticmethod
+        def send_telegram(message, **kwargs):
+            captured.append({"message": message, **kwargs})
+            return True
+
+        @staticmethod
+        def last_message_ids():
+            return [4242]
+
+    monkeypatch.setitem(sys.modules, "telegram_alert", FakeTA())
+    ok, detail, ids = pmt.send_interrupt(
+        "Approve merge for #99?",
+        {"inline_keyboard": [[{"text": "Approve merge", "callback_data": "x"}]]},
+    )
+    assert ok is True
+    assert ids == ["4242"]
+    assert "message_id=4242" in detail
+    assert len(captured) == 1
+    assert captured[0]["priority"] == "P1"
+    assert captured[0]["dedupe_minutes"] == 0
+    assert captured[0]["producer"] == "pr_merge_telegram"
+    assert "Approve merge for #99" in captured[0]["message"]

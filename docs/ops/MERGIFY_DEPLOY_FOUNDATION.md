@@ -10,7 +10,7 @@ See also: docs/ops/AGENT_MERGIFY_HANDOFF.md · docs/ops/EMERGENCY_MANUAL_PROMOTE
 
 ## One-sentence version
 
-**Mergify merges ready green PRs after a Telegram Approve tap (host adds `operator-merge`) on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
+**Mergify merges green PRs after a Telegram Approve tap (host adds `operator-merge`) on a schedule; a thin host poller promotes exact `main` SHAs; emergency is operator host CLI + `release-write` naming the SHA.**
 
 ## Authority split
 
