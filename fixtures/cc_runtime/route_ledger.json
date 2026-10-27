@@ -255,6 +255,10 @@
       "path": "ops/jobs"
     },
     {
+      "url": "/v3/ops/incidents",
+      "path": "ops/incidents"
+    },
+    {
       "url": "/v3/approvals",
       "path": "approvals"
     },
@@ -449,6 +453,9 @@
     },
     {
       "route": "/v3/ops/jobs"
+    },
+    {
+      "route": "/v3/ops/incidents"
     },
     {
       "route": "/v3/approvals"

@@ -5,6 +5,10 @@ model, runner, Telegram, fixer and gh/git. Nothing here touches production state
 """
 from __future__ import annotations
 
+# Alarm firing coverage (tests/test_alarm_coverage.py): the P1 and the daily brief are injected below and asserted to
+# reach the Telegram chokepoint (scripts/telegram_alert.send_telegram, stubbed at the transport boundary).
+COVERS = ["scripts/lib/incident_supervisor.py", "scripts/incident_daily_brief.py"]
+
 import json
 import os
 import subprocess
@@ -500,3 +504,43 @@ def test_units_are_host_timers_and_supervisor_has_no_merge_or_promote():
     src = (ROOT / "scripts" / "lib" / "incident_supervisor.py").read_text()
     for bad in ('"merge"', "gh pr merge", "promote", "git push"):
         assert bad not in src.split('"""', 2)[-1], bad
+
+
+# ---------------------------------------------------------------- alarm firing (chokepoint reached)
+
+
+def _capture_send(monkeypatch):
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import scripts.telegram_alert as ta
+
+    sent = []
+
+    def fake_send(message, *a, **kw):
+        sent.append({"message": message, **kw})
+        return True
+
+    monkeypatch.setattr(ta, "send_telegram", fake_send)
+    return sent
+
+
+def test_p1_reaches_the_telegram_chokepoint_with_incident_id(tmp_path, monkeypatch):
+    sent = _capture_send(monkeypatch)
+    r = _watch_inc(tmp_path, watcher="deploy_stuck", title="main aaaa not live after 40 min", job="deploy-on-main")
+    stub = Stub([(json.dumps({"class": "needs_operator", "action": "operator: renew", "rationale": "r"}), "anthropic")])
+    deps = stub.deps()
+    deps.notify = S.default_notify  # the real notifier, down to send_telegram
+    S.cycle(d=_d(tmp_path), state_root=tmp_path / "state", release_root=tmp_path, cfg=_scfg(), deps=deps, apply=True,
+            now=T0, environ={}, root=ROOT)
+    assert len(sent) == 1 and sent[0]["priority"] == "P1" and r["id"] in sent[0]["message"]
+    assert sent[0]["producer"] == f"incident_supervisor:{r['id']}"
+    assert L.load_records(_d(tmp_path))[r["id"]]["escalations"][0]["delivered"] is True
+
+
+def test_daily_brief_reaches_the_telegram_chokepoint(tmp_path, monkeypatch):
+    sent = _capture_send(monkeypatch)
+    import importlib
+
+    brief = importlib.import_module("scripts.incident_daily_brief")
+    _open(_d(tmp_path), title="fixture one")
+    assert brief.main(["--apply"]) == 0
+    assert len(sent) == 1 and sent[0]["message"].startswith("Incidents ") and sent[0]["priority"] == "P2"
