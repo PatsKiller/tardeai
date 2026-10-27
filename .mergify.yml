@@ -27,7 +27,7 @@ pull_request_rules:
   - name: Queue default when CI green and operator-merge (Telegram Approve)
     conditions:
       - base=main
-      - draft=false
+      - -draft
       - label=operator-merge
       - check-success=cio-hardening
       - check-success=agent-governance
@@ -50,7 +50,7 @@ pull_request_rules:
   - name: Queue solo / shared-infra one-at-a-time
     conditions:
       - base=main
-      - draft=false
+      - -draft
       - label=operator-merge
       - check-success=cio-hardening
       - check-success=agent-governance
