@@ -183,12 +183,12 @@ def reader_for(sources: Any) -> Any:
 
 # ── pure computation ──────────────────────────────────────────────────────────────────────────────────────────────
 def fifo_open_lots(transactions: Iterable[dict]) -> dict[str, dict]:
-    """{raw account: {lots: [[qty, date, price]], transfers: n}} after FIFO over buys/sells (per account)."""
+    """{canonical account: {lots: [[qty, date, price]], transfers: n}} after FIFO over buys/sells (per account)."""
     ws = _wash()
     out: dict[str, dict] = {}
     rows = sorted((dict(r) for r in transactions if r), key=lambda r: (str(r.get("trade_date") or ""), str(r.get("trade_time") or "")))
     for r in rows:
-        acct = str(r.get("account") or "")
+        acct = _acct_key(r.get("account"))  # journal says schwab_roth_ira, the position store schwab_roth
         st = out.setdefault(acct, {"lots": [], "transfers": 0, "oversold": 0.0})
         act = str(r.get("action") or "").strip().lower()
         qty = _f(r.get("quantity")) or 0.0
@@ -375,7 +375,7 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
     for p in positions:
         raw = str(p.get("account") or "")
         name = account_name(raw)
-        tx_lots = [lot for lot in (fifo.get(raw) or {}).get("lots") or [] if lot[0] > 1e-9]
+        tx_lots = [lot for lot in (fifo.get(_acct_key(raw)) or {}).get("lots") or [] if lot[0] > 1e-9]
         fifo_qty = sum(lot[0] for lot in tx_lots)
         reconciled = bool(tx_lots) and abs(fifo_qty - (p.get("shares") or 0)) <= max(0.01, 0.001 * (p.get("shares") or 0))
         is_tax = taxable(raw)
@@ -402,7 +402,7 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
                "lots": lots[:12], "fact_ids": []}
         if not reconciled:
             why = (f"journal FIFO holds {fifo_qty:g} shares vs {p.get('shares'):g} in the position store"
-                   + ("; transfers on record (direction not recorded)" if (fifo.get(raw) or {}).get("transfers") else ""))
+                   + ("; transfers on record (direction not recorded)" if (fifo.get(_acct_key(raw)) or {}).get("transfers") else ""))
             row["lot_dating_note"] = why
             gaps.append(f"lot dates for {name}: {why}")
         at = p.get("as_of")
@@ -447,7 +447,8 @@ def build(reader: Any, bundle: Any, *, holding: dict | None, now: datetime, last
                 "origin": t.get("origin"), "sources_before_entry": src_types, "thesis_at_entry": thesis,
                 "setup": t.get("setup"), "journaled": bool(t.get("journaled")),
                 "journal": {k: jr.get(k) for k in ("realized_r", "lesson", "setup_family", "exit_type") if jr.get(k) is not None} or None,
-                "stopped_out": bool(exit_type and str(exit_type).lower() in STOP_EXITS),
+                "stopped_out": bool(exit_type and str(exit_type).lower() in STOP_EXITS) or any(
+                    f.get("fill_date") == cd and _acct_key(f.get("account")) == _acct_key(raw) for f in fills or []),
                 "term": _term(hold), "tax_character": "taxable" if is_tax else "tax-advantaged",
                 "entry_vs_52w_range_pct": range_position(s, od, _f(t.get("buy_price"))) if od else None,
                 "wash_sale": None, "while_held": [], "fact_ids": []}
@@ -700,10 +701,11 @@ def _lessons(trips: list[dict], facts: _Facts, sym: str) -> list[dict]:
             stat("hold_short", "average result of holds at or below the median length %", _mean(short), len(short), "%")
             stat("hold_long", "average result of holds longer than the median %", _mean(long_), len(long_), "%")
     stops = [t for t in closed if t.get("stopped_out")]
-    journaled = [t for t in closed if t.get("journaled")]
-    if journaled:
-        stat("stop_rate", "share of journaled trips that ended at a stop %", round(len(stops) / len(journaled) * 100, 1),
-             len(journaled), "%", "journal exit type hard_stop / trailing_stop")
+    if closed:
+        # a trip ended at a stop when the journal says so OR a broker stop fill is dated on its exit (stop_last_known
+        # matched to the journal sell); journal labels alone said "none" while fills were on record (audit 2026-10-26)
+        stat("stop_rate", "share of round trips that ended at a stop %", round(len(stops) / len(closed) * 100, 1),
+             len(closed), "%", "journal exit type hard_stop / trailing_stop, or a broker stop fill dated on the exit")
         if stops:
             stat("stop_result", "average result of stopped-out trips %", _mean([t["realized_pct"] for t in stops]), len(stops), "%")
     ordered = sorted(closed, key=lambda t: t.get("exit_date") or "")
