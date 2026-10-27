@@ -33489,6 +33489,239 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "yfinance-info-snapshot",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 05:40 ET (and on demand), refresh one raw yfinance .info payload per symbol the operator holds, watches (My Watchlist) or has a prospectus for, into yfinance_info_snapshot through its single writer, so the prospectus fund block (AUM, issuer, inception, index tracked, top holdings) and other consumers read the store through lib.data_broker.yfinance_info instead of calling Yahoo. Governed: due windows (20 h ok, 168 h negative cache), 300 fetches per run, 1 s pacing, stop on throttle.",
+        "business_function": "market-reference-data",
+        "source": "scripts/yfinance_info_snapshot_refresh.py; operator decision 2026-10-26 (Yahoo Finance feed switched on); CONSOLIDATION_PLAN.md §D.13"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/yfinance_info_snapshot_refresh.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_yfinance_info_snapshot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "Yahoo Finance via yfinance (Ticker.info, Ticker.funds_data)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "provider yfinance (config/data_source_authority.json providers.yfinance)"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json (lib.portfolio_positions.load_store)",
+          "kind": "store",
+          "direction": "read",
+          "source": "held universe"
+        },
+        {
+          "name": "operator_starred_symbols / watchlist_items / directives (lib.data_broker.watch_domains.membership_operator)",
+          "kind": "store",
+          "direction": "read",
+          "source": "My Watchlist universe"
+        },
+        {
+          "name": "data/prospectus/universe.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "prospectus universe (lib.prospectus.store.read_universe)"
+        },
+        {
+          "name": "yfinance_info_snapshot (Postgres)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "single writer lib/writers/yfinance_info_snapshot_writer.py; live runs only"
+        },
+        {
+          "name": "data/runtime/yfinance-info-snapshot_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "prospectus fund block (scripts/lib/prospectus/etf_profile.py yfinance_snapshot) and domains.r_yfinance",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "lib.data_broker.yfinance_info.get_info_batch"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no row, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/yfinance-info-snapshot_last.json ok_at advances on each live run and max(fetched_at) in yfinance_info_snapshot with it"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 72 h (weekday cadence; covers the weekend gap)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = snapshot rows written; 0 only with empty_reason nothing_due (every symbol fresh)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 72 h but younger than 96 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "rate_limited",
+          "text": "skipped_reasons.rate_limited > 0: Yahoo throttled the run; the rest waits for the next run"
+        },
+        {
+          "check": "over_run_cap",
+          "text": "skipped_reasons.over_run_cap > 0 on consecutive runs: the universe outgrew --max-symbols"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 96 h"
+        },
+        {
+          "check": "table_missing",
+          "text": "yfinance_info_snapshot absent (migration not applied) -> exit 1, failure_kind unconfigured"
+        },
+        {
+          "check": "provider_unavailable",
+          "text": "every due fetch throttled or failed, or the database is unreachable -> exit 1, failure_kind dependency_unavailable"
+        },
+        {
+          "check": "empty_universe",
+          "text": "no held, watch or prospectus symbol readable -> exit 1, failure_kind universe_empty_unexpected"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run wrote no row with an empty_reason other than nothing_due -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 72.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "weekday cadence: degraded beyond 72 h (a weekend), failed beyond 96 h",
+        "timeout_s": 1800,
+        "class": "ingest",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s; 300 fetches at 1 s pacing plus provider latency",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (reference data for the prospectus fund block; a stale snapshot degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A throttle heals on the next run; a missing table needs the operator's migration apply (docs/ops/YFINANCE_INFO_SNAPSHOT.md)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/yfinance-info-snapshot_last.json",
+        "verify": [
+          "python3 scripts/yfinance_info_snapshot_refresh.py --dry-run   # READ ONLY session; probes <= 3 symbols; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='yfinance-info-snapshot' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql -c \"SELECT status, count(*), max(fetched_at) FROM yfinance_info_snapshot GROUP BY 1\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/yfinance-info-snapshot_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger, the receipt and the table's fetched_at",
+        "expected_output_basis": "expected_output 2026-10-26 from scripts/yfinance_info_snapshot_refresh.py run(): produced = snapshot rows accepted by the writer; 0 is allowed only as nothing_due (every symbol inside its window). Fatal (exit 1): table missing = unconfigured; DB/provider unavailable = dependency_unavailable; empty universe = universe_empty_unexpected."
+      },
+      "review": {
+        "prepared_by": "agent draft (yfinance snapshot, feeds/yfinance-snapshot-20261026)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-26 (verbatim: \"Yahoo Finance feed \u2026 switched on: yes\"), relayed by the coordinator",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-09",
+      "state_note": "REVIEWED on the operator decision 2026-10-26 (Yahoo Finance feed switched on); agent-written 2026-10-26. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) needs the migration applied first (operator, docs/ops/YFINANCE_INFO_SNAPSHOT.md), then a registry PR.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "yfinance snapshot rows written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable",
+          "universe_empty_unexpected"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/yfinance-info-snapshot_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/yfinance-info-snapshot/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "yfinance_info_snapshot fetched_at"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "holdings-drift-monitor",
       "kind": "lane",
       "workflow_id": "dispatcher",

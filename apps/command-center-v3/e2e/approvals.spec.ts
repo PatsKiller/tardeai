@@ -64,9 +64,22 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
         const rows = items.filter(item => !kind || item.kind === kind).map(({ document: d, ...item }) => ({ ...item, document_sha: d.document_sha, version: d.version }))
         return respond({ items: rows, pending_count: 2, known_pending_count: 2, complete: true, gaps: [], as_of: '2032-04-12T14:00:00Z', recent: decisions, filtered_count: rows.length, offset: 0 })
       }
-      if (url.pathname === '/api/v2/governance/policy' && request.method() === 'GET') return respond({ source_sha: sourceSha, document_sha: documentSha, sections: ['0 · Rules', '28 · Operations'],
-        rules: [{ id: 'rule_1', section: url.searchParams.get('section') || '0 · Rules', text: 'An agent may propose a change. The operator decides.', plain: 'You make decisions; agents prepare proposals.', status: 'WRITTEN-only', reason: 'No evidence is attached to this version.', evidence: {} }],
-        counts: { ENFORCED: 0, TESTED: 0, 'WRITTEN-only': 1, VIOLATED: 0 }, total_rules: 1, section_total: 1, offset: 0, positions: feedback, audit: { state: 'NOT_MEASURED', last_audit: null } })
+      if (url.pathname === '/api/v2/governance/policy' && request.method() === 'GET') {
+        const chapter = url.searchParams.get('section') || ''
+        const documentView = url.searchParams.get('view') === 'document'
+        const rules = [
+          { id: 'rule_0', section: '0 · Rules', text: 'MBI_BEHAVIOR = 0.', plain: 'Agents never size or order.', status: 'WRITTEN-only', reason: 'Audit not run', evidence: {} },
+          { id: 'rule_1', section: '28 · Operations', text: 'An agent may propose a change. The operator decides.', plain: 'You make decisions; agents prepare proposals.', status: 'WRITTEN-only', reason: 'Audit not run', evidence: {} },
+        ]
+        const selected = chapter ? rules.filter(r => r.section.includes(chapter.replace(/\+/g, ' ')) || r.section.startsWith(chapter.split('·')[0].trim())) : rules
+        // Document view returns the full Rulebook; section filter still scopes when present.
+        const shown = documentView ? (chapter ? selected : rules) : selected.slice(0, 40)
+        return respond({ source_sha: sourceSha, document_sha: documentSha, policy_version: '24.0.0', last_reviewed: '2032-04-12T14:00:00Z',
+          sections: ['0 · Rules', '28 · Operations'], section_counts: { '0 · Rules': 1, '28 · Operations': 1 },
+          rules: shown, counts: { RULES: 2, ENFORCED: null, TESTED: null, 'WRITTEN-only': 2, VIOLATED: null },
+          counts_measured: false, total_rules: 2, section_total: shown.length, offset: 0, view: documentView ? 'document' : 'paged', positions: feedback,
+          audit: { state: 'NOT_MEASURED', last_audit: null, reason: 'The enforcement audit has not run against this policy version.' } })
+      }
       // The reader encodes ids (policy:42 -> policy%3A42) exactly as the server receives them; the API decodes.
       const item = items.find(item => decodeURIComponent(url.pathname) === '/api/v2/governance/approvals/' + item.id)
       if (item && request.method() === 'GET') return respond(item)
@@ -143,16 +156,23 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await visible(page.getByRole('heading', { name: 'Activation review fixture', exact: true }))
     await tap(page.getByRole('link', { name: 'Back to approvals', exact: false }))
     await tap(page.getByRole('link', { name: 'Open Rulebook', exact: true }))
-    await page.getByLabel('Rulebook section', { exact: true }).selectOption('28 · Operations')
+    await visible(page.getByTestId('rulebook-document'))
+    await tap(page.getByTestId('rulebook-chapter').filter({ hasText: '28 · Operations' }))
     await expect(page).toHaveURL(/section=28/)
-    await tap(page.getByRole('button', { name: 'Disagree → propose change', exact: true }))
+    await tap(page.getByTestId('rulebook-section').filter({ hasText: '28 · Operations' }).getByRole('button', { name: 'Propose a change', exact: true }))
     await page.getByLabel('Rule response comment').fill('Please clarify this operator-review rule.')
     await tap(page.getByRole('button', { name: 'Propose change in Approvals', exact: true }))
     await visible(page.getByRole('status').filter({ hasText: 'Your proposed change is now in Approvals.' }))
     await screenshot(21, 'proposal')
-    await tap(page.getByRole('button', { name: 'Question', exact: true }))
+    await tap(page.getByTestId('rulebook-add-section'))
+    await page.getByLabel('New section title').fill('29 · Observability standards')
+    await page.getByLabel('Rule response comment').fill('Add a chapter for observability SLOs and receipts.')
+    await tap(page.getByRole('button', { name: 'Propose section in Approvals', exact: true }))
+    await visible(page.getByRole('status').filter({ hasText: 'Proposed new section is now in Approvals.' }))
+    expect(feedback.some((row: { action?: string }) => row.action === 'add_section')).toBe(true)
+    await tap(page.getByTestId('rulebook-section').filter({ hasText: '28 · Operations' }).getByRole('button', { name: 'Ask about this section', exact: true }))
     await page.getByLabel('Rule response comment').fill('What counts as a reviewed proposal?')
-    await tap(page.getByRole('button', { name: 'Ask the CIO with this rule', exact: true }))
+    await tap(page.getByRole('button', { name: 'Ask the CIO with this section', exact: true }))
     await visible(page.getByRole('heading', { name: 'Question sent to the CIO', exact: true }))
     expect(questions[1].question).toContain(documentSha)
     expect(questions[1].question).toContain('An agent may propose a change.')

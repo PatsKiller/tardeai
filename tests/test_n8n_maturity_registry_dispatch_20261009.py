@@ -545,6 +545,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
         # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
         "jsonl-archive-rotate",
+        # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
+        # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
+        "yfinance-info-snapshot",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).

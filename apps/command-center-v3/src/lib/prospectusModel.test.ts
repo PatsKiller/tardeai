@@ -5,6 +5,8 @@ import {
   coverageTone, needsRewrite, peerCell, relWindows, rowStatus, verdictTiles,
   budgetView, chartRows, detailState, filePath, filterItems, mdBlocks, modelLabel, orderedSections, pageRoute, priceLines,
   scopeCounts, splitCitations, statusOf, targetRange, totals, whenEt, type ProspectusIndexItem,
+  cleanProse, coverageGroups, displayName, footnotes, isBlankValue, isFundDoc, monthLabel, monthTicks, relRows,
+  footnoteLabel, sectionFootnotes, splitFootnotes, type ProspectusDoc,
 } from './prospectusModel.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -88,6 +90,48 @@ eq('tile yield absent → null (not available yet)', tiles[4].value, null)
 eq('watch tile position', verdictTiles({ symbol: 'B', scope: 'watch' })[2].value, 'Not held')
 eq('server tiles win', verdictTiles({ symbol: 'B', blocks: { verdict_tiles: { verdict: { value: 'ADD', tone: 'success' } } } })[0].value, 'ADD')
 check('needsRewrite', needsRewrite({ stale: false, status: 'failed' }) && !needsRewrite({ status: 'ready' }))
+
+// ── v001.1 polish ──────────────────────────────────────────────────────────────────────────────────────────────────
+const fdoc: ProspectusDoc = {
+  symbol: 'ZETA', name: 'ZETA', scope: 'holding', verdict_line: 'HOLD — steady [F9].',
+  facts: [{ id: 'F2', label: 'Revenue growth %', value: 12, unit: '%', source: 'synthetic store', as_of: '2026-01-02' },
+    { id: 'F9', label: 'Last close', value: 10, source: 'synthetic prices' }, { id: 'F5', label: 'Margin', value: 30, unit: '%' }],
+  sections: [
+    { id: 'risks', title: 'Risks', body_md: 'Margin risk [F5] and growth [F2].' },
+    { id: 'summary_verdict', title: 'Summary', body_md: 'Growth [F2, F9] holds; [x] stays prose.' },
+  ],
+  blocks: { scenarios: { cases: [{ case: 'base', narrative: 'Flat [F77].' }] } },
+}
+const fns = footnotes(fdoc)
+eq('footnotes: order of first use (verdict, sections in reading order, blocks)', fns.map(f => [f.n, f.id]), [[1, 'F9'], [2, 'F2'], [3, 'F5'], [4, 'F77']])
+eq('footnote carries label, value, source, as-of', [fns[1].label, fns[1].value, fns[1].source, fns[1].as_of], ['Revenue growth %', '12%', 'synthetic store', '2026-01-02'])
+eq('unknown internal id still numbered, labelled honestly', fns[3].label, 'Source not recorded')
+const byId = new Map(fns.map(f => [f.id, f]))
+const parts = splitFootnotes('Growth [F2, F9] holds; [x] stays prose.', byId)
+eq('split: no raw F-id survives; group becomes one ref', parts.map(p => 'notes' in p ? p.notes.map(n => n.n) : p.text), ['Growth', [2, 1], ' holds; [x] stays prose.'])
+eq('split: muted "not reliable (…)"', splitFootnotes('Effect not reliable (t -0.4) here', byId).map(p => 'muted' in p && p.muted ? `~${p.text}` : 'text' in p ? p.text : ''), ['Effect ', '~not reliable (t -0.4)', ' here'])
+eq('section footnotes ascending', sectionFootnotes(fdoc.sections![0], byId).map(f => f.n), [2, 3])
+eq('presentation footnotes win', footnotes({ ...fdoc, presentation: { footnotes: [{ n: 1, id: 'F5', label: 'x' }] } } as ProspectusDoc).map(f => f.id), ['F5'])
+eq('cleanProse: empty bullets, doubled spaces, space before punctuation', cleanProse('- \nA  sentence , here .\n-  real item\n*'), 'A sentence, here.\n- real item')
+eq('display name: never the symbol twice', displayName(fdoc), '')
+eq('display name: presentation wins', displayName({ ...fdoc, presentation: { display_name: 'Zeta Income Fund' } } as ProspectusDoc), 'Zeta Income Fund')
+check('fund: fund_profile block → fund', isFundDoc({ symbol: 'Z', blocks: { fund_profile: { category: 'x' } } as never }) && !isFundDoc(fdoc))
+check('fund: presentation flag wins', !isFundDoc({ symbol: 'Z', blocks: { fund_profile: { category: 'x' } }, presentation: { is_fund: false } } as never))
+const cg = coverageGroups({ symbol: 'Z', source_coverage: { domains: [{ domain: 'quote_price', status: 'used' }, { domain: 'supervisor_heartbeats', status: 'not_applicable' }, { domain: 'news', status: 'empty' }, { domain: 'web', status: 'failed' }] } })
+eq('coverage: n/a hidden, grouped', [cg.counts, cg.hidden], [{ used: 1, stale: 0, failed: 1, missing: 1 }, 1])
+check('blank values', isBlankValue('— / —') && isBlankValue('— · —') && isBlankValue('n/a') && !isBlankValue('0.0%') && !isBlankValue('$1.00'))
+eq('chartRows: merged on sorted dates', chartRows([{ name: 'A', points: [['2026-01-03', 1], ['2026-01-05', 2]] }, { name: 'B', points: [['2026-01-02', 3], ['2026-01-04', 4]] }]).map(r => r.x), ['2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'])
+eq('chartRows: categorical order kept', chartRows([{ name: 'A', points: [['Q3', 1], ['Q1', 2]] }]).map(r => r.x), ['Q3', 'Q1'])
+eq('month label', [monthLabel('2026-01-14'), monthLabel('Q1')], ['Jan 26', 'Q1'])
+const days: string[] = []; for (let m = 1; m <= 12; m++) for (const d of ['03', '15']) days.push(`2025-${String(m).padStart(2, '0')}-${d}`)
+eq('month ticks: evenly spaced month starts', monthTicks(days, 6).map(monthLabel), ['Jan 25', 'Mar 25', 'May 25', 'Jul 25', 'Sep 25', 'Nov 25'])
+eq('rel rows: empty series hidden', relRows({ series: { '1Y': [{ name: 'A', points: [['2026-01-02', 100]] }, { name: 'B', points: [['2026-01-02', null]] }] } }, '1Y').names, ['A'])
+const fundTiles = verdictTiles({ symbol: 'Z', blocks: { fund_profile: { dividend_yield_pct: 3.24, expense_ratio_pct: 0.06 } } as never })
+eq('yield tile reads the fund profile', fundTiles[4].value, '3.24% · 0.06%')
+const stopTiles = verdictTiles({ symbol: 'Z', scope: 'holding', blocks: { stop_plan: { recommended: { level: 9.5 }, broker: { level: 9.8, state: 'resting', other_accounts: 'Acct B: filled $10.10' } }, verdict_tiles: { stop: { value: '$9.80', sub: 'resting · house $9.50 · other accounts: Acct B: filled $10.10' } } } })
+eq('stop tile concise; other accounts not in the tile', [stopTiles[3].value, stopTiles[3].sub], ['$9.80 · resting', 'house $9.50'])
+eq('footnote label compresses runs', [footnoteLabel([117, 118, 119, 120, 121]), footnoteLabel([3, 4]), footnoteLabel([1, 2, 3, 7])], ['117–121', '3,4', '1–3,7'])
+eq('my history cites come right after the verdict', footnotes({ symbol: 'Z', verdict_line: 'x [F1]', sections: [{ id: 'summary_verdict', title: 's', body_md: 'y [F3]' }], blocks: { scenarios: { cases: [{ case: 'base', narrative: 'z [F4]' }] }, my_history: { writer_note: { summary: 'w [F2]' } } } as never }).map(f => f.id), ['F1', 'F2', 'F3', 'F4'])
 
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

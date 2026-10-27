@@ -7,7 +7,7 @@ symbol_profiles, analyst targets, the sector/industry momentum runtime files). A
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import math
 import statistics
 from typing import Any, Iterable, Optional
@@ -64,15 +64,42 @@ def _f(v: Any) -> Optional[float]:
     return out if math.isfinite(out) else None
 
 
+_HOLIDAYS: dict[int, set] = {}
+
+
+def _nyse_holidays(year: int) -> set:
+    if year not in _HOLIDAYS:
+        try:
+            try:
+                from lib.cio_market_session import nyse_holidays  # type: ignore
+            except ImportError:
+                from scripts.lib.cio_market_session import nyse_holidays  # type: ignore
+            _HOLIDAYS[year] = set(nyse_holidays(year))
+        except Exception:  # noqa: BLE001 - weekends are still excluded without the holiday table
+            _HOLIDAYS[year] = set()
+    return _HOLIDAYS[year]
+
+
+def is_session(day: Any) -> bool:
+    """True for an NYSE session date. ``ticker_prices`` also holds Saturday/Sunday and holiday rows (a quote copied
+    forward by the Finviz and market-quote writers): they are not sessions, and counting them made "1W = 5 bars" and
+    "1Y = 252 bars" span less than a week / a year and flattened volatility (accuracy audit 2026-10-26)."""
+    try:
+        d = day if isinstance(day, date) else date.fromisoformat(str(day)[:10])
+    except (TypeError, ValueError):
+        return False
+    return d.weekday() < 5 and d not in _nyse_holidays(d.year)
+
+
 def _series(bars: Iterable[Any]) -> list[tuple[str, float]]:
-    out = []
+    """Sorted (date, close) for NYSE sessions only, one close per date (the last row for a date wins)."""
+    by_day: dict[str, float] = {}
     for b in bars or []:
         d, c = (b.get("price_date"), b.get("close")) if isinstance(b, dict) else (b[0], b[1])
         c = _f(c)
-        if d and c and c > 0:
-            out.append((str(d)[:10], c))
-    out.sort()
-    return out
+        if d and c and c > 0 and is_session(d):
+            by_day[str(d)[:10]] = c
+    return sorted(by_day.items())
 
 
 def _far(a: float, b: float, factor: float = SERIES_LEVEL_FACTOR) -> bool:
@@ -150,6 +177,12 @@ def unreliable_reason(metric: str, q: dict) -> Optional[str]:
     return why
 
 
+#: Calendar span of each window. A window starts at the last session on or before (last date − span); a series
+#: that begins up to WINDOW_START_GRACE_DAYS after that point still covers the window (its first session is used).
+WINDOW_DAYS = {"1W": 7, "1M": 30, "3M": 91, "1Y": 365, "3Y": 1095}
+WINDOW_START_GRACE_DAYS = 4
+
+
 def _start_index(s: list[tuple[str, float]], window: str) -> Optional[int]:
     if not s:
         return None
@@ -158,8 +191,17 @@ def _start_index(s: list[tuple[str, float]], window: str) -> Optional[int]:
         idx = next((i for i, (d, _) in enumerate(s) if d[:4] == year), None)
         # YTD needs the prior year's last close; a series that starts this year has no YTD figure.
         return idx - 1 if idx else None
-    n = WINDOWS[window]
-    return len(s) - 1 - n if len(s) > n else None
+    end = date.fromisoformat(s[-1][0])
+    target = end - timedelta(days=WINDOW_DAYS[window])
+    idx = None
+    for i, (d, _) in enumerate(s):
+        if d <= target.isoformat():
+            idx = i
+        else:
+            break
+    if idx is None and date.fromisoformat(s[0][0]) <= target + timedelta(days=WINDOW_START_GRACE_DAYS):
+        idx = 0
+    return idx if idx is not None and idx < len(s) - 1 else None
 
 
 def window_return(s: list[tuple[str, float]], window: str) -> Optional[float]:
@@ -249,6 +291,10 @@ def etf_peer_group(sym: str, groups: dict | None) -> tuple[Optional[str], list[s
 def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None = None, n: int = 5,
                     etf_groups: dict | None = None) -> dict:
     mine = cache.get(sym) if isinstance(cache.get(sym), dict) else None
+    if (not mine or not mine.get("industry")) and etf_peer_group(sym, etf_groups)[0]:
+        # a fund the Finviz cache does not carry, but with a configured category peer group: compare the peers anyway
+        # (the subject row shows what the house holds for it, usually nothing) instead of an empty table
+        mine = {"industry": "Exchange Traded Fund", **(mine or {})}
     if not mine or not mine.get("industry"):
         return {"rows": [], "median": None, "gaps": ["peers: no industry for this symbol in the enrichment cache"]}
     consensus = consensus or {}

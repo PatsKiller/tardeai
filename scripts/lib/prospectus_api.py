@@ -25,6 +25,7 @@ if _ROOT not in _sys.path:
     _sys.path.insert(0, _ROOT)
 
 from scripts.lib.prospectus import load_config, store  # noqa: E402
+from scripts.lib.prospectus import presentation  # noqa: E402
 
 PREFIX = "/api/v2/prospectus"
 SERVE_PROXY = "serve_proxy"
@@ -134,7 +135,7 @@ def index_payload(root: Path, *, now: datetime | None = None, operator: bool = F
                 status = "ready" if e.get("version") else "missing"
         due = e.get("next_due")
         stale = bool(e.get("version")) and bool(due) and str(due) <= now.isoformat()
-        items.append({"symbol": sym, "name": e.get("name") or sym,
+        items.append({"symbol": sym, "name": presentation.index_name(sym, e.get("name")),
                       "scope": "holding" if (scopes.get(sym) or e.get("scope")) == "holding" else "watch",
                       "version": e.get("version"), "generated_at": e.get("generated_at"), "model": e.get("model"),
                       "cost_usd": e.get("cost_usd"), "status": status, "stale": stale, "next_due": due,
@@ -210,6 +211,8 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
     doc["gate_reasons"] = (doc.get("gate") or {}).get("reasons") or entry.get("gate_reasons") or []
     if entry.get("status") == "blocked_data":  # a newer attempt was blocked on data; the stored version predates it
         doc["latest_attempt"] = {"status": "blocked_data", "gate_reasons": entry.get("gate_reasons") or []}
+    # Read-time presentation (footnote numbers, display name, fund layout, relevant coverage); never stored.
+    doc["presentation"] = presentation.present(doc)
     return 200, doc
 
 

@@ -57,12 +57,20 @@ DEFAULTS: dict[str, Any] = {
     "beta_range": [-3.0, 5.0],
     "vol_max_pct": 200.0,
     "pe_max": 1000.0,
-    "market_cap_b_max": 5000.0,       # above $5T the value is almost certainly $M recorded as $B
+    "market_cap_b_max": 50000.0,      # above $50T the value is almost certainly $M recorded as $B (was $5T: two
+                                      # mega-caps crossed it in 2026 and their real caps were marked not reliable)
     "market_cap_peer_ratio_max": 1000.0,
     "cross_source_abs_pp": 10.0,      # house vs Finviz performance: flag beyond max(abs pp, rel × |finviz|)
     "cross_source_rel": 0.25,
     "peer_min_rows": 3,
     "post_write_max_unmatched": 3,
+    # accuracy checks (accuracy audit 2026-10-26)
+    "dividend_rel_tol": 0.25,         # annual dividend $/share vs the trailing year actually paid
+    "fundamental_max_age_days": 30,   # fundamental_data rows older than this (or undated) are not reliable
+    "snapshot_price_rel_tol": 0.03,   # technical snapshot price vs the house last close
+    "position_mv_rel_tol": 0.01,      # market value vs shares x the report's own price
+    "position_pl_abs_usd": 1.0,       # unrealized P/L vs market value - cost
+    "quote_close_rel_max": 0.2,       # latest quote vs last close
     "post_write_rel_tol": 0.006,
     "ai": {"enabled": True, "max_tokens": 1200, "timeout_s": 60, "max_packet_chars": 18000,
            "est_input_tokens": 5500, "est_output_tokens": 600},
@@ -427,7 +435,93 @@ def check_coverage(packet: dict, s: dict) -> list[dict]:
     return out
 
 
-CHECKS = (check_coverage, check_series, check_units, check_cross_source, check_peers, check_sources)
+def _num(f: Optional[dict]) -> Optional[float]:
+    return _f((f or {}).get("value"))
+
+
+def check_accuracy(packet: dict, s: dict) -> list[dict]:
+    """Defect classes found by the 2026-10-26 accuracy audit (``accuracy_audit.py`` recomputes them from the primary
+    stores after the fact; these are the packet-only forms, so the same defect can never reach a writer silently)."""
+    out, facts = [], packet["facts"]
+    blocks = packet.get("blocks") or {}
+    # 1. annual dividend vs what was actually paid in the trailing year (stale vendor rows carried 3-5x the real figure)
+    dps = _one(facts, "Annual dividend per share")
+    ref = _one(facts, "Fund distributions, trailing 12 months ($/share)") or \
+        _one(facts, "Dividends paid, trailing year to the latest ex-date ($/share)")
+    if dps and ref and ref["value"] > 0 and abs(dps["value"] - ref["value"]) / ref["value"] > float(s["dividend_rel_tol"]):
+        out.append(_finding("dividend_cross_source", SOFT, f"annual dividend {dps['value']:g} $/share vs {ref['value']:g} "
+                            f"paid in the trailing year ({ref['label']})", facts=[dps["id"]],
+                            blocks=[["options_sentiment_dividends", "dividend", "annual_per_share"]], repair="dividends"))
+    # 2. stale or undated fundamental_data rows (a six-month-old 52-week high beside the house 1-year high)
+    now = _d(packet.get("as_of")) or datetime.now(timezone.utc).date()
+    lim = int(s["fundamental_max_age_days"])
+    stale = [f["id"] for f in facts if str(f.get("source") or "").startswith("fundamental_data")
+             and (not _d(f.get("as_of")) or (now - _d(f["as_of"])).days > lim)]
+    if stale:
+        out.append(_finding("stale_fundamental_rows", SOFT, f"{len(stale)} fundamental_data fact(s) undated or older than "
+                            f"{lim} days", facts=stale, repair="fundamentals"))
+    # 3. technical snapshot from another session
+    last = _num(_one(facts, "Last close"))
+    snap = _one(facts, "Technical snapshot: price")
+    if snap and last and abs(snap["value"] / last - 1) > float(s["snapshot_price_rel_tol"]):
+        ids = [f["id"] for f in facts if str(f.get("label") or "").startswith("Technical snapshot:")]
+        out.append(_finding("stale_technical_snapshot", SOFT, f"technical snapshot price {snap['value']:g} vs last close "
+                            f"{last:g}: the snapshot is from another session", facts=ids, repair="technicals"))
+    # 4. two price stores that disagree wildly (e.g. a delisted name whose close and quote come from different feeds)
+    quote = _num(_one(facts, "Latest quote"))
+    if quote and last and max(quote, last) / min(quote, last) - 1 > float(s["quote_close_rel_max"]):
+        out.append(_finding("quote_close_contradiction", SOFT, f"latest quote {quote:g} vs last close {last:g}",
+                            facts=[f["id"] for f in facts if f.get("label") in ("Latest quote", "Last close")],
+                            repair="quote_price"))
+    # 5. position arithmetic (shares x price, P/L = value - cost, P/L % = P/L / cost)
+    if packet.get("scope") == "holding":
+        sh, mv = _num(_one(facts, "Shares held (all accounts)")), _num(_one(facts, "Market value $"))
+        avg, upl = _num(_one(facts, "Average cost $")), _num(_one(facts, "Unrealized P/L $"))
+        mark = quote or last
+        bad = []
+        if sh and mv is not None and mark and abs(mv - sh * mark) > float(s["position_mv_rel_tol"]) * max(sh * mark, 1.0):
+            bad.append(f"market value {mv:,.2f} vs shares x price {sh * mark:,.2f}")
+        if sh and mv is not None and avg is not None and upl is not None and \
+                abs((mv - avg * sh) - upl) > max(float(s["position_pl_abs_usd"]), 0.0005 * avg * sh):
+            bad.append(f"P/L {upl:,.2f} vs value - cost {mv - avg * sh:,.2f}")
+        if bad:
+            ids = [f["id"] for f in facts if f.get("kind") == "position" and f.get("label") in
+                   ("Market value $", "Unrealized P/L $", "Unrealized P/L %")]
+            out.append(_finding("position_arithmetic", SOFT, "; ".join(bad), facts=ids, repair="positions_store"))
+    # 6. a stop shown twice with two levels (position facts vs the stop plan's broker rows)
+    plan = {a.get("account"): _f(a.get("level")) for a in ((blocks.get("stop_plan") or {}).get("broker") or {}).get("accounts") or []}
+    for f in facts:
+        m = re.match(r"Recorded protective stop level \((.+?), ", str(f.get("label") or ""))
+        if m and m.group(1) in plan and plan[m.group(1)] is not None and _f(f.get("value")) is not None \
+                and abs(plan[m.group(1)] - f["value"]) > 1e-6:
+            out.append(_finding("stop_level_contradiction", SOFT, f"stop for {m.group(1)}: {f['value']:g} in the position "
+                                f"facts vs {plan[m.group(1)]:g} in the stop plan", facts=[f["id"]], repair="positions_store"))
+    # 7. non-session bars in the price series (weekend / holiday quote copies distort bar-count windows)
+    try:
+        from .blocks import is_session
+    except ImportError:  # pragma: no cover - module loaded outside the package
+        is_session = None
+    if is_session is not None:
+        off = [d for d, _ in packet.get("series") or [] if not is_session(d)]
+        if off:
+            out.append(_finding("non_session_bars", SOFT, f"{len(off)} non-session (weekend/holiday) bar(s) in the price "
+                                f"series, e.g. {off[0]}", blocks=[["relative_performance", "returns"]], repair="quote_price"))
+    # 8. a fund profile that lost the look-through table it sits beside
+    fp, lt = blocks.get("fund_profile") or {}, blocks.get("fund_lookthrough") or {}
+    if blocks.get("fund_profile") is not None and not fp.get("top_holdings") and lt.get("top_holdings"):
+        out.append(_finding("fund_lookthrough_dropped", SOFT, "fund profile shows no top holdings while the look-through "
+                            "block lists them", blocks=[["fund_profile", "top_holdings"]], repair="fund_lookthrough"))
+    # 9. open lots without P/L although value and cost are known
+    for i, lot in enumerate(((blocks.get("my_history") or {}).get("open_lots") or [])):
+        if lot.get("unrealized_usd") is None and lot.get("market_value") and lot.get("avg_cost") and lot.get("shares"):
+            out.append(_finding("open_lot_pl_missing", SOFT, f"open position in {lot.get('account')} has no unrealized "
+                                "P/L although value and cost are known", blocks=[["my_history", "open_lots", i, "unrealized_usd"]],
+                                repair="positions_store"))
+            break
+    return out
+
+
+CHECKS = (check_coverage, check_series, check_units, check_cross_source, check_peers, check_sources, check_accuracy)
 
 
 def deterministic(packet: dict, settings: dict | None = None) -> dict:

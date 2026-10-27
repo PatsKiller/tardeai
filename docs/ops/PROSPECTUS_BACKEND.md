@@ -65,7 +65,35 @@ Inputs are read from these stores:
 - Derived numbers are supplied to the model as facts: upside to the mean target, 1-year change, distance to stop, and P/L %.
 - Fresh web context comes through the governed `search_router` as caller `prospectus_writer`, class `research`. It is used for holdings only, at 2 searches per holding.
 - The job has its own allowance of at most 40 searches per UTC day, tracked in `data/prospectus/search_budget.json`.
-- The house has no revenue/EPS history and no peer list. `revenue_eps_trend` therefore charts the growth rates the house does hold, and "peers" means the industry cohort.
+- The house has no revenue/EPS time series for charts and no peer list. `revenue_eps_trend` therefore charts the growth rates the house does hold, and "peers" means the industry cohort. The latest two periods of each SEC XBRL statement line (`sec_xbrl`: revenue, operating income, net income, diluted EPS and others) are supplied as cited facts.
+
+## Accuracy rules (audit 2026-10-26)
+
+- **Sessions only.** A price series holds NYSE sessions only (`blocks.is_session`). `ticker_prices` also stores
+  Saturday, Sunday and holiday rows, which are quotes copied forward. Return windows are calendar spans: 1W is 7 days,
+  1M is 30, 3M is 91, 1Y is 365 and 3Y is 1095. A window starts at the last session on or before that date.
+- **Dividends.** `ticker_dividend_data.annual_dividend_per_share` is withheld when it differs by more than 25% from
+  what was actually paid in the trailing year. The reference is the fund profile's trailing 12 months, or else the
+  `ticker_dividends` ex-dates (`domains.dividend_guard`).
+- **Fundamentals.** `fundamental_data` rows carry `fetched_at` as their `as_of`. Rows older than 30 days are withheld,
+  and the gap names them.
+- **Technical snapshot.** The snapshot's own price is never offered, because the house close is the price of record.
+  A zero `target` or `change_pct` is a placeholder and is dropped.
+- **Stop fills.** A filled stop is dated by the matching journal sell. `stop_last_known.captured_at` is the time of the
+  read snapshot, not the time of the fill.
+- **Unmatched sells.** Sells that the round trips do not cover are named in `my_history.unmatched_sells` and in the
+  gaps. These are typically lots that arrived by transfer and have no basis.
+- **Macro calendar.** The reader takes `MacroCalendar@v1` (`dates.*.events` and `fomc_decisions`). The Fed funds rate
+  is read from the house series `DFF`.
+- **Fund block (2026-10-27).** The header uses the look-through fund name when the Finviz cache has no company
+  name. The fund profile carries the asset class and last reconstitution, distribution growth (annualized, trailing
+  year against 2 or 3 years earlier, from `ticker_dividends`) and `book_overlap`: the share of the fund's top-holding
+  weight the book already owns, directly or through another held fund. AUM, index, issuer, inception, holdings count
+  and premium/discount stay a named gap until the `yfinance_info_snapshot` domain has a producer.
+- **Journal accounts.** The FIFO and the position store are matched by canonical account key. A trip counts as
+  stopped out when the journal says so or a broker stop fill is dated on its exit.
+- **Rewrite trigger.** `stop_event` rewrites a held name when its resting stop levels differ from the stored report,
+  and `position_closed` rewrites one that is no longer held.
 
 ## Every registered source, and the institutional blocks
 

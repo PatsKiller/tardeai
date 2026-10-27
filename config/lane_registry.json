@@ -18472,6 +18472,53 @@
       }
     },
     {
+      "lane_id": "yfinance-info-snapshot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/yfinance_info_snapshot_refresh.py",
+        "cadence": "40 5 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-26",
+      "state_reason": "Operator decision 2026-10-26 (verbatim: \"Yahoo Finance feed … switched on: yes\"); store approved 2026-10-10 (CONSOLIDATION_PLAN.md §D.13, registry domain yfinance_info_snapshot). The owner lane the registry row said was missing (§D.12): n8n-native dispatcher ingest lane at stage SHADOW, weekdays 05:40 ET: the stage clamp runs it --dry-run (reads the universe and the store on a READ ONLY session, probes at most 3 symbols from yfinance, prints, writes nothing). No cron line exists or is added (cron freeze). Canary (--apply) is a later registry PR after the migration is applied and the owner marks the health contract REVIEWED.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/yfinance-info-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/yfinance_info_snapshot_refresh.py run() writes the LaneRunReceipt (v2 output fields) on --apply (tests/test_yfinance_info_snapshot_lane_20261026.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_yfinance_info_snapshot_lane_20261026.py (universe = holdings + My Watchlist + prospectus universe through the ticker guard; due windows and the negative cache; run cap, pacing, throttle stop; dry run writes nothing; apply writes through the single writer and the v2 receipt; missing table = unconfigured; registry/allowlist/contract pins; closure: no broker/order/sender/model).",
+      "review_by": "2026-11-09",
+      "note": "Universe: non-cash holdings with shares > 0 (lib.portfolio_positions.load_store), the operator's My Watchlist (lib.data_broker.watch_domains.membership_operator) and the prospectus universe (data/prospectus/universe.json), each through lib.provider_ticker_guard (profile quote). A symbol is fetched only when its stored snapshot is older than 20 h (ok) or 168 h (no_profile/error, the negative cache); at most 300 fetches per run, sequential, 1 s apart; a provider throttle stops the run (rate_limited). Funds also carry _house_fund (funds_data top holdings, description, overview). Writes only through lib.writers.yfinance_info_snapshot_writer (single declared writer). Needs migrations/2026_10_10_yfinance_info_snapshot.sql applied (operator); without the table the run exits 1 unconfigured. No broker, no sender, no model. Exit 0 = run completed (rows written or nothing due); 1 = table missing / DB or provider unavailable / empty universe.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "40 5 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 6,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "holdings-drift-monitor",
       "owner": "platform",
       "scheduler": {

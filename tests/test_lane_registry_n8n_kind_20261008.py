@@ -408,6 +408,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-23 jsonl-archive-rotate: n8n-native hygiene dispatcher row at shadow, weekdays 16:45
         # dry_run (no host line; tests/test_jsonl_archive_rotate_20261023.py).
         "jsonl-archive-rotate",
+        # 2026-10-26 yfinance-info-snapshot: n8n-native ingest dispatcher row at shadow, weekdays 05:40 dry_run
+        # (no host line; tests/test_yfinance_info_snapshot_lane_20261026.py).
+        "yfinance-info-snapshot",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     ask_native={"cio-ask-lifecycle": "0 * * * *", "cio-ask-material-events": "*/5 * * * *"}

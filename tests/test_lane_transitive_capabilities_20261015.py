@@ -62,6 +62,13 @@ DATA_INTEGRITY_MONITORS_20261018 = frozenset({"n8n-data-plausibility-audit", "n8
 #: and the host timer prospectus-deliver sends. Reviewed addition under the DD01 ruling, not a ruling widening.
 PROSPECTUS_BUILD_20261026 = frozenset({"prospectus-build"})
 
+#: 2026-10-26 yfinance snapshot owner lane (operator: "Yahoo Finance feed … switched on: yes"): the entry
+#: scripts/yfinance_info_snapshot_refresh.py reads the operator's My Watchlist through
+#: lib.data_broker.watch_domains.membership_operator, whose module holds a LAZY positions_sync import (inside
+#: _store_freshness, never called by membership_operator) -> schwab_transport. Ingest of market reference data; no
+#: broker call, no direct_sender. Reviewed addition, not a ruling widening.
+YFINANCE_SNAPSHOT_20261026 = frozenset({"yfinance-info-snapshot"})
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -137,7 +144,8 @@ FROZEN_20261015 = {
     )
     | OPERATOR_RULING_DD01_20261015
     | DATA_INTEGRITY_MONITORS_20261018
-    | PROSPECTUS_BUILD_20261026,
+    | PROSPECTUS_BUILD_20261026
+    | YFINANCE_SNAPSHOT_20261026,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -214,7 +222,8 @@ FROZEN_20261015 = {
     )
     | OPERATOR_RULING_DD01_20261015
     | DATA_INTEGRITY_MONITORS_20261018
-    | PROSPECTUS_BUILD_20261026,
+    | PROSPECTUS_BUILD_20261026
+    | YFINANCE_SNAPSHOT_20261026,
 }
 
 

@@ -4493,6 +4493,35 @@
       "source": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints the rotation plan and writes nothing. Removal of archive segments is never an argv here (AGENTS.md §23.14, §24.12)."
     },
     {
+      "lane_id": "yfinance-info-snapshot",
+      "command": [
+        "$PY",
+        "scripts/yfinance_info_snapshot_refresh.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_yfinance_info_snapshot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/yfinance-info-snapshot_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the producer reads the holdings store, the watch membership and the prospectus universe through house libraries; the only credential names read are DB_* for its own session (READ ONLY on a dry run). yfinance needs no key. No broker, sender or model name.",
+      "env_evidence": "scripts/yfinance_info_snapshot_refresh.py pg_connect reads DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD (process env; no env-file loader); state_root() and lib/persistent_overlay read TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT; TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "Operator decision 2026-10-26 (verbatim: \"Yahoo Finance feed … switched on: yes\"); store approved 2026-10-10 (CONSOLIDATION_PLAN.md §D.13, registry domain yfinance_info_snapshot). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads, probes <= 3 symbols and prints only. Canary live_arg (separate PR, after the migration is applied): [\"--apply\"]."
+    },
+    {
       "lane_id": "cio-ask-research",
       "command": [
         "$PY",

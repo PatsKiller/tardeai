@@ -1851,6 +1851,25 @@
           "anthropic_first": true,
           "anthropic_only": true
         },
+        "prospectus_accuracy_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 600000,
+          "cost_ceiling_usd": 1.0,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
         "prospectus_fact_check": {
           "primary": {
             "provider": "deepseek",

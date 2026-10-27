@@ -12,7 +12,10 @@ for a fund) and the macro "effect" column was blank. This module fixes those gap
   Facts already written for the vendor-sector ETF keep their ids; their label says they are the vendor-sector ETF.
 * **Fund profile** — expense ratio, distributions and yield (``symbol_profiles``), dividend history
   (``ticker_dividends``), top holdings and weights (``fund_lookthrough.json`` / ``fund_holdings_cache.json``), the
-  analyst look-through (``etf_analyst_enrich``). AUM is not in the house; it says so.
+  analyst look-through (``etf_analyst_enrich``). AUM, issuer, inception date and the index tracked come from the
+  yfinance snapshot store (``yfinance_info_snapshot`` via ``lib.data_broker.yfinance_info``; producer lane
+  ``yfinance-info-snapshot``); its fund top holdings fill in only when the house look-through has none. Without a
+  fresh ``ok`` snapshot (table absent, row missing, stale) every one of these is a named gap, as before.
 * **House scenarios** when no analyst target exists: a ±1σ 12-month lognormal band from the 1Y volatility of daily
   closes, method labelled; "Scenario analysis, not an order".
 * **Macro sensitivity** for every name: OLS of the ticker's returns on changes in the 10-year yield (daily), CPI
@@ -23,11 +26,14 @@ Pure computation over the ``sources`` readers; no provider call, no write. READ_
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import json
 import math
+import re
 import statistics
 from typing import Any, Callable, Optional
+
+from . import blocks as bk
 
 CONFIG_REL = "config/prospectus_etf_categories.json"
 SCENARIO_FOOTER = "Scenario analysis, not an order or a recommendation to trade."
@@ -54,14 +60,7 @@ def load_categories(root=None) -> dict:
 
 
 def _series(bars: Any) -> list[tuple[str, float]]:
-    out = []
-    for b in bars or []:
-        d, c = (b.get("price_date"), b.get("close")) if isinstance(b, dict) else (b[0], b[1])
-        c = _f(c)
-        if d and c and c > 0:
-            out.append((str(d)[:10], c))
-    out.sort()
-    return out
+    return bk._series(bars)  # NYSE sessions only (weekend / holiday quote copies dropped), one close per date
 
 
 # ── reads ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -99,6 +98,57 @@ def dividend_history(sources: Any, sym: str, limit: int = 8) -> list[dict]:
     except Exception:  # noqa: BLE001
         return []
     return [{"ex_date": str(r.get("ex_date"))[:10], "amount": _f(r.get("amount"))} for r in rows if _f(r.get("amount"))]
+
+
+YF_SOURCE = "yfinance_info_snapshot"
+YF_STALE_DAYS = 30  # config/prospectus.json domains.yfinance_info_snapshot.stale_days
+_INDEX_NAME = (r"((?:[A-Z][\w&.\-']*|\d[\w.\-]*)(?:\s+(?:[A-Z][\w&.\-']*|\d[\w.\-]*|of|and|&))*\s+Index)\b")
+_INDEX_RE = re.compile(r"\b(?:track|tracks|tracking|replicate|replicates|correspond\w*)\b[^.]*?" + _INDEX_NAME)
+_INDEX_ANY_RE = re.compile(_INDEX_NAME)
+
+
+def yfinance_snapshot(sources: Any, sym: str, *, now: datetime | None = None, stale_days: float = YF_STALE_DAYS) -> dict:
+    """{payload, as_of} from the yfinance snapshot store when an ``ok`` row is fresh; else {gap: why}. Never raises:
+    a missing table (migration not applied), an offline source or a stale row degrade to the existing gaps."""
+    q = _query(sources)
+    if q is None:
+        return {"gap": "no database"}
+    try:
+        from .inputs import _plib
+        out = _plib("data_broker.yfinance_info").get_info_batch(q, [sym], max_age_hours=float(stale_days) * 24, now=now)
+    except Exception as exc:  # noqa: BLE001
+        return {"gap": f"snapshot unreadable ({type(exc).__name__})"}
+    if not out.get("ok", True):
+        return {"gap": "snapshot store unreadable (table absent or database error)"}
+    rec = (out.get("symbols") or {}).get(sym) or {}
+    if not rec:
+        return {"gap": "no snapshot row for this symbol"}
+    if rec.get("status") != "ok" or not isinstance(rec.get("payload"), dict) or not rec["payload"]:
+        return {"gap": f"snapshot status {rec.get('status')}"}
+    if rec.get("stale"):
+        return {"gap": f"snapshot older than {int(stale_days)} days (as of {rec.get('as_of')})"}
+    return {"payload": rec["payload"], "as_of": rec.get("as_of")}
+
+
+def index_tracked(text: Any) -> Optional[str]:
+    """The index a fund description names (after "tracks / replicates / corresponds to" first, else any capitalised
+    "... Index" name); None when the description only says "the index" (Yahoo often does)."""
+    text = str(text or "")
+    m = _INDEX_RE.search(text) or _INDEX_ANY_RE.search(text)  # a capitalised "... Index" name; never "the index"
+    if not m:
+        return None
+    name = re.sub(r"^(?:The|To|In|Of)\s+", "", m.group(1).strip())
+    return name if 6 <= len(name) <= 120 else None
+
+
+def _inception(v: Any) -> Optional[str]:
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+        try:
+            return datetime.fromtimestamp(float(v), tz=timezone.utc).date().isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    s = str(v or "")[:10]
+    return s if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s) else None
 
 
 # ── classification ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -196,12 +246,18 @@ def rebuild_relative(bundle: Any, sources: Any, bars: list, cls: dict, *, cache:
 
 
 # ── fund profile ──────────────────────────────────────────────────────────────────────────────────────────────────
-def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthrough: dict | None, last: Optional[float]) -> dict:
+def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthrough: dict | None, last: Optional[float],
+                 yf: dict | None = None) -> dict:
     sym = bundle.symbol
     src = "symbol_profiles (fund fields)"
     at = fund.get("distributions_updated_at") or fund.get("updated_at")
     out: dict[str, Any] = {"category": cls.get("label"), "category_basis": cls.get("basis"), "sector": cls.get("sector"),
                            "sector_etf": cls.get("sector_etf"), "peers": cls.get("peers"), "gaps": [], "facts": {}}
+
+    def note(key: str, label: str, text: str, source: str, as_of: Any = None) -> None:
+        fid = bundle.add("fund", label, text=text, source=source, as_of=as_of)
+        if fid:
+            out["facts"][key] = fid
 
     def put(key: str, label: str, value: Any, unit: str, source: str, as_of: Any = None) -> None:
         fid = bundle.add("fund", label, value=value, unit=unit, source=source, as_of=as_of)
@@ -250,30 +306,161 @@ def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthroug
         out["gaps"].append("distribution history: no ticker_dividends rows for this fund")
     lt = (lookthrough or {}).get("fund") or {}
     top = lt.get("top_holdings") or (lookthrough or {}).get("holdings") or {}
-    items = list(top.items()) if isinstance(top, dict) else [
-        (str(t.get("symbol") or t.get("name")), t.get("weight")) for t in top if isinstance(t, dict)]
-    rows = []
-    for name, w in items[:10]:
-        w = w.get("weight") if isinstance(w, dict) else w
-        if _f(w) is not None:
-            rows.append({"name": name, "weight_pct": _f(w)})
+    rows = lookthrough_rows(top)
+    yf = yf or {}
+    yp = yf.get("payload") or {}
+    yfund = yp.get("_house_fund") if isinstance(yp.get("_house_fund"), dict) else {}
+    lt_source = "fund look-through (fund_lookthrough.json / fund_holdings_cache.json)"
+    if not rows and yfund.get("top_holdings"):  # the house look-through wins; the snapshot only fills its gap
+        rows = [{"name": str(r.get("symbol") or r.get("name")), "weight_pct": _f(r.get("weight_pct"))}
+                for r in yfund["top_holdings"][:10] if isinstance(r, dict) and _f(r.get("weight_pct")) is not None
+                and (r.get("symbol") or r.get("name"))]
+        if rows:
+            lt = {"fetched_date": str(yf.get("as_of") or "")[:10] or None}
+            lt_source = "yfinance_info_snapshot (funds_data top holdings)"
     out["top_holdings"] = rows
     if rows:
+        out["top_holdings_source"] = lt_source
         out["top_holdings_as_of"] = lt.get("fetched_date")
+        if not any(str(f.get("label") or "").startswith("Fund top holding") for f in bundle.facts):
+            for r in rows:
+                bundle.add("lookthrough", f"Fund top holding: {r['name']} %", value=r["weight_pct"], unit="%",
+                           source=lt_source, as_of=lt.get("fetched_date"))
         out["top10_weight_pct"] = round(sum(r["weight_pct"] for r in rows), 2)
         bundle.add("fund", "Fund top-10 holdings combined weight %", value=out["top10_weight_pct"], unit="%",
-                   source="fund look-through (fund_lookthrough.json / fund_holdings_cache.json)", as_of=lt.get("fetched_date"))
+                   source=lt_source, as_of=lt.get("fetched_date"))
     else:
         out["gaps"].append("top holdings and weights: no look-through entry for this fund in fund_lookthrough.json or "
                            "fund_holdings_cache.json")
-    out["aum_usd"] = None
-    out["gaps"].append("assets under management: not held in any house store (symbol_profiles / enrichment cache)")
+    yf_src, yf_at = f"{YF_SOURCE} (yfinance .info)", yf.get("as_of")
+    why = yf.get("gap") or "no fresh snapshot"
+    aum = _f(yp.get("totalAssets"))
+    if aum is not None and aum > 0:
+        put("aum_usd", "Fund assets under management $", aum, "$", f"{YF_SOURCE} (totalAssets)", yf_at)
+    else:
+        out["aum_usd"] = None
+        out["gaps"].append(f"assets under management: not in the yfinance snapshot ({why}) or any other house store")
+    overview = yfund.get("fund_overview") if isinstance(yfund.get("fund_overview"), dict) else {}
+    issuer = yp.get("fundFamily") or overview.get("family")
+    out["issuer"] = str(issuer) if issuer else None
+    if out["issuer"]:
+        note("issuer", "Fund issuer", out["issuer"], yf_src, yf_at)
+    else:
+        out["gaps"].append(f"issuer: not in the yfinance snapshot ({why})")
+    out["inception_date"] = _inception(yp.get("fundInceptionDate"))
+    if out["inception_date"]:
+        note("inception_date", "Fund inception date", out["inception_date"], f"{YF_SOURCE} (fundInceptionDate)", yf_at)
+    else:
+        out["gaps"].append(f"inception date: not in the yfinance snapshot ({why})")
+    out["index_tracked"] = index_tracked(yfund.get("description")) or index_tracked(yp.get("longBusinessSummary"))
+    if out["index_tracked"]:
+        note("index_tracked", "Index tracked", out["index_tracked"], f"{YF_SOURCE} (fund description)", yf_at)
+    else:
+        out["gaps"].append(f"index tracked: not named in the yfinance snapshot description ({why})")
+    count = yp.get("holdingsCount") if isinstance(yp.get("holdingsCount"), int) else yfund.get("holdings_count")
+    out["holdings_count"] = count if isinstance(count, int) and not isinstance(count, bool) and count > 0 else None
+    if out["holdings_count"]:
+        put("holdings_count", "Fund number of holdings", out["holdings_count"], "count", yf_src, yf_at)
+    else:
+        out["gaps"].append("total number of holdings: not published in the yfinance snapshot (top holdings only)")
+    for key, label in (("fund_name", "Fund name"), ("asset_class", "Fund asset class (look-through file)"),
+                       ("reconstitution_date", "Fund last index reconstitution")):
+        if lt.get(key):
+            out[key] = lt[key]
+            bundle.add("fund", label, text=str(lt[key])[:200], source="fund_lookthrough.json", as_of=lt.get("fetched_date"))
+    growth = distribution_growth(hist)
+    if growth:
+        out["distribution_growth"] = growth
+        put("distribution_growth_pct", f"Fund distributions, trailing year vs {growth['years']} year(s) earlier %",
+            growth["pct"], "%", "derived: ticker_dividends ex-date history", growth["as_of"])
+    elif hist:
+        out["gaps"].append("distribution growth: ex-date history is shorter than two years")
+    ov = book_overlap(sources, sym, rows)
+    if ov:
+        out["book_overlap"] = ov
+        put("book_overlap_pct", "Fund top holdings also in my book (share of the fund's top-holding weight) %",
+            ov["overlap_weight_pct"], "%", "derived: fund look-through vs held positions and held funds' look-through",
+            lt.get("fetched_date"))
     lt_up = _f(fund.get("analyst_look_through_pct"))
     if lt_up is not None:
         put("analyst_look_through_pct", f"Analyst look-through upside % ({fund.get('analyst_basis') or 'basis n/a'})",
             lt_up, "%", "symbol_profiles (etf_analyst_enrich)", fund.get("updated_at"))
         out["analyst_basis"] = fund.get("analyst_basis")
     return out
+
+
+def distribution_growth(hist: list[dict]) -> Optional[dict]:
+    """Trailing-year distributions vs the same window N years earlier (N = 3 when the history allows, else 2/1)."""
+    pts = sorted((date.fromisoformat(h["ex_date"]), h["amount"]) for h in hist or [] if h.get("ex_date") and h.get("amount"))
+    if not pts:
+        return None
+    end = pts[-1][0]
+
+    def ttm(until: date) -> float:
+        return sum(a for d, a in pts if until - timedelta(days=350) < d <= until)
+    now_ttm = ttm(end)
+    for years in (3, 2, 1):
+        then_end = end - timedelta(days=365 * years)
+        if pts[0][0] <= then_end - timedelta(days=300):
+            then = ttm(then_end)
+            if then > 0 and now_ttm > 0:
+                pct = ((now_ttm / then) ** (1 / years) - 1) * 100 if years > 1 else (now_ttm / then - 1) * 100
+                return {"years": years, "pct": round(pct, 2), "ttm": round(now_ttm, 4), "then": round(then, 4),
+                        "basis": "annualized" if years > 1 else "1-year change", "as_of": end.isoformat()}
+    return None
+
+
+_BOOK_MEMO: dict[str, Any] = {"sources": None, "held": None}
+
+
+def book_overlap(sources: Any, sym: str, rows: list[dict]) -> Optional[dict]:
+    """Share of the fund's top-holding weight that the book already owns: directly, or through another held fund's
+    top holdings (look-through). Read-only over the position store and the look-through files."""
+    if not rows or not hasattr(sources, "holdings"):
+        return None
+    if _BOOK_MEMO["sources"] is not sources:
+        try:
+            held = set((sources.holdings() or {}).keys())
+        except Exception:  # noqa: BLE001
+            return None
+        via: dict[str, list[str]] = {}
+        for other in held - {sym}:
+            try:
+                lt = sources.lookthrough(other) or {}
+            except Exception:  # noqa: BLE001
+                continue
+            for r in lookthrough_rows(((lt.get("fund") or {}).get("top_holdings")) or lt.get("holdings") or {}):
+                via.setdefault(str(r["name"]).upper(), []).append(other)
+        _BOOK_MEMO.update(sources=sources, held={"direct": held, "via": via})
+    book = _BOOK_MEMO["held"] or {"direct": set(), "via": {}}
+    hits = []
+    for r in rows:
+        name = str(r["name"]).upper()
+        direct, funds = name in book["direct"], sorted(set(book["via"].get(name, [])) - {sym})
+        if direct or funds:
+            hits.append({"name": r["name"], "weight_pct": r["weight_pct"], "direct": direct, "via_funds": funds})
+    total = sum(r["weight_pct"] for r in rows)
+    return {"overlap_weight_pct": round(sum(h["weight_pct"] for h in hits) / total * 100, 2) if total else 0.0,
+            "names": hits, "of_top": len(rows)}
+
+
+def lookthrough_rows(top: Any, limit: int = 10) -> list[dict]:
+    """Top holdings as [{name, weight_pct}] from either look-through shape: {name: weight} / {name: {weight}} or a list
+    of rows keyed ``symbol``/``ticker``/``name`` with ``weight``/``pct``. fund_lookthrough.json writes ticker + pct;
+    reading only symbol + weight dropped every row and printed "no look-through entry" beside a look-through table
+    that listed them (accuracy audit 2026-10-26)."""
+    if isinstance(top, dict):
+        items = list(top.items())
+    else:
+        items = [(str(t.get("symbol") or t.get("ticker") or t.get("name")),
+                  t.get("weight") if t.get("weight") is not None else t.get("pct"))
+                 for t in top or [] if isinstance(t, dict)]
+    rows = []
+    for name, w in items[:limit]:
+        w = (w.get("weight") if w.get("weight") is not None else w.get("pct")) if isinstance(w, dict) else w
+        if _f(w) is not None and name and name != "None":
+            rows.append({"name": name, "weight_pct": _f(w)})
+    return rows
 
 
 # ── house scenarios (no analyst targets) ──────────────────────────────────────────────────────────────────────────
@@ -455,12 +642,24 @@ def attach(sources: Any, bundle: Any, *, bars: list, holding: dict | None, now: 
     except Exception:  # noqa: BLE001
         lt = {}
     cls = classify(sym, rec=rec, fund=fund, lookthrough=lt, holding=holding, cats=cats)
+    fname = ((lt.get("fund") or {}).get("fund_name") if isinstance(lt, dict) else None)
+    if fname and (not bundle.name or bundle.name == sym):
+        bundle.name = str(fname)[:120]  # header showed the symbol twice when the Finviz cache had no company name
     bundle.context["fund_category"] = cls
     if cls["is_fund"]:
         if cls.get("category_id"):
             rebuild_relative(bundle, sources, bars, cls, cache=cache)
         last = _f(bars[-1].get("close")) if bars and isinstance(bars[-1], dict) else None
-        bundle.blocks["fund_profile"] = fund_profile(bundle, sources, fund, cls, lookthrough=lt, last=last)
+        bundle.blocks["fund_profile"] = fund_profile(bundle, sources, fund, cls, lookthrough=lt, last=last,
+                                                     yf=yfinance_snapshot(sources, sym, now=now))
+        osd = (bundle.blocks.get("options_sentiment_dividends") or {}).get("dividend")
+        fp = bundle.blocks["fund_profile"]
+        if isinstance(osd, dict):  # the dividends tile was built before the fund profile: give it the fund's figures
+            if osd.get("yield_pct") is None and fp.get("dividend_yield_pct") is not None:
+                osd["yield_pct"] = fp["dividend_yield_pct"]
+                osd["yield_basis"] = "fund distribution yield (symbol_profiles)"
+            if fp.get("ttm_distribution") is not None:
+                osd["ttm_distribution"] = fp["ttm_distribution"]
     has_targets = any(f.get("label") in ("Analyst target low", "Analyst target mean", "Analyst target high")
                       for f in bundle.facts)
     if not has_targets:

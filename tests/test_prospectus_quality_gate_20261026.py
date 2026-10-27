@@ -21,6 +21,7 @@ from scripts.lib.prospectus import load_config, store  # noqa: E402
 from scripts.lib.prospectus import generate as gen  # noqa: E402
 from scripts.lib.prospectus import pipeline as pl  # noqa: E402
 from scripts.lib.prospectus import quality_gate as qg  # noqa: E402
+from scripts.lib.prospectus import blocks as bk  # noqa: E402
 from scripts.lib.prospectus.domains import full_assemble  # noqa: E402
 from scripts.lib import prospectus_api as api  # noqa: E402
 from test_prospectus_build_20261026 import NOW, FakeSources, stub_generate  # noqa: E402
@@ -32,7 +33,7 @@ def series(n=60, start=50.0, *, first=None, spike_at=None, break_at=None, end="2
     end_d = datetime.fromisoformat(end)
     days, d = [], end_d
     while len(days) < n:
-        if d.weekday() < 5:
+        if bk.is_session(d.date()):  # NYSE sessions only (weekends and holidays are not bars)
             days.append(d.date().isoformat())
         d -= timedelta(days=1)
     days.reverse()
@@ -284,7 +285,8 @@ class SpikyButLongSources(SpikySources):
 def test_write_guarded_first_bar_proceeds_partial_on_the_cleaned_series():
     src = SpikyButLongSources()
     b = full_assemble(src, "ZZCC", "watch", cfg=load_config(), now=NOW)
-    assert len(b.series["price_1y_raw"]) == 110 and len(b.series["price_1y"]) == 109
+    n = len(bk._series(src.bars("ZZCC")))  # the fixture is calendar-daily; only NYSE sessions are bars
+    assert len(b.series["price_1y_raw"]) == n and len(b.series["price_1y"]) == n - 1
     doc = gen.write(b, processes=load_config()["processes"], premium=False, cfg=load_config(),
                     generate_fn=stub_generate(src), now=NOW, version=store.stamp(NOW), ai_fn=None)
     f = next(x for x in doc["gate"]["findings"] if x["code"] == "first_bar_outlier")

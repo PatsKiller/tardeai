@@ -57,7 +57,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/system/releases', label: 'Releases & Schedules' },
       { to: '/approvals', label: 'Approvals' },
       { to: '/policy', label: 'Rulebook' },
-      { to: '/conflicts/rules', label: 'Conflict rules' },
+      // Conflict resolution matrix — not AGENTS.md; Rulebook is the agent operating standard.
+      { to: '/conflicts/rules', label: 'Conflicts' },
       { to: '/system/ops-controls', label: 'Ops Controls' },
       { to: '/system', label: 'System', exact: true },
     ],
