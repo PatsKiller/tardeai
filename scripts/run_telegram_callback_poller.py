@@ -290,6 +290,14 @@ def poll_once(timeout=25):
         # Command Center, not in api_v2 — so before this the only way to change a
         # cap was a hand-written UPDATE against production, which on 2026-09-06
         # promptly left the registry and the database disagreeing.
+        # PR merge digest: "hold #N" / "unhold #N" excludes / re-includes one PR from the
+        # pending digest's Approve all (scripts/lib/pr_merge_digest.py, AGENTS.md §25.10).
+        elif _is_digest_hold_text(lower):
+            try:
+                _handle_digest_hold(msg, text, chat_id, allowed)
+                handled = True
+            except Exception as e:
+                log.error(f"digest hold error: {e}")
         elif lower.startswith("/caps") or lower.startswith("/cap "):
             try:
                 _handle_llm_caps(msg, text, chat_id)
@@ -346,6 +354,24 @@ def poll_once(timeout=25):
             log.info(f"command: {text[:40]} from chat={chat_id}")
 
     return processed
+
+
+def _is_digest_hold_text(lower):
+    import re as _re
+    return bool(_re.match(r"^\s*(hold|unhold|include)\s+#?\d+[\s,#\d]*$", lower or ""))
+
+
+def _handle_digest_hold(msg, text, chat_id, allowed):
+    """``hold #N`` against the pending PR merge digest (or the digest replied to)."""
+    try:
+        from scripts.lib import pr_merge_digest as _pmd
+    except ImportError:
+        from lib import pr_merge_digest as _pmd  # type: ignore
+    reply_to = (msg.get("reply_to_message") or {}).get("message_id")
+    reply = _pmd.handle_text_command(text, chat_id=chat_id, allowed_chats=allowed,
+                                     reply_to_message_id=reply_to)
+    if reply and not _post_message(chat_id, reply, reply_to_message_id=msg.get("message_id")):
+        log.error("digest hold reply send failed")
 
 
 def _handle_proposal_command(msg, text, chat_id):

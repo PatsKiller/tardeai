@@ -27,13 +27,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+AGENTS = read_pre_25("AGENTS.md")
 TOKEN = "APPROVE_AGENTS_POLICY_20_0_0"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
 
@@ -382,9 +385,19 @@ S17_ENTRY_24_0_0_ACTIVE = (
 S17_ENTRY_24_0_0 = S17_ENTRY_24_0_0_PROPOSED
 
 
+def pre_25_0_0(text: str) -> str:
+    """25.0.0 consolidated the file (banners moved to the appendix, release train removed, §25.10 rewritten), so the
+    strip chain below cannot undo it by deleting soft-adds. For 25.0.0 and later the frozen 24.0.0 text stands in for
+    "the file before 25.0.0" (tests/support/agents_policy_frozen.py)."""
+    if re.search(r"^Policy-Version:\s+(2[5-9]|[3-9]\d)\.", text, re.M):
+        return read_pre_25("AGENTS.md")
+    return text
+
+
 def pre_24_0_0(text: str) -> str:
     """Strip 24.0.0 soft-adds (banner, §17 Mergify paragraph, §25.10, history row) and restore the
     22.0.0-ACTIVE header so older digest / tip pins stay stable after 24.0.0 is ACTIVE."""
+    text = pre_25_0_0(text)
     had_24 = bool(re.search(r"^\| 24\.0\.0 \|", text, re.M)) or "**24.0.0 is " in text
     for marker in ("**24.0.0 is ACTIVE", "**24.0.0 is PROPOSED"):
         if marker in text:
@@ -636,7 +649,7 @@ def test_post_ratification_digests_are_pinned_in_advance():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_gain_the_rule_6_sentence_only_at_ratification(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_25(adapter)
     assert text.count(R0_ANCHOR) == 1, f"{adapter} lost the 15.0.0 sentence"
     if not _ratified():
         assert R0_INS not in text and R8_INS not in text and h(text) == ADAPTER_SHA256[adapter], (

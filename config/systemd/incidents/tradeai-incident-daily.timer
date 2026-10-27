@@ -1,0 +1,13 @@
+# Daily 08:00 ET incidents one-liner via the Telegram chokepoint.
+
+[Unit]
+Description=Trade AI incident daily brief timer
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 America/New_York
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-incident-daily.service
+
+[Install]
+WantedBy=timers.target

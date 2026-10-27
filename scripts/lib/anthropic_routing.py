@@ -62,7 +62,8 @@ def credit_admitted(cfg: dict) -> bool:
 
 def tier_for(logical_policy: str, reasoning_tier: str = "standard", *, policy: dict | None = None, process_id: str | None = None) -> str:
     policy = load_policy() if policy is None else policy
-    pinned = (policy.get("process_tiers") or {}).get(process_id) if process_id else None
+    pinned = ((policy.get("process_tiers") or {}).get(process_id)
+              or (policy.get("ops_process_tiers") or {}).get(process_id)) if process_id else None
     if pinned:
         # A declared per-process tier (e.g. prospectus long-form / premium) wins.
         return str(pinned)

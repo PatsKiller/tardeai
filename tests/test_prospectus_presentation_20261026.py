@@ -70,13 +70,15 @@ def test_section_footnotes_and_groups():
 
 
 def test_html_has_no_raw_fact_ids_but_keeps_them_as_attributes():
+    # Operator 2026-10-27: no visible citations (no superscripts, no per-section sources, no appendix); the fact ids
+    # stay as hidden data-fact-id markers for audits.
     html = render.html(stock_doc())
     body = html.split("<body>", 1)[1]
     assert not re.search(r"\[F\d", body)
-    assert re.search(r'<sup class="pc-fn"><a href="#fn-2" data-fact-id="F2" title="[^"]*">2</a>,<a href="#fn-1" data-fact-id="F9"', body)
-    assert 'id="fn-1" value="1" data-fact-id="F9"' in body  # the numbered Sources appendix
+    assert "<sup" not in body and 'id="sources"' not in body and "Sources (" not in body
+    assert '<span class="pc-cite" data-fact-id="F2 F9" hidden></span>' in body
     assert "[x] stays prose" in body
-    assert "Sources and facts" not in body and "Sources (2)" in body  # per-section disclosure, no raw facts table
+    assert "Sources and facts" not in body
 
 
 def test_strip_and_clean_prose():
@@ -191,21 +193,22 @@ def test_line_axis_merges_sorted_dates_and_drops_empty_series():
 
 # ── files ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_docx_superscript_footnotes_and_numbered_endnotes():
+def test_docx_has_no_citations_and_one_validation_line():
     pytest.importorskip("docx")
     data = render.docx(fund_doc(), {})
     xml = zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml").decode()
     assert not re.search(r"\[F\d", xml)
-    assert '<w:vertAlign w:val="superscript"/>' in xml
+    assert '<w:vertAlign w:val="superscript"/>' not in xml
     text = re.sub(r"<[^>]+>", "", xml)
-    assert "Sources" in text and "1. Fund distribution yield %" in text
+    assert "1. Fund distribution yield %" not in text and ">Sources<" not in xml
     assert "Fund structure &amp; holdings" in xml and "Ownership and flows" not in text
 
 
-def test_pdf_superscript_footnotes_and_endnotes():
+def test_pdf_has_no_footnotes_and_one_validation_line():
     pytest.importorskip("weasyprint")
     html = render.html(fund_doc(), png_charts={}, theme="light")
     assert "<details" not in html  # print mode: plain lists, nothing hidden behind a tap
-    assert 'class="pc-appendix"><h2>Sources</h2>' in html
+    assert "pc-appendix" not in html and "<sup" not in html
+    assert html.count('class="pc-valid ') <= 1
     data = render.pdf(fund_doc(), {})
     assert data and data[:4] == b"%PDF"

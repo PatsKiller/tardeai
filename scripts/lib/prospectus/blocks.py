@@ -288,6 +288,50 @@ def etf_peer_group(sym: str, groups: dict | None) -> tuple[Optional[str], list[s
     return None, []
 
 
+#: A peer must be within this size multiple of the subject (either way); a company 1/1000th the size is not a peer.
+PEER_SIZE_BAND = 20.0
+#: ... and must carry at least this share of the peer fields (EV/EBITDA, never in the house, is not counted).
+PEER_MIN_FILLED = 0.4
+
+
+def _filled(r: dict) -> float:
+    keys = [k for k, _ in PEER_FIELDS if k not in ("ev_ebitda", "market_cap_b")]
+    return sum(1 for k in keys if _f(r.get(k)) is not None) / len(keys)
+
+
+def size_matched_peers(sym: str, mine: dict, cache: dict, *, n: int = 5) -> tuple[list, Optional[str]]:
+    """Peers by industry AND size: same industry within PEER_SIZE_BAND of the subject's market cap, closest size first;
+    when fewer than 3 qualify, the same sector fills in (still within the band) and the gap says so. Rows that are
+    mostly n/a never make the table (operator 2026-10-27: a mega-cap's "peers" were micro-caps with empty rows)."""
+    cap = market_cap_billions(mine) or 0.0
+
+    def ok(k: str, r: dict) -> bool:
+        if k == sym or not isinstance(r, dict) or _filled(r) < PEER_MIN_FILLED:
+            return False
+        c = market_cap_billions(r)
+        return cap <= 0 or (c is not None and c > 0 and 1 / PEER_SIZE_BAND <= c / cap <= PEER_SIZE_BAND)
+
+    def dist(kr: tuple) -> tuple:
+        return (abs(math.log((market_cap_billions(kr[1]) or 1e-3) / max(cap, 1e-3))), kr[0])
+
+    ind = sorted([(k, r) for k, r in cache.items() if ok(k, r) and r.get("industry") == mine.get("industry")], key=dist)
+    if len(ind) >= 3:
+        return ind, None
+    taken = {k for k, _ in ind}
+    sec = sorted([(k, r) for k, r in cache.items() if mine.get("sector") and k not in taken and ok(k, r)
+                  and r.get("sector") == mine.get("sector")], key=dist)
+    out = ind + sec[: max(0, n - len(ind))]
+    if len(out) >= 3:
+        return out, (f"peers widened to the {mine.get('sector')} sector by size: only {len(ind)} {mine.get('industry')} "
+                     f"companies are within {PEER_SIZE_BAND:g}x of its market cap" if sec else None)
+    # Too thin a cache for the size / fill rules: the industry cohort by size closeness, as before, and say so.
+    rest = sorted([(k, r) for k, r in cache.items() if k != sym and isinstance(r, dict)
+                   and r.get("industry") == mine.get("industry") and k not in {x for x, _ in out}], key=dist)
+    out = out + rest[: max(0, n - len(out))]
+    return out, (f"peers: fewer than 3 {mine.get('industry')} companies within {PEER_SIZE_BAND:g}x of its size with "
+                 f"enough data; the closest-size industry members are shown" if rest else None)
+
+
 def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None = None, n: int = 5,
                     etf_groups: dict | None = None) -> dict:
     mine = cache.get(sym) if isinstance(cache.get(sym), dict) else None
@@ -306,7 +350,7 @@ def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None =
         out["consensus"] = consensus.get(k)
         return out
 
-    group = None
+    group, widened = None, None
     if str(mine.get("industry")).strip().lower() == ETF_INDUSTRY:
         group, members = etf_peer_group(sym, etf_groups)
         cands = [(k, cache[k]) for k in members if isinstance(cache.get(k), dict)]
@@ -317,10 +361,7 @@ def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None =
             return {"industry": mine.get("industry"), "peer_group": group, "rows": [row(sym, mine)], "median": None,
                     "fields": [k for k, _ in PEER_FIELDS], "labels": dict(PEER_FIELDS), "gaps": [why]}
     else:
-        cap = market_cap_billions(mine) or 0.0
-        cands = [(k, r) for k, r in cache.items() if k != sym and isinstance(r, dict)
-                 and r.get("industry") == mine.get("industry")]
-        cands.sort(key=lambda kr: (abs(math.log((market_cap_billions(kr[1]) or 1e-3) / max(cap, 1e-3))), kr[0]))
+        cands, widened = size_matched_peers(sym, mine, cache, n=n)
 
     rows = [row(sym, mine)] + [row(k, r) for k, r in cands[:n]]
     med = {}
@@ -328,6 +369,8 @@ def peer_comparison(sym: str, cache: dict, *, consensus: dict[str, str] | None =
         vals = [r[key] for r in rows[1:] if r[key] is not None]
         med[key] = round(statistics.median(vals), 2) if vals else None
     gaps = ["EV/EBITDA and net debt/EBITDA are not in the house fundamentals (Debt/Equity shown)"]
+    if group is None and widened:
+        gaps.append(widened)
     if len(rows) - 1 < n:
         gaps.append(f"only {len(rows) - 1} industry peers in the enrichment cache")
     return {"industry": mine.get("industry"), "peer_group": group, "rows": rows, "median": med, "fields": [k for k, _ in PEER_FIELDS],

@@ -148,14 +148,12 @@ The transport refuses tool definitions, so the loop is two governed turns, not a
 
 The writer adds short notes inside these blocks — macro effect on this name, earnings-call points, what changed in each filing. Those notes are guarded like the prose sections.
 
-Values the house does not hold print as `n/a`, and the block names the gap:
+Values the house does not hold print as `n/a`, and the block names the gap.
 
-- EV/EBITDA
-- 4-quarter EPS surprise history
-- 90-day estimate revisions
-- 13F holder changes
-- ETF flows
-- IV rank and put/call (the options-flow provider was retired 2026-09-13)
+The institutional ("Street") blocks are in `PROSPECTUS_INSTITUTIONAL.md` (2026-10-27): analyst coverage and the action
+log, consensus / revisions / 8-quarter beat-miss, the catalyst calendar with the options-implied move, positioning,
+valuation vs its own history, and SEC XBRL quarters. Citations stay in the JSON. The reader sees one validation line
+instead of footnotes.
 
 ## Storage (private)
 

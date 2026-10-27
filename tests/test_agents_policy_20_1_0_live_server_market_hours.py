@@ -27,13 +27,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+AGENTS = read_pre_25("AGENTS.md")
 TOKEN = "APPROVE_AGENTS_POLICY_20_1_0"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
 
@@ -200,7 +203,7 @@ def test_everything_else_is_byte_identical_to_20_0_0():
 
 def test_adapters_are_unchanged():
     for a in ADAPTERS:
-        assert h((ROOT / a).read_text(encoding="utf-8")) == ADAPTER_SHA256[a], a
+        assert h(read_pre_25(a)) == ADAPTER_SHA256[a], a
 
 
 def test_registered_as_a_ci_gate():

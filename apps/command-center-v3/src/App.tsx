@@ -41,6 +41,7 @@ import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
 import OpsControlsPage from './pages/OpsControls'
 import JobsPage from './pages/JobsPage'
+import OpsIncidents from './pages/OpsIncidents'
 import OpsDeskFrame from './components/OpsDeskFrame'
 import JobsHealth from './components/JobsHealth'
 import AskCioBar from './components/AskCioBar'
@@ -285,6 +286,7 @@ function Shell() {
             <Route path="cio/questions/:threadId" element={<RouteErrorBoundary route="/v3/cio/questions/:threadId"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage /></RouteErrorBoundary>} />
+            <Route path="ops/incidents" element={<RouteErrorBoundary route="/v3/ops/incidents"><OpsIncidents /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><OpsDeskFrame page="coordination"><CoordinationPage jobsHealth={<JobsHealth />} /></OpsDeskFrame></RouteErrorBoundary>} />
