@@ -7,18 +7,27 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { CHART_HEX, RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import { useTheme } from '../../hooks/useTheme'
 import {
-  RET_COLUMNS, RET_COLUMNS_PHONE, benchName, coverageTone, domainLabel, fmtNum, peerCell, peerColumns, pct, relRows,
-  relWindows, signTone, toNumber, verdictTiles, whenEt,
-  type CoverageDomain, type ProspectusBlocks, type ProspectusDoc, type ScenarioCase,
+  COVERAGE_GROUPS, RET_COLUMNS, RET_COLUMNS_PHONE, benchName, coverageGroups, coverageTone, fmtNum, isBlankValue,
+  monthLabel, monthTicks, peerCell, peerColumns, pct, presentationOf, relRows, relWindows, signTone, toNumber,
+  verdictTiles, whenEt,
+  type ProspectusBlocks, type ProspectusDoc, type ScenarioCase,
 } from '../../lib/prospectusModel'
+import { CiteText, FootnoteRef, useFootnotes } from './Citations'
 
+/** The one compact line a block shows when the house holds no data for it (data absent, not "not applicable"). */
 export function NotAvailable({ what, gaps, testId }: { what: string; gaps?: string[] | null; testId?: string }) {
   return (
     <div className="psp-na" data-testid={testId ?? 'prospectus-na'}>
       <span className="psp-na-dot" aria-hidden="true" />
-      <span>{what}: not available yet{gaps && gaps.length ? <span className="psp-muted"> — {gaps[0]}</span> : null}</span>
+      <span>{what}: not in our data{gaps && gaps.length ? <span className="psp-muted"> — {gaps[0]}</span> : null}</span>
     </div>
   )
+}
+
+/** One line naming every field a block could not fill ("Not in our data: X, Y") — never a dash per field. */
+export function NotInData({ fields, testId = 'prospectus-not-in-data' }: { fields: string[]; testId?: string }) {
+  if (!fields.length) return null
+  return <p className="psp-notin" data-testid={testId}>Not in our data: {fields.join(', ')}</p>
 }
 
 export function Card({ title, tone, children, testId, label, className }: { title: ReactNode; tone?: string; children: ReactNode; testId?: string; label?: string; className?: string }) {
@@ -30,13 +39,21 @@ export function Card({ title, tone, children, testId, label, className }: { titl
   )
 }
 
-function Kv({ rows }: { rows: Array<[string, ReactNode, string?]> }) {
+/** Key/value rows. Rows whose value is blank ('—', 'n/a', '— / —') are dropped and named once below. */
+function Kv({ rows, compact = true }: { rows: Array<[string, ReactNode, string?]>; compact?: boolean }) {
+  const shown = compact ? rows.filter(([, v]) => !isBlankValue(v)) : rows
+  const absent = compact ? rows.filter(([, v]) => isBlankValue(v)).map(([k]) => k) : []
   return (
-    <div className="psp-kv">
-      {rows.map(([k, v, tone], i) => (
-        <div key={i} className="psp-kv-row"><span className="psp-kv-k">{k}</span><span className={`psp-kv-v${tone ? ` psp-tone-${tone}` : ''}`}>{v}</span></div>
-      ))}
-    </div>
+    <>
+      {shown.length > 0 && (
+        <div className="psp-kv">
+          {shown.map(([k, v, tone], i) => (
+            <div key={i} className="psp-kv-row"><span className="psp-kv-k">{k}</span><span className={`psp-kv-v${tone ? ` psp-tone-${tone}` : ''}`}>{v}</span></div>
+          ))}
+        </div>
+      )}
+      <NotInData fields={absent} />
+    </>
   )
 }
 
@@ -51,8 +68,9 @@ export function VerdictTiles({ doc }: { doc: ProspectusDoc }) {
         <div key={t.id} className={`psp-tile psp-tile-${t.id}${t.id === 'verdict' && t.value ? ` psp-tile-verdict-${t.tone}` : ''}`} data-testid={`prospectus-tile-${t.id}`}>
           <div className="psp-tile-k">{t.label}</div>
           {t.value
-            ? <div className={`psp-tile-v${t.id === 'verdict' ? ` psp-tone-${t.tone}` : ''}`}>{t.value}</div>
-            : <div className="psp-tile-v psp-tile-na">not available yet</div>}
+            ? <div className={`psp-tile-v${t.id === 'verdict' ? ` psp-tone-${t.tone}` : ''}`}>{t.id === 'stop' && t.value.includes(' · ')
+                ? <>{t.value.split(' · ')[0]}<span className="psp-tile-state"> · {t.value.split(' · ').slice(1).join(' · ')}</span></> : t.value}</div>
+            : <div className="psp-tile-v psp-tile-na">not in our data</div>}
           {t.sub && <div className={`psp-tile-sub${t.id !== 'verdict' && t.tone !== 'neutral' ? ` psp-tone-${t.tone}` : ''}`}>{t.sub}</div>}
         </div>
       ))}
@@ -72,12 +90,14 @@ export function RelativePerformanceBlock({ blocks, symbol, phone }: { blocks?: P
     return <Card title={title} testId="prospectus-relative" label="Relative performance"><NotAvailable what="Relative performance" gaps={rel?.gaps} /></Card>
   }
   const { rows, names } = relRows(rel, win)
+  const relTicks = monthTicks(rows.map(r => String(r.x)), phone ? 4 : 6)
   const bench = rel.benchmarks ?? []
   // ticker = amber (thick); the rest take the series palette; Nasdaq dashed (as approved).
   const colorFor = (n: string, i: number) => n === symbol ? hex.warning : n === 'QQQ' ? hex.text : n === 'SPY' ? hex.series[0]
     : /industry/i.test(n) ? hex.series[5] : bench.includes(n) || /^XL/.test(n) ? hex.series[3] : hex.series[(i + 1) % hex.series.length]
-  const cols = phone ? RET_COLUMNS_PHONE : RET_COLUMNS
   const rets = rel.returns ?? []
+  // Columns no row fills are dropped (a fund with only a 1Y history shows one column, not five dashes).
+  const cols = (phone ? RET_COLUMNS_PHONE : RET_COLUMNS).filter(c => rets.some(r => toNumber(r[c]) != null) || toNumber(rel.excess_vs_spy?.[c]) != null)
   const rank = rel.rank_in_industry
   const trend = rel.sector_trend as Record<string, unknown> | null | undefined
   const trendLabel = trend ? String(trend.trend ?? trend.label ?? trend.momentum ?? '') || null : null
@@ -96,17 +116,18 @@ export function RelativePerformanceBlock({ blocks, symbol, phone }: { blocks?: P
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
                   <CartesianGrid stroke={hex.grid} strokeDasharray="3 3" />
-                  <XAxis dataKey="x" tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} minTickGap={24} />
+                  <XAxis dataKey="x" tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} interval={0}
+                    ticks={relTicks.length ? relTicks : undefined} tickFormatter={monthLabel} minTickGap={relTicks.length ? 0 : 24} />
                   <YAxis domain={['auto', 'auto']} tick={{ fill: hex.text, fontSize: TYPE.xs }} stroke={hex.grid} />
                   <ReferenceLine y={100} stroke={hex.grid} strokeDasharray="3 4" />
-                  <Tooltip contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
+                  <Tooltip labelFormatter={v => whenEt(v)} contentStyle={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, fontSize: TYPE.sm }} />
                   {names.map((n, i) => <Line key={n} type="monotone" dataKey={n} name={benchName(n, symbol, bench)} stroke={colorFor(n, i)}
                     strokeWidth={n === symbol ? 3 : 2} strokeDasharray={n === 'QQQ' ? '6 4' : undefined} dot={false} isAnimationActive={false} connectNulls />)}
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="psp-legend">
-              {names.map((n, i) => <span key={n} style={{ color: colorFor(n, i), fontWeight: n === symbol ? 700 : 500 }}>{n === 'QQQ' ? '┅' : '━'} {benchName(n, symbol, bench)}</span>)}
+            <div className="psp-legend" data-testid="prospectus-rel-legend">
+              {names.map((n, i) => <span key={n} className="psp-legend-item" style={{ fontWeight: n === symbol ? 700 : 500 }}><span className="psp-legend-swatch" aria-hidden="true" style={{ background: n === 'QQQ' ? 'transparent' : colorFor(n, i), borderTop: n === 'QQQ' ? `2px dashed ${colorFor(n, i)}` : undefined }} />{benchName(n, symbol, bench)}</span>)}
             </div>
           </figure>
         ) : <NotAvailable what="Rebased chart" gaps={rel.gaps} />}
@@ -128,11 +149,24 @@ export function RelativePerformanceBlock({ blocks, symbol, phone }: { blocks?: P
               </table>
             </div>
           ) : <NotAvailable what="Returns table" gaps={rel.gaps} />}
-          <div className="psp-mini-tiles">
-            <div className="psp-mini"><div className="psp-tile-k">{phone ? 'Industry rank' : 'Rank in industry'}</div><div className="psp-mini-v psp-tone-success">{rank ? `${rank.rank} of ${rank.of}` : '—'}</div>{!phone && <div className="psp-tile-sub">{rank?.percentile != null ? `1Y return · ${rank.percentile}th pct` : 'not available yet'}</div>}</div>
-            <div className="psp-mini"><div className="psp-tile-k">{phone ? 'Rel. strength' : 'Relative strength'}</div><div className="psp-mini-v psp-tone-warning">{toNumber(rel.rs_rating_12m) != null ? `${rel.rs_rating_12m}/99` : '—'}</div>{!phone && <div className="psp-tile-sub">vs the market, 12 months</div>}</div>
-            <div className="psp-mini"><div className="psp-tile-k">{phone ? 'Sector' : 'Sector trend'}</div><div className="psp-mini-v psp-tone-success">{trendLabel ?? '—'}</div>{!phone && <div className="psp-tile-sub">house momentum</div>}</div>
-          </div>
+          {(() => {
+            const minis = [
+              { k: phone ? 'Industry rank' : 'Rank in industry', v: rank ? `${rank.rank} of ${rank.of}` : null, sub: rank?.percentile != null ? `1Y return · ${rank.percentile}th pct` : null, tone: 'success', name: 'Rank in industry' },
+              { k: phone ? 'Rel. strength' : 'Relative strength', v: toNumber(rel.rs_rating_12m) != null ? `${rel.rs_rating_12m}/99` : null, sub: 'vs the market, 12 months', tone: 'warning', name: 'Relative strength' },
+              { k: phone ? 'Sector' : 'Sector trend', v: trendLabel, sub: 'house momentum', tone: 'success', name: 'Sector trend' },
+            ]
+            const shown = minis.filter(m => m.v)
+            return (
+              <>
+                {shown.length > 0 && (
+                  <div className="psp-mini-tiles">
+                    {shown.map(m => <div key={m.name} className="psp-mini"><div className="psp-tile-k">{m.k}</div><div className={`psp-mini-v psp-tone-${m.tone}`}>{m.v}</div>{!phone && m.sub && <div className="psp-tile-sub">{m.sub}</div>}</div>)}
+                  </div>
+                )}
+                <NotInData fields={minis.filter(m => !m.v).map(m => m.name)} />
+              </>
+            )
+          })()}
         </div>
       </div>
     </Card>
@@ -192,12 +226,15 @@ export function EstimatesBlock({ blocks, withCall }: { blocks?: ProspectusBlocks
               })}
             </div>
           )}
-          <div className="psp-body-sm">
-            {surprises.length ? `EPS beat ${beats} of last ${surprises.length}` : 'EPS surprise history not available yet'}
-            {' · '}estimate revisions 90d: <b className="psp-tone-success">{up == null ? '—' : up} up</b> / <b className="psp-tone-danger">{down == null ? '—' : down} down</b>
-            {' · '}next report {e.next_report ? whenEt(e.next_report) : '—'}
-          </div>
-          {e.gaps && e.gaps.length > 0 && <div className="psp-gaps">{e.gaps.join(' · ')}</div>}
+          {(surprises.length > 0 || up != null || down != null || e.next_report) && (
+            <div className="psp-body-sm">
+              {[surprises.length ? <span key="b">EPS beat {beats} of last {surprises.length}</span> : null,
+                up != null || down != null ? <span key="r">estimate revisions 90d: <b className="psp-tone-success">{up ?? '—'} up</b> / <b className="psp-tone-danger">{down ?? '—'} down</b></span> : null,
+                e.next_report ? <span key="n">next report {whenEt(e.next_report)}</span> : null]
+                .filter(Boolean).flatMap((x, i) => (i ? [<span key={`s${i}`}> · </span>, x] : [x]))}
+            </div>
+          )}
+          <NotInData fields={[...(surprises.length ? [] : ['EPS surprise history']), ...(up == null && down == null ? ['Estimate revisions (90d)'] : []), ...(e.next_report ? [] : ['Next report date'])]} />
         </>
       )}
       {withCall && <CallBullets blocks={blocks} />}
@@ -209,7 +246,6 @@ const OWN_ROWS: Array<[string, (o: Record<string, unknown>) => ReactNode]> = [
   ['Institutional ownership', o => pct(o.institutional_pct, 1, false)],
   ['Insider buys / sells 90d', o => `${dash(o.insider_buys_90d)} / ${dash(o.insider_sells_90d)}`],
   ['Short interest · days to cover', o => `${pct(o.short_float_pct, 1, false)} · ${fmtNum(o.days_to_cover, 1)}`],
-  ['Fund flows 30d (ETFs)', o => dash(o.etf_flows_30d)],
   ['Top holders', o => Array.isArray(o.top_holders) ? (o.top_holders as unknown[]).slice(0, 3).join(', ') : dash(o.top_holders)],
 ]
 export function OwnershipBlock({ blocks }: { blocks?: ProspectusBlocks }) {
@@ -265,9 +301,10 @@ export function StopPlanBlock({ blocks }: { blocks?: ProspectusBlocks }) {
         ['$ at risk at the house stop', money(rec.usd_at_risk)],
         ['Broker stop', <span data-testid="prospectus-stop-broker">{money(br.level)} · {stateLabel}</span>, stateTone],
         ['Policy band', bandText],
+        ...(br.other_accounts ? [['Other accounts', String(br.other_accounts)] as [string, ReactNode]] : []),
       ]} />
       {sp.comparison && <p className="psp-muted" data-testid="prospectus-stop-comparison">{sp.comparison}</p>}
-      {(sp.gaps ?? []).length > 0 && <p className="psp-muted">{(sp.gaps ?? []).join('; ')}</p>}
+      {(sp.gaps ?? []).length > 0 && <p className="psp-muted"><CiteText text={(sp.gaps ?? []).join('; ')} /></p>}
       <div className="psp-muted" data-testid="prospectus-stop-advisory">{sp.advisory ?? 'advisory — no AI places, sizes or stops orders'}</div>
     </Card>
   )
@@ -289,7 +326,7 @@ export function ScenariosBlock({ blocks, price }: { blocks?: ProspectusBlocks; p
               <div key={c.case} className={`psp-scen-card psp-scen-${c.case}`} data-testid={`prospectus-scenario-${c.case}`}>
                 <div className={`psp-scen-k psp-tone-${CASE_TONE[c.case]}`}>{c.case.toUpperCase()}{toNumber(c.probability_pct) != null ? ` · ${c.probability_pct}% likely` : ''}</div>
                 <div className={`psp-scen-v psp-tone-${CASE_TONE[c.case]}`}>{p == null ? '—' : `$${p.toFixed(2)}`}{chg != null ? ` (${pct(chg, 1)})` : ''}</div>
-                {c.narrative && <div className="psp-body-sm">{c.narrative}</div>}
+                {c.narrative && <div className="psp-body-sm"><CiteText text={c.narrative} /></div>}
               </div>
             )
           })}
@@ -314,13 +351,16 @@ export function MacroBlock({ blocks }: { blocks?: ProspectusBlocks }) {
             <tbody>
               {series.map(([id, s]) => (
                 <tr key={id}><td>{s.label}</td><td>{fmtNum(s.value, 2)}{s.trend ? ` · ${s.trend}` : ''}</td>
-                  <td className={s.effect ? `psp-tone-${/head/i.test(s.effect) ? 'warning' : /tail/i.test(s.effect) ? 'success' : 'neutral'}` : 'psp-muted'}>{s.effect || '—'}</td></tr>
+                  <td className={s.effect ? `psp-tone-${/head/i.test(s.effect) ? 'warning' : /tail/i.test(s.effect) ? 'success' : 'neutral'}` : 'psp-muted'}>{s.effect ? <CiteText text={s.effect} /> : '—'}</td></tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <div className="psp-muted">Rate beta to 10-year: {toNumber(m?.rate_beta_10y) == null ? '—' : fmtNum(m?.rate_beta_10y, 4)} · next macro events: {events.length ? events.join(', ') : '—'}</div>
+      {(toNumber(m?.rate_beta_10y) != null || events.length > 0) && (
+        <div className="psp-muted">{[toNumber(m?.rate_beta_10y) != null ? `Rate beta to 10-year: ${fmtNum(m?.rate_beta_10y, 4)}` : null, events.length ? `next macro events: ${events.join(', ')}` : null].filter(Boolean).join(' · ')}</div>
+      )}
+      {series.length > 0 && <NotInData fields={[...(toNumber(m?.rate_beta_10y) == null ? ['Rate beta to 10-year'] : []), ...(events.length ? [] : ['Next macro events'])]} />}
     </Card>
   )
 }
@@ -357,7 +397,7 @@ function CallBullets({ blocks }: { blocks?: ProspectusBlocks }) {
   if (!bullets.length && !tx.length) return <NotAvailable what="Earnings call" gaps={c?.gaps} testId="prospectus-call-na" />
   return (
     <ul className="psp-ul" data-testid="prospectus-call">
-      {bullets.map((b, i) => <li key={`b${i}`}>{b}</li>)}
+      {bullets.map((b, i) => <li key={`b${i}`}><CiteText text={b} /></li>)}
       {tx.map((t, i) => <li key={`t${i}`}>{t.url ? <a className="psp-link" href={t.url} target="_blank" rel="noopener noreferrer">{t.label}</a> : t.label}{t.as_of ? <span className="psp-muted"> · {whenEt(t.as_of)}</span> : null}</li>)}
     </ul>
   )
@@ -382,37 +422,115 @@ function optRows(o: Record<string, unknown>): Array<[string, ReactNode, string?]
     ["House agents' view (debate)", typeof debate === 'string' ? debate : debate ? String(debate.verdict ?? debate.label ?? debate.summary ?? '—') : '—'],
   ]
 }
-export function OptionsBlock({ blocks, withOwnership }: { blocks?: ProspectusBlocks; withOwnership?: boolean }) {
+export function OptionsBlock({ blocks, withOwnership, fund }: { blocks?: ProspectusBlocks; withOwnership?: boolean; fund?: boolean }) {
   const o = blocks?.options_sentiment_dividends as Record<string, unknown> | undefined
   const own = blocks?.ownership_flows as Record<string, unknown> | undefined
+  // Funds: the distribution lives in "Fund structure & holdings"; ownership rows never apply.
+  const opt = o ? optRows(o).filter(([k]) => !(fund && /^Dividend/.test(k))) : []
   const rows: Array<[string, ReactNode, string?]> = [
-    ...(withOwnership && own ? OWN_ROWS.slice(0, 3).map(([k, f]) => [k, f(own)] as [string, ReactNode]) : []),
-    ...(o ? optRows(o) : []),
+    ...(withOwnership && own && !fund ? OWN_ROWS.slice(0, 3).map(([k, f]) => [k, f(own)] as [string, ReactNode]) : []),
+    ...opt,
   ]
+  const title = withOwnership && !fund ? 'Ownership, options and sentiment' : fund ? 'Options and sentiment' : 'Options, sentiment and dividends'
   return (
-    <Card title={withOwnership ? 'Ownership, options and sentiment' : 'Options, sentiment and dividends'} tone={withOwnership ? 'info' : undefined} testId="prospectus-options" label="Options, sentiment and dividends">
-      {!rows.length ? <NotAvailable what="Options, sentiment and dividends" /> : <Kv rows={rows} />}
+    <Card title={title} tone={withOwnership ? 'info' : undefined} testId="prospectus-options" label="Options, sentiment and dividends">
+      {!rows.length ? <NotAvailable what={title} /> : <Kv rows={rows} />}
+    </Card>
+  )
+}
+
+// ── Fund structure & holdings (funds only; replaces ownership, estimates and the earnings call) ──────────────────────
+// Operator 2026-10-26: "ETF shouldn't have this. They should have something else that's relative to ETF."
+export function FundStructureBlock({ doc, wide }: { doc: ProspectusDoc; wide?: boolean }) {
+  const fs = presentationOf(doc)?.fund_structure
+  const byId = useFootnotes()
+  if (!fs) return <Card title="Fund structure & holdings" testId="prospectus-fund-structure" label="Fund structure and holdings"><NotAvailable what="Fund structure" /></Card>
+  const top = fs.top_holdings ?? []
+  const maxW = Math.max(1, ...top.map(h => h.weight_pct ?? 0))
+  const sectors = fs.sectors ?? []
+  const maxS = Math.max(1, ...sectors.map(x => x.weight_pct))
+  const overlap = fs.rows.find(r => r.group === 'overlap')
+  return (
+    <Card title="Fund structure & holdings" tone="info" testId="prospectus-fund-structure" label="Fund structure and holdings" className={wide ? 'psp-span2' : undefined}>
+      {overlap && <p className="psp-fs-overlap" data-testid="prospectus-fund-overlap"><b>{overlap.label}:</b> {overlap.value}</p>}
+      <div className={`psp-fs${wide ? ' psp-fs-wide' : ''}`}>
+        <div className="psp-kv" data-testid="prospectus-fund-rows">
+          {fs.rows.filter(r => r.group !== 'overlap').map(r => {
+            const notes = (r.cites ?? []).map(i => byId.get(i)).filter((x): x is NonNullable<typeof x> => !!x)
+            return (
+              <div key={r.label} className="psp-kv-row"><span className="psp-kv-k">{r.label}</span>
+                <span className="psp-kv-v">{r.value}{notes.length > 0 && <FootnoteRef notes={notes} ids={notes.map(n => n.id)} />}</span></div>
+            )
+          })}
+        </div>
+        {(top.length > 0 || sectors.length > 0) && (
+          <div className="psp-fs-lists">
+            {top.length > 0 && (
+              <div>
+                <div className="psp-tile-k">Top {top.length} holdings{fs.as_of ? <span className="psp-muted"> · as of {whenEt(fs.as_of)}</span> : null}</div>
+                <ul className="psp-wbars" data-testid="prospectus-fund-holdings">
+                  {top.map(h => (
+                    <li key={h.name}><span className="psp-wbar-k" title={h.name}>{h.symbol || h.name}</span>
+                      <span className="psp-wbar-track"><span className="psp-wbar-fill psp-bg-info" style={{ width: `${((h.weight_pct ?? 0) / maxW) * 100}%` }} /></span>
+                      <span className="psp-wbar-v">{h.weight_pct == null ? '' : `${h.weight_pct.toFixed(1)}%`}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {sectors.length > 0 && (
+              <div>
+                <div className="psp-tile-k">Sector weights</div>
+                <ul className="psp-wbars" data-testid="prospectus-fund-sectors">
+                  {sectors.map(x => (
+                    <li key={x.name}><span className="psp-wbar-k" title={x.name}>{x.name}</span>
+                      <span className="psp-wbar-track"><span className="psp-wbar-fill psp-bg-ai" style={{ width: `${(x.weight_pct / maxS) * 100}%` }} /></span>
+                      <span className="psp-wbar-v">{x.weight_pct.toFixed(1)}%</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(fs.countries ?? []).length > 0 && (
+              <div className="psp-body-sm">Countries: {(fs.countries ?? []).map(c => `${c.name} ${c.weight_pct.toFixed(1)}%`).join(' · ')}</div>
+            )}
+          </div>
+        )}
+      </div>
+      <NotInData fields={fs.missing ?? []} testId="prospectus-fund-missing" />
     </Card>
   )
 }
 
 // ── Source coverage ───────────────────────────────────────────────────────────────────────────────────────────────
+// Only the sources relevant to a security report, grouped and collapsed; internal plumbing stays in the JSON.
 export function CoverageBlock({ doc }: { doc: ProspectusDoc }) {
-  const cov = doc.source_coverage
-  const domains: CoverageDomain[] = cov?.domains ?? []
+  const { groups, counts, hidden } = coverageGroups(doc)
+  const total = counts.used + counts.stale + counts.failed + counts.missing
+  const summary = COVERAGE_GROUPS.filter(([g]) => counts[g]).map(([g, lab]) => (
+    <span key={g} className={`psp-cov-count psp-tone-${coverageTone(g === 'missing' ? 'empty' : g)}`} data-testid={`prospectus-coverage-count-${g}`}>{counts[g]} {lab.toLowerCase()}</span>
+  ))
   return (
-    <Card title={<>Source coverage <span className="psp-muted">· every registered source checked</span></>} testId="prospectus-coverage" label="Source coverage">
-      {!domains.length ? <NotAvailable what="Source coverage" /> : (
-        <div className="psp-cov">
-          {domains.map(d => (
-            <span key={d.domain} className={`psp-chip psp-cov-chip psp-tone-${coverageTone(d.status)}`} data-testid="prospectus-coverage-chip" data-status={d.status}
-              title={[d.status, d.reason, d.as_of ? `as of ${whenEt(d.as_of)}` : null].filter(Boolean).join(' · ')}>
-              {domainLabel(d)}{d.status === 'stale' && d.as_of ? ` · ${whenEt(d.as_of)}` : ''}
-            </span>
+    <section className="psp-card" data-testid="prospectus-coverage" aria-label="Source coverage">
+      {!total ? (<><h2 className="psp-card-title">Source coverage</h2><NotAvailable what="Source coverage" /></>) : (
+        <details className="psp-cov-d">
+          <summary className="psp-srcs-sum psp-cov-sum" data-testid="prospectus-coverage-toggle">
+            <h2 className="psp-card-title">Source coverage</h2><span className="psp-cov-counts">{summary}</span>
+          </summary>
+          {COVERAGE_GROUPS.filter(([g]) => groups[g]?.length).map(([g, lab]) => (
+            <div key={g} className="psp-cov-group" data-group={g}>
+              <div className="psp-tile-k">{lab} · {counts[g]}</div>
+              <div className="psp-cov">
+                {groups[g].map(d => (
+                  <span key={d.domain} className={`psp-chip psp-cov-chip psp-tone-${coverageTone(d.status === 'empty' ? 'empty' : d.status)}`} data-testid="prospectus-coverage-chip" data-status={d.status}
+                    title={[d.status, d.reason, d.as_of ? `as of ${whenEt(d.as_of)}` : null].filter(Boolean).join(' · ')}>
+                    {d.label}{d.status === 'stale' && d.as_of ? ` · ${whenEt(d.as_of)}` : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
           ))}
-        </div>
+          <div className="psp-muted">{hidden ? `${hidden} internal or not-applicable sources are kept in the record and not listed. ` : ''}A missing key source marks the report "partial".</div>
+        </details>
       )}
-      <div className="psp-muted">Green used · amber stale (shows as-of) · grey not applicable · red failed. A missing key source marks the report "partial".</div>
-    </Card>
+    </section>
   )
 }

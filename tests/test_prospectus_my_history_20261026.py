@@ -532,7 +532,7 @@ def test_end_to_end_writer_note_house_scenarios_and_renders(tmp_path):
     assert "scenarios_house" not in doc["blocks"]
     html = render.html(doc)
     assert html.index('id="block-my_history"') < html.index('id="summary_verdict"')
-    assert 'id="block-fund_profile"' in html and "Trip" not in html.split('id="block-my_history"')[0]
+    assert 'id="block-fund_structure"' in html and "Trip" not in html.split('id="block-my_history"')[0]
     assert "fixture_" not in html
     data = render.docx(doc, {})
     if data is not None:
