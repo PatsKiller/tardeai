@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Scan open PRs and Telegram-notify ones that are merge-ready.
 
+RETIRED for per-PR messages (2026-10-27): the one-tap digest (scripts/pr_merge_digest.py,
+timer tradeai-pr-merge-digest) replaces them. ``--apply`` now sends nothing unless
+``--legacy-per-pr`` is passed; the dry-run scan still works for diagnostics.
+
 A PR is notified when:
   - base=main, state=open
   - not draft
@@ -72,8 +76,23 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Use prmapprove (needs CURRENT promote); default is guard bridge",
     )
+    p.add_argument(
+        "--legacy-per-pr",
+        action="store_true",
+        help="Re-enable the retired per-PR prompts (coordinator only; the digest replaces them)",
+    )
     args = p.parse_args(argv)
     apply = bool(args.apply) and not args.dry_run
+    if apply and not args.legacy_per_pr:
+        msg = {
+            "ok": True,
+            "apply": False,
+            "retired": True,
+            "detail": "per-PR prompts retired; the PR merge digest (scripts/pr_merge_digest.py) sends one "
+            "message per digest. Pass --legacy-per-pr to force the old behaviour.",
+        }
+        print(json.dumps(msg, indent=2) if args.as_json else msg["detail"])
+        return 0
 
     from scripts.lib import pr_merge_telegram as pmt
 
