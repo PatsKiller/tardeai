@@ -103,6 +103,12 @@ EMPTY_ALLOWED_REASONS = frozenset(
         "no_tracked_threads",
         "no_new_events",
         "no_due_threads",
+        # Ticker Prospectus window lane (prospectus-build, 2026-10-26): the due Watch rows went to the Message Batches
+        # API (written at a later window), the governed credit cap stopped the window before a report, or the
+        # data-quality gate blocked every due row (repairs filed). A fire that failed reports carries no reason.
+        "deferred_to_batch",
+        "credit_cap_reached",
+        "data_blocked",
     }
 )
 EVIDENCE_KINDS = frozenset({"store_rows", "receipt_field", "ledger_row", "file_artifact"})

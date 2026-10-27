@@ -605,3 +605,10 @@ def test_empty_reason_matches_the_health_contract(out, reason):
     assert eo["rule"] == "empty_allowed"
     if reason:
         assert reason in eo["empty_allowed_reasons"]
+
+
+def test_contract_expected_output_passes_framework_m6():
+    import check_n8n_workflow_framework as F
+    contract = next(c for c in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+                    if c["id"] == "prospectus-build")
+    assert F._check_expected_output(contract)["status"] == F.PASS

@@ -129,7 +129,7 @@ The PR ships the lane at **shadow** (`live_arg` null, dispatch `dry_run`) and th
    (§25.10) and confirm `CURRENT` serves it.
 
    ```bash
-   gh pr merge <PR> --squash
+   gh pr merge 2215 --squash
    readlink -f ~/trade-ai-releases/portfolio-server/CURRENT      # must name the merged SHA before step 2
    ```
 
@@ -137,7 +137,7 @@ The PR ships the lane at **shadow** (`live_arg` null, dispatch `dry_run`) and th
 
    ```bash
    cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild && G=bin/guard && SHA=$(git rev-parse origin/main)
-   $G grant service --for 4h --uses 4 --reason "PR #<PR> sha $SHA: install + enable tradeai-prospectus-deliver.timer from CURRENT; never delete"
+   $G grant service --for 4h --uses 4 --reason "PR #2215 sha $SHA: install + enable tradeai-prospectus-deliver.timer from CURRENT; never delete"
    CUR=$(readlink -f ~/trade-ai-releases/portfolio-server/CURRENT)
    for u in tradeai-prospectus-deliver.service tradeai-prospectus-deliver.timer; do install -m 0644 $CUR/config/systemd/user/$u ~/.config/systemd/user/$u; done
    systemctl --user daemon-reload && systemctl --user enable --now tradeai-prospectus-deliver.timer
