@@ -37,6 +37,9 @@ DEFAULT_TTL_SECONDS = int(os.environ.get("PR_MERGE_TELEGRAM_TTL_SECONDS", "86400
 # is promoted, Telegram Approve for a PR is a short-lived ``telegram`` guard
 # request whose reason carries this marker; a waiter applies ``operator-merge``.
 GUARD_REASON_MARKER = "PR_MERGE_LABEL"
+# One Telegram Approve for many PRs — avoids ACTIVE_GRANT_EXISTS when N
+# parallel single-PR cards race on the one-use ``telegram`` bridge grant.
+GUARD_DIGEST_MARKER = "PR_MERGE_DIGEST"
 GUARD_BRIDGE_SCOPE = "telegram"
 REQUIRED_CHECKS = (
     "cio-hardening",
@@ -222,6 +225,23 @@ def comment_on_pr(pr_number: int, body: str, *, repo: str = DEFAULT_REPO) -> dic
     return {"ok": code == 0, "rc": code, "body": resp}
 
 
+def _digest_pr_numbers(rec: dict[str, Any]) -> list[int]:
+    """PR numbers on a single or digest request row."""
+    if str(rec.get("kind") or "") == "digest":
+        raw = rec.get("pr_numbers") or []
+        out: list[int] = []
+        for n in raw:
+            try:
+                out.append(int(n))
+            except (TypeError, ValueError):
+                continue
+        return out
+    try:
+        return [int(rec["pr_number"])]
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
 def settle_by_request_id(
     request_id: str,
     *,
@@ -234,7 +254,8 @@ def settle_by_request_id(
     """Settle a PENDING request from a Telegram callback.
 
     Only an allowlisted ``chat_id`` may settle. Approve adds ``operator-merge``;
-    deny removes it. Returns ``{ok, reason?, request, label_result?}``.
+    deny removes it. A digest row labels every listed PR. Returns
+    ``{ok, reason?, request, label_result?}``.
     """
     allowed = {str(c) for c in allowed_chats if c is not None and str(c)}
     if str(chat_id) not in allowed:
@@ -261,26 +282,41 @@ def settle_by_request_id(
         "text": (telegram or {}).get("text"),
     }
     label_result: dict[str, Any] | None = None
+    label_results: list[dict[str, Any]] = []
     if apply_label:
-        pr = int(rec["pr_number"])
         repo = str(rec.get("repo") or DEFAULT_REPO)
-        if approve:
-            label_result = add_operator_merge_label(pr, repo=repo)
-            if label_result.get("ok"):
+        prs = _digest_pr_numbers(rec)
+        for pr in prs:
+            if approve:
+                one = add_operator_merge_label(pr, repo=repo)
+                if one.get("ok"):
+                    comment_on_pr(
+                        pr,
+                        f"operator-merge: set by Telegram Approve "
+                        f"(request `{request_id}`"
+                        + (
+                            f", digest of {len(prs)} PRs"
+                            if str(rec.get("kind") or "") == "digest"
+                            else f", head `{str(rec.get('head_sha') or '')[:9]}`"
+                        )
+                        + "). "
+                        f"Mergify may queue when CI is green in an ET window.",
+                        repo=repo,
+                    )
+            else:
+                one = remove_operator_merge_label(pr, repo=repo)
                 comment_on_pr(
                     pr,
-                    f"operator-merge: set by Telegram Approve "
-                    f"(request `{request_id}`, head `{str(rec.get('head_sha') or '')[:9]}`). "
-                    f"Mergify may queue when CI is green in an ET window.",
+                    f"operator-merge: cleared by Telegram Deny (request `{request_id}`).",
                     repo=repo,
                 )
-        else:
-            label_result = remove_operator_merge_label(pr, repo=repo)
-            comment_on_pr(
-                pr,
-                f"operator-merge: cleared by Telegram Deny (request `{request_id}`).",
-                repo=repo,
-            )
+            label_results.append({"pr_number": pr, **one})
+        label_result = {
+            "ok": all(x.get("ok") for x in label_results) if label_results else False,
+            "results": label_results,
+            "action": "add" if approve else "remove",
+            "label": LABEL,
+        }
         rec["label_result"] = label_result
     _save(rows)
 
@@ -306,8 +342,30 @@ def keyboard(request_id: str) -> dict[str, Any]:
 
 
 def format_message(rec: dict[str, Any]) -> str:
-    sha = str(rec.get("head_sha") or "")[:9]
     reason = rec.get("reason") or "Mergify go-signal (Telegram only — no GitHub Approve needed)"
+    hours = max(1, int((float(rec.get("expires_at") or 0) - time.time()) / 3600))
+    if str(rec.get("kind") or "") == "digest":
+        items = rec.get("items") or []
+        lines = []
+        for it in items[:20]:
+            lines.append(
+                f"• #{it.get('pr_number')} — {str(it.get('title') or '')[:80]} "
+                f"(`{str(it.get('head_sha') or '')[:9]}`)"
+            )
+        more = len(items) - 20
+        if more > 0:
+            lines.append(f"• …and {more} more")
+        body = "\n".join(lines) or "(no PRs)"
+        return (
+            f"\U0001f4e6 *PR merge approval — digest ({len(items)})*\n\n"
+            f"{body}\n\n"
+            f"*Why:* {reason}\n\n"
+            f"Tap **Approve merge once** to label all of these `{LABEL}` "
+            f"for Mergify. Deny leaves them all out.\n"
+            f"_One tap. Do not approve leftover single-PR cards — they are superseded. "
+            f"Expires in {hours}h._"
+        )
+    sha = str(rec.get("head_sha") or "")[:9]
     return (
         f"\U0001f4e6 *PR merge approval*\n\n"
         f"*PR:* #{rec.get('pr_number')} — {rec.get('title')}\n"
@@ -316,8 +374,7 @@ def format_message(rec: dict[str, Any]) -> str:
         f"*Why:* {reason}\n\n"
         f"Tap **Approve merge** to put this on the Mergify queue "
         f"(label `{LABEL}`). Deny leaves it out.\n"
-        f"_You do not need github.com. Expires in "
-        f"{max(1, int((float(rec.get('expires_at') or 0) - time.time()) / 3600))}h._"
+        f"_You do not need github.com. Expires in {hours}h._"
     )
 
 
@@ -447,22 +504,119 @@ def guard_reason(*, pr_number: int, request_id: str, head_sha: str) -> str:
     )
 
 
-def parse_guard_reason(reason: str) -> Optional[dict[str, str]]:
-    """Extract pr / rid / head from a bridge reason, or None."""
+def guard_digest_reason(*, pr_numbers: list[int], request_id: str) -> str:
+    """Bridge reason for a multi-PR digest — one Approve labels every PR."""
+    nums = ",".join(f"#{int(n)}" for n in pr_numbers)
+    return (
+        f"{GUARD_DIGEST_MARKER} prs={nums} rid={request_id} "
+        f"— tap Approve once to queue Mergify for all (no GitHub needed)"
+    )
+
+
+def parse_guard_reason(reason: str) -> Optional[dict[str, Any]]:
+    """Extract pr / rid / head (single) or prs / rid (digest) from a bridge reason."""
     text = str(reason or "")
+    if GUARD_DIGEST_MARKER in text:
+        out: dict[str, Any] = {"kind": "digest"}
+        for token in text.split():
+            if token.startswith("prs="):
+                raw = token[4:]
+                prs: list[int] = []
+                for part in raw.split(","):
+                    part = part.strip().lstrip("#")
+                    if part.isdigit():
+                        prs.append(int(part))
+                out["prs"] = prs
+            elif token.startswith("rid="):
+                out["rid"] = token[4:]
+        if out.get("prs") and out.get("rid"):
+            return out
+        return None
     if GUARD_REASON_MARKER not in text:
         return None
-    out: dict[str, str] = {}
+    out2: dict[str, Any] = {"kind": "single"}
     for token in text.split():
         if token.startswith("pr=#"):
-            out["pr"] = token[4:]
+            out2["pr"] = token[4:]
         elif token.startswith("rid="):
-            out["rid"] = token[4:]
+            out2["rid"] = token[4:]
         elif token.startswith("head="):
-            out["head"] = token[5:]
-    if "pr" in out and "rid" in out:
-        return out
+            out2["head"] = token[5:]
+    if "pr" in out2 and "rid" in out2:
+        return out2
     return None
+
+
+def mint_digest_request(
+    *,
+    items: list[dict[str, Any]],
+    reason: str = "",
+    repo: str = DEFAULT_REPO,
+    ttl: int = DEFAULT_TTL_SECONDS,
+) -> dict[str, Any]:
+    """Create a PENDING digest row covering many PRs. Does not send Telegram."""
+    if len(items) < 2:
+        raise ValueError("digest needs at least 2 PRs; use mint_request for one")
+    cleaned: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for it in items:
+        pr = int(it["pr_number"])
+        if pr in seen:
+            continue
+        seen.add(pr)
+        cleaned.append(
+            {
+                "pr_number": pr,
+                "title": str(it.get("title") or "")[:200],
+                "head_sha": str(it.get("head_sha") or "")[:40],
+                "url": str(it.get("url") or ""),
+            }
+        )
+    if len(cleaned) < 2:
+        raise ValueError("digest needs at least 2 distinct PRs")
+    now = time.time()
+    # Supersede leftover single PENDING cards so old Telegram buttons settle as SUPERSEDED.
+    rows = _load()
+    digest_id = _new_id()
+    for r in rows:
+        if r.get("status") != "PENDING":
+            continue
+        if str(r.get("kind") or "") == "digest":
+            r["status"] = "SUPERSEDED"
+            r["superseded_by"] = digest_id
+            r["settled_at"] = now
+            continue
+        if int(r.get("pr_number") or 0) in seen:
+            r["status"] = "SUPERSEDED"
+            r["superseded_by"] = digest_id
+            r["settled_at"] = now
+    rec = {
+        "schema": SCHEMA,
+        "kind": "digest",
+        "request_id": digest_id,
+        "status": "PENDING",
+        "pr_number": cleaned[0]["pr_number"],  # primary for store scanners
+        "pr_numbers": [c["pr_number"] for c in cleaned],
+        "items": cleaned,
+        "title": f"digest of {len(cleaned)} PRs",
+        "head_sha": "",
+        "url": "",
+        "repo": repo,
+        "reason": str(reason or "")[:500],
+        "created_at": now,
+        "expires_at": now + max(60, int(ttl)),
+        "settled_at": None,
+        "settled_by": None,
+        "label_result": None,
+    }
+    rows.append(rec)
+    hot = [
+        r
+        for r in rows
+        if r.get("status") == "PENDING" or (now - float(r.get("created_at") or 0)) < 7 * 86400
+    ]
+    _save(hot[-200:])
+    return rec
 
 
 def mint_and_notify_via_guard(
@@ -563,6 +717,191 @@ def mint_and_notify_via_guard(
     }
 
 
+def mint_and_notify_via_guard_digest(
+    *,
+    items: list[dict[str, Any]],
+    reason: str = "",
+    repo: str = DEFAULT_REPO,
+    ttl: int = DEFAULT_TTL_SECONDS,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """One Telegram Approve for many PRs — avoids ACTIVE_GRANT_EXISTS races.
+
+    Mints a digest row, supersedes leftover single PENDING cards for those PRs,
+    and asks via the live ``gapprove`` bridge with ``PR_MERGE_DIGEST`` in the
+    reason. One tap → one ``telegram`` grant → waiter labels every PR.
+    """
+    if len(items) < 2:
+        raise ValueError("digest needs at least 2 PRs")
+    if dry_run:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "kind": "digest",
+            "pr_numbers": [int(it["pr_number"]) for it in items],
+            "via": "guard",
+            "would_send": True,
+            "label": LABEL,
+        }
+    rec = mint_digest_request(items=items, reason=reason, repo=repo, ttl=ttl)
+    pr_numbers = list(rec["pr_numbers"])
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra  # type: ignore
+
+    g_reason = guard_digest_reason(pr_numbers=pr_numbers, request_id=rec["request_id"])
+    try:
+        greq = gra.mint_request(
+            GUARD_BRIDGE_SCOPE,
+            seconds=300,
+            uses=1,
+            reason=g_reason,
+            ttl=min(int(ttl), int(getattr(gra, "MAX_REQUEST_TTL_SECONDS", 43200))),
+        )
+    except (ValueError, RuntimeError) as exc:
+        return {
+            "ok": False,
+            "kind": "digest",
+            "pr_numbers": pr_numbers,
+            "request_id": rec["request_id"],
+            "via": "guard",
+            "telegram": f"guard mint refused: {exc}",
+        }
+
+    try:
+        from scripts.guard_request_approval import _keyboard, _send
+    except ImportError:
+        from guard_request_approval import _keyboard, _send  # type: ignore
+
+    lines = []
+    for it in (rec.get("items") or [])[:15]:
+        lines.append(
+            f"• #{it.get('pr_number')} — {str(it.get('title') or '')[:70]} "
+            f"(`{str(it.get('head_sha') or '')[:9]}`)"
+        )
+    if len(pr_numbers) > 15:
+        lines.append(f"• …and {len(pr_numbers) - 15} more")
+    body = (
+        f"\U0001f4e6 *PR merge approval — digest ({len(pr_numbers)})*\n\n"
+        + "\n".join(lines)
+        + f"\n\n*Why:* {reason or 'Batch Approves — one tap for all'}\n\n"
+        f"Tap **Approve once** to put all of these on the Mergify queue "
+        f"(adds `{LABEL}` to each). Deny leaves them all out.\n"
+        f"_One tap → one `{GUARD_BRIDGE_SCOPE}` grant (5 min / 1 use). "
+        f"Do not tap leftover single-PR cards — they are superseded. "
+        f"You do not need github.com._"
+    )
+    ok, detail, ids = _send(body, reply_markup=_keyboard(greq["request_id"]))
+    gra.record_delivery(greq["request_id"], accepted=ok, message_ids=ids)
+    record_delivery(rec["request_id"], accepted=ok, message_ids=ids)
+    rows = _load()
+    for r in rows:
+        if r.get("request_id") == rec["request_id"]:
+            r["guard_bridge_request_id"] = greq["request_id"]
+            break
+    _save(rows)
+    return {
+        "ok": ok,
+        "kind": "digest",
+        "pr_numbers": pr_numbers,
+        "request_id": rec["request_id"],
+        "guard_request_id": greq["request_id"],
+        "via": "guard",
+        "telegram": detail,
+        "message_ids": ids,
+        "label": LABEL,
+    }
+
+
+def wait_guard_and_apply_digest(
+    *,
+    request_id: str,
+    pr_numbers: list[int],
+    timeout_s: int = 900,
+    poll_s: float = 5.0,
+    repo: str = DEFAULT_REPO,
+) -> dict[str, Any]:
+    """Poll the guard remote store; on Approve, label every PR in the digest."""
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra  # type: ignore
+
+    wanted = {int(n) for n in pr_numbers}
+    deadline = time.time() + max(30, int(timeout_s))
+    while time.time() < deadline:
+        doc = gra._load()  # noqa: SLF001 — same process, read-only poll
+        for r in doc.get("requests") or []:
+            parsed = parse_guard_reason(str(r.get("reason") or ""))
+            if not parsed or parsed.get("kind") != "digest":
+                continue
+            if parsed.get("rid") and parsed["rid"] != request_id:
+                continue
+            status = str(r.get("status") or "")
+            if status in ("DENIED_BY_OPERATOR", "DENIED", "EXPIRED", "SUPERSEDED"):
+                rows = _load()
+                for row in rows:
+                    if row.get("request_id") == request_id and row.get("status") == "PENDING":
+                        row["status"] = "DENIED" if "DENY" in status else status
+                        row["settled_at"] = time.time()
+                        row["settled_by"] = {"via": "guard_bridge", "guard_status": status}
+                        break
+                _save(rows)
+                return {
+                    "ok": False,
+                    "reason": status,
+                    "kind": "digest",
+                    "pr_numbers": sorted(wanted),
+                }
+            if status == "APPROVED":
+                label_results: list[dict[str, Any]] = []
+                for pr in sorted(wanted):
+                    one = add_operator_merge_label(pr, repo=repo)
+                    if one.get("ok"):
+                        comment_on_pr(
+                            pr,
+                            f"operator-merge: set by Telegram digest Approve "
+                            f"(request `{request_id}`, digest of {len(wanted)} PRs). "
+                            f"Mergify may queue when CI is green in an ET window.",
+                            repo=repo,
+                        )
+                    label_results.append({"pr_number": pr, **one})
+                label_result = {
+                    "ok": all(x.get("ok") for x in label_results) if label_results else False,
+                    "results": label_results,
+                    "action": "add",
+                    "label": LABEL,
+                }
+                rows = _load()
+                for row in rows:
+                    if row.get("request_id") == request_id:
+                        row["status"] = "APPROVED"
+                        row["settled_at"] = time.time()
+                        row["settled_by"] = {
+                            "via": "guard_bridge",
+                            "guard_request_id": r.get("request_id"),
+                        }
+                        row["label_result"] = label_result
+                        break
+                _save(rows)
+                return {
+                    "ok": bool(label_result.get("ok")),
+                    "kind": "digest",
+                    "pr_numbers": sorted(wanted),
+                    "request_id": request_id,
+                    "label_result": label_result,
+                }
+        time.sleep(max(1.0, float(poll_s)))
+    return {
+        "ok": False,
+        "reason": "TIMEOUT",
+        "kind": "digest",
+        "pr_numbers": sorted(wanted),
+        "request_id": request_id,
+    }
+
+
 def wait_guard_and_apply(
     *,
     pr_number: int,
@@ -581,7 +920,7 @@ def wait_guard_and_apply(
         doc = gra._load()  # noqa: SLF001 — same process, read-only poll
         for r in doc.get("requests") or []:
             parsed = parse_guard_reason(str(r.get("reason") or ""))
-            if not parsed:
+            if not parsed or parsed.get("kind") == "digest":
                 continue
             if parsed.get("pr") != str(pr_number):
                 continue

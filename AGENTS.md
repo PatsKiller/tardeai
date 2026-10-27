@@ -6532,16 +6532,21 @@ for live force. Foundation docs: `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md`, `docs/
   poller promotes. No agent pushes `main` or `train/*`, merges, or runs prepare/promote.
 - **Agent path (Telegram go-signal).** (1) Claim. (2) Build / test / dry-run. (3) Open a **ready** (not draft) PR to
   `main`; apply `solo` or `shared-infra` at open when that class applies — never `held` / `broker` /
-  `broker_active_trader` unless the change truly is that class. (4) After open (and again when CI is green), run
-  `scripts/request_pr_merge_approve.py --pr <N>` so Telegram gets Approve / Deny. The host timer
-  `notify_pr_merge_ready.py` also scans open PRs and sends when the four checks are green. (5) **Stop.** Do not
-  merge, do not promote, do not Approve on GitHub, do not add `operator-merge` by hand. Path rules still auto-hold
-  broker/secrets. The retired `merge-ready` label is not a gate.
-- **Who Approves.** Only a Telegram **Approve merge** tap on an allowlisted chat unblocks Mergify. The callback
-  poller settles `prmapprove:` / `prmdeny:` (`scripts/lib/pr_merge_telegram.py`) and the host adds or clears the
-  ``operator-merge`` label; `.mergify.yml` queues on `label=operator-merge` (plus CI green + ET window). Not a
-  GitHub Approve UI, not a chat LGTM, not Telegram `/approve` (that path is guard grants only), not an
-  `Adversarial-review: MERGE` comment, not an agent-applied label. Draft PRs never queue (`draft=false`).
+  `broker_active_trader` unless the change truly is that class. (4) After open (and again when CI is green), request
+  Telegram Approve. **One PR:** `scripts/request_pr_merge_approve.py --pr <N>`. **Two or more PRs at once:** use a
+  digest — `scripts/request_pr_merge_approve.py --prs <N,M,...> [--wait]` — one Telegram card, one tap, one
+  `telegram` bridge grant labels every listed PR. Never fire parallel `--pr --wait` floods: the bridge scope is
+  one active grant / one use, so later cards land `ACTIVE_GRANT_EXISTS` / `SUPERSEDED` the moment the first is
+  tapped (measured 2026-10-27). The host timer `notify_pr_merge_ready.py` also scans open PRs and sends when the
+  four checks are green. (5) **Stop.** Do not merge, do not promote, do not Approve on GitHub, do not add
+  `operator-merge` by hand. Path rules still auto-hold broker/secrets. The retired `merge-ready` label is not a gate.
+- **Who Approves.** Only a Telegram **Approve merge** (or digest **Approve once**) tap on an allowlisted chat
+  unblocks Mergify. The callback poller settles `prmapprove:` / `prmdeny:` (`scripts/lib/pr_merge_telegram.py`) —
+  a digest row (`PR_MERGE_DIGEST`) labels every listed PR — and the host adds or clears the ``operator-merge``
+  label; `.mergify.yml` queues on `label=operator-merge` (plus CI green + ET window). Not a GitHub Approve UI, not
+  a chat LGTM, not Telegram `/approve` (that path is guard grants only), not an `Adversarial-review: MERGE`
+  comment, not an agent-applied label. Draft PRs never queue (`draft=false`). Leftover single-PR cards for PRs
+  already in a digest settle as SUPERSEDED — tap the digest only.
 - **Mergify is the merge actor.** Required checks (`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`)
   must be exactly `success` on the head. Queues and `schedule` windows are America/New_York (DST-aware) in `.mergify.yml`.
   Exclusions (broker / Active Trader / MBI, secrets, AGENTS.md / AI_WORK_POLICY / hooks / guard without the solo review
@@ -7314,15 +7319,17 @@ verification and failure paging). It removes nothing and does not touch §0, §2
 - **6 CI green.** `cio-hardening`, `agent-governance`, `release-readiness` and `ci-gate` are `success` on the head SHA;
   a unit whose tests all skip fails; local green is not CI green. *Cause (§20): §25.2 qualifying evidence; 2026-09-22 a
   locally green PR failed CI.*
-- **7 Queue.** After CI is green on the exact head, the agent runs
-  `scripts/request_pr_merge_approve.py --pr <N>` and stops (§25.10). The operator taps **Approve merge** on Telegram;
-  the host adds `operator-merge`. Mergify queues inside its ET windows when the PR is not a draft, the four checks
-  are green, and that label is present — no GitHub Approve UI, no `merge-ready` label. Until Mergify cutover is the
-  only merge path, `config/release_train_policy.json` still classifies every open PR (`eligible` /
-  `needs_operator` / `held` / `blocked`). Agent applies `solo` / `shared-infra` at open when required; path rules
-  still auto-hold broker/secrets. Agents never merge, never add `operator-merge` by hand, and never release
-  (§25.1). Full path: `docs/ops/AGENT_MERGIFY_HANDOFF.md`.
-  *Cause (§20): operator 2026-10-26 — not a GitHub expert; Telegram tap is the go-signal, then automatic queue/merge.*
+- **7 Queue.** After CI is green on the exact head, the agent requests Telegram Approve and stops (§25.10): one PR
+  with `--pr <N>`; two or more waiting green PRs with `--prs <N,M,...>` (one digest card). Never parallel
+  `--pr --wait` for a batch — that races the one-use `telegram` bridge grant. The operator taps **Approve merge**
+  (or **Approve once** on a digest); the host adds `operator-merge` to each. Mergify queues inside its ET windows
+  when the PR is not a draft, the four checks are green, and that label is present — no GitHub Approve UI, no
+  `merge-ready` label. Until Mergify cutover is the only merge path, `config/release_train_policy.json` still
+  classifies every open PR (`eligible` / `needs_operator` / `held` / `blocked`). Agent applies `solo` /
+  `shared-infra` at open when required; path rules still auto-hold broker/secrets. Agents never merge, never add
+  `operator-merge` by hand, and never release (§25.1). Full path: `docs/ops/AGENT_MERGIFY_HANDOFF.md`.
+  *Cause (§20): operator 2026-10-26 — Telegram tap is the go-signal; 2026-10-27 — parallel Approves superseded each
+  other, so digests became the batch path.*
 - **8 Release.** Mergify squash-merges to `main` in an ET window; host `deploy_on_main` promotes CURRENT under STOP +
   GlobalReleaseLock + the standing **deploy** (promote-only) delegation (§25.10). Emergency remains operator host CLI
   + `release-write` naming the SHA. Merged is not deployed and deployed is not proven. *Cause (§20): 2026-09-22 the
