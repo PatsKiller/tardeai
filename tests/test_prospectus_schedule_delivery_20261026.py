@@ -168,15 +168,21 @@ def test_trigger_reasons_and_value_priority(cfg):
     uni = schedule.plan_universe(hold, ["WWW", "NEW", "BIG"], cfg)
     index = idx(BIG=(gen, {}), SML=(gen, {"cio_stance": "hold"}), STP=(gen, {"stop_levels": [40.0]}),
                 WWW=(gen, {"cio_stage": "research"}))
+    # 2026-10-27: a fresh catalyst row alone no longer fires; only a news decision (gate + CIO impact) does
     rows = schedule.evaluate_triggers(uni, index, src, cfg, now=now, holdings=hold)
+    assert "BIG" not in {r["symbol"] for r in rows}
+    news = {"BIG": {"reason": "news_thesis", "mode": "delta", "item": "abc123"}}
+    rows = schedule.evaluate_triggers(uni, index, src, cfg, now=now, holdings=hold, news=news)
     got = {r["symbol"]: r["reason"] for r in rows}
-    assert got == {"BIG": "material_news", "SML": "cio_stance_change", "STP": "stop_event",
+    assert got == {"BIG": "news_thesis", "SML": "cio_stance_change", "STP": "stop_event",
                    "WWW": "promoted_to_proposal", "NEW": "missing"}
+    big = next(r for r in rows if r["symbol"] == "BIG")
+    assert big["mode"] == "delta" and big["item"] == "abc123"
     assert [r["symbol"] for r in rows] == ["BIG", "STP", "SML", "NEW", "WWW"]  # holdings by $ value, then watch
     # the pre-market window evaluates only its own scopes and triggers
     pm = next(w for w in cfg["run_windows"]["windows"] if w["id"] == "pre_market")
     rows = schedule.evaluate_triggers(uni, index, src, cfg, now=now, triggers=pm["triggers"], scopes=pm["scopes"],
-                                     holdings=hold)
+                                     holdings=hold, news=news)
     assert {r["symbol"] for r in rows} == {"BIG", "SML", "STP"}
 
 

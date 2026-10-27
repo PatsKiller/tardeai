@@ -93,7 +93,8 @@ def _eligible_for(win: dict | None) -> Callable[[dict], bool]:
 
 def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Callable[[Path, bool], Any],
         run_queue_fn: Callable | None = None, batch_submit_fn: Callable | None = None,
-        batch_collect_fn: Callable | None = None, log: Callable[[str], None] = print) -> dict:
+        batch_collect_fn: Callable | None = None, log: Callable[[str], None] = print,
+        news_fns: dict | None = None) -> dict:
     base = store.base_dir(root, cfg)
     now = _now(args)
     zone = schedule.tz(cfg)
@@ -111,9 +112,12 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
             holdings = sources.holdings() or {}
             universe = schedule.plan_universe(holdings, sources.watch_symbols() if "watch" in (win.get("scopes") or [])
                                               else [], cfg)
+            news = review_news(base, win, universe, sources, cfg, now=now, apply=False, holdings=holdings,
+                               news_fns=news_fns)
             due = schedule.evaluate_triggers(universe, store.read_index(base), sources, cfg, now=now,
                                              triggers=win.get("triggers") or "all", scopes=win.get("scopes"),
-                                             holdings=holdings)
+                                             holdings=holdings, news=news["decisions"])
+            out["news"] = news["summary"]
             out["would_enqueue"] = [{k: r[k] for k in ("symbol", "scope", "priority", "reason")} for r in due]
             out["would_run_max"] = int(win.get("max_reports", 12))
         return out
@@ -131,6 +135,7 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
     enqueued, batch = 0, {"enabled": use_batch, "used": False}
     before = dict(store.read_index(base)["items"])
     rows: dict[str, dict] = {}
+    news: dict = {"summary": None, "cost_usd": 0.0}
     collected: list[str] = []
     extra_cost = 0.0
     if win and use_batch:  # every window first collects finished Watch batch results (no model call)
@@ -154,9 +159,15 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
         merged = universe + [r for s, r in prior.items() if s not in {u["symbol"] for u in universe}
                              and r.get("scope") == "watch" and "watch" not in (win.get("scopes") or [])]
         store.write_universe(base, merged)
+        news = review_news(base, win, universe, sources, cfg, now=now, apply=True, holdings=holdings,
+                           news_fns=news_fns, root=root)
+        extra_cost += float(news.get("cost_usd") or 0)
         due = schedule.evaluate_triggers(universe, store.read_index(base), sources, cfg, now=now,
                                          triggers=win.get("triggers") or "all", scopes=win.get("scopes"),
-                                         holdings=holdings)
+                                         holdings=holdings, news=news["decisions"])
+        if news.get("summary") is not None:
+            news["summary"]["enqueued"] = sorted(r["symbol"] for r in due
+                                                 if str(r.get("reason")).startswith("news_"))
         enqueued = store.enqueue(base, due, now=now)
         if use_batch and "watch" in (win.get("scopes") or []):
             if batch_submit_fn is None:
@@ -188,12 +199,13 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
     receipt = {"done": summary.get("done"), "failed": summary.get("failed"), "queued": summary.get("queued"),
                "blocked_data": summary.get("blocked_data") or [],
                "stopped_reason": summary.get("stopped_reason"), "cost_usd": round(cost, 4), "enqueued": enqueued,
-               "finished_at": finished.isoformat()}
+               "finished_at": finished.isoformat(), "news": news.get("summary")}
     state = schedule.record_window(base, (win or {}).get("key") or "", receipt, month=month, cost_usd=cost)
     queue_left = sum(1 for r in store.read_queue(base)["items"] if r.get("state") in ("queued", None))
     outbox = None
     deliver_operator = bool((delivery.delivery_cfg(cfg)).get("on_operator_rewrite", True))
-    if (items or failed) and (win or deliver_operator):
+    news_sum = news.get("summary") or {}
+    if (items or failed or news_sum.get("accepted")) and (win or deliver_operator):
         run_key = (win or {}).get("key") or f"{now.astimezone(zone).date().isoformat()}:operator:{store.stamp(now)}"
         outbox = delivery.write_outbox(base, {
             "run_key": run_key, "window_id": (win or {}).get("id") or "operator_rewrite",
@@ -202,11 +214,26 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
             "finished_at": finished.isoformat(), "items": items, "failed": failed, "queue_left": queue_left,
             "enqueued": enqueued, "cost_usd": round(cost, 4), "month": month,
             "month_spend_usd": state["spend_by_month"].get(month), "stopped_reason": summary.get("stopped_reason"),
-            "batch": batch})
+            "batch": batch, "news": news_sum or None})
     out.update(mode="apply", ran="window" if win else "operator_rewrite", **receipt,
                queue_left=queue_left, month_spend_usd=state["spend_by_month"].get(month), batch=batch,
                outbox=str(outbox.relative_to(base)) if outbox else None, produced_count=len(items))
     return out
+
+
+def review_news(base: Path, win: dict, universe: list[dict], sources: Any, cfg: dict, *, now: datetime, apply: bool,
+                holdings: dict, news_fns: dict | None = None, root: Path | None = None) -> dict:
+    """The window's news review (operator 2026-10-27): relevance gate, classifier, CIO notes, rewrite decisions.
+    Skipped when the window does not evaluate ``material_news``. Dry runs call no model and write nothing."""
+    trig = win.get("triggers") or "all"
+    if not (trig == "all" or "material_news" in trig) or not (cfg.get("cadence") or {}).get("triggers", {}).get("material_news"):
+        return {"decisions": {}, "summary": None, "cost_usd": 0.0}
+    from scripts.lib.prospectus import news_note
+    fns = dict(news_fns or {})
+    if root is not None:
+        fns.setdefault("root", root)
+    return news_note.review_universe(base, universe, store.read_index(base), sources, cfg, now=now, apply=apply,
+                                     holdings=holdings, scopes=win.get("scopes"), **fns)
 
 
 def empty_reason_for(out: dict) -> str | None:
@@ -236,7 +263,7 @@ def write_receipt(root: Path, out: dict, started: str) -> None:
         LANE, ok=True, exit_code=0, started_at=started, script="scripts/prospectus_window.py",
         summary={k: out.get(k) for k in ("ran", "window", "window_key", "enqueued", "done", "failed", "blocked_data",
                                          "queue_left", "cost_usd", "month_spend_usd", "stopped_reason", "outbox",
-                                         "batch")},
+                                         "batch", "news")},
         produced_count=produced, attempted_count=produced + len(out.get("failed") or []),
         output_evidence=[{"kind": "file_artifact", "ref": out["outbox"]}] if out.get("outbox") else [],
         empty_reason=empty_reason_for(out),

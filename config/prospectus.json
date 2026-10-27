@@ -40,7 +40,7 @@
       "day_move_scopes": [
         "holding"
       ],
-      "note": "Triggers only ENQUEUE with a reason (scripts/lib/prospectus/schedule.py); a run window writes. day_move is measured on the CLOSE: the last two daily closes, once per session close after the last report."
+      "note": "Triggers only ENQUEUE with a reason (scripts/lib/prospectus/schedule.py); a run window writes. day_move is measured on the CLOSE: the last two daily closes, once per session close after the last report. material_news fires only from the window's news review (2026-10-27): a material + relevant item whose CIO note reads impact thesis, breaker or stop; a fresh catalyst row alone never fires."
     }
   },
   "run_windows": {
@@ -537,5 +537,20 @@
       "BITB",
       "ARKB"
     ]
+  },
+  "news": {
+    "note": "Operator 2026-10-27 news methodology (scripts/lib/prospectus/news_gate.py + news_note.py): every run window reviews the items since each report \u2014 deterministic relevance gate (issuer / foreign-listing collisions via config/prospectus_symbol_collisions.json, 48h syndication dedupe, catalyst grade/type >= medium), a Haiku read of the uncertain ones (prospectus_news_classify, <= $0.25/day), and a Sonnet CIO note on each material + relevant item (prospectus_cio_news_note, <= $1.50/day; per symbol below). impact thesis/breaker/stop -> one news rewrite per symbol per day (delta; full on a breaker or earnings item; Watch through the batch).",
+    "scopes": [
+      "holding",
+      "watch"
+    ],
+    "per_symbol_note_usd_per_day": 0.1,
+    "max_notes_per_symbol_per_day": 3,
+    "max_news_rewrites_per_day": 1,
+    "classify_max_items": 12,
+    "classify_max_output_tokens": 600,
+    "note_max_output_tokens": 400,
+    "timeout_s": 90,
+    "log_keep": 60
   }
 }

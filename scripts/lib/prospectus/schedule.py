@@ -4,7 +4,9 @@ Operator, verbatim: "Those new reports shouldn't just run ad hoc independently. 
 certain time of the day, like if something moves plus or minus the 8% threshold".
 
 * **Triggers only enqueue.** Cadence (monthly holdings full, quarterly watch full, weekly holdings delta), earnings
-  after, |day move| >= 8% on the CLOSE, material news, a stop event, a CIO stance change and a promotion to proposal
+  after, |day move| >= 8% on the CLOSE, material news (since 2026-10-27: a material + relevant item whose CIO note
+  reads impact thesis / breaker / stop — ``news_note``; at most one news rewrite per symbol per day), a stop event,
+  a CIO stance change and a promotion to proposal
   each put the symbol on the queue with a reason. Nothing is written outside a window.
 * **Run windows** (``config/prospectus.json`` ``run_windows``, America/New_York wall clock, so DST is handled by
   ``zoneinfo``): a window that is due evaluates its triggers, then drains the queue in priority order (operator
@@ -141,7 +143,7 @@ def day_move(bars: list[dict]) -> tuple[float, date] | None:
 
 
 def _trigger_reason(sources: Any, row: dict, entry: dict, gen: datetime, holding: dict | None, cfg: dict,
-                    allowed: set[str], now: datetime) -> str | None:
+                    allowed: set[str], now: datetime, news: dict | None = None) -> str | dict | None:
     trig = (cfg.get("cadence") or {}).get("triggers") or {}
     sym, scope = row["symbol"], row["scope"]
     digest = entry.get("inputs_digest") or {}
@@ -155,14 +157,10 @@ def _trigger_reason(sources: Any, row: dict, entry: dict, gen: datetime, holding
         if mv and abs(mv[0]) >= float(trig["day_move_abs_pct"]) and _close_at(mv[1], zone) > gen \
                 and _close_at(mv[1], zone) <= now:
             return f"day_move {mv[0]:+.1f}% close {mv[1].isoformat()}"
-    if "material_news" in allowed and trig.get("material_news"):
-        try:
-            cats = sources.catalysts(sym) or []
-        except Exception:  # noqa: BLE001
-            cats = []
-        fresh = [c for c in cats if (_dt(c.get("at")) or gen) > gen]
-        if fresh:
-            return "material_news"
+    if "material_news" in allowed and trig.get("material_news") and (news or {}).get(sym):
+        # Operator 2026-10-27: no longer "any new catalyst row". Only a material + relevant item whose CIO note
+        # reads impact thesis / breaker / stop (news_note.review_universe, run first by the window) fires.
+        return dict(news[sym])
     if "stop_event" in allowed and trig.get("stop_event") and scope == "holding" and holding \
             and digest.get("stop_levels") is not None:
         try:
@@ -189,10 +187,12 @@ def _trigger_reason(sources: Any, row: dict, entry: dict, gen: datetime, holding
 
 def evaluate_triggers(universe: list[dict], index: dict, sources: Any, cfg: dict, *, now: datetime,
                       triggers: list[str] | str = "all", scopes: list[str] | None = None,
-                      holdings: dict | None = None) -> list[dict]:
+                      holdings: dict | None = None, news: dict | None = None) -> list[dict]:
     """Rows to ENQUEUE (never to write now): ``{symbol, scope, premium, priority, mode, reason, requested_by}``.
 
-    Priority: holdings by $ value (premium first), then the watch list.
+    Priority: holdings by $ value (premium first), then the watch list. ``news`` is ``{SYM: {reason, mode, item}}``
+    from ``news_note.review_universe`` (material + relevant + CIO impact thesis / breaker / stop); without it the
+    material_news trigger never fires.
     """
     allowed = set(ALL_TRIGGERS if triggers == "all" else triggers)
     items = index.get("items") or {}
@@ -216,19 +216,21 @@ def evaluate_triggers(universe: list[dict], index: dict, sources: Any, cfg: dict
             continue
         cad = cad_all.get(scope) or {}
         age = (now - gen).days
-        reason, mode = None, "full"
+        reason, mode, extra = None, "full", {}
         if "cadence_full" in allowed and age >= int(cad.get("full_days", 30 if scope == "holding" else 90)):
             reason = "monthly_due" if scope == "holding" else "quarterly_due"
         elif "after_earnings" in allowed and cad.get("after_earnings") \
                 and earnings_passed(entry.get("earnings_date"), gen.date(), now.date()):
             reason = "after_earnings"
         else:
-            reason = _trigger_reason(sources, row, entry, gen, holdings.get(sym), cfg, allowed, now)
+            reason = _trigger_reason(sources, row, entry, gen, holdings.get(sym), cfg, allowed, now, news)
+            if isinstance(reason, dict):  # a news decision carries its own mode (delta, or full on breaker/earnings)
+                mode, extra, reason = reason.get("mode") or "delta", {"item": reason.get("item")}, reason["reason"]
             if reason is None and "weekly_delta" in allowed and scope == "holding" \
                     and age >= int(cad.get("delta_days", 7)):
                 reason, mode = "weekly_delta", "delta"
         if reason:
-            out.append(dict(base, mode=mode, reason=reason))
+            out.append(dict(base, mode=mode, reason=reason, **extra))
     return sorted(out, key=lambda r: (r["priority"], r["symbol"]))
 
 

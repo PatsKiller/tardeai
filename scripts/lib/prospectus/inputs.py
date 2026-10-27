@@ -395,10 +395,16 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
     for name, rows in (("catalysts", d.get("catalysts")), ("news", d.get("news")), ("house_agents", d.get("agents")),
                        ("house_research", d.get("research"))):
         b.cover(name, "used" if rows else "empty", detail="via subject_dossier")
-    for row in d.get("catalysts") or []:
+    # Ticker collisions (operator 2026-10-27: "Xaar (LON:XAR)" on the US ETF XAR) never become report facts.
+    from . import news_gate  # noqa: PLC0415
+    cats, dropped_c = news_gate.filter_facts(d.get("catalysts") or [], sym, b.name, text_key="headline")
+    news, dropped_n = news_gate.filter_facts(d.get("news") or [], sym, b.name, text_key="title")
+    if dropped_c or dropped_n:
+        b.context["news_collisions_dropped"] = [str(r.get("headline") or r.get("title") or "")[:160]
+                                                for r in dropped_c + dropped_n][:10]
+    for row in cats:
         b.add("catalyst", f"Catalyst ({row.get('catalyst_type') or 'event'}, {row.get('severity') or 'n/a'})",
               text=row.get("headline"), source=f"catalyst_events / {row.get('source') or 'feed'}", as_of=row.get("at"))
-    news = d.get("news") or []
     for row in news:
         b.add("news", f"News — {row.get('source') or 'feed'}", text=row.get("title"), source="news_articles",
               as_of=row.get("published_at"))

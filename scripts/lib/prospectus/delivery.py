@@ -151,6 +151,44 @@ def _title(record: dict) -> str:
     return f"Ticker Prospectus — {label} ({record.get('local_date') or ''})".strip()
 
 
+def news_lines_telegram(news: dict | None, limit: int = 6) -> list[str]:
+    """The window's news review in the Telegram summary (operator 2026-10-27): CIO notes on material, relevant items
+    and the rejected counts. Short; the full list is in the email audit and on each Prospectus page."""
+    if not news or not (news.get("accepted") or news.get("counts")):
+        return []
+    lines = ["<b>News since the reports</b>"]
+    for a in (news.get("accepted") or [])[:limit]:
+        impact = a.get("impact") or "pending"
+        lines.append(f"{html.escape(a['symbol'])}: {html.escape(str(a.get('title') or '')[:120])} — CIO impact "
+                     f"{html.escape(impact)}" + (" (rewrite queued)" if a.get("status") == "queued" else ""))
+    rej = {k: v for k, v in (news.get("counts") or {}).items() if k != "accepted"}
+    if rej:
+        lines.append("Rejected: " + html.escape(", ".join(f"{k} {v}" for k, v in sorted(rej.items()))))
+    lines.append("")
+    return lines
+
+
+def news_lines_email(news: dict | None) -> list[str]:
+    """Every trigger accepted or rejected this window, with its reason (collision, duplicate, not material, CIO
+    no-impact, coalesced, note cap, classifier unavailable)."""
+    if not news:
+        return []
+    out = ["News triggers (relevance gate + CIO notes)", "-" * 43,
+           "Counts: " + (", ".join(f"{k} {v}" for k, v in sorted((news.get("counts") or {}).items())) or "none")]
+    if news.get("rewrites"):
+        out.append("Rewrites queued by news: " + ", ".join(f"{s} ({r})" for s, r in sorted(news["rewrites"].items())))
+    for a in news.get("accepted") or []:
+        out.append(f"  ACCEPTED {a['symbol']}: {a.get('title')} — CIO impact {a.get('impact') or 'pending'}"
+                   + (f" [{a.get('reason')}]" if a.get("reason") else "") + f" ({a.get('status')})")
+    for r in news.get("rejected") or []:
+        out.append(f"  rejected {r['symbol']}: {r.get('title')} — {r.get('reason') or r.get('status')}")
+    more = int(news.get("rejected_total") or 0) - len(news.get("rejected") or [])
+    if more > 0:
+        out.append(f"  … and {more} more rejected (see each page's Since-this-report strip)")
+    out.append("")
+    return out
+
+
 def plan_telegram(record: dict, cfg: dict, ledger: dict, base: Path) -> dict:
     """The Telegram summary text and the documents to attach, for the items not yet delivered."""
     tcfg = delivery_cfg(cfg).get("telegram") or {}
@@ -190,12 +228,16 @@ def plan_telegram(record: dict, cfg: dict, ledger: dict, base: Path) -> dict:
         lines.append("")
     if linked_only:
         lines.append("Linked, not attached: " + html.escape(", ".join(linked_only)))
+    news = news_lines_telegram(record.get("news"))
+    news_todo = bool(news) and not (ledger.get("runs", {}).get(record.get("run_key")) or {}).get("telegram_news")
+    if todo or news_todo:
+        lines += news
     lines.append("Research only — not an order.")
     text = "\n".join(lines).strip()
     if len(text) > TELEGRAM_TEXT_MAX:
         text = text[: TELEGRAM_TEXT_MAX - 40].rsplit("\n", 1)[0] + "\n… (full list on the Prospectus page)"
-    return {"text": text if todo else None, "summary_keys": [item_key(i) for i in todo], "documents": docs,
-            "linked_only": linked_only}
+    return {"text": text if (todo or news_todo) else None, "summary_keys": [item_key(i) for i in todo],
+            "documents": docs, "linked_only": linked_only, "news": news_todo}
 
 
 def plan_email_attachments(items: list[dict], cfg: dict, base: Path) -> tuple[list[dict], list[str]]:
@@ -265,6 +307,7 @@ def plan_email(record: dict, cfg: dict, base: Path | None = None) -> dict:
     for f in record.get("failed") or []:
         out.append(f"FAILED {f.get('symbol')}: {f.get('error') or 'see the Prospectus page'}")
     out.append("")
+    out += news_lines_email(record.get("news"))
     if attached:
         out.append(f"Attached: PDF and Word of {len(by_sym)} holdings report(s) "
                    f"({sum(a['bytes'] for a in attached) / 1048576:.1f} MB).")
@@ -293,9 +336,10 @@ def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: C
             continue
         run = ledger["runs"].setdefault(record["run_key"], {})
         rec = {"run_key": record["run_key"], "items": len(record.get("items") or []), "telegram": None, "email": None}
-        if not record.get("items") and not record.get("failed"):
+        has_news = bool((record.get("news") or {}).get("accepted"))
+        if not record.get("items") and not record.get("failed") and not has_news:
             rec["telegram"] = rec["email"] = "nothing_to_send"
-        if tel_on and record.get("items"):
+        if tel_on and (record.get("items") or has_news):
             plan = plan_telegram(record, cfg, ledger, base)
             rec["telegram"] = {"summary": bool(plan["text"]), "documents": len(plan["documents"]),
                                "linked_only": plan["linked_only"]}
@@ -305,6 +349,8 @@ def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: C
                     if text_fn(plan["text"]):
                         for k in plan["summary_keys"]:
                             ledger["reports"].setdefault(k, {})["telegram_summary"] = now.isoformat()
+                        if plan.get("news"):
+                            run["telegram_news"] = now.isoformat()
                     else:
                         ok = False
                 for d in plan["documents"]:
@@ -318,7 +364,7 @@ def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: C
                 write_ledger(base, ledger)
         elif not tel_on:
             rec["telegram"] = "disabled"
-        if mail_on and (record.get("items") or record.get("failed")) and not run.get("email"):
+        if mail_on and (record.get("items") or record.get("failed") or has_news) and not run.get("email"):
             plan = plan_email(record, cfg, base)
             paths = [a["path"] for a in plan["attachments"]]
             rec["email"] = {"subject": plan["subject"], "chars": len(plan["body"]), "attachments": len(paths),
@@ -349,9 +395,11 @@ def deliver(base: Path, cfg: dict, *, text_fn: Callable[[str], bool], file_fn: C
 
 
 def _record_done(record: dict, cfg: dict, ledger: dict, tel_on: bool, mail_on: bool) -> bool:
-    if mail_on and (record.get("items") or record.get("failed")) and not ledger["runs"][record["run_key"]].get("email"):
+    has_news = bool((record.get("news") or {}).get("accepted"))
+    if mail_on and (record.get("items") or record.get("failed") or has_news) \
+            and not ledger["runs"][record["run_key"]].get("email"):
         return False
-    if tel_on and record.get("items"):
+    if tel_on and (record.get("items") or has_news):
         plan = plan_telegram(record, cfg, ledger, Path("."))
         if plan["text"] or plan["documents"]:
             return False

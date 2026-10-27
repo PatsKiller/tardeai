@@ -41,11 +41,45 @@ Windows (`config/prospectus.json` → `run_windows`, America/New_York wall clock
 | `monthly_due` / `quarterly_due` | holdings / watch | report older than `cadence.<scope>.full_days` (30 / 90) |
 | `after_earnings` | both | a recorded earnings date passed since the last report |
 | `day_move ±N% close <date>` | holdings (`day_move_scopes`) | the last two daily closes moved ≥ 8%, and that close (16:00 ET) is after the last report — one close fires once |
-| `material_news` | both | a catalyst newer than the last report |
+| `material_news` | both | since 2026-10-27: a material + relevant item since the report whose CIO note reads impact thesis / breaker / stop (see "News since a report"); a fresh catalyst row alone never fires |
 | `stop_event` | holdings | the recorded stop levels differ from the ones the last report used |
 | `cio_stance_change` | holdings | CIO stance differs from the last report's |
 | `promoted_to_proposal` | watch | CIO stage reached proposal since the last report |
 | `weekly_delta` | holdings | nothing else due and the report is ≥ 7 days old (short delta) |
+
+## News since a report (operator 2026-10-27)
+
+Operator: "Implement these fixes … I need this to execute quickly." Four defects closed: the old `material_news`
+fired on any catalyst row; ticker collisions reached reports (a London company that trades as `LON:XAR` on the US
+ETF XAR); the CIO never read news against the prospectus; the page showed nothing after it was written.
+
+Each window that evaluates `material_news` first runs `news_note.review_universe` over the symbols that have a
+report (holdings + watch, in the window's scopes):
+
+| Step | Module | Cost | Outcome |
+|---|---|---|---|
+| Relevance | `scripts/lib/prospectus/news_gate.py` | free | SEC-feed items are the issuer's; a foreign-listing marker for the ticker (`LON:SYM`, `(LSE: SYM)`, `SYM.L` …) or a company in `config/prospectus_symbol_collisions.json` without the issuer's own name → `collision`; issuer name / `(NYSE: SYM)` / `$SYM` → relevant; else uncertain |
+| Dedupe | `news_gate.dedupe` | free | same normalised title within 48 h → `duplicate` (earliest copy kept) |
+| Materiality | `news_gate.materiality` | free | catalyst type in the filing / earnings / guidance / rating / M&A / dividend set at severity ≥ medium; untyped headline with a material keyword → uncertain |
+| Classifier | `news_note.classify`, process `prospectus_news_classify` | Haiku 5.5, ≤ $0.25/day, Anthropic credit only | one read per symbol for the uncertain items; credit unavailable → `classifier_unavailable`, retried next window |
+| CIO note | `news_note.cio_note`, process `prospectus_cio_news_note` | Sonnet 5.5, ≤ $0.10/day per symbol (≤ 3 notes), ≤ $1.50/day total, Anthropic credit only | `{impact: none\|watch\|thesis\|breaker\|stop, which_breaker, one_line}` against the latest prospectus (thesis breakers, house stop plan, scenarios); stored in CIO memory (`security_research_spine`, silo `cio`, kind `prospectus_news_note`, `thesis_patch=None`) |
+| Decision | `news_note.review_symbol` | free | impact thesis / breaker / stop → reason `news_<impact>`; at most one news rewrite per symbol per day (`coalesced` otherwise); DELTA (`delta_max_output_tokens`) except a breaker or an earnings item (FULL); Watch rows go through the batch (full reports) |
+
+MBI_BEHAVIOR=0: a note that reads as a trading instruction has its text withheld (the impact label stays); notes
+never size, order, stop or weight. Dry runs (`prospectus_window.py` without `--apply`) run the free gate only — no
+model call, no write — and print the `news` block.
+
+**Since this report.** The lane keeps `<state>/data/prospectus/<SYM>/news.json` (gate verdicts, notes, the last
+close vs the report's close, the stop levels vs the report's). `GET /api/v2/prospectus/<SYM>` adds `since_report`
+(latest version only; one small file read, no model, no DB): relevant items with a material / not-material badge and
+a status ("queued for the 07:00 run", "CIO note: no impact" …), the price move since the report, stop events, the
+hidden collision / duplicate counts. The page renders it at the top of the report (phone: 3 items + "Show all",
+44px targets). Tuning: `config/prospectus.json` `news`.
+
+**Measurement.** Every window receipt (`prospectus-build_last.json` summary `news`) and the outbox record carry the
+counts by reason (`accepted`, `collision`, `duplicate`, `not_material`, `not_relevant`, `classifier_unavailable`,
+`cio_no_impact`, `coalesced`, `note_cap`), the rewrites queued and the accepted / rejected rows; the email audit lists
+them, the Telegram summary shows the CIO notes. A news-only window (notes, no report written) still sends both.
 
 ## Draining
 
