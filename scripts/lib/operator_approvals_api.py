@@ -486,16 +486,32 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 section = q.get("section")
                 if isinstance(section, list):
                     section = section[0] if section else None
+                view = q.get("view")
+                if isinstance(view, list):
+                    view = view[0] if view else None
                 all_rules = data["rules"]
                 selected = [r for r in all_rules if not section or r["section"] == section]
-                raw_offset = q.get("offset", 0)
-                if isinstance(raw_offset, list):
-                    raw_offset = raw_offset[0] if raw_offset else 0
-                try:
-                    offset = max(0, int(raw_offset))
-                except (TypeError, ValueError):
-                    offset = 0
-                data["rules"], data["total_rules"], data["section_total"], data["offset"] = selected[offset:offset+40], len(all_rules), len(selected), offset
+                # Document view: one openable AGENTS.md — every section and rule in order.
+                # Cap guards accidental runaway; measured corpus is ~900 rules / ~600 KB.
+                if view == "document":
+                    data["rules"] = selected[:2000]
+                    data["total_rules"] = len(all_rules)
+                    data["section_total"] = len(selected)
+                    data["offset"] = 0
+                    data["view"] = "document"
+                else:
+                    raw_offset = q.get("offset", 0)
+                    if isinstance(raw_offset, list):
+                        raw_offset = raw_offset[0] if raw_offset else 0
+                    try:
+                        offset = max(0, int(raw_offset))
+                    except (TypeError, ValueError):
+                        offset = 0
+                    data["rules"] = selected[offset:offset + 40]
+                    data["total_rules"] = len(all_rules)
+                    data["section_total"] = len(selected)
+                    data["offset"] = offset
+                    data["view"] = "paged"
                 data["positions"] = [r for r in ctx.ledger.rows() if r.get("event") == "RULE_FEEDBACK"][-100:]
                 return 200, {"ok": True, "data": data}
             if sub.startswith("/approvals/"):

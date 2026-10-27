@@ -54,7 +54,59 @@ def plan_universe(sources: Any, cfg: dict, *, scope: str = "all", symbols: list[
         rows = [r for r in rows if r["symbol"] in wanted] + [
             {"symbol": s, "scope": "watch", "value_usd": None, "rank": None, "premium": False}
             for s in sorted(wanted - {r["symbol"] for r in rows})]
-    return rows
+    excluded = delisted_exclusions(sources, [r["symbol"] for r in rows])
+    return [r for r in rows if r["symbol"] not in excluded]
+
+
+# ── delisted / inactive names (operator 2026-10-26: "remove SRNE and any delisted") ──────────────────────────────
+_DELISTED_MEMO: dict[str, Any] = {"sources": None, "verdicts": {}, "reference": None}
+
+
+def delisted_exclusions(sources: Any, symbols: list[str], *, cfg: dict | None = None,
+                        flags: dict | None = None) -> dict[str, dict]:
+    """{SYM: verdict} for the delisted/inactive names among ``symbols`` (lib/delisted_symbols; config
+    config/delisted_symbols.json). Memoised per sources object. A policy or store read failure excludes only the
+    explicit list, never everything."""
+    from scripts.lib import delisted_symbols as ds
+    if _DELISTED_MEMO["sources"] is not sources:
+        _DELISTED_MEMO.update(sources=sources, verdicts={}, reference=None)
+    memo = _DELISTED_MEMO["verdicts"]
+    todo = [s for s in {store.norm_symbol(x) for x in symbols} - {None} if s not in memo]
+    if todo:
+        try:
+            cfg = cfg if cfg is not None else ds.load_config()
+        except (OSError, ValueError):
+            cfg = None
+        if cfg is not None:
+            if flags is None:
+                root = getattr(sources, "state_root", None)
+                flags = ds.load_house_flags(root) if root is not None else {}
+            res = ds.detect(todo, bars_fn=getattr(sources, "bars", None), flags=flags, cfg=cfg,
+                            today=_DELISTED_MEMO["reference"])  # later passes keep the first pass's freshest close
+            if _DELISTED_MEMO["reference"] is None and res.get("reference_date"):
+                from datetime import date as _date
+                _DELISTED_MEMO["reference"] = _date.fromisoformat(res["reference_date"])
+            for s in todo:
+                memo[s] = res["excluded"].get(s)
+    return {s: memo[s] for s in {store.norm_symbol(x) for x in symbols} - {None} if memo.get(s)}
+
+
+def apply_delisted_exclusions(base: Path, sources: Any, *, log: Callable[[str], None] = print) -> dict[str, dict]:
+    """Mark every stored report of an excluded name ``delisted — excluded`` in the index (the report and its
+    versions stay on disk) and drop its queued rows. Returns the verdicts applied."""
+    from scripts.lib import delisted_symbols as ds
+    index = store.read_index(base).get("items") or {}
+    queue = [r for r in store.read_queue(base)["items"] if store.norm_symbol(r.get("symbol"))]
+    verdicts = delisted_exclusions(sources, list(index) + [r["symbol"] for r in queue])
+    for sym, v in sorted(verdicts.items()):
+        entry = index.get(sym) or {}
+        if sym in index and (entry.get("status") != ds.STATUS or entry.get("excluded_reason") != v["reason"]):
+            store.update_index(base, sym, status=ds.STATUS, status_label=ds.LABEL, excluded_code=v["code"],
+                               excluded_reason=v["reason"], next_due=None)
+            log(f"EXCLUDED {sym}: {ds.LABEL} ({v['code']}: {v['reason'][:120]})")
+        if any(r["symbol"] == sym for r in queue):
+            store.mark(base, sym, state="excluded", done=True)
+    return verdicts
 
 
 def first_build_rows(universe: list[dict]) -> list[dict]:
@@ -135,10 +187,8 @@ def _stop_or_position_change(sources: Any, sym: str, digest: dict) -> str | None
 
 def _trigger(sources: Any, sym: str, scope: str, gen: datetime, digest: dict, trig: dict) -> str | None:
     try:
-        if trig.get("material_news"):
-            cats = sources.catalysts(sym) or []
-            if any((_dt(c.get("at")) or gen) > gen for c in cats):
-                return "material_news"
+        # material_news: no longer "any new catalyst row" (operator 2026-10-27). News reaches a rewrite only through
+        # the window's news review (news_note: relevance gate + CIO note impact thesis / breaker / stop).
         if scope == "holding" and trig.get("day_move_abs_pct"):
             bars = [b for b in (sources.bars(sym) or [])[-2:] if b.get("close")]
             if len(bars) == 2 and abs(float(bars[1]["close"]) / float(bars[0]["close"]) - 1) * 100 >= float(trig["day_move_abs_pct"]):
@@ -178,6 +228,10 @@ def run_queue(base: Path, sources: Any, cfg: dict, *, limit: int, holdings: dict
         memory_root = state_root_for(base, cfg)
     memory_fn = memory_fn or cio_memory.record_version
     book = None
+    try:
+        summary["delisted_excluded"] = sorted(apply_delisted_exclusions(base, sources, log=log))
+    except Exception as exc:  # noqa: BLE001 - exclusion bookkeeping never stops the queue; persist_doc still refuses
+        log(f"DELISTED CHECK failed: {type(exc).__name__}: {str(exc)[:120]}")
     for row in list(store.read_queue(base)["items"]):
         if len(summary["done"]) + len(summary["failed"]) >= limit:
             break
@@ -255,6 +309,11 @@ def persist_doc(base: Path, sym: str, scope: str, doc: dict, bundle: Any, versio
     spine) here, so batch-collected Watch reports reach the CIO exactly like synchronous ones. A memory failure is
     returned (and logged) and never fails the stored prospectus. Returns the memory outcome row.
     """
+    if _excluded_at_persist(base, sym):
+        from scripts.lib import delisted_symbols as ds
+        store.mark(base, sym, state="excluded", done=True)
+        log(f"NOT STORED {sym} {version}: {ds.LABEL}")
+        return {"symbol": sym, "version": version, "outcome": "skipped", "reason": ds.LABEL}
     files = render.render_all(doc)
     store.write_version(base, sym, version, doc, files)
     entry = {"name": doc["name"], "scope": scope, "version": version, "generated_at": doc["generated_at"],
@@ -280,6 +339,17 @@ def persist_doc(base: Path, sym: str, scope: str, doc: dict, bundle: Any, versio
                               "priority": PRIORITY_WATCH + 500, "reason": "gate_rewrite",
                               "requested_by": "quality_gate"}], now=now)  # one rewrite, never a loop
     return mem
+
+
+def _excluded_at_persist(base: Path, sym: str) -> bool:
+    """No new report is stored for an excluded name: on the explicit list, or already marked in the index (a batch
+    result that was submitted before the name was excluded)."""
+    from scripts.lib import delisted_symbols as ds
+    try:
+        explicit = {ds.norm(r.get("symbol")) for r in ds.load_config().get("explicit") or []}
+    except (OSError, ValueError):
+        explicit = set()
+    return sym in explicit or (store.read_index(base).get("items", {}).get(sym) or {}).get("status") == ds.STATUS
 
 
 def state_root_for(base: Path, cfg: dict) -> Path:

@@ -125,10 +125,12 @@ class HouseSources:
     # -- plumbing
     def db(self) -> Callable:
         if self._db is None:
-            from db_adapter import _execute  # type: ignore
+            # Dynamic import (house pattern, cf. cio_ask_research._imp): keeps the lane's static import closure
+            # to its own read path; db_adapter is the shared read-only query adapter.
+            dba = _imp_any("db_adapter", "scripts.db_adapter")
 
             def query(sql, params=None, fetch="all"):
-                return _execute(sql, params, fetch=fetch)
+                return dba._execute(sql, params, fetch=fetch)
             self._db = query
         return self._db
 
@@ -172,8 +174,8 @@ class HouseSources:
             pass
         try:
             if not self.read_only:  # symbol_thesis_attach refreshes data/cio/cio_theses_projection.json
-                from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol  # noqa: PLC0415
-                thesis_fn = lambda s: thesis_fields_for_symbol(s, root=self.state_root)  # noqa: E731
+                attach = _imp_any("scripts.lib.symbol_thesis_attach", "lib.symbol_thesis_attach")
+                thesis_fn = lambda s: attach.thesis_fields_for_symbol(s, root=self.state_root)  # noqa: E731
         except Exception:  # noqa: BLE001
             pass
         return sd.gather([sym], db_query=self.db(), runtime_dir=self.state_root / "data/runtime",
@@ -277,11 +279,18 @@ class HouseSources:
 
 
 def _plib(name: str):
+    return _imp_any(f"lib.{name}", f"scripts.lib.{name}")
+
+
+def _imp_any(*names: str):
     import importlib
-    try:
-        return importlib.import_module(f"lib.{name}")
-    except ImportError:
-        return importlib.import_module(f"scripts.lib.{name}")
+    last: Exception | None = None
+    for name in names:
+        try:
+            return importlib.import_module(name)
+        except ImportError as exc:
+            last = exc
+    raise last or ImportError(names[0])
 
 
 def account_name(raw: Any) -> str:
@@ -386,10 +395,16 @@ def assemble(sources: Any, symbol: str, scope: str, *, holding: dict | None = No
     for name, rows in (("catalysts", d.get("catalysts")), ("news", d.get("news")), ("house_agents", d.get("agents")),
                        ("house_research", d.get("research"))):
         b.cover(name, "used" if rows else "empty", detail="via subject_dossier")
-    for row in d.get("catalysts") or []:
+    # Ticker collisions (operator 2026-10-27: "Xaar (LON:XAR)" on the US ETF XAR) never become report facts.
+    from . import news_gate  # noqa: PLC0415
+    cats, dropped_c = news_gate.filter_facts(d.get("catalysts") or [], sym, b.name, text_key="headline")
+    news, dropped_n = news_gate.filter_facts(d.get("news") or [], sym, b.name, text_key="title")
+    if dropped_c or dropped_n:
+        b.context["news_collisions_dropped"] = [str(r.get("headline") or r.get("title") or "")[:160]
+                                                for r in dropped_c + dropped_n][:10]
+    for row in cats:
         b.add("catalyst", f"Catalyst ({row.get('catalyst_type') or 'event'}, {row.get('severity') or 'n/a'})",
               text=row.get("headline"), source=f"catalyst_events / {row.get('source') or 'feed'}", as_of=row.get("at"))
-    news = d.get("news") or []
     for row in news:
         b.add("news", f"News — {row.get('source') or 'feed'}", text=row.get("title"), source="news_articles",
               as_of=row.get("published_at"))

@@ -49476,6 +49476,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Ops → Incidents (operator 2026-10-27): IncidentRecord@v1 ledger (data/coordination/incidents) — GET list/detail;
+    # POST <id>/ack | <id>/close (operator decision first, scripts/lib/operator_approvals.py). docs/ops/INCIDENT_LEDGER.md.
+    if base_path.rstrip("/") == "/api/v2/ops/incidents" or base_path.startswith("/api/v2/ops/incidents/"):
+        try:
+            try:
+                from lib import incidents_view as _incv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import incidents_view as _incv
+            _inc_out = _incv.handle(base_path, method, query or {}, body)
+            if _inc_out is not None:
+                return _inc_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Inference Layers routes (delegated to inference_api module; read-only)
     if base_path.startswith("/api/v2/inference"):
         try:

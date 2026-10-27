@@ -614,7 +614,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_macro_calendar_refresh.lock",
       "lock_kind": "flock",
       "timeout_s": 300,
@@ -627,7 +627,7 @@
       ],
       "env_allowlist_mode": "enforce",
       "env_evidence": "Literal reads across the 5-module import closure (scripts/macro_calendar_refresh.py, lib/macro_calendar.py, lib/lane_last_receipt.py, lib/persistent_state_root.py, lib/atomic_json_store.py): FRED_API_KEY (macro_calendar_refresh.resolve_key, process env only; no env-file loader in the closure); TRADEAI_PERSISTENT_STATE_ROOT (lib/persistent_state_root.py); TRADEAI_STATE_ROOT, TRADEAI_RUN_ID, TRADEAI_RUN_ATTEMPT, TRADEAI_RUN_MODE, TRADEAI_CODE_SHA are executor base names. No DB, no model, no broker name.",
-      "source": "Operator ruling 2026-10-21 (macro calendar for the release train's 08:00 ET window: FRED primary, yearly overrides file, n8n-managed, fail closed). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run fetches FRED read-only and prints only."
+      "source": "Operator decision 2026-10-26 (verbatim, relayed by the coordinator): \"1. macro-calendar job: switch it from test mode to live … yes.\" CANARY (2026-10-26): live_arg [] - the script with no flag fetches FRED read-only and writes only data/runtime/macro_calendar.json (atomic) and the receipt data/runtime/macro-calendar-refresh_last.json. Registered at SHADOW 2026-10-21 - operator ruling 2026-10-21 (macro calendar for the release train's 08:00 ET window: FRED primary, yearly overrides file, n8n-managed, fail closed). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. dry_run_arg --dry-run fetches FRED read-only and prints only."
     },
     {
       "lane_id": "active-trader-motion-watchdog",
@@ -4493,6 +4493,35 @@
       "source": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints the rotation plan and writes nothing. Removal of archive segments is never an argv here (AGENTS.md §23.14, §24.12)."
     },
     {
+      "lane_id": "yfinance-info-snapshot",
+      "command": [
+        "$PY",
+        "scripts/yfinance_info_snapshot_refresh.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_yfinance_info_snapshot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/yfinance-info-snapshot_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the producer reads the holdings store, the watch membership and the prospectus universe through house libraries; the only credential names read are DB_* for its own session (READ ONLY on a dry run). yfinance needs no key. No broker, sender or model name.",
+      "env_evidence": "scripts/yfinance_info_snapshot_refresh.py pg_connect reads DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD (process env; no env-file loader); state_root() and lib/persistent_overlay read TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT; TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "Operator decision 2026-10-26 (verbatim: \"Yahoo Finance feed … switched on: yes\"); store approved 2026-10-10 (CONSOLIDATION_PLAN.md §D.13, registry domain yfinance_info_snapshot). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads, probes <= 3 symbols and prints only. Canary live_arg (separate PR, after the migration is applied): [\"--apply\"]."
+    },
+    {
       "lane_id": "cio-ask-research",
       "command": [
         "$PY",
@@ -4595,6 +4624,32 @@
       "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
       "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+    },
+    {
+      "lane_id": "prospectus-build",
+      "command": [
+        "$PY",
+        "scripts/prospectus_window.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/prospectus_build.lock",
+      "lock_kind": "flock",
+      "timeout_s": 7200,
+      "market_gate": false,
+      "output_signal": "data/runtime/prospectus-build_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "ANTHROPIC_API_KEY",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
+      "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
+      "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
     }
   ],
   "blocked_reasons": {

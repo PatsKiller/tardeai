@@ -231,6 +231,61 @@ def handle_callback_query(cb):
         )
         return {**result, "outcome": "APPROVED", "pr_number": prn}
 
+    # ── PR merge DIGEST (prdall:<digest> / prdhold:<digest> / prdx:<digest>:<pr>) ──
+    # One tap approves every ready PR in the digest, each bound to its digest head SHA
+    # (operator 2026-10-27). ONE approval record per tap; the host adds ``operator-merge``.
+    # See scripts/lib/pr_merge_digest.py (AGENTS.md §25.10, §28.4).
+    if action in ("prdall", "prdhold", "prdx"):
+        try:
+            from scripts.lib import pr_merge_digest as _pmd
+        except ImportError:
+            from lib import pr_merge_digest as _pmd  # type: ignore
+
+        did = parts[1] if len(parts) > 1 else ""
+        result = {"kind": "pr_merge_digest", "action": action, "digest_id": did}
+        tg = {"message_id": message_id, "from_id": user_id,
+              "from_username": user.get("username"), "text": data}
+        if action == "prdx":
+            try:
+                prn = int(parts[2])
+            except (IndexError, ValueError):
+                answer_callback(cb_id, "Invalid item", show_alert=True)
+                return {**result, "outcome": "REFUSED", "reason": "BAD_ITEM"}
+            out = _pmd.toggle_item(did, prn, chat_id=chat_id, allowed_chats=_allowed_chat_ids())
+            if not out.get("ok"):
+                answer_callback(cb_id, f"Not changed: {out.get('reason')}", show_alert=True)
+                return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
+            answer_callback(cb_id, f"#{prn} {'held' if out['held'] else 'included'} — "
+                                   f"Approve all now covers {out['remaining']}")
+            try:  # refresh the buttons in place; best effort
+                _tg_post("editMessageReplyMarkup", {
+                    "chat_id": chat_id, "message_id": message_id,
+                    "reply_markup": _pmd.keyboard(out["digest"], _pmd.load_config()),
+                })
+            except Exception:  # noqa: BLE001
+                pass
+            return {**result, "outcome": "HELD" if out["held"] else "INCLUDED", "pr_number": prn}
+        if action == "prdhold":
+            out = _pmd.settle_hold_all(did, chat_id=chat_id, allowed_chats=_allowed_chat_ids(), telegram=tg)
+            if not out.get("ok"):
+                answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
+                return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
+            answer_callback(cb_id, f"Held all {len(out['held'])}. They return in the next digest.")
+            edit_message(chat_id, message_id, f"\U0001f6d1 Digest {did} held by {user_name} — {now_short}. "
+                                              f"Nothing labelled; PRs return in the next digest.")
+            return {**result, "outcome": "HELD_ALL"}
+        # prdall — answer first (Telegram callback deadline), then label, then reply with the result.
+        answer_callback(cb_id, f"Approving digest {did}…")
+        out = _pmd.settle_approve_all(did, chat_id=chat_id, allowed_chats=_allowed_chat_ids(), telegram=tg)
+        if not out.get("outcomes") and not out.get("ok"):
+            send_reply(chat_id, message_id, f"Digest not settled: {out.get('reason')}")
+            return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
+        edit_message(chat_id, message_id, f"✅ Digest {did} approved by {user_name} — {now_short}. "
+                                          f"Labelled: {', '.join('#' + str(p) for p in out.get('labeled') or []) or 'none'}")
+        send_reply(chat_id, message_id, _pmd.format_settle_reply(out))
+        return {**result, "outcome": "APPROVED" if out.get("ok") else "PARTIAL",
+                "labeled": out.get("labeled"), "approval_id": (out.get("approval") or {}).get("approval_id")}
+
     # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
     # ── Coordination acknowledgement (ack:<idempotency_key>) — roadmap Phase 1, 2026-10-07 ──
     # The tap records an OPERATOR consumer receipt on a coordination event (an open incident

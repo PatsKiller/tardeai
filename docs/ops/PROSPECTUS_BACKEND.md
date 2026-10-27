@@ -85,6 +85,13 @@ Inputs are read from these stores:
   gaps. These are typically lots that arrived by transfer and have no basis.
 - **Macro calendar.** The reader takes `MacroCalendar@v1` (`dates.*.events` and `fomc_decisions`). The Fed funds rate
   is read from the house series `DFF`.
+- **Fund block (2026-10-27).** The header uses the look-through fund name when the Finviz cache has no company
+  name. The fund profile carries the asset class and last reconstitution, distribution growth (annualized, trailing
+  year against 2 or 3 years earlier, from `ticker_dividends`) and `book_overlap`: the share of the fund's top-holding
+  weight the book already owns, directly or through another held fund. AUM, index, issuer, inception, holdings count
+  and premium/discount stay a named gap until the `yfinance_info_snapshot` domain has a producer.
+- **Journal accounts.** The FIFO and the position store are matched by canonical account key. A trip counts as
+  stopped out when the journal says so or a broker stop fill is dated on its exit.
 - **Rewrite trigger.** `stop_event` rewrites a held name when its resting stop levels differ from the stored report,
   and `position_closed` rewrites one that is no longer held.
 
@@ -141,14 +148,12 @@ The transport refuses tool definitions, so the loop is two governed turns, not a
 
 The writer adds short notes inside these blocks — macro effect on this name, earnings-call points, what changed in each filing. Those notes are guarded like the prose sections.
 
-Values the house does not hold print as `n/a`, and the block names the gap:
+Values the house does not hold print as `n/a`, and the block names the gap.
 
-- EV/EBITDA
-- 4-quarter EPS surprise history
-- 90-day estimate revisions
-- 13F holder changes
-- ETF flows
-- IV rank and put/call (the options-flow provider was retired 2026-09-13)
+The institutional ("Street") blocks are in `PROSPECTUS_INSTITUTIONAL.md` (2026-10-27): analyst coverage and the action
+log, consensus / revisions / 8-quarter beat-miss, the catalyst calendar with the options-implied move, positioning,
+valuation vs its own history, and SEC XBRL quarters. Citations stay in the JSON. The reader sees one validation line
+instead of footnotes.
 
 ## Storage (private)
 

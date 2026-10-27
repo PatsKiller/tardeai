@@ -691,68 +691,28 @@ It does **not** authorize:
 
 ---
 
-# 28. AUTOMATED MERGE AND DEPLOY (AGENTS.md 24.0.0 ACTIVE)
+# 28. AUTOMATED MERGE AND DEPLOY (AGENTS.md §25.10)
 
-**Binding (AGENTS.md 24.0.0 ACTIVE, §25.10).** This section governs. The 17.0.0 train-push
-exception below is historical only.
+**Binding (AGENTS.md 24.0.0 ACTIVE, §25.10; the 25.0.0 wording below binds once AGENTS.md
+25.0.0 is ACTIVE).** This section governs. The 17.0.0 release train and its push exception
+were retired by the operator on 2026-10-27 and their text is removed.
 
-- **Mergify** may merge eligible PRs into `main` when required checks are green and its
-  `.mergify.yml` schedule/queue rules allow. That merge is not an agent push and does not
-  draw on an agent's push budget (section 3).
+- **Mergify** may merge eligible PRs into `main` when required checks are green, the
+  operator has approved the PR (the digest's "Approve all" bound to its head SHA, or a
+  per-PR approval), and its `.mergify.yml` schedule/queue rules allow. A held-class PR
+  (`config/merge_hold_paths.json`) merges only by the operator's own merge. That merge is
+  not an agent push and does not draw on an agent's push budget (section 3).
 - The host **`deploy_on_main` poller** may promote CURRENT to the new `origin/main` SHA
-  under STOP clear, GlobalReleaseLock, and the standing **deploy** (promote-only)
-  delegation. It never merges and never pushes remotes.
-- **Emergency promote** is operator host CLI only (`scripts/emergency_manual_promote.sh`)
-  with `release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never
-  set that env or run that script.
-- Coding agents keep every rule above: local commit is the checkpoint; one authorized
-  push per tranche; a PR is their last remote act. An agent never pushes `main` or
-  `train/*`, never merges, and never promotes.
+  under STOP clear, GlobalReleaseLock, and the armed standing **deploy** (promote-only)
+  delegation, with no SHA-named release-write grant. It never merges and never pushes
+  remotes.
+- **Emergency promote** is operator host CLI (`scripts/emergency_manual_promote.sh`)
+  with `release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. A coordinator
+  agent may run it only on the operator's explicit instruction in that coordinator's own
+  session, quoted in the receipt. No other agent sets that env or runs that script.
+- Coding agents keep every rule above: local commit is the checkpoint; pushes stay within
+  the push budget; a PR is their last remote act. An agent never pushes `main`, never
+  merges, never skips a hook (`--no-verify`, `core.hooksPath`), and never promotes.
 
-A deploy STOP (AGENTS.md §25.4 / §25.10) halts the poller at the next mutation boundary.
+A deploy STOP (AGENTS.md §25.10) halts the poller at the next mutation boundary.
 Clearing it, arming the deploy delegation, and Mergify App custody are operator-only.
-
----
-
-## 28.HISTORICAL — RELEASE TRAIN PUSHES (AGENTS.md 17.0.0; retired — 24.0.0 ACTIVE)
-
-AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914). Binding only once the
-operator has also armed the standing release delegation at the host. Until then,
-sections 1-27 govern alone and nothing below authorizes anything.
-
-The release train is the only automated remote synchronization in this
-repository. Concretely, the host release service — not a coding agent, not a
-lane script, not an n8n workflow — may:
-
-- push `refs/heads/train/<train_id>` for the train it is running
-- open that train's batch PR
-- merge that batch PR into `main` once its qualifying checks are green
-
-and only while it holds a reservation of a single-train, single-phase
-ReleaseCapability@v1 issued on this host, using a GitHub App installation
-token minted for that reservation (it expires within one hour).
-
-These train pushes:
-
-- are not counted against any agent's push budget (section 3), because no
-  agent makes them
-- satisfy section 9 only because the operator's standing delegation is the
-  explicit request for exactly these actions, and for nothing else
-- never deploy by themselves; promotion stays behind the release boundary of
-  sections 21 and 27
-
-Coding agents keep every rule above: a local commit is the checkpoint, one
-authorized push per tranche, and a PR as their last remote act. An agent
-never pushes `main` or any `train/*` ref, never merges, and never sets
-`TRADEAI_REMOTE_PUSH_AUTHORIZED=1` on the release service's behalf.
-
-Binding (AGENTS.md 21.0.0 ACTIVE, §28.15 items 2, 3 and 7): the
-train also carries solo trains, one PR alone in a window, under the standing
-delegation's `solo` class. Train-self, guard, hook and CI-enforcement PRs ride
-one only with two adversarial reviews and a veto window of at least 3 h, and
-never when they weaken §0, §2 or §17 enforcement. Agents still never merge,
-push `main` or `train/*`, or release.
-
-A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
-next mutation boundary. Clearing it, resuming, widening the train's scope and
-custody of the GitHub App are operator-only.

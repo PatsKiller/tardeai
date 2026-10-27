@@ -32015,8 +32015,8 @@
       "kind": "lane",
       "workflow_id": "dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Daily at 05:05 ET (and on demand), build the macro-release calendar for the release train's 08:00 ET window: verify the mapped FRED release ids (GET /fred/releases), fetch scheduled release dates (GET /fred/releases/dates, include_release_dates_with_no_data=true), flag the 08:30 ET releases (jobs, CPI, PPI, retail sales, GDP, weekly claims, PCE, durable goods, housing starts), merge the FOMC dates and operator overrides from config/macro_calendar_overrides.json, and write data/runtime/macro_calendar.json (MacroCalendar@v1) atomically. The controller reads it through scripts/lib/macro_calendar.py and skips 08:00 on an 08:30 release day or when the calendar is missing, corrupt, older than 72 h or does not cover the day.",
         "business_function": "release-engineering",
@@ -32082,11 +32082,11 @@
       "healthy": [
         {
           "check": "dry_run_writes_nothing",
-          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no calendar, no receipt"
+          "text": "a dry_run fire (relay not yet live for the lane, or a manual dry run) writes nothing: RUN_DONE mode dry_run, no calendar, no receipt"
         },
         {
           "check": "last_live_run_done",
-          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
         },
         {
           "check": "output_advanced",
@@ -32199,7 +32199,7 @@
         "reviewed_on": "2026-10-21"
       },
       "review_by": "2026-10-28",
-      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
+      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promoted to canary (dispatch live) 2026-10-26 on the operator decision (verbatim: \"1. macro-calendar job: switch it from test mode to live … yes.\"): allowlist live_arg []. Live fires need the lane in TRADEAI_N8N_RELAY_LIVE_LANES and FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "08:00 skip days in the calendar's coverage",
@@ -33478,6 +33478,239 @@
           {
             "kind": "file_artifact",
             "ref": "<state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz.manifest.json (RetentionArchiveManifest@v1)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "yfinance-info-snapshot",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 05:40 ET (and on demand), refresh one raw yfinance .info payload per symbol the operator holds, watches (My Watchlist) or has a prospectus for, into yfinance_info_snapshot through its single writer, so the prospectus fund block (AUM, issuer, inception, index tracked, top holdings) and other consumers read the store through lib.data_broker.yfinance_info instead of calling Yahoo. Governed: due windows (20 h ok, 168 h negative cache), 300 fetches per run, 1 s pacing, stop on throttle.",
+        "business_function": "market-reference-data",
+        "source": "scripts/yfinance_info_snapshot_refresh.py; operator decision 2026-10-26 (Yahoo Finance feed switched on); CONSOLIDATION_PLAN.md §D.13"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/yfinance_info_snapshot_refresh.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_yfinance_info_snapshot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "Yahoo Finance via yfinance (Ticker.info, Ticker.funds_data)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "provider yfinance (config/data_source_authority.json providers.yfinance)"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json (lib.portfolio_positions.load_store)",
+          "kind": "store",
+          "direction": "read",
+          "source": "held universe"
+        },
+        {
+          "name": "operator_starred_symbols / watchlist_items / directives (lib.data_broker.watch_domains.membership_operator)",
+          "kind": "store",
+          "direction": "read",
+          "source": "My Watchlist universe"
+        },
+        {
+          "name": "data/prospectus/universe.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "prospectus universe (lib.prospectus.store.read_universe)"
+        },
+        {
+          "name": "yfinance_info_snapshot (Postgres)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "single writer lib/writers/yfinance_info_snapshot_writer.py; live runs only"
+        },
+        {
+          "name": "data/runtime/yfinance-info-snapshot_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "prospectus fund block (scripts/lib/prospectus/etf_profile.py yfinance_snapshot) and domains.r_yfinance",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "lib.data_broker.yfinance_info.get_info_batch"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no row, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/yfinance-info-snapshot_last.json ok_at advances on each live run and max(fetched_at) in yfinance_info_snapshot with it"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 72 h (weekday cadence; covers the weekend gap)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = snapshot rows written; 0 only with empty_reason nothing_due (every symbol fresh)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 72 h but younger than 96 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "rate_limited",
+          "text": "skipped_reasons.rate_limited > 0: Yahoo throttled the run; the rest waits for the next run"
+        },
+        {
+          "check": "over_run_cap",
+          "text": "skipped_reasons.over_run_cap > 0 on consecutive runs: the universe outgrew --max-symbols"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 96 h"
+        },
+        {
+          "check": "table_missing",
+          "text": "yfinance_info_snapshot absent (migration not applied) -> exit 1, failure_kind unconfigured"
+        },
+        {
+          "check": "provider_unavailable",
+          "text": "every due fetch throttled or failed, or the database is unreachable -> exit 1, failure_kind dependency_unavailable"
+        },
+        {
+          "check": "empty_universe",
+          "text": "no held, watch or prospectus symbol readable -> exit 1, failure_kind universe_empty_unexpected"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run wrote no row with an empty_reason other than nothing_due -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 72.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "weekday cadence: degraded beyond 72 h (a weekend), failed beyond 96 h",
+        "timeout_s": 1800,
+        "class": "ingest",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s; 300 fetches at 1 s pacing plus provider latency",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (reference data for the prospectus fund block; a stale snapshot degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A throttle heals on the next run; a missing table needs the operator's migration apply (docs/ops/YFINANCE_INFO_SNAPSHOT.md)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/yfinance-info-snapshot_last.json",
+        "verify": [
+          "python3 scripts/yfinance_info_snapshot_refresh.py --dry-run   # READ ONLY session; probes <= 3 symbols; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='yfinance-info-snapshot' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql -c \"SELECT status, count(*), max(fetched_at) FROM yfinance_info_snapshot GROUP BY 1\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/yfinance-info-snapshot_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger, the receipt and the table's fetched_at",
+        "expected_output_basis": "expected_output 2026-10-26 from scripts/yfinance_info_snapshot_refresh.py run(): produced = snapshot rows accepted by the writer; 0 is allowed only as nothing_due (every symbol inside its window). Fatal (exit 1): table missing = unconfigured; DB/provider unavailable = dependency_unavailable; empty universe = universe_empty_unexpected."
+      },
+      "review": {
+        "prepared_by": "agent draft (yfinance snapshot, feeds/yfinance-snapshot-20261026)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-26 (verbatim: \"Yahoo Finance feed \u2026 switched on: yes\"), relayed by the coordinator",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-09",
+      "state_note": "REVIEWED on the operator decision 2026-10-26 (Yahoo Finance feed switched on); agent-written 2026-10-26. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) needs the migration applied first (operator, docs/ops/YFINANCE_INFO_SNAPSHOT.md), then a registry PR.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "yfinance snapshot rows written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable",
+          "universe_empty_unexpected"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/yfinance-info-snapshot_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/yfinance-info-snapshot/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "yfinance_info_snapshot fetched_at"
           }
         ],
         "on_violation": {
@@ -34943,6 +35176,262 @@
           {
             "kind": "ledger_row",
             "ref": "data/cio/cio_ask_events.jsonl exact thread lifecycle/check; memory_sync/consumer_readback/delivery"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "prospectus-build",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "operator_approved_shadow_20261026; contract reviewed against scripts/prospectus_window.py, scripts/lib/prospectus/{schedule,delivery,pipeline,batch}.py at the go-live PR (shadow; live_arg null).",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close for holdings + watch, 07:00 ET pre-market for holdings, weekdays) collect finished Watch batch results, enqueue what the cadence and triggers say is due, submit queued Watch rows to the Message Batches API and write holdings synchronously through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave one delivery outbox record per run for the host sender. At shadow a fire only plans (dry run).",
+        "business_function": "research",
+        "source": "scripts/prospectus_window.py module docstring; operator 2026-10-26 ('queued up and run a certain time of the day')"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/prospectus_window.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/prospectus_build.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/prospectus_build.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/prospectus-build_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 (lane_last_receipt.write_lane_receipt; live run only)"
+        },
+        {
+          "name": "position store, data-broker projections (daily bars, catalysts, CIO prospect, stops display), Finviz cache (read-only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/prospectus/inputs.py, domains.py, schedule.py"
+        },
+        {
+          "name": "governed LLM generation as prospectus_writer / prospectus_writer_premium (Anthropic credit only), synchronous for holdings and operator rewrites (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/pipeline.py run_queue -> generate.write / governed_generate"
+        },
+        {
+          "name": "Message Batches API via the governed credit path (batch.submit_due at a watch window, batch.collect at every window; process prospectus_writer, 50% price) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/batch.py governed_submit / governed_collect; config/prospectus.json run_windows.watch_batch"
+        },
+        {
+          "name": "data-quality gate (pre_write layers + governed AI check) and gap repair requests to the data-broker gap queue (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/quality_gate.py pre_write / request_repairs; pipeline.handle_blocked"
+        },
+        {
+          "name": "CIO memory (shared research spine): every stored version (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "pipeline.persist_doc -> scripts/lib/prospectus/cio_memory.record_version"
+        },
+        {
+          "name": "search_router caller prospectus_writer (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "generate.web_loop"
+        },
+        {
+          "name": "<state>/data/prospectus/{queue,index,universe,windows,batches}.json, batch_pending/, <SYMBOL>/<version>/**, delivery/outbox/*.json (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/prospectus/store.py, schedule.py, batch.py, delivery.write_outbox"
+        },
+        {
+          "name": "prospectus-deliver (host systemd timer) reads delivery/outbox; this lane sends nothing",
+          "kind": "service",
+          "direction": "write",
+          "source": "scripts/prospectus_deliver.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/prospectus-build_last.json (AGENTS.md §6)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "off-window fire <= 60 s; window fire <= 5760 s (80% of timeout_s 7200)"
+        },
+        {
+          "check": "window_ran_once",
+          "text": "once live: data/prospectus/windows.json has one run per enabled window per weekday (key <date>:<window id>) with a finished_at inside start + catch_up_minutes"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: a window that had due work writes >= 1 version (synchronous or collected from a batch) and one delivery/outbox record; produced_count = reports written this fire, else a typed empty_reason (no_new_input, deferred_to_batch, credit_cap_reached, data_blocked)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 30 min (2x the 15 min cadence) once live"
+        },
+        {
+          "check": "slow",
+          "text": "window fire above 5760 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "credit_stop",
+          "text": "a window stopped early on the credit cap (receipt stopped_reason set, empty_reason credit_cap_reached when nothing was written) with rows left queued"
+        },
+        {
+          "check": "data_blocked",
+          "text": "a window wrote nothing because every due row hit a data-quality HARD_FAIL (empty_reason data_blocked; repairs filed)"
+        },
+        {
+          "check": "batch_requeued",
+          "text": "receipt summary.batch shows requeued or collect_failed entries (an errored, expired or invalid batch result)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 2 h once the lane runs live"
+        },
+        {
+          "check": "window_missed",
+          "text": "once live: a weekday passes with an enabled window absent from windows.json (not machine-checked yet)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0 reports with no typed empty_reason (it failed every report it tried: receipt failed non-empty) -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 2.0,
+        "freshness_rule": "the lane fires every 15 min around the clock and writes its receipt on every live fire, windows or not",
+        "timeout_s": 7200,
+        "class": "report",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled. A window is bounded by max_reports (12 post-close, 6 pre-market) synchronous reports at <= prospectus timeout_s 900 each plus up to watch_batch.max_submit (20) gate + web planning turns; the worst case can exceed timeout_s 7200 (RUN_TIMEOUT, rows stay queued), the expected case is far below. Measure at canary.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 5760.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; advisory research answers for the operator, nothing applied by code",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/prospectus-build_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='prospectus-build' ORDER BY requested_at DESC LIMIT 5\"",
+          "jq '.runs | to_entries | .[-5:]' $STATE_ROOT/data/prospectus/windows.json",
+          "ls $STATE_ROOT/data/prospectus/delivery/outbox $STATE_ROOT/data/prospectus/delivery/sent",
+          "jq '{ok_at, produced_count, summary}' $STATE_ROOT/data/runtime/prospectus-build_last.json",
+          "jq '.items | to_entries | map(select(.value.state==\"pending\")) | length' $STATE_ROOT/data/prospectus/batches.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "derived 2026-10-26 from scripts/prospectus_window.py write_receipt() / empty_reason_for(): produced_count = reports written this fire (synchronous + collected batch results); 0 with a typed empty_reason when nothing was due, the work went to the batch, the credit cap stopped the window or the gate blocked every row; 0 with failures and no reason is a violation."
+      },
+      "review_by": "2026-11-06",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "claude prospectus-schedule-delivery 2026-10-26 (PR #2207)",
+        "reviewed_by": "claude-coordinator 2026-10-26",
+        "reviewed_on": "2026-10-26",
+        "note": "Reviewed against the code at the go-live PR (supersedes #2193/#2207): purpose, connections (window runner, governed credit sync + batch, quality gate, CIO memory, stores, outbox; no sender in the lane), healthy/degraded/failed, timeout, evidence and expected output. Fixed in review: expected_output rule min_produced -> empty_allowed (a 15-min lane produces 0 on most fires) with typed reasons; batch connections added. Stage stays shadow (live_arg null)."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "Ticker Prospectus versions written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input",
+          "deferred_to_batch",
+          "credit_cap_reached",
+          "data_blocked"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/prospectus-build_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/prospectus-build/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "$STATE_ROOT/data/prospectus/delivery/outbox/<run_key>.json (one per run that wrote or failed a report; moved to delivery/sent/ once delivered)"
           }
         ],
         "on_violation": {

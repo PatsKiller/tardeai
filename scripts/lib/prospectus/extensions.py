@@ -200,6 +200,9 @@ def fund_tables(doc: dict) -> list[dict]:
             ["Peer funds", ", ".join(fp.get("peers") or []) or "n/a"],
             ["Expense ratio", fmt(fp.get("expense_ratio_pct"), "%") if fp.get("expense_ratio_pct") is None else f"{fp['expense_ratio_pct']:.2f}%"],
             ["Assets under management", fmt(fp.get("aum_usd"), "$")],
+            ["Issuer · inception", f"{fp.get('issuer') or 'n/a'} · {fp.get('inception_date') or 'n/a'}"],
+            ["Index tracked", fp.get("index_tracked") or "n/a"],
+            ["Number of holdings", str(int(fp["holdings_count"])) if fp.get("holdings_count") else "n/a"],
             ["Distribution yield · trailing 12m", f"{fmt(fp.get('dividend_yield_pct'), '%')} · {fmt(fp.get('ttm_distribution'), '$')}"],
             ["Last distribution · cadence · next (est.)", f"{fmt(fp.get('last_distribution'), '$')} on {fp.get('last_distribution_date') or 'n/a'}"
                                                          f" · {fp.get('distribution_cadence') or 'n/a'} · {fp.get('next_distribution_est') or 'n/a'}"],
