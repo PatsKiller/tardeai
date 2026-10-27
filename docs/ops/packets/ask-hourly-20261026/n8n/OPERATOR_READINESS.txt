@@ -1,0 +1,92 @@
+Ask native workflow operator readiness — source handoff, NOT an activation receipt
+Runbook: cio-ask-lifecycle-native
+
+Identity
+  workflow: tradeai-cio-ask-lifecycle-native (inactive)
+  lanes: cio-ask-lifecycle, cio-ask-material-events
+  triggers: 0 0 * * * * and 0 */5 * * * *, America/New_York, all seven days
+  runner: scripts/cio_ask_lifecycle.py --once [--events-only], same existing lock
+  generated file: docs/ops/packets/ask-hourly-20261026/n8n/workflow.native.candidate.json
+  dependencies: tradeai-fabric-run-lane, tradeai-fabric-error, tradeai-run-relay
+
+Only the coordinator's integrated reviewed SHA is deployable. This worker branch
+has historical DRAFT proposal contracts; it does not replace canonical review.
+No import, activation, provider, DB, signer, secret, host service or grant action
+was performed by this worker.
+
+Source checks after coordinator integration (commands use that reviewed tree):
+  python3 scripts/build_cio_ask_lifecycle_workflow.py --check
+  python3 scripts/check_n8n_workflow_framework.py --workflow \
+    docs/ops/packets/ask-hourly-20261026/n8n/workflow.native.candidate.json \
+    --strict --json
+  python3 scripts/check_n8n_relay_contract.py \
+    --workflows docs/ops/packets/ask-hourly-20261026/n8n \
+    --ids tradeai-cio-ask-lifecycle-native --relay-root <reviewed-served-root> \
+    --no-probe --no-concurrency
+The last command is static routing only, not the mandatory served scratch-relay
+proof. Before import, run the same checker against the served release without
+--no-probe/--no-concurrency, using a fresh private --scratch directory and the
+normal approved finite socket boundary. Do not use a production ledger source.
+
+Mandatory pre-import gate, including inactive import (not run by this worker):
+  python3 scripts/check_n8n_import_ready.py \
+    docs/ops/packets/ask-hourly-20261026/n8n/workflow.native.candidate.json \
+    --relay-url http://172.19.0.1:18092 \
+    --known-id tradeai-fabric-error --known-id tradeai-fabric-run-lane \
+    --probe-host --runtime-evidence <protected-host-evidence-v2.json> --json
+Only the in-process --probe-host path can establish current platform PASS.
+Committed/captured platform-facts JSON is untrusted and capped at PARTIAL. The
+historical 2026-10-15 platform findings do not establish today's host condition.
+Never add --exceptions, patch a score or manufacture an observation to pass it.
+
+Current source/runtime bootstrap blocker
+  check_n8n_import_ready.py always invokes the activation gate, even for inactive
+  source candidates. That gate needs all applicable runtime obligations.
+  scripts/lib/n8n_evidence_attestation.py:_verify_drift_snapshot implements only
+  23.24-L5b and rejects other obligations with "semantic evidence adapter
+  unavailable for obligation". scripts/n8n_evidence_host_collector.py is explicitly
+  an uninstalled signing-request producer; its unsigned CLI cannot satisfy trust
+  and its fixed adapter covers only L5b. A protected, scoped host signer/trust
+  policy and the additional semantic adapters are separate coordinated work.
+  Fresh signed JSON alone cannot resolve unsupported adapters. A brand-new
+  workflow also lacks pre-import runtime evidence. No supported source-only
+  command currently resolves this circular bootstrap requirement.
+
+Activation checklist after those blockers are resolved
+  1. Coordinator confirms exact deployed source SHA, canonical reviewed contracts,
+     gateway/relay/executor identities and already published Run Lane/error
+     workflows with compatible ownership. Preserve all existing native jobs.
+  2. Obtain active grants required by AGENTS §23.2/§23.11 and §17, naming the
+     exact workflow, both lanes, reviewed PR/SHA and this packet. A cron grant
+     covers n8n orchestration; it does not authorize unrelated host edits or
+     provider/cap/secret changes. No grant was requested/consumed here.
+  3. Mandatory served scratch relay contract + pre-import guard must return0.
+     Use the established guarded import procedure; import this exact file only
+     INACTIVE. Do not import the packet directory (it contains nonworkflow JSON).
+  4. Prove one bounded shadow dry run through this workflow's Manual hourly check
+     or native trigger. CLI execute needs the existing approved override
+     -e N8N_RUNNERS_BROKER_PORT=5690. A dry run writes no Ask/receipt/memory/send
+     stores and proves transport/admission only, never business freshness.
+  5. Coordinator admits a bounded canary in canonical source: state/stage/mode,
+     live_arg and the exact whole-panel process set; keep existing limits. R6
+     still requires properly armed semantic effect keys before live promotion.
+     Reconcile the relay live-lane authority from deployed source; do not assume
+     that a documented derived allowlist is installed or that a host env edit is
+     authorized. Never widen global event-key/effect-slot policy.
+  6. Supported native CLI operations are n8n import:workflow --input=<staged-file>
+     (inactive), n8n publish:workflow --id=tradeai-cio-ask-lifecycle-native, and
+     n8n unpublish:workflow --id=tradeai-cio-ask-lifecycle-native for rollback.
+     Publish requires the established guarded procedure and approved n8n restart
+     so native schedules load. These are conditional operator actions, not a
+     bypass of step3. This is one new native workflow, not a cron cutover wave.
+  7. Preserve matching d: key/host immutable v2 attempt + canonical thread check
+     + exact consumer readback + memory_sync + delivered/not_required evidence.
+     Confirm one forced bounded live check, then monitor first natural hourly
+     and material slots. Exercise no-change/cooldown, typed empty, pending memory,
+     source unavailable and sink-only retry cases without duplicate research.
+     Native execution metadata must separately prove the triggers are installed
+     and active; a host receipt alone cannot prove native schedule activation.
+
+Rollback is manual unpublish + both lane dispatch modes off, with the required
+operator authority. Preserve ledger/cursors/receipts; recover through reviewed
+canary. There is deliberately no automatic host cron fallback.

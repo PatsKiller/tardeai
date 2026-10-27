@@ -4518,6 +4518,83 @@
       "env_evidence": "scripts/cio_ask_research.py reads CIO_ASK_REQUESTS_DIR, CIO_ASK_ANSWERS_DIR and the executor-set TRADEAI_RUN_ID; scripts/lib/cio_ask_research.py reads CIO_ASK_RESEARCH_PER_QUESTION_USD. Its read closure (identity registry, data broker readers, db_adapter, search_router, llm_consumption) resolves the state root and DB settings; the dry run opens no DB and no provider. No broker, messaging or provider credential name.",
       "env_report_reason": "New lane (2026-10-23): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing; the live closure (db_adapter, search_router, governed_cloud_generation) is re-inventoried for enforce at canary.",
       "source": "operator 2026-10-23 (Ask the CIO, Phase 9 approved: research pipeline 'runnable as an n8n lane cio-ask-research registered at SHADOW with a DRAFT contract (operator reviews)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR, after the operator approves the cio_ask_deep_research spend cap): []. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0)."
+    },
+    {
+      "lane_id": "cio-ask-lifecycle",
+      "command": [
+        "$PY",
+        "scripts/cio_ask_lifecycle.py",
+        "--once"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/cio_ask_lifecycle.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-ask-lifecycle_last.json",
+      "output_receipt": "v2",
+      "llm_route": {
+        "via": "cio-governed-bridge",
+        "process_ids": [
+          "cio_ask_reanswer",
+          "cio_ask_critique_deepseek",
+          "cio_ask_critique_grok",
+          "cio_ask_critique_chatgpt"
+        ]
+      },
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_USER",
+        "POSTGRES_PASSWORD"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
+      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+    },
+    {
+      "lane_id": "cio-ask-material-events",
+      "command": [
+        "$PY",
+        "scripts/cio_ask_lifecycle.py",
+        "--once",
+        "--events-only"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/cio_ask_lifecycle.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-ask-material-events_last.json",
+      "output_receipt": "v2",
+      "llm_route": {
+        "via": "cio-governed-bridge",
+        "process_ids": [
+          "cio_ask_reanswer",
+          "cio_ask_critique_deepseek",
+          "cio_ask_critique_grok",
+          "cio_ask_critique_chatgpt"
+        ]
+      },
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_USER",
+        "POSTGRES_PASSWORD"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
+      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
     }
   ],
   "blocked_reasons": {

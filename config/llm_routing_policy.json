@@ -1887,6 +1887,78 @@
           "on_health_unknown": "refuse",
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.05
+        },
+        "cio_ask_reanswer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": true,
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          }
+        },
+        "cio_ask_critique_deepseek": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          }
+        },
+        "cio_ask_critique_grok": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          }
+        },
+        "cio_ask_critique_chatgpt": {
+          "primary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5,
+          "anthropic_first": false,
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          }
         }
       }
     }

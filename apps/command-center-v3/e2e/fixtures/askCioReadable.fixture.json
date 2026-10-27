@@ -4411,5 +4411,105 @@
       0.0
     ],
     "memory_contributions": 4
+  },
+  "hourly_ui": {
+    "clock": "2031-03-10T15:05:00Z",
+    "thread": {
+      "thread_id": "hourly-synthetic-thread",
+      "title": "Compare two synthetic securities",
+      "created_at": "2031-03-09T14:00:00Z",
+      "updated_at": "2031-03-09T15:00:00Z",
+      "status": "deep",
+      "channels": [
+        "cc"
+      ],
+      "entities": [
+        {
+          "key": "demoa",
+          "name": "Example Alpha",
+          "symbol": "DEMOA",
+          "tracking": {
+            "state": "tracked"
+          }
+        },
+        {
+          "key": "demob",
+          "name": "Example Beta",
+          "symbol": "DEMOB",
+          "tracking": {
+            "state": "tracked"
+          }
+        }
+      ],
+      "reanswers": 0,
+      "turns": [
+        {
+          "ask_id": "hourly-synthetic-ask",
+          "question": "What evidence could change this synthetic comparison?",
+          "channel": "cc",
+          "asked_at": "2031-03-09T14:00:00Z",
+          "turn_kind": "ask",
+          "answers": [
+            {
+              "version": 1,
+              "status": "deep",
+              "depth": "deep",
+              "summary": "Synthetic saved answer from the previous day.",
+              "produced_at": "2031-03-09T15:00:00Z",
+              "sources": []
+            }
+          ]
+        }
+      ],
+      "lifecycle": {
+        "state": "current",
+        "last_checked_at": "2031-03-10T15:00:00Z",
+        "last_answer_at": "2031-03-09T15:00:00Z",
+        "next_check_at": "2031-03-10T16:00:00Z",
+        "next_eligible_at": null,
+        "last_check_outcome": "no_change",
+        "monitoring_active": true,
+        "reason": null,
+        "blocker": null,
+        "memory_sync": {
+          "state": "saved",
+          "reason": "Synthetic question and answer are recorded"
+        },
+        "delivery": {
+          "state": "not_needed",
+          "reason": "No material change"
+        },
+        "sources": [
+          {
+            "name": "Synthetic material-event census",
+            "state": "checked",
+            "as_of": "2031-03-10T15:00:00Z"
+          }
+        ],
+        "providers": [
+          {
+            "provider": "Synthetic primary",
+            "model": "Example Opus fixture",
+            "role": "primary",
+            "state": "not_called",
+            "reason": "Fixture only; no provider call"
+          },
+          {
+            "provider": "Synthetic independent critique",
+            "role": "critique",
+            "state": "not_called",
+            "reason": "No changed answer to critique"
+          }
+        ]
+      }
+    },
+    "blocked_reason": "Synthetic research budget is unavailable",
+    "memory": {
+      "last_answer_at": "2031-03-09T15:00:00Z",
+      "stance": "HOLD",
+      "conviction": 50,
+      "stance_source": "prospect shadow",
+      "stance_missing_reason": "Current stance projection is shadow-only"
+    }
   }
 }

@@ -2090,6 +2090,124 @@
       "name": "Ticker Prospectus data-quality read, OAuth fallback (Grok)",
       "description": "Same read-only facts-packet check as prospectus_fact_check, used only when the Anthropic credit is unavailable. Grok OAuth only (settles $0.00); no other lane, never DeepSeek. A failed read is recorded and never blocks the deterministic gate. READ_ONLY_ADVISORY.",
       "notes": "Grok is an external provider (AGENTS.md 2A egress): the packet carries fundamentals, price and position figures for one symbol. daily_cost_cap_usd 0.05 exists so the gate's cost check has a declared ceiling."
+    },
+    {
+      "id": "cio_ask_reanswer",
+      "name": "Ask CIO hourly/material re-answer",
+      "category": "CIO",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": true
+    },
+    {
+      "id": "cio_ask_critique_deepseek",
+      "name": "Ask CIO deepseek independent critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
+    },
+    {
+      "id": "cio_ask_critique_grok",
+      "name": "Ask CIO grok independent critique",
+      "category": "CIO",
+      "lane_policy": "grok_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "grok"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
+    },
+    {
+      "id": "cio_ask_critique_chatgpt",
+      "name": "Ask CIO chatgpt independent critique",
+      "category": "CIO",
+      "lane_policy": "chatgpt_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "chatgpt"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
     }
   ],
   "default_deepseek_policy": "FAST",

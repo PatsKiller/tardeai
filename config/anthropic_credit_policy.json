@@ -100,7 +100,10 @@
     "rotation_oversight": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
     "watchlist_cio_synthesis": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
     "watchlist_cio_synthesis_cron": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
-    "blind_review_runner": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes."
+    "blind_review_runner": "Provider-pinned or independent multi-model caller; preserve separate provider identity and legacy lanes.",
+    "cio_ask_critique_deepseek": "Independent provider-pinned Ask critique; never enter Anthropic overlay",
+    "cio_ask_critique_grok": "Independent provider-pinned Ask critique; never enter Anthropic overlay",
+    "cio_ask_critique_chatgpt": "Independent provider-pinned Ask critique; never enter Anthropic overlay"
   },
   "pricing": {
     "claude-haiku-5-5": {
@@ -255,7 +258,8 @@
   "anthropic_only_processes": {
     "prospectus_writer": "operator 2026-10-26: prospectus jobs QUEUE when the credit is unavailable; never a paid DeepSeek fallback",
     "prospectus_writer_premium": "operator 2026-10-26: same; a Fable refusal falls back to Opus (prospectus_writer), never to another provider",
-    "prospectus_fact_check": "operator 2026-10-26 data-quality gate: Haiku read on the credit; when unusable the caller uses prospectus_fact_check_oauth (free Grok OAuth), never DeepSeek"
+    "prospectus_fact_check": "operator 2026-10-26 data-quality gate: Haiku read on the credit; when unusable the caller uses prospectus_fact_check_oauth (free Grok OAuth), never DeepSeek",
+    "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget"
   },
   "thinking_tiers": [
     "high",

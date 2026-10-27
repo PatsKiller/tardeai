@@ -306,8 +306,28 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     before={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
     monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
     rows,total=report(tmp_path,observed)
-    assert len(rows)==94  # + prospectus_writer, prospectus_writer_premium, prospectus_fact_check(_oauth) (2026-10-26)
-    assert len([r for r in rows if r['new'].startswith('anthropic')])==70  # + prospectus_fact_check (Haiku)
+    registry=json.loads((tmp_path/'config/llm_process_registry.json').read_text())['processes']
+    credit_policy=json.loads((tmp_path/'config/anthropic_credit_policy.json').read_text())
+    expected_ids={p['id'] for p in registry}
+    assert len(rows)==len(expected_ids) and {r['process'] for r in rows}==expected_ids
+    eligible={p['id'] for p in registry if p.get('anthropic_first') is True and p['id'] not in credit_policy['excluded_processes']}
+    assert {r['process'] for r in rows if r['new'].startswith('anthropic')}==eligible
+    # The four hourly Ask roles have exact, distinct identities; critics never enter promotional credit routing.
+    ask_roles={'cio_ask_reanswer','cio_ask_critique_deepseek','cio_ask_critique_grok','cio_ask_critique_chatgpt'}
+    assert {p['id'] for p in registry if p['id'].startswith('cio_ask_')}==ask_roles|{'cio_ask_deep_research'}
+    by_id={p['id']:p for p in registry}
+    routed={r['process']:r for r in rows}
+    for pid in ask_roles:
+        assert by_id[pid]['default_mode']=='automated'
+        assert by_id[pid]['advisory_only'] is True and by_id[pid]['tools_allowed'] is False
+        assert by_id[pid]['fallback_allowed'] is False
+        assert by_id[pid]['anthropic_first'] is (pid=='cio_ask_reanswer')
+    assert routed['cio_ask_reanswer']['new']=='anthropic / claude-opus-5-5'
+    critics={'cio_ask_critique_deepseek':'deepseek', 'cio_ask_critique_grok':'grok', 'cio_ask_critique_chatgpt':'chatgpt'}
+    for pid,provider in critics.items():
+        assert routed[pid]['new']=='EXCLUDED / unchanged'
+        assert routed[pid]['old'].startswith(provider+' / ')
+        assert routed[pid]['no_key_or_expired']=='unchanged / '+provider
     assert next(r for r in rows if r['process']=='prospectus_fact_check')['new']=='anthropic / claude-haiku-5-5'
     prospectus={r['process']:r for r in rows if r['process'].startswith('prospectus_writer')}
     assert prospectus['prospectus_writer_premium']['new']=='anthropic / claude-fable-5-1'
