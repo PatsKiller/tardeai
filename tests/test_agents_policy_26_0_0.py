@@ -65,9 +65,11 @@ def _rows() -> dict[str, str]:
 # ---------------------------------------------------------------------------------------------- header / banner
 def test_header_is_26_0_x_proposed_or_active():
     cb = _control()
-    assert re.fullmatch(r"26\.0\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
+    assert re.fullmatch(r"26\.\d+\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
     if cb["Policy-Version"] == "26.0.0":
         assert cb["Supersedes"] == "25.0.1"
+    elif cb["Policy-Version"] == "26.1.0":
+        assert cb["Supersedes"] == "26.0.0"
     assert cb["Approval-Class"] == "OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY"
     assert cb["Status"] in {"PROPOSED", "ACTIVE"}
     if cb["Status"] == "PROPOSED":
@@ -80,7 +82,8 @@ def test_header_is_26_0_x_proposed_or_active():
 
 def test_banner_matches_header_and_section_0_comes_first():
     status = _control()["Status"]
-    assert f"**26.0.0 is {status} (MAJOR)" in AGENTS[:6000]
+    ver = _control()["Policy-Version"]
+    assert f"**{ver} is {status} (MAJOR)" in AGENTS[:6000]
     s0 = AGENTS.index("# 0 · If you read nothing else")
     assert s0 < 6000
     assert s0 < AGENTS.index("# Document version policy") < AGENTS.index("# 1 · Identity and responsibilities")
@@ -230,7 +233,7 @@ def test_rulebook_projection_renders_every_numbered_section():
     from scripts.lib import operator_approvals as core
 
     proj = core.policy_projection(AGENTS, source_sha="0" * 40)
-    assert re.fullmatch(r"26\.0\.\d+", proj["policy_version"])
+    assert re.fullmatch(r"26\.\d+\.\d+", proj["policy_version"])
     headings = [ln[2:].strip() for ln in BINDING.splitlines()
                 if re.match(r"^# (\d+[A-Z]? ·|Document version policy|Multi-Agent SOP)", ln)]
     missing = [h for h in headings if h not in proj["section_counts"]]
