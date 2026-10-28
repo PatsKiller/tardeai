@@ -1038,6 +1038,9 @@ def test_libraries_are_wired_into_nothing():
         "scripts/deploy_on_main_poll.py",
         "config/systemd/user/tradeai-deploy-on-main.service",
         "config/systemd/user/tradeai-deploy-on-main.timer",
+        # Merge hold list (AGENTS.md §25.10 held classes, 2026-10-27): names release_control.py as a held path so a
+        # change to the STOP latch merges only by the operator. A path in a hold list is not a caller.
+        "config/merge_hold_paths.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
