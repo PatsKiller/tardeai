@@ -11,9 +11,13 @@ Pinned here, against the production constant (no monkeypatching of TELEGRAM_REMO
    ``TELEGRAM_GRANT_RETIRED`` and never run ``bin/guard grant``; deny still clears a leftover PENDING row.
 2. ``bin/guard request`` (scripts/guard_request_approval.py) exits 2, sends nothing; ``--dry-run`` says it would refuse.
 3. The PR-merge guard bridge (a ``telegram`` guard grant per tap) refuses before minting, and the per-PR CLIs default
-   to the native ``prmapprove`` path, which grants nothing.
+   to the native ``prmapprove`` path, which grants nothing. A row the old bridge left PENDING is superseded and
+   re-sent with the native buttons, not answered ``already_notified`` (review 2026-10-28).
 4. What stays: keyboard ``bin/guard grant`` and Ops → Controls ``grant.issue`` (which drives ``bin/guard grant``) do not
    go through guard_remote_approval, and bin/guard still lists every tier Ops → Controls offers.
+5. The operator sees where to grant instead (RETIRED_MSG) on a refused tap or /approve; the guard hook's hints name
+   the keyboard ``bin/guard grant`` command or Ops → Controls, not ``bin/guard request``; the emergency
+   ``request-grant`` is refused (exit 2) and mints nothing.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -42,6 +47,9 @@ COVERS = [
     "scripts/request_pr_merge_approve.py",
     "scripts/notify_pr_merge_ready.py",
     "bin/guard",
+    "scripts/hooks/agents_guard_pretooluse.py",
+    "config/agents_guard_hook_rules.json",
+    "scripts/ci_outage_emergency_release.py",
 ]
 
 CHAT = "1000000001"  # synthetic; never a production identifier
@@ -101,8 +109,9 @@ def test_approve_tap_on_a_leftover_request_refuses_and_runs_no_grant(adir, monke
 
     req = _leftover_pending(monkeypatch)
     alerts: list[str] = []
+    replies: list[str] = []
     monkeypatch.setattr(handler, "answer_callback", lambda cb_id, text, show_alert=False: alerts.append(text))
-    monkeypatch.setattr(handler, "send_reply", lambda *a, **k: None)
+    monkeypatch.setattr(handler, "send_reply", lambda chat, reply_to, text: replies.append(text))
     monkeypatch.setattr(subprocess, "run", _no_grant)
     out = handler.handle_callback_query(
         {
@@ -113,7 +122,10 @@ def test_approve_tap_on_a_leftover_request_refuses_and_runs_no_grant(adir, monke
         }
     )
     assert out["outcome"] == "REFUSED" and out["reason"] == "TELEGRAM_GRANT_RETIRED"
-    assert alerts and "TELEGRAM_GRANT_RETIRED" in alerts[-1]
+    assert alerts and "TELEGRAM_GRANT_RETIRED" in alerts[-1] and len(alerts[-1]) <= 200
+    # The operator is told WHERE to grant instead, not just a code.
+    assert replies and gra.RETIRED_MSG in replies[-1]
+    assert "bin/guard grant" in replies[-1] and "Ops → Controls" in replies[-1]
     assert _row(req["request_id"])["status"] == "PENDING"
 
 
@@ -126,6 +138,7 @@ def test_approve_code_on_a_leftover_request_refuses_and_runs_no_grant(adir, monk
     monkeypatch.setattr(subprocess, "run", _no_grant)
     poller._handle_guard_approval({"message_id": 9, "from": {"id": int(CHAT)}}, f"/approve {req['code']}", CHAT)
     assert sent and "TELEGRAM_GRANT_RETIRED" in sent[-1]
+    assert gra.RETIRED_MSG in sent[-1], "the /approve reply must say where to grant instead"
     assert _row(req["request_id"])["status"] == "PENDING"
 
 
@@ -235,6 +248,112 @@ def test_per_pr_clis_default_to_native(pmt, monkeypatch):
     monkeypatch.setattr(pmt, "write_notify_receipt", lambda summary: None)
     assert npr.main(["--apply", "--legacy-per-pr", "--json"]) == 0
     assert calls == ["native", "native"]
+
+
+def _bridge_row(pmt, *, pr: int = 11, head: str = "c" * 40) -> dict:
+    """A per-PR row as the old guard bridge left it: PENDING, delivered an hour ago, with guard_bridge_request_id."""
+    rec = pmt.mint_request(pr_number=pr, title="t", head_sha=head, url="u")
+    rows = pmt._load()
+    for r in rows:
+        if r["request_id"] == rec["request_id"]:
+            r["guard_bridge_request_id"] = "feedfacefeedface"
+            r["created_at"] = time.time() - 3600
+            r["delivery"] = {"accepted": True, "message_ids": ["1"], "at": time.time() - 3600}
+    pmt._save(rows)
+    return rec
+
+
+def test_old_guard_bridge_row_is_superseded_and_resent_with_native_buttons(pmt, monkeypatch):
+    """Review 2026-10-28: a bridge row stays PENDING+delivered for 24 h; a re-run must not answer
+    `already_notified` (its gapprove buttons now refuse) but re-send with prmapprove buttons."""
+    old = _bridge_row(pmt)
+    assert pmt.find_pending(11, "c" * 40) is None, "a retired bridge row must not count as pending"
+    keyboards: list[dict] = []
+    monkeypatch.setattr(pmt, "send_interrupt", lambda text, kb: keyboards.append(kb) or (True, "delivered", ["2"]))
+    out = pmt.mint_and_notify(pr_number=11, title="t", head_sha="c" * 40, url="u")
+    assert out["ok"] is True and out.get("telegram") != "already_notified" and not out.get("reused")
+    assert out["request_id"] != old["request_id"]
+    assert keyboards and keyboards[0]["inline_keyboard"][0][0]["callback_data"] == f"prmapprove:{out['request_id']}"
+    rows = {r["request_id"]: r for r in pmt._load()}
+    assert rows[old["request_id"]]["status"] == "SUPERSEDED"
+    assert rows[old["request_id"]]["settled_by"]["via"] == "guard_bridge_retired"
+    assert rows[out["request_id"]]["status"] == "PENDING"
+
+
+def test_request_pr_merge_approve_rerun_resends_over_an_old_bridge_row(pmt, monkeypatch):
+    import request_pr_merge_approve as rpa
+
+    _bridge_row(pmt, pr=12, head="d" * 40)
+    monkeypatch.delenv("PR_MERGE_TELEGRAM_VIA_GUARD", raising=False)
+    view = {"number": 12, "title": "t", "url": "u", "headRefOid": "d" * 40, "state": "OPEN", "labels": [], "files": []}
+    monkeypatch.setattr(rpa, "_pr_view", lambda pr, repo: view)
+    sent: list[str] = []
+    monkeypatch.setattr(pmt, "send_interrupt", lambda text, kb: sent.append(kb["inline_keyboard"][0][0]["callback_data"])
+                        or (True, "delivered", ["3"]))
+    assert rpa.main(["--pr", "12", "--single", "--json"]) == 0
+    assert len(sent) == 1 and sent[0].startswith("prmapprove:")
+
+
+def test_bridge_rows_are_left_alone_when_not_retired(pmt, monkeypatch):
+    """Legacy behaviour is unchanged under LEGACY_TEST: the bridge row still counts as pending."""
+    old = _bridge_row(pmt, pr=13)
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
+    assert pmt.supersede_guard_bridge_rows(13) == 0
+    found = pmt.find_pending(13, "c" * 40)
+    assert found and found["request_id"] == old["request_id"]
+
+
+# ── hints and the emergency path no longer steer agents into the refusal ──────────────────────
+
+
+def _hook_deny_text(monkeypatch, tmp_path, cmd: str) -> str:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "agents_guard_pretooluse_t", ROOT / "scripts" / "hooks" / "agents_guard_pretooluse.py"
+    )
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+    home = Path("/nonexistent-tgr-home") / tmp_path.name  # outside every temp allowlist glob; string math only
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path / "approvals"))
+    monkeypatch.setenv("TRADEAI_AGENTS_GUARD_RULES", str(ROOT / "config" / "agents_guard_hook_rules.json"))
+    monkeypatch.setenv("TRADEAI_AGENTS_GUARD_MODE", "deny")
+    payload = {"session_id": "s", "cwd": f"{home}/wt", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+               "tool_input": {"command": cmd}, "transcript_path": "/dev/null"}
+    out, _records, _ = hook.run(json.dumps(payload))
+    assert out, f"expected a deny for {cmd!r}"
+    return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_grant_gated_deny_hint_names_the_keyboard_command_or_ops(monkeypatch, tmp_path):
+    text = _hook_deny_text(monkeypatch, tmp_path, "crontab -r")
+    assert "bin/guard request" not in text
+    assert "bin/guard grant cron" in text and "Ops → Controls" in text
+
+
+def test_self_grant_deny_reason_names_the_keyboard_command_or_ops(monkeypatch, tmp_path):
+    text = _hook_deny_text(monkeypatch, tmp_path, "bin/guard grant cron --for 30m --uses 1")
+    assert "liveops.self_grant" in text
+    assert "bin/guard request" not in text and "Ops → Controls" in text
+
+
+def test_no_live_hint_or_comment_points_at_telegram_grants():
+    guard = (ROOT / "bin" / "guard").read_text(encoding="utf-8")
+    assert "at the keyboard or by Telegram" not in guard
+    emergency = (ROOT / "scripts" / "ci_outage_emergency_release.py").read_text(encoding="utf-8")
+    assert "ask the operator (Telegram)" not in emergency and "RETIRED" in emergency.split('"""')[1]
+
+
+def test_emergency_request_grant_is_refused_and_sends_nothing(adir, monkeypatch):
+    """`ci_outage_emergency_release.py request-grant` runs bin/guard request for real: exit 2 (refused)."""
+    import ci_outage_emergency_release as cer
+
+    monkeypatch.setattr(cer, "fetch_incidents", lambda cfg: [{"id": "inc-1", "name": "Actions degraded"}])
+    rc = cer.cmd_request_grant(type("A", (), {"sha": "a" * 40})(), {"grant_tier": "release-emergency"})
+    assert rc == 2
+    assert not gra.requests_path().exists(), "a refused request must not be minted"
 
 
 # ── 4. what stays: keyboard bin/guard grant and Ops → Controls ───────────────────────────────

@@ -4,8 +4,10 @@
   evidence      --sha SHA            replay the required workflows + extra suites locally on SHA's tree
   check         --sha SHA [--record --prev DIR --release DIR]
                                      outage proof + evidence + release-emergency grant + commit rule
-  request-grant --sha SHA            ask the operator (Telegram) for a release-emergency grant naming
-                                     the SHA and the live incident id
+  request-grant --sha SHA            RETIRED with Telegram guard grants (PR #2185): always exits 2
+                                     (refused, the code it already used for a refusal). The operator
+                                     grants at the host keyboard instead. Note: `release-emergency`
+                                     is not in bin/guard ALL_TIERS, so it cannot be granted today.
   reconcile     [--apply]            after GitHub recovers: RECONCILED / page / (configured) rollback
   status                             the emergency ledger, open releases first
 
@@ -201,6 +203,8 @@ def cmd_check(args, cfg: dict) -> int:
 
 
 def cmd_request_grant(args, cfg: dict) -> int:
+    # Telegram guard grants are retired (PR #2185): guard_request_approval.py exits 2 with the retirement
+    # message, so this returns 2 (refused) whenever an incident exists. Kept so the refusal is explicit.
     incidents = fetch_incidents(cfg)
     if not incidents:
         print(json.dumps({"ok": False, "error": "no unresolved Actions incident — use the normal gate"}))

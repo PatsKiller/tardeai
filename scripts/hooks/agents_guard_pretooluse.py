@@ -1426,7 +1426,9 @@ def run(stdin_text: str, now: float | None = None) -> tuple[str, list[dict], str
         records.append(rec)
         if denied:
             g = (
-                f" No active '{f['grant_tier']}' grant ({f['grant_state']}); ask with: bin/guard request {f['grant_tier']}."
+                f" No active '{f['grant_tier']}' grant ({f['grant_state']}); hand the operator the exact"
+                f" `bin/guard grant {f['grant_tier']} --for <dur> --uses <n> --reason \"...\"` command for the"
+                f" keyboard, or ask for it on Ops → Controls (Telegram grants are retired)."
                 if f["grant_tier"]
                 else ""
             )

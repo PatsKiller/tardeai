@@ -121,7 +121,7 @@ cmd_grant() {
     exit 1
   fi
 
-  # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or by Telegram.
+  # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or on Ops → Controls.
   if [[ "$tier" == "execution-ops" && "$dur" -gt 21600 ]]; then
     echo "${RED}execution-ops grants are capped at 6h (21600s) — AGENTS.md 5.0.0 §24.10.${OFF}"; exit 1
   fi

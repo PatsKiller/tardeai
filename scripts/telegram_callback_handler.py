@@ -157,6 +157,13 @@ def handle_callback_query(cb):
                                    f"({str(ag.get('grant_id'))[:8]}). Details in chat.", show_alert=True)
             send_reply(chat_id, message_id, out["message"])
             return {**result, "outcome": "REFUSED", "reason": "ACTIVE_GRANT_EXISTS"}
+        if not out.get("ok") and out.get("reason") == "TELEGRAM_GRANT_RETIRED":
+            # Telegram guard grants are retired (PR #2185). The alert is capped at 200 chars, so tell the
+            # operator where to grant instead (keyboard `bin/guard grant`, or Ops → Controls) in chat.
+            answer_callback(cb_id, "Not granted: TELEGRAM_GRANT_RETIRED. Where to grant instead: see chat.",
+                            show_alert=True)
+            send_reply(chat_id, message_id, f"❌ Not granted. {out.get('detail') or _gra.RETIRED_MSG}")
+            return {**result, "outcome": "REFUSED", "reason": "TELEGRAM_GRANT_RETIRED"}
         if not out.get("ok"):
             answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
             return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}

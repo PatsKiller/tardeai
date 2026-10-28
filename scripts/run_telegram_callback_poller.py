@@ -899,7 +899,9 @@ def _handle_guard_approval(msg, text, chat_id):
         log.warning(f"guard approval refused: active {out['active_grant'].get('tier')} grant exists")
         return
     if not out.get("ok"):
-        _send_reply(chat_id, reply_to, f"❌ Not approved: {out.get('reason')}")
+        # TELEGRAM_GRANT_RETIRED carries a `detail` naming where to grant instead (keyboard or Ops → Controls).
+        detail = f"\n{out['detail']}" if out.get("detail") else ""
+        _send_reply(chat_id, reply_to, f"❌ Not approved: {out.get('reason')}{detail}")
         log.warning(f"guard approval refused: {out.get('reason')}")
         return
 

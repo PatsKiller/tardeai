@@ -90,10 +90,41 @@ def _new_id() -> str:
     return secrets.token_hex(8)
 
 
+def _is_retired_bridge_row(r: dict[str, Any]) -> bool:
+    """A row the old guard bridge made: its prompt carried ``gapprove`` buttons, which now refuse."""
+    return bool(r.get("guard_bridge_request_id")) and guard_bridge_retired()
+
+
+def supersede_guard_bridge_rows(pr_number: int | None = None) -> int:
+    """Mark PENDING guard-bridge rows SUPERSEDED (all, or one PR's). Returns how many.
+
+    Such a row stays PENDING and delivered for up to 24 h, so without this a re-run would answer
+    ``already_notified`` and never send the native ``prmapprove`` buttons (review, 2026-10-28).
+    """
+    if not guard_bridge_retired():
+        return 0
+    rows = _load()
+    n = 0
+    for r in rows:
+        if r.get("status") != "PENDING" or not r.get("guard_bridge_request_id"):
+            continue
+        if pr_number is not None and int(r.get("pr_number") or 0) != int(pr_number):
+            continue
+        r["status"] = "SUPERSEDED"
+        r["settled_at"] = time.time()
+        r["settled_by"] = {"via": "guard_bridge_retired", "note": "re-sent with native prmapprove buttons"}
+        n += 1
+    if n:
+        _save(rows)
+    return n
+
+
 def find_pending(pr_number: int, head_sha: str | None = None) -> Optional[dict[str, Any]]:
     now = time.time()
     for r in _load():
         if r.get("status") != "PENDING":
+            continue
+        if _is_retired_bridge_row(r):
             continue
         if int(r.get("pr_number") or 0) != int(pr_number):
             continue
@@ -116,6 +147,7 @@ def mint_request(
     ttl: int = DEFAULT_TTL_SECONDS,
 ) -> dict[str, Any]:
     """Create a PENDING row. Does not send Telegram (caller sends)."""
+    supersede_guard_bridge_rows(pr_number)
     existing = find_pending(pr_number, head_sha)
     if existing:
         return existing
