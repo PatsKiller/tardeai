@@ -12,10 +12,13 @@ Command Center and from the code."); what remains in use is:
   (``scripts/lib/ops_controls_core.py``, ``scripts/lib/ops_controls_api.py``).
 * ``scripts/release_control_cli.py``: the host CLI (``status`` / ``stop`` / ``resume`` on the same latch).
 
-Train-era surface still here, NOT on the deploy path: pause / claim / train-terminal, ``current_train_id`` and
-``mutation_refusal``. They are read only by the dormant train capability binding
-(``release_grant_binding.decide_capability``, ``release_capability``) and the host CLI; nothing on the poller path
-calls them. Their removal is a separate change (it moves the tests that exercise them).
+Train-era surface still here: pause / claim / train-terminal, ``current_train_id`` and ``mutation_refusal``. They
+are read by the host CLI and by the train capability binding, which is still ACTIVE in code
+(``release_grant_binding.CAPABILITY_BINDING_STATUS = "ACTIVE"``): ``scripts/release_grant_preflight.py`` calls
+``release_grant_binding.decide_capability`` (which uses ``release_capability`` and this module) when no grant binds
+a prepare / promote whose campaign is ``release-train-<train id>``. The poller never reaches it, because
+``deploy_on_main.run_deploy_script`` strips ``TRADEAI_RELEASE_CAMPAIGN`` (and the train SHA and emergency env)
+before running the deploy script. Their removal is a separate change (it moves the tests that exercise them).
 
 Origin: Release Train v2, Phase 2 (enhanced design 2026-10-21 §7). Operator decisions 2026-10-21: D1 standing
 revocable authorization; D3 resume and scope changes only via the host CLI or a confirmed operator proof (TOTP
