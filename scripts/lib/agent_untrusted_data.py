@@ -19,12 +19,19 @@ Invariants:
   * a context partitioner refuses to let any untrusted marker survive inside a
     system/operator instruction section (it is moved/stripped, never merged).
 
-LIMIT, stated rather than implied: marker detection normalises Unicode (NFKD,
-format and combining characters dropped) and folds a small confusables table
-(Cyrillic / Greek / small-capital look-alikes of the letters these markers
-use). It is not Unicode TR39; an unlisted homoglyph can still spell a marker.
-The id sentence on the BEGIN line is the second line of defence, and the model
-may still follow quoted instructions -- hence AIF-24 PARTIAL.
+LIMIT, stated rather than implied. Marker detection normalises Unicode (NFKD,
+format and combining characters dropped, line separators unified), folds a
+small confusables table (Cyrillic / Greek / small-capital look-alikes) and a
+digit-for-letter map, and also checks a letters-only collapse of each line for
+"untrusteddata". What it still does NOT catch, by construction:
+  * homoglyphs outside the table (it is not Unicode TR39);
+  * a marker broken up by inserted letters or words ("UNTRUSTED X DATA"),
+    re-spelled ("untrusted-info"), translated, or encoded (base64, ROT13);
+  * a closing line that never names the marker ("=== END ===", "end of data");
+  * role / turn syntaxes not listed below;
+  * plain-prose instructions, which are left as data by design.
+The id sentence on the BEGIN line is the backstop for the first four, and a
+model may still follow quoted instructions -- hence AIF-24 stays PARTIAL.
 """
 
 from __future__ import annotations
@@ -68,28 +75,40 @@ _CONFUSABLES = str.maketrans(
     }
 )  # fmt: skip
 _DROP_CATEGORIES = frozenset({"Cf", "Mn"})
+# Every line separator a model or renderer may honour becomes "\n" in the
+# skeleton (1:1, so the owner map is unaffected), so "^" sees a line start after
+# \r, \v, \f, NEL (\x85), LINE SEPARATOR and PARAGRAPH SEPARATOR too.
+_LINE_BREAKS = frozenset("\r\v\f\x85  ")
+_ASCII_BREAKS = str.maketrans({"\r": "\n", "\v": "\n", "\f": "\n"})
 
 # A fence-marker look-alike: BEGIN/END + UNTRUSTED [+ DATA], or UNTRUSTED + DATA.
 # Letter-only boundaries (not \b): "_END", "DATA_" and "DATA2" still match.
-_SEP = r"[^a-z0-9]{0,8}"
+_SEP = r"[^a-z0-9]{0,40}"
 _MARKER_SK = re.compile(
     rf"(?<![a-z])(?:begin|end){_SEP}untrusted(?:{_SEP}data)?(?![a-z])"
     rf"|(?<![a-z])untrusted{_SEP}data(?![a-z])"
 )
+# Second check: the letters-only collapse of each line, digits read as letters
+# ("UNTRU5TED", "UNTRUS TED", "U-N-T-R-U-S-T-E-D D-A-T-A", any separator count).
+_COLLAPSED_TARGET = "untrusteddata"
+_DIGIT_LETTERS = str.maketrans("013457", "oieast")
+_NON_LETTER_RE = re.compile(r"[^a-z\n]+")
 # Role / turn boundaries a model may honour. Kept tight so ordinary prose is left
 # alone: no space after "<" ("Price < system avg > 5" is prose), attributes only
 # as name=value, <user>/<tool> are not treated as role tags, [INST] only where a
-# turn starts.
+# turn starts. Tag names may carry a suffix: <system-reminder>, <system_prompt>.
 _TAG_ATTR = r"""(?:\s+[a-z_:\-]{1,40}\s*=\s*(?:"[^"\n]{0,200}"|'[^'\n]{0,200}'|[^\s<>"']{1,200}))"""
+_TAG_NAME = r"(?:system|assistant|developer|instructions?|operator)(?:[_\-.:][a-z0-9_\-.:]{1,40})?"
 _ROLE_SK = re.compile(
     r"<\|[^|<>\n]{1,64}\|>"  # <|im_start|>, <|reserved_special_token_7|>
-    rf"|</?(?:system|assistant|developer|instructions?|operator){_TAG_ATTR}*\s*/?>"
+    rf"|</?{_TAG_NAME}{_TAG_ATTR}*\s*/?>"
     r"|<</?sys>>"  # Llama-2 system block
     r"|\[/inst\]|(?:^|(?<=<s>))[ \t]*\[inst\]",  # Llama-2 turn
     re.MULTILINE,
 )
-# "Human:" / "Assistant:" / "System:" as a turn prefix at the start of a line.
-_TURN_SK = re.compile(r"^[ \t>#*]*(?:human|assistant|system)[ \t]*:", re.MULTILINE)
+# A turn prefix at the start of a line: "Human:", "Assistant:", "System:",
+# "User:", "### Instruction:", "### System:".
+_TURN_SK = re.compile(r"^[ \t>#*]*(?:human|assistant|system|user|instructions?)[ \t]*:", re.MULTILINE)
 
 # Defang by swapping bracket characters (ASCII and fullwidth / small-form) for
 # look-alikes that normalise to themselves: readable, no longer the token.
@@ -152,6 +171,8 @@ def _to_text(value: Any) -> str:
 @functools.lru_cache(maxsize=8192)
 def _skeleton_char(ch: str) -> str:
     """The skeleton of one character ('' for a format or combining character)."""
+    if ch in _LINE_BREAKS:
+        return "\n"
     if unicodedata.category(ch) == "Cf":
         return ""
     kept = "".join(d for d in unicodedata.normalize("NFKD", ch) if unicodedata.category(d) not in _DROP_CATEGORIES)
@@ -161,7 +182,7 @@ def _skeleton_char(ch: str) -> str:
 def _skeleton(text: str) -> tuple[str, list[int] | None]:
     """(matching skeleton, owner index per skeleton char); owner None = identity."""
     if text.isascii():
-        return text.lower(), None
+        return text.lower().translate(_ASCII_BREAKS), None
     owner: list[int] = []
     for i, ch in enumerate(text):
         owner.extend([i] * len(_skeleton_char(ch)))
@@ -170,14 +191,61 @@ def _skeleton(text: str) -> tuple[str, list[int] | None]:
 
 def _skeleton_text(text: str) -> str:
     """The skeleton alone (no owner map): the cheap path for "is there a match?"."""
-    return text.lower() if text.isascii() else "".join(map(_skeleton_char, text))
+    return text.lower().translate(_ASCII_BREAKS) if text.isascii() else "".join(map(_skeleton_char, text))
 
 
-def _rewrite(text: str, pattern: re.Pattern, replace) -> str:
-    """Rewrite in ``text`` every original span whose skeleton matches ``pattern``."""
-    if not pattern.search(_skeleton_text(text)):
+def _collapsed_hit(text: str) -> bool:
+    """True when a line of ``text``, letters only (digits read as letters), spells the marker."""
+    return _COLLAPSED_TARGET in _NON_LETTER_RE.sub("", _skeleton_text(text).translate(_DIGIT_LETTERS))
+
+
+def _line_bounds(text: str, start: int, end: int) -> tuple[int, int]:
+    """Widen [start, end) to the whole original line(s) it sits on."""
+    while start > 0 and text[start - 1] != "\n" and text[start - 1] not in _LINE_BREAKS:
+        start -= 1
+    while end < len(text) and text[end] != "\n" and text[end] not in _LINE_BREAKS:
+        end += 1
+    return start, end
+
+
+def _rewrite_collapsed(text: str) -> str:
+    """Replace every whole line whose letters-only collapse spells the marker.
+
+    The whole line, not just the letters: a split or spaced marker leaves
+    near-miss debris ("===END ...===") that the id sentence alone would have to
+    carry. Benign prose essentially never spells the marker letter by letter.
+    """
+    if not _collapsed_hit(text):
         return text
     sk, owner = _skeleton(text)
+    sk = sk.translate(_DIGIT_LETTERS)
+    letters: list[str] = []
+    own: list[int] = []
+    for j, c in enumerate(sk):
+        if "a" <= c <= "z" or c == "\n":
+            letters.append(c)
+            own.append(j if owner is None else owner[j])
+    col = "".join(letters)
+    spans: list[tuple[int, int]] = []
+    k = col.find(_COLLAPSED_TARGET)
+    while k != -1:
+        end = k + len(_COLLAPSED_TARGET)
+        spans.append(_line_bounds(text, own[k], own[end - 1] + 1))
+        k = col.find(_COLLAPSED_TARGET, end)
+    return _apply_spans(text, spans, lambda _span: NEUTRALISED_MARKER)
+
+
+def _rewrite(text: str, pattern: re.Pattern, replace, table: dict | None = None) -> str:
+    """Rewrite in ``text`` every original span whose skeleton matches ``pattern``.
+
+    ``table`` (1:1 character map) is applied to the skeleton before matching.
+    """
+    quick = _skeleton_text(text)
+    if not pattern.search(quick.translate(table) if table else quick):
+        return text
+    sk, owner = _skeleton(text)
+    if table:
+        sk = sk.translate(table)
     spans: list[tuple[int, int]] = []
     for m in pattern.finditer(sk):
         if m.end() <= m.start():
@@ -186,6 +254,11 @@ def _rewrite(text: str, pattern: re.Pattern, replace) -> str:
             spans.append((m.start(), m.end()))
         else:
             spans.append((owner[m.start()], owner[m.end() - 1] + 1))
+    return _apply_spans(text, spans, replace)
+
+
+def _apply_spans(text: str, spans: list[tuple[int, int]], replace) -> str:
+    """Rebuild ``text`` with each (start, end) span replaced; overlaps are skipped."""
     if not spans:
         return text
     parts: list[str] = []
@@ -202,7 +275,8 @@ def _rewrite(text: str, pattern: re.Pattern, replace) -> str:
 
 def contains_fence_marker(text: Any) -> bool:
     """True when ``text`` holds a fence-marker look-alike (after normalisation)."""
-    return bool(_MARKER_SK.search(_skeleton_text(_to_text(text))))
+    s = _to_text(text)
+    return bool(_MARKER_SK.search(_skeleton_text(s).translate(_DIGIT_LETTERS))) or _collapsed_hit(s)
 
 
 def neutralise_fence_breaks(text: Any) -> str:
@@ -215,7 +289,8 @@ def neutralise_fence_breaks(text: Any) -> str:
     are rewritten. Idempotent: a second pass changes nothing.
     """
     s = _to_text(text)
-    s = _rewrite(s, _MARKER_SK, lambda _span: NEUTRALISED_MARKER)
+    s = _rewrite(s, _MARKER_SK, lambda _span: NEUTRALISED_MARKER, _DIGIT_LETTERS)
+    s = _rewrite_collapsed(s)
     s = _rewrite(s, _ROLE_SK, lambda span: span.translate(_DEFANG))
     return _rewrite(s, _TURN_SK, lambda span: span[:-1] + _RATIO)
 
