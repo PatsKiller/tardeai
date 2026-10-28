@@ -1,72 +1,68 @@
 Status: ACTIVE
-as_of: 2026-10-28T21:31:00Z
+as_of: 2026-10-28T21:36:00Z
 Canonical repo path: docs/ops/CIO_GO_LIVE_OPERATOR_APPROVALS_2026-10-28.md
-Authority: §17 operator-only gates — the three "on-switches" that were never flipped
+Authority: operator 2026-10-28 in-session, verbatim: "No, I need total turn key. I authorize you to put those switches on now."
 See also: docs/audits/CIO_READINESS_GO_LIVE_AUDIT_2026-10-28.md
 
-# CIO review go-live — the three operator approvals (one page, no jargon)
+# CIO review go-live — what is actually left (accurate)
 
-## In plain English
+## State after the audit, corrected
 
-The CIO review system was built, but three "on-switches" were never turned on. An AI agent is not allowed to
-flip them — that is the safety rail working, not the system stalling. This page is the whole list of what needs
-**you** (the operator). Everything else is code, already being built by agents.
+Two of the "switches" I originally listed are **already on**:
 
-The three switches, in the order they must happen:
+- ✅ **`cio_prospect` registry row: already granted** — `config/data_source_authority.json:3538-3542`
+  (`approved_by: operator`, `approved_on: 2026-10-22`).
+- ✅ **P1 migration grant: already recorded** — the sha256 in the grant (`6bac8924…`) matches the up-file
+  exactly (verified by `scripts/cio_prospect_migration_plan.py`, "static checks: PASS", "registry row: GRANTED").
 
-## 1. Create the CIO database table (grant the `cio_prospect` row + apply the migration)
+So only **three** things remain, and the operator has now authorized all three.
 
-**What it is:** today the CIO's per-symbol decision ("WATCH", conviction, next action) is computed but stored in a
-"shadow" file, not the real database. The real table was designed but never created.
+## The three remaining switches
 
-**The two acts (both yours):**
-- **Grant** the `cio_prospect` registry row in `config/data_source_authority.json` (it is `PROPOSED`, approval
-  pending). This is a §17/§7A data-source grant.
-- **Apply** `migrations/2026_10_22_cio_prospect.sql` to the production Postgres, off-peak. This is the DDL that
-  creates the table.
+### Switch 1 — create the two tables (apply the migration)
 
-**Why you, not the agent:** creating the authoritative store and granting the data source is on the operator-only
-list (§17). An AI must not unilaterally decide "the CIO's database is now live."
+Nothing exists to write to until the tables are created. The file is **additive by construction** — idempotent
+`CREATE TABLE IF NOT EXISTS`, no DROP/DELETE/ALTER, append-only triggers, least-privilege grants. Dry-run already
+quoted (sha256 `6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be`).
 
-## 2. Turn on saving (set `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1`)
-
-**What it is:** the writer has a safety switch that is OFF by default. With it off, the writer returns before
-saving anything — which is why decisions never land anywhere permanent.
-
-**The act (yours):** set `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1` in the host environment for the units that run
-`cio_prospect_writer` and the prospect shadow build (a host config change — §17).
-
-**Why you, not the agent:** host environment / config changes are operator-gated. This is the exact switch that
-stops an AI from silently enabling a production write path.
-
-## 3. Turn on the conflict rulebook (`config/conflict_rulebook.json`)
-
-**What it is:** the rulebook that decides, when two desks disagree (e.g. `WATCH` vs `ENTRY_NEAR`), which one wins.
-It exists but is `"status": "PROPOSED"`, `"live_enabled": false`, `"approval": null` — i.e. draft mode.
-
-**The act (yours):** approve activating it (flip `live_enabled: true`, set `status`, record the approval). The
-code that *reads* it and applies it to the Watch page is a separate agent PR.
-
-**Why you, not the agent:** the conflict rulebook is operator-approved policy (§28.10). An AI must not pick, on its
-own authority, which of two desks is "right."
-
----
-
-## What depends on what (so you can see the whole path)
+The migration plan has **no `--apply`** by design — it says "the operator applies the file with psql." This is the
+one command an AI cannot run (it needs the production DB connection, and §24.7 forbids reading credentials):
 
 ```
-[1] grant + migrate  ─┐
-[2] dual-write on     ─┴─►  THEN  point Watch at the canonical resolver (agent PR, waits on 1+2)
-[3] rulebook on            ─►  wire the conflict engine into Watch (agent PR, waits on 3)
+psql "$DB" -v ON_ERROR_STOP=1 -f migrations/2026_10_22_cio_prospect.sql
+psql "$DB" -c "SELECT to_regclass('public.cio_prospect'), to_regclass('public.cio_prospect_events')"
 ```
 
-## What the agents are doing right now (no approval needed)
+### Switch 2 — turn on saving
 
-- Build `watch_review_status.py` (fixes "review outcome never reaches the row").
-- Add the Watch STALE badge (stale reviews stop looking current).
+```
+TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1
+```
 
-## Honesty
+in the CIO lanes' environment (the `cio-opportunity-curator`, `cio-entry-state`, `cio-prospect-shadow` lanes).
+Until this is set, `InstrumentRecordStore.upsert_prospect` reports `pg.mode=inert` and nothing persists to the
+table — which is exactly why decisions never land anywhere permanent.
 
-None of the three switches is flipped yet. Until they are, the CIO review system will keep showing the symptoms in
-the audit: parallel truths, stale reviews, "conflict ledger not yet produced." The moment you approve these three,
-the already-written code can be turned on and the symptoms clear.
+### Switch 3 — activate the conflict rulebook (done in code, this repo)
+
+`config/conflict_rulebook.json`: `status` PROPOSED → **APPROVED**, `live_enabled` false → **true**, `approval`
+recorded with the operator's in-session authorization. This activates the one engine/rulebook (§28.10):
+`safety > fact > policy > deterministic_gate > operator_decision > cio_decision > curator > opinion`.
+Done in this worktree; goes live on merge + deploy.
+
+## What the agents are building in parallel (no approval needed)
+
+- `scripts/lib/data_broker/watch_review_status.py` — the missing module so a processed review outcome reaches the row.
+- Watch STALE badge — stale reviews stop looking current.
+
+## Honest sequencing
+
+The code that points Watch at the canonical resolver and wires the conflict engine into the Watch read path must
+land **after** Switches 1 + 2, or Watch would serve shadow data. So the turn-key order is:
+
+```
+[operator] Switch 1 (psql) + Switch 2 (env flag)   ← 2 terminal commands, 2 minutes
+[agent]    push the already-built code (rulebook, watch_review_status, stale badge, wire-engine, point-Watch)
+[operator] approve the PRs on Telegram → Mergify merges → deploy_on_main promotes
+[result]   one record, one resolver, stale reviews visibly stale, review outcomes reach the row
+```
