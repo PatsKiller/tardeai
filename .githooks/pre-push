@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Trade AI tracked pre-push: auth + per-branch push budget, then secrets tree scan,
-# and only then the guard grant use and the budget count (2026-10-21).
+# Trade AI tracked pre-push: auth + per-branch push budget, then the AGENTS.md policy freshness gate (every pushed
+# commit's AGENTS.md matches origin/main's or sits on top of it with a version not lower; STALE refuses, 2026-10-28),
+# then the secrets tree scan, and only then the guard grant use and the budget count (2026-10-21).
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"

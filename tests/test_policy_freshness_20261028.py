@@ -124,6 +124,35 @@ def test_branch_editing_agents_md_on_top_of_main_is_exempt(world):
     assert PF.evaluate(a, fetch=False).exempt
 
 
+def test_downgrade_on_top_of_main_is_never_exempt(world):
+    world["advance"]("2.0.0")
+    a = world["agent"]
+    git(a, "pull", "-q", "origin", "main")
+    git(a, "checkout", "-q", "-b", "policy-downgrade")
+    commit_file(a, agents_md("1.5.0"), "lower the version on top of 2.0.0")
+    r = PF.evaluate(a)
+    assert r.status == PF.STALE and not r.exempt
+    assert (
+        "your AGENTS.md is 1.5.0, origin/main is 2.0.0" in r.message() and "a downgrade is never exempt" in r.message()
+    )
+
+
+def test_equal_version_edit_on_top_of_main_stays_exempt(world):
+    a = world["agent"]
+    git(a, "checkout", "-q", "-b", "same-version-edit")
+    commit_file(a, agents_md("1.0.0", "wording\n"), "edit, same version, on top of main")
+    r = PF.evaluate(a)
+    assert r.status == PF.OK and r.exempt
+
+
+def test_unreadable_version_on_a_branch_editing_agents_md_is_stale(world):
+    a = world["agent"]
+    git(a, "checkout", "-q", "-b", "broken-header")
+    commit_file(a, "# AGENTS.md without a control block\n", "drop the control block")
+    r = PF.evaluate(a)
+    assert r.status == PF.STALE and "readable Policy-Version" in r.message()
+
+
 def test_bumping_branch_built_on_an_old_main_is_stale(world):
     a = world["agent"]
     git(a, "checkout", "-q", "-b", "policy-bump")

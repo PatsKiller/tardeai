@@ -30,8 +30,9 @@ Rules
    nothing failed (review 2026-10-27 H2). The base is ``--base REF`` or, in a
    pull_request CI run, the merge-base of HEAD and ``origin/$GITHUB_BASE_REF``.
 6. (policy freshness, operator 2026-10-28) A PR is not built under an old policy: when the base branch's tip carries
-   a higher ``Policy-Version`` than the PR head, the PR fails with ``STALE_POLICY`` unless the PR itself changes the
-   version (head differs from the merge-base), which rule 5 then governs. The base tip is ``--base REF`` or
+   a higher ``Policy-Version`` than the PR head, the PR fails with ``STALE_POLICY`` — also when the PR itself changed
+   the version (a downgrade is never a bump). An unparseable ``Policy-Version`` on either side fails
+   (``UNKNOWN_POLICY``). The base tip is ``--base REF`` or
    ``origin/$GITHUB_BASE_REF``; with neither (push to main, local run) the rule is skipped and says so.
    Version parsing is shared with every other gate: ``scripts/lib/policy_freshness.py``.
 
@@ -145,20 +146,33 @@ def check_bump(text: str, base_text: str | None) -> list[str]:
 
 
 def check_not_behind(head_text: str, base_tip_text: str | None, merge_base_text: str | None) -> list[str]:
-    """Rule 6: the PR head's Policy-Version is not behind the base branch tip's, unless the PR changes the version."""
+    """Rule 6: the PR head's Policy-Version is not behind the base branch tip's.
+
+    A PR that changes the version itself is exempt only upward: a version lower than the base tip's fails even when the
+    PR changed it (a downgrade is never a bump). A Policy-Version that cannot be parsed on either side fails: a version
+    nobody can read never passes. With no base tip (push to main, local run) the rule does not apply.
+    """
     if base_tip_text is None:
         return []
     head_v = PF.parse_policy_version(head_text)
     tip_v = PF.parse_policy_version(base_tip_text)
+    if PF.semver(head_v) is None or PF.semver(tip_v) is None:
+        return [
+            f"UNKNOWN_POLICY: cannot parse Policy-Version (PR head {head_v!r}, base tip {tip_v!r}); a version that "
+            "cannot be read never passes"
+        ]
+    if not PF.version_behind(head_v, tip_v):
+        return []
     mb_v = PF.parse_policy_version(merge_base_text) if merge_base_text is not None else None
     if merge_base_text is not None and head_v != mb_v:
-        return []  # the PR bumps (or otherwise changes) the version itself: rule 5 governs it
-    if PF.version_behind(head_v, tip_v):
         return [
-            f"STALE_POLICY: this PR's AGENTS.md is {head_v}, the base branch has {tip_v}; rebase onto fresh "
-            "origin/main, re-read AGENTS.md §0, and push again (the PR was built under an older policy)"
+            f"STALE_POLICY: this PR changes AGENTS.md to {head_v}, lower than the base branch's {tip_v}; a downgrade "
+            "is never a bump — rebase onto fresh origin/main and bump above it"
         ]
-    return []
+    return [
+        f"STALE_POLICY: this PR's AGENTS.md is {head_v}, the base branch has {tip_v}; rebase onto fresh "
+        "origin/main, re-read AGENTS.md §0, and push again (the PR was built under an older policy)"
+    ]
 
 
 def base_tip_text_for(base: str | None, rel_path: str) -> tuple[str | None, str]:

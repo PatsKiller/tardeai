@@ -418,17 +418,20 @@ agents.md and not a cache copy? … How do the agents automatically know to chec
   default 6 s) and compares the blob id of this worktree's `AGENTS.md` (or a pushed commit's) with
   `origin/main:AGENTS.md`, and parses both `Policy-Version`s. No version is hard-coded.
   - `OK`: same blob, or the branch edits AGENTS.md on top of main's current copy (its merge-base with origin/main holds
-    main's blob: ahead, not behind).
-  - `STALE`: anything else. Message: `STALE_POLICY: your AGENTS.md is X, origin/main is Y; work from fresh origin/main
+    main's blob: ahead, not behind) with a Policy-Version not lower than main's.
+  - `STALE`: anything else, including a lower or unreadable version on such a branch (a downgrade is never exempt). Message: `STALE_POLICY: your AGENTS.md is X, origin/main is Y; work from fresh origin/main
     (scripts/new-worktree.sh) and re-read §0`.
   - `UNKNOWN`: no origin/main, no AGENTS.md on a side, git failed. **A warning, never a pass**: printed, and work
     continues.
   - Offline: the fetch failed, so it compares with the last-fetched origin/main and says when that was.
-- **Where it gates.** `agent_claim.py claim` / `claim --add` / `next` / `take` refuse STALE (exit 1); the pre-commit
+- **Where it gates.** `agent_claim.py claim` / `claim --add` / `next` / `take` / `takeover --claim` refuse STALE (exit 1); the pre-commit
   gate (`scripts/agent_claim_precommit.sh`) and `.githooks/pre-push` refuse STALE before any grant or budget use;
   `scripts/check_agents_policy_state.py` (agent-governance CI) fails a PR whose head Policy-Version is behind the base
-  branch tip's unless the PR changes the version itself. There is no override variable: the fix is a rebase or a
-  fresh worktree.
+  branch tip's (a PR that changes the version passes only upward; an unreadable version fails). Nothing overrides
+  STALE: `TRADEAI_CLAIM_OVERRIDE` bypasses only the claim-coverage check after the freshness check has passed, the
+  claim CLI's test skip is an in-process module attribute reachable only inside pytest, and
+  `TRADEAI_POLICY_FETCH_TIMEOUT_S` has a 3 s floor so it cannot force offline mode. The fix is a rebase or a fresh
+  worktree.
 - **What a claim records.** `policy_version`, `policy_blob` (the AGENTS.md blob id) and `policy_check` (OK, UNKNOWN or
   `skipped_test`); `heartbeat` refreshes version and blob from the worktree.
 - **Version-change broadcast** (`scripts/lib/policy_version_broadcast.py`, run by `scripts/deploy_on_main_poll.py`

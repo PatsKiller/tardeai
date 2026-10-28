@@ -27,7 +27,8 @@
 # Policy freshness (operator 2026-10-28; scripts/lib/policy_freshness.py): before the claim check, this worktree's
 # AGENTS.md is compared with origin/main's (one short fetch; offline falls back to the last fetch and says so).
 #   STALE   -> exit 1 with "STALE_POLICY: your AGENTS.md is X, origin/main is Y; ..." (no override: rebase or use a
-#              fresh worktree). A branch that edits AGENTS.md on top of main's current copy is not stale.
+#              fresh worktree; TRADEAI_CLAIM_OVERRIDE does not apply to this check). A branch that edits AGENTS.md on
+#              top of main's current copy, with a version not lower than main's, is not stale.
 #   UNKNOWN -> a printed warning, never a silent pass; the commit continues (no remote, nothing fetched, lib missing).
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0

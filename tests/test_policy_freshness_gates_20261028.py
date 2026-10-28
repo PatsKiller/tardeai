@@ -64,7 +64,7 @@ def _env(monkeypatch, tmp_path):
         monkeypatch.setenv(f"GIT_AUTHOR_{k}", v)
         monkeypatch.setenv(f"GIT_COMMITTER_{k}", v)
     monkeypatch.setenv(PF.ENV_FETCH_TIMEOUT, "20")
-    monkeypatch.setenv(CLI.ENV_POLICY_UNDER_PYTEST, "1")  # this file tests the gate itself
+    monkeypatch.setattr(CLI, "RUN_POLICY_GATE_UNDER_PYTEST", True)  # this file tests the gate itself (in-process only)
 
 
 HOOK_FILES = (
@@ -197,11 +197,55 @@ def test_claim_offline_with_fresh_last_fetch_proceeds_with_warning(world, monkey
 
 
 def test_gate_is_off_under_pytest_unless_a_test_opts_in(monkeypatch):
-    monkeypatch.delenv(CLI.ENV_POLICY_UNDER_PYTEST)
+    monkeypatch.setattr(CLI, "RUN_POLICY_GATE_UNDER_PYTEST", False)
     assert CLI._policy_gate("claim") == (True, {"policy_check": "skipped_test"})
-    monkeypatch.delenv("PYTEST_CURRENT_TEST")
     monkeypatch.setattr(PF, "evaluate", lambda *a, **k: PF.Freshness(PF.STALE, "1.0.0", "2.0.0"))
-    assert CLI._policy_gate("claim")[0] is False
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    assert CLI._policy_gate("claim")[0] is False  # pytest imported but no test running: the gate runs
+
+
+def test_skip_cannot_be_reached_from_outside_a_pytest_process(world, tmp_path):
+    """A real CLI process with PYTEST_CURRENT_TEST set still runs the gate: no environment variable turns it off."""
+    world["advance"]("2.0.0")
+    env = _hook_env(
+        world,
+        PYTEST_CURRENT_TEST="tests/x.py::t (call)",
+        TRADEAI_POLICY_FRESHNESS_UNDER_PYTEST="1",
+        TRADEAI_POLICY_FRESHNESS_TEST_SKIP="1",
+    )
+    p = subprocess.run(
+        [sys.executable, "scripts/agent_claim.py", "--no-gh", "claim", "--task", "t", "--paths", "docs/a.md"],
+        cwd=world["agent"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert p.returncode == 1 and STALE_LINE in p.stderr
+
+
+def test_fetch_timeout_has_a_floor_that_cannot_force_offline(monkeypatch):
+    monkeypatch.setenv(PF.ENV_FETCH_TIMEOUT, "0.01")
+    assert PF.fetch_timeout() == PF.MIN_FETCH_TIMEOUT_S == 3.0
+    monkeypatch.setenv(PF.ENV_FETCH_TIMEOUT, "not-a-number")
+    assert PF.fetch_timeout() == PF.DEFAULT_FETCH_TIMEOUT_S
+
+
+def test_takeover_is_gated_and_records_policy(world, monkeypatch, capsys):
+    other = B.ClaimBoard(world["claims"], stale_after_hours=0.0001)
+    old = other.claim(vendor="codex", session="gone", agent=None, task="t", paths=["docs/x.md"])
+    import time
+
+    time.sleep(1)  # the old claim goes stale (no heartbeat)
+    base = ["--claims-dir", str(world["claims"]), "--stale-hours", "0.0001", "--session", "s1", "--no-gh"]
+    monkeypatch.chdir(world["agent"])
+    world["advance"]("2.0.0")
+    assert CLI.main([*base, "takeover", old["claim_id"], "--claim"]) == 1
+    assert STALE_LINE in capsys.readouterr().err
+    git(world["agent"], "pull", "-q", "origin", "main")
+    assert CLI.main([*base, "takeover", old["claim_id"], "--claim"]) == 0
+    mine = [v.doc for v in B.ClaimBoard(world["claims"]).views()[0] if v.doc.get("session") == "s1"]
+    assert len(mine) == 1 and mine[0]["policy_version"] == "2.0.0" and mine[0]["policy_check"] == "OK"
     monkeypatch.setattr(CLI, "_pf", lambda: None)  # library missing: a warning, never a crash or a silent pass
     assert CLI._policy_gate("claim") == (True, {"policy_check": "UNKNOWN"})
 
@@ -233,6 +277,22 @@ def test_precommit_refuses_stale(world):
     world["advance"]("2.0.0")
     p = _precommit(world)
     assert p.returncode == 1 and STALE_LINE in p.stderr and "commit refused under a stale AGENTS.md" in p.stderr
+
+
+def test_precommit_claim_override_does_not_bypass_stale(world):
+    world["advance"]("2.0.0")
+    (world["agent"] / "docs").mkdir(exist_ok=True)
+    (world["agent"] / "docs" / "a.md").write_text("x")
+    git(world["agent"], "add", "docs/a.md")
+    p = subprocess.run(
+        ["bash", "scripts/agent_claim_precommit.sh"],
+        cwd=world["agent"],
+        env=_hook_env(world, TRADEAI_CLAIM_OVERRIDE="operator said so"),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert p.returncode == 1 and STALE_LINE in p.stderr
 
 
 def test_precommit_exempt_bump_branch(world):
@@ -331,8 +391,20 @@ def test_ci_rule_passes_up_to_date_bumping_and_no_base():
     v26, v27 = agents_md("26.0.0"), agents_md("27.0.0")
     assert CAPS.check_not_behind(v26, v26, v26) == []
     assert CAPS.check_not_behind(v27, v26, v26) == []  # the PR bumps on top of main
-    assert CAPS.check_not_behind(agents_md("26.0.1"), agents_md("26.1.0"), v26) == []  # the PR bumps: rule 5 governs
     assert CAPS.check_not_behind(v26, None, None) == []  # push to main / local run
+
+
+def test_ci_rule_fails_a_downgrade_even_when_the_pr_changed_the_version():
+    errs = CAPS.check_not_behind(agents_md("26.0.1"), agents_md("26.1.0"), agents_md("26.0.0"))
+    assert errs and "changes AGENTS.md to 26.0.1, lower than the base branch's 26.1.0" in errs[0]
+    errs = CAPS.check_not_behind(agents_md("25.0.0"), agents_md("26.0.0"), agents_md("26.0.0"))
+    assert errs and "a downgrade is never a bump" in errs[0]
+
+
+def test_ci_rule_fails_an_unparseable_version():
+    for head, tip in ((agents_md("26.x"), agents_md("26.0.0")), (agents_md("26.0.0"), "no control block")):
+        errs = CAPS.check_not_behind(head, tip, agents_md("26.0.0"))
+        assert errs and errs[0].startswith("UNKNOWN_POLICY: cannot parse Policy-Version")
 
 
 def test_ci_script_end_to_end(world, monkeypatch, capsys):

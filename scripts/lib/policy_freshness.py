@@ -12,15 +12,17 @@ that moment.
 How the comparison works
 ------------------------
 1. ``git fetch origin +refs/heads/main:refs/remotes/origin/main``, best effort, bounded by a short timeout
-   (``TRADEAI_POLICY_FETCH_TIMEOUT_S``, default 6 s). No prompt, no credential helper dialogue.
+   (``TRADEAI_POLICY_FETCH_TIMEOUT_S``, default 6 s, never below ``MIN_FETCH_TIMEOUT_S`` = 3 s so the variable cannot
+   force offline mode). No prompt, no credential helper dialogue.
 2. The agent's copy is the worktree file ``AGENTS.md`` (what the agent actually reads), or ``<rev>:AGENTS.md`` when a
    revision is named (the pre-push gate checks each pushed commit). Main's copy is ``origin/main:AGENTS.md``. Both are
    compared by git blob id, and both ``Policy-Version`` values are parsed for the message.
 3. Verdicts:
    * ``OK``      the blobs match; or the branch edits AGENTS.md *on top of* main's current copy (the merge-base of the
-                 branch and origin/main already holds main's AGENTS.md blob: the branch is ahead, not behind) —
-                 reported as ``exempt``.
-   * ``STALE``   the blobs differ and the branch is not ahead of main's copy. Every gate refuses this.
+                 branch and origin/main already holds main's AGENTS.md blob: the branch is ahead, not behind) AND its
+                 Policy-Version is not lower than main's — reported as ``exempt``.
+   * ``STALE``   the blobs differ and the branch is not ahead of main's copy; or it is "ahead" but carries a LOWER or
+                 unreadable Policy-Version (a downgrade is never exempt). Every gate refuses this.
    * ``UNKNOWN`` the comparison could not be made (no origin/main ref, no AGENTS.md on one side, git failed).
                  **UNKNOWN is a warning, not a pass**: gates print it loudly and continue, because a missing remote must
                  not stop local work, but nobody may read it as "fresh".
@@ -58,6 +60,7 @@ EXIT = {OK: 0, STALE: 1, UNKNOWN: 3}
 _RANK = {OK: 0, UNKNOWN: 1, STALE: 2}  # the worst verdict of several wins
 ENV_FETCH_TIMEOUT = "TRADEAI_POLICY_FETCH_TIMEOUT_S"
 DEFAULT_FETCH_TIMEOUT_S = 6.0
+MIN_FETCH_TIMEOUT_S = 3.0  # floor: a tiny timeout would force "offline" and compare against an old fetch
 FIX_HINT = "work from fresh origin/main (scripts/new-worktree.sh) and re-read §0"
 
 _CONTROL_RE = re.compile(r"```\n(Policy-Version:.*?)```", re.DOTALL)
@@ -95,7 +98,8 @@ class Freshness:
         if self.status == STALE:
             lv, rv = self.local_version or "unversioned", self.remote_version or "unversioned"
             same = " (same version number, different text)" if lv == rv else ""
-            return f"STALE_POLICY: your AGENTS.md is {lv}, {self.remote_ref} is {rv}{same}; {FIX_HINT}{offline}"
+            why = f" ({self.reason})" if self.reason else ""
+            return f"STALE_POLICY: your AGENTS.md is {lv}, {self.remote_ref} is {rv}{same}{why}; {FIX_HINT}{offline}"
         if self.status == UNKNOWN:
             return (
                 f"UNKNOWN_POLICY: could not compare your AGENTS.md with {self.remote_ref} ({self.reason}). "
@@ -160,7 +164,7 @@ def toplevel(repo: Path | str | None = None) -> Path | None:
 
 def fetch_timeout() -> float:
     try:
-        return max(0.5, float(os.environ.get(ENV_FETCH_TIMEOUT, DEFAULT_FETCH_TIMEOUT_S)))
+        return max(MIN_FETCH_TIMEOUT_S, float(os.environ.get(ENV_FETCH_TIMEOUT, DEFAULT_FETCH_TIMEOUT_S)))
     except ValueError:
         return DEFAULT_FETCH_TIMEOUT_S
 
@@ -289,6 +293,15 @@ def _evaluate(
         res.notes.append(f"no merge-base between {base_rev} and {res.remote_ref}")
         return res
     if blob_at(top, mb.strip()) == remote["blob"]:
+        lv, rv = semver(local["version"]), semver(remote["version"])
+        if lv is None or rv is None:
+            res.status = STALE
+            res.reason = "a branch that edits AGENTS.md must carry a readable Policy-Version"
+            return res
+        if lv < rv:
+            res.status = STALE
+            res.reason = "this branch lowers Policy-Version below main's; a downgrade is never exempt"
+            return res
         res.status = OK
         res.exempt = True
         res.notes.append(f"merge-base {mb.strip()[:12]} already holds {res.remote_ref}'s {POLICY_FILE}")

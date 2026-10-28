@@ -40,7 +40,7 @@ task done <id> --evidence-only --summary S --evidence L [L ...] closes a FREE ta
 without taking it (no claim, so an overlapping live claim does not block it); actor, summary and evidence links go to
 the task and tasks_history.jsonl.
 
-Policy freshness (operator 2026-10-28): ``claim``, ``claim --add``, ``next`` and ``take`` first compare this worktree's
+Policy freshness (operator 2026-10-28): ``claim``, ``claim --add``, ``next``, ``take`` and ``takeover --claim`` first compare this worktree's
 AGENTS.md with origin/main's (scripts/lib/policy_freshness.py, one short fetch). STALE is refused (exit 1) with
 "STALE_POLICY: your AGENTS.md is X, origin/main is Y; ..."; UNKNOWN (no remote, offline with nothing fetched) is
 printed as a warning and the claim proceeds. Every claim records ``policy_version`` and ``policy_blob`` (the AGENTS.md
@@ -72,14 +72,20 @@ from scripts.lib import agent_task_board as TB  # noqa: E402
 LANE_ID = "agent-claim-compact"
 PRECOMMIT_BLOCK = 10  # precommit: the gate blocked (distinct from 1, a Python crash); the hook maps it to exit 1
 SCRIPT = "scripts/agent_claim.py"
-# Test isolation only: while pytest runs a test (PYTEST_CURRENT_TEST) the claim-board suites, which run this CLI in-process
-# dozens of times, do not fetch origin per claim. The freshness gate's own tests set this variable to "1" to run it.
-ENV_POLICY_UNDER_PYTEST = "TRADEAI_POLICY_FRESHNESS_UNDER_PYTEST"
+# Test isolation only. The claim-board suites run this CLI in-process dozens of times; inside a pytest process (pytest
+# imported AND a test running) the gate is skipped so they do not fetch origin per claim. Nothing outside a pytest process
+# can reach this: no environment variable or flag turns it on. The freshness gate's own tests set this module attribute
+# to True (monkeypatch) to run the real gate in-process.
+RUN_POLICY_GATE_UNDER_PYTEST = False
+
+
+def _under_pytest() -> bool:
+    return "_pytest" in sys.modules and bool(os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 def _policy_gate(verb: str) -> tuple[bool, dict]:
     """(allowed, policy fields to record). STALE refuses with the STALE_POLICY line; UNKNOWN warns and allows."""
-    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get(ENV_POLICY_UNDER_PYTEST) != "1":
+    if _under_pytest() and not RUN_POLICY_GATE_UNDER_PYTEST:
         return True, {"policy_check": "skipped_test"}
     PF = _pf()
     if PF is None:
@@ -560,6 +566,9 @@ def cmd_takeover(a: argparse.Namespace) -> int:
     if not session:
         print("error: --session (or AGENT_CLAIM_SESSION) is required to take over", file=sys.stderr)
         return 2
+    allowed, policy = _policy_gate("takeover")
+    if not allowed:
+        return 1
     vendor = a.vendor or B.detect_vendor()
     try:
         doc = board.claim(
@@ -573,6 +582,7 @@ def cmd_takeover(a: argparse.Namespace) -> int:
             note=f"takeover of {a.claim_id}",
             worktree=wt if wt and Path(wt).is_dir() else _toplevel(),
             head_sha=_head(wt) if wt and Path(wt).is_dir() else _head(),
+            policy=policy,
         )
     except B.ClaimConflict as exc:
         _print_conflicts(exc.conflicts)
