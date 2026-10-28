@@ -59,9 +59,9 @@
   },
   "per_call_caps_usd": {
     "bulk": "0.10",
-    "standard": "0.25",
-    "high": "0.50",
-    "highest": "0.50",
+    "standard": "2.00",
+    "high": "2.00",
+    "highest": "2.00",
     "long_form": "2.00",
     "premium": "4.00",
     "mid": "0.10"
