@@ -34656,6 +34656,125 @@
       "reviewer": null,
       "reviewed_at": null,
       "baseline_measurements": "NOT_MEASURED"
+    },
+    "conflict-resolver-shadow-20261028": {
+      "schema": "N8nHealthContract@v1",
+      "id": "conflict-resolver",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "activation_allowed": false,
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "cio",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Evaluate the W10 conflict engine over canonical W1 truth and the unchanged rulebook at shadow: a write-free dry run that computes ConflictResolverReceipt@v1 and writes a LaneRunReceipt (ok_at); the conflict ledger is never written at shadow.",
+        "business_function": "learning",
+        "source": "scripts/conflict_resolver.py main/_run; docs/ops/W8_WRITERS_20261024.md; docs/ops/CONFLICT_LEDGER.md"
+      },
+      "connects_to": [
+        {
+          "name": "n8n relay -> coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/conflict_resolver.py --dry-run --state-root $STATE_ROOT",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json dry_run_arg"
+        },
+        {
+          "name": "data/runtime/conflict-resolver_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "write_lane_receipt('conflict-resolver', ok=True) on the dry-run branch (proposed W10 edit)"
+        },
+        {
+          "name": "Postgres watch universe / re-entry desk via db_adapter",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/data_broker/watch_intelligence.py compose_universe; watch_decision.py reentry_rows"
+        },
+        {
+          "name": "data/cio/cio_prospect_shadow.json + data/portfolios/state/holdings.json + stops.json (canonical W1 truth)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cio_truth.py resolve; data_broker/cio_prospect.py shadow path"
+        },
+        {
+          "name": "config/conflict_rulebook.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/conflicts/profiles/rulebook.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_receipt_ok_at_advances",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run and the LaneRunReceipt data/runtime/conflict-resolver_last.json ok_at advances (the proposed edit makes --dry-run write the receipt)."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "receipt ok_at older than the weekend max gap (~63.2 h) but younger than 2x that."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)."
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no LaneRunReceipt (exit 0 is not evidence)."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Runtime and timeout not measured; docs/ops/W8_WRITERS_20261024.md states the exact runner timeout is not frozen yet. Pending a measured shadow run and owner SLO review."
+      },
+      "review_by": "2026-11-27",
+      "alerting": {
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing SIEM/incident notifier only; the runner never sends.",
+        "enforced": false
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No retries or execution until the owner reviews and the operator approves admission."
+      },
+      "evidence": {
+        "verify": [
+          "coordination ledger: SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='conflict-resolver' ORDER BY requested_at DESC LIMIT 10",
+          "jq '.ok_at' data/runtime/conflict-resolver_last.json"
+        ],
+        "expected_output_basis": "The shadow dry run computes ConflictResolverReceipt@v1 (findings_count) and writes a LaneRunReceipt with ok_at; the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow."
+      },
+      "review": {
+        "status": "PENDING_OWNER_REVIEW",
+        "prepared_on": "2026-10-28",
+        "prepared_by": "worker",
+        "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission."
+      },
+      "class_note": "learn (R1 dispatcher class; memory/learning writer lane, AGENTS.md 4.3.0 \u00a723.18)"
     }
   }
 }
