@@ -3,7 +3,7 @@
 ```
 Status:      PROPOSED — do not apply yet; held for operator merge (AGENTS.md §28.15 item 3)
 as_of:       2026-10-28
-Measured at: /home/johnclaw/tradeai-wt-resync-20261028 branch wt/resync-20261028, .cursor/hooks/guard-lib.sh (169 lines)
+Measured at: branch wt/resync-20261028, .cursor/hooks/guard-lib.sh (169 lines)
 Owner:       platform
 See also:    docs/governance/OPEN_ITEMS.md OI-132, OI-133
              AGENTS.md 26.1.0 §0 rule 4, §28.15 item 8, §28.15 item 3
