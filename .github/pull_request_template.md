@@ -17,3 +17,7 @@
 - Tests run (command and result), including negative / refusal tests:
 - Dry run (anything that writes durable state, sends to an operator surface, spends money or touches a schedule):
 - Proof after release (what will be checked on CURRENT, and how):
+
+## If this PR changes AGENTS.md
+- [ ] `Policy-Version`, `Last-Reviewed` and the version-history row are bumped (`scripts/check_agents_policy_state.py`)
+- [ ] After merge: update the claude.ai Project copy of AGENTS.md (agents outside the repo read that copy)

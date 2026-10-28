@@ -1363,11 +1363,13 @@
   "tests/test_n8n_app_role_packet_20261027.py": 15.7,
   "tests/test_n8n_drift_check_schedule_20261027.py": 1.7,
   "tests/test_check_no_pii_20261027.py": 2.1,
-  "tests/test_needs_action_release_window_20261028.py": 1.1
+  "tests/test_needs_action_release_window_20261028.py": 1.1,
+  "tests/test_policy_freshness_20261028.py": 3.8,
+  "tests/test_policy_freshness_gates_20261028.py": 9.7
  },
  "note": "Measured per-file seconds from the sharded full-suite run (junit test time plus an even share of the unit's start-up). Candidate for config/ci_shard_duration_hints.json; hints only order and pack work, they never decide what runs.",
  "schema": "CiShardTimings@v1",
  "source_run": 39661659376,
  "source_sha": "c5ff8c7e65da8c3e22e981f662b0418981d60f9a",
- "supplement_20261028": "10 files registered 2026-10-27/28 (PRs #2253-#2260) carry local one-file wall-clock seconds (pytest, 2-CPU container), not source_run timings; replace them at the next refresh from a green run's artifact."
+ "supplement_20261028": "Files registered 2026-10-27/28 (PRs #2253-#2260 and the policy-freshness gates) carry local one-file wall-clock seconds (pytest, 2-CPU container), not source_run timings; replace them at the next refresh from a green run's artifact."
 }
