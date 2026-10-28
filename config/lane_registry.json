@@ -18751,14 +18751,14 @@
       "expected_cadence_hours": 63.2,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-28",
-      "state_reason": "Proposed shadow-stage dispatcher row (AGENTS.md §23.11 registry-row PR; learn class, r1_class_admission). The operator's digest approval of the reviewed PR is the §17/§23.11 admission decision; this is a PROPOSE, no live flip. At shadow the dispatcher fires only the write-free --dry-run (which, with the proposed W10 edit, writes a LaneRunReceipt so ok_at advances); the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow, and the ledger-only/no-notification shadow and the operator-controlled live flip are separate later acts (docs/ops/W8_WRITERS_20261024.md; docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md).",
+      "state_reason": "Proposed shadow-stage dispatcher row (AGENTS.md §23.11 registry-row PR; learn class, r1_class_admission). The operator's digest approval of the reviewed PR is the §17/§23.11 admission decision; this is a PROPOSE, no live flip. At shadow the dispatcher fires only the write-free --dry-run (AGENTS.md §6: a dry run never writes, so ok_at is not established until a live run's executor writes the LaneRunReceipt); the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow, and the ledger-only/no-notification shadow and the operator-controlled live flip are separate later acts (docs/ops/W8_WRITERS_20261024.md; docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/conflict-resolver_last.json",
         "key": "ok_at"
       },
       "reason_confidence": "CORRELATED",
-      "reason_evidence": "docs/ops/W8_WRITERS_20261024.md ('conflict-resolver ... every 15 minutes in the market session plus 07:30 and 16:20 ET, receipt data/runtime/conflict-resolver_last.json, write-free dry run, ledger-only/no-notification shadow'); scripts/conflict_resolver.py write_lane_receipt('conflict-resolver', ...).",
+      "reason_evidence": "docs/ops/W8_WRITERS_20261024.md ('conflict-resolver ... every 15 minutes in the market session plus 07:30 and 16:20 ET, receipt data/runtime/conflict-resolver_last.json, write-free dry run, ledger-only/no-notification shadow'). Output is not established: the lane is NEVER_SCHEDULED at shadow and the write-free dry run cannot advance ok_at, so the receipt is written only by the executor on a live run (do not treat as covered).",
       "note": "The W10 conflict engine host runner, proposed for n8n dispatcher admission (learn class). Read-only evaluation over canonical W1 truth (cio_truth.resolve, stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe, watch_decision.reentry_rows, cio_prospect shadow) plus the unchanged rulebook (config/conflict_rulebook.json). Writes only the comparison report (shadow) and the LaneRunReceipt. MBI_BEHAVIOR=0: no sizing, order, stop, broker, sender or secret. dry_run_arg runs --dry-run --state-root $STATE_ROOT.",
       "dispatch": {
         "mode": "dry_run",
