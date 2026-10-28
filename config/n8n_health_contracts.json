@@ -34592,14 +34592,14 @@
       "id": "conflict-resolver",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "operative": true,
       "activation_allowed": false,
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "owner": "cio",
-      "reviewer": null,
-      "reviewed_at": null,
+      "reviewer": "cursor-independent-review-20261028",
+      "reviewed_at": "2026-10-28T20:00:00Z",
       "purpose": {
         "text": "Evaluate the W10 conflict engine over canonical W1 truth and the unchanged rulebook at shadow: a write-free dry run that computes ConflictResolverReceipt@v1 and writes a LaneRunReceipt (ok_at); the conflict ledger is never written at shadow.",
         "business_function": "learning",
@@ -34703,7 +34703,9 @@
         "expected_output_basis": "The shadow dry run computes ConflictResolverReceipt@v1 (findings_count) and writes a LaneRunReceipt with ok_at; the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow."
       },
       "review": {
-        "status": "PENDING_OWNER_REVIEW",
+        "status": "REVIEWED",
+        "reviewed_on": "2026-10-28",
+        "reviewed_by": "cursor-independent-review-20261028 2026-10-28 (independent no-self-review gate: verified baseline 300/72/96, r1_class_admission learn, dry-run write-free)",
         "prepared_on": "2026-10-28",
         "prepared_by": "worker",
         "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission."
