@@ -43,12 +43,19 @@ pull_request_rules:
           - files~=^AI_WORK_POLICY\.md$
           - files~=^CLAUDE\.md$
           - files~=^GEMINI\.md$
+          - files~=^\.cursor/rules/.*$
+          - files~=^\.github/copilot\-instructions\.md$
+          - files~=^\.goosehints$
           - files~=^\.githooks/.*$
           - files~=^\.cursor/hooks/.*$
           - files~=^scripts/hooks/.*$
           - files~=^bin/guard$
           - files~=^scripts/lib/guard[^/]*$
           - files~=^scripts/guard_[^/]*$
+          - files~=^install\-guardrails\.sh$
+          - files~=^scripts/install_ai_work_policy\.sh$
+          - files~=^scripts/agent_claim_precommit\.sh$
+          - files~=^scripts/lib/tradeai_push_budget\.py$
           - files~=^\.mergify\.yml$
           - files~=^config/merge_hold_paths\.json$
           - files~=^scripts/lib/merge_hold_paths\.py$
@@ -68,6 +75,8 @@ pull_request_rules:
           - files~=^scripts/release_grant_preflight\.py$
           - files~=^config/systemd/user/tradeai\-deploy\-on\-main\.[^/]*$
           - files~=^config/systemd/user/tradeai\-pr\-merge\-[^/]*$
+          - files~=^\.github/.*$
+          - files~=^scripts/lib/release_control\.py$
     actions:
       label:
         add:

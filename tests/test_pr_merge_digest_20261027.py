@@ -26,18 +26,37 @@ from scripts.lib import merge_hold_paths as mhp  # noqa: E402
 from scripts.lib import pr_merge_digest as pmd  # noqa: E402
 from scripts.lib import pr_merge_telegram as pmt  # noqa: E402
 
-GREEN = [{"__typename": "CheckRun", "name": c, "conclusion": "SUCCESS", "status": "COMPLETED"} for c in pmt.REQUIRED_CHECKS]
+GREEN = [
+    {"__typename": "CheckRun", "name": c, "conclusion": "SUCCESS", "status": "COMPLETED"} for c in pmt.REQUIRED_CHECKS
+]
 SHA_A = "a" * 40
 SHA_B = "b" * 40
 SHA_C = "c" * 40
 
 
-def _pr(n, *, head=SHA_A, files=("docs/x.md",), labels=(), draft=False, checks=GREEN, title=None, body="## Summary\nDoes a thing.\n"):
+def _pr(
+    n,
+    *,
+    head=SHA_A,
+    files=("docs/x.md",),
+    labels=(),
+    draft=False,
+    checks=GREEN,
+    title=None,
+    body="## Summary\nDoes a thing.\n",
+):
     return {
-        "number": n, "title": title or f"Synthetic change {n}", "url": f"https://example.test/pull/{n}",
-        "headRefOid": head, "isDraft": draft, "labels": [{"name": x} for x in labels],
-        "body": body, "files": [{"path": f} for f in files], "changedFiles": len(files),
-        "statusCheckRollup": list(checks), "baseRefName": "main",
+        "number": n,
+        "title": title or f"Synthetic change {n}",
+        "url": f"https://example.test/pull/{n}",
+        "headRefOid": head,
+        "isDraft": draft,
+        "labels": [{"name": x} for x in labels],
+        "body": body,
+        "files": [{"path": f} for f in files],
+        "changedFiles": len(files),
+        "statusCheckRollup": list(checks),
+        "baseRefName": "main",
     }
 
 
@@ -56,7 +75,13 @@ class FakeGH:
         p = self.open.get(n)
         if not p:
             return {"number": n, "state": "MERGED", "headRefOid": "", "isDraft": False, "labels": []}
-        return {"number": n, "state": "OPEN", "headRefOid": p["headRefOid"], "isDraft": p["isDraft"], "labels": p["labels"]}
+        return {
+            "number": n,
+            "state": "OPEN",
+            "headRefOid": p["headRefOid"],
+            "isDraft": p["isDraft"],
+            "labels": p["labels"],
+        }
 
 
 @pytest.fixture()
@@ -95,7 +120,11 @@ def env(tmp_path, monkeypatch):
 
         monkeypatch.setattr(pmt, "add_operator_merge_label", add)
         monkeypatch.setattr(pmt, "remove_operator_merge_label", rem)
-        monkeypatch.setattr(pmt, "comment_on_pr", lambda pr, body, *, repo=pmt.DEFAULT_REPO: gh.comments.append((pr, body)) or {"ok": True})
+        monkeypatch.setattr(
+            pmt,
+            "comment_on_pr",
+            lambda pr, body, *, repo=pmt.DEFAULT_REPO: gh.comments.append((pr, body)) or {"ok": True},
+        )
         return gh
 
     return {"sent": sent, "install": install, "tmp": tmp_path}
@@ -105,17 +134,21 @@ def env(tmp_path, monkeypatch):
 
 
 def test_digest_lists_ready_and_needs_operator_one_message(env):
-    gh = env["install"](FakeGH([
-        _pr(1),
-        _pr(2, files=("scripts/lib/x.py", "config/y.json"), labels=("shared-infra",)),
-        _pr(3, draft=True),
-        _pr(4, checks=[dict(GREEN[0], conclusion="FAILURE")] + GREEN[1:]),
-        _pr(5, files=("AGENTS.md",)),
-        _pr(6, files=("scripts/brokers/z.py",)),
-        _pr(7, labels=("held",)),
-        _pr(8, labels=(pmt.LABEL,)),
-        _pr(9, files=("migrations/001_x.sql",)),
-    ]))
+    gh = env["install"](
+        FakeGH(
+            [
+                _pr(1),
+                _pr(2, files=("scripts/lib/x.py", "config/y.json"), labels=("shared-infra",)),
+                _pr(3, draft=True),
+                _pr(4, checks=[dict(GREEN[0], conclusion="FAILURE")] + GREEN[1:]),
+                _pr(5, files=("AGENTS.md",)),
+                _pr(6, files=("scripts/brokers/z.py",)),
+                _pr(7, labels=("held",)),
+                _pr(8, labels=(pmt.LABEL,)),
+                _pr(9, files=("migrations/001_x.sql",)),
+            ]
+        )
+    )
     out = pmd.run_digest(apply=True)
     assert out["action"] == "sent"
     assert out["ready"] == [1, 2, 9]
@@ -171,8 +204,12 @@ def test_summary_line_skips_headings_and_keeps_identifiers():
 
 def test_long_digest_fits_one_message(env):
     long_body = "## Summary\n" + "x" * 500
-    env["install"](FakeGH([_pr(n, title="T" * 200, body=long_body) for n in range(1, 11)]
-                          + [_pr(100 + n, files=("AGENTS.md",), title="P" * 200) for n in range(30)]))
+    env["install"](
+        FakeGH(
+            [_pr(n, title="T" * 200, body=long_body) for n in range(1, 11)]
+            + [_pr(100 + n, files=("AGENTS.md",), title="P" * 200) for n in range(30)]
+        )
+    )
     out = pmd.run_digest(apply=True)
     assert len(env["sent"][0]["message"]) <= pmd.MAX_MESSAGE_CHARS
     assert out["action"] == "sent"
@@ -195,8 +232,10 @@ def test_approve_all_one_record_labels_each_and_skips_moved_head(env):
     rec = recs[0]
     assert rec["schema"] == "PrMergeDigestApproval@v1"
     assert rec["digest_id"] == d["digest_id"] and rec["operator_chat_id"] == "77" and rec["operator_from_id"] == "77"
-    assert rec["items"] == [{"pr": 1, "head_sha": SHA_A, "label_ok": True}, {"pr": 3, "head_sha": SHA_A, "label_ok": True}] or \
-        [(i["pr"], i["head_sha"]) for i in rec["items"]] == [(1, SHA_A), (3, SHA_A)]
+    assert rec["items"] == [
+        {"pr": 1, "head_sha": SHA_A, "label_ok": True},
+        {"pr": 3, "head_sha": SHA_A, "label_ok": True},
+    ] or [(i["pr"], i["head_sha"]) for i in rec["items"]] == [(1, SHA_A), (3, SHA_A)]
     assert 5 not in gh.labels_added  # needs-operator PRs are never approved by the digest
     # A second tap cannot settle it again.
     again = pmd.settle_approve_all(d["digest_id"], chat_id="77", allowed_chats={"77"}, telegram=tg)
@@ -277,8 +316,9 @@ def test_unbound_label_is_reported_not_removed(env):
 def _receipt(tmp, name, outcome, main_sha):
     d = tmp / "state" / "data" / "runtime" / "deploy_on_main"
     d.mkdir(parents=True, exist_ok=True)
-    (d / name).write_text(json.dumps({"schema": "DeployOnMainReceipt@v1", "outcome": outcome,
-                                      "main_sha": main_sha, "path": "poller"}))
+    (d / name).write_text(
+        json.dumps({"schema": "DeployOnMainReceipt@v1", "outcome": outcome, "main_sha": main_sha, "path": "poller"})
+    )
 
 
 def test_merged_then_live_notes_and_failure_is_p1(env, monkeypatch):
@@ -291,8 +331,10 @@ def test_merged_then_live_notes_and_failure_is_p1(env, monkeypatch):
     first = pmd.reconcile_notes(pmt.DEFAULT_REPO, apply=True, cfg=cfg)  # sets the receipt cursor, no replay
     assert first["merged_note"] is None and first["live_notes"] == []
     env["sent"].clear()
-    gh.merged = [{"number": 1, "title": "Synthetic change 1", "mergeCommit": {"oid": "m1"}, "mergedAt": "x"},
-                 {"number": 77, "title": "not ours", "mergeCommit": {"oid": "m9"}, "mergedAt": "x"}]
+    gh.merged = [
+        {"number": 1, "title": "Synthetic change 1", "mergeCommit": {"oid": "m1"}, "mergedAt": "x"},
+        {"number": 77, "title": "not ours", "mergeCommit": {"oid": "m9"}, "mergedAt": "x"},
+    ]
     out = pmd.reconcile_notes(pmt.DEFAULT_REPO, apply=True, cfg=cfg)
     assert out["merged_note"]["prs"] == [1]
     assert len(env["sent"]) == 1 and "Merged 1, deploying" in env["sent"][0]["message"]
@@ -303,7 +345,11 @@ def test_merged_then_live_notes_and_failure_is_p1(env, monkeypatch):
     env["sent"].clear()
     out = pmd.reconcile_notes(pmt.DEFAULT_REPO, apply=True, cfg=cfg)
     assert [n["prs"] for n in out["live_notes"]] == [[1]]
-    assert "Live" in env["sent"][0]["message"] and "#1" in env["sent"][0]["message"] and "tester ok" in env["sent"][0]["message"]
+    assert (
+        "Live" in env["sent"][0]["message"]
+        and "#1" in env["sent"][0]["message"]
+        and "tester ok" in env["sent"][0]["message"]
+    )
     assert env["sent"][0]["priority"] == "P2"
     # Failure path: a second merged PR, deploy_failed receipt → P1.
     gh.merged.append({"number": 2, "title": "Synthetic change 2", "mergeCommit": {"oid": "m2"}, "mergedAt": "y"})
@@ -343,8 +389,12 @@ def test_digest_sends_only_through_telegram_alert_chokepoint():
 def test_timer_schedule_matches_config():
     timer = (ROOT / "config" / "systemd" / "user" / "tradeai-pr-merge-digest.timer").read_text(encoding="utf-8")
     cal = re.findall(r"^OnCalendar=(.+)$", timer, flags=re.M)
-    assert cal == ["Mon..Fri 08:00 America/New_York", "Mon..Fri 12:00 America/New_York",
-                   "Mon..Fri 16:30 America/New_York", "Sat,Sun 00/3:00 America/New_York"]
+    assert cal == [
+        "Mon..Fri 08:00 America/New_York",
+        "Mon..Fri 12:00 America/New_York",
+        "Mon..Fri 16:30 America/New_York",
+        "Sat,Sun 00/3:00 America/New_York",
+    ]
     cfg = pmd.load_config()["next_digest_times"]
     assert cfg["weekday"] == ["08:00", "12:00", "16:30"]
     assert cfg["weekend"] == [f"{h:02d}:00" for h in range(0, 24, 3)]
@@ -381,8 +431,8 @@ def _hold_rule():
 def test_mergify_hold_rule_equals_config():
     rule = _hold_rule()
     ors = rule["conditions"][0]["or"]
-    files = [c[len("files~="):] for c in ors if isinstance(c, str) and c.startswith("files~=")]
-    labels = sorted(c[len("label="):] for c in ors if isinstance(c, str) and c.startswith("label="))
+    files = [c[len("files~=") :] for c in ors if isinstance(c, str) and c.startswith("files~=")]
+    labels = sorted(c[len("label=") :] for c in ors if isinstance(c, str) and c.startswith("label="))
     assert files == mhp.mergify_regexes(), "regenerate: python scripts/lib/merge_hold_paths.py --print-mergify"
     assert labels == sorted(mhp.hold_labels())
     assert rule["actions"]["label"]["add"] == ["held"]
@@ -392,26 +442,66 @@ def test_mergify_hold_rule_equals_config():
 # (coordinator AGENTS review 2026-10-27). Hardcoded here on purpose: the config may not grade itself.
 REQUIRED_HELD = [
     # §0 rules 1-2 / §22 / §28.6 — broker, Active Trader, MBI, orders
-    "scripts/active_trader/engine.py", "scripts/brokers/x.py", "scripts/moomoo/client.py",
-    "scripts/schwab_transport.py", "scripts/lib/schwab_token.py", "scripts/broker_adapter.py",
-    "scripts/lib/broker_registry.py", "scripts/alpaca_trailing_stop.py", "scripts/lib/order_intent_store.py",
+    "scripts/active_trader/engine.py",
+    "scripts/brokers/x.py",
+    "scripts/moomoo/client.py",
+    "scripts/schwab_transport.py",
+    "scripts/lib/schwab_token.py",
+    "scripts/broker_adapter.py",
+    "scripts/lib/broker_registry.py",
+    "scripts/alpaca_trailing_stop.py",
+    "scripts/lib/order_intent_store.py",
     # secrets (§0 rule 2, §24.7)
-    ".env", ".env.local", "config/.env", "config/secret_registry.yaml",
+    ".env",
+    ".env.local",
+    "config/.env",
+    "config/secret_registry.yaml",
     # AGENTS.md / AI_WORK_POLICY (§20, §25.10)
-    "AGENTS.md", "AI_WORK_POLICY.md", "docs/sub/AGENTS.md",
+    "AGENTS.md",
+    "AI_WORK_POLICY.md",
+    "docs/sub/AGENTS.md",
     # hooks / guard (§25.10)
-    ".githooks/pre-push", ".cursor/hooks/guard-write.sh", "scripts/hooks/pre_push.py", "bin/guard",
-    "scripts/lib/guard_remote_approval.py", "scripts/lib/guard_push_auth.py",
+    ".githooks/pre-push",
+    ".cursor/hooks/guard-write.sh",
+    "scripts/hooks/pre_push.py",
+    "bin/guard",
+    "scripts/lib/guard_remote_approval.py",
+    "scripts/lib/guard_push_auth.py",
     # merge go-signal + Mergify + promote + emergency + grant binding (§25.10, §17)
-    "scripts/request_pr_merge_approve.py", "scripts/lib/pr_merge_telegram.py", "scripts/lib/pr_merge_digest.py",
-    "scripts/pr_merge_digest.py", ".mergify.yml", "config/merge_hold_paths.json",
-    "scripts/lib/deploy_on_main.py", "scripts/deploy_on_main_poll.py", "scripts/cio_phase2_exact_main_deploy.sh",
-    "scripts/emergency_manual_promote.sh", "scripts/lib/release_grant_binding.py",
+    "scripts/request_pr_merge_approve.py",
+    "scripts/lib/pr_merge_telegram.py",
+    "scripts/lib/pr_merge_digest.py",
+    "scripts/pr_merge_digest.py",
+    ".mergify.yml",
+    "config/merge_hold_paths.json",
+    "scripts/lib/deploy_on_main.py",
+    "scripts/deploy_on_main_poll.py",
+    "scripts/cio_phase2_exact_main_deploy.sh",
+    "scripts/emergency_manual_promote.sh",
+    "scripts/lib/release_grant_binding.py",
     "scripts/lib/deploy_delegation_binding.py",
+    # Every path AGENTS.md §25.10 "Held classes" names, so the bullet and the config cannot drift again
+    # (2026-10-27 review: these were listed in §25.10 but merged on one "Approve all" tap).
+    ".cursor/rules/00-tradeai-work-policy.mdc",
+    ".github/copilot-instructions.md",
+    ".goosehints",
+    "install-guardrails.sh",
+    "scripts/install_ai_work_policy.sh",
+    "scripts/agent_claim_precommit.sh",
+    "scripts/lib/tradeai_push_budget.py",
+    ".github/workflows/agent-governance.yml",
+    ".github/CODEOWNERS",
+    "scripts/lib/release_control.py",
 ]
 
-NOT_HELD = ["docs/ops/x.md", "scripts/lib/news_feed.py", "apps/command-center-v3/src/pages/Home.tsx",
-            "tests/test_x.py", "config/environment.json", "scripts/envelope.py"]
+NOT_HELD = [
+    "docs/ops/x.md",
+    "scripts/lib/news_feed.py",
+    "apps/command-center-v3/src/pages/Home.tsx",
+    "tests/test_x.py",
+    "config/environment.json",
+    "scripts/envelope.py",
+]
 
 
 @pytest.mark.parametrize("path", REQUIRED_HELD)
@@ -435,9 +525,19 @@ def test_agents_25_10_exclusions_still_name_these_classes():
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     sec = agents.split("\n## 25.10 ", 1)[1].split("\n## ", 1)[0]
     flat = " ".join(sec.split())
-    assert "Held classes are never in \"Approve all\"." in flat
-    for name in ("broker", "Active Trader", "MBI", "secrets", "`AGENTS.md`", "`AI_WORK_POLICY.md`",
-                 "hooks and guard", "`bin/guard`", "`.mergify.yml`", "`config/merge_hold_paths.json`"):
+    assert 'Held classes are never in "Approve all".' in flat
+    for name in (
+        "broker",
+        "Active Trader",
+        "MBI",
+        "secrets",
+        "`AGENTS.md`",
+        "`AI_WORK_POLICY.md`",
+        "hooks and guard",
+        "`bin/guard`",
+        "`.mergify.yml`",
+        "`config/merge_hold_paths.json`",
+    ):
         assert name in flat, name
 
 
