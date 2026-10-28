@@ -55,6 +55,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts.lib.prospectus import load_config, sections_for, store  # noqa: E402
 
 SCHEMA = "ProspectusModelEval@v1"
+NO_CONSUMER_REASON = ("one-off operator-approved evaluation (2026-10-27): comparison.json is read by the operator and the coordinator from the private handoff directory; no production reader")
 WRITER_PROCESS = "prospectus_writer"     # recorded as the production writer (coordinator brief 2026-10-27)
 EVAL_TIER = "mid"                        # config/anthropic_credit_policy.json models.mid
 EVAL_MODEL = "claude-sonnet-5-5"
@@ -72,8 +73,8 @@ SENT_RE = re.compile(r"(?<=[.!?])\s+")
 ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
           "november", "december")
-WORD_DATE_RE = re.compile(r"\b(" + "|".join(m[:3] for m in MONTHS) + r")[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?"
-                          r"(?:,?\s+(\d{4}))?\b", re.I)
+WORD_DATE_RE = re.compile(r"\b(" + "|".join(f"{m[:3]}(?:{m[3:]})?" for m in MONTHS) + r")\.?\s+(3[01]|[12]\d|0?[1-9])"
+                          r"(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?(?!\d|\.\d|%)", re.I)
 PLACEHOLDER = "No statement in this section survived source validation"
 KIND_WORDS = (("target", ("target",)), ("date", ("date", "earnings")), ("return", ("return", "change", "%")),
               ("price", ("close", "price", "high", "low", "average")))
@@ -503,6 +504,7 @@ def aggregate(rows: list[dict], side: str) -> dict:
             "audit_p1": tot(lambda x: x["audit"]["counts"].get("P1", 0)),
             "audit_p2": tot(lambda x: x["audit"]["counts"].get("P2", 0)),
             "audit_p3": tot(lambda x: x["audit"]["counts"].get("P3", 0)),
+            "audit_prose": tot(lambda x: sum(1 for d in x["audit"]["defects"] if d.get("code") == "prose_unmatched_numbers")),
             "gate_pass": sum(1 for x in sc if x["gate"]["status"] == "pass"),
             "gate_hard_fail": sum(1 for x in sc if x["gate"]["status"] == "hard_fail"),
             "post_write_unmatched": tot(lambda x: x["gate"]["post_write"].get("unmatched_count") or 0),
@@ -513,6 +515,8 @@ def aggregate(rows: list[dict], side: str) -> dict:
             "dates_unsupported": tot(lambda x: len(x["spot"]["dates"]["unsupported"])),
             "house_differs": tot(lambda x: len((x["spot"].get("house") or {}).get("differs") or [])),
             "guard_drops": tot(lambda x: x["measure"]["guard_drops_total"]),
+            "guard_drops_per_1000w": round(1000.0 * tot(lambda x: x["measure"]["guard_drops_total"])
+                                           / max(1, tot(lambda x: x["measure"]["words"])), 2),
             "sections_written": tot(lambda x: x["measure"]["sections_written"]),
             "sections_expected": tot(lambda x: x["measure"]["sections_expected"]),
             "words_avg": round(tot(lambda x: x["measure"]["words"]) / len(sc)),
@@ -531,17 +535,20 @@ def recommend(opus: dict, sonnet: dict) -> dict:
     if not opus or not sonnet or sonnet.get("reports", 0) < opus.get("reports", 0) or sonnet.get("reports", 0) == 0:
         return {"verdict": "INCOMPLETE", "matches_on_accuracy": False,
                 "why": ["not every symbol produced a Sonnet report; no recommendation"]}
+    # Writer-attributable tests only. The accuracy auditor and the data gate re-check each report's INPUTS against the
+    # primary stores; the stored baseline was assembled earlier by older input code, so its defects measure the input
+    # vintage, not the model. Those counts are reported (``input_vintage``), never used to pick a model.
     tests = [
-        ("no more P1 accuracy defects", sonnet["audit_p1"] <= opus["audit_p1"]),
-        ("P2 accuracy defects within +1 of Opus", sonnet["audit_p2"] <= opus["audit_p2"] + 1),
-        ("no more data-gate hard fails", sonnet["gate_hard_fail"] <= opus["gate_hard_fail"]),
         ("unsupported prose numbers within 1.25x of Opus (+1 pt)",
          sonnet["unsupported_rate"] <= opus["unsupported_rate"] * 1.25 + 0.01),
+        ("true-but-uncited numbers no more than Opus (+2)", sonnet["prose_uncited"] <= opus["prose_uncited"] + 2),
         ("no more unsupported dates (+1)", sonnet["dates_unsupported"] <= opus["dates_unsupported"] + 1),
-        ("guard drops (ungrounded/behaviour sentences) within 1.5x of Opus (+2)",
-         sonnet["guard_drops"] <= opus["guard_drops"] * 1.5 + 2),
+        ("sentences the guard dropped (ungrounded numbers) per 1,000 words within 1.5x of Opus",
+         sonnet["guard_drops_per_1000w"] <= opus["guard_drops_per_1000w"] * 1.5 + 0.5),
         ("every section written", sonnet["sections_written"] == sonnet["sections_expected"]),
         ("key facts equal the house data now", sonnet["house_differs"] == 0),
+        ("prose-level auditor defects (prose_unmatched_numbers) no more than Opus",
+         sonnet.get("audit_prose", 0) <= opus.get("audit_prose", 0)),
     ]
     failed = [name for name, ok in tests if not ok]
     saving = None
@@ -554,8 +561,10 @@ def recommend(opus: dict, sonnet: dict) -> dict:
         verdict = "SONNET_MATCHES_ON_ACCURACY"
         why = ["every accuracy test is no worse than Opus; switching Watch reports is the operator's call after reading "
                "the PDF pairs"]
+    vintage = {k: {"opus": opus.get(k), "sonnet": sonnet.get(k)}
+               for k in ("audit_p1", "audit_p2", "gate_pass", "gate_hard_fail")}
     return {"verdict": verdict, "matches_on_accuracy": not failed, "tests": [{"test": n, "pass": ok} for n, ok in tests],
-            "why": why, "batch_cost_saving_pct": None if saving is None else round(100 * saving, 1)}
+            "why": why, "input_vintage": vintage, "batch_cost_saving_pct": None if saving is None else round(100 * saving, 1)}
 
 
 # ── outputs ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -563,17 +572,18 @@ def scorecard_md(result: dict) -> str:
     o, s, rec = result["aggregate"].get("opus") or {}, result["aggregate"].get("sonnet") or {}, result["recommendation"]
     lines = ["# Watch prospectus model eval — Sonnet 5.5 vs Opus 5.5", "",
              f"Generated {result['generated_at']}. Symbols: {', '.join(r['symbol'] for r in result['rows'])}. "
-             f"Paid spend this run: ${result['budget']['spent_usd']:.4f} of the ${result['budget']['cap_usd']:.2f} cap.", "",
+             f"Paid spend: ${result['budget'].get('total_spent_usd', result['budget']['spent_usd']):.4f} in total "
+             f"(this scoring pass ${result['budget']['spent_usd']:.4f}).", "",
              f"**Recommendation: {rec['verdict']}** — " + "; ".join(rec["why"]), "",
              "| measure | Opus 5.5 (stored) | Sonnet 5.5 (new) |", "|---|---|---|"]
-    rows = [("accuracy defects P1 / P2 / P3", lambda a: f"{a.get('audit_p1')} / {a.get('audit_p2')} / {a.get('audit_p3')}"),
-            ("data gate pass / hard fail", lambda a: f"{a.get('gate_pass')} / {a.get('gate_hard_fail')}"),
+    rows = [("auditor defects P1 / P2 / P3 (input vintage)", lambda a: f"{a.get('audit_p1')} / {a.get('audit_p2')} / {a.get('audit_p3')}"),
+            ("data gate pass / hard fail (input vintage)", lambda a: f"{a.get('gate_pass')} / {a.get('gate_hard_fail')}"),
             ("prose numbers checked", lambda a: a.get("prose_numbers")),
             ("unsupported prose numbers (rate)", lambda a: f"{a.get('prose_unsupported')} ({100 * (a.get('unsupported_rate') or 0):.1f}%)"),
             ("numbers true but uncited", lambda a: a.get("prose_uncited")),
             ("dates not in the facts", lambda a: a.get("dates_unsupported")),
             ("key facts differing from the house now", lambda a: a.get("house_differs")),
-            ("sentences dropped by the guard", lambda a: a.get("guard_drops")),
+            ("sentences dropped by the guard (per 1,000 words)", lambda a: f"{a.get('guard_drops')} ({a.get('guard_drops_per_1000w')})"),
             ("sections written / expected", lambda a: f"{a.get('sections_written')} / {a.get('sections_expected')}"),
             ("words per report (avg)", lambda a: a.get("words_avg")),
             ("numbers / citations / vague words per 100 words", lambda a: f"{a.get('numbers_per_100w')} / {a.get('citations_per_100w')} / {a.get('vague_per_100w')}"),
@@ -582,6 +592,22 @@ def scorecard_md(result: dict) -> str:
             ("cost per report on the Batch price (avg)", lambda a: f"${a.get('batch_equivalent_usd_avg') or 0:.4f}")]
     for name, fn in rows:
         lines.append(f"| {name} | {fn(o) if o else '—'} | {fn(s) if s else '—'} |")
+    lf = result["aggregate"].get("like_for_like")
+    if lf:
+        lo, ls = lf["opus"], lf["sonnet"]
+        lines += ["", f"Like-for-like subset (Opus written with today's Watch settings: Batch, effort medium, 5k tokens): "
+                  f"{', '.join(lf['symbols'])}. Words {lo['words_avg']} vs {ls['words_avg']}; unsupported numbers "
+                  f"{lo['prose_unsupported']}/{lo['prose_numbers']} vs {ls['prose_unsupported']}/{ls['prose_numbers']}; "
+                  f"guard drops {lo['guard_drops']} ({lo['guard_drops_per_1000w']}/1,000 words) vs {ls['guard_drops']} "
+                  f"({ls['guard_drops_per_1000w']}/1,000 words); Batch-price cost ${lo['batch_equivalent_usd_avg']:.4f} vs "
+                  f"${ls['batch_equivalent_usd_avg']:.4f}. Rule verdict on this subset: "
+                  f"**{lf['recommendation']['verdict']}**" + (" — " + "; ".join(lf["recommendation"]["why"])
+                                                               if lf["recommendation"].get("why") else "") + "."]
+    if rec.get("input_vintage"):
+        lines += ["", "Input-vintage measures (accuracy auditor P1/P2 and data-gate status re-check each report's INPUTS; the "
+                  "Opus inputs were assembled before the 2026-10-26/27 input fixes, so these measure the data pipeline, "
+                  "not the model, and are not used in the verdict): "
+                  + "; ".join(f"{k} Opus {v['opus']} vs Sonnet {v['sonnet']}" for k, v in rec["input_vintage"].items()) + "."]
     if rec.get("batch_cost_saving_pct") is not None:
         lines += ["", f"Sonnet costs {rec['batch_cost_saving_pct']}% less per report on the like-for-like Batch price."]
     lines += ["", "## Accuracy tests", ""] + [f"- {'PASS' if t['pass'] else 'FAIL'} — {t['test']}" for t in rec.get("tests") or []]
@@ -626,15 +652,17 @@ a{color:var(--accent)}.btn{display:inline-block;min-height:44px;line-height:44px
 @media (max-width:760px){.pair{grid-template-columns:1fr}}
 </style></head><body><main>"""
     parts = [head, f"<h1>Watch prospectus: Sonnet 5.5 vs Opus 5.5</h1><p class='muted'>{_e(result['generated_at'])} · "
-             f"{len(result['rows'])} symbols · paid this run ${result['budget']['spent_usd']:.4f} of "
-             f"${result['budget']['cap_usd']:.2f}</p>",
-             f"<div class='card'><b>{_e(rec['verdict'])}</b><br>{_e('; '.join(rec['why']))}</div>",
+             f"{len(result['rows'])} symbols · paid in total ${result['budget'].get('total_spent_usd', result['budget']['spent_usd']):.4f}</p>",
+             f"<div class='card'><b>All symbols: {_e(rec['verdict'])}</b><br>{_e('; '.join(rec['why']))}"
+             + (f"<br><b>Like-for-like ({_e(', '.join(result['aggregate']['like_for_like']['symbols']))}): "
+                f"{_e(result['aggregate']['like_for_like']['recommendation']['verdict'])}</b>"
+                if result["aggregate"].get("like_for_like") else "") + "</div>",
              "<h2>Scorecard</h2><div class='wrap'><table><tr><th>Measure</th><th>Opus 5.5</th><th>Sonnet 5.5</th></tr>"]
     for k, label in (("audit_p1", "Accuracy defects P1"), ("audit_p2", "Accuracy defects P2"), ("audit_p3", "Accuracy defects P3"),
                      ("gate_pass", "Data gate pass"), ("gate_hard_fail", "Data gate hard fail"),
                      ("prose_unsupported", "Unsupported prose numbers"), ("unsupported_rate", "Unsupported rate"),
                      ("prose_uncited", "True but uncited numbers"), ("dates_unsupported", "Dates not in the facts"),
-                     ("house_differs", "Key facts ≠ house now"), ("guard_drops", "Sentences dropped by the guard"),
+                     ("house_differs", "Key facts ≠ house now"), ("guard_drops", "Sentences dropped by the guard"), ("guard_drops_per_1000w", "Guard drops / 1,000 words"),
                      ("sections_written", "Sections written"), ("words_avg", "Words per report"),
                      ("numbers_per_100w", "Numbers / 100 words"), ("citations_per_100w", "Citations / 100 words"),
                      ("vague_per_100w", "Vague words / 100 words"), ("output_tokens_avg", "Output tokens"),
@@ -680,6 +708,10 @@ CAVEATS = [
     "Batch API were billed at 50%. Cost is shown as run and on the like-for-like Batch price.",
     "Opus reports written before 2026-10-27 used the earlier Watch settings (effort high, 16,000 output tokens); "
     "their length is not comparable and is flagged per symbol.",
+    "The accuracy auditor's P1/P2 checks and the data gate re-check each report's inputs against the primary stores. "
+    "The stored Opus inputs were assembled before the 2026-10-26/27 input fixes (return windows, last close, FRED "
+    "series, weekend bars), so those counts measure the input pipeline, not the writer; the verdict uses only "
+    "writer-attributable measures.",
     "Accuracy uses the production data-quality gate, the standing accuracy auditor (deterministic, no paid prose "
     "review) and a deterministic prose spot check; reading quality is the operator's judgment from the PDF pairs.",
 ]
@@ -875,10 +907,23 @@ def score(selection: list[dict], *, deps: Deps, cfg: dict, out: Path, settings: 
                 row["files"]["Sonnet HTML"] = os.path.relpath(sdirs[-1].parent / "prospectus.html", out)
         rows.append(row)
     agg = {"opus": aggregate(rows, "opus"), "sonnet": aggregate(rows, "sonnet")}
+    same = [r for r in rows if r.get("opus") and r.get("sonnet") and r["opus"]["cost"]["mode"] == "batch"]
+    if same:
+        agg["like_for_like"] = {"symbols": [r["symbol"] for r in same], "opus": aggregate(same, "opus"),
+                                "sonnet": aggregate(same, "sonnet")}
+        agg["like_for_like"]["recommendation"] = recommend(agg["like_for_like"]["opus"], agg["like_for_like"]["sonnet"])
+    prior = []
+    for name in ("run_apply.json",):
+        try:
+            prior.append(json.loads((out / name).read_text(encoding="utf-8"))["write"]["budget"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    spent_total = round(budget.spent_usd + sum(float(b.get("spent_usd") or 0) for b in prior), 6)
     result = {"schema": SCHEMA, "generated_at": (now or datetime.now(timezone.utc)).isoformat(),
               "eval_route": {"process": WRITER_PROCESS, "tier": EVAL_TIER, "model": EVAL_MODEL, "effort": EVAL_EFFORT,
                              "per_call_cap_usd": EVAL_PER_CALL_CAP_USD, "baseline_model": BASELINE_MODEL},
-              "budget": budget_dict(budget), "aggregate": agg, "recommendation": recommend(agg["opus"], agg["sonnet"]),
+              "budget": dict(budget_dict(budget), prior_run_usd=round(spent_total - budget.spent_usd, 6),
+                             total_spent_usd=spent_total), "aggregate": agg, "recommendation": recommend(agg["opus"], agg["sonnet"]),
               "rows": rows, "caveats": CAVEATS}
     result["outputs"] = write_outputs(out, result, docs)
     return result

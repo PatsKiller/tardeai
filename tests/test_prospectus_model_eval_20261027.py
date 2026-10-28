@@ -321,6 +321,8 @@ def test_spot_check_classifies_numbers_and_dates_against_cited_facts():
     assert sc["counts"] == {"ok": 2, "uncited": 1, "unsupported": 1}
     assert sc["by_kind"]["price"]["unsupported"] == 1 and sc["by_kind"]["target"]["ok"] == 1
     assert [d["date"] for d in sc["dates"]["unsupported"]] == ["*-12-03"]
+    margins = ev.spot_check(_doc("Gross margin 95.0% [F1]. Operating margin 44.2% [F1]. Due Nov 5 [F3].", facts))
+    assert margins["dates"] == {"total": 1, "unsupported": []}  # "margin 95" is not March 95
     assert sc["house"]["differs"][0]["label"] == "Last close"
 
 
@@ -334,14 +336,18 @@ def test_measure_counts_sections_specificity_vague_words_and_guard_drops():
 
 
 def test_recommend_keeps_opus_on_any_accuracy_regression_and_needs_every_symbol():
-    base = {"reports": 5, "audit_p1": 0, "audit_p2": 2, "gate_hard_fail": 0, "unsupported_rate": 0.02,
-            "dates_unsupported": 1, "guard_drops": 6, "sections_written": 40, "sections_expected": 40,
-            "house_differs": 0, "batch_equivalent_usd_avg": 0.12}
-    same = dict(base, batch_equivalent_usd_avg=0.03)
+    base = {"reports": 5, "audit_p1": 9, "audit_p2": 2, "gate_pass": 0, "gate_hard_fail": 0, "unsupported_rate": 0.02,
+            "prose_uncited": 3, "dates_unsupported": 1, "guard_drops": 6, "guard_drops_per_1000w": 2.0,
+            "sections_written": 40, "sections_expected": 40, "house_differs": 0, "audit_prose": 0,
+            "batch_equivalent_usd_avg": 0.12}
+    same = dict(base, batch_equivalent_usd_avg=0.03, audit_p1=0)
     r = ev.recommend(base, same)
     assert r["verdict"] == "SONNET_MATCHES_ON_ACCURACY" and r["batch_cost_saving_pct"] == 75.0
-    worse = dict(same, audit_p1=1)
-    assert ev.recommend(base, worse)["verdict"] == "KEEP_OPUS"
+    assert r["input_vintage"]["audit_p1"] == {"opus": 9, "sonnet": 0}  # reported, never the deciding test
+    assert ev.recommend(base, dict(same, audit_p1=20))["verdict"] == "SONNET_MATCHES_ON_ACCURACY"
+    for worse in (dict(same, unsupported_rate=0.2), dict(same, guard_drops_per_1000w=4.0), dict(same, audit_prose=1),
+                  dict(same, house_differs=1), dict(same, sections_written=39)):
+        assert ev.recommend(base, worse)["verdict"] == "KEEP_OPUS"
     assert ev.recommend(base, dict(same, reports=4))["verdict"] == "INCOMPLETE"
 
 
