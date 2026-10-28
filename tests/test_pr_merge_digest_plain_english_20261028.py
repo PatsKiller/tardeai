@@ -131,9 +131,10 @@ def test_hold_cards_translate_classes_and_state_operator_approval(isolated):
     prs.append(pr(1, held=True))
     result = digest.run_digest(apply=False)
     assert "changes AGENTS.md or agent rules" in result["message"]
-    assert "Approval: operator's own merge required" in result["message"]
+    assert "Approval: individual operator approval required; never Approve all" in result["message"]
     assert "agents_policy" not in result["message"]
-    assert result["reply_markup"] is None
+    buttons = result["reply_markup"]["inline_keyboard"]
+    assert buttons == [[{"text": "🔐 Approve #1 (held)", "callback_data": f"prdheld:{result['digest_id']}:1"}]]
 
 
 def test_markdown_fields_are_escaped_and_trimmed_at_words(isolated):
@@ -164,7 +165,7 @@ def test_buttons_stay_beneath_a_ready_card_not_an_orphan_footer(isolated, count)
 
 def test_failed_information_only_delivery_is_retried(isolated, monkeypatch):
     prs, _ = isolated
-    prs.append(pr(1, held=True))
+    prs.append(pr(1, text="This PR has not been described yet."))
     normal_send = digest._send
     monkeypatch.setattr(digest, "_send", lambda *a, **kw: (False, [], "synthetic failure"))
     assert not digest.run_digest(apply=True)["ok"]
@@ -259,3 +260,100 @@ def test_real_pr_bodies_extract_their_original_what_answer():
         )
         assert answer == raw
         assert "**Why:**" not in answer and "**Approval:**" not in answer
+
+
+@pytest.mark.parametrize("count", [1, 7])
+def test_described_held_only_digest_keeps_pending_final_keyboard(isolated, count):
+    prs, sent = isolated
+    numbers = list(range(101, 101 + count))
+    prs.extend(pr(number, held=True) for number in numbers)
+
+    result = digest.run_digest(apply=True)
+
+    assert result["ready"] == [] and result["needs_operator"] == numbers
+    record = digest.load_digests()[-1]
+    assert record["status"] == "PENDING"
+    assert record["message_ids"] == [str(i) for i in range(1, len(sent) + 1)]
+    if count > 3:
+        assert len(sent) > 1
+    assert all(message["reply_markup"] is None for message in sent[:-1])
+    assert sent[-1]["reply_markup"]
+    assert f"*#{numbers[-1]}* —" in sent[-1]["message"]
+    assert "What:" in sent[-1]["message"]
+    assert all(result["digest_id"] in message["message"] for message in sent)
+    buttons = [button for row in sent[-1]["reply_markup"]["inline_keyboard"] for button in row]
+    assert [button["callback_data"] for button in buttons] == [
+        f"prdheld:{result['digest_id']}:{number}" for number in numbers
+    ]
+    assert all("Approve all" not in button["text"] for button in buttons)
+    text = "\n".join(message["message"] for message in sent)
+    assert "Approval: individual operator approval required; never Approve all" in text
+    assert "no Approve here" not in text
+    assert "operator's own merge required" not in text
+
+
+@pytest.mark.parametrize("missing", [None, *plain.LABELS], ids=["all-answers", *plain.LABELS])
+def test_undescribed_held_pr_has_no_individual_or_bulk_approval(isolated, monkeypatch, missing):
+    prs, sent = isolated
+    invalid = "## Summary\nThis old engineering body has no approval answers."
+    if missing is not None:
+        invalid = body().replace(f"**{missing}:** {ANSWERS[missing]}\n", "")
+    # Keep a described ready PR and a described held PR so this is a live pending
+    # digest, and the missing item must be refused by membership rather than status.
+    prs.extend([pr(1), pr(5, held=True, text=invalid), pr(6, held=True)])
+    label_attempts = []
+    monkeypatch.setattr(
+        telegram,
+        "add_operator_merge_label",
+        lambda number, **kwargs: label_attempts.append(number) or {"ok": False},
+    )
+
+    result = digest.run_digest(apply=True)
+
+    assert result["ready"] == [1]
+    assert result["needs_operator"] == [6]
+    assert result["not_described"] == [5]
+    assert "Not described — cannot approve until rewritten" in result["message"]
+    assert digest.load_digests()[-1]["status"] == "PENDING"
+    buttons = [button for row in sent[-1]["reply_markup"]["inline_keyboard"] for button in row]
+    assert any(button["text"] == "✅ Approve all (1)" for button in buttons)
+    assert any(button["callback_data"] == f"prdheld:{result['digest_id']}:6" for button in buttons)
+    assert not any(button["callback_data"].endswith(":5") for button in buttons)
+
+    refusal = digest.settle_approve_held_pr(result["digest_id"], 5, chat_id="test", allowed_chats={"test"})
+
+    assert refusal["ok"] is False and refusal["reason"] == "PR_NOT_HELD_IN_DIGEST"
+    assert label_attempts == []
+    assert digest._read_jsonl(digest.approvals_path()) == []
+
+
+@pytest.mark.parametrize("queued", [False, True], ids=["failed", "queued-without-message-id"])
+def test_missing_held_detail_page_refuses_individual_settlement(isolated, monkeypatch, queued):
+    prs, sent = isolated
+    prs.extend(pr(number, held=True) for number in range(101, 109))
+    successful_send = digest._send
+    label_attempts = []
+    monkeypatch.setattr(
+        telegram,
+        "add_operator_merge_label",
+        lambda number, **kwargs: label_attempts.append(number) or {"ok": False},
+    )
+
+    def fail_second(message, *, priority, reply_markup=None):
+        if len(sent) == 1:
+            sent.append({"message": message, "reply_markup": reply_markup})
+            return queued, [], "synthetic failed or queued held-detail page"
+        return successful_send(message, priority=priority, reply_markup=reply_markup)
+
+    monkeypatch.setattr(digest, "_send", fail_second)
+
+    result = digest.run_digest(apply=True)
+
+    assert result["action"] == "send_failed" and result["ok"] is False
+    assert len(sent) == 2
+    assert all(message["reply_markup"] is None for message in sent)
+    assert digest.load_digests()[-1]["status"] == "DELIVERY_FAILED"
+    refusal = digest.settle_approve_held_pr(result["digest_id"], 101, chat_id="test", allowed_chats={"test"})
+    assert refusal["ok"] is False and refusal["reason"] == "NOT_PENDING:DELIVERY_FAILED"
+    assert label_attempts == []
+    assert digest._read_jsonl(digest.approvals_path()) == []

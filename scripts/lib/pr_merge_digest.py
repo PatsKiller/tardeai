@@ -363,14 +363,20 @@ def _card(item: dict[str, Any], cfg: dict[str, Any], excluded: set[int]) -> str:
     for label, field in (("What", "What changes"), ("Why", "Why"), ("Affects", "Who / what it affects"),
                          ("When", "When it takes effect"), ("Fallback", "Risk and fallback")):
         lines.append(f"{label}: {_esc(_trim(values[field], limit))}")
-    approval = "operator's own merge required" if item.get("hold") else _trim(values["Approval"], limit)
+    hold = item.get("hold") or {}
+    if "files_unverified" in (hold.get("classes") or []):
+        approval = "unavailable until all changed files are verified"
+    elif hold:
+        approval = "individual operator approval required; never Approve all"
+    else:
+        approval = _trim(values["Approval"], limit)
     lines.append(f"Approval: {_esc(approval)}")
     words = cfg.get("hold_class_words") or {}
     risk = list(item.get("risk") or [])
     for hold in (item.get("hold") or {}).get("classes") or []:
         risk.append(words.get(hold) or ("changed files could not be verified" if hold == "files_unverified" else "requires operator review"))
     if (item.get("hold") or {}).get("labels") and not (item.get("hold") or {}).get("classes"):
-        risk.append("operator must merge this PR")
+        risk.append("requires individual operator approval")
     risk_text = "; ".join(dict.fromkeys(risk)) or "no specific risks flagged"
     lines.append(f"Risk: {_esc(risk_text)} · {item['files_count']} files · head `{str(item['head_sha'])[:9]}`")
     return "\n".join(lines)
@@ -405,7 +411,8 @@ def format_digest_messages(d: dict[str, Any], cfg: dict[str, Any] | None = None)
             info.append(f"*#{item['pr']}* — {_esc(headline(item['title']))}\n{_esc(item['body_excerpt'])}")
         pack(info, "⚠️ *Not described — cannot approve until rewritten*", card_limit=None)
     if d.get("needs_operator"):
-        pack([_card(item, cfg, excluded) for item in d["needs_operator"]], "🔒 *Needs operator merge* — no Approve here")
+        pack([_card(item, cfg, excluded) for item in d["needs_operator"]],
+             "🔒 *Needs operator merge* — individual approval only; never Approve all")
     if not pages:
         pack([], "Review the described ready cards in the following messages.")
     if ready:
@@ -574,7 +581,7 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
     if not ok:
         rec["status"] = "DELIVERY_FAILED"
     elif not markup:
-        rec["status"] = "INFO"  # nothing to approve: only "needs operator merge" lines
+        rec["status"] = "INFO"  # no described ready or verified held PR has an approval button
     rows.append(rec)
     save_digests(rows)
     out.update({"action": "sent" if ok else "send_failed", "ok": ok, "telegram": detail, "message_ids": ids})
