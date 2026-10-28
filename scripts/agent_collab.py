@@ -21,59 +21,87 @@ Trust boundary (agent-controls audit 2026-09-18, "Prompt injection is PARTIAL"):
 every block below that carries another agent's words or third-party text
 (peer summaries, catalysts, critic reasoning, captured lessons) is returned
 fenced as UNTRUSTED_DATA by scripts/lib/agent_untrusted_data.py, which also
-neutralises fence-break and role-tag sequences inside it. If that helper cannot
-be loaded the block is dropped (empty string), never returned raw. Blocks of
-this system's own instructions (get_scalp_agent_instructions) and of numbers
-it computes itself (confluence, calibration) are not fenced.
+neutralises fence-marker look-alikes and role / turn markers inside it. If that
+helper cannot be loaded or fails, the block is dropped (empty string, with a
+logged warning and a counter, see fence_drop_counts), never returned raw.
+Blocks of this system's own instructions (get_scalp_agent_instructions) and of
+numbers it computes itself (confluence, calibration) are not fenced.
 READ_ONLY_ADVISORY: nothing here sizes, orders, stops or writes to a broker.
 """
 
+import importlib
 import json
+import logging
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_log = logging.getLogger(__name__)
 
-_UNTRUSTED_MODULES = ("scripts.lib.agent_untrusted_data", "lib.agent_untrusted_data")
+_ROOT_SPELLING = "scripts.lib.agent_untrusted_data"
+_SCRIPTS_SPELLING = "lib.agent_untrusted_data"
+_FENCE_DROPS: dict[str, int] = {}
 
 
 def _untrusted_delimiter():
     """The shared ``untrusted_delimiter``, or None when it cannot be loaded.
 
-    Reuses whichever spelling is already imported, so a SCRIPTS_ONLY caller
-    (``lib.X``) and a root caller (``scripts.lib.X``) never get a second copy
-    of the module (scripts/lib/__init__.py assert_single_import_identity).
+    A copy already in sys.modules (either spelling) is reused. Otherwise ONE
+    spelling is imported, matched to how this module was itself imported:
+    ``scripts.agent_collab`` -> ``scripts.lib.X``; ``agent_collab`` (a
+    SCRIPTS_ONLY caller such as process_watchlist_agent_jobs) -> ``lib.X``. The
+    other spelling is tried only when that one cannot be imported at all, so
+    this function never creates a twin. A different module importing the other
+    spelling later still can (scripts/lib/__init__.py assert_single_import_identity);
+    this module defines no classes, so isinstance is unaffected.
     """
-    for name in _UNTRUSTED_MODULES:
-        mod = sys.modules.get(name)
-        fn = getattr(mod, "untrusted_delimiter", None) if mod is not None else None
+    for name in (_ROOT_SPELLING, _SCRIPTS_SPELLING):
+        fn = getattr(sys.modules.get(name), "untrusted_delimiter", None)
         if fn is not None:
             return fn
-    try:
-        from scripts.lib.agent_untrusted_data import untrusted_delimiter
-    except Exception:  # noqa: BLE001 — any load failure means "no fence", handled by the caller
+    order = (
+        (_ROOT_SPELLING, _SCRIPTS_SPELLING) if __name__.startswith("scripts.") else (_SCRIPTS_SPELLING, _ROOT_SPELLING)
+    )
+    for name in order:
         try:
-            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
-        except Exception:  # noqa: BLE001
+            return importlib.import_module(name).untrusted_delimiter
+        except ImportError:
+            continue
+        except Exception:  # noqa: BLE001 — a broken helper means "no fence"; the caller drops the block
             return None
-    return untrusted_delimiter
+    return None
+
+
+def _drop(content_type: str, reason: str) -> str:
+    """Record and log a dropped block. Returns '' (the fail-closed value)."""
+    key = f"{content_type}:{reason}"
+    n = _FENCE_DROPS[key] = _FENCE_DROPS.get(key, 0) + 1
+    if n == 1 or n % 100 == 0:
+        _log.warning("agent_collab: %s context dropped, not sent unfenced (%s; drop #%d)", content_type, reason, n)
+    return ""
+
+
+def fence_drop_counts() -> dict[str, int]:
+    """``{"<content_type>:<reason>": n}`` blocks dropped in this process."""
+    return dict(_FENCE_DROPS)
 
 
 def _fence(content_type: str, source: str, body: str) -> str:
     """``body`` fenced as UNTRUSTED_DATA; '' when empty or the helper is missing.
 
-    Fail closed: peer / third-party text never reaches a prompt unfenced, and
-    never raises (auto_research calls get_agent_context without a try).
+    Fail closed: peer / third-party text never reaches a prompt unfenced. This
+    function never raises (auto_research calls get_agent_context without a
+    try); the DB reads around it can, exactly as before.
     """
     if not body or not body.strip():
         return ""
     delimit = _untrusted_delimiter()
     if delimit is None:
-        return ""
+        return _drop(content_type, "helper_unavailable")
     try:
         return delimit(content_type=content_type, source=source, content=body)
-    except Exception:  # noqa: BLE001
-        return ""
+    except Exception as exc:  # noqa: BLE001
+        return _drop(content_type, f"helper_error:{type(exc).__name__}")
 
 
 def _get_conn():
