@@ -11,6 +11,15 @@
   "failure_priority": "P1",
   "ttl_seconds": 43200,
   "max_items": 10,
+  "max_ready_per_digest": 8,
+  "plain_field_chars": 160,
+  "hold_class_words": {
+    "hooks_guard": "changes the git hooks that police agents",
+    "merge_deploy_control": "changes how merges or deploys happen",
+    "agents_policy": "changes AGENTS.md or agent rules",
+    "broker_order": "touches broker or order code — highest care",
+    "secrets": "changes secret or credential handling"
+  },
   "max_item_buttons": 8,
   "summary_chars": 110,
   "pr_list_limit": 100,

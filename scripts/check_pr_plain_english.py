@@ -55,6 +55,28 @@ def _block(body: str) -> str | None:
     return None
 
 
+def _field_match(block: str, label: str):
+    return re.search(r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=\n\*\*[^*\n]+:\*\*|\Z)", block, re.S)
+
+
+def fields(body: str) -> dict[str, str]:
+    """Extract the six answers, including bodies using Markdown list bullets.
+
+    Validation retains its original acceptance rules. This structured view trims
+    a following bullet label out of the older match's captured value.
+    """
+    block = _block(body or "")
+    if block is None:
+        return {}
+    out = {}
+    for label in LABELS:
+        match = _field_match(block, label)
+        if match:
+            text = re.split(r"\n[ \t]*[-*+]\s+(?=\*\*[^*\n]+:\*\*)", match.group(1), maxsplit=1)[0]
+            out[label] = " ".join(text.split())
+    return out
+
+
 def check(title: str, body: str) -> list[str]:
     errors: list[str] = []
     words = re.sub(r"^(\s*\[[^\]]*\]\s*)+", "", title or "").split()
@@ -70,7 +92,7 @@ def check(title: str, body: str) -> list[str]:
     if tech != -1 and tech < body.find(HEADING):
         errors.append(f"'{HEADING}' must come before '## Technical detail'")
     for label in LABELS:
-        m = re.search(r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=\n\*\*[^*\n]+:\*\*|\Z)", block, re.S)
+        m = _field_match(block, label)
         if not m:
             errors.append(f"missing **{label}:**")
             continue
