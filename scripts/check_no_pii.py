@@ -47,7 +47,8 @@ CI runs gitleaks with --ignore-gitleaks-allow. Synthetic test values are assembl
 ONE CONTENT EXCLUSION, verified by bytes: tests/fixtures/agents_pre_*/** holds verbatim, hash-pinned snapshots
 of the policy files (AGENTS.md, its adapters, docs/governance) taken before a major AGENTS.md version. A file
 there is skipped ONLY when its exact bytes, hashed as a git blob, equal a past version of one of
-POLICY_SOURCES in the history of the base ref (--range: the range's left side; --tree: HEAD). Such a file adds
+POLICY_SOURCES in the history of the base ref (--range: the range's left side; --tree: HEAD), AND its file name
+is that policy file's basename (a leading dot may be dropped: goosehints). Such a file adds
 nothing that main's own history did not already hold, and re-flagging it would block every snapshot PR. Any
 other file in those folders (an extra notes.md, an edited copy, a new agents_pre_x/ folder) is scanned like
 everything else. In CI a pull request runs main's copy of this script, so a PR cannot widen the rule.
@@ -207,28 +208,34 @@ def snapshot_candidate(path: str) -> bool:
 
 
 class SnapshotVerifier:
-    """Skip a snapshot candidate only when its bytes are a verbatim past version of a POLICY_SOURCES file in the
-    history of ``ref``: the git blob id of the bytes must appear in ``git log --raw <ref> -- POLICY_SOURCES``."""
+    """Skip a snapshot candidate only when (1) its bytes are a verbatim past version of a POLICY_SOURCES file in
+    the history of ``ref`` -- the git blob id of the bytes appears in ``git log --raw <ref> -- POLICY_SOURCES`` --
+    and (2) its file name is the basename that blob had there, or that basename without a leading dot
+    (".goosehints" is frozen as "goosehints"). So a copy of AGENTS.md must be named AGENTS.md."""
 
     def __init__(self, repo: Path, ref: str) -> None:
         self.repo, self.ref = repo, ref
         self.skipped = 0
-        self._blobs: frozenset[str] | None = None
+        self._names: dict[str, frozenset[str]] | None = None
         self._algo = "sha1"
 
-    def _load(self) -> frozenset[str]:
+    def _load(self) -> dict[str, frozenset[str]]:
+        """blob id -> the file names a snapshot of it may carry."""
         fmt = subprocess.run(["git", "rev-parse", "--show-object-format"], cwd=self.repo, capture_output=True)
         if fmt.returncode == 0 and fmt.stdout.strip():
             self._algo = fmt.stdout.decode().strip()
         raw = _git(
             self.repo, "log", "--format=", "--raw", "--no-abbrev", "--no-renames", self.ref, "--", *POLICY_SOURCES
         )
-        blobs = set()
+        names: dict[str, set[str]] = {}
         for line in raw.decode("utf-8", errors="replace").splitlines():
-            if line.startswith(":"):
-                fields = line.split("\t", 1)[0].split()
-                blobs.update(b for b in fields[2:4] if b.strip("0"))
-        return frozenset(blobs)
+            if line.startswith(":") and "\t" in line:
+                meta, path = line.split("\t", 1)
+                base = PurePosixPath(path).name
+                for b in meta.split()[2:4]:
+                    if b.strip("0"):
+                        names.setdefault(b, set()).update({base, base.lstrip(".")})
+        return {b: frozenset(n) for b, n in names.items()}
 
     def blob_id(self, data: bytes) -> str:
         return hashlib.new(self._algo, b"blob %d\0" % len(data) + data).hexdigest()
@@ -236,9 +243,9 @@ class SnapshotVerifier:
     def skip(self, path: str, data: bytes) -> bool:
         if not snapshot_candidate(path):
             return False
-        if self._blobs is None:
-            self._blobs = self._load()
-        if self.blob_id(data) in self._blobs:
+        if self._names is None:
+            self._names = self._load()
+        if PurePosixPath(path).name in self._names.get(self.blob_id(data), ()):
             self.skipped += 1
             return True
         return False

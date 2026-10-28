@@ -402,6 +402,24 @@ def test_unpinned_or_edited_files_under_agents_pre_are_reported(repo: Path):
     ]
 
 
+def test_verbatim_copy_under_another_name_is_reported(repo: Path):
+    """Bytes alone are not enough: a past AGENTS.md saved as notes.md (or as CLAUDE.md) is scanned."""
+    _policy_history(repo)
+    base = _head(repo)
+    snap = repo / "tests" / "fixtures" / "agents_pre_26_0_0"
+    snap.mkdir(parents=True)
+    (snap / "notes.md").write_text(POLICY_V1, encoding="utf-8")
+    (snap / "CLAUDE.md").write_text(POLICY_V1, encoding="utf-8")
+    (snap / ".goosehints").write_text(HINTS_V1, encoding="utf-8")  # the live basename itself is also fine
+    _commit(repo, "renamed copies")
+    rc, out = _run(repo, "--range", f"{base}..HEAD")
+    assert rc == 1 and out["snapshot_files_skipped"] == 1
+    assert sorted({f["path"] for f in out["findings"]}) == [
+        "tests/fixtures/agents_pre_26_0_0/CLAUDE.md",
+        "tests/fixtures/agents_pre_26_0_0/notes.md",
+    ]
+
+
 def test_a_pr_cannot_vouch_for_its_own_new_policy_version(repo: Path):
     """Only the BASE ref's history vouches: a snapshot of the PR's own new AGENTS.md is scanned."""
     _policy_history(repo)
