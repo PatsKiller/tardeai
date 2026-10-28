@@ -1412,6 +1412,12 @@ Operator, relayed by the coordinator session: "agents … if they have an error,
 
 *Rule:* §28.16 Incidents. AGENTS.md 25.0.1 lines 6523-6543.
 
+### L28-29 · A design that never became a task (2026-10-28)
+
+The W8 conflict-engine workstream spec'd its `conflict-resolver` lane as a paragraph in `docs/ops/W8_WRITERS_20261024.md` — "the separate W8 Conflict Engine PR will declare `conflict-resolver`…" — but gave it no `-P<n>-T<m>` task id. Four days later the lane still had no registry row, allowlist entry, health contract or PR, and every Watch card rendered "conflict ledger not yet produced". A design expressed only as prose is invisible to `agent_claim.py status` / `next` and the Work board, so no other agent could see or take it. The same audit found six `PROPOSED` designs and four spec'd-but-unadmitted lanes sitting unwired.
+
+*Rule:* §28.3b — "designed" means each buildable unit is a task id on the board. AGENTS.md 26.0.0 §28.3b.
+
 ### L29-01 · Runs that hit a cap mid-way (2026-10-27)
 
 A paid lane died for three days and nothing said so (§12); runs that hit a cap mid-way leave partial state.

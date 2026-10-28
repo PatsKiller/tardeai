@@ -1,17 +1,24 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.0.0
+Policy-Version:      26.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-28
-Last-Reviewed:       2026-10-27T23:30:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-28T17:40:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          25.0.1
+Supersedes:          26.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**26.1.0 is PROPOSED (MINOR) — "designed" means a claimable task id on the board.** Awaiting the operator's
+`APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). It adds one obligation to §28.3b: a design's buildable unit is a
+registered `-P<n>-T<m>` task, never prose, so `agent_claim.py status` / `next` can surface it and any agent can pick it
+up. The stale-work monitor and the design→task closure check that enforce it are named debt (OPEN_ITEMS OI-131) and are
+built by their own tasks (DSN-20261028-designed-work-lifecycle). §0, §2, §2A, §7A, §17, §23.14 and the broker, order,
+stop, sizing and secret rails are byte-identical; `MBI_BEHAVIOR = 0`.
 
 **26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
 (`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
@@ -2304,6 +2311,12 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **Every plan is `DSN-<YYYYMMDD>-<slug>` in `docs/designs/<id>.md`,** with phases `-P<n>` and tasks `-P<n>-T<m>`; the
   task id goes in the claim, branch, PR title and `Design-Task: <id>` trailer. Approving a design or phase is
   operator-only (§17). *Cause: 2026-10-23 — tracked ids (LESSONS L28-06).*
+- **"Designed" means each buildable unit is a task id on the board.** A design's prose may name future work, but any
+  item it promises — "a separate PR will declare X", "W8 will schedule Y", "a later amendment will …" — is also a
+  `-P<n>-T<m>` task row in the design's own front matter, registered on the task board. Prose without a task id is not
+  claimable and must not be called "designed": `agent_claim.py status` and `next` only see registered tasks, so another
+  agent can pick it up (§28.3a). *Cause: 2026-10-28 — the W8 conflict-resolver was spec'd as a paragraph and never built
+  (LESSONS L28-29).*
 
 ## 28.4 Approval provenance
 
@@ -2458,6 +2471,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 26.1.0 | 2026-10-28 | PROPOSED | MINOR | §28.3b "designed = a task id on the board": a design's buildable unit is a registered `-P<n>-T<m>` task, never prose, so `agent_claim.py status` / `next` can surface it and any agent can pick it up; closes the designed-but-never-built hole (W8 conflict-resolver, 2026-10-28). The stale-work monitor and design→task closure check that enforce it are named debt (OPEN_ITEMS OI-131). §0, §2, §2A, §7A, §17, §23.14 and role authority unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
 | 25.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation (operator 2026-10-27: "Get everything in line as the senior developer and coordinator."): owner clause (§20). | `APPROVE_AGENTS_POLICY_25_0_0 2236 78a919464a2213ea221ae12b43476bb8072d9a28` |
