@@ -632,6 +632,11 @@ def run(
 
             request = pending_request(root, sym)
             blocker = request_blocker(root, request)
+            if not blocker:
+                try:
+                    published = published_for_request(root, request)
+                except (OSError, ValueError):
+                    blocker = "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
             if blocker:
                 rec = {
                     "schema": "SymbolThesisAcquisitionRun@v1",
@@ -649,7 +654,6 @@ def run(
                 _append_ledger(root, rec)
                 results.append(rec)
                 continue
-            published = published_for_request(root, request)
         rec = (
             {**published, "as_of": _now(), "publication_link_retry": True}
             if published

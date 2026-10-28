@@ -21,7 +21,7 @@ def _request_attempts(root, request):
         return []
     return [
         row
-        for row in queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH))
+        for row in queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH), strict=True)
         if row.get("request_id") == request["request_id"]
         and str(row.get("symbol") or "").upper() == str(request.get("symbol") or "").upper()
     ]
@@ -30,10 +30,14 @@ def _request_attempts(root, request):
 def pending_request(root, symbol):
     from scripts.lib import symbol_thesis_priority as queue
 
-    state = queue.review_states([symbol], root=root).get(symbol) or {}
+    rows = queue._rows(Path(root).joinpath(*queue.RELPATH))
+    try:
+        state = queue.review_states([symbol], root=root).get(symbol) or {}
+    except (OSError, ValueError):
+        request = next((r for r in reversed(rows) if r.get("symbol") == symbol and r.get("request_id")), None)
+        return {**request, "identity_history_unavailable": True} if request else None
     if not state.get("open") or not state.get("request_id"):
         return None
-    rows = queue._rows(Path(root).joinpath(*queue.RELPATH))
     request = next(
         (r for r in reversed(rows) if r.get("request_id") == state["request_id"] and r.get("symbol") == symbol), None
     )
@@ -48,7 +52,11 @@ def pending_request(root, symbol):
     # Otherwise ticker reuse could silently move an old question/publication to a
     # different security while still passing a fresh current-registry check.
     known = []
-    for attempt in _request_attempts(root, request):
+    try:
+        attempts = _request_attempts(root, request)
+    except (OSError, ValueError):
+        return {**request, "identity_history_unavailable": True}
+    for attempt in attempts:
         guid = attempt.get("security_guid")
         if guid is None and "identity_binding" not in attempt:
             if attempt.get("status") in queue.DONE:
@@ -96,6 +104,8 @@ def request_blocker(root, request, *, identity_resolver=None):
     """Identity quality gate before the owner can reach paid acquisition/synthesis."""
     if not request:
         return None
+    if request.get("identity_history_unavailable"):
+        return "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
     if request.get("identity_status") != "CONFIRMED" or not request.get("security_guid"):
         return "REQUEST_IDENTITY_UNCONFIRMED"
     if identity_resolver is None:
@@ -105,7 +115,11 @@ def request_blocker(root, request, *, identity_resolver=None):
     identity = identity_resolver(request["symbol"], root=root)
     if identity.get("identity_status") != "CONFIRMED" or identity.get("security_guid") != request["security_guid"]:
         return "REQUEST_IDENTITY_CHANGED"
-    for attempt in _request_attempts(root, request):
+    try:
+        attempts = _request_attempts(root, request)
+    except (OSError, ValueError):
+        return "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
+    for attempt in attempts:
         binding = attempt.get("identity_binding")
         historical = [attempt.get("security_guid")]
         if isinstance(binding, dict):
@@ -121,7 +135,7 @@ def published_for_request(root, request):
         return None
     from scripts.lib import symbol_thesis_priority as queue
 
-    rows = queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH))
+    rows = queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH), strict=True)
     return next(
         (
             r
@@ -149,7 +163,6 @@ def _pg_review(guid, status):
 def link_publication(root, request, result, *, store=None, backend=None, registry=None, env=None, pg_reader=None):
     """Called only after the existing acquisition owner published and read back."""
     from scripts.lib import cio_instrument_record as ir
-    from scripts.lib.identity_carriage import resolve_security_identity
 
     root = Path(root)
     pending = {"ok": False, "reason": "canonical_link_pending"}
@@ -169,13 +182,10 @@ def link_publication(root, request, result, *, store=None, backend=None, registr
         or (request.get("identity_binding") and result.get("security_guid") != guid)
     ):
         return {**pending, "reason": "publication_identity_unconfirmed_or_changed"}
-    identity = resolve_security_identity(symbol, root=root)
-    if (
-        not guid
-        or request.get("identity_status") != "CONFIRMED"
-        or identity.get("identity_status") != "CONFIRMED"
-        or identity.get("security_guid") != guid
-    ):
+    blocker = request_blocker(root, request)
+    if blocker == "REQUEST_IDENTITY_HISTORY_UNAVAILABLE":
+        return {**pending, "reason": "request_identity_history_unavailable"}
+    if not guid or blocker:
         return {**pending, "reason": "request_identity_unconfirmed_or_changed"}
     version = (result.get("review") or {}).get("new_version")
     try:

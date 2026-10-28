@@ -237,7 +237,9 @@ def queued_request(monkeypatch, extra=None, identity=None, attempts=()):
     }
     monkeypatch.setattr(queue, "review_states", lambda *a, **kw: {"ZZQA": {"open": True, "request_id": "rr_legacy"}})
     monkeypatch.setattr(
-        queue, "_rows", lambda path: [request] if str(path).endswith(queue.RELPATH[-1]) else deepcopy(list(attempts))
+        queue,
+        "_rows",
+        lambda path, **kw: [request] if str(path).endswith(queue.RELPATH[-1]) else deepcopy(list(attempts)),
     )
     identity = {"identity_status": "CONFIRMED", "security_guid": GUID} if identity is None else identity
     monkeypatch.setattr(identity_carriage, "resolve_security_identity", lambda *a, **kw: deepcopy(identity))
@@ -489,3 +491,125 @@ def test_prospects_preserves_cache_control_while_deferring_filters(monkeypatch):
     api.get_prospects(query)
     assert seen["source"] == {"fresh": "1"}
     assert seen["canonical_filters"] == query
+
+
+def real_history_case(tmp_path, monkeypatch, *, modern=False):
+    from scripts.lib import symbol_thesis_priority as queue
+
+    reader = queue._rows
+    states = queue.review_states
+    extra = {"identity_status": "CONFIRMED", "security_guid": GUID} if modern else None
+    request = queued_request(monkeypatch, extra=extra)
+    monkeypatch.setattr(queue, "_rows", reader)
+    monkeypatch.setattr(queue, "review_states", lambda *a, **kw: states(*a, **{**kw, "now": NOW}))
+    path = tmp_path.joinpath(*queue.RELPATH)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(request) + "\n")
+    return request, tmp_path.joinpath(*queue.LEDGER_RELPATH)
+
+
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("raw", [b'{"request_id":', b"\xff", b"[]\n", b"null\n"])
+def test_corrupt_existing_identity_history_refuses_legacy_and_modern_work(tmp_path, monkeypatch, modern, raw):
+    from scripts.lib import watch_review_publication as publication
+
+    _, ledger = real_history_case(tmp_path, monkeypatch, modern=modern)
+    ledger.write_bytes(raw)
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert publication.request_blocker(tmp_path, pending) == "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
+
+
+def test_unreadable_identity_history_refuses_instead_of_rebinding(tmp_path, monkeypatch):
+    from pathlib import Path
+    from scripts.lib import watch_review_publication as publication
+
+    _, ledger = real_history_case(tmp_path, monkeypatch)
+    ledger.write_text(json.dumps(prior_attempt()) + "\n")
+    original_read = Path.read_text
+
+    def read(path, *args, **kwargs):
+        if path == ledger:
+            raise PermissionError("synthetic denied identity ledger")
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read)
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert publication.request_blocker(tmp_path, pending) == "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
+
+
+def test_missing_initial_ledger_is_explicitly_allowed_and_tolerant_readers_stay_tolerant(tmp_path, monkeypatch):
+    from scripts.lib import symbol_thesis_priority as queue, watch_review_publication as publication
+
+    _, ledger = real_history_case(tmp_path, monkeypatch)
+    assert not ledger.exists()
+    assert publication.request_blocker(tmp_path, publication.pending_request(tmp_path, "ZZQA")) is None
+    valid = prior_attempt()
+    ledger.write_text("not-json\n" + json.dumps(valid) + "\nnull\n\n")
+    assert queue._rows(ledger) == [valid]
+    with pytest.raises(ValueError):
+        queue._rows(ledger, strict=True)
+
+
+def test_history_lost_between_preflight_and_publication_lookup_does_not_buy_research(tmp_path, monkeypatch):
+    from scripts import run_symbol_thesis_acquisition as worker
+    from scripts.lib import watch_review_publication as publication
+
+    request = queued_request(monkeypatch, extra={"identity_status": "CONFIRMED", "security_guid": GUID})
+    monkeypatch.setattr(publication, "pending_request", lambda *a, **kw: request)
+    monkeypatch.setattr(publication, "request_blocker", lambda *a, **kw: None)
+
+    def unavailable(*args, **kwargs):
+        raise ValueError("synthetic history became corrupt after preflight")
+
+    monkeypatch.setattr(publication, "published_for_request", unavailable)
+    monkeypatch.setattr(worker, "run_one", lambda *a, **kw: pytest.fail("unavailable history reached paid research"))
+    result = worker.run(root=tmp_path, symbols=["ZZQA"], apply=True, max_llm=0)
+    assert result["llm_calls_used"] == 0
+    assert result["results"][0]["block_reason"] == "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
+
+
+def test_link_checks_identity_history_again_before_canonical_write(tmp_path, monkeypatch):
+    from scripts.lib import watch_review_publication as publication
+
+    request, ledger = real_history_case(tmp_path, monkeypatch, modern=True)
+    ledger.write_text("corrupt history\n")
+    result = {"status": "PUBLISHED", "symbol": "ZZQA", "security_guid": GUID, "review": {"new_version": "synthetic@v1"}}
+    assert publication.link_publication(tmp_path, request, result)["reason"] == "request_identity_history_unavailable"
+
+
+@pytest.mark.parametrize(
+    "reason,visible",
+    [
+        ("REQUEST_IDENTITY_UNCONFIRMED", "security identity needs confirmation"),
+        ("REQUEST_IDENTITY_CHANGED", "security identity changed"),
+        ("REQUEST_IDENTITY_HISTORY_UNAVAILABLE", "review history unavailable"),
+    ],
+)
+def test_review_state_displays_identity_block_instead_of_an_evidence_gap(tmp_path, reason, visible):
+    from scripts.lib import symbol_thesis_priority as queue
+
+    queue.request(
+        "ZZQA",
+        root=tmp_path,
+        reason="Synthetic request",
+        source="operator_opportunity_view",
+        now=NOW,
+        extra={"request_id": "rr_identity_label"},
+    )
+    ledger = tmp_path.joinpath(*queue.LEDGER_RELPATH)
+    ledger.write_text(
+        json.dumps(
+            {
+                "symbol": "ZZQA",
+                "request_id": "rr_identity_label",
+                "as_of": NOW.isoformat(),
+                "status": "BLOCKED",
+                "block_reason": reason,
+            }
+        )
+        + "\n"
+    )
+    state = queue.review_states(["ZZQA"], root=tmp_path, now=NOW)["ZZQA"]
+    assert state["status"] == "blocked"
+    assert visible in state["label"]
+    assert "waiting for evidence" not in state["label"]
