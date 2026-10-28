@@ -17,6 +17,7 @@ Usage:
     # Check if escalation needed
     esc = check_escalation("V")
 """
+
 import json
 from pathlib import Path
 
@@ -25,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def _get_conn():
     import psycopg2
+
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith("DB_PASSWORD="):
@@ -35,22 +37,25 @@ def _get_conn():
 def get_latest_agent_result(symbol: str, agent: str) -> dict | None:
     """Get the most recent analysis from a specific agent for a symbol."""
     import psycopg2.extras
+
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT symbol, agent, recommendation, confidence, summary,
                next_action, reason_codes, created_at
         FROM watchlist_agent_results
         WHERE symbol = %s AND agent = %s
         ORDER BY created_at DESC LIMIT 1
-    """, (symbol.upper(), agent))
+    """,
+        (symbol.upper(), agent),
+    )
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def get_agent_context(symbol: str, requesting_agent: str = "Alex",
-                      agents: list = None) -> str:
+def get_agent_context(symbol: str, requesting_agent: str = "Alex", agents: list = None) -> str:
     """Pull latest analysis from other agents for a symbol.
 
     Returns formatted text for LLM prompt injection.
@@ -108,20 +113,28 @@ def get_agent_context(symbol: str, requesting_agent: str = "Alex",
     )
 
 
-def log_handoff(from_agent: str, to_agent: str, symbol: str = "",
-                intent: str = "", confidence: float = 0,
-                response_summary: str = "", escalated: bool = False):
+def log_handoff(
+    from_agent: str,
+    to_agent: str,
+    symbol: str = "",
+    intent: str = "",
+    confidence: float = 0,
+    response_summary: str = "",
+    escalated: bool = False,
+):
     """Log an agent-to-agent handoff for audit."""
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO agent_handoffs
                 (from_agent, to_agent, symbol, intent, confidence,
                  response_summary, escalated, status, user_message, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'completed', %s, NOW())
-        """, (from_agent, to_agent, symbol, intent, confidence,
-              response_summary, escalated, intent))
+        """,
+            (from_agent, to_agent, symbol, intent, confidence, response_summary, escalated, intent),
+        )
         conn.commit()
         conn.close()
     except Exception:
@@ -135,17 +148,21 @@ def check_escalation(symbol: str) -> dict:
         {"needs_escalation": bool, "reasons": [...], "agents": {...}}
     """
     import psycopg2.extras
+
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Get latest results from all agents for this symbol
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (agent)
             agent, recommendation, confidence, summary, created_at
         FROM watchlist_agent_results
         WHERE symbol = %s
         ORDER BY agent, created_at DESC
-    """, (symbol.upper(),))
+    """,
+        (symbol.upper(),),
+    )
     results = cur.fetchall()
     conn.close()
 
@@ -200,7 +217,7 @@ def check_escalation(symbol: str) -> dict:
     }
 
 
-def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
+def get_confluence_context(symbol: str, conn, profile: str = "swing") -> str:
     """Return formatted indicator confluence context for injection into agent prompts.
 
     Non-fatal — returns empty string if data unavailable.
@@ -208,7 +225,8 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT confluence_tier, confluence_score, strategy_badges,
                    key_levels, stop_price, target_price, atr, adx_regime,
                    entry_quality, computed_at
@@ -216,28 +234,32 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
             WHERE symbol = %s AND profile = %s
             AND computed_at > NOW() - INTERVAL '1 hour'
             ORDER BY computed_at DESC LIMIT 1
-        """, [symbol, profile])
+        """,
+            [symbol, profile],
+        )
         row = cur.fetchone()
 
         if not row:
             # Try live computation (non-fatal)
             try:
                 import sys as _sys
+
                 _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from indicator_engine import analyze_confluence
+
                 result = analyze_confluence(symbol, profile)
-                if not result or not result.get('confluence_tier'):
-                    return ''
-                tier = result.get('confluence_tier', 'NONE')
-                score = result.get('confluence_score', 0)
-                badges = result.get('strategy_badges', [])
-                levels = result.get('key_levels', {})
-                stop = result.get('stop_price')
-                target = result.get('target_price')
-                atr_val = result.get('atr')
-                regime = result.get('adx_regime', 'unknown')
+                if not result or not result.get("confluence_tier"):
+                    return ""
+                tier = result.get("confluence_tier", "NONE")
+                score = result.get("confluence_score", 0)
+                badges = result.get("strategy_badges", [])
+                levels = result.get("key_levels", {})
+                stop = result.get("stop_price")
+                target = result.get("target_price")
+                atr_val = result.get("atr")
+                regime = result.get("adx_regime", "unknown")
             except Exception:
-                return ''
+                return ""
         else:
             tier = row[0]
             score = row[1]
@@ -246,12 +268,12 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
             stop = row[4]
             target = row[5]
             atr_val = row[6]
-            regime = row[7] or 'unknown'
+            regime = row[7] or "unknown"
 
-        if tier == 'NONE' and score == 0:
+        if tier == "NONE" and score == 0:
             return f"\n[TECHNICAL CONFLUENCE: No significant signals for {symbol}]\n"
 
-        badge_str = ', '.join(badges) if badges else 'none'
+        badge_str = ", ".join(badges) if badges else "none"
 
         lines = [
             f"\n=== TECHNICAL CONFLUENCE ({profile.upper()}) ===",
@@ -271,24 +293,24 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
         # Key levels from JSONB
         if levels:
             level_parts = []
-            pivots = levels.get('pivots_weekly', {})
-            if pivots.get('s1'):
+            pivots = levels.get("pivots_weekly", {})
+            if pivots.get("s1"):
                 level_parts.append(f"S1: ${pivots['s1']:.2f}")
-            if pivots.get('r1'):
+            if pivots.get("r1"):
                 level_parts.append(f"R1: ${pivots['r1']:.2f}")
-            bb = levels.get('bollinger', {})
-            if bb.get('lower'):
+            bb = levels.get("bollinger", {})
+            if bb.get("lower"):
                 level_parts.append(f"BB lower: ${bb['lower']:.2f}")
-            if bb.get('squeeze'):
+            if bb.get("squeeze"):
                 level_parts.append("TTM SQUEEZE ACTIVE")
             if level_parts:
                 lines.append("Levels: " + " | ".join(level_parts))
 
         lines.append("=" * 40)
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     except Exception:
-        return ''
+        return ""
 
 
 def get_prospects_context(symbol: str, conn) -> str:
@@ -299,7 +321,8 @@ def get_prospects_context(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT score, decision, rvol, gap_pct, float_m,
                    social_reddit, social_stocktwits, social_score,
                    social_sentiment, mention_count, social_sources,
@@ -308,27 +331,42 @@ def get_prospects_context(symbol: str, conn) -> str:
             WHERE symbol = %s
             AND scanned_at > NOW() - INTERVAL '3 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
 
         if not row:
-            return ''
+            return ""
 
-        (score, decision, rvol, gap_pct, float_m,
-         reddit, stocktwits, social_score, social_sentiment,
-         mention_count, social_sources, source, screener_label,
-         catalyst, catalyst_verified) = row
+        (
+            score,
+            decision,
+            rvol,
+            gap_pct,
+            float_m,
+            reddit,
+            stocktwits,
+            social_score,
+            social_sentiment,
+            mention_count,
+            social_sources,
+            source,
+            screener_label,
+            catalyst,
+            catalyst_verified,
+        ) = row
 
-        lines = [f"\n=== PIPELINE CONTEXT ==="]
+        lines = ["\n=== PIPELINE CONTEXT ==="]
 
         # Source tags
         source_tags = []
-        if source and 'screener' in str(source):
+        if source and "screener" in str(source):
             label = "Finviz screener"
             if screener_label:
                 label += f" [{screener_label}]"
             source_tags.append(label)
-        if source and 'social' in str(source):
+        if source and "social" in str(source):
             parts = []
             if reddit and reddit > 0:
                 parts.append(f"{reddit} Reddit")
@@ -356,19 +394,19 @@ def get_prospects_context(symbol: str, conn) -> str:
 
         # Social signal
         if social_sentiment:
-            lines.append(f"Social sentiment: {social_sentiment}" +
-                        (f" (score: {social_score:.1f})" if social_score else ""))
+            lines.append(
+                f"Social sentiment: {social_sentiment}" + (f" (score: {social_score:.1f})" if social_score else "")
+            )
 
         # Catalyst
         if catalyst:
-            lines.append(f"Catalyst: {catalyst}" +
-                        (" [VERIFIED]" if catalyst_verified else " [unverified]"))
+            lines.append(f"Catalyst: {catalyst}" + (" [VERIFIED]" if catalyst_verified else " [unverified]"))
 
         lines.append("=" * 40)
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     except Exception:
-        return ''
+        return ""
 
 
 def get_scan_intelligence(symbol: str, conn) -> str:
@@ -380,7 +418,8 @@ def get_scan_intelligence(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT symbol, score, decision, price, rvol, float_m,
                    gap_pct, change_pct, sector, industry,
                    catalyst, catalyst_verified, catalyst_confidence,
@@ -392,22 +431,49 @@ def get_scan_intelligence(symbol: str, conn) -> str:
             FROM trade_ai_scans
             WHERE symbol = %s AND scanned_at > NOW() - INTERVAL '7 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
         if not row:
-            return ''
+            return ""
 
-        (sym, score, decision, price, rvol, float_m, gap_pct, change_pct,
-         sector, industry, catalyst, catalyst_verified, catalyst_confidence,
-         catalyst_source, critic_verdict, critic_reasoning,
-         social_reddit, social_stocktwits, social_score,
-         social_sentiment, social_bullish_pct, mention_count,
-         source, screener_label, run_label,
-         ticker_perf_1m, sector_perf_1m, vs_sector_pct, scanned_at) = row
+        (
+            sym,
+            score,
+            decision,
+            price,
+            rvol,
+            float_m,
+            gap_pct,
+            change_pct,
+            sector,
+            industry,
+            catalyst,
+            catalyst_verified,
+            catalyst_confidence,
+            catalyst_source,
+            critic_verdict,
+            critic_reasoning,
+            social_reddit,
+            social_stocktwits,
+            social_score,
+            social_sentiment,
+            social_bullish_pct,
+            mention_count,
+            source,
+            screener_label,
+            run_label,
+            ticker_perf_1m,
+            sector_perf_1m,
+            vs_sector_pct,
+            scanned_at,
+        ) = row
 
         lines = [f"\n=== TRADE AI SCAN: {sym} ==="]
-        lines.append(f"{decision} | Score: {score}/65 | Price: ${price:.2f}"
-                     + (f" | Gap: {gap_pct:+.1f}%" if gap_pct else ""))
+        lines.append(
+            f"{decision} | Score: {score}/65 | Price: ${price:.2f}" + (f" | Gap: {gap_pct:+.1f}%" if gap_pct else "")
+        )
 
         parts = []
         if rvol:
@@ -431,8 +497,7 @@ def get_scan_intelligence(symbol: str, conn) -> str:
             lines.append("Catalyst: Not identified — pure technical/volume setup")
 
         if critic_verdict:
-            lines.append(f"Critic: {critic_verdict}" +
-                        (f" — {critic_reasoning[:120]}" if critic_reasoning else ""))
+            lines.append(f"Critic: {critic_verdict}" + (f" — {critic_reasoning[:120]}" if critic_reasoning else ""))
 
         social_parts = []
         if social_reddit and social_reddit > 0:
@@ -447,16 +512,18 @@ def get_scan_intelligence(symbol: str, conn) -> str:
         if sector:
             s = [sector]
             if vs_sector_pct:
-                s.append(f"{'outperforming' if vs_sector_pct > 0 else 'underperforming'} sector by {abs(vs_sector_pct):.1f}%")
+                s.append(
+                    f"{'outperforming' if vs_sector_pct > 0 else 'underperforming'} sector by {abs(vs_sector_pct):.1f}%"
+                )
             lines.append("Sector: " + " | ".join(s))
 
         if screener_label or run_label:
             lines.append(f"Discovered by: {screener_label or run_label or source}")
 
         lines.append("=" * 40)
-        return '\n'.join(lines) + '\n'
+        return "\n".join(lines) + "\n"
     except Exception:
-        return ''
+        return ""
 
 
 def get_scalp_agent_instructions(symbol: str, conn) -> str:
@@ -467,21 +534,24 @@ def get_scalp_agent_instructions(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT price, float_m, decision, rvol
             FROM trade_ai_scans
             WHERE symbol = %s AND decision IN ('GO','WAIT')
             AND scanned_at > NOW() - INTERVAL '7 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
         if not row:
-            return ''
+            return ""
         price, float_m, decision, rvol = row
         if price and price > 100:
-            return ''
+            return ""
         if float_m and float_m > 200:
-            return ''
+            return ""
 
         return """
 === SCALP ANALYSIS CONTEXT ===
@@ -499,7 +569,7 @@ DO NOT analyze as portfolio position. No IRMAA/SSDI/retirement references for sc
 =================================
 """
     except Exception:
-        return ''
+        return ""
 
 
 def get_entity_intelligence(entity_id: str, conn) -> str:
@@ -511,6 +581,7 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
     """
     try:
         from scripts.intelligence_entity_manager import get_entity_context_for_prompt
+
         return get_entity_context_for_prompt(conn, entity_id)
     except Exception:
         # Fallback to old scatter-gather
@@ -519,7 +590,7 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
             ctx += get_prospects_context(entity_id, conn)
             return ctx
         except Exception:
-            return ''
+            return ""
 
 
 def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
@@ -529,11 +600,13 @@ def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
     Designed for LLM prompt injection so agents see recent history before recommending.
     """
     import os
-    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
-        return ''
+
+    if os.getenv("AGENT_HISTORY_CONTEXT_ENABLED", "true").lower() != "true":
+        return ""
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT entry_time, closed_at, strategy_id,
                    entry_price, exit_price, stop_loss,
                    pnl, outcome_verdict, exit_reason,
@@ -542,51 +615,63 @@ def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
             WHERE symbol = %s AND lifecycle_state = 'closed'
               AND closed_at > NOW() - (%s || ' days')::interval
             ORDER BY closed_at DESC LIMIT 5
-        """, [symbol, str(days)])
+        """,
+            [symbol, str(days)],
+        )
         rows = cur.fetchall()
         if not rows:
-            return ''
+            return ""
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT config, created_at FROM agent_intelligence_rules
             WHERE (rule_key ILIKE %s OR config::text ILIKE %s)
               AND created_at > NOW() - (%s || ' days')::interval
             ORDER BY created_at DESC LIMIT 3
-        """, ['%' + symbol + '%', '%' + symbol + '%', str(days)])
+        """,
+            ["%" + symbol + "%", "%" + symbol + "%", str(days)],
+        )
         lessons = cur.fetchall()
 
-        wins = sum(1 for r in rows if r[7] == 'WIN')
-        losses = sum(1 for r in rows if r[7] == 'LOSS')
-        lines = [f"=== PRIOR OUTCOMES FOR {symbol} (last {days} days) ===",
-                 f"Trades: {len(rows)} ({wins}W / {losses}L)", ""]
+        wins = sum(1 for r in rows if r[7] == "WIN")
+        losses = sum(1 for r in rows if r[7] == "LOSS")
+        lines = [
+            f"=== PRIOR OUTCOMES FOR {symbol} (last {days} days) ===",
+            f"Trades: {len(rows)} ({wins}W / {losses}L)",
+            "",
+        ]
         for entry_time, closed_at, strat, entry, exit_p, stop, pnl, verdict, exit_reason, hold_hr in rows:
             pnl_f = float(pnl) if pnl else 0
             pnl_str = f"+${pnl_f:.2f}" if pnl_f > 0 else f"-${abs(pnl_f):.2f}"
             exit_str = f"${float(exit_p):.2f}" if exit_p else "N/A"
             hold_str = f"{float(hold_hr):.1f}h" if hold_hr else "?"
-            lines.append(f"  {closed_at.strftime('%m-%d %H:%M')} {strat}: {verdict} {pnl_str} "
-                         f"(${float(entry):.2f}→{exit_str}, {hold_str}, {exit_reason})")
+            lines.append(
+                f"  {closed_at.strftime('%m-%d %H:%M')} {strat}: {verdict} {pnl_str} "
+                f"(${float(entry):.2f}→{exit_str}, {hold_str}, {exit_reason})"
+            )
         if lessons:
             lines.append("")
             lines.append("Captured lessons:")
             for config, _ in lessons:
-                lesson_str = config.get('text', '') if isinstance(config, dict) else str(config)[:200]
+                lesson_str = config.get("text", "") if isinstance(config, dict) else str(config)[:200]
                 if lesson_str:
                     lines.append(f"  - {lesson_str[:200]}")
         lines.append("Consider this history when evaluating new proposals.")
         return "\n".join(lines) + "\n"
     except Exception:
-        return ''
+        return ""
 
 
 def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> str:
     """Return formatted strategy-level performance context for prompt injection."""
     import os
-    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
-        return ''
+
+    if os.getenv("AGENT_HISTORY_CONTEXT_ENABLED", "true").lower() != "true":
+        return ""
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FILTER (WHERE outcome_verdict = 'WIN') as wins,
                    COUNT(*) FILTER (WHERE outcome_verdict = 'LOSS') as losses,
                    SUM(pnl) FILTER (WHERE pnl > 0) as gross_profit,
@@ -595,10 +680,12 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
             FROM paper_trades
             WHERE strategy_id = %s AND lifecycle_state = 'closed'
               AND closed_at > NOW() - (%s || ' days')::interval
-        """, [strategy_id, str(days)])
+        """,
+            [strategy_id, str(days)],
+        )
         row = cur.fetchone()
         if not row or (row[0] or 0) + (row[1] or 0) == 0:
-            return ''
+            return ""
         wins, losses, gross_profit, gross_loss, avg_hold = row
         total = wins + losses
         win_rate = wins / total if total > 0 else 0
@@ -606,17 +693,22 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
         gl = float(gross_loss or 0)
         pf = gp / gl if gl > 0 else None
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT exit_reason, COUNT(*), AVG(pnl)::numeric(10,2)
             FROM paper_trades
             WHERE strategy_id = %s AND lifecycle_state = 'closed'
               AND outcome_verdict = 'LOSS' AND closed_at > NOW() - (%s || ' days')::interval
             GROUP BY exit_reason ORDER BY COUNT(*) DESC LIMIT 3
-        """, [strategy_id, str(days)])
+        """,
+            [strategy_id, str(days)],
+        )
         failures = cur.fetchall()
 
-        lines = [f"=== STRATEGY PERFORMANCE — {strategy_id} (last {days}d) ===",
-                 f"Trades: {total} ({wins}W/{losses}L) win rate {win_rate:.0%}"]
+        lines = [
+            f"=== STRATEGY PERFORMANCE — {strategy_id} (last {days}d) ===",
+            f"Trades: {total} ({wins}W/{losses}L) win rate {win_rate:.0%}",
+        ]
         if pf is not None:
             lines.append(f"Profit factor: {pf:.2f} (P${gp:.0f} / L${gl:.0f})")
         if avg_hold:
@@ -627,7 +719,7 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
                 lines.append(f"  {reason}: {cnt} losses, avg ${avg_pnl}")
         return "\n".join(lines) + "\n"
     except Exception:
-        return ''
+        return ""
 
 
 def get_calibration_context(agent_name: str, conn) -> str:
@@ -638,32 +730,40 @@ def get_calibration_context(agent_name: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT config FROM agent_intelligence_rules
             WHERE rule_type = 'calibration_stats' AND rule_key = %s
             ORDER BY updated_at DESC LIMIT 1
-        """, [f"accuracy_{agent_name}"])
+        """,
+            [f"accuracy_{agent_name}"],
+        )
         row = cur.fetchone()
         if row and row[0]:
             data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-            text = data.get('text', '')
+            text = data.get("text", "")
             if text:
                 return f"\n{text}\n"
         # Fallback: direct query
-        cur.execute("""
+        cur.execute(
+            """
             SELECT accuracy_pct, correct_count, wrong_count,
                    total_recommendations, trending
             FROM agent_calibration
             WHERE agent_name = %s AND window_days = 90
             AND strategy_type IS NULL AND total_recommendations >= 3
-        """, [agent_name])
+        """,
+            [agent_name],
+        )
         row = cur.fetchone()
         if row and row[0]:
             acc, correct, wrong, total, trending = row
-            trend = {'IMPROVING': '↑', 'DECLINING': '↓', 'STABLE': '→'}.get(trending or '', '')
-            return (f"\n=== YOUR ACCURACY (90d) ===\n"
-                    f"Overall: {acc:.0f}% ({correct}/{total} correct) {trend}\n"
-                    f"Calibrate confidence accordingly.\n{'=' * 40}\n")
+            trend = {"IMPROVING": "↑", "DECLINING": "↓", "STABLE": "→"}.get(trending or "", "")
+            return (
+                f"\n=== YOUR ACCURACY (90d) ===\n"
+                f"Overall: {acc:.0f}% ({correct}/{total} correct) {trend}\n"
+                f"Calibrate confidence accordingly.\n{'=' * 40}\n"
+            )
 
         # No calibration data yet — show accumulating message
         try:
@@ -673,15 +773,19 @@ def get_calibration_context(agent_name: str, conn) -> str:
             total_outcomes = 0
 
         if total_outcomes > 0:
-            return (f"\n=== CALIBRATION STATUS ===\n"
-                    f"Accuracy tracking: {total_outcomes} trade outcome(s) scored.\n"
-                    f"Need 3+ per strategy type for meaningful accuracy data.\n"
-                    f"Continue analyzing — calibration improves with each closed trade.\n"
-                    f"{'=' * 40}\n")
+            return (
+                f"\n=== CALIBRATION STATUS ===\n"
+                f"Accuracy tracking: {total_outcomes} trade outcome(s) scored.\n"
+                f"Need 3+ per strategy type for meaningful accuracy data.\n"
+                f"Continue analyzing — calibration improves with each closed trade.\n"
+                f"{'=' * 40}\n"
+            )
         else:
-            return (f"\n=== CALIBRATION STATUS ===\n"
-                    f"No closed trades scored yet. "
-                    f"System will track your accuracy as trades close.\n"
-                    f"{'=' * 40}\n")
+            return (
+                f"\n=== CALIBRATION STATUS ===\n"
+                f"No closed trades scored yet. "
+                f"System will track your accuracy as trades close.\n"
+                f"{'=' * 40}\n"
+            )
     except Exception:
-        return ''
+        return ""

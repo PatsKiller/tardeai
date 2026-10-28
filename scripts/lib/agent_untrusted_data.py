@@ -13,6 +13,7 @@ Invariants:
   * a context partitioner refuses to let any untrusted marker survive inside a
     system/operator instruction section (it is moved/stripped, never merged).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -22,16 +23,18 @@ UNTRUSTED_MARKER = "__untrusted_data__"
 
 # Sections that carry system/operator instructions. Untrusted external data must
 # never be merged into these.
-_INSTRUCTION_SECTIONS = frozenset({
-    "system",
-    "system_prompt",
-    "operator_instructions",
-    "instructions",
-    "office_truth",
-    "active_intent",
-    "governance",
-    "decision",
-})
+_INSTRUCTION_SECTIONS = frozenset(
+    {
+        "system",
+        "system_prompt",
+        "operator_instructions",
+        "instructions",
+        "office_truth",
+        "active_intent",
+        "governance",
+        "decision",
+    }
+)
 
 # The only section untrusted external data belongs in.
 UNTRUSTED_SECTION = "external_read"
