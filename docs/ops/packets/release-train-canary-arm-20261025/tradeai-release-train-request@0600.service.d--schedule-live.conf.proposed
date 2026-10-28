@@ -1,9 +1,0 @@
-# PROPOSED (release-train schedule, 2026-10-25; docs/ops/packets/release-train-canary-arm-20261025/README.md).
-# Install path: ~/.config/systemd/user/tradeai-release-train-request@0600.service.d/schedule-live.conf
-# A drop-in for the 0600 INSTANCE only: it drops --shadow-only, so the writer appends a live (shadow: false)
-# TrainWindowRequest@v1 only when the host gate passes (STOP latch ABSENT, policy armed, delegation ACTIVE, the policy
-# window enabled for that day); on a day the policy does not schedule it the request stays shadow. 0800 keeps the
-# template's --shadow-only. Rollback: archive this file (rename, never delete) and systemctl --user daemon-reload.
-[Service]
-ExecStart=
-ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/release_train_window_request.py --window 0600 --append

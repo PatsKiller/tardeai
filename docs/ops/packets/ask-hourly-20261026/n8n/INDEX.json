@@ -21,12 +21,12 @@
         "n8n-nodes-base.set",
         "n8n-nodes-base.switch"
       ],
-      "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229",
+      "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
       "relay_calls": [
         "GET /due"
       ],
       "runbook": "README.txt",
-      "sha256": "d0dfe1965f5d5152bd6eb6f4d3169a6981872ee28cb8d74d1b8598a7dca694eb"
+      "sha256": "2afb3cf6ddc027723892b7e1366b127679ee092549aa2b646d43409ddb78f527"
     }
   ]
 }

@@ -55,8 +55,9 @@ def _checker():
 # ---------------------------------------------------------------------------------------------- header / layout
 def test_header_is_25_0_0_proposed_or_active():
     cb = _control()
-    assert cb["Policy-Version"] == "25.0.0"
-    assert cb["Supersedes"] == "24.0.0"
+    # 25.0.x PATCHes (e.g. 25.0.1, the generated §7A table refresh) keep the 25.0.0 rules.
+    assert re.fullmatch(r"25\.0\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
+    assert cb["Supersedes"] in {"24.0.0"} | {f"25.0.{n}" for n in range(int(cb["Policy-Version"].rsplit(".", 1)[1]))}
     assert cb["Last-Reviewed"].startswith("2026-10-27")
     row = re.search(r"^\| 25\.0\.0 \| 2026-10-2\d \| (PROPOSED|ACTIVE)[^|]*\| MAJOR \|(.*)$", AGENTS, re.M)
     assert row, "no 25.0.0 MAJOR history row"
@@ -213,7 +214,7 @@ def test_rulebook_projection_renders_every_numbered_section():
     from scripts.lib import operator_approvals as core
 
     proj = core.policy_projection(AGENTS, source_sha="0" * 40)
-    assert proj["policy_version"] == "25.0.0"
+    assert re.fullmatch(r"25\.0\.\d+", proj["policy_version"])
     headings = [ln[2:].strip() for ln in BINDING.splitlines()
                 if re.match(r"^# (\d+[A-Z]? ·|Document version policy|Multi-Agent SOP)", ln)]
     missing = [h for h in headings if h not in proj["section_counts"]]
