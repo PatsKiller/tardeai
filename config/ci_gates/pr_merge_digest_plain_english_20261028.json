@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_merge_digest_plain_english_20261028",
+  "files": [
+    "tests/test_pr_merge_digest_plain_english_20261028.py"
+  ],
+  "comment": [
+    "Plain-English digest cards, undescribed refusal, UTF16 splitting, final-only keyboard and delivery failure refusal."
+  ]
+}

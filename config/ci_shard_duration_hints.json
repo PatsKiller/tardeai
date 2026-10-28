@@ -1321,6 +1321,7 @@
   "tests/test_positions_reader_batch1_20261022.py": 8.4,
   "tests/test_positions_reader_batch3_home_20261022.py": 8.4,
   "tests/test_pr_hygiene_audit_20261021.py": 2.7,
+  "tests/test_pr_merge_digest_plain_english_20261028.py": 1.0,
   "tests/test_preflight_release_readiness_20261021.py": 1.4,
   "tests/test_process_reaper_orchestrator_runtime.py": 1.6,
   "tests/test_process_reaper_pid_identity.py": 4.3,
