@@ -43,6 +43,7 @@ GID_B = "b" * 32
 
 @pytest.fixture
 def adir(tmp_path: Path, monkeypatch) -> Path:
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     d = tmp_path / "approvals"
     d.mkdir(mode=0o700)
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(d))
@@ -341,6 +342,7 @@ def store(tmp_path, monkeypatch):
     d = tmp_path / "approvals"
     d.mkdir()
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(d))
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     return d
 
 

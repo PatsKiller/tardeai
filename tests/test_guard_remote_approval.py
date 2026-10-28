@@ -27,13 +27,97 @@ OTHER = "1000000002"
 
 @pytest.fixture(autouse=True)
 def _isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Never touch the real approvals directory."""
+    """Never touch the real approvals directory.
+
+    Production ``TELEGRAM_REMOTE_GRANT_STATUS`` is ``RETIRED`` (ratified on PR
+    #2185). Legacy store/settlement tests monkeypatch to ``LEGACY_TEST`` so the
+    refusal surface stays covered; retirement tests re-set ``RETIRED`` explicitly.
+    """
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     yield
 
 
 def _mint(scope="git-push", seconds=600, uses=5, reason="ship the header work", **kw):
     return gra.mint_request(scope, seconds=seconds, uses=uses, reason=reason, **kw)
+
+
+# ── Telegram remote grants are retired (ratified on PR #2185) ────────────────
+
+def test_production_status_constant_is_retired():
+    """Production must refuse Telegram grants; LEGACY_TEST is tests-only."""
+    src = Path(gra.__file__).read_text(encoding="utf-8")
+    assert 'TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"' in src
+
+
+def test_retired_mint_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    with pytest.raises(ValueError, match="retired"):
+        gra.mint_request("git-push", seconds=600, uses=1, reason="should refuse")
+
+
+def test_retired_verify_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.verify_and_consume("ABC123", chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
+
+
+def test_retired_button_approve_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.settle_by_request_id(
+        "deadbeef", approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
+
+
+def test_retired_leftover_pending_row_never_approves_but_deny_clears_it(monkeypatch: pytest.MonkeyPatch):
+    """A PENDING row minted before retirement must not become a grant by tap or by code,
+    and must stay PENDING (not spent) until the operator denies it or it expires."""
+    req = _mint()  # minted under LEGACY_TEST, i.e. a row left over from before retirement
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+
+    tap = gra.settle_by_request_id(req["request_id"], approve=True,
+                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert tap["ok"] is False and tap["reason"] == "TELEGRAM_GRANT_RETIRED"
+    code = gra.verify_and_consume(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert code["ok"] is False and code["reason"] == "TELEGRAM_GRANT_RETIRED"
+    row = next(r for r in gra._load()["requests"] if r["request_id"] == req["request_id"])
+    assert row["status"] == "PENDING"
+
+    deny_tap = gra.settle_by_request_id(req["request_id"], approve=False,
+                                        chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert deny_tap["ok"] is True and deny_tap["request"]["status"] == "DENIED_BY_OPERATOR"
+
+
+def test_retired_deny_by_code_still_clears_a_leftover_row(monkeypatch: pytest.MonkeyPatch):
+    req = _mint()
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.deny(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is True and out["request"]["status"] == "DENIED_BY_OPERATOR"
+
+
+def test_retired_unlisted_chat_is_still_refused_first(monkeypatch: pytest.MonkeyPatch):
+    """Retirement does not leak through the allowlist: an unlisted chat still gets CHAT_NOT_ALLOWED."""
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.settle_by_request_id("deadbeef", approve=True, chat_id=OTHER, allowed_chats=ALLOWED)
+    assert out["ok"] is False and out["reason"] == "CHAT_NOT_ALLOWED"
+
+
+def test_retired_guard_request_cli_refuses_and_sends_nothing(monkeypatch: pytest.MonkeyPatch, capsys):
+    """`bin/guard request` (scripts/guard_request_approval.py) exits 2, mints nothing, sends nothing."""
+    import sys
+
+    import guard_request_approval as g
+
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    monkeypatch.setattr(g, "_send", lambda *a, **k: pytest.fail("a retired request must not reach Telegram"))
+    monkeypatch.setattr(sys, "argv", ["guard_request_approval.py", "git-push", "--for", "30m",
+                                      "--reason", "should refuse"])
+    assert g.main() == 2
+    err = capsys.readouterr().err
+    assert "REFUSED" in err and "retired" in err.lower() and "bin/guard grant" in err
+    assert not gra.requests_path().exists() or not gra._load()["requests"]
 
 
 # ── the plaintext code never lands on disk ───────────────────────────────────

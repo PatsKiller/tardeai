@@ -465,6 +465,21 @@ def parse_guard_reason(reason: str) -> Optional[dict[str, str]]:
     return None
 
 
+def guard_bridge_retired() -> bool:
+    """True while Telegram remote guard grants are retired (operator-ratified on PR #2185).
+
+    The bridge asks for a short ``telegram`` guard grant and a tap issues it through
+    ``bin/guard grant`` — a Telegram-issued guard grant, which is exactly what the
+    retirement refuses. Callers default to the native ``prmapprove`` path instead,
+    which grants nothing (AGENTS.md §25.10: the digest, or a per-PR Approve).
+    """
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra  # type: ignore
+    return bool(gra.telegram_remote_grants_retired())
+
+
 def mint_and_notify_via_guard(
     *,
     pr_number: int,
@@ -480,7 +495,21 @@ def mint_and_notify_via_guard(
 
     The short ``telegram`` grant proves the tap; it is not used for anything else.
     A waiter (``wait_guard_and_apply``) then adds ``operator-merge``.
+
+    RETIRED with Telegram remote guard grants (PR #2185): refuses before minting
+    anything, so no undelivered PENDING row is left behind. Use ``mint_and_notify``.
     """
+    if guard_bridge_retired():
+        return {
+            "ok": False,
+            "pr_number": pr_number,
+            "via": "guard",
+            "reason": "GUARD_BRIDGE_RETIRED",
+            "telegram": "not sent: the guard bridge needs a Telegram guard grant, which is retired "
+            "(PR #2185); use the native prmapprove path (--native / PR_MERGE_TELEGRAM_VIA_GUARD=0) "
+            "or the PR merge digest",
+            **({"dry_run": True, "would_send": False} if dry_run else {}),
+        }
     if dry_run:
         return {
             "ok": True,

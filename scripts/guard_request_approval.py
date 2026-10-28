@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """guard_request_approval.py — ask the operator, by Telegram, to open a guard scope.
 
+RETIRED (operator-ratified on PR #2185,
+``APPROVE_AGENTS_POLICY_23_0_0 2185 c366dd8d165c7eedf286d18604af8b0a11fe85db``):
+Telegram may never issue a guard grant. While
+``guard_remote_approval.TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"`` this exits 2
+with the retirement message and mints and sends nothing; ``--dry-run`` says so.
+The operator grants at the host keyboard (``bin/guard grant``) or on
+Ops → Controls (passkey). What follows describes the legacy mechanics, which
+tests still exercise under ``LEGACY_TEST``.
+
 Agent-callable. Grants nothing. It mints a PENDING request, sends the operator a
 message describing exactly what is being asked for, and exits.
 
@@ -163,6 +172,10 @@ def main() -> int:
     seconds = parse_duration(args.window)
     ttl = parse_duration(args.ttl)
 
+    if args.dry_run and gra.telegram_remote_grants_retired():
+        print(f"WOULD REFUSE   scope={args.scope}  (Telegram remote grants are retired)")
+        print(f"               {gra.RETIRED_MSG}")
+        return 0
     if args.dry_run:
         print(f"WOULD REQUEST  scope={args.scope}  window={seconds}s  uses={args.uses}")
         print(f"               reason={args.reason}")

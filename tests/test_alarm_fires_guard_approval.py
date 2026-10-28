@@ -30,7 +30,13 @@ COVERS = ["scripts/guard_request_approval.py"]
 
 @pytest.fixture
 def sent(tmp_path, monkeypatch):
-    """Isolate the approvals store and capture the transport."""
+    """Isolate the approvals store and capture the transport.
+
+    Production refuses Telegram grants (TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"); these
+    legacy delivery pins run under LEGACY_TEST so the alarm path stays covered.
+    """
+    from scripts.lib import guard_remote_approval as gra
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
     captured: list[str] = []
 
@@ -96,6 +102,8 @@ def test_a_failed_send_is_reported_not_swallowed(tmp_path, monkeypatch, capsys):
     """A send that fails must be loud. Silence here looks exactly like an
     operator who declined to answer."""
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
+    from scripts.lib import guard_remote_approval as gra
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     import telegram_alert
     monkeypatch.setattr(telegram_alert, "send_telegram",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network down")))
