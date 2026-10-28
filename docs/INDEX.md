@@ -2286,6 +2286,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-handoff.md` | WP-33 registry/n8n stale-set rebuild |
 | `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) |
 | `docs/ops/packets/moomoo-retirement-reconcile-20261023/README.md` | WP-30: moomoo retirement decision packet |
+| `docs/ops/packets/n8n-app-role-20261027/README.md` | n8n_app least-privilege packet 2026-10-27: n8n stops connecting to its database as a superuser (AGENTS §23.10 P13) |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/04_rollback.md` | Rollback |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md` | n8n comms-intent consumer — operator packet (2026-10-15) |
