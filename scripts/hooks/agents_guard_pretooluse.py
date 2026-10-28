@@ -233,8 +233,11 @@ def grant_active(rules: Rules, tier: str, now: float) -> tuple[bool, str]:
     # Ledger schema v2 (2026-10-21): rows keyed "<tier>@<grant_id>" with a status; a v1 entry is
     # keyed by the tier itself. Same rule as guard_ledger.row_is_active, and the same refusal of a
     # tier with more than one active row (ambiguous) -- grants are never unioned.
-    recs = [rec for key, rec in doc.items()
-            if isinstance(key, str) and (key == tier or ("@" in key and key.split("@", 1)[0] == tier))]
+    recs = [
+        rec
+        for key, rec in doc.items()
+        if isinstance(key, str) and (key == tier or ("@" in key and key.split("@", 1)[0] == tier))
+    ]
     if not recs:
         return False, "no_grant"
     active = 0
@@ -242,8 +245,11 @@ def grant_active(rules: Rules, tier: str, now: float) -> tuple[bool, str]:
         if not isinstance(rec, dict):
             return False, "ledger_unreadable"
         try:
-            if (rec.get("status", "active") == "active" and int(rec.get("expires") or 0) > now
-                    and int(rec.get("uses") or 0) != 0):
+            if (
+                rec.get("status", "active") == "active"
+                and int(rec.get("expires") or 0) > now
+                and int(rec.get("uses") or 0) != 0
+            ):
                 active += 1
         except (TypeError, ValueError):
             return False, "ledger_unreadable"
@@ -1427,7 +1433,7 @@ def run(stdin_text: str, now: float | None = None) -> tuple[str, list[dict], str
         if denied:
             g = (
                 f" No active '{f['grant_tier']}' grant ({f['grant_state']}); hand the operator the exact"
-                f" `bin/guard grant {f['grant_tier']} --for <dur> --uses <n> --reason \"...\"` command for the"
+                f' `bin/guard grant {f["grant_tier"]} --for <dur> --uses <n> --reason "..."` command for the'
                 f" keyboard, or ask for it on Ops → Controls (Telegram grants are retired)."
                 if f["grant_tier"]
                 else ""

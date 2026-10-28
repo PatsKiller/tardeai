@@ -11,6 +11,7 @@ Uses flock to prevent duplicate instances.
 
 Paper mode only. No live trading.
 """
+
 import json, logging, os, sys, time
 import urllib.request
 from datetime import datetime
@@ -20,6 +21,7 @@ from urllib.parse import urlencode
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from dotenv import load_dotenv
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [tg-poller] %(message)s")
@@ -59,6 +61,7 @@ def _inbound_api():
             quarantine_callback,
         )
         from scripts.lib.comms.client import publish_communication
+
         return {
             "build_inbound_event": build_inbound_event,
             "claim_update": claim_update,
@@ -140,6 +143,7 @@ def _allowed_chats():
 def poll_once(timeout=25):
     """Single long-poll iteration. Returns number of updates processed."""
     import urllib.request
+
     token = _token()
     if not token:
         log.error("No TELEGRAM_BOT_TOKEN")
@@ -153,11 +157,14 @@ def poll_once(timeout=25):
     else:
         offset = _get_offset()
     from urllib.parse import urlencode
-    params = urlencode({
-        "offset": offset + 1,
-        "timeout": timeout,
-        "allowed_updates": json.dumps(["callback_query", "message"]),
-    })
+
+    params = urlencode(
+        {
+            "offset": offset + 1,
+            "timeout": timeout,
+            "allowed_updates": json.dumps(["callback_query", "message"]),
+        }
+    )
     url = f"https://api.telegram.org/bot{token}/getUpdates?{params}"
 
     try:
@@ -230,6 +237,7 @@ def poll_once(timeout=25):
             if chat_id in allowed:
                 try:
                     from telegram_callback_handler import handle_callback_query
+
                     outcome = handle_callback_query(cb)
                     processed += 1
                     log.info(_callback_log_line(cb.get("data", "?"), chat_id, outcome))
@@ -253,16 +261,24 @@ def poll_once(timeout=25):
         lower = text.lower()
         handled = False
         # Proposal commands
-        if lower.startswith("/ptapprove") or lower.startswith("/ptreject") or \
-           lower.startswith("/ptpending") or lower.startswith("/ptstatus"):
+        if (
+            lower.startswith("/ptapprove")
+            or lower.startswith("/ptreject")
+            or lower.startswith("/ptpending")
+            or lower.startswith("/ptstatus")
+        ):
             try:
                 _handle_proposal_command(msg, text, chat_id)
                 handled = True
             except Exception as e:
                 log.error(f"command error: {e}")
         # Stop decision commands
-        elif lower.startswith("/stopexit") or lower.startswith("/stophold") or \
-             lower.startswith("/stopdelay") or lower.startswith("/stopset"):
+        elif (
+            lower.startswith("/stopexit")
+            or lower.startswith("/stophold")
+            or lower.startswith("/stopdelay")
+            or lower.startswith("/stopset")
+        ):
             try:
                 _handle_stop_command(msg, text, chat_id)
                 handled = True
@@ -334,13 +350,18 @@ def poll_once(timeout=25):
                 from scripts.lib import cio_poller_reply
 
                 ans = cio_poller_reply.maybe_answer(
-                    msg, text=text, chat_id=chat_id, token=token,
+                    msg,
+                    text=text,
+                    chat_id=chat_id,
+                    token=token,
                     allowlist=allowed,
                 )
                 if ans.get("answered"):
                     processed += 1
                     if ans.get("delivered") is False:
-                        log.error(f"reply NOT delivered (status={ans.get('delivery_status')}): {text[:40]} from chat={chat_id}")
+                        log.error(
+                            f"reply NOT delivered (status={ans.get('delivery_status')}): {text[:40]} from chat={chat_id}"
+                        )
                     else:
                         log.info(f"replied: {text[:40]} from chat={chat_id}")
                 elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
@@ -358,6 +379,7 @@ def poll_once(timeout=25):
 
 def _is_digest_hold_text(lower):
     import re as _re
+
     return bool(_re.match(r"^\s*(hold|unhold|include)\s+#?\d+[\s,#\d]*$", lower or ""))
 
 
@@ -368,8 +390,7 @@ def _handle_digest_hold(msg, text, chat_id, allowed):
     except ImportError:
         from lib import pr_merge_digest as _pmd  # type: ignore
     reply_to = (msg.get("reply_to_message") or {}).get("message_id")
-    reply = _pmd.handle_text_command(text, chat_id=chat_id, allowed_chats=allowed,
-                                     reply_to_message_id=reply_to)
+    reply = _pmd.handle_text_command(text, chat_id=chat_id, allowed_chats=allowed, reply_to_message_id=reply_to)
     if reply and not _post_message(chat_id, reply, reply_to_message_id=msg.get("message_id")):
         log.error("digest hold reply send failed")
 
@@ -377,6 +398,7 @@ def _handle_digest_hold(msg, text, chat_id, allowed):
 def _handle_proposal_command(msg, text, chat_id):
     """Route /pt* commands through the command handler."""
     import urllib.request
+
     token = _token()
     lower = text.lower()
     message_id = msg.get("message_id")
@@ -387,15 +409,18 @@ def _handle_proposal_command(msg, text, chat_id):
     pid_from_reply = None
     if reply_msg_id:
         from telegram_callback_handler import resolve_proposal_from_reply
+
         pid_from_reply = resolve_proposal_from_reply(chat_id, reply_msg_id)
 
     response = None
 
     if lower.startswith("/ptpending"):
         from telegram_callback_handler import _tg_post
+
         # Use the existing pending handler
         try:
             from paper_trade_logger import get_pending_proposals
+
             proposals = get_pending_proposals()
             if not proposals:
                 response = "No PENDING proposals."
@@ -405,22 +430,26 @@ def _handle_proposal_command(msg, text, chat_id):
                     lines.append(
                         f"`#{p['id']}` *{p['symbol']}* `{p.get('strategy_id', '?')}` "
                         f"${float(p.get('proposed_entry', 0)):.2f} "
-                        f"{p.get('proposed_shares', 0)}sh")
+                        f"{p.get('proposed_shares', 0)}sh"
+                    )
                 response = "\n".join(lines)
         except Exception as e:
             response = f"Error: {e}"
 
     elif lower.startswith("/ptstatus"):
         import re
-        m = re.search(r'/ptstatus\s+(\d+)', text)
+
+        m = re.search(r"/ptstatus\s+(\d+)", text)
         if m:
             from proposal_alerter import build_proposal_info
+
             response = build_proposal_info(int(m.group(1)))
         else:
             response = "Usage: `/ptstatus 1234`"
 
     elif lower.startswith("/ptapprove"):
         from telegram_callback_handler import parse_pt_command, _run_approve
+
         pid, overrides = parse_pt_command(text, pid_from_reply)
         if pid is None:
             response = "Reply to a proposal alert OR: `/ptapprove 1234 shares=200`"
@@ -430,20 +459,23 @@ def _handle_proposal_command(msg, text, chat_id):
             result = _run_approve(pid, user_id, overrides)
             if result.get("ok"):
                 ov = ", ".join(f"{k}={v}" for k, v in overrides.items()) if overrides else "as proposed"
-                response = (f"\u2705 *APPROVED by {user_name}* ({ov})\n"
-                           f"{result.get('symbol', '?')}: shares={result.get('shares')} "
-                           f"entry=${result.get('entry_price', 0):.2f} "
-                           f"stop=${result.get('stop_price', 0):.2f} "
-                           f"target=${result.get('target_price', 0):.2f}\n"
-                           f"Risk gate: {result.get('risk_gate_decision', '?')}")
+                response = (
+                    f"\u2705 *APPROVED by {user_name}* ({ov})\n"
+                    f"{result.get('symbol', '?')}: shares={result.get('shares')} "
+                    f"entry=${result.get('entry_price', 0):.2f} "
+                    f"stop=${result.get('stop_price', 0):.2f} "
+                    f"target=${result.get('target_price', 0):.2f}\n"
+                    f"Risk gate: {result.get('risk_gate_decision', '?')}"
+                )
             else:
                 response = f"\u274c *FAILED*: {result.get('error', 'unknown')}"
 
     elif lower.startswith("/ptreject"):
         import re
         from telegram_callback_handler import parse_pt_command, _run_reject
+
         pid, _ = parse_pt_command(text, pid_from_reply)
-        reason_m = re.search(r'/ptreject\s+(?:\d+\s+)?(.+)?$', text)
+        reason_m = re.search(r"/ptreject\s+(?:\d+\s+)?(.+)?$", text)
         reason = (reason_m.group(1) or "").strip() if reason_m else ""
         if pid is None:
             response = "Reply to a proposal alert OR: `/ptreject 1234 reason`"
@@ -475,6 +507,7 @@ def _handle_stop_command(msg, text, chat_id):
             response = "Usage: /stopexit SYMBOL"
         else:
             from telegram_callback_handler import _handle_stop_decision
+
             result = _handle_stop_decision(sym, "EXIT", user_id, "operator honored stop via /stopexit")
             if result.get("ok"):
                 response = f"STOP HONORED -- {sym} marked for exit by {user_name}"
@@ -487,6 +520,7 @@ def _handle_stop_command(msg, text, chat_id):
             response = "Usage: /stophold SYMBOL"
         else:
             from telegram_callback_handler import _handle_stop_decision
+
             result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, "operator override via /stophold")
             if result.get("ok"):
                 response = f"OVERRIDE -- {sym} held by {user_name}, watching"
@@ -500,6 +534,7 @@ def _handle_stop_command(msg, text, chat_id):
             response = "Usage: /stopdelay SYMBOL [minutes]"
         else:
             from telegram_callback_handler import _handle_stop_snooze
+
             result = _handle_stop_snooze(sym, mins, user_id)
             if result.get("ok"):
                 response = f"POSTPONED -- {sym} snoozed {mins} min"
@@ -521,6 +556,7 @@ def _handle_stop_command(msg, text, chat_id):
         else:
             try:
                 from db_adapter import _get_conn
+
                 conn = _get_conn()
                 cur = conn.cursor()
                 cur.execute("SELECT id, stop_loss FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", (sym,))
@@ -547,6 +583,7 @@ _atm_pending_confirm = {}  # chat_id -> (timestamp, action)
 def _handle_atm_command(msg, text, chat_id):
     """Handle /atm commands."""
     import urllib.request, time as _time
+
     token = _token()
     message_id = msg.get("message_id")
     parts = text.strip().split()
@@ -557,25 +594,33 @@ def _handle_atm_command(msg, text, chat_id):
     if sub == "status":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
-            cur.execute("SELECT mode, paused_until, last_state_change_at, last_state_change_by, last_evaluated_at, config_hash FROM atm_state WHERE id=1")
+            cur.execute(
+                "SELECT mode, paused_until, last_state_change_at, last_state_change_by, last_evaluated_at, config_hash FROM atm_state WHERE id=1"
+            )
             r = cur.fetchone()
-            mode, pu, lsc, lscb, le, ch = r if r else ("?",)*6
+            mode, pu, lsc, lscb, le, ch = r if r else ("?",) * 6
             cur.execute("SELECT account_label, enabled FROM accounts ORDER BY id")
             accts = cur.fetchall()
             acct_lines = "\n".join(f"  {a[0]}: {'ON' if a[1] else 'off'}" for a in accts)
             le_age = ""
             if le:
                 from datetime import datetime, timezone
-                age_min = (datetime.now(timezone.utc) - le.replace(tzinfo=timezone.utc if le.tzinfo is None else le.tzinfo)).total_seconds() / 60
+
+                age_min = (
+                    datetime.now(timezone.utc) - le.replace(tzinfo=timezone.utc if le.tzinfo is None else le.tzinfo)
+                ).total_seconds() / 60
                 le_age = f" ({age_min:.0f}m ago)"
-            response = (f"ATM Status: {mode.upper()}\n"
-                        f"Paused until: {pu or 'n/a'}\n"
-                        f"Last change: {lscb} at {str(lsc)[:19]}\n"
-                        f"Last evaluated: {str(le)[:19]}{le_age}\n"
-                        f"Config hash: {ch or 'none'}\n"
-                        f"Accounts:\n{acct_lines}")
+            response = (
+                f"ATM Status: {mode.upper()}\n"
+                f"Paused until: {pu or 'n/a'}\n"
+                f"Last change: {lscb} at {str(lsc)[:19]}\n"
+                f"Last evaluated: {str(le)[:19]}{le_age}\n"
+                f"Config hash: {ch or 'none'}\n"
+                f"Accounts:\n{acct_lines}"
+            )
         except Exception as e:
             response = f"ATM status error: {e}"
 
@@ -583,21 +628,31 @@ def _handle_atm_command(msg, text, chat_id):
         _atm_pending_confirm[chat_id] = (_time.time(), "atm_on")
         try:
             from atm_config_manager import get_enabled_accounts
+
             ea = get_enabled_accounts()
-            response = (f"ATM will be set to ACTIVE across {len(ea)} account(s): {', '.join(ea)}\n\n"
-                        f"Reply YES within 30 seconds to confirm.")
+            response = (
+                f"ATM will be set to ACTIVE across {len(ea)} account(s): {', '.join(ea)}\n\n"
+                f"Reply YES within 30 seconds to confirm."
+            )
         except Exception as e:
             response = f"Error: {e}"
 
     elif sub == "off":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
             old = cur.fetchone()[0]
-            cur.execute("UPDATE atm_state SET mode='disabled', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
-            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'disabled', %s)", (old, f"telegram:{chat_id}"))
+            cur.execute(
+                "UPDATE atm_state SET mode='disabled', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                (f"telegram:{chat_id}",),
+            )
+            cur.execute(
+                "INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'disabled', %s)",
+                (old, f"telegram:{chat_id}"),
+            )
             conn.commit()
             response = "ATM DISABLED"
         except Exception as e:
@@ -606,12 +661,19 @@ def _handle_atm_command(msg, text, chat_id):
     elif sub == "dryrun":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
             old = cur.fetchone()[0]
-            cur.execute("UPDATE atm_state SET mode='dry_run', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
-            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'dry_run', %s)", (old, f"telegram:{chat_id}"))
+            cur.execute(
+                "UPDATE atm_state SET mode='dry_run', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                (f"telegram:{chat_id}",),
+            )
+            cur.execute(
+                "INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'dry_run', %s)",
+                (old, f"telegram:{chat_id}"),
+            )
             conn.commit()
             response = "ATM set to DRY_RUN mode (evaluates but does not approve)"
         except Exception as e:
@@ -621,8 +683,10 @@ def _handle_atm_command(msg, text, chat_id):
         duration = parts[2] if len(parts) > 2 else "4h"
         try:
             from datetime import datetime, timezone, timedelta
+
             if duration == "until-tomorrow":
                 import pytz
+
                 et = pytz.timezone("US/Eastern")
                 tomorrow = datetime.now(et).replace(hour=9, minute=30, second=0) + timedelta(days=1)
                 pu = tomorrow.astimezone(timezone.utc)
@@ -631,14 +695,19 @@ def _handle_atm_command(msg, text, chat_id):
             else:
                 pu = datetime.now(timezone.utc) + timedelta(hours=4)
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
             old = cur.fetchone()[0]
-            cur.execute("UPDATE atm_state SET mode='paused', paused_until=%s, pause_reason=%s, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
-                        (pu, f"telegram_pause_{duration}", f"telegram:{chat_id}"))
-            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by, reason) VALUES (%s, 'paused', %s, %s)",
-                        (old, f"telegram:{chat_id}", f"pause_{duration}"))
+            cur.execute(
+                "UPDATE atm_state SET mode='paused', paused_until=%s, pause_reason=%s, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                (pu, f"telegram_pause_{duration}", f"telegram:{chat_id}"),
+            )
+            cur.execute(
+                "INSERT INTO atm_state_events (old_mode, new_mode, changed_by, reason) VALUES (%s, 'paused', %s, %s)",
+                (old, f"telegram:{chat_id}", f"pause_{duration}"),
+            )
             conn.commit()
             response = f"ATM PAUSED until {str(pu)[:19]} UTC"
         except Exception as e:
@@ -647,12 +716,19 @@ def _handle_atm_command(msg, text, chat_id):
     elif sub == "resume":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
             old = cur.fetchone()[0]
-            cur.execute("UPDATE atm_state SET mode='active', paused_until=NULL, pause_reason=NULL, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
-            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)", (old, f"telegram:{chat_id}"))
+            cur.execute(
+                "UPDATE atm_state SET mode='active', paused_until=NULL, pause_reason=NULL, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                (f"telegram:{chat_id}",),
+            )
+            cur.execute(
+                "INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)",
+                (old, f"telegram:{chat_id}"),
+            )
             conn.commit()
             response = "ATM RESUMED (ACTIVE)"
         except Exception as e:
@@ -662,9 +738,13 @@ def _handle_atm_command(msg, text, chat_id):
         n = min(int(parts[2]), 20) if len(parts) > 2 and parts[2].isdigit() else 10
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
-            cur.execute("SELECT decided_at, symbol, strategy_id, target_account, decision FROM atm_decision_log ORDER BY decided_at DESC LIMIT %s", (n,))
+            cur.execute(
+                "SELECT decided_at, symbol, strategy_id, target_account, decision FROM atm_decision_log ORDER BY decided_at DESC LIMIT %s",
+                (n,),
+            )
             rows = cur.fetchall()
             if not rows:
                 response = "No ATM decisions yet."
@@ -679,6 +759,7 @@ def _handle_atm_command(msg, text, chat_id):
     elif sub == "accounts":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("SELECT account_label, broker, mode, enabled, auto_execution_capable FROM accounts ORDER BY id")
@@ -695,6 +776,7 @@ def _handle_atm_command(msg, text, chat_id):
     elif sub == "queue":
         try:
             from db_adapter import _get_conn
+
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute("""
@@ -718,6 +800,7 @@ def _handle_atm_command(msg, text, chat_id):
         try:
             from atm_config_manager import load_config
             import yaml
+
             cfg, h = load_config()
             txt = yaml.dump(cfg, default_flow_style=False)
             if len(txt) > 3800:
@@ -727,10 +810,12 @@ def _handle_atm_command(msg, text, chat_id):
             response = f"Error: {e}"
 
     else:
-        response = ("ATM commands:\n"
-                     "/atm status\n/atm on\n/atm off\n/atm dryrun\n"
-                     "/atm pause [4h|24h|until-tomorrow]\n/atm resume\n"
-                     "/atm config\n/atm last [N]\n/atm accounts\n/atm queue")
+        response = (
+            "ATM commands:\n"
+            "/atm status\n/atm on\n/atm off\n/atm dryrun\n"
+            "/atm pause [4h|24h|until-tomorrow]\n/atm resume\n"
+            "/atm config\n/atm last [N]\n/atm accounts\n/atm queue"
+        )
 
     # Check for YES confirmation
     if text.strip().upper() == "YES" and chat_id in _atm_pending_confirm:
@@ -739,12 +824,19 @@ def _handle_atm_command(msg, text, chat_id):
             del _atm_pending_confirm[chat_id]
             try:
                 from db_adapter import _get_conn
+
                 conn = _get_conn()
                 cur = conn.cursor()
                 cur.execute("SELECT mode FROM atm_state WHERE id=1")
                 old = cur.fetchone()[0]
-                cur.execute("UPDATE atm_state SET mode='active', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
-                cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)", (old, f"telegram:{chat_id}"))
+                cur.execute(
+                    "UPDATE atm_state SET mode='active', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                    (f"telegram:{chat_id}",),
+                )
+                cur.execute(
+                    "INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)",
+                    (old, f"telegram:{chat_id}"),
+                )
                 conn.commit()
                 response = "ATM ACTIVATED"
             except Exception as e:
@@ -759,6 +851,7 @@ def _handle_atm_command(msg, text, chat_id):
 
 
 # ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
+
 
 def _handle_llm_caps(msg, text, chat_id):
     """`/caps` to list, `/cap <process_id> <requests> [dollars]` to set.
@@ -788,7 +881,8 @@ def _handle_llm_caps(msg, text, chat_id):
             host=os.environ.get("DB_HOST", "localhost"),
             dbname=os.environ.get("DB_NAME", "trade_ai"),
             user=os.environ.get("DB_USER", "trade_ai"),
-            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"))
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+        )
     except Exception as exc:
         _send(chat_id, f"caps: database unavailable ({type(exc).__name__})")
         return
@@ -803,11 +897,14 @@ def _handle_llm_caps(msg, text, chat_id):
                     continue
                 flag = "  ⚠️ REGISTRY DISAGREES" if r["drift"] else ""
                 lines.append(f"`{r['process_id']}`  {r['db_requests']} / ${r['db_dollars']}{flag}")
-            lines += ["", "Set with: `/cap <process_id> <requests> [dollars]`",
-                      f"Ceilings: {MAX_REQUESTS} requests, ${MAX_DOLLARS}",
-                      "",
-                      "The GLOBAL cap (LLM_GLOBAL_DAILY_USD_CAP) is not settable here —",
-                      "it lives in the bridge's environment and needs a restart."]
+            lines += [
+                "",
+                "Set with: `/cap <process_id> <requests> [dollars]`",
+                f"Ceilings: {MAX_REQUESTS} requests, ${MAX_DOLLARS}",
+                "",
+                "The GLOBAL cap (LLM_GLOBAL_DAILY_USD_CAP) is not settable here —",
+                "it lives in the bridge's environment and needs a restart.",
+            ]
             _send(chat_id, "\n".join(lines)[:3800])
             return
 
@@ -822,18 +919,19 @@ def _handle_llm_caps(msg, text, chat_id):
             _send(chat_id, "requests must be a whole number, dollars a decimal")
             return
 
-        res = set_caps(pid, requests=reqs, dollars=dollars, conn=conn,
-                       actor=f"telegram:{chat_id}")
+        res = set_caps(pid, requests=reqs, dollars=dollars, conn=conn, actor=f"telegram:{chat_id}")
         if not res.get("ok"):
             _send(chat_id, f"caps NOT changed: {res.get('error')}")
             return
         b, a = res["before"], res["after"]
-        _send(chat_id,
-              f"*{pid}* updated\n"
-              f"was: {b['requests']} / ${b['dollars']}\n"
-              f"now: {a['requests']} / ${a['dollars']}\n\n"
-              f"Registry and database both written. Revert with:\n"
-              f"`/cap {pid} {b['requests']} {b['dollars']}`")
+        _send(
+            chat_id,
+            f"*{pid}* updated\n"
+            f"was: {b['requests']} / ${b['dollars']}\n"
+            f"now: {a['requests']} / ${a['dollars']}\n\n"
+            f"Registry and database both written. Revert with:\n"
+            f"`/cap {pid} {b['requests']} {b['dollars']}`",
+        )
     finally:
         try:
             conn.close()
@@ -860,7 +958,7 @@ def _handle_guard_approval(msg, text, chat_id):
     try:
         from scripts.lib import guard_remote_approval as gra
     except ImportError:
-        from lib import guard_remote_approval as gra          # type: ignore
+        from lib import guard_remote_approval as gra  # type: ignore
 
     parts = text.strip().split()
     verb = parts[0].lower().lstrip("/")
@@ -868,8 +966,7 @@ def _handle_guard_approval(msg, text, chat_id):
     reply_to = (msg or {}).get("message_id")
 
     if not re.fullmatch(r"[A-Za-z0-9]{4,12}", code or ""):
-        _send_reply(chat_id, reply_to,
-                    "⚠️ Usage: `/approve <CODE>` or `/deny <CODE>`")
+        _send_reply(chat_id, reply_to, "⚠️ Usage: `/approve <CODE>` or `/deny <CODE>`")
         return
 
     allowed = _allowed_chats()
@@ -878,20 +975,23 @@ def _handle_guard_approval(msg, text, chat_id):
         out = gra.deny(code, chat_id=chat_id, allowed_chats=allowed)
         if out.get("ok"):
             r = out["request"]
-            _send_reply(chat_id, reply_to,
-                        f"\U0001f6d1 Denied `{r['scope']}`. Nothing was granted.")
+            _send_reply(chat_id, reply_to, f"\U0001f6d1 Denied `{r['scope']}`. Nothing was granted.")
         else:
             _send_reply(chat_id, reply_to, f"⚠️ Not denied: {out.get('reason')}")
         return
 
     frm = (msg or {}).get("from") or {}
     out = gra.verify_and_consume(
-        code, chat_id=chat_id, allowed_chats=allowed,
-        telegram={"update_id": (msg or {}).get("_update_id"),
-                  "message_id": reply_to,
-                  "from_id": frm.get("id"),
-                  "from_username": frm.get("username"),
-                  "text": text[:200]},
+        code,
+        chat_id=chat_id,
+        allowed_chats=allowed,
+        telegram={
+            "update_id": (msg or {}).get("_update_id"),
+            "message_id": reply_to,
+            "from_id": frm.get("id"),
+            "from_username": frm.get("username"),
+            "text": text[:200],
+        },
     )
     if not out.get("ok") and out.get("reason") == "ACTIVE_GRANT_EXISTS":
         # One active grant per tier: a phone approval never replaces one (operator 2026-10-21).
@@ -912,42 +1012,56 @@ def _handle_guard_approval(msg, text, chat_id):
     guard_bin = Path(__file__).resolve().parent.parent / "bin" / "guard"
     if not guard_bin.is_file():
         gra.reopen_after_grant_failure(r["request_id"], detail=f"bin/guard not found at {guard_bin}")
-        _send_reply(chat_id, reply_to,
-                    f"⚠️ Approved, but `bin/guard` was not found at {guard_bin}. "
-                    "Nothing granted; the request is open again.")
+        _send_reply(
+            chat_id,
+            reply_to,
+            f"⚠️ Approved, but `bin/guard` was not found at {guard_bin}. Nothing granted; the request is open again.",
+        )
         log.error(f"guard binary missing at {guard_bin}")
         return
 
     # Bare seconds, no unit suffix — see parse_dur in bin/guard.
-    cmd = [str(guard_bin), "grant", r["scope"],
-           "--for", str(int(r["seconds"])),
-           "--uses", str(int(r["uses"])),
-           "--reason", reason,
-           "--yes"]
+    cmd = [
+        str(guard_bin),
+        "grant",
+        r["scope"],
+        "--for",
+        str(int(r["seconds"])),
+        "--uses",
+        str(int(r["uses"])),
+        "--reason",
+        reason,
+        "--yes",
+    ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        detail = "" if proc.returncode == 0 else \
-            f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()[:300]}"
-    except Exception as e:                                    # noqa: BLE001
+        detail = (
+            "" if proc.returncode == 0 else f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()[:300]}"
+        )
+    except Exception as e:  # noqa: BLE001
         detail = f"{type(e).__name__}: {e}"
 
     if detail:
         # Settled but not granted. Re-open the request (2026-10-22) so the same code works once the
         # cause is fixed, instead of leaving an APPROVED row with no grant behind it.
         reopened = gra.reopen_after_grant_failure(r["request_id"], detail=detail)
-        again = ("The request is open again: reply `/approve <CODE>` once fixed."
-                 if reopened.get("ok") else
-                 f"The request is closed ({reopened.get('reason')}); ask for a new one.")
+        again = (
+            "The request is open again: reply `/approve <CODE>` once fixed."
+            if reopened.get("ok")
+            else f"The request is closed ({reopened.get('reason')}); ask for a new one."
+        )
         _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed:\n`{detail}`\n{again}")
-        log.error(f"guard grant failed for request {r['request_id']}: {detail} "
-                  f"(reopened={bool(reopened.get('ok'))})")
+        log.error(f"guard grant failed for request {r['request_id']}: {detail} (reopened={bool(reopened.get('ok'))})")
         return
 
     mins = int(r["seconds"]) // 60
-    _send_reply(chat_id, reply_to,
-                f"✅ Granted `{r['scope']}` for {mins} min, {r['uses']} uses.\n"
-                f"Revoke any time with `/deny` on a new request, or "
-                f"`bin/guard revoke {r['scope']}` at the machine.")
+    _send_reply(
+        chat_id,
+        reply_to,
+        f"✅ Granted `{r['scope']}` for {mins} min, {r['uses']} uses.\n"
+        f"Revoke any time with `/deny` on a new request, or "
+        f"`bin/guard revoke {r['scope']}` at the machine.",
+    )
     log.info(f"guard scope {r['scope']} granted remotely, request {r['request_id']}")
 
 
@@ -1016,45 +1130,55 @@ def _handle_schwab_callback(msg, text, chat_id):
 
     # Extract the full redirect URL (the user may have pasted extra text)
     import re as _re
-    url_match = _re.search(r'(https?://127\.0\.0\.1[^\s]*)', text)
+
+    url_match = _re.search(r"(https?://127\.0\.0\.1[^\s]*)", text)
     if not url_match:
-        _send_reply(chat_id, message_id,
-                    "❌ Could not find a valid `127.0.0.1?code=...` URL in your message.\n"
-                    "Please paste the FULL redirect URL from your browser's address bar.")
+        _send_reply(
+            chat_id,
+            message_id,
+            "❌ Could not find a valid `127.0.0.1?code=...` URL in your message.\n"
+            "Please paste the FULL redirect URL from your browser's address bar.",
+        )
         return
 
     redirect_url = url_match.group(1)
-    _send_reply(chat_id, message_id,
-                "⏳ Exchanging authorization code for a new 7-day token…")
+    _send_reply(chat_id, message_id, "⏳ Exchanging authorization code for a new 7-day token…")
 
     # Import and call exchange_code
     import schwab_token_manager as _tm
+
     result = _tm.exchange_code("schwab_taxable", redirect_url)
 
     if result.get("ok"):
         expiry = result.get("refresh_expires_at", "?")
-        _send_reply(chat_id, message_id,
-                    f"✅ Schwab token refreshed\\! Valid until *{expiry[:10]}*.\n"
-                    f"Next proactive reauth ≈ {expiry[:10] if expiry else '7 days'}.")
+        _send_reply(
+            chat_id,
+            message_id,
+            f"✅ Schwab token refreshed\\! Valid until *{expiry[:10]}*.\n"
+            f"Next proactive reauth ≈ {expiry[:10] if expiry else '7 days'}.",
+        )
         # Verify with live probe
         try:
             probe = _tm.live_probe("schwab_taxable")
             if probe and probe.get("live_ok"):
-                _send_reply(chat_id, message_id,
-                            "✓ Live probe passed — quotes, stops, and journal reads are restored.")
+                _send_reply(chat_id, message_id, "✓ Live probe passed — quotes, stops, and journal reads are restored.")
         except Exception:
             pass
     else:
         reason = result.get("reason", "unknown error")[:200]
-        _send_reply(chat_id, message_id,
-                    f"❌ Token exchange failed: `{reason}`\n"
-                    "The authorization code may have expired (codes are valid ~5 minutes).\n"
-                    "Restart the login and paste the new redirect URL promptly.")
+        _send_reply(
+            chat_id,
+            message_id,
+            f"❌ Token exchange failed: `{reason}`\n"
+            "The authorization code may have expired (codes are valid ~5 minutes).\n"
+            "Restart the login and paste the new redirect URL promptly.",
+        )
 
 
 def main():
     """Run continuous long-poll loop."""
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--once", action="store_true", help="Poll once and exit")
     p.add_argument("--daemon", action="store_true", help="Run continuous loop")

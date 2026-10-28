@@ -288,8 +288,11 @@ def test_request_pr_merge_approve_rerun_resends_over_an_old_bridge_row(pmt, monk
     view = {"number": 12, "title": "t", "url": "u", "headRefOid": "d" * 40, "state": "OPEN", "labels": [], "files": []}
     monkeypatch.setattr(rpa, "_pr_view", lambda pr, repo: view)
     sent: list[str] = []
-    monkeypatch.setattr(pmt, "send_interrupt", lambda text, kb: sent.append(kb["inline_keyboard"][0][0]["callback_data"])
-                        or (True, "delivered", ["3"]))
+    monkeypatch.setattr(
+        pmt,
+        "send_interrupt",
+        lambda text, kb: sent.append(kb["inline_keyboard"][0][0]["callback_data"]) or (True, "delivered", ["3"]),
+    )
     assert rpa.main(["--pr", "12", "--single", "--json"]) == 0
     assert len(sent) == 1 and sent[0].startswith("prmapprove:")
 
@@ -320,8 +323,14 @@ def _hook_deny_text(monkeypatch, tmp_path, cmd: str) -> str:
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path / "approvals"))
     monkeypatch.setenv("TRADEAI_AGENTS_GUARD_RULES", str(ROOT / "config" / "agents_guard_hook_rules.json"))
     monkeypatch.setenv("TRADEAI_AGENTS_GUARD_MODE", "deny")
-    payload = {"session_id": "s", "cwd": f"{home}/wt", "hook_event_name": "PreToolUse", "tool_name": "Bash",
-               "tool_input": {"command": cmd}, "transcript_path": "/dev/null"}
+    payload = {
+        "session_id": "s",
+        "cwd": f"{home}/wt",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": cmd},
+        "transcript_path": "/dev/null",
+    }
     out, _records, _ = hook.run(json.dumps(payload))
     assert out, f"expected a deny for {cmd!r}"
     return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
