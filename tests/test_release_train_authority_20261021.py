@@ -1041,6 +1041,9 @@ def test_libraries_are_wired_into_nothing():
         # Merge hold list (AGENTS.md §25.10 held classes, 2026-10-27): names release_control.py as a held path so a
         # change to the STOP latch merges only by the operator. A path in a hold list is not a caller.
         "config/merge_hold_paths.json",
+        # CI gate registration for the resume-settle tests (fix/release-stop-settle-20261028): names the test
+        # file, which names release_control. A gate list is not a caller.
+        "config/ci_gates/release_control_resume_settle_20261028.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
