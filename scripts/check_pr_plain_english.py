@@ -55,25 +55,26 @@ def _block(body: str) -> str | None:
     return None
 
 
-def _field_match(block: str, label: str):
-    return re.search(r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=\n\*\*[^*\n]+:\*\*|\Z)", block, re.S)
+def _field_match(block: str, label: str, *, heading: bool = False):
+    prefix = r"^[ \t]*(?:[-*+]\s+)?" if heading else ""
+    following = r"\n[ \t]*(?:[-*+]\s+)?\*\*[^*\n]+:\*\*" if heading else r"\n\*\*[^*\n]+:\*\*"
+    return re.search(prefix + r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=" + following + r"|\Z)", block, re.S | re.M)
 
 
 def fields(body: str) -> dict[str, str]:
     """Extract the six answers, including bodies using Markdown list bullets.
 
-    Validation retains its original acceptance rules. This structured view trims
-    a following bullet label out of the older match's captured value.
+    Validation retains its original acceptance rules. Structured extraction
+    matches actual heading lines, not a literal label mentioned inside an answer.
     """
     block = _block(body or "")
     if block is None:
         return {}
     out = {}
     for label in LABELS:
-        match = _field_match(block, label)
+        match = _field_match(block, label, heading=True)
         if match:
-            text = re.split(r"\n[ \t]*[-*+]\s+(?=\*\*[^*\n]+:\*\*)", match.group(1), maxsplit=1)[0]
-            out[label] = " ".join(text.split())
+            out[label] = " ".join(match.group(1).split())
     return out
 
 

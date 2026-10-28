@@ -69,7 +69,7 @@ def test_described_pr_has_all_card_fields_and_clean_headline(isolated):
     )
     result = digest.run_digest(apply=True)
     text = "\n".join(m["message"] for m in sent)
-    assert "#1 — Explain every proposed change clearly" in text
+    assert "*#1* — Explain every proposed change clearly" in text
     for prefix in ["What:", "Why:", "Affects:", "When:", "Fallback:", "Approval:", "Risk:"]:
         assert prefix in text
     assert "feat(" not in text and "DSN-" not in text and "[shared-infra]" not in text
@@ -158,7 +158,7 @@ def test_buttons_stay_beneath_a_ready_card_not_an_orphan_footer(isolated, count)
     prs, sent = isolated
     prs.extend(pr(n) for n in range(1, count + 1))
     digest.run_digest(apply=True)
-    assert f"#{count} —" in sent[-1]["message"]
+    assert f"*#{count}* —" in sent[-1]["message"]
     assert "What:" in sent[-1]["message"] and sent[-1]["reply_markup"]
 
 
@@ -219,6 +219,31 @@ def test_rewritten_description_replaces_prompt_without_changing_sha_signature(is
 def test_bulleted_answers_use_shared_parser_without_cross_field_text():
     assert not plain.check("This explains a synthetic change", body(bullets=True))
     assert plain.fields(body(bullets=True)) == ANSWERS
+
+
+def test_legacy_markdown_keeps_untrusted_title_outside_bold_and_preserves_backslashes(isolated):
+    prs, _ = isolated
+    prs.append(
+        pr(77, title="Explain 2*2 calculation clearly", text=body({"What changes": r"Reads C:\folder\name safely."}))
+    )
+    result = digest.run_digest(apply=False)
+    assert "*#77* — Explain 2\\*2 calculation clearly\n" in result["message"]
+    assert r"What: Reads C:\folder\name safely." in result["message"]
+
+
+@pytest.mark.parametrize("bullets", [False, True])
+def test_literal_field_label_inside_an_answer_cannot_replace_the_actual_field(isolated, bullets):
+    prs, _ = isolated
+    values = {
+        "What changes": "Adds the **Why:** field to each approval card.",
+        "Why": "Operators need the actual reason before approving a change.",
+    }
+    text = body(values, bullets=bullets)
+    assert not plain.check("This explains every proposed change", text)
+    assert plain.fields(text)["Why"] == values["Why"]
+    prs.append(pr(1, text=text))
+    result = digest.run_digest(apply=False)
+    assert "Why: Operators need the actual reason before approving a change." in result["message"]
 
 
 def test_real_pr_bodies_extract_their_original_what_answer():

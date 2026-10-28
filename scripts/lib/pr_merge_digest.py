@@ -325,7 +325,7 @@ def build_digest(repo: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
 def _esc(text: str) -> str:
     """Telegram legacy Markdown: neutralise the four control characters."""
-    return re.sub(r"([_*`\[])", r"\\\1", str(text or "").replace("\\", "\\\\"))
+    return re.sub(r"([_*`\[])", r"\\\1", str(text or ""))
 
 
 MAX_MESSAGE_CHARS = 3800  # headroom below Telegram's 4096 UTF-16-unit limit
@@ -359,7 +359,7 @@ def _card(item: dict[str, Any], cfg: dict[str, Any], excluded: set[int]) -> str:
     values = item.get("plain_english") or {}
     limit = max(1, int(cfg.get("plain_field_chars") or 160))
     mark = "⏸ HELD " if int(item["pr"]) in excluded else ""
-    lines = [f"{mark}*#{item['pr']} — {_esc(headline(item['title']))}*"]
+    lines = [f"{mark}*#{item['pr']}* — {_esc(headline(item['title']))}"]
     for label, field in (("What", "What changes"), ("Why", "Why"), ("Affects", "Who / what it affects"),
                          ("When", "When it takes effect"), ("Fallback", "Risk and fallback")):
         lines.append(f"{label}: {_esc(_trim(values[field], limit))}")
@@ -402,7 +402,7 @@ def format_digest_messages(d: dict[str, Any], cfg: dict[str, Any] | None = None)
     if d.get("not_described"):
         info = []
         for item in d["not_described"]:
-            info.append(f"*#{item['pr']} — {_esc(headline(item['title']))}*\n{_esc(item['body_excerpt'])}")
+            info.append(f"*#{item['pr']}* — {_esc(headline(item['title']))}\n{_esc(item['body_excerpt'])}")
         pack(info, "⚠️ *Not described — cannot approve until rewritten*", card_limit=None)
     if d.get("needs_operator"):
         pack([_card(item, cfg, excluded) for item in d["needs_operator"]], "🔒 *Needs operator merge* — no Approve here")
