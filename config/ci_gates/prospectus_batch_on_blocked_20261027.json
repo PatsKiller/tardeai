@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_batch_on_blocked_20261027",
+  "files": [
+    "tests/test_prospectus_batch_on_blocked_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_BATCH_ON_BLOCKED_20261027",
+  "comment": [
+    "ANCHOR: PROSPECTUS_BATCH_ON_BLOCKED_20261027 — a data-gate-blocked Watch row during batch submit parks the row instead of crashing the run (2026-10-27 20:29 ET run died with TypeError: handle_blocked() missing exc)."
+  ]
+}
