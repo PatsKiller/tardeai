@@ -98,8 +98,12 @@ def test_service_runs_the_drift_watch_live_on_the_host_and_pages_through_send_sy
     assert _values(svc, "Service", "SuccessExitStatus") == ["1"]  # 1 = drift found and paged; 2 = cannot run
     env = _values(svc, "Service", "Environment")
     assert "TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state" in env and "SYSTEM_TELEGRAM_ENABLED=1" in env
-    # least privilege: only the ops-bot file, never the full .env or the secrets render (broker credentials)
+    # the unit names only the ops-bot file. That is NOT least privilege: recording a page goes through
+    # db_adapter._get_conn, whose load_env(names=None) copies the whole secrets render outside bound mode. The unit
+    # comment must keep saying so until TRADEAI_ENV_BOUND_NAMES narrows it (review of 2026-10-27).
     assert _values(svc, "Service", "EnvironmentFile") == ["-%h/.config/tradeai/n8n/host-alert.env"]
+    text = svc.read_text(encoding="utf-8")
+    assert "NOT least privilege" in text and "TRADEAI_ENV_BOUND_NAMES" in text
     # the P1 path is the host SYSTEM ops transport, not n8n and not the n8n-fired fan-in
     sender = PG.default_sender()
     assert sender.__name__ == "send_system" and sender.__module__.endswith("autonomy_watchdog.telegram_system")

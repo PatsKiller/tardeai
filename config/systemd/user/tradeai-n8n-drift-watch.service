@@ -10,13 +10,20 @@
 # python3 scripts/n8n_drift_watch.py (no --live).
 [Unit]
 Description=Trade AI n8n workflow drift watch (host schedule, P1 on drift) - FW-P3
+# Kept identical to the packet copy, but it orders nothing: a user manager cannot order against the system units
+# network-online.target and docker.service. A boot catch-up fire (Persistent=true) can therefore run before Docker is
+# up and fail once with CANNOT_RUN (unit failed, receipt CANNOT_RUN, no page); the next 15-minute fire recovers.
 After=network-online.target docker.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-# The ops bot name/chat for send_system (SYSTEM ops family) only: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, mode 0600.
-# Not the full .env or the secrets render: this unit needs no broker, database or provider credential.
+# The ops bot token and chat id that send_system reads (SYSTEM ops family): TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID,
+# mode 0600, provisioned by the operator. NOT least privilege today: every page is also recorded through
+# telegram_alert.record_operator_message -> comms publish_communication -> db_adapter._get_conn, which calls
+# env_bootstrap.load_env(names=None) outside bound mode and copies the whole secrets render (or the checkout .env)
+# into this process, broker names included. Follow-up: set TRADEAI_ENV_BOUND_NAMES to the DB and Telegram names so
+# that load copies only those (env_bootstrap bound mode).
 EnvironmentFile=-%h/.config/tradeai/n8n/host-alert.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=SYSTEM_TELEGRAM_ENABLED=1
