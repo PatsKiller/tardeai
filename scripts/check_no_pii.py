@@ -7,27 +7,32 @@ Credentials are gitleaks' job (.gitleaks.toml, .github/workflows/secret-scan.yml
 scripts/check_no_secrets.py's. This script covers what those do not look for: data that identifies a
 person, an account or a machine.
 
-    python3 scripts/check_no_pii.py --range origin/main...HEAD   # ADDED lines only; any finding fails
-    python3 scripts/check_no_pii.py --tree                       # whole tree vs the ratchet baseline
-    python3 scripts/check_no_pii.py --tree --write-baseline      # after REMOVING findings only
+    python3 scripts/check_no_pii.py --range origin/main...HEAD       # ADDED lines only; any finding fails
+    python3 scripts/check_no_pii.py --tree                           # whole tree vs the ratchet baseline
+    python3 scripts/check_no_pii.py --tree --write-baseline          # after REMOVING findings only
+    python3 scripts/check_no_pii.py --baseline-guard origin/main     # the baseline file may only shrink
 
 CATEGORIES
   email             an email address outside the example allow-list (example.com/.org/.net, *.example,
                     *.test, *.invalid, noreply@anthropic.com, *.users.noreply.github.com, git@ remotes)
   deny_pattern      a pattern from the operator's private deny file (TRADEAI_PII_DENY_FILE; see below)
-  date_of_birth     dob / date_of_birth / birth_date with a real-looking date
-  account_number    a run of 6+ digits next to account / acct / IRA / routing
-  telegram_chat_id  a numeric Telegram chat id next to chat_id
+  date_of_birth     dob / date_of_birth / birth_date (also inside names such as user_dob) with a real date
+  account_number    6+ digits next to account / acct / IRA / routing (also broker_account,
+                    bank_routing_number), or a broker-style id: U or Z followed by 7-8 digits
+  telegram_chat_id  a numeric Telegram chat id next to chat_id (also TELEGRAM_CHAT_ID, OPERATOR_CHAT_ID)
   private_ip        an RFC1918 or Tailscale (CGNAT 100.64.0.0/10) host address; CIDR ranges are not hosts
-  home_path         an absolute /home/<user>/ path for a non-generic user
+  home_path         /home/<user>/, /Users/<user>/ or a Windows drive Users folder, for a non-generic user
   blocked_path      a file that must never be committed: .env* (not .env.example), *.pem, *.key, *.p12,
-                    *.db, *.sqlite*, *.har, cookies*, **/sessions/**, **/persistent-state/**, **/.next/**,
-                    *.tsbuildinfo, **/holdings*.json. In --range mode it fails only when the file is ADDED.
+                    *.pfx, *.jks, id_rsa* / id_dsa* / id_ecdsa* / id_ed25519*, .netrc, .npmrc,
+                    credentials.json, token.json, *.db, *.sqlite*, *.har, cookies*, **/sessions/**,
+                    **/persistent-state/**, **/.next/**, *.tsbuildinfo, **/holdings*.json.
+                    In --range mode it fails only when the file is ADDED (or renamed or copied in).
 
 RATCHET. The tree already holds findings committed before this check existed. config/pii_baseline.json
 records their COUNT per category (no values, no paths). --tree fails if any category grows; a category that
-shrank is reported so the baseline can be lowered. --write-baseline refuses to raise a count: raising one is
-a hand edit in a reviewed PR. --range has no baseline: new lines must be clean.
+shrank is reported so the baseline can be lowered. --write-baseline refuses to raise a count, and
+--baseline-guard <ref> (run on every pull request) fails if the change raises any count in the file itself.
+--range has no baseline: new lines must be clean.
 
 PRIVATE DENY FILE. The operator's real names, domains and handles must not be written into this repository,
 not even as a deny list. Put one case-insensitive regex per line in a file OUTSIDE the repository and point
@@ -35,12 +40,17 @@ TRADEAI_PII_DENY_FILE at it (CI writes it from an Actions secret). A deny file i
 refused. Deny findings fail --range; in --tree they are reported but not ratcheted, because the count depends
 on a file CI and the host may hold differently.
 
-ESCAPE HATCH. A line carrying the marker ``pii-ok`` is skipped for the content categories (not for
-deny_pattern, not for blocked_path). It is per line and visible in review, like check_no_secrets.py's
-``# hardcode-ok``. There are no directory exemptions: tests/ and docs/ are scanned like everything else.
+NO INLINE ESCAPE HATCH. No marker on a line silences a finding. --range reports how many added lines carry
+an inline allow marker (this scanner's old "pii" "-ok" or gitleaks' allow comment) so a reviewer sees them;
+CI runs gitleaks with --ignore-gitleaks-allow. Synthetic test values are assembled at runtime instead.
+
+ONE PATH EXCLUSION, content only: tests/fixtures/agents_pre_*/** holds verbatim, sha256-pinned snapshots of
+the policy files (AGENTS.md and its adapters) taken before a major AGENTS.md version. They are never edited
+(a test pins their hash), and every line in them is a copy of a policy file scanned at its live path, so
+counting them again would only double-count and block the snapshot PR. Blocked-path rules still apply there.
 .gz files are decompressed and scanned.
 
-OUTPUT never prints a found value: first 3 characters plus the length, with path:line and category.
+OUTPUT never prints any part of a found value: path:line and category only (for blocked_path, the rule).
 Exit 0 clean, 1 findings (or a ratchet grew), 2 usage or git error (fail closed).
 Stdlib only. AUTHORITY: READ_ONLY_ADVISORY (CI tooling; no broker, no Telegram, no DB, no network).
 """
@@ -56,6 +66,7 @@ import io
 import json
 import os
 import re
+import string
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -65,8 +76,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE_REL = "config/pii_baseline.json"
 SCHEMA = "PiiBaseline@v1"
 DENY_ENV = "TRADEAI_PII_DENY_FILE"
-MARKER = "pii-ok"
 GZ_MAX_BYTES = 64 * 1024 * 1024
+# Assembled so this file does not itself carry the markers it counts.
+ALLOW_MARKERS = ("pii" + "-ok", "gitleaks" + ":allow")
+ASCII_ALNUM = frozenset(string.ascii_letters + string.digits)
 
 CATEGORIES = (
     "email",
@@ -79,7 +92,6 @@ CATEGORIES = (
     "blocked_path",
 )
 RATCHETED = tuple(c for c in CATEGORIES if c != "deny_pattern")
-UNMARKABLE = frozenset({"deny_pattern", "blocked_path"})
 
 # ── email ────────────────────────────────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(
@@ -111,36 +123,71 @@ REAL_TLDS = frozenset(
 )
 
 # ── content categories ──────────────────────────────────────────────────────────────────────────────
+# Keyword boundaries use (?<![A-Za-z0-9]) / (?![A-Za-z0-9]), not \b: \b treats "_" as a word character, which
+# hid TELEGRAM_CHAT_ID=, user_dob, broker_account and bank_routing_number.
 DOB_RE = re.compile(
-    r"(?i)\b(?:dob|date[_-]?of[_-]?birth|birth[_-]?date)\b[\"']?\s*[:=]\s*[\"']?"
+    r"(?i)(?<![A-Za-z0-9])(?:dob|date[_-]?of[_-]?birth|birth[_-]?date)(?![A-Za-z0-9])[\"']?\s*[:=]\s*[\"']?"
     r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})"
 )
 # The keyword may carry a number label (account_number, acct_no, routing#) but not other words, so
 # ids like ROUTING_DECISION_20261027 or ACCOUNT_LABELS_20261023 are not account numbers.
+_ACCT_LABEL = r"(?:[_ -]?(?:no|num|number|id|#))?s?"
 ACCOUNT_RE = re.compile(
-    r"(?i)(?:\b(?:account|acct|ira|routing)(?:[_ -]?(?:no|num|number|id|#))?s?(?![A-Za-z0-9])"
-    r"[\s\"'#:=]{0,6}(\d[\d-]{4,}\d)(?![\w-])"
-    r"|(?<![\w-])(\d{6,})[\s\"'#:,]{0,3}(?:account|acct|ira)\b)"
+    r"(?i)(?:(?<![A-Za-z0-9])(?:account|acct|ira|routing)" + _ACCT_LABEL + r"(?![A-Za-z0-9])"
+    r"[\s\"'#:=_]{0,6}(\d[\d-]{4,}\d)(?![\w-])"
+    r"|(?<![\w-])(\d{6,})[\s\"'#:,_]{0,3}(?:account|acct|ira)(?![A-Za-z0-9]))"
 )
-# Fast path (same semantics, run on the lowercased text): find the keyword, then match around it.
+# Fast path (same matches, run on the lowercased text): find the keyword, then match around it.
 _ACCT_KW_RE = re.compile(r"account|acct|ira|routing")
 _ACCT_FWD_RE = re.compile(
-    r"(?:account|acct|ira|routing)(?:[_ -]?(?:no|num|number|id|#))?s?(?![a-z0-9])[\s\"'#:=]{0,6}(\d[\d-]{4,}\d)(?![\w-])"
+    r"(?:account|acct|ira|routing)" + _ACCT_LABEL + r"(?![a-z0-9])[\s\"'#:=_]{0,6}(\d[\d-]{4,}\d)(?![\w-])"
 )
-_ACCT_BACK_KW_RE = re.compile(r"(?:account|acct|ira)\b")
-_ACCT_BACK_NUM_RE = re.compile(r"(?<![\w-])(\d{6,})[\s\"'#:,]{0,3}$")
+_ACCT_BACK_KW_RE = re.compile(r"(?:account|acct|ira)(?![a-z0-9])")
+_ACCT_BACK_NUM_RE = re.compile(r"(?<![\w-])(\d{6,})[\s\"'#:,_]{0,3}$")
+# Broker-style account ids: U + 7-8 digits (IBKR), Z + 8 digits (Fidelity). Case-sensitive.
+LETTER_ACCT_RE = re.compile(r"(?<![A-Za-z0-9])([UZ]\d{7,8})(?![A-Za-z0-9])")
 DATE_LIKE_RE = re.compile(r"^(?:19|20)\d{2}-?(?:0[1-9]|1[0-2])-?(?:0[1-9]|[12]\d|3[01])(?:\d{4,6})?$")
-CHAT_ID_RE = re.compile(r"(?i)\bchat[_-]?id\b[\"']?\s*(?:==|[:=])\s*[\"']?(-?\d{6,})(?!\d)")
+CHAT_ID_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9])chat[_-]?ids?(?![A-Za-z0-9])[\"']?\s*(?:==|[:=])\s*[\[(]?\s*[\"']?(-?\d{6,})(?!\d)"
+)
 IPV4_RE = re.compile(r"(?<![\d.])(10|172|192|100)\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?!\d|\.\d|/\d)")
-HOME_RE = re.compile(r"/home/([A-Za-z0-9._-]+)/")
+HOME_RES = (
+    re.compile(r"/home/([A-Za-z0-9._-]+)/"),
+    re.compile(r"(?<![\w.:-])/Users/([A-Za-z0-9._-]+)/"),  # not after "C:" (the Windows form below)
+    re.compile(r"(?i)(?<![A-Za-z0-9])[a-z]:(?:\\{1,2}|/)users(?:\\{1,2}|/)([^\\/\s\"':*?<>|]+)(?:\\|/)"),
+)
 GENERIC_USERS = frozenset(
     "user username runner ubuntu you me example someone alice bob ci test tester dev app node nobody "
-    "claude your-user youruser your_user".split()
+    "claude your-user youruser your_user shared public default administrator admin guest all".split()
 )
 
-# ── blocked paths ───────────────────────────────────────────────────────────────────────────────────
-_BLOCKED_BASENAME_GLOBS = ("*.pem", "*.key", "*.p12", "*.db", "*.sqlite*", "*.har", "cookies*", "*.tsbuildinfo")
+# ── paths ───────────────────────────────────────────────────────────────────────────────────────────
+_BLOCKED_BASENAME_GLOBS = (
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "*.jks",
+    "id_rsa*",
+    "id_dsa*",
+    "id_ecdsa*",
+    "id_ed25519*",
+    "*.db",
+    "*.sqlite*",
+    "*.har",
+    "cookies*",
+    "*.tsbuildinfo",
+)
+_BLOCKED_BASENAMES = frozenset({".netrc", "_netrc", ".npmrc", "credentials.json", "token.json"})
 _BLOCKED_DIRS = ("sessions", "persistent-state", ".next")
+
+
+def snapshot_excluded(path: str) -> bool:
+    """tests/fixtures/agents_pre_*/**: verbatim, hash-pinned policy snapshots whose content is already counted
+    in the tree baseline at the live policy paths. Content scanning skips them in both modes; see the module
+    docstring. Blocked-path rules are NOT skipped."""
+    parts = PurePosixPath(path).parts
+    return len(parts) > 3 and parts[0] == "tests" and parts[1] == "fixtures" and parts[2].startswith("agents_pre_")
 
 
 @dataclass(frozen=True)
@@ -148,15 +195,11 @@ class Finding:
     path: str
     line: int
     category: str
-    masked: str
+    detail: str = ""  # blocked_path: the rule that matched. Never any part of a found value.
 
 
 class ScanError(RuntimeError):
     """Git or configuration failure. Never a pass."""
-
-
-def mask(value: str) -> str:
-    return f"{value[:3]}…(len={len(value)})"
 
 
 def blocked_reason(path: str) -> str | None:
@@ -164,6 +207,8 @@ def blocked_reason(path: str) -> str | None:
     name = p.name
     if name.startswith(".env") and name != ".env.example":
         return ".env file"
+    if name in _BLOCKED_BASENAMES:
+        return name
     for g in _BLOCKED_BASENAME_GLOBS:
         if fnmatch.fnmatchcase(name, g):
             return g
@@ -245,11 +290,11 @@ def _account_numbers(text: str, low: str) -> list[tuple[int, str]]:
         for m in ACCOUNT_RE.finditer(text):
             g = 1 if m.group(1) else 2
             out.append((m.start(g), m.group(g)))
-        return out
+        return sorted(set(out))
     found: dict[int, str] = {}
     for kw in _ACCT_KW_RE.finditer(low):
         s = kw.start()
-        fwd = _ACCT_FWD_RE.match(low, s) if s == 0 or not (low[s - 1].isalnum() or low[s - 1] == "_") else None
+        fwd = _ACCT_FWD_RE.match(low, s) if s == 0 or low[s - 1] not in ASCII_ALNUM else None
         if fwd:
             found[fwd.start(1)] = text[fwd.start(1) : fwd.end(1)]
         if _ACCT_BACK_KW_RE.match(low, s):
@@ -264,48 +309,47 @@ def scan_text(path: str, text: str, deny: list[re.Pattern[str]], lines: set[int]
     starts = [0]
     for m in re.finditer("\n", text):
         starts.append(m.end())
-    raw_lines = text.split("\n")
-
-    def where(pos: int) -> int:
-        return bisect.bisect_right(starts, pos)
-
     out: list[Finding] = []
 
-    def add(pos: int, category: str, value: str) -> None:
-        ln = where(pos)
-        if lines is not None and ln not in lines:
-            return
-        if category not in UNMARKABLE and MARKER in raw_lines[ln - 1]:
-            return
-        out.append(Finding(path, ln, category, mask(value)))
+    def add(pos: int, category: str) -> None:
+        ln = bisect.bisect_right(starts, pos)
+        if lines is None or ln in lines:
+            out.append(Finding(path, ln, category))
 
     if "@" in text:
         for m in EMAIL_RE.finditer(text):
             if not _email_allowed(m.group(1), m.group(2), m.group(3)):
-                add(m.start(), "email", m.group(0))
+                add(m.start(), "email")
     for pat in deny:
         for m in pat.finditer(text):
             if m.group(0):
-                add(m.start(), "deny_pattern", m.group(0))
+                add(m.start(), "deny_pattern")
     low = text.lower()
     if "dob" in low or "birth" in low:
         for m in DOB_RE.finditer(text):
             if _real_date(m.group(1)):
-                add(m.start(1), "date_of_birth", m.group(1))
+                add(m.start(1), "date_of_birth")
     for pos, digits in _account_numbers(text, low):
         if sum(ch.isdigit() for ch in digits) >= 6 and not DATE_LIKE_RE.match(digits):
-            add(pos, "account_number", digits)
+            add(pos, "account_number")
+    for m in LETTER_ACCT_RE.finditer(text):
+        add(m.start(1), "account_number")
     if "chat" in low:
         for m in CHAT_ID_RE.finditer(text):
-            add(m.start(1), "telegram_chat_id", m.group(1))
+            add(m.start(1), "telegram_chat_id")
     for m in IPV4_RE.finditer(text):
         if _private_ip(*(int(x) for x in m.groups())):
-            add(m.start(), "private_ip", m.group(0))
-    if "/home/" in text:
-        for m in HOME_RE.finditer(text):
-            if m.group(1).lower() not in GENERIC_USERS and not m.group(1).startswith("$"):
-                add(m.start(), "home_path", m.group(0))
+            add(m.start(), "private_ip")
+    if "/home/" in text or "users" in low:
+        for rx in HOME_RES:
+            for m in rx.finditer(text):
+                if m.group(1).lower() not in GENERIC_USERS:
+                    add(m.start(), "home_path")
     return out
+
+
+def count_markers(text: str, lines: set[int]) -> int:
+    return sum(1 for n, ln in enumerate(text.split("\n"), 1) if n in lines and any(k in ln for k in ALLOW_MARKERS))
 
 
 def _decode(data: bytes, path: str) -> str | None:
@@ -340,8 +384,8 @@ def scan_tree(repo: Path, deny: list[re.Pattern[str]]) -> list[Finding]:
         reason = blocked_reason(path)
         if reason:
             out.append(Finding(path, 0, "blocked_path", reason))
-        if meta.startswith(b"120000") or meta.startswith(b"160000"):  # symlink, submodule
-            continue
+        if meta.startswith(b"120000") or meta.startswith(b"160000") or snapshot_excluded(path):
+            continue  # symlink, submodule, hash-pinned policy snapshot
         try:
             data = (repo / path).read_bytes()
         except OSError:
@@ -363,7 +407,8 @@ def _target(rng: str) -> str:
     return "HEAD"
 
 
-def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> list[Finding]:
+def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> tuple[list[Finding], int]:
+    """(findings on added lines, number of added lines carrying an inline allow marker)."""
     out: list[Finding] = []
     status_raw = _git(repo, "diff", "--name-status", "-z", "-M", "--diff-filter=ACMR", rng)
     parts = [p.decode("utf-8", errors="replace") for p in status_raw.split(b"\0") if p]
@@ -397,7 +442,10 @@ def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> list[Findin
             added[current].update(range(start, start + count))
 
     target = _target(rng)
+    markers = 0
     for path in sorted(statuses):
+        if snapshot_excluded(path):
+            continue
         lines = added.get(path)
         whole = path.endswith(".gz") and statuses[path] in ("A", "M", "R", "C")
         if not lines and not whole:
@@ -408,7 +456,9 @@ def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> list[Findin
         text = _decode(r.stdout, path)
         if text:
             out.extend(scan_text(path, text, deny, None if whole else lines))
-    return out
+            if lines:
+                markers += count_markers(text, lines)
+    return out, markers
 
 
 # ── baseline ────────────────────────────────────────────────────────────────────────────────────────
@@ -420,14 +470,21 @@ def counts(findings: list[Finding]) -> dict[str, int]:
     return c
 
 
+def _parse_baseline(text: str, where: str) -> dict[str, int]:
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        raise ScanError(f"{where}: not JSON ({exc.msg})") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
+        raise ScanError(f"{where}: schema must be {SCHEMA!r}")
+    got = doc.get("counts") or {}
+    return {k: int(got.get(k, 0)) for k in RATCHETED}
+
+
 def load_baseline(path: Path) -> dict[str, int]:
     if not path.is_file():
         raise ScanError(f"baseline missing: {path}")
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    if doc.get("schema") != SCHEMA:
-        raise ScanError(f"{path}: schema must be {SCHEMA!r}")
-    got = doc.get("counts") or {}
-    return {k: int(got.get(k, 0)) for k in RATCHETED}
+    return _parse_baseline(path.read_text(encoding="utf-8"), str(path))
 
 
 def compare(
@@ -436,6 +493,19 @@ def compare(
     grew = {k: (baseline.get(k, 0), v) for k, v in current.items() if v > baseline.get(k, 0)}
     shrank = {k: (baseline.get(k, 0), v) for k, v in current.items() if v < baseline.get(k, 0)}
     return grew, shrank
+
+
+def baseline_guard(repo: Path, ref: str, baseline_path: Path) -> tuple[dict[str, tuple[int, int]], str]:
+    """Compare the working baseline file with ``ref``'s copy. Returns (raised categories, note)."""
+    _git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    rel = baseline_path.resolve().relative_to(repo.resolve()).as_posix()
+    r = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=repo, capture_output=True)
+    if r.returncode != 0:
+        return {}, f"{ref} has no {rel}: first introduction, nothing to compare"
+    old = _parse_baseline(r.stdout.decode("utf-8", errors="replace"), f"{ref}:{rel}")
+    new = load_baseline(baseline_path)
+    raised = {k: (old[k], new[k]) for k in RATCHETED if new[k] > old[k]}
+    return raised, f"compared {rel} with {ref}"
 
 
 def write_baseline(path: Path, current: dict[str, int]) -> list[str]:
@@ -449,7 +519,8 @@ def write_baseline(path: Path, current: dict[str, int]) -> list[str]:
         "schema": SCHEMA,
         "_note": (
             "Ratchet: findings per category already in the tree when scripts/check_no_pii.py landed. Counts only, "
-            "never values or paths. May only shrink; --write-baseline refuses to raise a count."
+            "never values or paths. May only shrink; --write-baseline refuses to raise a count and CI's "
+            "--baseline-guard fails a pull request that raises one."
         ),
         "counts": {k: current[k] for k in RATCHETED},
     }
@@ -460,9 +531,13 @@ def write_baseline(path: Path, current: dict[str, int]) -> list[str]:
 def _print(findings: list[Finding], limit: int) -> None:
     for f in findings[:limit]:
         loc = f"{f.path}:{f.line}" if f.line else f.path
-        print(f"  {loc}  {f.category}  {f.masked}")
+        print(f"  {loc}  {f.category}" + (f"  ({f.detail})" if f.detail else ""))
     if len(findings) > limit:
         print(f"  ... {len(findings) - limit} more")
+
+
+def _dump(doc: dict) -> None:
+    print(json.dumps(doc, indent=2, sort_keys=True))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -470,19 +545,40 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--range", dest="rng", help="git range, e.g. origin/main...HEAD; ADDED lines only")
     mode.add_argument("--tree", action="store_true", help="every tracked file, against the ratchet baseline")
+    mode.add_argument("--baseline-guard", metavar="REF", help="fail if the baseline file raises a count vs REF")
     ap.add_argument("--repo", default=str(ROOT))
     ap.add_argument("--baseline", default=None, help=f"default: <repo>/{BASELINE_REL}")
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=200)
-    ap.add_argument("--verbose", action="store_true", help="--tree: list every finding (masked)")
+    ap.add_argument("--verbose", action="store_true", help="--tree: list every finding (path:line, category)")
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
     baseline_path = Path(args.baseline) if args.baseline else repo / BASELINE_REL
 
+    if args.baseline_guard:
+        try:
+            raised, note = baseline_guard(repo, args.baseline_guard, baseline_path)
+        except ScanError as exc:
+            print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            _dump({"mode": "baseline_guard", "ok": not raised, "raised": raised, "note": note})
+        elif raised:
+            print(f"check_no_pii: FAIL -- {BASELINE_REL} may only shrink ({note}):")
+            for k, (old, new) in sorted(raised.items()):
+                print(f"  {k:18} {old:>8} -> {new}")
+        else:
+            print(f"check_no_pii: OK -- no baseline count raised ({note})")
+        return 1 if raised else 0
+
+    markers = 0
     try:
         deny = load_deny_patterns(repo)
-        findings = scan_range(repo, args.rng, deny) if args.rng else scan_tree(repo, deny)
+        if args.rng:
+            findings, markers = scan_range(repo, args.rng, deny)
+        else:
+            findings = scan_tree(repo, deny)
     except ScanError as exc:
         print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
         return 2
@@ -491,28 +587,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.rng:
         by_cat = {k: sum(1 for f in findings if f.category == k) for k in CATEGORIES}
         if args.json:
-            print(
-                json.dumps(
-                    {
-                        "mode": "range",
-                        "range": args.rng,
-                        "ok": not findings,
-                        "counts": by_cat,
-                        "findings": [asdict(f) for f in findings],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
+            _dump(
+                {
+                    "mode": "range",
+                    "range": args.rng,
+                    "ok": not findings,
+                    "counts": by_cat,
+                    "allow_markers_added": markers,
+                    "findings": [asdict(f) for f in findings],
+                }
             )
-        elif findings:
-            print(f"check_no_pii: {len(findings)} new finding(s) in {args.rng} (values masked):")
+            return 1 if findings else 0
+        if findings:
+            print(f"check_no_pii: {len(findings)} new finding(s) in {args.rng} (values never printed):")
             _print(findings, args.limit)
             print(
-                "Remove the data, move it to a config source outside git, or mark a deliberate synthetic "
-                f"fixture line with '{MARKER}'."
+                "Remove the data or move it to a config source outside git. For a synthetic test value, assemble "
+                "it at runtime; no inline marker silences a finding."
             )
         else:
             print(f"check_no_pii: OK -- no personal or identifying data added in {args.rng}")
+        if markers:
+            print(f"check_no_pii: NOTE -- {markers} added line(s) carry an inline allow marker; none is honoured.")
         return 1 if findings else 0
 
     current = counts(findings)
@@ -526,25 +622,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         base = load_baseline(baseline_path)
-    except (ScanError, ValueError) as exc:
+    except ScanError as exc:
         print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
         return 2
     grew, shrank = compare(current, base)
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "mode": "tree",
-                    "ok": not grew,
-                    "counts": current,
-                    "baseline": base,
-                    "grew": grew,
-                    "shrank": shrank,
-                    "deny_pattern_advisory": deny_n,
-                },
-                indent=2,
-                sort_keys=True,
-            )
+        _dump(
+            {
+                "mode": "tree",
+                "ok": not grew,
+                "counts": current,
+                "baseline": base,
+                "grew": grew,
+                "shrank": shrank,
+                "deny_pattern_advisory": deny_n,
+            }
         )
         return 1 if grew else 0
     print("check_no_pii --tree (counts per category; values never printed)")

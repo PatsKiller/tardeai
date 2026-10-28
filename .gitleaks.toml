@@ -7,9 +7,9 @@
 #
 # False positives are suppressed ONLY by fingerprint in .gitleaksignore (one finding = one line, reviewable).
 # There are no path or folder exemptions here: tests/ and docs/ are scanned exactly like scripts/.
-# A pull request is judged by main's copy of this file and of .gitleaksignore (see secret-scan.yml), so a
-# false positive in a NEW line is handled with an inline `gitleaks:allow` comment on that line, visible in
-# review, or by landing the rule change first.
+# A pull request is scanned with main's copy of this file and of .gitleaksignore, copied over the checkout
+# (see secret-scan.yml), and CI ignores inline allow comments (--ignore-gitleaks-allow). A false positive in
+# a NEW line is handled by landing its fingerprint or a rule change on main first.
 # Personal data (emails, account numbers, chat ids, private addresses, home paths) is checked by
 # scripts/check_no_pii.py, not here.
 
@@ -21,7 +21,10 @@ useDefault = true
 # Narrow the DEFAULT generic-api-key rule (gitleaks merges this allowlist into it; the rule itself is
 # unchanged). Two shapes made up ~190 of its ~250 inherited hits on main and are not credentials:
 #   1. record identifiers named *_key (subject_key, dedupe_key, incident_key, *event_key, idempotency_key,
-#      approval_key, storageKey) -- low-entropy ids or UUIDs, never a credential in this codebase;
+#      approval_key, storageKey) whose VALUE is a UUID or a low-entropy identifier: segments joined by
+#      . _ : / - where every segment is all letters (2+) or all digits ("watch:AAPL:2026-10-01",
+#      "tradeai.watch.columns"). A random token mixes letters and digits inside a segment, so it still fires
+#      even under one of these names;
 #   2. evidence manifests mapping a FILE PATH to its hex digest ("src/x/tokens.ts": "<sha256>").
 # A credential under any other name (api_key, token, secret, AccountKey, ...) still fires.
 [[rules]]
@@ -30,7 +33,7 @@ id = "generic-api-key"
     [rules.allowlist]
     regexTarget = "match"
     regexes = [
-        '''(?i)\b(?:subject|dedupe|incident|[a-z]*_event|event|idempotency|approval|storage)[_-]?key\b["']?\s*(?:[:=]|==)\s*["'`]?[A-Za-z0-9_.:/@-]+["'`]?$''',
+        '''(?i)\b(?:subject|dedupe|incident|[a-z]*_event|event|idempotency|approval|storage)[_-]?key\b["']?\s*(?:[:=]|==)\s*["'`]?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?:[a-z]{2,}|[0-9]+)(?:[._:/-](?:[a-z]{2,}|[0-9]+))+)["'`]?$''',
         '''\.(?:ts|tsx|js|jsx|mjs|cjs|py|css|json|ya?ml|md|sh|html|toml|sql|txt)["']\s*:\s*["'][0-9a-f]{40}(?:[0-9a-f]{24})?["']?$''',
     ]
 

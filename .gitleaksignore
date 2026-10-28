@@ -1,26 +1,30 @@
 # .gitleaksignore -- reviewed gitleaks findings, one fingerprint per line (commit:file:rule:line).
 #
-# Generated 2026-10-27 by a full-history scan of origin/main at 274e531f5 with the repo's .gitleaks.toml
-# (gitleaks 8.21.2). Commit-scoped fingerprints only: each line silences ONE finding in ONE historical commit.
-# A new commit is never covered by these lines, so a credential added in a pull request always fails
-# secret-scan. There are no file-, folder- or rule-wide exemptions here.
+# Generated 2026-10-28 by a full-history scan of origin/main at 852e146d3 with the repo's .gitleaks.toml
+# (gitleaks 8.21.2, --ignore-gitleaks-allow), run from a no-checkout clone so no ignore file applied.
+# Commit-scoped fingerprints only: each line silences ONE finding in ONE historical commit. A new commit is
+# never covered by these lines. In CI a pull request is scanned with main's copy of this file, copied over
+# the checkout, so a pull request cannot add lines that silence its own findings.
 #
-# To add an entry: run gitleaks with --redact, confirm the finding is not a credential (or has been rotated),
-# and append its Fingerprint under the right section with a one-line reason. Removing an entry is always safe.
+# To add an entry: in its own pull request, run gitleaks with --redact, confirm the finding is not a
+# credential (or has been rotated), and append its Fingerprint under the right section with a reason.
+# Removing an entry is always safe.
 
-# == B. Real but local-only values in history -- OPERATOR DECISION (rotate, or accept) ==
-# History is immutable, so these stay listed even after rotation. They are:
+# == B. REAL CREDENTIALS, SILENCED HERE -- OPERATOR DECISION (rotate, or accept) ==
+# These lines suppress real, local-only credentials so the nightly full-history scan can be green. They are
+# silenced, not fixed. Some of the same values are ALSO in the current tree (measured 2026-10-28: 12 lines
+# holding M2 shadow-role passwords in 8 files, and the committed .next preview-info file with 2 keys):
 #   * the M2 shadow-memory Postgres role passwords (127.0.0.1:55432) hard-coded as canonical DSNs and reused
 #     by the CI service containers;
 #   * Next.js preview-mode signing/encryption keys in a committed apps/command-center-v2/.next/cache.
-# Neither is reachable off the host, but both are credentials. See the PR body for the proposed follow-up.
+# Neither is reachable off the host. History is immutable, so these lines stay even after rotation.
 # .github/workflows/bitemporal-memory-correctness-ci.yml [tradeai-database-url-with-password] x3
 f92bd56899c1eb4037bb2c15d66d71a294eb33d7:.github/workflows/bitemporal-memory-correctness-ci.yml:tradeai-database-url-with-password:39
 f92bd56899c1eb4037bb2c15d66d71a294eb33d7:.github/workflows/bitemporal-memory-correctness-ci.yml:tradeai-database-url-with-password:41
 f92bd56899c1eb4037bb2c15d66d71a294eb33d7:.github/workflows/bitemporal-memory-correctness-ci.yml:tradeai-database-url-with-password:64
 # .github/workflows/cio-full-suite-sharded.yml [tradeai-database-url-with-password] x1
 848fdf8ff93e3618c528d3e6bb62664e8571d93e:.github/workflows/cio-full-suite-sharded.yml:tradeai-database-url-with-password:135
-# apps/command-center-v2/.next/cache/.previewinfo [generic-api-key] x2
+# apps/command-center-v2/.next/cache/.previewinfo [generic-api-key] x1
 fd154fa3d456f5a285247ac1c27ae77ba6f1fdb6:apps/command-center-v2/.next/cache/.previewinfo:generic-api-key:1
 # docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md [tradeai-database-url-with-password] x1
 4371f9e23f0e0932a009d30cf82b5a0190bcff3a:docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md:tradeai-database-url-with-password:21
@@ -49,8 +53,9 @@ f92bd56899c1eb4037bb2c15d66d71a294eb33d7:tests/test_bitemporal_correctness.py:tr
 331eb34244f11bce799765d5cd1ea646330be657:tests/test_r10_10_memory_shadow.py:tradeai-database-url-with-password:170
 
 # == A. Not credentials (reviewed) ==
-# Account labels, commit SHAs, file digests, UUIDs, dedupe keys, sentinel constants and synthetic test
-# fixtures (fake DSN passwords, redaction-test ids such as sk-..., ghs_...TESTTOKEN..., test JWTs).
+# Account labels, commit SHAs, file digests, UUIDs, record identifiers (dedupe/incident/storage keys with
+# versioned or hashed segments), sentinel constants and synthetic test fixtures (fake DSN passwords,
+# redaction-test ids such as sk-..., ghs_...TESTTOKEN..., test JWTs).
 # apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json [generic-api-key] x14
 d4f695eb859a4d194c86023f932a7e8ebec00416:apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json:generic-api-key:1067
 d4f695eb859a4d194c86023f932a7e8ebec00416:apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json:generic-api-key:1089
@@ -68,6 +73,15 @@ d4f695eb859a4d194c86023f932a7e8ebec00416:apps/command-center-v3/e2e/fixtures/ask
 d4f695eb859a4d194c86023f932a7e8ebec00416:apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json:generic-api-key:535
 # apps/command-center-v3/src/control-plane/apiV1Baseline.ts [generic-api-key] x1
 4e62ee22809cca92d01c45da184dc18f04adf8ac:apps/command-center-v3/src/control-plane/apiV1Baseline.ts:generic-api-key:8
+# apps/command-center-v3/src/lib/journalTagVocab.ts [generic-api-key] x4
+183ec71031b0f2572cf429c5f3a9951aaed13ea7:apps/command-center-v3/src/lib/journalTagVocab.ts:generic-api-key:117
+183ec71031b0f2572cf429c5f3a9951aaed13ea7:apps/command-center-v3/src/lib/journalTagVocab.ts:generic-api-key:139
+183ec71031b0f2572cf429c5f3a9951aaed13ea7:apps/command-center-v3/src/lib/journalTagVocab.ts:generic-api-key:175
+8158db32b0cd0668fa76d89b602b9d200b6618bb:apps/command-center-v3/src/lib/journalTagVocab.ts:generic-api-key:234
+# apps/command-center-v3/src/lib/marketRegimes.ts [generic-api-key] x1
+183ec71031b0f2572cf429c5f3a9951aaed13ea7:apps/command-center-v3/src/lib/marketRegimes.ts:generic-api-key:14
+# apps/command-center-v3/src/lib/psychologyBefore.ts [generic-api-key] x1
+183ec71031b0f2572cf429c5f3a9951aaed13ea7:apps/command-center-v3/src/lib/psychologyBefore.ts:generic-api-key:11
 # apps/command-center-v3/src/pages/control-plane/r23/fetchControlPlaneSummary.ts [generic-api-key] x1
 f834ac4982b16cc1897212ac65e50ea055e1cb95:apps/command-center-v3/src/pages/control-plane/r23/fetchControlPlaneSummary.ts:generic-api-key:18
 # apps/command-center-v3/src/pages/control-plane/r24/httpEnvelope.ts [generic-api-key] x1
@@ -76,10 +90,20 @@ f834ac4982b16cc1897212ac65e50ea055e1cb95:apps/command-center-v3/src/pages/contro
 d2887eea4975327d982deaa521f58e256cbba8e3:config/n8n_writer_restoration.json:generic-api-key:162
 # docs/_evidence/qa/QA_HANDOFF.json [generic-api-key] x1
 bd0f43f5d1bbdb780501b44ee654f0e8bf654c70:docs/_evidence/qa/QA_HANDOFF.json:generic-api-key:11
+# docs/atm_audit_2026_05_26/designer_review/current_source_text/scripts__live_trading_gate.py.md [generic-api-key] x1
+e23b0ad546065cc102c6865364daa98bb7cca613:docs/atm_audit_2026_05_26/designer_review/current_source_text/scripts__live_trading_gate.py.md:generic-api-key:139
+# docs/atm_lifecycle_v1_2026_05_26/source_exports/scripts_live_trading_gate.md [generic-api-key] x1
+e52a9ad40dc70d29b8e2468575aa8496dfec3929:docs/atm_lifecycle_v1_2026_05_26/source_exports/scripts_live_trading_gate.md:generic-api-key:139
 # docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md [generic-api-key] x3
 991f6d097bdf092982d5bb4c1babb3ba541268c7:docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md:generic-api-key:907
 991f6d097bdf092982d5bb4c1babb3ba541268c7:docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md:generic-api-key:909
 991f6d097bdf092982d5bb4c1babb3ba541268c7:docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md:generic-api-key:910
+# docs/handoff_2026-04-19/openclaw_article_index_plan_2026-04-20.md [generic-api-key] x1
+5c3b69506fc6b4c19b19748dddff102f5fd06453:docs/handoff_2026-04-19/openclaw_article_index_plan_2026-04-20.md:generic-api-key:335
+# docs/ops/CIO_UI_AUDIT_2026-08-22.md [generic-api-key] x1
+a177731f9330991961ef4edcf3b045af47c4ed1b:docs/ops/CIO_UI_AUDIT_2026-08-22.md:generic-api-key:287
+# docs/ops/packets/comms-intent-consumer-live-20261017/01_dry_run_live_20261017T1705Z.txt [generic-api-key] x1
+1a59dfea8d9a7f2477239861735f1105d0f494ad:docs/ops/packets/comms-intent-consumer-live-20261017/01_dry_run_live_20261017T1705Z.txt:generic-api-key:1
 # docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json [generic-api-key] x7
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json:generic-api-key:322
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json:generic-api-key:582
@@ -88,6 +112,9 @@ bd0f43f5d1bbdb780501b44ee654f0e8bf654c70:docs/_evidence/qa/QA_HANDOFF.json:gener
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json:generic-api-key:679
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json:generic-api-key:740
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-preservation.json:generic-api-key:891
+# docs/ops/packets/n8n-comms-intent-consumer-20261015/02_dry_run_live.txt [generic-api-key] x2
+8d1bddd22192d5dbd77cab37b0df5341164f6838:docs/ops/packets/n8n-comms-intent-consumer-20261015/02_dry_run_live.txt:generic-api-key:15
+8d1bddd22192d5dbd77cab37b0df5341164f6838:docs/ops/packets/n8n-comms-intent-consumer-20261015/02_dry_run_live.txt:generic-api-key:9
 # docs/ops/packets/stale-n8n-set-20261024/preservation.json [generic-api-key] x14
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/stale-n8n-set-20261024/preservation.json:generic-api-key:1265
 44367d6d5bb759b1d94805ac4e2e2061d6685d27:docs/ops/packets/stale-n8n-set-20261024/preservation.json:generic-api-key:1338
@@ -118,6 +145,8 @@ fd154fa3d456f5a285247ac1c27ae77ba6f1fdb6:docs/v4_1_discovery/phase0c_live_valida
 6788ad5672b1180fa8000e243d8c5b506fae0cd0:reports/command_center.html:generic-api-key:7483
 # scripts/lib/maturity_control/schema.py [generic-api-key] x1
 1d8ff691a1c7d6179e600055f09b8fea2b797f97:scripts/lib/maturity_control/schema.py:generic-api-key:65
+# scripts/live_trading_gate.py [generic-api-key] x1
+2a21b43eea6ae5b64dd2e374b17a7b8a393165c9:scripts/live_trading_gate.py:generic-api-key:125
 # scripts/n8n_coordination_gateway.py [generic-api-key] x1
 ea1369b9fc1bbdd23166b09244b74d79474697e0:scripts/n8n_coordination_gateway.py:generic-api-key:240
 # scripts/ops/release_train_arm.sh [generic-api-key] x1
@@ -147,6 +176,8 @@ d213e10e2d59143a57c4e61d12eb6a2670900910:tests/test_macro_calendar_20261021.py:g
 13deb134a3a57abb1745c1579cdc2038555be5fa:tests/test_n8n_llm_remediation_20261010.py:jwt:38
 # tests/test_n8n_platform_maturity_core_20261009.py [generic-api-key] x1
 7208eb99d90819de3453623434302fd7a128eeb5:tests/test_n8n_platform_maturity_core_20261009.py:generic-api-key:357
+# tests/test_n8n_self_heal_tranche_defects_20261016.py [generic-api-key] x1
+f3b9a05e22556e5f2f2c243b0f3da81163b7fdec:tests/test_n8n_self_heal_tranche_defects_20261016.py:generic-api-key:378
 # tests/test_n8n_w2_registry_20261008.py [generic-api-key] x1
 ea0d3c8ee58abc4627de3bf2ff7bbe80869630cf:tests/test_n8n_w2_registry_20261008.py:generic-api-key:173
 # tests/test_packet_a1_preflight.sh [tradeai-database-url-with-password] x10
