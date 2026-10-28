@@ -17,6 +17,7 @@ Safety:
   - Never touches ~/db_backups (owned by backup_enforcer max_count=1)
   - Default policy dry_run=true; --apply required to mutate
 """
+
 from __future__ import annotations
 
 import argparse
@@ -194,8 +195,12 @@ def release_local_unique_files(release: Path, reference: Path | None) -> list[Pa
                     continue
                 ref = (reference / fp.relative_to(release)) if reference else None
                 try:
-                    same = (ref is not None and ref.is_file() and ref.stat().st_size == fp.stat().st_size
-                            and filecmp.cmp(fp, ref, shallow=False))
+                    same = (
+                        ref is not None
+                        and ref.is_file()
+                        and ref.stat().st_size == fp.stat().st_size
+                        and filecmp.cmp(fp, ref, shallow=False)
+                    )
                 except OSError:
                     same = False
                 if not same:
@@ -211,8 +216,13 @@ def archive_release_local(release: Path, reference: Path | None, *, dry_run: boo
         return out
     from lib.retention_archive import archive_files_then_unlink, file_archive_root
 
-    res = archive_files_then_unlink(uniq, base_dir=release, archive_dir=file_archive_root() / "release_local_data",
-                                    label=f"release_local_{release.name}", writer="disk_hygiene_enforcer")
+    res = archive_files_then_unlink(
+        uniq,
+        base_dir=release,
+        archive_dir=file_archive_root() / "release_local_data",
+        label=f"release_local_{release.name}",
+        writer="disk_hygiene_enforcer",
+    )
     out["archive"] = res.get("archive")
     return out
 
@@ -291,12 +301,7 @@ def plan_stale_backups(piles: list[dict]) -> dict:
                     except OSError:
                         continue
         # never touch db_backups
-        candidates = [
-            p
-            for p in candidates
-            if "db_backups" not in p.parts
-            and p.is_file()
-        ]
+        candidates = [p for p in candidates if "db_backups" not in p.parts and p.is_file()]
         for p in candidates:
             try:
                 st = p.stat()
@@ -375,10 +380,7 @@ def run(
 
     if do_releases:
         plan = plan_releases(pol.get("releases") or {})
-        out["releases_plan"] = {
-            k: plan[k]
-            for k in ("root", "keep_n", "total", "would_delete_count", "protected")
-        }
+        out["releases_plan"] = {k: plan[k] for k in ("root", "keep_n", "total", "would_delete_count", "protected")}
         out["releases_plan"]["delete_sample"] = plan["delete"][:15]
         out["releases_result"] = apply_release_deletes(plan, dry_run=dry_run)
 

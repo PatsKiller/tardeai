@@ -15,6 +15,7 @@ Usage:
   .venv/bin/python scripts/weekly_disk_cleanup_notify.py --dry-run
   .venv/bin/python scripts/weekly_disk_cleanup_notify.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -213,18 +214,22 @@ def run(*, apply: bool, notify: bool) -> dict:
     else:
         detail = str(payload)[:180]
         ok = False
-    steps.append({"name": "disk_hygiene", "ok": ok, "detail": detail, "raw": payload if isinstance(payload, dict) else None})
+    steps.append(
+        {"name": "disk_hygiene", "ok": ok, "detail": detail, "raw": payload if isinstance(payload, dict) else None}
+    )
 
     # 2) deploy-tree-preclean dirs
     preclean = _clean_preclean_dirs(dry_run=dry)
     b = int(preclean.get("bytes_reclaimed_est") or 0)
     bytes_reclaimed += b
-    steps.append({
-        "name": "backup_preclean_dirs",
-        "ok": bool(preclean.get("ok")),
-        "detail": f"dirs={len(preclean.get('deleted') or [])} reclaim={_fmt_bytes(b)}",
-        "raw": preclean,
-    })
+    steps.append(
+        {
+            "name": "backup_preclean_dirs",
+            "ok": bool(preclean.get("ok")),
+            "detail": f"dirs={len(preclean.get('deleted') or [])} reclaim={_fmt_bytes(b)}",
+            "raw": preclean,
+        }
+    )
 
     # Steps 3-4 (Hermes librarian retention + db_retention.py) were REMOVED 2026-10-21
     # (OPERATOR_DECISION D6). This timer's cwd is the DEV tree, so it ran the dev tree's
@@ -262,13 +267,22 @@ def run(*, apply: bool, notify: bool) -> dict:
         msg = build_telegram(summary)
         try:
             from telegram_alert import send_telegram
+
             sent = send_telegram(msg, message_class="operator_alert", priority="P2", producer="weekly_disk_cleanup")
             summary["telegram"] = "accepted" if sent else "send_returned_false"
         except Exception as e:
             summary["telegram"] = f"error:{type(e).__name__}:{e}"
             _log(f"telegram failed: {e}")
 
-    _log(json.dumps({k: summary[k] for k in ("ok", "apply", "bytes_reclaimed_est", "db_rows_deleted", "librarian_affected", "telegram") if k in summary}))
+    _log(
+        json.dumps(
+            {
+                k: summary[k]
+                for k in ("ok", "apply", "bytes_reclaimed_est", "db_rows_deleted", "librarian_affected", "telegram")
+                if k in summary
+            }
+        )
+    )
     return summary
 
 

@@ -48,6 +48,7 @@ out of scope here.
 AUTHORITY: OPERATOR_APPROVED 2026-09-21. Delegates all deletion to
 disk_hygiene_enforcer.py.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -101,7 +102,7 @@ def disk_used_pct(path: str = "/") -> tuple[float, int, int]:
 
 
 def _fmt_gb(n: int) -> str:
-    return f"{n / (1024 ** 3):.1f}GB"
+    return f"{n / (1024**3):.1f}GB"
 
 
 def run_enforcer(*, dry_run: bool) -> dict:
@@ -110,11 +111,9 @@ def run_enforcer(*, dry_run: bool) -> dict:
     if not script.is_file():
         return {"ok": False, "error": "disk_hygiene_enforcer.py missing", "skipped": True}
     py = venv_python(ROOT)
-    argv = [py if Path(py).exists() else sys.executable, str(script),
-            "--dry-run" if dry_run else "--apply"]
+    argv = [py if Path(py).exists() else sys.executable, str(script), "--dry-run" if dry_run else "--apply"]
     try:
-        proc = subprocess.run(argv, cwd=str(ROOT), capture_output=True,
-                              text=True, timeout=1800)
+        proc = subprocess.run(argv, cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
     except Exception as exc:  # noqa: BLE001 - report, never improvise a fallback
         return {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
     payload: dict = {}
@@ -124,7 +123,7 @@ def run_enforcer(*, dry_run: bool) -> dict:
         payload = {"raw_tail": (proc.stdout or "")[-400:]}
     # NOTE: the enforcer exits 1 while the disk is still "critical" even when its
     # own plan succeeded -- that is its alarm, not a failure. Judge on the plan.
-    rel = (payload.get("releases_result") or {})
+    rel = payload.get("releases_result") or {}
     payload["_rc"] = proc.returncode
     payload["_deleted_count"] = len(rel.get("deleted") or [])
     payload["_reclaimed"] = int(rel.get("bytes_reclaimed_est") or 0)
@@ -135,6 +134,7 @@ def run_enforcer(*, dry_run: bool) -> dict:
 def notify(text: str) -> str:
     try:
         from telegram_alert import send_telegram  # noqa: PLC0415
+
         ok = send_telegram(text, message_class="operator_alert", priority="P1", producer="disk_pressure_guard")
         return "accepted" if ok else "send_returned_false"
     except Exception as exc:  # noqa: BLE001 - alerting must never raise here
@@ -167,11 +167,14 @@ def _write_receipt(payload: dict) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--used-pct", type=float, default=DEFAULT_USED_PCT,
-                    help=f"act at or above this %% used (default {DEFAULT_USED_PCT})")
+    ap.add_argument(
+        "--used-pct",
+        type=float,
+        default=DEFAULT_USED_PCT,
+        help=f"act at or above this %% used (default {DEFAULT_USED_PCT})",
+    )
     ap.add_argument("--path", default="/")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="report and plan only; never deletes")
+    ap.add_argument("--dry-run", action="store_true", help="report and plan only; never deletes")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -201,21 +204,23 @@ def main() -> int:
     state = "PRESSURE" if final_used >= a.used_pct else "OK"
     try:
         from lib.alert_condition_state import observe  # noqa: PLC0415
-        obs = observe(CONDITION_KEY, state,
-                      alertable=(state == "PRESSURE"),
-                      min_realert_minutes=REALERT_MINUTES,
-                      extra={"used_pct": final_used, "free": out.get("free_after", out["free"])})
+
+        obs = observe(
+            CONDITION_KEY,
+            state,
+            alertable=(state == "PRESSURE"),
+            min_realert_minutes=REALERT_MINUTES,
+            extra={"used_pct": final_used, "free": out.get("free_after", out["free"])},
+        )
         out["condition"] = {"action": obs.get("action"), "notify": bool(obs.get("notify"))}
     except Exception as exc:  # noqa: BLE001
         out["condition"] = {"error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
     if out.get("condition", {}).get("notify"):
         enf = out.get("enforcer") or {}
-        line = (f"💾 Disk {final_used:.1f}% used ({out.get('free_after', out['free'])} free)"
-                f" — trigger {a.used_pct:.0f}%")
+        line = f"💾 Disk {final_used:.1f}% used ({out.get('free_after', out['free'])} free) — trigger {a.used_pct:.0f}%"
         if enf:
-            line += (f"\nreclaimed {out.get('reclaimed', '0GB')} from "
-                     f"{enf.get('_deleted_count', 0)} release(s)")
+            line += f"\nreclaimed {out.get('reclaimed', '0GB')} from {enf.get('_deleted_count', 0)} release(s)"
         if a.dry_run:
             line += "\n(dry run — nothing deleted)"
         out["telegram"] = notify(line)
