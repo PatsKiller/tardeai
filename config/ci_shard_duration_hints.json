@@ -1353,10 +1353,21 @@
   "tests/test_work_board_designs_20261023.py": 1.2,
   "tests/test_work_pipeline_20261023.py": 1.4,
   "tests/test_work_pipeline_commands_20261023.py": 1.2,
-  "tests/test_work_pipeline_tier2_20261023.py": 1.6
+  "tests/test_work_pipeline_tier2_20261023.py": 1.6,
+  "tests/test_agent_collab_untrusted_context_20261027.py": 1.2,
+  "tests/test_agents_policy_26_0_0.py": 1.2,
+  "tests/test_pr_plain_english_20261027.py": 1.0,
+  "tests/test_governance_open_items_20261027.py": 1.0,
+  "tests/test_disk_enforcer_scope_24_12_20261027.py": 1.4,
+  "tests/test_telegram_grants_retired_20261027.py": 1.7,
+  "tests/test_n8n_app_role_packet_20261027.py": 15.7,
+  "tests/test_n8n_drift_check_schedule_20261027.py": 1.7,
+  "tests/test_check_no_pii_20261027.py": 2.1,
+  "tests/test_needs_action_release_window_20261028.py": 1.1
  },
  "note": "Measured per-file seconds from the sharded full-suite run (junit test time plus an even share of the unit's start-up). Candidate for config/ci_shard_duration_hints.json; hints only order and pack work, they never decide what runs.",
  "schema": "CiShardTimings@v1",
  "source_run": 39661659376,
- "source_sha": "c5ff8c7e65da8c3e22e981f662b0418981d60f9a"
+ "source_sha": "c5ff8c7e65da8c3e22e981f662b0418981d60f9a",
+ "supplement_20261028": "10 files registered 2026-10-27/28 (PRs #2253-#2260) carry local one-file wall-clock seconds (pytest, 2-CPU container), not source_run timings; replace them at the next refresh from a green run's artifact."
 }
