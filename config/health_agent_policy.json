@@ -175,7 +175,8 @@
     "db_dump_missing",
     "backup_local_count_exceeded",
     "backup_local_bytes_exceeded",
-    "backup_storm_suspected"
+    "backup_storm_suspected",
+    "disk_critical"
   ],
   "auto_remediate": {
     "_comment": "Health agent runs these allowlisted scripts immediately when matching findings fire (no 15m escalation-handler wait). Cooldown prevents repricer loops. Python path rewritten to DEV venv (live stamp has no .venv). never_auto_remediate is hard denylist for risk/credential/ledger.",
@@ -240,8 +241,7 @@
       "trade_ai_session_stale",
       "trade_ai_session_missing",
       "orchestrator_setups_stale",
-      "postgres_main_down",
-      "disk_critical"
+      "postgres_main_down"
     ]
   },
   "scalp_catalyst_health": {
@@ -369,7 +369,7 @@
     "db_dump_missing": "bash linux_launchers/run_pg_backup.sh",
     "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
     "postgres_main_down": ".venv/bin/python scripts/remediate_postgres_main.py --apply",
-    "disk_critical": ".venv/bin/python scripts/disk_hygiene_enforcer.py --apply"
+    "_disk_critical_note": "DELIBERATELY NOT MAPPED (2026-10-27, AGENTS.md §24.12 and §0 rule 6). The remedy was disk_hygiene_enforcer.py --apply, which removed release trees and backup files outside the only automated deletion §24.12 permits (disk_hygiene.py under config/disk_hygiene_rules.json, run by the n8n lane disk-hygiene or the operator CLI). Its apply now refuses (status REFUSED_OUTSIDE_24_12, exit 77) and removes nothing. disk_critical is in never_auto_remediate: report + page, never an automatic delete. Reclaim is the disk-hygiene lane's job: review disk_hygiene.py --report; the lane, or the operator with a grant, applies. Backups are never in scope (operator decision, §17). Same precedent as _schwab_journal_ingest_stale_note."
   },
   "data_source_remediation": {
     "_comment": "source_key -> producer command for the generic data_source_stale finding. The default remediation_map['data_source_stale'] runs external_market_data_ingest.py --quotes, which only refreshes QUOTE sources (yahoo_finance/finviz/alpaca). Non-quote sources (finnhub news, sec_edgar, youtube_api, …) must be listed here or they are NOT auto-retried — the finding escalates instead of looping a producer that can never clear it. finnhub is intentionally unmapped: a 401 routes to data_source_auth_failed (operator action), and a non-401 stall is the orchestrator/enrichment lane already covered by pipeline_failures.",

@@ -22,6 +22,7 @@ Read-only: reads repository files. TRADE_AI_CI=1.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -325,9 +326,22 @@ def test_24_12_states_every_obligation(frag):
     assert frag in _flat(_s2412()), frag
 
 
-def test_24_12_open_gap_facts_hold():
+def test_24_12_enforcer_open_gap_is_closed_in_code():
+    """Was test_24_12_open_gap_facts_hold, which pinned the gap §24.12 states ("disk_hygiene_enforcer.py already
+    removes release trees and backups under --apply ... named as the disk_critical remedy"). Closed 2026-10-27
+    (fix/disk-enforcer-scope-20261027): the enforcer holds no removal primitive and refuses --apply, and the health
+    policy no longer runs it. §24.12's prose still states the gap until its doc amendment lands (AGENTS.md §0
+    rule 10: the finding wins; the frag pins above keep requiring the section to name the script)."""
     enforcer = (ROOT / "scripts" / "disk_hygiene_enforcer.py").read_text(encoding="utf-8")
-    assert "--backups-only" in enforcer and "--releases-only" in enforcer and "rmtree" in enforcer
-    assert "disk_hygiene_enforcer.py --apply" in (ROOT / "config" / "health_agent_policy.json").read_text(
-        encoding="utf-8"
+    assert "--backups-only" in enforcer and "--releases-only" in enforcer  # flags kept; they plan only
+    for primitive in ("rmtree", ".unlink(", "os.remove", "archive_files_then_unlink"):
+        assert primitive not in enforcer, primitive
+    assert 'REFUSED_STATUS = "REFUSED_OUTSIDE_24_12"' in enforcer
+    policy = json.loads((ROOT / "config" / "health_agent_policy.json").read_text(encoding="utf-8"))
+    assert "disk_critical" not in policy["remediation_map"]
+    assert "disk_critical" in policy["never_auto_remediate"]
+    assert not any(
+        "disk_hygiene_enforcer" in v
+        for k, v in policy["remediation_map"].items()
+        if isinstance(v, str) and k[:1] != "_"
     )

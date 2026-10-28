@@ -16,6 +16,8 @@ retention". One test (or a small group) per ruling:
   D5.4  self-tune: hermes_external_research purge gone.
   D8.1  rotate_runtime_logs.sh archives the head (verified, tripwire) before truncating.
   D8.3  disk_hygiene_enforcer archives release-local data CURRENT does not hold before removing a release.
+        (2026-10-27, AGENTS.md §24.12: the enforcer removes no release and archives nothing; the dry-run
+        count stays, apply is refused -- so D8.3 holds vacuously there.)
   D8.4  portfolio news history / weekly / monthly reports archive-then-unlink.
   D8.5  scalp_cycle_receipt.prune archives first; a failed archive removes nothing.
   D8.6  file_prune row ingestion_summaries removed.
@@ -530,7 +532,10 @@ def _hygiene():
     return hy
 
 
-def test_d8_3_release_local_data_not_in_current_is_archived_before_the_release_goes(tmp_path):
+def test_d8_3_release_local_data_is_counted_and_never_lost_because_apply_is_refused(tmp_path):
+    """Was ..._is_archived_before_the_release_goes. Since 2026-10-27 (AGENTS.md §24.12) the enforcer removes no
+    release, so no release-local file can die with one: the dry run still counts them, apply is refused, the
+    release and its files stay, and no archive is written."""
     hy = _hygiene()
     root = tmp_path / "portfolio-server"
     old = _release(
@@ -557,16 +562,18 @@ def test_d8_3_release_local_data_not_in_current_is_archived_before_the_release_g
     dry = hy.apply_release_deletes(plan, dry_run=True)
     assert dry["deleted"][0]["release_local"]["files"] == 2 and old.exists()
     res = hy.apply_release_deletes(plan, dry_run=False)
-    assert res["ok"] and not old.exists() and cur.exists()
-    (tar,) = list((tmp_path / "state/archive/file_prune/release_local_data").glob("*.tar.gz"))
-    with tarfile.open(tar) as tf:
-        names = sorted(tf.getnames())
-        assert names == ["data/raw/x.csv", "state/hermes.release-local/s.json"]
-        assert tf.extractfile("data/raw/x.csv").read() == b"only-old"
-    assert (tar.parent / "TRIPWIRE.jsonl").is_file()
+    assert res["ok"] and res["refused"] and res["status"] == hy.REFUSED_STATUS
+    assert res["deleted"] == [] and [i["path"] for i in res["refused_items"]] == [str(old)]
+    assert res["refused_items"][0]["release_local"]["files"] == 2
+    assert old.exists() and cur.exists()
+    assert (old / "data/raw/x.csv").read_text() == "only-old"
+    assert (old / "state/hermes.release-local/s.json").read_text() == "old-state"
+    assert not (tmp_path / "state/archive/file_prune/release_local_data").exists()
 
 
-def test_d8_3_failed_archive_keeps_the_release(tmp_path, monkeypatch):
+def test_d8_3_apply_never_reaches_the_archive_helper(tmp_path, monkeypatch):
+    """Was ..._failed_archive_keeps_the_release. The archive-then-unlink step existed only to precede a removal;
+    with removal refused (2026-10-27) it is never called -- a helper that raises proves it."""
     hy = _hygiene()
     root = tmp_path / "portfolio-server"
     old = _release(root, "000aaa-main-exact-phase2-20261001-000000", {"data/raw/x.csv": "only-old"}, 1_700_000_000)
@@ -580,8 +587,8 @@ def test_d8_3_failed_archive_keeps_the_release(tmp_path, monkeypatch):
     monkeypatch.setattr(ra, "archive_files_then_unlink", boom)
     plan = hy.plan_releases({"root": str(root), "glob": "*-main-exact-*", "keep_n": 1, "protect_symlinks": ["CURRENT"]})
     res = hy.apply_release_deletes(plan, dry_run=False)
-    assert not res["ok"] and old.exists() and (old / "data/raw/x.csv").read_text() == "only-old"
-    assert "release kept" in res["errors"][0]
+    assert res["ok"] and res["refused"] and res["errors"] == []
+    assert old.exists() and (old / "data/raw/x.csv").read_text() == "only-old"
 
 
 # ── D8.4: portfolio report rotation ───────────────────────────────────────────────────────────────
@@ -677,6 +684,8 @@ def test_gate_committed_registry_is_clean_including_retired_owners():
         "health_agent_snapshot_prune",
         "finviz_market_movers_prune",
         "hermes_score_history_retention",
+        # 2026-10-27, AGENTS.md §24.12: the enforcer + weekly bundle remove nothing (apply refused; plan only)
+        "disk_hygiene_enforcer",
     }
 
 

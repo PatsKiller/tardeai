@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""weekly_disk_cleanup_notify.py — Sunday cleanup bundle with Telegram summary.
+"""weekly_disk_cleanup_notify.py — Sunday disk report bundle with Telegram summary.
 
-Runs (apply by default when invoked from the weekly timer):
-  1. disk_hygiene_enforcer --apply  (releases keep-N + stale backup *files*)
-  2. Explicit cleanup of stale ~/backups/deploy-tree-preclean-* dirs (hygiene
-     only deletes files, not directories — 2026-09-18 gap)
+REMOVES NOTHING since 2026-10-27 (AGENTS.md §24.12, §0 rule 6). §24.12 makes
+`scripts/disk_hygiene.py` (n8n lane `disk-hygiene`, or the operator CLI) the only automated
+removal of release directories and puts backups out of scope. So an --apply request (the
+weekly timer's) runs the PLAN of each step and reports REFUSED_OUTSIDE_24_12 with what the
+plan lists; a --dry-run is unchanged.
+
+Steps:
+  1. disk_hygiene_enforcer --dry-run, always (never --apply): releases keep-N + stale backup
+     *files* -- reported, not removed
+  2. stale ~/backups/deploy-tree-preclean-* dirs -- listed, never removed (backups)
   (3-4 removed 2026-10-21, OPERATOR_DECISION D6: librarian + db_retention row purges
    are owned by the CURRENT release's nightly timers, never by this dev-tree job)
 
@@ -38,6 +44,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 LOG = ROOT / "logs" / "weekly_disk_cleanup.log"
 PRECLEAN_MAX_AGE_DAYS = 7
+#: Same status disk_hygiene_enforcer.py reports for a refused --apply.
+REFUSED_STATUS = "REFUSED_OUTSIDE_24_12"
+REMOVAL_LINE = (
+    "Removal: none — AGENTS.md §24.12 (the disk-hygiene lane owns release reclaim; deleting a backup is an "
+    "operator decision)"
+)
 
 
 try:
@@ -100,6 +112,8 @@ def _run_json(argv: list[str], *, timeout: int = 3600) -> tuple[bool, dict | str
 
 
 def _clean_preclean_dirs(*, dry_run: bool) -> dict:
+    """List stale ~/backups/deploy-tree-preclean-* dirs. ``dry_run=False`` is REFUSED: they are backups, never in
+    AGENTS.md §24.12's scope, so they are reported and kept (2026-10-27)."""
     base = Path.home() / "backups"
     now = time.time()
     cutoff = now - PRECLEAN_MAX_AGE_DAYS * 86400
@@ -129,16 +143,20 @@ def _clean_preclean_dirs(*, dry_run: bool) -> dict:
                         pass
         except OSError:
             pass
-        if dry_run:
-            deleted.append({"path": str(p), "bytes": size, "action": "would_delete"})
-            bytes_est += size
-            continue
-        try:
-            shutil.rmtree(p)
-            deleted.append({"path": str(p), "bytes": size, "action": "deleted"})
-            bytes_est += size
-        except OSError as e:
-            errors.append(f"{p}: {e}")
+        deleted.append({"path": str(p), "bytes": size, "action": "would_delete"})
+        bytes_est += size
+    if not dry_run:
+        return {
+            "ok": not errors,
+            "refused": True,
+            "status": REFUSED_STATUS,
+            "deleted": [],
+            "refused_items": [{**d, "action": "refused"} for d in deleted],
+            "listed_bytes_est": bytes_est,
+            "bytes_reclaimed_est": 0,
+            "errors": errors,
+            "max_age_days": PRECLEAN_MAX_AGE_DAYS,
+        }
     return {
         "ok": not errors,
         "deleted": deleted,
@@ -177,6 +195,8 @@ def build_telegram(summary: dict) -> str:
         lines.append(_step_line(s["name"], s["ok"], s["detail"]))
     lines.append("")
     lines.append(f"Total reclaim (est): *{_fmt_bytes(summary.get('bytes_reclaimed_est') or 0)}*")
+    if summary.get("apply"):
+        lines.append(REMOVAL_LINE)
     lines.append("DB row retention: owned by the nightly CURRENT timers (not this job, D6)")
     if not summary.get("ok"):
         lines.append("")
@@ -196,21 +216,29 @@ def run(*, apply: bool, notify: bool) -> dict:
     db_rows = 0
     librarian_affected = 0
 
-    # 1) Disk hygiene
-    argv = [py, str(ROOT / "scripts" / "disk_hygiene_enforcer.py")]
-    argv.append("--apply" if apply else "--dry-run")
-    argv.append("--json")
+    # 1) Disk hygiene -- the enforcer's PLAN, always (--dry-run, never --apply; AGENTS.md §24.12, 2026-10-27)
+    argv = [py, str(ROOT / "scripts" / "disk_hygiene_enforcer.py"), "--dry-run", "--json"]
     ok, payload = _run_json(argv, timeout=7200)
     detail = "no result"
     if isinstance(payload, dict):
         rr = payload.get("releases_result") or {}
         br = payload.get("backups_result") or {}
         b = int(rr.get("bytes_reclaimed_est") or 0) + int(br.get("bytes_reclaimed_est") or 0)
-        bytes_reclaimed += b
         n_rel = len(rr.get("deleted") or [])
         n_bak = len(br.get("deleted") or [])
-        detail = f"releases={n_rel} backups_files={n_bak} reclaim={_fmt_bytes(b)}"
-        ok = ok and bool(payload.get("ok", True))
+        if apply:
+            # Removal refused: nothing is reclaimed, so nothing is added to bytes_reclaimed. The step is judged on
+            # planning errors only -- the enforcer's dry run exits 1 at the critical floor, which is its alarm.
+            errs = list(rr.get("errors") or []) + list(br.get("errors") or [])
+            ok = not errs
+            detail = (
+                f"{REFUSED_STATUS}: removed nothing; plan lists releases={n_rel} backups_files={n_bak} "
+                f"(~{_fmt_bytes(b)}) — reclaim is the disk-hygiene lane's job"
+            )
+        else:
+            bytes_reclaimed += b
+            detail = f"releases={n_rel} backups_files={n_bak} reclaim={_fmt_bytes(b)}"
+            ok = ok and bool(payload.get("ok", True))
     else:
         detail = str(payload)[:180]
         ok = False
@@ -222,11 +250,18 @@ def run(*, apply: bool, notify: bool) -> dict:
     preclean = _clean_preclean_dirs(dry_run=dry)
     b = int(preclean.get("bytes_reclaimed_est") or 0)
     bytes_reclaimed += b
+    if preclean.get("refused"):
+        pre_detail = (
+            f"{REFUSED_STATUS}: removed nothing; dirs listed={len(preclean.get('refused_items') or [])} "
+            f"(~{_fmt_bytes(preclean.get('listed_bytes_est') or 0)}) — backups are out of scope"
+        )
+    else:
+        pre_detail = f"dirs={len(preclean.get('deleted') or [])} reclaim={_fmt_bytes(b)}"
     steps.append(
         {
             "name": "backup_preclean_dirs",
             "ok": bool(preclean.get("ok")),
-            "detail": f"dirs={len(preclean.get('deleted') or [])} reclaim={_fmt_bytes(b)}",
+            "detail": pre_detail,
             "raw": preclean,
         }
     )
@@ -253,6 +288,8 @@ def run(*, apply: bool, notify: bool) -> dict:
         "authority": "READ_ONLY_ADVISORY",
         "schema": "WeeklyDiskCleanup@v1",
     }
+    if apply:
+        summary["removal"] = f"none — {REFUSED_STATUS} (AGENTS.md §24.12)"
 
     # durable receipt
     receipt = ROOT / "logs" / "weekly_disk_cleanup_receipts.jsonl"
@@ -289,7 +326,11 @@ def run(*, apply: bool, notify: bool) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="Plan only (no deletes)")
-    ap.add_argument("--apply", action="store_true", help="Mutate disk/DB")
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help="the weekly timer's mode: runs every step's plan; removal is REFUSED (AGENTS.md §24.12)",
+    )
     ap.add_argument("--no-notify", action="store_true", help="Skip Telegram")
     ap.add_argument("--json", action="store_true", help="Print full summary JSON")
     args = ap.parse_args()

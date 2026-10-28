@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Reclaim disk the moment it crosses a threshold — do not wait for Sunday.
+"""Page the moment disk crosses a threshold — do not wait for Sunday.
+
+2026-10-27 — THIS GUARD NO LONGER RECLAIMS (AGENTS.md §24.12, §0 rule 6)
+------------------------------------------------------------------------
+§24.12 makes `scripts/disk_hygiene.py` (n8n lane `disk-hygiene`, or the operator
+CLI) the only automated removal of release directories, and puts backups out of
+scope. The enforcer this guard shelled predates §24.12 and its `--apply` now
+refuses (status REFUSED_OUTSIDE_24_12, exit 77). So above the trigger the guard
+asks the enforcer for its PLAN only (`--dry-run`, never `--apply`), records the
+condition and pages with the governed route. Requesting `--apply` here would only
+collect a refusal every 15 minutes, and would quietly resume deleting if the
+enforcer were ever reverted -- two independent changes are now needed for that.
+The history below is kept because it explains the trigger and the paging.
 
 WHY THIS EXISTS
 ---------------
@@ -45,8 +57,9 @@ out of scope here.
     python scripts/disk_pressure_guard.py --dry-run       # report only
     python scripts/disk_pressure_guard.py --used-pct 80   # tighter trigger
 
-AUTHORITY: OPERATOR_APPROVED 2026-09-21. Delegates all deletion to
-disk_hygiene_enforcer.py.
+AUTHORITY: OPERATOR_APPROVED 2026-09-21 (trigger + paging). Deletes nothing and
+requests no deletion since 2026-10-27: reclaim is the disk-hygiene lane's job
+(AGENTS.md §24.12); disk_hygiene_enforcer.py is consulted for its plan only.
 """
 
 from __future__ import annotations
@@ -105,13 +118,28 @@ def _fmt_gb(n: int) -> str:
     return f"{n / (1024**3):.1f}GB"
 
 
-def run_enforcer(*, dry_run: bool) -> dict:
-    """Shell the existing enforcer. Its policy, its protections, its deletions."""
+#: Status the enforcer reports for a refused --apply (scripts/disk_hygiene_enforcer.py REFUSED_STATUS).
+#: The guard never sends --apply; this is read only so a refusal can never be mistaken for a reclaim.
+ENFORCER_REFUSED = "REFUSED_OUTSIDE_24_12"
+#: What the page says instead of "reclaimed": where reclaim actually lives.
+GOVERNED_ROUTE_LINE = (
+    "no automatic removal here (AGENTS.md §24.12): the disk-hygiene lane owns reclaim — "
+    "review `python3 scripts/disk_hygiene.py --report`"
+)
+
+
+def run_enforcer(*, dry_run: bool = True) -> dict:
+    """Shell the enforcer for its PLAN only (``--dry-run``, always). ``dry_run`` is kept for callers; ignored.
+
+    Since 2026-10-27 the guard requests no removal: §24.12 leaves release removal to the disk-hygiene lane and
+    backups to the operator. The payload is the enforcer's dry-run plan.
+    """
+    del dry_run  # always plan-only
     script = ROOT / "scripts" / "disk_hygiene_enforcer.py"
     if not script.is_file():
         return {"ok": False, "error": "disk_hygiene_enforcer.py missing", "skipped": True}
     py = venv_python(ROOT)
-    argv = [py if Path(py).exists() else sys.executable, str(script), "--dry-run" if dry_run else "--apply"]
+    argv = [py if Path(py).exists() else sys.executable, str(script), "--dry-run"]
     try:
         proc = subprocess.run(argv, cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
     except Exception as exc:  # noqa: BLE001 - report, never improvise a fallback
@@ -124,9 +152,13 @@ def run_enforcer(*, dry_run: bool) -> dict:
     # NOTE: the enforcer exits 1 while the disk is still "critical" even when its
     # own plan succeeded -- that is its alarm, not a failure. Judge on the plan.
     rel = payload.get("releases_result") or {}
+    entries = (rel.get("deleted") or []) + (rel.get("refused_items") or [])
     payload["_rc"] = proc.returncode
-    payload["_deleted_count"] = len(rel.get("deleted") or [])
-    payload["_reclaimed"] = int(rel.get("bytes_reclaimed_est") or 0)
+    # Counted by action, never by list length: a dry-run "deleted" list holds would_delete entries.
+    payload["_deleted_count"] = sum(1 for e in entries if e.get("action") == "deleted")
+    payload["_would_remove_count"] = sum(1 for e in entries if e.get("action") in ("would_delete", "refused"))
+    payload["_reclaimed"] = 0
+    payload["_refused"] = payload.get("status") == ENFORCER_REFUSED
     payload["_plan_ok"] = bool(rel.get("ok", False))
     return payload
 
@@ -165,8 +197,8 @@ def _write_receipt(payload: dict) -> str:
         return f"error:{type(exc).__name__}"
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
         "--used-pct",
         type=float,
@@ -174,9 +206,11 @@ def main() -> int:
         help=f"act at or above this %% used (default {DEFAULT_USED_PCT})",
     )
     ap.add_argument("--path", default="/")
-    ap.add_argument("--dry-run", action="store_true", help="report and plan only; never deletes")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="report and plan only (every run is, since 2026-10-27; kept for callers)"
+    )
     ap.add_argument("--json", action="store_true")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     used, free, total = disk_used_pct(a.path)
     over = used >= a.used_pct
@@ -216,13 +250,14 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         out["condition"] = {"error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
+    # 2026-10-27: this guard removes nothing and requests no removal (AGENTS.md §24.12).
+    out["removal"] = "none (AGENTS.md §24.12: the disk-hygiene lane owns reclaim)"
     if out.get("condition", {}).get("notify"):
         enf = out.get("enforcer") or {}
         line = f"💾 Disk {final_used:.1f}% used ({out.get('free_after', out['free'])} free) — trigger {a.used_pct:.0f}%"
-        if enf:
-            line += f"\nreclaimed {out.get('reclaimed', '0GB')} from {enf.get('_deleted_count', 0)} release(s)"
-        if a.dry_run:
-            line += "\n(dry run — nothing deleted)"
+        line += f"\n{GOVERNED_ROUTE_LINE}"
+        if enf and not (enf.get("skipped") or enf.get("error")):
+            line += f"\nenforcer plan (report only): {enf.get('_would_remove_count', 0)} old release(s) listed"
         out["telegram"] = notify(line)
 
     out["receipt"] = _write_receipt(out)
