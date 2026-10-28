@@ -366,6 +366,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-29-2107.md` | Honest maturity assessment — residual gap closure (2026-09-29 21:07 ET) |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-29-2153.md` | Honest maturity assessment — 2026-09-29 21:53 ET |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge |
+| `docs/architecture/IDENTITY_SPINE.md` | Identity Spine |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY |
@@ -1137,8 +1138,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility |
 | `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence |
 | `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan |
+| `docs/governance/AGENTS_HISTORY.md` | AGENTS.md — version history, banners and ratifying edits |
 | `docs/governance/ENGINEERING_STANDARD.md` | Trade AI Engineering Standard |
+| `docs/governance/LESSONS_LEARNED.md` | Lessons learned — why the rules in AGENTS.md exist |
 | `docs/governance/NEW_AGENT_STARTS_HERE.md` | New agent starts here (one page) |
+| `docs/governance/OPEN_ITEMS.md` | Open items — every known gap, with an owner and a review date |
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Phase 111A — Authority Boundary Scorecard |
 | `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder |
 | `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison |
@@ -1501,6 +1505,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/MIGRATION_STATE_20261021.md` | Cron → n8n migration state — 2026-10-21 |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest |
+| `docs/implementation/n8n-maturity/N8N_AGENT_NODE_PRECONDITIONS.md` | N8N Agent Node Preconditions |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) |
 | `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md` | n8n workflow framework scorecard — STATIC CONFORMANCE measured by `scripts/check_n8n_workflow_framework.py` (2026-10-15) |
 | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) |
@@ -1807,6 +1812,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md` | Bitemporal Memory Substrate v2 — deploy receipt |
 | `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment |
+| `docs/ops/BROKER_READ_SYNC.md` | Broker Read Sync |
 | `docs/ops/C1_CIO_COMPANY_FACTS_20261024.md` | C1: shared CIO company facts on My Watchlist and Prospects |
 | `docs/ops/C1_COMPANY_CATALYST_FIX_20261024.md` | C1: stored catalysts and short registered company names |
 | `docs/ops/C1_COMPANY_FACTS_POPULATION_20261024.md` | C1 company-facts population: source delivery and production-copy proof |
@@ -1975,12 +1981,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET |
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
+| `docs/ops/DELIVERY_LIFECYCLE.md` | Delivery Lifecycle |
 | `docs/ops/DESKS_A_REDESIGN_20261025.md` | Desks A: approved boards 1–4 (Re-Entry, Strategy, Defense, Agents) |
 | `docs/ops/DESKS_B_REDESIGN_20261024.md` | Desks B: approved boards 5–11 |
 | `docs/ops/DESKS_REDESIGN_20261024.md` | Restored desks: shared frame (board 0) |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
+| `docs/ops/DISK_HYGIENE.md` | Disk Hygiene |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
 | `docs/ops/DISK_STANDING_APPLY_20261024.md` | WP-33: standing disk-hygiene source preparation |
 | `docs/ops/DISK_STANDING_CI_FOLLOWUP_20261024.md` | Disabled disk hygiene: CI follow-up |
@@ -1989,6 +1997,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
 | `docs/ops/EMERGENCY_MANUAL_PROMOTE.md` | Emergency manual promote |
 | `docs/ops/ENRICHMENT_COVERAGE_AUDIT_2026-10-22.md` | Enrichment-coverage audit — rescoped to the curated Watch (2026-10-22) |
+| `docs/ops/EXECUTION_OPS_GRANT.md` | Execution Ops Grant |
 | `docs/ops/F09_READ_SHADOW_20261024.md` | F09 read lanes at SHADOW |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs |
 | `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (operator-approved, exact-SHA) |
@@ -1996,6 +2005,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota |
 | `docs/ops/GROK_BUILD_PROMPT_B_MATERIAL_NOTIFY_AND_LOOP.md` | Grok Build — B material notify + loop continuity |
+| `docs/ops/GUARD_GRANTS.md` | Guard grants at the operator's keyboard |
+| `docs/ops/HANDS_OFF_DELIVERY.md` | Hands Off Delivery |
 | `docs/ops/HEADER_RIGHT_EDGE_20261024.md` | WP-31 desktop header right-edge correction |
 | `docs/ops/HEALTH_AGENT_MATURITY_PLAN_2026-08-27.md` | Health Agent Maturity Plan — from "it ran" to "it worked" |
 | `docs/ops/HEALTH_REMEDIATION_MEMORY_2026-10-22.md` | Health remediation route memory bound (2026-10-22) |
@@ -2049,6 +2060,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/POLICY_ENFORCEMENT_AUDIT_20261024.md` | Policy enforcement audit — source proposal, 2026-10-24 |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
 | `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 |
+| `docs/ops/POSTGRES_MAIN_ENOSPC_2026-09-18.md` | Postgres Main Enospc 2026-09-18 |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) |
 | `docs/ops/PROPOSED_INSTALL_CODE_MIRROR_DRIVE_CRON_2026-09-20.md` | APPROVED — code-mirror Drive cron + apply (AGENTS.md §9.3 / §17) |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) |

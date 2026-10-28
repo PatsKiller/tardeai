@@ -36,6 +36,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 from tests import test_agents_policy_5_0_0_execution_ops as T5  # noqa: E402
 from tests import test_agents_policy_14_0_0_broker_read as T14  # noqa: E402
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402  (26.0.0 rewrote §0 rule 6)
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
@@ -200,7 +201,7 @@ def test_ratified_section_17_digest_is_what_the_insertion_produces():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_follow_section_0(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_26(adapter)  # the 15.0.0 sentence as ratified; 26.0.0 dropped its "binding only once" clause
     assert RULE_6 in text, f"{adapter} lost rule 6"
     if not _ratified():
         assert "disk-hygiene" not in text and "disk_hygiene" not in text and "§24.12" not in text, (
