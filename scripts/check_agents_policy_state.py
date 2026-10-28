@@ -29,6 +29,11 @@ Rules
    #2208 (2026-10-26) rewrote §25.10 and §28.12 with no bump and no token, and
    nothing failed (review 2026-10-27 H2). The base is ``--base REF`` or, in a
    pull_request CI run, the merge-base of HEAD and ``origin/$GITHUB_BASE_REF``.
+6. (policy freshness, operator 2026-10-28) A PR is not built under an old policy: when the base branch's tip carries
+   a higher ``Policy-Version`` than the PR head, the PR fails with ``STALE_POLICY`` unless the PR itself changes the
+   version (head differs from the merge-base), which rule 5 then governs. The base tip is ``--base REF`` or
+   ``origin/$GITHUB_BASE_REF``; with neither (push to main, local run) the rule is skipped and says so.
+   Version parsing is shared with every other gate: ``scripts/lib/policy_freshness.py``.
 
 Usage:  python3 scripts/check_agents_policy_state.py [--path AGENTS.md]
                  [--on-main | --on-branch] [--base REF]
@@ -44,6 +49,12 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.lib import policy_freshness as PF  # noqa: E402
 
 ROW_RE = re.compile(r"^\|\s*(\d+\.\d+\.\d+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]*)\|(.*)$")
 RIDES_RE = re.compile(r"\brides?\b", re.IGNORECASE)
@@ -133,6 +144,34 @@ def check_bump(text: str, base_text: str | None) -> list[str]:
     return errors
 
 
+def check_not_behind(head_text: str, base_tip_text: str | None, merge_base_text: str | None) -> list[str]:
+    """Rule 6: the PR head's Policy-Version is not behind the base branch tip's, unless the PR changes the version."""
+    if base_tip_text is None:
+        return []
+    head_v = PF.parse_policy_version(head_text)
+    tip_v = PF.parse_policy_version(base_tip_text)
+    mb_v = PF.parse_policy_version(merge_base_text) if merge_base_text is not None else None
+    if merge_base_text is not None and head_v != mb_v:
+        return []  # the PR bumps (or otherwise changes) the version itself: rule 5 governs it
+    if PF.version_behind(head_v, tip_v):
+        return [
+            f"STALE_POLICY: this PR's AGENTS.md is {head_v}, the base branch has {tip_v}; rebase onto fresh "
+            "origin/main, re-read AGENTS.md §0, and push again (the PR was built under an older policy)"
+        ]
+    return []
+
+
+def base_tip_text_for(base: str | None, rel_path: str) -> tuple[str | None, str]:
+    """The AGENTS.md text at the base branch TIP (not the merge-base): what main says now."""
+    if not base:
+        ref = os.environ.get("GITHUB_BASE_REF")
+        if not ref:
+            return None, "no base"
+        base = f"origin/{ref}"
+    text = _git("show", f"{base}:{rel_path}")
+    return (text, base) if text is not None else (None, f"base {base} unreadable")
+
+
 def _git(*args: str) -> str | None:
     try:
         out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=30)
@@ -162,14 +201,20 @@ def main(argv: list[str] | None = None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--on-main", action="store_true")
     g.add_argument("--on-branch", action="store_true")
-    ap.add_argument("--base", default=None, help="git ref to compare against (rule 5); default merge-base with "
-                    "origin/$GITHUB_BASE_REF in a pull_request run, else no comparison")
+    ap.add_argument(
+        "--base",
+        default=None,
+        help="git ref to compare against (rule 5); default merge-base with "
+        "origin/$GITHUB_BASE_REF in a pull_request run, else no comparison",
+    )
     args = ap.parse_args(argv)
     on_main = args.on_main or (not args.on_branch and os.environ.get("GITHUB_REF") == "refs/heads/main")
     text = Path(args.path).read_text(encoding="utf-8")
     errors = check(text, on_main=on_main)
     base_text, base_label = base_text_for(args.base, args.path)
     errors += check_bump(text, base_text)
+    tip_text, tip_label = base_tip_text_for(args.base, args.path)
+    errors += check_not_behind(text, tip_text, base_text)
     where = "main" if on_main else "branch"
     if errors:
         print(f"AGENTS policy state FAILED ({where}):")
@@ -178,7 +223,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         f"AGENTS policy state ok ({where}): {control_block(text).get('Policy-Version')} "
-        f"{control_block(text).get('Status')} (version bump vs {base_label}: ok)"
+        f"{control_block(text).get('Status')} (version bump vs {base_label}: ok; "
+        + (
+            f"not behind {tip_label} ({PF.parse_policy_version(tip_text)}): ok)"
+            if tip_text is not None
+            else f"freshness vs base tip: skipped, {tip_label})"
+        )
     )
     return 0
 

@@ -133,6 +133,28 @@ if [[ "$guard_ok" == "1" ]]; then
   echo "Cursor git-push grant active: $guard_reason"
 fi
 
+# Policy freshness (operator 2026-10-28; scripts/lib/policy_freshness.py): every pushed commit's AGENTS.md must match
+# origin/main's, or sit on top of it (a branch that bumps AGENTS.md). STALE refuses before any grant use or budget
+# count; UNKNOWN is printed as a warning and the push continues. One short fetch; offline uses the last fetch.
+if [[ -f "$repo_root/scripts/lib/policy_freshness.py" ]]; then
+  fresh_revs=()
+  while read -r _lref lsha _rref _rsha; do
+    [[ -n "${lsha:-}" && "$lsha" != "0000000000000000000000000000000000000000" ]] && fresh_revs+=(--rev "$lsha")
+  done <<< "$PUSH_REFS"
+  [[ ${#fresh_revs[@]} -eq 0 ]] && fresh_revs=(--rev HEAD)
+  fresh_rc=0
+  python3 "$repo_root/scripts/lib/policy_freshness.py" --repo "$repo_root" --gate pre-push "${fresh_revs[@]}" \
+    >/dev/null || fresh_rc=$?
+  if [[ $fresh_rc -eq 1 ]]; then
+    echo "REMOTE PUSH BLOCKED (stale policy): rebase onto fresh origin/main and re-read AGENTS.md §0." >&2
+    exit 1
+  elif [[ $fresh_rc -ne 0 && $fresh_rc -ne 3 ]]; then
+    echo "WARNING: policy freshness check could not run (rc=$fresh_rc); AGENTS.md freshness NOT verified." >&2
+  fi
+else
+  echo "WARNING: scripts/lib/policy_freshness.py missing; AGENTS.md freshness NOT verified." >&2
+fi
+
 if [[ "${TRADEAI_SKIP_SECRETS_SCAN:-0}" != "1" ]]; then
   if [[ -f "$repo_root/scripts/check_no_secrets.py" ]]; then
     echo "Running secrets tree scan..."

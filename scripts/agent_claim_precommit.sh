@@ -23,6 +23,12 @@
 # could not run (import error, crash, usage): it then blocks only while the policy is enforcing, and otherwise warns.
 # Env: AGENT_CLAIM_NO_GH=1 never calls GitHub (a holder's merge is then seen only from the lifecycle cache);
 #      TRADEAI_AGENT_CLAIMS_DIR overrides the claims directory; TRADEAI_CLAIM_OVERRIDE=<reason> bypasses (logged).
+#
+# Policy freshness (operator 2026-10-28; scripts/lib/policy_freshness.py): before the claim check, this worktree's
+# AGENTS.md is compared with origin/main's (one short fetch; offline falls back to the last fetch and says so).
+#   STALE   -> exit 1 with "STALE_POLICY: your AGENTS.md is X, origin/main is Y; ..." (no override: rebase or use a
+#              fresh worktree). A branch that edits AGENTS.md on top of main's current copy is not stale.
+#   UNKNOWN -> a printed warning, never a silent pass; the commit continues (no remote, nothing fetched, lib missing).
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null)
@@ -31,6 +37,18 @@ branch="$(git symbolic-ref --short -q HEAD 2>/dev/null || true)"  # works on an 
 [ "$branch" = "HEAD" ] && branch=""
 PY="python3"
 [ -x "$ROOT/.venv/bin/python" ] && PY="$ROOT/.venv/bin/python"
+if [ -f "$ROOT/scripts/lib/policy_freshness.py" ]; then
+  "$PY" "$ROOT/scripts/lib/policy_freshness.py" --repo "$ROOT" --gate pre-commit >/dev/null
+  prc=$?
+  if [ "$prc" -eq 1 ]; then
+    echo "pre-commit: commit refused under a stale AGENTS.md (scripts/lib/policy_freshness.py)" >&2
+    exit 1
+  elif [ "$prc" -ne 0 ] && [ "$prc" -ne 3 ]; then
+    echo "WARN [pre-commit]: policy freshness check could not run (rc=$prc); AGENTS.md freshness NOT verified" >&2
+  fi
+else
+  echo "WARN [pre-commit]: scripts/lib/policy_freshness.py missing; AGENTS.md freshness NOT verified" >&2
+fi
 "$PY" "$ROOT/scripts/agent_claim.py" precommit --exclude-branch "$branch" --agents-md "$ROOT/AGENTS.md" \
   --paths "${staged[@]}"
 rc=$?

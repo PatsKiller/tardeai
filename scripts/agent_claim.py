@@ -40,6 +40,13 @@ task done <id> --evidence-only --summary S --evidence L [L ...] closes a FREE ta
 without taking it (no claim, so an overlapping live claim does not block it); actor, summary and evidence links go to
 the task and tasks_history.jsonl.
 
+Policy freshness (operator 2026-10-28): ``claim``, ``claim --add``, ``next`` and ``take`` first compare this worktree's
+AGENTS.md with origin/main's (scripts/lib/policy_freshness.py, one short fetch). STALE is refused (exit 1) with
+"STALE_POLICY: your AGENTS.md is X, origin/main is Y; ..."; UNKNOWN (no remote, offline with nothing fetched) is
+printed as a warning and the claim proceeds. Every claim records ``policy_version`` and ``policy_blob`` (the AGENTS.md
+blob id it was made under); ``heartbeat`` refreshes them. ``status`` flags a claim ``POLICY CHANGED`` once a newer
+Policy-Version reached main while it was open (scripts/lib/policy_version_broadcast.py).
+
 Exit codes: 0 ok · 1 conflict / refused claim · 2 usage or ownership error.
 AUTHORITY: READ_ONLY_ADVISORY — coordination files only; no broker, DB, Telegram, scheduler or remote write
 (``gh pr list`` is a read).
@@ -65,6 +72,49 @@ from scripts.lib import agent_task_board as TB  # noqa: E402
 LANE_ID = "agent-claim-compact"
 PRECOMMIT_BLOCK = 10  # precommit: the gate blocked (distinct from 1, a Python crash); the hook maps it to exit 1
 SCRIPT = "scripts/agent_claim.py"
+# Test isolation only: while pytest runs a test (PYTEST_CURRENT_TEST) the claim-board suites, which run this CLI in-process
+# dozens of times, do not fetch origin per claim. The freshness gate's own tests set this variable to "1" to run it.
+ENV_POLICY_UNDER_PYTEST = "TRADEAI_POLICY_FRESHNESS_UNDER_PYTEST"
+
+
+def _policy_gate(verb: str) -> tuple[bool, dict]:
+    """(allowed, policy fields to record). STALE refuses with the STALE_POLICY line; UNKNOWN warns and allows."""
+    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get(ENV_POLICY_UNDER_PYTEST) != "1":
+        return True, {"policy_check": "skipped_test"}
+    PF = _pf()
+    if PF is None:
+        print("WARN: scripts/lib/policy_freshness.py unavailable; AGENTS.md freshness NOT verified", file=sys.stderr)
+        return True, {"policy_check": "UNKNOWN"}
+    res = PF.evaluate(_toplevel() or os.getcwd())
+    fields = {"policy_version": res.local_version, "policy_blob": res.local_blob, "policy_check": res.status}
+    if res.status == PF.STALE:
+        print(res.message(), file=sys.stderr)
+        print(f"refused: {verb} is not allowed under a stale AGENTS.md.", file=sys.stderr)
+        return False, fields
+    if res.status == PF.UNKNOWN:
+        print(f"WARN: {res.message()}", file=sys.stderr)
+    elif res.offline:
+        print(f"WARN: {res.message()}", file=sys.stderr)
+    return True, fields
+
+
+def _pf():
+    """scripts/lib/policy_freshness, or None where it is absent (a copied hook tree): the gate then warns, never crashes."""
+    try:
+        from scripts.lib import policy_freshness
+    except ImportError:
+        return None
+    return policy_freshness
+
+
+def _local_policy_fields() -> dict:
+    """The worktree's AGENTS.md identity, no fetch (heartbeat records what the agent is reading now)."""
+    top = _toplevel()
+    PF = _pf()
+    if not top or PF is None:
+        return {}
+    lp = PF.local_policy(top)
+    return {"policy_version": lp["version"], "policy_blob": lp["blob"]}
 
 
 def _observer(a: argparse.Namespace) -> B.LC.LifecycleObserver:
@@ -190,6 +240,12 @@ def cmd_claim(a: argparse.Namespace) -> int:
     if not session:
         print("error: --session (or AGENT_CLAIM_SESSION) is required to claim", file=sys.stderr)
         return 2
+    if not a.add and not (a.task and a.paths):
+        print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
+        return 2
+    allowed, policy = _policy_gate("claim")
+    if not allowed:
+        return 1
     if a.add:  # extend an existing claim
         try:
             cid = _resolve_claim(board, a)
@@ -204,9 +260,6 @@ def cmd_claim(a: argparse.Namespace) -> int:
         print(json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{cid} paths: {', '.join(doc['paths'])}")
         _note_shared(a.add)
         return 0
-    if not a.task or not a.paths:
-        print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
-        return 2
     branch = a.branch or B.current_branch()
     try:
         doc = board.claim(
@@ -220,6 +273,7 @@ def cmd_claim(a: argparse.Namespace) -> int:
             note=a.note,
             worktree=_toplevel(),
             head_sha=_head(),
+            policy=policy,
         )
     except B.ClaimConflict as exc:
         _print_conflicts(exc.conflicts)
@@ -260,7 +314,14 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
     try:
         prev = board.get(a.claim_id).doc
         doc = board.heartbeat(
-            a.claim_id, session=_session(a), pr=a.pr, note=a.note, branch=a.branch, head_sha=head, worktree=top
+            a.claim_id,
+            session=_session(a),
+            pr=a.pr,
+            note=a.note,
+            branch=a.branch,
+            head_sha=head,
+            worktree=top,
+            policy=_local_policy_fields(),
         )
         if head and head != prev.get("logged_sha"):  # commits since the last logged SHA go to the worklog
             wl = board.worklog(a.claim_id)
@@ -300,7 +361,9 @@ def _incident_warning(session: str) -> int:
         return 0
     if res["ok"]:
         return 0
-    print(("REFUSED: " if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else "WARN: ") + message(res), file=sys.stderr)
+    print(
+        ("REFUSED: " if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else "WARN: ") + message(res), file=sys.stderr
+    )
     return 3 if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else 0
 
 
@@ -650,9 +713,19 @@ def cmd_status(a: argparse.Namespace) -> int:
             f"    task: {r.get('task')}\n    worktree: {r.get('worktree') or '?'}   plan {plan}\n"
             f"    handoff: {w.get('next_step') or '(not set)'}"
             + (f"\n    shared (never conflicts): {', '.join(r['shared_paths'])}" if r.get("shared_paths") else "")
+            + (
+                f"\n    POLICY CHANGED: AGENTS.md {r['policy_changed']['to_version']} is on main; this claim recorded"
+                f" {r['policy_changed'].get('claim_policy_version') or 'no version'} — re-read §0 and rebase on fresh"
+                " origin/main before continuing (heartbeat from the fresh worktree clears this)"
+                if r.get("policy_changed")
+                else ""
+            )
         )
 
     print(f"# Agent board status  {out['at']}  ({out['claims_dir']})")
+    changed = [r for r in in_flight + takeable if r.get("policy_changed")]
+    if changed:
+        print(f"\n!! {len(changed)} open claim(s) were made under an older AGENTS.md — see POLICY CHANGED below")
     print(f"\n## In flight ({len(in_flight)})")
     print("\n".join(line(r) for r in in_flight) or "(none)")
     print(f"\n## Stale or can be taken over ({len(takeable)})  -> agent_claim.py takeover <claim_id>")
@@ -819,6 +892,9 @@ def cmd_next(a: argparse.Namespace) -> int:
     if not session:
         print("error: --session (or AGENT_CLAIM_SESSION) is required", file=sys.stderr)
         return 2
+    allowed, policy = _policy_gate("take" if getattr(a, "task_id", None) else "next")
+    if not allowed:
+        return 1
     try:
         got = _tasks(a).next(
             vendor=a.vendor or B.detect_vendor(),
@@ -841,6 +917,10 @@ def cmd_next(a: argparse.Namespace) -> int:
         print("no free task: everything is taken, blocked by a dependency or overlaps a live claim")
         return 3
     t, claim = got
+    try:  # record the AGENTS.md this claim was made under (the task board creates the claim itself)
+        claim = _board(a, observe=False).heartbeat(claim["claim_id"], session=session, policy=policy)
+    except (B.ClaimError, OSError) as exc:
+        print(f"WARN: policy version not recorded on {claim['claim_id']} ({exc})", file=sys.stderr)
     if a.json:
         print(json.dumps({"task": t, "claim": claim}, indent=2, sort_keys=True))
         return 0

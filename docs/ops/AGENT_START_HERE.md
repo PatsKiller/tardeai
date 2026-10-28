@@ -19,6 +19,17 @@ export AGENT_CLAIM_AGENT=<short name>
 
 Work only in your own git worktree under `$HOME`, never in the canonical checkout.
 
+**First, check you are reading the current AGENTS.md** (operator 2026-10-28):
+
+```bash
+python3 scripts/lib/policy_freshness.py --gate session   # OK | STALE_POLICY (exit 1) | UNKNOWN (exit 3, a warning)
+```
+
+`STALE_POLICY: your AGENTS.md is X, origin/main is Y` means your copy is old: work from fresh origin/main
+(`scripts/new-worktree.sh`) and re-read §0. `claim`, `next`, `take`, the pre-commit and pre-push hooks and the
+`agent-governance` CI job all refuse a stale copy; `status` marks an open claim `POLICY CHANGED` when a new version
+reaches main mid-task (heartbeat from a fresh worktree clears it). Details: `docs/ops/AGENT_CLAIM_BOARD.md` §16.
+
 ## The 5 commands
 
 ```bash
