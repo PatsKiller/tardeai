@@ -1014,7 +1014,7 @@ def _mirror_to_email(m: dict, row: dict, mirror: dict, mail_out: Optional[EmailS
         row["email_mirror"] = {"incidents": len(mirrored), "ok": False, "error": "no_email_sender"}
         tally["failed"] += 1
         return
-    subject = f"Trade AI release train — {len(mirrored)} notice(s)"
+    subject = f"Trade AI — {len(mirrored)} notice(s)"   # was "release train" (retired 2026-10-27; no routes left)
     body = _body(subject, mirrored, "Source: incident notifier P2 (also sent to Telegram).", cfg["max_lines"])
     try:
         res = mail_out(subject, body, identity=m["identity"])

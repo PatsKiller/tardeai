@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Host CLI for the release-train control state (Release Train v2, decision D3). Wired into nothing.
+"""Host CLI for the deploy STOP latch and the ReleaseControl@v1 state (decision D3, 2026-10-21).
+
+An operator tool, run by hand at the host; no timer, unit, n8n lane or Command Center route invokes it. It acts on
+the same ``STOP.json`` latch that the host ``deploy_on_main`` poller and the emergency promote refuse on
+(AGENTS.md §25.10; ``docs/ops/EMERGENCY_MANUAL_PROMOTE.md`` uses ``status``). The release train it was written for
+was retired 2026-10-27 (operator directive); ``pause``, ``arm``, ``change-scope`` and ``revoke`` act on the retired
+train's release delegation and control state only, and never on the deploy delegation.
 
 This is the ONLY entrypoint that builds a ``HostCliProof``: stdin must be a TTY, and for every operator command
 (arm, resume, change-scope, revoke) the operator re-types the phrase the library prints, which names the epoch
-the command will create. The Command Center may only request STOP or pause (through its own typed endpoint,
-not this file); n8n never calls this. It works when CC and n8n are down: it reads and writes local files only.
+the command will create. The Command Center may only request STOP (through its own typed endpoint, not this file);
+n8n never calls this. It works when CC and n8n are down: it reads and writes local files only.
 
   status                                   control mode, epoch, latch (ABSENT/SET/UNREADABLE), stop phase
   stop   --reason TEXT                     latch STOP + new epoch (safe direction; no confirmation)
-  pause  --reason TEXT                     pause after the current train
-  arm    --delegation PATH --reason TEXT   accept the delegation's digest; RUNNING with a new epoch
   resume --reason TEXT                     archive the latch (rename), new epoch, RUNNING (shows state first)
-  change-scope --delegation PATH --reason  accept a changed delegation digest; new epoch
-  revoke --reason TEXT                     stop automation; new epoch
+  pause  --reason TEXT                     train-era: pause after the claimed train
+  arm    --delegation PATH --reason TEXT   train-era: accept a release delegation's digest; RUNNING, new epoch
+  change-scope --delegation PATH --reason  train-era: accept a changed release delegation digest; new epoch
+  revoke --reason TEXT                     train-era: revoke the release delegation's automation; new epoch
 
 Every mutating command supports --dry-run, which prints the transition and the phrase and writes nothing
 (AGENTS §0 rule 7). Exit: 0 ok, 2 refused, 3 usage.

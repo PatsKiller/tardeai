@@ -4,8 +4,9 @@ Promote-only: if origin/main tip ≠ CURRENT pin, STOP is absent, GlobalReleaseL
 and the standing deploy delegation is armed, run cio_phase2_exact_main_deploy.sh prepare+promote
 for that SHA, then post_release_tester, and write DeployOnMainReceipt@v1 (path=poller).
 
-Never merges PRs or pushes remotes; local source advances only by exact-main fast-forward. Soft-add: live until 24.0.0 is ACTIVE stays the release train;
-this module is the target path.
+Never merges PRs or pushes remotes; local source advances only by exact-main fast-forward. This is the
+live promote path; the release train it replaced was retired 2026-10-27 (operator directive). From
+scripts/lib/release_control.py it uses only the STOP latch reader and GlobalReleaseLock.
 """
 
 from __future__ import annotations

@@ -690,8 +690,9 @@ RELEASE_WINDOW_SEVERITY = {
 
 
 def read_release_window_state(root: Any = None) -> dict:
-    """The release-window runner's STOP latch and last receipt (scripts/release_window.py; release train
-    2026-10-21). A runner that never ran has neither file: that is an empty state, not an unavailable source."""
+    """The deploy STOP latch and the release-window runner's last receipt (scripts/release_window.py state dir).
+    The host deploy_on_main poller and the emergency promote refuse while this latch is set (AGENTS.md §25.10).
+    A runner that never ran has neither file: that is an empty state, not an unavailable source."""
     import json
     import os
     from pathlib import Path
@@ -714,24 +715,9 @@ def read_release_window_state(root: Any = None) -> dict:
     last = root / "last.json"
     if last.exists():
         out["last"] = json.loads(last.read_text(encoding="utf-8"))  # unreadable -> raises -> source unavailable
-    # Release-train claims the claimer's watchdog moved to orphaned/ (arming finding 6) and nobody has closed yet
-    # (train-orphan-resolve writes a terminal receipt). Never deleted: a resolved orphan just stops being an item.
-    orphaned: list[dict] = []
-    spool = root / "train_requests"
-    try:
-        names = sorted(n for n in os.listdir(spool / "orphaned") if n.endswith(".json"))
-    except OSError:
-        names = []
-    for n in names[:50]:
-        rid = n[:-5]
-        try:
-            rec = json.loads((spool / "receipts" / n).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            rec = {}
-        state = rec.get("state") if isinstance(rec, dict) else None
-        if state not in ("COMPLETED", "REFUSED", "EXPIRED", "FAILED"):
-            orphaned.append({"request_id": rid, "receipt_state": state})
-    out["orphaned"] = orphaned
+    # The retired release train's orphaned-request scan (train_requests/orphaned, closed by the removed
+    # train-reconcile / train-orphan-resolve subcommands) was removed 2026-10-27 (operator directive): nothing in the
+    # tree writes that spool any more, and the item named commands that no longer exist.
     return out
 
 
@@ -743,9 +729,10 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
         items.append(
             item(
                 "P1",
-                "Release windows halted: STOP latch unreadable",
-                f"STOP.json exists but cannot be read ({latch['unreadable']}); every window refuses "
-                "(REFUSED_STOP_UNREADABLE) until the operator inspects it and runs clear-stop",
+                "Deploys halted: STOP latch unreadable",
+                f"STOP.json exists but cannot be read ({latch['unreadable']}); the host deploy_on_main poller and "
+                "the emergency promote refuse until the operator inspects it and runs "
+                "scripts/release_window.py clear-stop",
                 R_SYSTEM_JOBS,
                 "release_window",
                 None,
@@ -753,13 +740,17 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
             )
         )
     elif isinstance(latch, dict):
+        if latch.get("window_id"):
+            why = (f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
+                   f"{str(latch.get('candidate') or '')[:9]}")
+        else:
+            why = f"STOP latched ({str(latch.get('reason') or latch.get('outcome') or 'no reason recorded')[:120]})"
         items.append(
             item(
                 "P1",
-                "Release windows halted: STOP latched",
-                f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
-                f"{str(latch.get('candidate') or '')[:9]}; every later window refuses until the operator "
-                "reviews the receipt and runs scripts/release_window.py clear-stop",
+                "Deploys halted: STOP latched",
+                f"{why}; the host deploy_on_main poller and the emergency promote refuse until the operator "
+                "reviews it and clears it (Ops → Controls deploy resume, or scripts/release_window.py clear-stop)",
                 R_SYSTEM_JOBS,
                 "release_window",
                 latch.get("latched_at"),
@@ -784,20 +775,6 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
                     {"window_id": last.get("window_id"), "outcome": last.get("outcome")},
                 )
             )
-    for o in p.get("orphaned") or []:
-        items.append(
-            item(
-                "P2",
-                f"Release train request {o.get('request_id')} orphaned",
-                "its claimer died after claiming it (receipt "
-                f"{o.get('receipt_state') or 'absent'}); it is never re-run automatically. Run "
-                "scripts/release_window.py train-reconcile, then train-orphan-resolve",
-                R_SYSTEM_JOBS,
-                "release_window",
-                None,
-                o,
-            )
-        )
     return items
 
 

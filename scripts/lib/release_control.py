@@ -1,8 +1,25 @@
-"""Release-train STOP / pause / resume / revoke state machine (ReleaseControl@v1). Library only; wired into nothing.
+"""The deploy STOP latch, the global release lock and the ReleaseControl@v1 state machine.
 
-Release Train v2, Phase 2 (plan `joyful-skipping-wilkes.md`; enhanced design 2026-10-21 §7). Operator decisions
-2026-10-21: D1 standing revocable authorization; D3 resume and scope changes only via the host CLI or a Telegram
-button confirmation (TOTP declined). The Command Center may only *request* STOP or pause.
+LIVE: this module is on the production deploy path (AGENTS.md §25.10). The release train it was built for was
+retired 2026-10-27 (operator directive: "Remove everything about the old train from the AGENTS.md, and from the
+Command Center and from the code."); what remains in use is:
+
+* ``read_latch`` / ``LATCH_*`` / ``LATCH_NAME``: the STOP latch reader. ``scripts/lib/deploy_on_main.py`` (the host
+  poller, every 2 minutes) and ``scripts/lib/deploy_delegation_binding.py`` refuse while STOP is SET or UNREADABLE.
+* ``GlobalReleaseLock`` / ``LockBusy`` / ``GLOBAL_LOCK_NAME``: the one global release mutation lock, taken by the
+  poller and by ``scripts/emergency_manual_promote.sh``.
+* ``ReleaseControl.view`` / ``.resume`` with a ``PasskeyProof``: Ops -> Controls ``deploy.resume`` and the deploy view
+  (``scripts/lib/ops_controls_core.py``, ``scripts/lib/ops_controls_api.py``).
+* ``scripts/release_control_cli.py``: the host CLI (``status`` / ``stop`` / ``resume`` on the same latch).
+
+Train-era surface still here, NOT on the deploy path: pause / claim / train-terminal, ``current_train_id`` and
+``mutation_refusal``. They are read only by the dormant train capability binding
+(``release_grant_binding.decide_capability``, ``release_capability``) and the host CLI; nothing on the poller path
+calls them. Their removal is a separate change (it moves the tests that exercise them).
+
+Origin: Release Train v2, Phase 2 (enhanced design 2026-10-21 §7). Operator decisions 2026-10-21: D1 standing
+revocable authorization; D3 resume and scope changes only via the host CLI or a confirmed operator proof (TOTP
+declined). The Command Center may only *request* STOP.
 
 State (one directory, the same one ``scripts/release_window.py`` uses as its state dir):
 
@@ -22,8 +39,7 @@ Fail closed: a missing control.json means "never armed" (not authorized); a corr
 non-integer epoch is ``CORRUPT`` (not authorized). A SET or UNREADABLE latch is a STOP whatever control.json says.
 
 Epoch: STOP increments it; resume, re-arm and scope change each issue a NEW epoch; nothing ever lowers it, so a
-capability bound to an older epoch never becomes valid again. Pause does not change the epoch (the current train
-may finish); revoke increments it.
+capability bound to an older epoch never becomes valid again. Pause does not change the epoch; revoke increments it.
 
 Who may call what (``Actor.kind``):
   request_stop, request_pause          cc, host_cli, telegram, controller
@@ -61,7 +77,7 @@ JOURNAL_NAME = "control_journal.jsonl"
 UNARMED = "UNARMED"                   # no control.json: never armed (derived, never written)
 CORRUPT = "CORRUPT"                   # control.json unreadable / invalid (derived, never written)
 RUNNING = "RUNNING"
-PAUSE_REQUESTED = "PAUSE_REQUESTED"   # current train may finish; no later train is claimed
+PAUSE_REQUESTED = "PAUSE_REQUESTED"   # train-era (retired 2026-10-27): the claimed train may finish
 PAUSED = "PAUSED"
 STOP_REQUESTED = "STOP_REQUESTED"
 STOP_ACKNOWLEDGED = "STOP_ACKNOWLEDGED"

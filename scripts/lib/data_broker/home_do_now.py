@@ -96,8 +96,9 @@ ACTION_LABEL = {
     "pipelines": "Diagnose",
     "pr_hygiene": "Open PRs",
     "desk_truth": "Data sources",
-    "release_window": "Release train",
-    "macro_calendar": "Release train",
+    # Both link to R_SYSTEM_JOBS (needs_action); "Release train" was retired with the train 2026-10-27.
+    "release_window": "Open Jobs",
+    "macro_calendar": "Open Jobs",
 }
 
 R_RISK = "/v3/risk"

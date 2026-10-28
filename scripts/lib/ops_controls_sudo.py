@@ -19,7 +19,7 @@ The window (``SudoWindows``):
   window token once, keeps only its SHA-256, and the page keeps the token in ``sessionStorage`` (gone when the browser
   session ends). A window used without its token, by another identity, or after any end condition is refused;
 * never covers the always-fresh kinds (``needs_fresh_passkey``): grant issue, kill-switch clear, passkey add and
-  revoke, the release-train operator kinds, and changing either sudo-window setting. Those need a fresh assertion
+  revoke, deploy resume, and changing either sudo-window setting. Those need a fresh assertion
   even inside a window, and the host applier re-checks the factor of every signed approval.
 
 Every act made in a window is audited with the window id and the opening assertion id, credential and time. Agents
