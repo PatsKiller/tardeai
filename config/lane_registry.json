@@ -25532,6 +25532,45 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "conflict-resolver",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/conflict_resolver.py",
+        "cadence": "*/15 9-15 * * 1-5",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 63.2,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-28",
+      "state_reason": "Proposed shadow-stage dispatcher row (AGENTS.md §23.11 registry-row PR; learn class, r1_class_admission). The operator's digest approval of the reviewed PR is the §17/§23.11 admission decision; this is a PROPOSE, no live flip. At shadow the dispatcher fires only the write-free --dry-run (which, with the proposed W10 edit, writes a LaneRunReceipt so ok_at advances); the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow, and the ledger-only/no-notification shadow and the operator-controlled live flip are separate later acts (docs/ops/W8_WRITERS_20261024.md; docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/conflict-resolver_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/ops/W8_WRITERS_20261024.md ('conflict-resolver ... every 15 minutes in the market session plus 07:30 and 16:20 ET, receipt data/runtime/conflict-resolver_last.json, write-free dry run, ledger-only/no-notification shadow'); scripts/conflict_resolver.py write_lane_receipt('conflict-resolver', ...).",
+      "note": "The W10 conflict engine host runner, proposed for n8n dispatcher admission (learn class). Read-only evaluation over canonical W1 truth (cio_truth.resolve, stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe, watch_decision.reentry_rows, cio_prospect shadow) plus the unchanged rulebook (config/conflict_rulebook.json). Writes only the comparison report (shadow) and the LaneRunReceipt. MBI_BEHAVIOR=0: no sizing, order, stop, broker, sender or secret. dry_run_arg runs --dry-run --state-root $STATE_ROOT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 9-15 * * 1-5",
+          "30 7 * * 1-5",
+          "20 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_on": "2026-10-28",
+      "adopted_reason": "SHADOW-stage dispatcher-row proposal (AGENTS.md §23.11): a hand-maintained row carrying a reviewed dispatch block; reconcile_lane_registry.py re-derives generated rows and would drop the block, so this row carries no generated_by. New lane (no prior cron line); the operator's digest approval is the admission decision."
     }
   ],
   "freshness_contracts": [
