@@ -16,12 +16,64 @@ Usage:
 
     # Check if escalation needed
     esc = check_escalation("V")
+
+Trust boundary (agent-controls audit 2026-09-18, "Prompt injection is PARTIAL"):
+every block below that carries another agent's words or third-party text
+(peer summaries, catalysts, critic reasoning, captured lessons) is returned
+fenced as UNTRUSTED_DATA by scripts/lib/agent_untrusted_data.py, which also
+neutralises fence-break and role-tag sequences inside it. If that helper cannot
+be loaded the block is dropped (empty string), never returned raw. Blocks of
+this system's own instructions (get_scalp_agent_instructions) and of numbers
+it computes itself (confluence, calibration) are not fenced.
+READ_ONLY_ADVISORY: nothing here sizes, orders, stops or writes to a broker.
 """
 
 import json
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+_UNTRUSTED_MODULES = ("scripts.lib.agent_untrusted_data", "lib.agent_untrusted_data")
+
+
+def _untrusted_delimiter():
+    """The shared ``untrusted_delimiter``, or None when it cannot be loaded.
+
+    Reuses whichever spelling is already imported, so a SCRIPTS_ONLY caller
+    (``lib.X``) and a root caller (``scripts.lib.X``) never get a second copy
+    of the module (scripts/lib/__init__.py assert_single_import_identity).
+    """
+    for name in _UNTRUSTED_MODULES:
+        mod = sys.modules.get(name)
+        fn = getattr(mod, "untrusted_delimiter", None) if mod is not None else None
+        if fn is not None:
+            return fn
+    try:
+        from scripts.lib.agent_untrusted_data import untrusted_delimiter
+    except Exception:  # noqa: BLE001 — any load failure means "no fence", handled by the caller
+        try:
+            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
+        except Exception:  # noqa: BLE001
+            return None
+    return untrusted_delimiter
+
+
+def _fence(content_type: str, source: str, body: str) -> str:
+    """``body`` fenced as UNTRUSTED_DATA; '' when empty or the helper is missing.
+
+    Fail closed: peer / third-party text never reaches a prompt unfenced, and
+    never raises (auto_research calls get_agent_context without a try).
+    """
+    if not body or not body.strip():
+        return ""
+    delimit = _untrusted_delimiter()
+    if delimit is None:
+        return ""
+    try:
+        return delimit(content_type=content_type, source=source, content=body)
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _get_conn():
@@ -58,7 +110,8 @@ def get_latest_agent_result(symbol: str, agent: str) -> dict | None:
 def get_agent_context(symbol: str, requesting_agent: str = "Alex", agents: list = None) -> str:
     """Pull latest analysis from other agents for a symbol.
 
-    Returns formatted text for LLM prompt injection.
+    Returns formatted text for LLM prompt injection, fenced as UNTRUSTED_DATA
+    ('' when no peer has a result, or when the fence helper is unavailable).
     Logs handoffs automatically.
     """
     if agents is None:
@@ -99,18 +152,8 @@ def get_agent_context(symbol: str, requesting_agent: str = "Alex", agents: list 
     body = header + "\n" + "\n".join(lines)
     # Peer summaries are untrusted relative to the requesting agent's system
     # instructions (audit Phase 1 / Control 4 — lateral injection surface).
-    try:
-        from scripts.lib.agent_untrusted_data import untrusted_delimiter
-    except Exception:
-        try:
-            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
-        except Exception:
-            return body
-    return untrusted_delimiter(
-        content_type="peer_summary",
-        source="agent_collab.get_agent_context",
-        content=body,
-    )
+    # Fail closed: before 2026-10-27 a failed import returned ``body`` raw.
+    return _fence("peer_summary", "agent_collab.get_agent_context", body)
 
 
 def log_handoff(
@@ -403,7 +446,9 @@ def get_prospects_context(symbol: str, conn) -> str:
             lines.append(f"Catalyst: {catalyst}" + (" [VERIFIED]" if catalyst_verified else " [unverified]"))
 
         lines.append("=" * 40)
-        return "\n".join(lines)
+        # Catalyst / screener label / social sentiment are third-party text.
+        fenced = _fence("pipeline_context", "trade_ai_scans", "\n".join(lines).strip("\n"))
+        return "\n" + fenced if fenced else ""
 
     except Exception:
         return ""
@@ -521,7 +566,10 @@ def get_scan_intelligence(symbol: str, conn) -> str:
             lines.append(f"Discovered by: {screener_label or run_label or source}")
 
         lines.append("=" * 40)
-        return "\n".join(lines) + "\n"
+        # Catalyst text, its source and the critic's reasoning are news / model
+        # output, not instructions.
+        fenced = _fence("scan_intelligence", "trade_ai_scans", "\n".join(lines).strip("\n"))
+        return "\n" + fenced + "\n" if fenced else ""
     except Exception:
         return ""
 
@@ -582,7 +630,10 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
     try:
         from scripts.intelligence_entity_manager import get_entity_context_for_prompt
 
-        return get_entity_context_for_prompt(conn, entity_id)
+        # The IER record carries catalyst text; fenced like get_prospects_context.
+        ier = get_entity_context_for_prompt(conn, entity_id)
+        fenced = _fence("entity_intelligence", "intelligence_entities", (ier or "").strip("\n"))
+        return "\n" + fenced if fenced else ""
     except Exception:
         # Fallback to old scatter-gather
         try:
@@ -656,8 +707,12 @@ def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
                 lesson_str = config.get("text", "") if isinstance(config, dict) else str(config)[:200]
                 if lesson_str:
                     lines.append(f"  - {lesson_str[:200]}")
-        lines.append("Consider this history when evaluating new proposals.")
-        return "\n".join(lines) + "\n"
+        # Captured lessons are other agents' words and exit_reason can be free text:
+        # the history is fenced as data; this module's own instruction stays outside.
+        fenced = _fence("trade_history", "paper_trades+agent_intelligence_rules", "\n".join(lines))
+        if not fenced:
+            return ""
+        return fenced + "\nConsider this history when evaluating new proposals.\n"
     except Exception:
         return ""
 
