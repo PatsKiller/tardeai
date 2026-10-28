@@ -3337,11 +3337,16 @@
         "expression": "tradeai-disk-hygiene-enforcer.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none"
       },
-      "note": "Disk hygiene enforcement; deletion-only effect, no durable artifact.",
+      "note": "RETIRED 2026-10-27 (AGENTS.md §24.12 + §0 rule 6; branch fix/disk-enforcer-scope-20261027): disk_hygiene_enforcer.py removes nothing — --apply prints the dry-run plan, reports REFUSED_OUTSIDE_24_12 and exits 77, so this daily --apply timer only refuses. Release-dir removal is lane disk-hygiene (scripts/disk_hygiene.py); backups are operator-only. Disable the timer with systemctl --user disable --now tradeai-disk-hygiene-enforcer.timer, then systemctl --user reset-failed tradeai-disk-hygiene-enforcer.service. Previous note: Disk hygiene enforcement; deletion-only effect, no durable artifact.",
+      "state_reason": "Removes nothing since 2026-10-27: under AGENTS.md §24.12 only scripts/disk_hygiene.py (lane disk-hygiene, or the operator CLI) may remove a release directory and backups are never in scope, so disk_hygiene_enforcer.py --apply now returns REFUSED_OUTSIDE_24_12 with the dry-run plan and exits 77.",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "superseded_by": "disk-hygiene",
+      "reason_evidence": "tests/test_disk_enforcer_scope_24_12_20261027.py (branch fix/disk-enforcer-scope-20261027): --apply, --apply --releases-only and --apply --backups-only leave a sha256 tree snapshot unchanged and exit 77, and the enforcer source holds no rmtree / unlink / archive_files_then_unlink / subprocess. AGENTS.md §24.12 'Open gaps, stated' named the script as uncovered by the exception (2026-10-18).",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
