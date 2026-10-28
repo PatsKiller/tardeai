@@ -193,7 +193,7 @@
         "receipt": "data/runtime/n8n_activation_grants_last.json"
       },
       "p18": {
-        "script": "check_n8n_workflow_drift",
+        "script": "n8n_drift_watch",
         "lane": "n8n-workflow-drift-check",
         "receipt": "data/runtime/n8n_workflow_drift_last.json"
       },
