@@ -34,6 +34,16 @@ SHA_B = "b" * 40
 SHA_C = "c" * 40
 
 
+PLAIN_BODY = """## In plain English
+**What changes:** Does a thing.
+**Why:** The operator needs a readable explanation.
+**Who / what it affects:** Synthetic approval fixtures only.
+**When it takes effect:** After the reviewed release.
+**Approval:** Digest tap for eligible changes.
+**Risk and fallback:** Hold all and revert if the fixture is wrong.
+"""
+
+
 def _pr(
     n,
     *,
@@ -43,11 +53,11 @@ def _pr(
     draft=False,
     checks=GREEN,
     title=None,
-    body="## Summary\nDoes a thing.\n",
+    body=PLAIN_BODY,
 ):
     return {
         "number": n,
-        "title": title or f"Synthetic change {n}",
+        "title": title or f"Synthetic change number {n}",
         "url": f"https://example.test/pull/{n}",
         "headRefOid": head,
         "isDraft": draft,
@@ -133,7 +143,7 @@ def env(tmp_path, monkeypatch):
 # ── classification ───────────────────────────────────────────────────────────
 
 
-def test_digest_lists_ready_and_needs_operator_one_message(env):
+def test_digest_lists_ready_and_needs_operator_with_complete_cards(env):
     gh = env["install"](
         FakeGH(
             [
@@ -155,17 +165,18 @@ def test_digest_lists_ready_and_needs_operator_one_message(env):
     assert out["needs_operator"] == [5, 6, 7]
     skipped = {s["pr"]: s["reason"] for s in out["skipped"]}
     assert skipped == {3: "draft", 4: "checks_not_green", 8: "already_approved"}
-    assert len(env["sent"]) == 1
-    msg = env["sent"][0]
+    assert len(env["sent"]) == 2
+    msg = env["sent"][-1]
     assert msg["priority"] == "P1"
     btn = msg["reply_markup"]["inline_keyboard"]
     assert btn[0][0]["text"] == "✅ Approve all (3)"
     assert btn[0][0]["callback_data"] == f"prdall:{out['digest_id']}"
     assert btn[0][1]["callback_data"] == f"prdhold:{out['digest_id']}"
     assert all(len(b["callback_data"].encode()) <= 64 for row in btn for b in row)
-    text = msg["message"]
-    assert "Needs operator merge" in text and "#5" in text and "agents\\_policy" in text
-    assert "shared-infra" in text and "shared infra" in text and "migrations" in text
+    text = "\n".join(m["message"] for m in env["sent"])
+    assert "Needs operator merge" in text and "#5" in text and "changes AGENTS.md or agent rules" in text
+    assert "shared infra" in text and "migrations" in text
+    assert pmd.load_digests()[-1]["ready"][1]["class"] == "shared-infra"
     assert "`aaaaaaaaa`" in text and "Does a thing." in text
     assert gh.labels_added == []
 
@@ -186,7 +197,7 @@ def test_unchanged_digest_not_resent_but_now_forces(env):
     assert forced["action"] == "sent" and forced["digest_id"] != first["digest_id"]
     rows = {r["digest_id"]: r for r in pmd.load_digests()}
     assert rows[first["digest_id"]]["status"] == "SUPERSEDED"
-    assert len(env["sent"]) == 2
+    assert len(env["sent"]) == 4
 
 
 def test_dry_run_writes_nothing_and_sends_nothing(env):
@@ -202,16 +213,16 @@ def test_summary_line_skips_headings_and_keeps_identifiers():
     assert pmd.summary_line("") == ""
 
 
-def test_long_digest_fits_one_message(env):
-    long_body = "## Summary\n" + "x" * 500
+def test_long_digest_has_bounded_messages(env):
+    long_body = PLAIN_BODY.replace("Does a thing.", "x" * 500)
     env["install"](
         FakeGH(
-            [_pr(n, title="T" * 200, body=long_body) for n in range(1, 11)]
-            + [_pr(100 + n, files=("AGENTS.md",), title="P" * 200) for n in range(30)]
+            [_pr(n, title=("Synthetic long readable explanation " * 8)[:200], body=long_body) for n in range(1, 11)]
+            + [_pr(100 + n, files=("AGENTS.md",), title=("Synthetic policy readable explanation " * 8)[:200]) for n in range(30)]
         )
     )
     out = pmd.run_digest(apply=True)
-    assert len(env["sent"][0]["message"]) <= pmd.MAX_MESSAGE_CHARS
+    assert all(len(m["message"].encode("utf-16-le")) // 2 <= pmd.MAX_MESSAGE_CHARS for m in env["sent"])
     assert out["action"] == "sent"
 
 
