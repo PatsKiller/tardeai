@@ -1,35 +1,64 @@
 #!/usr/bin/env python3
-"""disk_hygiene_enforcer.py — keep portfolio-server releases + stale backup piles bounded.
+"""disk_hygiene_enforcer.py — PLAN ONLY: report portfolio-server releases + stale backup piles.
 
-Prevents recurrence of the 2026-09-10 host fill (98% / ~11G free) caused mainly by
-hundreds of immutable release directories under ~/trade-ai-releases/portfolio-server.
+Written after the 2026-09-10 host fill (98% / ~11G free), caused mainly by hundreds of
+immutable release directories under ~/trade-ai-releases/portfolio-server.
+
+REMOVES NOTHING (2026-10-27, AGENTS.md §24.12 and §0 rule 6). §24.12 makes `scripts/disk_hygiene.py`
+under `config/disk_hygiene_rules.json` -- run by the n8n lane `disk-hygiene` or by the operator from the CLI
+-- the only code that may remove a release directory, and puts backups out of scope for any automated
+removal. This script predates §24.12 and is not covered by it, so its apply mode refuses: it computes and
+prints exactly the plan a dry run prints, adds a `refusal` block naming the governed route, and exits
+EXIT_REFUSED (77). It spawns no process, so it never runs disk_hygiene.py's apply mode (lane/operator-only).
 
 Usage:
   python scripts/disk_hygiene_enforcer.py --status
   python scripts/disk_hygiene_enforcer.py --dry-run
-  python scripts/disk_hygiene_enforcer.py --apply          # deletes after filters
-  python scripts/disk_hygiene_enforcer.py --apply --releases-only
-  python scripts/disk_hygiene_enforcer.py --apply --backups-only
+  python scripts/disk_hygiene_enforcer.py --apply                  # REFUSED: plan + refusal, exit 77
+  python scripts/disk_hygiene_enforcer.py --apply --releases-only  # REFUSED
+  python scripts/disk_hygiene_enforcer.py --apply --backups-only   # REFUSED (backups are never in scope)
 
-Safety:
-  - Never deletes CURRENT / EXPECTED_RELEASE targets
-  - Never deletes a release that is cwd of a live process
-  - Never touches ~/db_backups (owned by backup_enforcer max_count=1)
-  - Default policy dry_run=true; --apply required to mutate
+Exit: 0 = plan printed; 1 = a dry run with the disk at the critical floor, or a planning error;
+77 (EX_NOPERM) = --apply refused, status REFUSED_OUTSIDE_24_12. Exit 77 is a refusal, not a crash.
+
+The plan still honours what the old apply honoured: CURRENT / EXPECTED_RELEASE targets, a release that is the
+cwd of a live process, and ~/db_backups are never listed.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+#: The status an --apply run reports. Callers (disk_pressure_guard, weekly_disk_cleanup_notify) and the
+#: health agent read it; it is a refusal by design, not a failure of the run.
+REFUSED_STATUS = "REFUSED_OUTSIDE_24_12"
+#: sysexits EX_NOPERM: distinct from 0 (plan printed), 1 (failure) and 2 (argparse usage).
+EXIT_REFUSED = 77
+REFUSAL_REASON = (
+    "disk_hygiene_enforcer.py removes nothing: under AGENTS.md §24.12 only scripts/disk_hygiene.py "
+    "(config/disk_hygiene_rules.json), run by the n8n lane disk-hygiene or by the operator from the CLI, may "
+    "remove a release directory, and backups are never in scope for automated removal (§24.12 'Not in scope', "
+    "§0 rule 6). This run printed the plan only."
+)
+GOVERNED_ROUTE = {
+    "release_dirs": "removal is the disk-hygiene lane's job: python3 scripts/disk_hygiene.py --report "
+    "writes the manifest; the lane (or the operator CLI with a grant) applies it",
+    "backups": "never removed automatically; deleting a backup is an operator decision (AGENTS.md §17 "
+    "'deleting anything'), archive with a tripwire",
+}
+
+
+def refusal_block() -> dict:
+    """What an --apply run says instead of removing anything."""
+    return {"status": REFUSED_STATUS, "reason": REFUSAL_REASON, "governed_route": dict(GOVERNED_ROUTE)}
 
 
 def _expand(p: str) -> Path:
@@ -168,12 +197,10 @@ def plan_releases(cfg: dict) -> dict:
 
 # ── Release-local data (2026-10-21, operator D8.3; AGENTS.md §0 rule 6) ──────────────────────────────────
 # A release dir is not only code: data/ and state/ hold real directories (data/portfolios/reports ~113 MB,
-# data/raw, data/merged, state/hermes.release-local-*). They die with the release. Before a release is removed,
-# every real file under those trees that the reference release (CURRENT) does not hold byte-identically is
-# archived (tar.gz + per-member sha256 manifest + tripwire under the file-prune archive root (label release_local_data),
-# re-read and verified) and unlinked; only then is the tree removed. A failed archive skips the release (kept,
-# reported in errors). Files byte-identical to CURRENT's copy are not archived (CURRENT still holds them, and
-# is itself compared against its successor before it is ever removed), so archive growth is only what differs.
+# data/raw, data/merged, state/hermes.release-local-*). They die with the release. The plan reports, per release,
+# the real files under those trees that the reference release (CURRENT) does not hold byte-identically.
+# 2026-10-27 (§24.12): this script no longer removes a release, so it no longer archives-then-unlinks those
+# files either (that step existed only to precede a removal). D8.3 binds whatever removes a release now.
 RELEASE_LOCAL_TREES = ("data", "state")
 
 
@@ -194,8 +221,12 @@ def release_local_unique_files(release: Path, reference: Path | None) -> list[Pa
                     continue
                 ref = (reference / fp.relative_to(release)) if reference else None
                 try:
-                    same = (ref is not None and ref.is_file() and ref.stat().st_size == fp.stat().st_size
-                            and filecmp.cmp(fp, ref, shallow=False))
+                    same = (
+                        ref is not None
+                        and ref.is_file()
+                        and ref.stat().st_size == fp.stat().st_size
+                        and filecmp.cmp(fp, ref, shallow=False)
+                    )
                 except OSError:
                     same = False
                 if not same:
@@ -203,68 +234,49 @@ def release_local_unique_files(release: Path, reference: Path | None) -> list[Pa
     return sorted(out)
 
 
-def archive_release_local(release: Path, reference: Path | None, *, dry_run: bool) -> dict:
-    """Archive-then-unlink the release-local files CURRENT does not hold. Raises on a failed archive."""
+def release_local_summary(release: Path, reference: Path | None) -> dict:
+    """Count the release-local files CURRENT does not hold (plan only; nothing is archived or unlinked)."""
     uniq = release_local_unique_files(release, reference)
-    out = {"files": len(uniq), "bytes": sum(f.stat().st_size for f in uniq), "archive": None}
-    if dry_run or not uniq:
-        return out
-    from lib.retention_archive import archive_files_then_unlink, file_archive_root
-
-    res = archive_files_then_unlink(uniq, base_dir=release, archive_dir=file_archive_root() / "release_local_data",
-                                    label=f"release_local_{release.name}", writer="disk_hygiene_enforcer")
-    out["archive"] = res.get("archive")
-    return out
+    return {"files": len(uniq), "bytes": sum(f.stat().st_size for f in uniq), "archive": None}
 
 
-def _dir_size_bytes(path: Path) -> int:
-    total = 0
-    try:
-        for root, _dirs, files in os.walk(path, followlinks=False):
-            for name in files:
-                fp = Path(root) / name
-                try:
-                    total += fp.stat().st_size
-                except OSError:
-                    continue
-    except OSError:
-        return 0
-    return total
+def _refused(entries: list[dict], errors: list[str]) -> dict:
+    """The --apply result: the dry-run entries, marked refused; nothing removed, nothing reclaimed."""
+    return {
+        "dry_run": False,
+        "refused": True,
+        "status": REFUSED_STATUS,
+        "deleted": [],
+        "refused_items": [{**e, "action": "refused"} for e in entries],
+        "errors": errors,
+        "bytes_reclaimed_est": 0,
+        "ok": not errors,
+    }
 
 
 def apply_release_deletes(plan: dict, *, dry_run: bool) -> dict:
+    """Plan the release removals. ``dry_run=False`` is REFUSED (AGENTS.md §24.12): same plan, nothing removed."""
     deleted: list[dict] = []
     errors: list[str] = []
-    bytes_reclaimed = 0
     reference = Path(plan["reference"]) if plan.get("reference") else None
     for p in plan.get("delete") or []:
         path = Path(p)
         if not path.exists():
             continue
-        # 2026-10-21 (D8.3): release-local data CURRENT does not hold is archived first; a failed archive keeps
-        # the whole release (nothing removed) and is reported.
         try:
-            local = archive_release_local(path, reference, dry_run=dry_run)
-        except Exception as e:  # noqa: BLE001 -- archive failed: keep the release, report it
+            local = release_local_summary(path, reference)
+        except Exception as e:  # noqa: BLE001 -- unreadable release-local tree: report it, list nothing
+            # Message kept byte-identical to the pre-2026-10-27 dry run, which callers may grep.
             errors.append(f"{p}: release-local archive failed, release kept: {str(e)[:200]}")
             continue
-        # Size walks across hundreds of release trees are too slow for dry-run;
-        # measure only when actually deleting (or sample is enough for ops).
-        size = 0 if dry_run else _dir_size_bytes(path)
-        if dry_run:
-            deleted.append({"path": p, "bytes": size, "action": "would_delete", "release_local": local})
-            continue
-        try:
-            shutil.rmtree(path)
-            deleted.append({"path": p, "bytes": size, "action": "deleted", "release_local": local})
-            bytes_reclaimed += size
-        except OSError as e:
-            errors.append(f"{p}: {e}")
+        deleted.append({"path": p, "bytes": 0, "action": "would_delete", "release_local": local})
+    if not dry_run:
+        return _refused(deleted, errors)
     return {
         "dry_run": dry_run,
         "deleted": deleted,
         "errors": errors,
-        "bytes_reclaimed_est": bytes_reclaimed,
+        "bytes_reclaimed_est": 0,
         "ok": not errors,
     }
 
@@ -291,12 +303,7 @@ def plan_stale_backups(piles: list[dict]) -> dict:
                     except OSError:
                         continue
         # never touch db_backups
-        candidates = [
-            p
-            for p in candidates
-            if "db_backups" not in p.parts
-            and p.is_file()
-        ]
+        candidates = [p for p in candidates if "db_backups" not in p.parts and p.is_file()]
         for p in candidates:
             try:
                 st = p.stat()
@@ -321,29 +328,23 @@ def plan_stale_backups(piles: list[dict]) -> dict:
 
 
 def apply_stale_backup_deletes(plan: dict, *, dry_run: bool) -> dict:
+    """Plan the backup-file removals. ``dry_run=False`` is REFUSED: backups are never in §24.12's scope."""
     deleted: list[dict] = []
-    errors: list[str] = []
     bytes_reclaimed = 0
     for item in plan.get("would_delete") or []:
         path = Path(item["path"])
         if not path.is_file():
             continue
-        if dry_run:
-            deleted.append({**item, "action": "would_delete"})
-            bytes_reclaimed += int(item.get("bytes") or 0)
-            continue
-        try:
-            path.unlink()
-            deleted.append({**item, "action": "deleted"})
-            bytes_reclaimed += int(item.get("bytes") or 0)
-        except OSError as e:
-            errors.append(f"{path}: {e}")
+        deleted.append({**item, "action": "would_delete"})
+        bytes_reclaimed += int(item.get("bytes") or 0)
+    if not dry_run:
+        return _refused(deleted, [])
     return {
         "dry_run": dry_run,
         "deleted": deleted,
-        "errors": errors,
+        "errors": [],
         "bytes_reclaimed_est": bytes_reclaimed,
-        "ok": not errors,
+        "ok": True,
     }
 
 
@@ -375,10 +376,7 @@ def run(
 
     if do_releases:
         plan = plan_releases(pol.get("releases") or {})
-        out["releases_plan"] = {
-            k: plan[k]
-            for k in ("root", "keep_n", "total", "would_delete_count", "protected")
-        }
+        out["releases_plan"] = {k: plan[k] for k in ("root", "keep_n", "total", "would_delete_count", "protected")}
         out["releases_plan"]["delete_sample"] = plan["delete"][:15]
         out["releases_result"] = apply_release_deletes(plan, dry_run=dry_run)
 
@@ -393,64 +391,38 @@ def run(
 
     out["dry_run"] = dry_run
     out["ok"] = out.get("disk", {}).get("level") != "critical" or not dry_run
-    # ok for exit code: failures in apply
+    # ok for exit code: planning errors
     errs = []
     for key in ("releases_result", "backups_result"):
         if key in out and out[key].get("errors"):
             errs.extend(out[key]["errors"])
     out["ok"] = out.get("ok", True) and not errs
 
-    # 2026-09-18: hygiene freed ~41GB after ENOSPC but left postgresql@17-main down.
-    # After a successful apply that reclaimed space, attempt allowlisted start when
-    # the unit is inactive and disk is above the restart floor.
-    if not dry_run and not status_only:
-        try:
-            reclaimed = 0
-            for key in ("releases_result", "backups_result"):
-                reclaimed += int((out.get(key) or {}).get("bytes_reclaimed_est") or 0)
-            out["postgres_remediate"] = _maybe_restart_postgres_main(reclaimed_bytes=reclaimed)
-        except Exception as e:
-            out["postgres_remediate"] = {"ok": False, "error": str(e)[:240]}
+    # 2026-10-27 (AGENTS.md §24.12): --apply is refused. The plan above is the dry run's plan; nothing was
+    # removed. The post-apply postgres restart (2026-09-18) went with the removal: there is no reclaim here to
+    # follow, and tradeai-postgres-main-watchdog + the postgres_main_down remedy own that restart.
+    if not dry_run:
+        out["apply_requested"] = True
+        out["status"] = REFUSED_STATUS
+        out["refused"] = True
+        out["removed_count"] = 0
+        out["refusal"] = refusal_block()
     return out
 
 
-def _maybe_restart_postgres_main(*, reclaimed_bytes: int) -> dict:
-    """Best-effort allowlisted start after hygiene reclaim (no-op if already up)."""
-    # Always check when apply ran; even 0 reclaim can mean space was already freed.
-    script = Path(__file__).resolve().parent / "remediate_postgres_main.py"
-    if not script.is_file():
-        return {"ok": False, "skipped": True, "reason": "remediate_postgres_main.py missing"}
-    py = sys.executable or "python3"
-    proc = subprocess.run(
-        [py, str(script), "--apply"],
-        capture_output=True,
-        text=True,
-        timeout=180,
-        cwd=str(Path(__file__).resolve().parents[1]),
-    )
-    payload: dict
-    try:
-        payload = json.loads(proc.stdout or "{}")
-    except Exception:
-        payload = {
-            "ok": proc.returncode == 0,
-            "raw_stdout": (proc.stdout or "")[:500],
-            "raw_stderr": (proc.stderr or "")[:500],
-        }
-    payload["reclaimed_bytes_context"] = reclaimed_bytes
-    payload["rc"] = proc.returncode
-    return payload
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--status", action="store_true")
-    ap.add_argument("--dry-run", action="store_true", help="Plan only (default unless --apply)")
-    ap.add_argument("--apply", action="store_true", help="Actually delete")
+    ap.add_argument("--dry-run", action="store_true", help="Plan only (the default)")
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help=f"REFUSED (AGENTS.md §24.12): prints the plan, removes nothing, exits {EXIT_REFUSED}",
+    )
     ap.add_argument("--releases-only", action="store_true")
     ap.add_argument("--backups-only", action="store_true")
     ap.add_argument("--json", action="store_true", default=True)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     dry = True
     if args.apply:
         dry = False
@@ -463,6 +435,9 @@ def main() -> int:
         status_only=args.status,
     )
     print(json.dumps(out, indent=2))
+    if out.get("status") == REFUSED_STATUS:
+        print(f"REFUSED: {REFUSAL_REASON}", file=sys.stderr)
+        return EXIT_REFUSED
     return 0 if out.get("ok", True) else 1
 
 
