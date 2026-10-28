@@ -200,23 +200,6 @@ def main(argv=None):
         result = run(args.state_root, bundles, now=now, shadow=args.shadow,
                      run_id=run_id,
                      memory_writer=memory_writer(args.state_root) if args.shadow else None)
-        if not args.shadow:
-            # The shadow-stage dry_run fire (AGENTS.md §23.12) is the ladder step that must advance ok_at so the
-            # lane's output_signal (data/runtime/conflict-resolver_last.json, json_key ok_at) is real for
-            # r1_class_admission and the heartbeat watcher. The dry run stays write-free against the judgment ledger
-            # (no conflict_events.jsonl, no observations, no comparison report) and writes only this monitoring
-            # receipt. W10 owns scripts/conflict_resolver.py; this receipt-on-dry-run change is a PROPOSED edit for
-            # the W10 owner handoff.
-            from scripts.lib.lane_last_receipt import write_lane_receipt
-            receipt = write_lane_receipt("conflict-resolver", ok=True, exit_code=0, started_at=now.isoformat(),
-                script="scripts/conflict_resolver.py",
-                path=Path(args.state_root) / "data/runtime/conflict-resolver_last.json",
-                summary={"phase": "dry_run", "notifications": 0, "rulebook_sha256": result.get("rulebook_sha256")},
-                produced_count=1, attempted_count=len(bundles))
-            if receipt is None:
-                print(json.dumps({"ok": False, "error": "receipt_write_failed", "phase": "dry_run",
-                                  "notifications": 0}), file=sys.stderr)
-                return 2
         print(json.dumps(result, ensure_ascii=False, default=str))
         return 0
     except Exception as exc:
