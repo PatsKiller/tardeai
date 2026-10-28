@@ -80,11 +80,37 @@ def _holdings_clock(value, source_field) -> dict:
     return result
 
 
+def _worthless_delisted(row: dict) -> bool:
+    """A delisted holding carried at exactly $0 with no positive mark."""
+    if not row.get("delisted"):
+        return False
+    value, price = _number(row.get("market_value")), _number(row.get("price"))
+    return value == 0 and (price is None or price == 0)
+
+
+def _day_coverage(rows) -> dict:
+    """Sum of the KNOWN day changes plus what was left out, by row and value.
+
+    One holding without a day change used to make the whole figure None, so a
+    single unpriced line blanked TODAY for every account. The known part is a
+    real number; the unknown part is reported beside it, never guessed.
+    """
+    known = [r for r in rows if _number(r.get("day_change")) is not None]
+    unknown = [r for r in rows if _number(r.get("day_change")) is None]
+    return {"known_usd": round(sum(_number(r["day_change"]) for r in known), 2) if known else None,
+            "complete": bool(rows) and not unknown,
+            "known_rows": len(known), "unknown_rows": len(unknown),
+            "unknown_value_usd": round(sum(_number(r.get("market_value")) or 0 for r in unknown), 2),
+            "unknown_accounts": sorted({r.get("account_id") or "" for r in unknown} - {""})}
+
+
 def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     """One holdings aggregate for every display, including all account rows.
 
     Total/value/day P&L come from holdings rows, not stale account summaries or
-    another quote clock. A missing non-cash day change is unknown, not zero.
+    another quote clock. A missing non-cash day change is unknown, not zero:
+    the day figure is the sum of the known rows, flagged incomplete, with the
+    unknown rows and their value named (``day_pl_coverage``).
     Position count is distinct held account+symbol, non-cash, value >= $100.
     """
     from .portfolio_positions import is_cash
@@ -97,10 +123,18 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
         r["is_cash"] = is_cash(r)
         if r["is_cash"] and r.get("day_change") is None:
             r["day_change"] = 0.0
+        elif r.get("day_change") is None and _worthless_delisted(r):
+            # A delisted line carried at $0 with no mark cannot move: its day
+            # change is a known zero, not an unknown. A morning broker reload
+            # re-adds these rows without a day_change, and one of them used to
+            # blank TODAY for the whole book (2026-10-26).
+            r["day_change"] = 0.0
+            r["day_change_basis"] = "delisted_zero_value"
         rows.append(r)
     total = _sum_known(rows, "market_value") if rows else None
     cash = _sum_known([r for r in rows if r["is_cash"]], "market_value") if rows else None
-    day = _sum_known(rows, "day_change") if rows else None
+    day_cov = _day_coverage(rows)
+    day = day_cov["known_usd"]
     position_field = "positions_built_at" if holdings_doc.get("positions_built_at") else "data_as_of"
     clocks = {"positions": _holdings_clock(holdings_doc.get(position_field), position_field),
               "valuation": _holdings_clock(holdings_doc.get("generated_at"), "generated_at"),
@@ -120,16 +154,28 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
         dates = [_timestamp(_holdings_clock(r.get("broker_position_as_of_at") or r.get("broker_position_as_of") or r.get("as_of"),
                                            "broker_position_as_of_at/broker_position_as_of/as_of")["as_of"]) for r in group]
         dates = [d for d in dates if d]
+        acov = _day_coverage(group)
         accounts.append({"account_id": account, "account_label": account_label(account),
                          "total_usd": _sum_known(group, "market_value"),
                          "cash_usd": _sum_known([r for r in group if r["is_cash"]], "market_value"),
-                         "day_pl_usd": _sum_known(group, "day_change"),
+                         "day_pl_usd": acov["known_usd"],
+                         "day_pl_complete": acov["complete"],
+                         "day_pl_unknown_rows": acov["unknown_rows"],
+                         "day_pl_unknown_value_usd": acov["unknown_value_usd"],
                          "status": summary.get("state") or "UNCLASSIFIED",
                          "as_of": min(dates).isoformat() if dates else None})
     reason = "holdings unavailable" if not rows else (
-        "holding value or day P&L missing" if total is None or day is None else None)
+        "holding value or day P&L missing" if total is None or day is None else
+        (f"day P&L partial: {day_cov['unknown_rows']} holding row(s) without a day change "
+         f"(${day_cov['unknown_value_usd']:,.2f} of value) excluded" if not day_cov["complete"] else None))
     reason = reason or (aggregate_clock["gap"] or {}).get("reason")
     return {"total_usd": total, "cash_usd": cash, "day_pl_usd": day,
+            # Coverage travels with the day figure. Partial is shown as partial,
+            # never blanked and never silently called complete.
+            "day_pl_complete": day_cov["complete"],
+            "day_pl_coverage": {"known_rows": day_cov["known_rows"], "unknown_rows": day_cov["unknown_rows"],
+                                "unknown_value_usd": day_cov["unknown_value_usd"],
+                                "unknown_accounts": day_cov["unknown_accounts"]},
             "positions_as_of": clocks["positions"]["as_of"],
             "valuation_as_of": clocks["valuation"]["as_of"], "quote_as_of": clocks["quote"]["as_of"],
             "clock_provenance": clocks,
@@ -149,9 +195,43 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
 
 
 _ACTIVE_STOP_STATES = {"active", "working", "open", "new", "accepted", "partially_filled"}
+# Schwab reports a resting STOP order as AWAITING_STOP_CONDITION; brokers/order_lifecycle.py maps it to
+# pending_activation. Missing here, a resting stop showed as state "unknown" on Risk and in the prospectus stop plan.
 _PENDING_STOP_STATES = {"pending_activation", "pending", "awaiting_parent_order", "awaiting_condition",
-                        "pending_new", "queued", "awaiting_manual_review"}
+                        "awaiting_stop_condition", "pending_new", "queued", "awaiting_manual_review"}
 _DEAD_STOP_STATES = {"canceled", "cancelled", "rejected", "expired", "replaced", "not_in_read"}
+
+
+# Stop categories for display (board 15 "Stop source"): one per counted position, in the order the desk shows them.
+STOP_CATEGORIES = ("active", "pending_activation", "filled", "unknown", "planned", "none")
+_RESTING_STOP_STATES = ("active", "pending_activation")
+
+
+def _stop_category(p: dict) -> str:
+    state = p.get("stop_state")
+    if state in ("active", "pending_activation", "filled", "unknown"):
+        return state
+    return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
+
+
+def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
+    """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
+
+    Display only. ``loss_at_stop_usd`` stays the active-stop figure; pending stops are reported beside it.
+    """
+    if not broker_available:
+        return {"stop_breakdown": None, "loss_at_resting_stops_usd": None, "resting_heat_pct": None}
+    breakdown = {}
+    for cat in STOP_CATEGORIES:
+        group = [p for p in counted if p.get("stop_category") == cat]
+        breakdown[cat] = {"count": len(group), "value_usd": _sum_known(group, "market_value") if group else 0,
+                          "symbols": [{"symbol": p["symbol"], "account_id": p["account_id"],
+                                       "account_label": p.get("account_label")} for p in group]}
+    resting = [p for p in counted if p.get("stop_category") in _RESTING_STOP_STATES]
+    losses = [p.get("loss_at_resting_stop_usd") for p in resting]
+    loss = round(sum(losses), 2) if all(v is not None for v in losses) else None
+    return {"stop_breakdown": breakdown, "loss_at_resting_stops_usd": loss,
+            "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
 
 
 def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None) -> dict:
@@ -721,6 +801,49 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
                                                                                       ("source", "as_of", "stale", "gap")}}
 
 
+def _today_census(prior: dict, p: dict) -> dict:
+    """Recount TODAY's account census from the SAME rows the figure came from.
+
+    The legacy census was built before this overlay, from raw holdings keys
+    (schwab_roth) against a snapshot keyed canonically (schwab_roth_ira), and it
+    counted an unknown (None) day as "flat". After the overlay replaced the
+    figures, the header said "5/5 represented, all zero change" over a TODAY of
+    None (2026-10-26). Keys here are canonical; None is missing, never zero; an
+    account whose figure leaves rows out is named as partial.
+    """
+    linked = {canonical_key(a) for key in ("contributing_accounts", "zero_change_accounts",
+                                           "empty_accounts", "missing_accounts")
+              for a in (prior.get(key) or [])} - {""}
+    rows = {r["account_id"]: r for r in p.get("accounts") or []}
+    empty = sorted({canonical_key(a) for a in (prior.get("empty_accounts") or [])} - set(rows) - {""})
+    contributing, zero_change, missing, partial = [], [], [], []
+    for acct in sorted((linked | set(rows)) - set(empty)):
+        row = rows.get(acct)
+        change = _number((row or {}).get("day_pl_usd"))
+        if change is None:
+            missing.append(acct)
+            continue
+        (contributing if change != 0 else zero_change).append(acct)
+        if row.get("day_pl_complete") is False:
+            partial.append(acct)
+    cov = p.get("day_pl_coverage") or {}
+    funded = len(contributing) + len(zero_change) + len(missing)
+    represented = len(contributing) + len(zero_change)
+    unknown_rows = int(cov.get("unknown_rows") or 0)
+    return {"linked_account_count": funded + len(empty), "funded_account_count": funded,
+            "represented_account_count": represented, "contributing_accounts": contributing,
+            "zero_change_accounts": zero_change, "empty_accounts": empty, "missing_accounts": missing,
+            "partial_accounts": partial, "unknown_rows": unknown_rows,
+            "unknown_value_usd": cov.get("unknown_value_usd"),
+            "complete": not missing and p.get("day_pl_complete") is not False,
+            "coverage_reason": (
+                f"{represented}/{funded} funded account(s) represented"
+                + (f"; {len(empty)} empty ({', '.join(empty)})" if empty else "")
+                + (f"; MISSING {', '.join(missing)}" if missing else "")
+                + (f"; PARTIAL {', '.join(partial)}: {unknown_rows} holding row(s) without a day change excluded"
+                   if partial else ""))}
+
+
 def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
     """Preserve unrelated Overview fields, replace shared financial/display facts."""
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
@@ -739,10 +862,13 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     today_pnl.update(total_change=p["day_pl_usd"], calculated_at=p["valuation_as_of"],
                      session_date=str(p["quote_as_of"])[:10] if p["quote_as_of"] else None,
                      mark_source=p["quote_source"])
+    today_pnl.update(_today_census(today_pnl, p))
     out.setdefault("periods", {})["1D"] = {"change": p["day_pl_usd"], "change_pct": p["day_pl_pct"],
                                            "estimated": False, "source": p["source"]}
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
-                                                 "account_label": r["account_label"], "as_of": r["as_of"]}
+                                                 "account_label": r["account_label"], "as_of": r["as_of"],
+                                                 "complete": r.get("day_pl_complete"),
+                                                 "unknown_rows": r.get("day_pl_unknown_rows")}
                                for r in p["accounts"]}
     aggregate = out.setdefault("portfolio_aggregate", {})
     aggregate["aggregate_value"] = p["total_usd"]
@@ -1056,7 +1182,8 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                           "Review the typed approval queues", "Review approvals", "/v3/trading?tab=Proposals",
                           "cio_truth.approvals", evidence={"counts": approvals["by_type"]}))
     ranked = sort_items(merge(items))
-    return {"items": ranked[:7], "total": len(ranked), "ranking": "home_do_now.sort_items",
+    # ``all_items`` is the full ranked list so Home can show "+N more" instead of silently dropping rows.
+    return {"items": ranked[:7], "all_items": ranked, "total": len(ranked), "ranking": "home_do_now.sort_items",
             **_evidence("CIO shared protection + typed approval queues", now, now,
                         reason="approval count unavailable" if approvals.get("total") is None else None)}
 
@@ -1114,6 +1241,16 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             p["broker_protected"] and price is not None and sp is not None and shares is not None) else None
         if p["broker_protected"]:
             losses.append(p["loss_at_stop_usd"])
+        # Display-only (board 15): a broker stop that is resting but not yet active still has a level the operator
+        # needs to read ("To stop", "Loss at stop"). These fields never count as protection (broker_protected).
+        resting = p.get("stop_source") == "broker_resting" and p.get("stop_state") in _RESTING_STOP_STATES
+        p["resting_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if resting and price and sp else None
+        p["loss_at_resting_stop_usd"] = round(max(0, price-sp) * shares, 2) if (
+            resting and price is not None and sp is not None and shares is not None) else None
+        planned_level = p.get("stop_source") == "planned"
+        p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
+        p["counted"] = any(p is c for c in counted_positions)
+        p["stop_category"] = _stop_category(p)
     protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
     unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
@@ -1123,6 +1260,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
+    position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)

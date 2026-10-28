@@ -6,6 +6,7 @@ GET /api/v3/data-broker/catalog
 This is the index for operators and other apps. Watch Intelligence is one projection
 in the same package as market_quote, symbol_profile, reentry_decision_desk, etc.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -14,26 +15,38 @@ from typing import Any
 # Existing + new projections. Keep paths stable; UI and other apps discover from here.
 PROJECTIONS: list[dict[str, Any]] = [
     {
-        "id": "trade_calendar", "module": "lib.data_broker.trade_calendar",
+        "id": "trade_calendar",
+        "module": "lib.data_broker.trade_calendar",
         "entrypoints": ["get_calendar", "build_calendar"],
-        "http": ["GET /api/v3/data-broker/trade-calendar"], "domain": "trade_journal",
-        "contract_version": "TradeCalendar@v1", "read_only": True, "provider_calls": 0,
+        "http": ["GET /api/v3/data-broker/trade-calendar"],
+        "domain": "trade_journal",
+        "contract_version": "TradeCalendar@v1",
+        "read_only": True,
+        "provider_calls": 0,
         "description": "Explicit ET month; exact-linked closed-trip deduplication, server totals, bounded event/day pages and recorded event provenance. Missing sources qualify totals.",
         "consumers": ["TradeInView Calendar"],
     },
     {
-        "id": "holding_history", "module": "lib.data_broker.holding_history",
+        "id": "holding_history",
+        "module": "lib.data_broker.holding_history",
         "entrypoints": ["get_history", "build_history"],
-        "http": ["GET /api/v3/data-broker/holding-history"], "domain": "trade_journal",
-        "contract_version": "HoldingHistory@v1", "read_only": True, "provider_calls": 0,
+        "http": ["GET /api/v3/data-broker/holding-history"],
+        "domain": "trade_journal",
+        "contract_version": "HoldingHistory@v1",
+        "read_only": True,
+        "provider_calls": 0,
         "description": "All available or explicit-range closed trips, recorded account membership and holding observations. Unknown basis, unlinked source overlaps and sync/holding-transition gaps remain explicit.",
         "consumers": ["TradeInView Holding history"],
     },
     {
-        "id": "trade_replay", "module": "lib.data_broker.trade_replay",
+        "id": "trade_replay",
+        "module": "lib.data_broker.trade_replay",
         "entrypoints": ["get_replay", "build_replay"],
-        "http": ["GET /api/v2/trade-chart?stored_only=1&trade_id="], "domain": "trade_journal",
-        "contract_version": "TradeReplay@v1", "read_only": True, "provider_calls": 0,
+        "http": ["GET /api/v2/trade-chart?stored_only=1&trade_id="],
+        "domain": "trade_journal",
+        "contract_version": "TradeReplay@v1",
+        "read_only": True,
+        "provider_calls": 0,
         "description": "Recorded trade identity, stored daily OHLC/closes only, timestamp-qualified fill/stop/CIO annotations and server-labelled available-session MFE/MAE proxies. No provider fallback.",
         "consumers": ["TradeInView Replay"],
     },
@@ -44,7 +57,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "http": [],
         "domain": "active_trader_microstructure",
         "description": "Live book / prints / last / 1-min bars for the scalp names, as published by the "
-                       "microstructure recorder (single writer); 15 s freshness contract, fails closed",
+        "microstructure recorder (single writer); 15 s freshness contract, fails closed",
         "read_only": True,
         "provider_calls": 0,
     },
@@ -55,8 +68,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "http": [],
         "domain": "quotes",
         "description": "Batch live prices: newest market_quotes row per symbol (latest_quote projection) within "
-                       "max_age_hours; for misses, quote-only get_best_quote (stored first, first fresh provider, "
-                       "<=10 symbols per batch, 5 s each; QUOTE_ONLY_MODE=0 turns the fallback off)",
+        "max_age_hours; for misses, quote-only get_best_quote (stored first, first fresh provider, "
+        "<=10 symbols per batch, 5 s each; QUOTE_ONLY_MODE=0 turns the fallback off)",
         "read_only": True,
         "provider_calls": "none_on_cache_hit",
     },
@@ -68,8 +81,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "quotes",
         "authority_domain": "quote_price",
         "description": "Newest stored quote per symbol from market_quotes (one index probe per symbol, not a "
-                       "DISTINCT ON scan) with as_of/age_seconds/stale; stale rows returned labelled "
-                       "(no_coverage last_price_with_age_and_source); never fetches",
+        "DISTINCT ON scan) with as_of/age_seconds/stale; stale rows returned labelled "
+        "(no_coverage last_price_with_age_and_source); never fetches",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
@@ -83,7 +96,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "social_posts",
         "authority_domain": "social_posts",
         "description": "Recent StockTwits posts per symbol from social_posts (sentiment label/score, bounded per "
-                       "symbol) with as_of = newest ingested_at; never fetches",
+        "symbol) with as_of = newest ingested_at; never fetches",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
@@ -96,7 +109,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "yfinance_info_snapshot",
         "authority_domain": "yfinance_info_snapshot",
         "description": "Raw yfinance .info per symbol from yfinance_info_snapshot (status ok/no_profile/error is "
-                       "the negative cache) with as_of/age/stale; never fetches",
+        "the negative cache) with as_of/age/stale; never fetches",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
@@ -109,8 +122,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "finviz_enrichment",
         "authority_domain": "finviz_enrichment",  # registered 2026-10-10 (operator, CONSOLIDATION_PLAN §D.2)
         "description": "Finviz six-view enrichment per symbol (rsi/float/rvol/atr/valuation/performance) "
-                       "from data/state/ticker_enrichment_cache.json, single writer scripts/finviz_enrichment.py; "
-                       "per-symbol as_of/age/stale, never fetches",
+        "from data/state/ticker_enrichment_cache.json, single writer scripts/finviz_enrichment.py; "
+        "per-symbol as_of/age/stale, never fetches",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
@@ -124,15 +137,19 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "scalp_list",
         "authority_domain": "scalp_list",  # registered 2026-10-10 (operator, CONSOLIDATION_PLAN §D.5)
         "description": "Momentum-scalp list: the fresher of L1050's scalp_universe_latest.json (09:30-16:00) and the "
-                       "hot-tier premarket screener membership (06:00-09:30, 2-min refresh receipt); hot enrichment "
-                       "stamps for the list's names; the four hot-tier freshness SLOs. Never fetches, never writes",
+        "hot-tier premarket screener membership (06:00-09:30, 2-min refresh receipt); hot enrichment "
+        "stamps for the list's names; the four hot-tier freshness SLOs. Never fetches, never writes",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
-        "consumers": ["social_scalp_scanner (L246 --on-list-advance)",
-                      "hermes_momentum_catalyst_researcher (L708 --on-list-advance)",
-                      "run_finviz_momentum_scalp_scan (L636 proposal-stage trigger)",
-                      "finviz_enrichment --scalp-hot", "social_ingest --scalp-list", "scalp_hot_tier_report"],
+        "consumers": [
+            "social_scalp_scanner (L246 --on-list-advance)",
+            "hermes_momentum_catalyst_researcher (L708 --on-list-advance)",
+            "run_finviz_momentum_scalp_scan (L636 proposal-stage trigger)",
+            "finviz_enrichment --scalp-hot",
+            "social_ingest --scalp-list",
+            "scalp_hot_tier_report",
+        ],
     },
     {
         "id": "quote_batch",
@@ -141,7 +158,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "http": [],
         "domain": "quotes",
         "description": "Canonical single-symbol quote via quote-only get_best_quote (stored quote first, a "
-                       "provider only when stale, stopping at the first fresh answer)",
+        "provider only when stale, stopping at the first fresh answer)",
         "read_only": True,
     },
     {
@@ -173,6 +190,20 @@ PROJECTIONS: list[dict[str, Any]] = [
         "description": "Yahoo target history rollup",
         "read_only": True,
         "provider_calls": 0,
+    },
+    {
+        "id": "street_detail",
+        "module": "lib.data_broker.street_detail",
+        "entrypoints": ["get_street_detail"],
+        "http": [],
+        "domain": "street",
+        "contract_version": "StreetDetail@v1",
+        "description": "Prospectus institutional blocks: target / rating history, the extended Yahoo analyst capture "
+        "(actions, consensus, revisions, earnings dates), analyst catalysts, option chain summaries, "
+        "SEC XBRL / Form 4 / 13F, dividend ex-dates. Stored data only.",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Ticker Prospectus"],
     },
     {
         "id": "catalyst_record",
@@ -247,7 +278,10 @@ PROJECTIONS: list[dict[str, Any]] = [
         "id": "watch_curation",
         "module": "lib.data_broker.watch_curation",
         "entrypoints": ["list_watch_curation", "build_curation", "suggest", "rotate", "ownership_conflicts"],
-        "http": ["GET /api/v3/data-broker/watch-curation"],
+        "http": [
+            "GET /api/v3/data-broker/watch-curation",
+            "GET /api/v3/data-broker/watch-curation?review_status=1&symbols=<comma-separated,max30>",
+        ],
         "domain": "watch",
         "description": (
             "My Watchlist (every operator name — stars, personal watchlist, operator directives, operator adds — "
@@ -608,7 +642,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "earnings_calendar",
         "authority_domain": "earnings_calendar (PROPOSED 2026-10-10; operator grant pending)",
         "description": "Whole-market earnings calendar (report date, pre/post-market timing, estimate) published by "
-                       "the Alpha Vantage owner (one EARNINGS_CALENDAR call/day); file read only, envelope, say_so on gap",
+        "the Alpha Vantage owner (one EARNINGS_CALENDAR call/day); file read only, envelope, say_so on gap",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
@@ -622,13 +656,16 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "news_sentiment",
         "authority_domain": "news_sentiment (PROPOSED 2026-10-10; operator grant pending)",
         "description": "Per-ticker relevance-weighted news sentiment over 72 h from the Alpha Vantage owner's "
-                       "windowed NEWS_SENTIMENT pulls; file read only, envelope, say_so on gap",
+        "windowed NEWS_SENTIMENT pulls; file read only, envelope, say_so on gap",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
-        "consumers": ["scripts/catalyst_enrichment.py (alpha_vantage slot)",
-                      "scripts/external_market_data_ingest.py --news-sentiment"],
-    },    {
+        "consumers": [
+            "scripts/catalyst_enrichment.py (alpha_vantage slot)",
+            "scripts/external_market_data_ingest.py --news-sentiment",
+        ],
+    },
+    {
         "id": "home_do_now",
         "module": "lib.data_broker.home_do_now",
         "entrypoints": ["build", "probe_pending_proposals"],
@@ -637,10 +674,10 @@ PROJECTIONS: list[dict[str, Any]] = [
         "authority_domain": None,
         "contract_version": "HomeDoNow@v1",
         "description": "Home 'Do now' queue (operator-approved Home redesign 2026-10-22): one deduplicated, "
-                       "money-at-risk-first queue (protect / decide / fix) composed from needs-action, the operator "
-                       "inbox, the risk snapshot, the held-exit-coverage receipt, pending paper proposals and open "
-                       "redeploys; per-source as_of / age / stale; an unreadable source is an item. Owns no store; "
-                       "positions via risk_snapshot (holdings.json) until a positions_current reader batch covers Home",
+        "money-at-risk-first queue (protect / decide / fix) composed from needs-action, the operator "
+        "inbox, the risk snapshot, the held-exit-coverage receipt, pending paper proposals and open "
+        "redeploys; per-source as_of / age / stale; an unreadable source is an item. Owns no store; "
+        "positions via risk_snapshot (holdings.json) until a positions_current reader batch covers Home",
         "read_only": True,
         "provider_calls": 0,
         "consumers": ["Command Center v3 Home (Do now queue, three numbers)"],
@@ -653,10 +690,10 @@ PROJECTIONS: list[dict[str, Any]] = [
         "domain": "cio_prospect",
         "authority_domain": "cio_prospect (PROPOSED 2026-10-22, AGENTS.md §26; operator grant pending)",
         "description": "The CIO prospect — one record per security_guid (stage, conviction + components, stance, "
-                       "next trigger, what's missing, next action, conflicts, evidence_at/expires_at). Reads the "
-                       "cio_prospect store only when it is live (row granted + flag + table); otherwise the shadow "
-                       "build, labelled SHADOW; say_so on gap; per-row stale after expires_at. get_position_view: "
-                       "origin, lifecycle, post-exit review and re-entry advice for TradeInView / Open Trades / Watch",
+        "next trigger, what's missing, next action, conflicts, evidence_at/expires_at). Reads the "
+        "cio_prospect store only when it is live (row granted + flag + table); otherwise the shadow "
+        "build, labelled SHADOW; say_so on gap; per-row stale after expires_at. get_position_view: "
+        "origin, lifecycle, post-exit review and re-entry advice for TradeInView / Open Trades / Watch",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",

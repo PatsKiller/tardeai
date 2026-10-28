@@ -5,8 +5,8 @@
 #   guard id <tier>                     print the active grant's full id
 #   guard scopes                        list every scope and what it covers
 #   guard grant <tier> [opts]           approve a whole scope (displays it first)
-#   guard request <tier> [opts]         ask the operator by TELEGRAM (agent-callable;
-#                                       grants nothing — they reply /approve <CODE>)
+#   guard request <tier> [opts]         RETIRED (PR #2185): Telegram grants refused, exit 2;
+#                                       the operator grants here (guard grant) or on Ops → Controls
 #   guard plan <file.md> [opts]         approve a plan: display it, grant its scopes
 #   guard revoke <tier> [--grant-id ID] | --all   cancel (one exact grant, or the tier)
 #   guard log [n]                       what ran under auto-accept
@@ -121,7 +121,7 @@ cmd_grant() {
     exit 1
   fi
 
-  # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or by Telegram.
+  # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or on Ops → Controls.
   if [[ "$tier" == "execution-ops" && "$dur" -gt 21600 ]]; then
     echo "${RED}execution-ops grants are capped at 6h (21600s) — AGENTS.md 5.0.0 §24.10.${OFF}"; exit 1
   fi
@@ -264,9 +264,9 @@ case "${1:-show}" in
   id)     shift; exec python3 "$ROOT/scripts/lib/fabric_grant.py" id "${1:?usage: guard id <tier>}" ;;
   scopes) cmd_scopes ;;
   grant)  shift; cmd_grant "$@" ;;
-  # Ask the operator by Telegram instead of at this terminal. Mints a PENDING
-  # request and notifies; grants nothing. The reply is handled by the live
-  # callback poller — see scripts/lib/guard_remote_approval.py.
+  # RETIRED: Telegram remote grants (operator-ratified on PR #2185). This now exits 2
+  # with the retirement message and mints/sends nothing (TELEGRAM_REMOTE_GRANT_STATUS
+  # in scripts/lib/guard_remote_approval.py). `guard grant` and Ops → Controls stay.
   request) shift
     _py="$(command -v python3 || true)"
     for _c in "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python" ; do

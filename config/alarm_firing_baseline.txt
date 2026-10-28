@@ -62,6 +62,7 @@ scripts/crawl_v3_dashboard.py 1
 scripts/defense_engine_gap_checker.py 1
 scripts/defense_execution.py 1
 scripts/defense_weekly_paid_review.py 2
+scripts/delivery_failure_alerts.py 1
 scripts/eod_open_trade_alert.py 1
 scripts/finviz_ingestion.py 2
 scripts/freshness_watchdog_heartbeat.py 1

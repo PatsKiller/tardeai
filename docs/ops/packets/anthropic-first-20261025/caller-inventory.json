@@ -1,0 +1,3874 @@
+{
+  "source_sha": "7a17113afedc552a645493972dee46c0ba51a2dd",
+  "registered_processes": [
+    {
+      "process_id": "advisory_desk_opinion",
+      "category": "AdvisoryDesk",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "advisory_desk_synthesis",
+      "category": "AdvisoryDesk",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "aegis_steph_review",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/aegis_synthesis.py",
+          "line": 625,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "aegis_steph_review",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "aegis_synthesis",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/aegis_synthesis.py",
+          "line": 107,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "aegis_synthesis",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "alex_cio_escalation",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "alex_cio_synthesis",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/gate_d_bundle_2_advisory_canary.py",
+          "line": 441,
+          "callee": "scripts.lib.cio_governed_model_bridge.execute_governed_call",
+          "process_id": "alex_cio_synthesis",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "architecture_review",
+      "category": "System",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "grok",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "PRO_THINK"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "broker_cloud_oversight",
+      "category": "Trading",
+      "lane_policy": "both_preferred",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cloud_consensus_verdict",
+      "category": "Trading",
+      "lane_policy": "ensemble",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cloud_review",
+      "category": "Hermes",
+      "lane_policy": "both_preferred",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/cloud_review.py",
+          "line": 119,
+          "callee": "llm_lane.generate",
+          "process_id": "cloud_review",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "deepseek_flash_operator_smoke",
+      "category": "System",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cio_policy_field_advisor",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "directive_keyword_enhancer",
+      "category": "Intel",
+      "lane_policy": "ensemble",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/directive_keyword_enhancer.py",
+          "line": 106,
+          "callee": "llm_lane.generate",
+          "process_id": "directive_keyword_enhancer",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "grok_execution_review",
+      "category": "Journal",
+      "lane_policy": "grok_only",
+      "mode": null,
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "guardian_risk_critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_analyst_coverage",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_cross_source_synthesizer",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/hermes_cross_source_synthesizer.py",
+          "line": 185,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "hermes_cross_source_synthesizer",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "hermes_external_research",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/cloud_review.py",
+          "line": 182,
+          "callee": "llm_lane.generate",
+          "process_id": "hermes_external_research",
+          "process_binding": "literal",
+          "lane": "deepseek-flash",
+          "binding_confidence": "direct_import"
+        },
+        {
+          "path": "scripts/hermes_external_researcher.py",
+          "line": 387,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "hermes_external_research",
+          "process_binding": "literal",
+          "lane": "deepseek-flash",
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "hermes_scalp_review",
+      "category": "Trading",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_tag_engine",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/hermes_tag_engine.py",
+          "line": 130,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "hermes_tag_engine",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "holding_protection_advisor",
+      "category": "Portfolio",
+      "lane_policy": "grok_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "holding_protection_advisor_batch",
+      "category": "Portfolio",
+      "lane_policy": "grok_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "holdings_llm_refresh",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/holdings_llm_refresh.py",
+          "line": 257,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "holdings_llm_refresh",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "iris_taxonomy_agent",
+      "category": "Intel",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/iris_taxonomy_agent.py",
+          "line": 41,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "iris_taxonomy_agent",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "journal_ask",
+      "category": "Journal",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "l3_judgment_author",
+      "category": "AgentRuntime",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "l3_independent_critic",
+      "category": "AgentRuntime",
+      "lane_policy": "grok_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/lib/independent_critic.py",
+          "line": 109,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "l3_independent_critic",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        },
+        {
+          "path": "scripts/run_tiered_validation_gate.py",
+          "line": 123,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "l3_independent_critic",
+          "process_binding": "literal",
+          "lane": "grok",
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "ledger_tax_critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "llm_intelligence_enrichment",
+      "category": "Intel",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/llm_intelligence_enrichment.py",
+          "line": 86,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "llm_intelligence_enrichment",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "maria_research_critique",
+      "category": "CIO",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/gate_d_bundle_2_advisory_canary.py",
+          "line": 382,
+          "callee": "scripts.lib.cio_governed_model_bridge.execute_governed_call",
+          "process_id": "maria_research_critique",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "morgan_wealth_synthesis",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "multi_tier_trade_reviewer",
+      "category": "Journal",
+      "lane_policy": "both_preferred",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST_THINK"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST_THINK"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST_THINK"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/multi_tier_trade_reviewer.py",
+          "line": 101,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "multi_tier_trade_reviewer",
+          "process_binding": "literal",
+          "lane": "deepseek-flash",
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "oauth_lane_keepalive",
+      "category": "System",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/oauth_lane_keepalive.py",
+          "line": 74,
+          "callee": "llm_lane.generate",
+          "process_id": "oauth_lane_keepalive",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "options_ensemble",
+      "category": "Options",
+      "lane_policy": "ensemble",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "paper_trade_advisory",
+      "category": "Trading",
+      "lane_policy": "both_preferred",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "pipeline_health_diagnosis",
+      "category": "System",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "portfolio_ai_analyst",
+      "category": "Portfolio",
+      "lane_policy": "grok_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/portfolio_ai_analyst.py",
+          "line": 110,
+          "callee": "llm_lane.generate",
+          "process_id": "portfolio_ai_analyst",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        },
+        {
+          "path": "scripts/portfolio_ai_analyst.py",
+          "line": 159,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "portfolio_ai_analyst",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "portfolio_ask",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "portfolio_monthly_report",
+      "category": "Reports",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "portfolio_orchestrator",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/portfolio_orchestrator.py",
+          "line": 1744,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "portfolio_orchestrator",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "portfolio_weekly_report",
+      "category": "Reports",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "reflective_critic_flash",
+      "category": "AgentRuntime",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/agent_runtime_live_providers.py",
+          "line": 142,
+          "callee": "scripts.llm_lane.generate",
+          "process_id": "reflective_critic_flash",
+          "process_binding": "literal",
+          "lane": "deepseek-flash",
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "reporting_grok_editorial",
+      "category": "Reports",
+      "lane_policy": "grok_only",
+      "mode": null,
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "rotation_grok_review",
+      "category": "Rotation",
+      "lane_policy": "grok_only",
+      "mode": null,
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/api_v2.py",
+          "line": 51624,
+          "callee": "llm_lane.generate",
+          "process_id": "rotation_grok_review",
+          "process_binding": "literal",
+          "lane": "grok",
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "rotation_oversight",
+      "category": "Rotation",
+      "lane_policy": "ensemble",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "steph_allocation_review",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "PRO"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "stop_drift_alert",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "strategy_planner",
+      "category": "Strategy",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "grok",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "PRO_THINK"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "think_tank_signal_miner",
+      "category": "Intel",
+      "lane_policy": "either",
+      "mode": null,
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "topic_curator",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": [
+        {
+          "path": "scripts/topic_curator.py",
+          "line": 200,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "topic_curator",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "topic_ingestion",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/topic_ingestion.py",
+          "line": 368,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "topic_ingestion",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        },
+        {
+          "path": "scripts/topic_ingestion.py",
+          "line": 516,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "topic_ingestion",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        },
+        {
+          "path": "scripts/topic_ingestion.py",
+          "line": 1077,
+          "callee": "lib.governed_cloud_generation.generate_cloud",
+          "process_id": "topic_ingestion",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "ri_narrative_enrich",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "topic_research_synthesizer",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "unregistered",
+      "category": "System",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_agent_debate_flash",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_agent_flash_extract",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_cio_synthesis",
+      "category": "Watch",
+      "lane_policy": "ensemble",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "grok",
+          "policy": "PRO_THINK"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "PRO_THINK"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_cio_synthesis_cron",
+      "category": "Watch",
+      "lane_policy": "ensemble",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "grok_stop_review",
+      "category": "Risk",
+      "lane_policy": "grok_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_entry_planner",
+      "category": "Watch",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/watchlist_entry_planner.py",
+          "line": 545,
+          "callee": "llm_lane.generate",
+          "process_id": "watchlist_entry_planner",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "watchlist_maria_flash_narrative",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_maria_priority",
+      "category": "Watch",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_agent_oauth_fallback",
+      "category": "Watch",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_risk_flash_narrative",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "watchlist_steph_flash_narrative",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "options_thesis_cio_review",
+      "category": "Options",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cio_operator_reply",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cio_plan_enrichment",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": true,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cio_prompt_judge",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "research_circle_analyzer",
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_cloud_json",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": true,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_usefulness_score",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "cio_hermes_research",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": true,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_golden_judge",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "local_llm_compat",
+      "category": "Compatibility",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "contradiction_adjudicator",
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": null,
+      "transport_failover": false,
+      "route_profile": null,
+      "process_call_sites": []
+    },
+    {
+      "process_id": "n8n_material_digest_draft",
+      "category": "N8nCoordination",
+      "lane_policy": "either",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "n8n_ops_summary_draft",
+      "category": "N8nCoordination",
+      "lane_policy": "either",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "n8n_lane_failure_diagnosis",
+      "category": "N8nCoordination",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "incubator_llm_screener",
+      "category": "Incubator",
+      "lane_policy": "either",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "journal_review_builder",
+      "category": "Journal",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "portfolio_lookthrough_themes",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "hermes_usefulness_score_n8n",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "proposal_llm_review",
+      "category": "Proposals",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "defense_weekly_oversight",
+      "category": "Defense",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "analyst_report_editorial",
+      "category": "Reports",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "analyst_report_critique",
+      "category": "Reports",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "due_diligence_questions",
+      "category": "Research",
+      "lane_policy": "either",
+      "mode": "automated",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    },
+    {
+      "process_id": "blind_review_runner",
+      "category": "Shadow",
+      "lane_policy": "either",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": [
+        {
+          "path": "scripts/blind_review_runner.py",
+          "line": 217,
+          "callee": "llm_lane.generate",
+          "process_id": "blind_review_runner",
+          "process_binding": "literal",
+          "lane": null,
+          "binding_confidence": "direct_import"
+        }
+      ]
+    },
+    {
+      "process_id": "cio_ask_deep_research",
+      "category": "CIO",
+      "lane_policy": "either",
+      "mode": "manual",
+      "route": [
+        {
+          "provider": "grok",
+          "policy": "FAST"
+        },
+        {
+          "provider": "chatgpt",
+          "policy": "FAST"
+        },
+        {
+          "provider": "deepseek",
+          "policy": "FAST"
+        }
+      ],
+      "reasoning_lane": {
+        "provider": "deepseek",
+        "policy": "PRO_THINK"
+      },
+      "transport_failover": true,
+      "route_profile": "n8n_oauth_first",
+      "process_call_sites": []
+    }
+  ],
+  "static_call_sites": [
+    {
+      "path": "scripts/aegis_synthesis.py",
+      "line": 107,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "aegis_synthesis",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/aegis_synthesis.py",
+      "line": 625,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "aegis_steph_review",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/agent_runtime_live_providers.py",
+      "line": 142,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "reflective_critic_flash",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 41563,
+      "callee": "dynamic_callable",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 8927,
+      "callee": "llm_lane.generate",
+      "process_id": "api_v2_ai_ask",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 41040,
+      "callee": "llm_lane.generate",
+      "process_id": "broker_orders_explain",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 51738,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 52084,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 52447,
+      "callee": "_lc.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 51624,
+      "callee": "llm_lane.generate",
+      "process_id": "rotation_grok_review",
+      "process_binding": "literal",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 52373,
+      "callee": "_lc.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 50840,
+      "callee": "llm_lane.generate",
+      "process_id": "api_v2_intelligence_feedback",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 51839,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 52119,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 50852,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "line": 52731,
+      "callee": "llm_lane.generate",
+      "process_id": "api_v2_rewrite_note",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/blind_review_runner.py",
+      "line": 217,
+      "callee": "llm_lane.generate",
+      "process_id": "blind_review_runner",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/blind_review_runner.py",
+      "line": 181,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/cloud_review.py",
+      "line": 119,
+      "callee": "llm_lane.generate",
+      "process_id": "cloud_review",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/cloud_review.py",
+      "line": 182,
+      "callee": "llm_lane.generate",
+      "process_id": "hermes_external_research",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/contradiction_adjudicator.py",
+      "line": 197,
+      "callee": "llm_consumption.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/defense_oversight.py",
+      "line": 213,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/defense_oversight.py",
+      "line": 243,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/directive_keyword_enhancer.py",
+      "line": 61,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/directive_keyword_enhancer.py",
+      "line": 106,
+      "callee": "llm_lane.generate",
+      "process_id": "directive_keyword_enhancer",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/drain_llm_deferred.py",
+      "line": 81,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/drain_llm_deferred.py",
+      "line": 101,
+      "callee": "lib.llm_consumption.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/drain_llm_deferred.py",
+      "line": 167,
+      "callee": "llm_deferral.complete",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/due_diligence_questions.py",
+      "line": 497,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/gate_d_bundle_2_advisory_canary.py",
+      "line": 382,
+      "callee": "scripts.lib.cio_governed_model_bridge.execute_governed_call",
+      "process_id": "maria_research_critique",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/gate_d_bundle_2_advisory_canary.py",
+      "line": 441,
+      "callee": "scripts.lib.cio_governed_model_bridge.execute_governed_call",
+      "process_id": "alex_cio_synthesis",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_analyst_coverage.py",
+      "line": 134,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_analyst_coverage.py",
+      "line": 139,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_analyst_coverage.py",
+      "line": 143,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_browse_proxy.py",
+      "line": 36,
+      "callee": "llm_lane.generate",
+      "process_id": "hermes_browse_proxy",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_cross_source_synthesizer.py",
+      "line": 185,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "hermes_cross_source_synthesizer",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_external_feedback_loop.py",
+      "line": 76,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_external_researcher.py",
+      "line": 387,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "hermes_external_research",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_external_researcher.py",
+      "line": 414,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_private_proxy_research.py",
+      "line": 221,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_scalp_post_trade_review.py",
+      "line": 217,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_source_auto_approval.py",
+      "line": 79,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_source_curation.py",
+      "line": 83,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_tag_engine.py",
+      "line": 130,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "hermes_tag_engine",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/hermes_tag_engine.py",
+      "line": 124,
+      "callee": "lib.llm_bridge_route.text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/holding_protection_advisor.py",
+      "line": 402,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/holding_protection_advisor.py",
+      "line": 413,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/holdings_llm_refresh.py",
+      "line": 257,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "holdings_llm_refresh",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/incubator_llm_screener.py",
+      "line": 439,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/incubator_llm_screener.py",
+      "line": 442,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/inference_ensemble.py",
+      "line": 216,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/iris_taxonomy_agent.py",
+      "line": 41,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "iris_taxonomy_agent",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/journal_ai_critique.py",
+      "line": 946,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/journal_ask.py",
+      "line": 60,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/journal_review_builder.py",
+      "line": 131,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/journal_review_builder.py",
+      "line": 138,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/cio_governed_model_bridge.py",
+      "line": 1112,
+      "callee": "self.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/cio_governed_model_bridge.py",
+      "line": 3371,
+      "callee": "execute_governed_call",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/cio_governed_model_bridge.py",
+      "line": 1917,
+      "callee": "transport.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/cio_grok_critique.py",
+      "line": 212,
+      "callee": "generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/cio_residual_web.py",
+      "line": 676,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/conflicts/proposals.py",
+      "line": 752,
+      "callee": "scripts.lib.n8n_model_job.bridge_governed_call",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/governed_cloud_generation.py",
+      "line": 55,
+      "callee": "lib.llm_bridge_route.text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/governed_cloud_generation.py",
+      "line": 76,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/independent_critic.py",
+      "line": 109,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "l3_independent_critic",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/l3_judgment_author.py",
+      "line": 215,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/llm_bridge_route.py",
+      "line": 59,
+      "callee": "n8n_model_job.bridge_governed_call",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/llm_bridge_route.py",
+      "line": 107,
+      "callee": "text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/llm_consumption.py",
+      "line": 1340,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/lib/llm_fallback.py",
+      "line": 224,
+      "callee": "generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "line": 731,
+      "callee": "run_store.request",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "line": 777,
+      "callee": "run_store.request",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "line": 890,
+      "callee": "run_store.request",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "line": 908,
+      "callee": "run_store.request",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "line": 913,
+      "callee": "run_store.request",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/lib/redeploy_oversight.py",
+      "line": 279,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/llm_intelligence_enrichment.py",
+      "line": 86,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "llm_intelligence_enrichment",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/llm_lane.py",
+      "line": 298,
+      "callee": "lib.llm_bridge_route.text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/llm_lane.py",
+      "line": 310,
+      "callee": "lib.llm_consumption.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/llm_router.py",
+      "line": 202,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/llm_router.py",
+      "line": 164,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/monthly_advisory.py",
+      "line": 67,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "monthly_advisory",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/monthly_advisory.py",
+      "line": 86,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "monthly_advisory",
+      "process_binding": "literal",
+      "lane": "chatgpt",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/multi_tier_trade_reviewer.py",
+      "line": 101,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "multi_tier_trade_reviewer",
+      "process_binding": "literal",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/multi_tier_trade_reviewer.py",
+      "line": 132,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": "chatgpt",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/oauth_lane_keepalive.py",
+      "line": 74,
+      "callee": "llm_lane.generate",
+      "process_id": "oauth_lane_keepalive",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/options_lifecycle_oversight.py",
+      "line": 135,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/policy_enforcement_audit.py",
+      "line": 154,
+      "callee": "generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/portfolio_ai_analyst.py",
+      "line": 110,
+      "callee": "llm_lane.generate",
+      "process_id": "portfolio_ai_analyst",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_ai_analyst.py",
+      "line": 159,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "portfolio_ai_analyst",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_ask.py",
+      "line": 157,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_lookthrough_themes.py",
+      "line": 328,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_lookthrough_themes.py",
+      "line": 389,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_lookthrough_themes.py",
+      "line": 357,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_orchestrator.py",
+      "line": 1744,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "portfolio_orchestrator",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/portfolio_report_llm.py",
+      "line": 270,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 96,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 685,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 688,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": "deepseek-flash",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 556,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 682,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "line": 420,
+      "callee": "lib.llm_consumption.gate_and_generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/proposal_llm_reviewer.py",
+      "line": 56,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/report_oversight.py",
+      "line": 194,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/report_oversight.py",
+      "line": 207,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/reporting_engine.py",
+      "line": 621,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/reporting_engine.py",
+      "line": 532,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/research_intelligence_narrative_enrich.py",
+      "line": 171,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/research_intelligence_narrative_enrich.py",
+      "line": 194,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/run_tiered_validation_gate.py",
+      "line": 123,
+      "callee": "scripts.llm_lane.generate",
+      "process_id": "l3_independent_critic",
+      "process_binding": "literal",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/scoring.py",
+      "line": 31,
+      "callee": "generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "file_import_only_review_needed"
+    },
+    {
+      "path": "scripts/scoring.py",
+      "line": 118,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/scoring.py",
+      "line": 90,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/strategy_planner.py",
+      "line": 242,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/strategy_ticket_review.py",
+      "line": 277,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/think_tank_signal_miner.py",
+      "line": 776,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/topic_curator.py",
+      "line": 200,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "topic_curator",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/topic_ingestion.py",
+      "line": 368,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "topic_ingestion",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/topic_ingestion.py",
+      "line": 516,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "topic_ingestion",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/topic_ingestion.py",
+      "line": 1077,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": "topic_ingestion",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/topic_research_synthesizer.py",
+      "line": 71,
+      "callee": "lib.governed_cloud_generation.generate_cloud",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/trade_plan.py",
+      "line": 40,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": "grok",
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/watchlist_entry_planner.py",
+      "line": 531,
+      "callee": "lib.llm_bridge_route.require_text_via_bridge",
+      "process_id": null,
+      "process_binding": "not_supplied_at_this_site",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/watchlist_entry_planner.py",
+      "line": 536,
+      "callee": "llm_lane.generate",
+      "process_id": null,
+      "process_binding": "dynamic",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    },
+    {
+      "path": "scripts/watchlist_entry_planner.py",
+      "line": 545,
+      "callee": "llm_lane.generate",
+      "process_id": "watchlist_entry_planner",
+      "process_binding": "literal",
+      "lane": null,
+      "binding_confidence": "direct_import"
+    }
+  ],
+  "static_scope_exclusions": [
+    "scripts/active_trader/__init__.py",
+    "scripts/active_trader/auto_trader_sim.py",
+    "scripts/active_trader/broker_capabilities.py",
+    "scripts/active_trader/config_read.py",
+    "scripts/active_trader/exit_watch.py",
+    "scripts/active_trader/export_scalp_fires.py",
+    "scripts/active_trader/fast_trigger_loop.py",
+    "scripts/active_trader/feature_flags.py",
+    "scripts/active_trader/flags.py",
+    "scripts/active_trader/microstructure_recorder.py",
+    "scripts/active_trader/microstructure_signals.py",
+    "scripts/active_trader/momentum_alert_pass.py",
+    "scripts/active_trader/momentum_alert_scoring.py",
+    "scripts/active_trader/momentum_alert_sources.py",
+    "scripts/active_trader/momentum_alerts.py",
+    "scripts/active_trader/momentum_alerts_api.py",
+    "scripts/active_trader/momentum_exit_policy.py",
+    "scripts/active_trader/motion_api.py",
+    "scripts/active_trader/motion_host_proof.py",
+    "scripts/active_trader/motion_journal.py",
+    "scripts/active_trader/motion_runtime.py",
+    "scripts/active_trader/motion_shadow.py",
+    "scripts/active_trader/near_ready.py",
+    "scripts/active_trader/premarket_watch.py",
+    "scripts/active_trader/read_api.py",
+    "scripts/active_trader/read_http.py",
+    "scripts/active_trader/session_control.py",
+    "scripts/active_trader/session_http.py",
+    "scripts/active_trader/session_review.py",
+    "scripts/active_trader/signal_calibration.py",
+    "scripts/active_trader/sim_execution.py",
+    "scripts/active_trader/t2_jit_policy.py",
+    "scripts/active_trader/trade_learning.py",
+    "scripts/active_trader/trade_replay.py",
+    "scripts/active_trader/venue_eligibility.py",
+    "scripts/advisory_notification_broker.py",
+    "scripts/alpaca_live_read_sync.py",
+    "scripts/alpaca_paper_adapter.py",
+    "scripts/alpaca_paper_options_executor.py",
+    "scripts/alpaca_paper_reconciler.py",
+    "scripts/alpaca_stop_manager.py",
+    "scripts/alpaca_throttle.py",
+    "scripts/api_v3_data_broker_watch.py",
+    "scripts/apply_homehub_no_stop_label.py",
+    "scripts/audit_stop_to_trailing_conversion.py",
+    "scripts/backfill_stop_v20_tracking.py",
+    "scripts/backtest_execution_hypotheses.py",
+    "scripts/backtest_hybrid_stops.py",
+    "scripts/broker_adapter.py",
+    "scripts/broker_config.py",
+    "scripts/broker_confirm_alpaca.py",
+    "scripts/broker_confirmation_gate.py",
+    "scripts/broker_desk_automation.py",
+    "scripts/broker_promote_oversight.py",
+    "scripts/broker_promote_sizing.py",
+    "scripts/broker_proposal_autocal.py",
+    "scripts/broker_proposal_curator.py",
+    "scripts/broker_proposal_intel.py",
+    "scripts/broker_proposal_queue_ops.py",
+    "scripts/broker_queue_hygiene.py",
+    "scripts/broker_secrets.py",
+    "scripts/broker_stop_reconcile.py",
+    "scripts/broker_strategy_resolver.py",
+    "scripts/broker_thesis_validity.py",
+    "scripts/broker_trade_litmus.py",
+    "scripts/broker_trade_plan_gate.py",
+    "scripts/broker_write_scanner.py",
+    "scripts/brokers/__init__.py",
+    "scripts/brokers/alpaca_credentials.py",
+    "scripts/brokers/alpaca_factory.py",
+    "scripts/brokers/alpaca_read_client.py",
+    "scripts/brokers/approval_service.py",
+    "scripts/brokers/audit.py",
+    "scripts/brokers/broker_entry_pilot.py",
+    "scripts/brokers/canary_gate.py",
+    "scripts/brokers/capabilities.py",
+    "scripts/brokers/capability_gate.py",
+    "scripts/brokers/evidence_approval.py",
+    "scripts/brokers/execution_guard.py",
+    "scripts/brokers/execution_readiness.py",
+    "scripts/brokers/intent_submit_router.py",
+    "scripts/brokers/interfaces.py",
+    "scripts/brokers/kill_switches.py",
+    "scripts/brokers/options_execution_policy.py",
+    "scripts/brokers/options_order_pilot.py",
+    "scripts/brokers/order_intent.py",
+    "scripts/brokers/order_lifecycle.py",
+    "scripts/brokers/pilot_caps.py",
+    "scripts/brokers/protective_stop_pilot.py",
+    "scripts/brokers/protective_stop_policy.py",
+    "scripts/brokers/quote_time.py",
+    "scripts/brokers/reconcile_orders.py",
+    "scripts/brokers/schwab_order_adapter.py",
+    "scripts/brokers/snaptrade_connect.py",
+    "scripts/brokers/snaptrade_credentials.py",
+    "scripts/brokers/snaptrade_protective_stop_pilot.py",
+    "scripts/brokers/snaptrade_protective_stop_policy.py",
+    "scripts/brokers/snaptrade_read.py",
+    "scripts/brokers/snaptrade_trade.py",
+    "scripts/brokers/snaptrade_trade_pilot.py",
+    "scripts/brokers/snaptrade_transport.py",
+    "scripts/brokers/translation_review.py",
+    "scripts/brokers/translators/__init__.py",
+    "scripts/brokers/translators/alpaca.py",
+    "scripts/brokers/translators/schwab.py",
+    "scripts/build_daily_execution_coaching.py",
+    "scripts/build_trade_execution_quality.py",
+    "scripts/defense_execution.py",
+    "scripts/defense_inverse_stoplights.py",
+    "scripts/execution_state.py",
+    "scripts/execution_time_revalidation_validate.py",
+    "scripts/fidelity_manual_stop_ticket.py",
+    "scripts/fidelity_monitored_stop.py",
+    "scripts/fidelity_stop_sync.py",
+    "scripts/grok_daily_execution_digest.py",
+    "scripts/grok_execution_review.py",
+    "scripts/grok_stop_review.py",
+    "scripts/high_llm_execution_worker.py",
+    "scripts/ingest_schwab_gainloss.py",
+    "scripts/lib/advisory/notification_broker.py",
+    "scripts/lib/broker_env_audit.py",
+    "scripts/lib/broker_read_sync_policy.py",
+    "scripts/lib/data_broker/broker_access.py",
+    "scripts/lib/execution_language.py",
+    "scripts/lib/fidelity_stop_sync.py",
+    "scripts/lib/last_known_stops.py",
+    "scripts/lib/n8n_broker_read_carveout.py",
+    "scripts/lib/n8n_broker_read_carveout_runtime.py",
+    "scripts/lib/n8n_broker_read_shadow.py",
+    "scripts/lib/options_pipeline/alpaca_paper.py",
+    "scripts/lib/release_train_stop.py",
+    "scripts/lib/schwab_access_mode.py",
+    "scripts/lib/schwab_instrument_evidence.py",
+    "scripts/lib/stop_change_audit.py",
+    "scripts/lib/stop_consensus_check.py",
+    "scripts/lib/stop_monitoring_health.py",
+    "scripts/lib/stoplight_regime_thresholds.py",
+    "scripts/manual_execution_tracker.py",
+    "scripts/market_observations/moomoo_t2.py",
+    "scripts/migrate_broker_account_model.py",
+    "scripts/migrate_momentum_scalp_stop_tagging.py",
+    "scripts/migrate_schwab_live_policies.py",
+    "scripts/moomoo_live_read_sync.py",
+    "scripts/n8n_broker_read_shadow.py",
+    "scripts/operator_packets/packet_f_moomoo_stage0.py",
+    "scripts/ops/broker_read_sync.py",
+    "scripts/ops/broker_read_sync_child.py",
+    "scripts/options_execution_friction.py",
+    "scripts/options_schwab_exec_parser.py",
+    "scripts/paper_broker_reconciler.py",
+    "scripts/paper_execution_quality.py",
+    "scripts/paper_execution_quality_analyzer.py",
+    "scripts/paper_execution_revalidator.py",
+    "scripts/paper_execution_sweep.py",
+    "scripts/portfolio_stops.py",
+    "scripts/proposal_execution_readiness.py",
+    "scripts/protective_stop_2fa_preflight.py",
+    "scripts/reconcile_broker_totals.py",
+    "scripts/reconcile_stop_v21_broker_stops.py",
+    "scripts/record_last_known_stop.py",
+    "scripts/report_broker_env_audit.py",
+    "scripts/report_proposal_execution_link.py",
+    "scripts/report_stop_v20_open_trade_stop_tracking.py",
+    "scripts/scalp_execution_gate.py",
+    "scripts/scalp_min_stop.py",
+    "scripts/scalp_stop_intelligence.py",
+    "scripts/scalp_stop_monitor.py",
+    "scripts/scalp_stop_validation_tracker.py",
+    "scripts/schwab_activity_capture.py",
+    "scripts/schwab_adapter.py",
+    "scripts/schwab_auto_reauth.py",
+    "scripts/schwab_broker_trade_monitor.py",
+    "scripts/schwab_econfirm_reconcile.py",
+    "scripts/schwab_journal_builder.py",
+    "scripts/schwab_journal_classifier.py",
+    "scripts/schwab_oco_bracket.py",
+    "scripts/schwab_pilot_arm.py",
+    "scripts/schwab_position_sync.py",
+    "scripts/schwab_reconstructor.py",
+    "scripts/schwab_shadow_recon.py",
+    "scripts/schwab_stage2b_canary_preflight.py",
+    "scripts/schwab_stop_batch_request.py",
+    "scripts/schwab_stream_daemon.py",
+    "scripts/schwab_token_manager.py",
+    "scripts/schwab_transaction_ingest.py",
+    "scripts/schwab_transport.py",
+    "scripts/secrets/store_schwab_login.py",
+    "scripts/session28_validate_paper_execution_workflow.py",
+    "scripts/stop_alert_assembler.py",
+    "scripts/stop_change_audit.py",
+    "scripts/stop_decision_brief.py",
+    "scripts/stop_drift_alert.py",
+    "scripts/stop_health_check.py",
+    "scripts/stop_lifecycle_monitor.py",
+    "scripts/stop_out_reentry_watch.py",
+    "scripts/stop_over_consensus_monitor.py",
+    "scripts/stop_policy_migration_report.py",
+    "scripts/sweep_schwab_instruments.py",
+    "scripts/sync_basis_from_broker.py",
+    "scripts/synthetic_stop_monitor.py",
+    "scripts/trade_execution_analyzer.py",
+    "scripts/trailing_stop_analyzer.py",
+    "scripts/unified_stop_supervisor.py",
+    "scripts/update_docx_rotation_stop_clarity_20260618.py",
+    "scripts/update_docx_stop_management_20260615.py",
+    "scripts/validate_broker_connectors.py",
+    "scripts/validate_schwab_no_writes.py",
+    "scripts/validate_schwab_write_policy.py",
+    "scripts/verify_paper_trade_broker_stops.py",
+    "scripts/verify_protective_stop_submit_flow.py"
+  ],
+  "parse_errors": [],
+  "method": "AST-only, no imports or provider calls. Protected execution filenames/directories excluded; dynamic bindings require manual trace. Historical37lane direct-call catalogue is not accepted as current runtime proof."
+}

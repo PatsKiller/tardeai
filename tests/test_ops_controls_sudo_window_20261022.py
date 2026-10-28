@@ -304,9 +304,9 @@ def test_always_fresh_kinds_are_refused_inside_a_window(env, kind, params):
 
 
 def test_kill_switch_clear_and_release_operator_kinds_are_always_fresh():
-    for k in ("kill_switch.clear", "grant.issue", "passkey.register", "passkey.revoke", "release_train.resume",
-              "release_train.arm"):
+    for k in ("kill_switch.clear", "grant.issue", "passkey.register", "passkey.revoke", "deploy.resume"):
         assert SW.needs_fresh_passkey(k)
+    assert not any(k.startswith("release_train.") for k in SW.ALWAYS_FRESH_KINDS)
     assert SW.needs_fresh_passkey("setting.set", {"key": SW.SETTING_MINUTES})
     assert SW.needs_fresh_passkey("setting.unset", {"key": SW.SETTING_ENABLED})
     assert SW.needs_fresh_passkey("setting.set", {"key": "active_trader_alerts.min_buy_ratio"}) is None
@@ -354,26 +354,9 @@ CC = RC.Actor("cc", "operator@tailnet")
 CTRL = RC.Actor("controller", "tradeai-release-train.service")
 
 
-def _delegation(env):
-    from scripts.lib import release_delegation as RD
-
-    d = json.loads(RD.EXAMPLE_PATH.read_text(encoding="utf-8"))
-    d.update(status="ACTIVE", delegation_id="rtd-test-0001")
-    d["operator"]["approved_at"] = "2026-10-21T17:00:00-04:00"
-    for s in d["windows"]["slots"]:
-        s["enabled"] = s["window_id"] == "1800"
-    p = env.tmp / "delegation" / "delegation.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(d))
-    env.hosts.release_delegation_path = p
-    assert RD.load(p).authorized
-    return RD.load(p).digest
-
-
 def _stopped_train(env):
     import os
 
-    _delegation(env)
     ctl = RC.ReleaseControl(env.tmp / "release_window")
     ctl.root.mkdir(parents=True, exist_ok=True)
     ctl.arm(HOST, RC.HostCliProof("/dev/pts/9", os.getuid(), ctl.expected_phrase("arm")),
@@ -388,7 +371,7 @@ def test_release_resume_via_passkey_through_the_applier(env):
     enroll_passkey(env)
     ctl = _stopped_train(env)
     assert ctl.view().mode == RC.STOPPED
-    rid = create(env, "release_train.resume", {"reason": "operator resumes after review"})
+    rid = create(env, "deploy.resume", {"reason": "operator resumes after review"})
     req = env.store.get_request(rid)
     assert req["phrase"] == f"RESUME EPOCH {ctl.view().epoch + 1}" and req["executor"] == "applier"
     st, body = step_up(env, rid)
@@ -404,23 +387,10 @@ def test_release_resume_via_passkey_through_the_applier(env):
     assert journal[-1]["command"] == "resume" and journal[-1]["result"]["outcome"] == "RESUMED"
 
 
-def test_release_arm_via_passkey_through_the_applier(env):
-    enroll_passkey(env)
-    digest = _delegation(env)
-    rid = create(env, "release_train.arm", {"reason": "arm the train for tonight"})
-    assert env.store.get_request(rid)["phrase"] == "ARM EPOCH 1"
-    st, body = step_up(env, rid)
-    post(env, f"/requests/{rid}/approve", {"step_up_token": body["step_up_token"]})
-    out = run_applier(env)
-    assert out[0]["outcome"] == "APPLIED", out
-    v = RC.ReleaseControl(env.tmp / "release_window").view()
-    assert v.mode == RC.RUNNING and v.epoch == 1 and v.accepted_policy_digest == digest
-
-
 def test_release_resume_refused_when_the_epoch_moved_since_the_preview(env):
     enroll_passkey(env)
     ctl = _stopped_train(env)
-    rid = create(env, "release_train.resume", {"reason": "operator resumes after review"})
+    rid = create(env, "deploy.resume", {"reason": "operator resumes after review"})
     st, body = step_up(env, rid)
     post(env, f"/requests/{rid}/approve", {"step_up_token": body["step_up_token"]})
     import os
@@ -439,21 +409,21 @@ def test_release_passkey_hook_refuses_window_factor_unsigned_and_mismatched_appr
     from scripts.lib import ops_controls_auth as A
     from scripts.lib import ops_controls_core as C
 
-    approval = {"request_id": "opsreq_" + "1" * 20, "kind": "release_train.resume", "direction": "risky",
+    approval = {"request_id": "opsreq_" + "1" * 20, "kind": "deploy.resume", "direction": "risky",
                 "executor": "applier", "params": {"reason": "x" * 5}, "expected_state_digest": "d",
                 "actor": OP, "stepup_factor": "passkey", "stepup_credential_id": "cred-0001",
                 "approved_at": env.clock(), "phrase": "RESUME EPOCH 3"}
     approval["approval_sig"] = A.sign_approval(KEY, approval)
     proof = RC.PasskeyProof(approval["request_id"], "cred-0001", "t", "RESUME EPOCH 3")
-    ok = C.ApprovalPasskeyHook(approval, KEY, "release_train.resume")
+    ok = C.ApprovalPasskeyHook(approval, KEY, "deploy.resume")
     assert ok.verify(proof, command="resume", expected_phrase="RESUME EPOCH 3")
     assert not ok.verify(proof, command="resume", expected_phrase="RESUME EPOCH 4")       # stale epoch
     assert not ok.verify(proof, command="arm", expected_phrase="RESUME EPOCH 3")          # other command
-    assert not C.ApprovalPasskeyHook(approval, b"z" * 40, "release_train.resume").verify(  # wrong key
+    assert not C.ApprovalPasskeyHook(approval, b"z" * 40, "deploy.resume").verify(  # wrong key
         proof, command="resume", expected_phrase="RESUME EPOCH 3")
     windowed = dict(approval, stepup_factor="sudo_window")
     windowed["approval_sig"] = A.sign_approval(KEY, windowed)
-    assert not C.ApprovalPasskeyHook(windowed, KEY, "release_train.resume").verify(
+    assert not C.ApprovalPasskeyHook(windowed, KEY, "deploy.resume").verify(
         proof, command="resume", expected_phrase="RESUME EPOCH 3")
     other = RC.PasskeyProof(approval["request_id"], "cred-9999", "t", "RESUME EPOCH 3")
     assert not ok.verify(other, command="resume", expected_phrase="RESUME EPOCH 3")
@@ -482,7 +452,7 @@ def test_release_kinds_cannot_be_stepped_up_inside_a_window(env):
     enable(env)
     _stopped_train(env)
     _, out = open_window(env)
-    rid = create(env, "release_train.resume", {"reason": "operator resumes after review"})
+    rid = create(env, "deploy.resume", {"reason": "operator resumes after review"})
     st, body = window_step(env, rid, out["sudo_window"]["sudo_token"])
     assert (st, body["error"]) == (403, "FRESH_PASSKEY_REQUIRED")
 
@@ -508,7 +478,7 @@ def test_audit_rows_and_not_ok_sections_never_have_an_empty_reason(env):
     rid = create(env, "crontab.pause", {"line_sha256": sha(CRON_A), "lane_id": "alpha"})
     post(env, f"/requests/{rid}/approve", {})                      # refused.step_up_required
     env.who.update(principal="service-token", listener="service")
-    post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem()})
+    post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem()})
     env.who.update(principal=OP, listener="serve_proxy")
     st, state = get(env, "/state")
     rows = state["audit"]["rows"]
@@ -529,8 +499,8 @@ def test_kinds_carry_the_fresh_passkey_flag(env):
     st, state = get(env, "/state")
     k = {x["kind"]: x for x in state["kinds"]}
     assert k["grant.issue"]["fresh_passkey"] and not k["crontab.pause"]["fresh_passkey"]
-    assert k["release_train.resume"]["supported"] and k["release_train.arm"]["supported"]
-    assert not k["release_train.change_scope"]["supported"] and not k["kill_switch.clear"]["supported"]
+    assert k["deploy.resume"]["supported"] and "release_train.arm" not in k
+    assert not k["kill_switch.clear"]["supported"]
 
 
 def test_sudo_migration_only_widens_the_factor_check():

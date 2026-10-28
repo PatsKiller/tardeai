@@ -4,10 +4,12 @@
   "files": [
     "tests/test_backup_enforcer.py",
     "tests/test_disk_hygiene_enforcer.py",
+    "tests/test_disk_enforcer_scope_24_12_20261027.py",
     "tests/test_docs_tip_hygiene_enforcer.py",
     "tests/test_hermes_librarian_retention_runner.py"
   ],
   "comment": [
-    "tip hygiene: disk/docs/librarian enforcers (2026-09-10 fill incident)"
+    "tip hygiene: disk/docs/librarian enforcers (2026-09-10 fill incident)",
+    "2026-10-27: disk_hygiene_enforcer removes nothing outside AGENTS.md §24.12 (apply refused)"
   ]
 }

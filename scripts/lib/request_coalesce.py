@@ -32,6 +32,8 @@ DEFAULT_COALESCE_PATHS = (
     "/api/v3/data-broker/watch-prospects",
     "/api/v3/data-broker/watch-intelligence",
     "/api/v2/hermes/health",
+    "/api/v2/hermes/pipeline-quality",
+    "/api/v2/hermes/sources",
     "/api/v2/portfolio/performance",
     "/api/v2/open-trades/intelligence",
     "/api/v2/cio/capital-plan",

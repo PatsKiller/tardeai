@@ -494,6 +494,29 @@ def last_sells(db_query: Callable[..., Any]) -> dict[str, Any]:
     return {str(r["s"]).upper(): {"at": r.get("at"), "account": r.get("account")} for r in rows if r.get("s")}
 
 
+# Perf 2026-10-25: the per-symbol BARS_SQL loop was ~16 round trips of ~0.1 s on the cold Watch build. Same filter
+# and order as cio_prospect_builder.BARS_SQL, for every symbol at once; each row keeps only BARS_SQL's columns.
+_BARS_BATCH_SQL = ("SELECT upper(symbol) AS batch_symbol, price_date AS time, close_price AS close FROM ticker_prices "
+                   "WHERE upper(symbol) = ANY(%s) AND price_date > now() - interval '120 days' "
+                   "ORDER BY upper(symbol), price_date")
+
+
+def _bars_batch(db_query: Callable[..., Any], syms: list[str]) -> Optional[dict[str, list]]:
+    """{SYM: [{time, close}, ...]} in one query; None when the batch read fails (caller reads per symbol)."""
+    if not syms:
+        return {}
+    try:
+        rows = db_query(_BARS_BATCH_SQL, (list(syms),)) or []
+    except Exception:  # noqa: BLE001
+        return None
+    out: dict[str, list] = {s: [] for s in syms}
+    for r in rows:
+        key = str(r.get("batch_symbol") or "").upper()
+        if key in out:
+            out[key].append({"time": r.get("time"), "close": r.get("close")})
+    return out
+
+
 def lifecycles(
     db_query: Callable[..., Any], *, held: set[str], opps: dict[str, dict[str, Any]], rsi: dict[str, Any], now: datetime
 ) -> tuple[dict[str, dict[str, Any]], str]:
@@ -514,12 +537,14 @@ def lifecycles(
             if oid.isdigit():
                 r["seq"] = int(oid)
     syms = sorted(s for s in ((inputs.get("round_trips") or {}).get("rows") or {}) if s not in held)
-    bars: dict[str, list] = {}
-    for s in syms:
-        try:
-            bars[s] = list(db_query(pb.BARS_SQL, (s,)) or [])
-        except Exception:  # noqa: BLE001
-            bars[s] = []
+    bars = _bars_batch(db_query, syms)
+    if bars is None:
+        bars = {}
+        for s in syms:
+            try:
+                bars[s] = list(db_query(pb.BARS_SQL, (s,)) or [])
+            except Exception:  # noqa: BLE001
+                bars[s] = []
     inputs["bars"] = {"rows": bars, "status": "ok"}
     inputs["indicators"] = {"rows": {s: {"rsi": rsi.get(s)} for s in syms if rsi.get(s) is not None}, "status": "ok"}
     out: dict[str, dict[str, Any]] = {}
