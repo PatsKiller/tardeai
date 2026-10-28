@@ -14,6 +14,19 @@ import os
 from pathlib import Path
 
 
+def _request_attempts(root, request):
+    from scripts.lib import symbol_thesis_priority as queue
+
+    if not request.get("request_id"):
+        return []
+    return [
+        row
+        for row in queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH))
+        if row.get("request_id") == request["request_id"]
+        and str(row.get("symbol") or "").upper() == str(request.get("symbol") or "").upper()
+    ]
+
+
 def pending_request(root, symbol):
     from scripts.lib import symbol_thesis_priority as queue
 
@@ -31,6 +44,38 @@ def pending_request(root, symbol):
         return request
     from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity
 
+    # Once the existing ledger binds a request, a retry must retain that identity.
+    # Otherwise ticker reuse could silently move an old question/publication to a
+    # different security while still passing a fresh current-registry check.
+    known = []
+    for attempt in _request_attempts(root, request):
+        guid = attempt.get("security_guid")
+        if guid is None and "identity_binding" not in attempt:
+            if attempt.get("status") in queue.DONE:
+                return request  # An identity-less publication cannot safely be linked or repurchased.
+            continue
+        binding = attempt.get("identity_binding")
+        if not is_registry_guid(guid) or (
+            "identity_binding" in attempt and (not isinstance(binding, dict) or binding.get("security_guid") != guid)
+        ):
+            return request
+        known.append(attempt)
+    if known:
+        if len({row["security_guid"] for row in known}) != 1:
+            return request
+        first = known[0]
+        guid = first["security_guid"]
+        return {
+            **request,
+            "identity_status": "CONFIRMED",
+            "security_guid": guid,
+            "identity_binding": deepcopy(first.get("identity_binding"))
+            or {
+                "basis": "prior_acquisition_request_identity",
+                "security_guid": guid,
+                "bound_at": first.get("as_of"),
+            },
+        }
     identity = resolve_security_identity(symbol, root=root)
     guid = identity.get("security_guid")
     if identity.get("identity_status") != "CONFIRMED" or not is_registry_guid(guid):
@@ -60,6 +105,13 @@ def request_blocker(root, request, *, identity_resolver=None):
     identity = identity_resolver(request["symbol"], root=root)
     if identity.get("identity_status") != "CONFIRMED" or identity.get("security_guid") != request["security_guid"]:
         return "REQUEST_IDENTITY_CHANGED"
+    for attempt in _request_attempts(root, request):
+        binding = attempt.get("identity_binding")
+        historical = [attempt.get("security_guid")]
+        if isinstance(binding, dict):
+            historical.append(binding.get("security_guid"))
+        if any(guid is not None and guid != request["security_guid"] for guid in historical):
+            return "REQUEST_IDENTITY_CHANGED"
     return None
 
 
@@ -71,7 +123,17 @@ def published_for_request(root, request):
 
     rows = queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH))
     return next(
-        (r for r in reversed(rows) if r.get("request_id") == request["request_id"] and r.get("status") in queue.DONE),
+        (
+            r
+            for r in reversed(rows)
+            if r.get("request_id") == request["request_id"]
+            and r.get("symbol") == request.get("symbol")
+            and r.get("status") in queue.DONE
+            and (
+                r.get("security_guid") == request.get("security_guid")
+                or (r.get("security_guid") is None and not request.get("identity_binding"))
+            )
+        ),
         None,
     )
 
@@ -101,6 +163,12 @@ def link_publication(root, request, result, *, store=None, backend=None, registr
         return {**pending, "reason": "unchanged_review_not_proven"}
     guid = request.get("security_guid")
     symbol = request.get("symbol")
+    if (
+        result.get("symbol") not in (None, symbol)
+        or result.get("security_guid") not in (None, guid)
+        or (request.get("identity_binding") and result.get("security_guid") != guid)
+    ):
+        return {**pending, "reason": "publication_identity_unconfirmed_or_changed"}
     identity = resolve_security_identity(symbol, root=root)
     if (
         not guid

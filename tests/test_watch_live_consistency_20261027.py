@@ -219,7 +219,7 @@ OTHER_GUID = "a64fa76d-4124-42a8-b42b-0d0a52438058"
 NOW = datetime(2026, 10, 27, 21, 17, tzinfo=timezone.utc)
 
 
-def queued_request(monkeypatch, extra=None, identity=None):
+def queued_request(monkeypatch, extra=None, identity=None, attempts=()):
     from scripts.lib import identity_carriage, symbol_thesis_priority as queue
     from scripts.lib import watch_review_publication as publication
 
@@ -236,7 +236,9 @@ def queued_request(monkeypatch, extra=None, identity=None):
         **(extra or {}),
     }
     monkeypatch.setattr(queue, "review_states", lambda *a, **kw: {"ZZQA": {"open": True, "request_id": "rr_legacy"}})
-    monkeypatch.setattr(queue, "_rows", lambda *a, **kw: [request])
+    monkeypatch.setattr(
+        queue, "_rows", lambda path: [request] if str(path).endswith(queue.RELPATH[-1]) else deepcopy(list(attempts))
+    )
     identity = {"identity_status": "CONFIRMED", "security_guid": GUID} if identity is None else identity
     monkeypatch.setattr(identity_carriage, "resolve_security_identity", lambda *a, **kw: deepcopy(identity))
     return request
@@ -327,3 +329,163 @@ def test_acquisition_owner_validates_legacy_identity_and_records_binding(tmp_pat
     saved = json.loads((tmp_path / worker.LEDGER_REL).read_text().splitlines()[-1])
     assert saved["request_id"] == original["request_id"]
     assert saved["identity_binding"] == row["identity_binding"]
+
+
+def prior_attempt(guid=GUID, **changes):
+    return {
+        "symbol": "ZZQA",
+        "request_id": "rr_legacy",
+        "as_of": (NOW - timedelta(hours=1)).isoformat(),
+        "status": "BLOCKED",
+        "security_guid": guid,
+        "identity_binding": {
+            "basis": "current_registry_readback_for_legacy_request",
+            "security_guid": guid,
+            "bound_at": (NOW - timedelta(hours=1)).isoformat(),
+        },
+        **changes,
+    }
+
+
+@pytest.mark.parametrize("current_guid,expected", [(GUID, None), (OTHER_GUID, "REQUEST_IDENTITY_CHANGED")])
+def test_legacy_retry_preserves_first_durable_identity_and_binding(tmp_path, monkeypatch, current_guid, expected):
+    from scripts.lib import watch_review_publication as publication
+
+    prior = prior_attempt()
+    original = queued_request(
+        monkeypatch, attempts=[prior], identity={"identity_status": "CONFIRMED", "security_guid": current_guid}
+    )
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert pending["security_guid"] == GUID
+    assert pending["identity_binding"] == prior["identity_binding"]
+    assert pending["request_id"] == original["request_id"]
+    assert pending["requested_at"] == original["requested_at"]
+    assert publication.request_blocker(tmp_path, pending) == expected
+    assert "security_guid" not in original
+
+
+def test_legacy_history_with_a_guid_but_no_binding_still_pins_identity(tmp_path, monkeypatch):
+    from scripts.lib import watch_review_publication as publication
+
+    prior = prior_attempt()
+    prior.pop("identity_binding")
+    queued_request(
+        monkeypatch, attempts=[prior], identity={"identity_status": "CONFIRMED", "security_guid": OTHER_GUID}
+    )
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert pending["security_guid"] == GUID
+    assert pending["identity_binding"]["bound_at"] == prior["as_of"]
+    assert publication.request_blocker(tmp_path, pending) == "REQUEST_IDENTITY_CHANGED"
+
+
+def test_unbound_blocked_attempts_and_unrelated_requests_do_not_prevent_legacy_upgrade(tmp_path, monkeypatch):
+    from scripts.lib import watch_review_publication as publication
+
+    queued_request(
+        monkeypatch,
+        attempts=[
+            {"symbol": "ZZQA", "request_id": "rr_legacy", "status": "BLOCKED", "security_guid": None},
+            prior_attempt(OTHER_GUID, request_id="rr_unrelated"),
+        ],
+    )
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert pending["security_guid"] == GUID
+    assert publication.request_blocker(tmp_path, pending) is None
+
+
+@pytest.mark.parametrize(
+    "attempts",
+    [
+        [prior_attempt(), prior_attempt(OTHER_GUID)],
+        [prior_attempt(identity_binding={"security_guid": OTHER_GUID})],
+        [prior_attempt(security_guid="invalid-registry-guid")],
+        [{"symbol": "ZZQA", "request_id": "rr_legacy", "status": "PUBLISHED"}],
+    ],
+)
+def test_legacy_ambiguous_or_unproven_history_cannot_rebind(tmp_path, monkeypatch, attempts):
+    from scripts.lib import watch_review_publication as publication
+
+    queued_request(monkeypatch, attempts=attempts)
+    pending = publication.pending_request(tmp_path, "ZZQA")
+    assert publication.request_blocker(tmp_path, pending) == "REQUEST_IDENTITY_UNCONFIRMED"
+
+
+def test_drifted_legacy_retry_reaches_neither_research_nor_publication_link(tmp_path, monkeypatch):
+    from scripts import run_symbol_thesis_acquisition as worker
+    from scripts.lib import watch_review_publication as publication
+
+    queued_request(
+        monkeypatch,
+        attempts=[prior_attempt(status="PUBLISHED", cio_link={"ok": False})],
+        identity={"identity_status": "CONFIRMED", "security_guid": OTHER_GUID},
+    )
+    monkeypatch.setattr(worker, "run_one", lambda *a, **kw: pytest.fail("identity drift reached research"))
+    monkeypatch.setattr(publication, "link_publication", lambda *a, **kw: pytest.fail("identity drift reached linking"))
+    result = worker.run(root=tmp_path, symbols=["ZZQA"], apply=True, max_llm=0)
+    assert result["llm_calls_used"] == 0
+    assert result["results"][0]["block_reason"] == "REQUEST_IDENTITY_CHANGED"
+    assert result["results"][0]["security_guid"] == GUID
+
+
+def test_legacy_same_identity_retries_a_published_link_without_research(tmp_path, monkeypatch):
+    from scripts import run_symbol_thesis_acquisition as worker
+    from scripts.lib import watch_review_publication as publication
+
+    prior = prior_attempt(status="PUBLISHED", cio_link={"ok": False}, review={"new_version": "synthetic@v1"})
+    queued_request(monkeypatch, attempts=[prior])
+    monkeypatch.setattr(worker, "run_one", lambda *a, **kw: pytest.fail("link retry repurchased research"))
+    monkeypatch.setattr(
+        publication, "link_publication", lambda *a, **kw: {"ok": True, "publication": {"id": "synthetic"}}
+    )
+    result = worker.run(root=tmp_path, symbols=["ZZQA"], apply=True, max_llm=0)
+    assert result["llm_calls_used"] == 0
+    row = result["results"][0]
+    assert row["publication_link_retry"] is True
+    assert row["security_guid"] == GUID
+    assert row["identity_binding"] == prior["identity_binding"]
+
+
+def test_completed_publication_lookup_excludes_another_security(tmp_path, monkeypatch):
+    from scripts.lib import watch_review_publication as publication
+
+    request = queued_request(
+        monkeypatch,
+        extra={"identity_status": "CONFIRMED", "security_guid": GUID},
+        attempts=[prior_attempt(OTHER_GUID, status="PUBLISHED")],
+    )
+    assert publication.published_for_request(tmp_path, request) is None
+    assert publication.request_blocker(tmp_path, request) == "REQUEST_IDENTITY_CHANGED"
+
+
+def test_publication_link_refuses_an_explicit_foreign_identity_before_readback(tmp_path, monkeypatch):
+    from scripts.lib import watch_review_publication as publication
+
+    request = queued_request(monkeypatch, extra={"identity_status": "CONFIRMED", "security_guid": GUID})
+    result = {"status": "PUBLISHED", "security_guid": OTHER_GUID, "review": {"new_version": "synthetic@v1"}}
+    assert (
+        publication.link_publication(tmp_path, request, result)["reason"]
+        == "publication_identity_unconfirmed_or_changed"
+    )
+
+
+def test_prospects_preserves_cache_control_while_deferring_filters(monkeypatch):
+    from scripts import api_v3_data_broker_watch as api
+    from lib.data_broker import watch_prospects
+    from lib import site_payload_reads
+
+    seen = {}
+
+    def source(query):
+        seen["source"] = query
+        return {"status": "ok", "lanes": []}
+
+    def compose(payload, query):
+        seen["canonical_filters"] = query
+        return payload
+
+    monkeypatch.setattr(watch_prospects, "list_watch_prospects", source)
+    monkeypatch.setattr(site_payload_reads, "prospects_page", compose)
+    query = {"fresh": "1", "conviction_min": "80", "blocked": "1"}
+    api.get_prospects(query)
+    assert seen["source"] == {"fresh": "1"}
+    assert seen["canonical_filters"] == query
