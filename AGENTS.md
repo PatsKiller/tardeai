@@ -13,19 +13,14 @@ Supersedes:          26.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" means a task id; operator-initiated emergency
-merge/deploy bypasses Mergify.** Awaiting the operator's `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). Three
-changes, directed 2026-10-28. (1) §0 rule 4 and §28.15 item 8: an operator-approved plan or scope is the push
-authorization — a guard hook must not require a separate `git-push` grant for an approved-scope fast-forward push of
-the agent's own non-`main` branch (it logs the push); the per-branch budget and the never-`main`/`release/*` ban still
-bind. (2) §28.3b: a design's buildable unit is a registered `-P<n>-T<m>` task, never prose, so `agent_claim.py
-status` / `next` can surface it and any agent can pick it up (stale-work monitor + design→task closure check are named
-debt, OI-131). (3) §25.10 + §17: the operator may initiate an emergency merge or merge-and-deploy that bypasses Mergify,
-from Telegram or the digest, SHA-bound; broker, order, stop, Schwab `read_only`, trading locks and kill switches are
-never bypassed (governed executor named debt, OI-134). **Why MAJOR:** it edits §0 rule 4, removes the guard-hook
-`git-push` grant requirement, and widens merge/deploy authority for the operator-initiated emergency path (weakest
-guarantee). §2, §2A, §7A, §23.14 and the broker, order, stop, sizing and secret rails are unchanged; `MBI_BEHAVIOR =
-0`.
+**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
+Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
+operator-approved scope is the push authorization — no separate `git-push` grant for an approved-scope fast-forward
+push of the agent's own non-`main` branch; budget and never-`main`/`release/*` still bind. (2) §28.3b: each buildable
+unit is a registered task id, never prose. (3) §25.10 / §17: operator-initiated emergency merge/merge-and-deploy
+bypasses Mergify, SHA-bound; broker rails are never bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy
+authority. §2, §2A, §7A, §23.14 and the broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`.
+Details: LESSONS L28-29/L28-30/L25-07; named debt OI-131/133/134.
 
 **26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
 (`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
