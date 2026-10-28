@@ -282,11 +282,12 @@ def handle_callback_query(cb):
         )
         return {**result, "outcome": "APPROVED", "pr_number": prn}
 
-    # ── PR merge DIGEST (prdall:<digest> / prdhold:<digest> / prdx:<digest>:<pr>) ──
+    # ── PR merge DIGEST (prdall:<digest> / prdhold:<digest> / prdx:<digest>:<pr> / prdheld:<digest>:<pr>) ──
     # One tap approves every ready PR in the digest, each bound to its digest head SHA
     # (operator 2026-10-27). ONE approval record per tap; the host adds ``operator-merge``.
+    # prdheld is the per-PR approve for a HELD (needs-operator) PR — never bulk.
     # See scripts/lib/pr_merge_digest.py (AGENTS.md §25.10, §28.4).
-    if action in ("prdall", "prdhold", "prdx"):
+    if action in ("prdall", "prdhold", "prdx", "prdheld"):
         try:
             from scripts.lib import pr_merge_digest as _pmd
         except ImportError:
@@ -333,6 +334,28 @@ def handle_callback_query(cb):
                 f"Nothing labelled; PRs return in the next digest.",
             )
             return {**result, "outcome": "HELD_ALL"}
+        if action == "prdheld":
+            # Per-PR approve for a HELD (needs-operator) PR — never bulk. Same SHA-bound,
+            # provenance-recorded settlement as Approve all, for one PR (AGENTS.md §25.10, §28.15 item 3).
+            try:
+                prn = int(parts[2])
+            except (IndexError, ValueError):
+                answer_callback(cb_id, "Invalid held item", show_alert=True)
+                return {**result, "outcome": "REFUSED", "reason": "BAD_ITEM"}
+            answer_callback(cb_id, f"Approving held PR #{prn}…")
+            out = _pmd.settle_approve_held_pr(did, prn, chat_id=chat_id, allowed_chats=_allowed_chat_ids(), telegram=tg)
+            if not out.get("ok"):
+                send_reply(chat_id, message_id, f"Held PR #{prn} not approved: {out.get('reason')}")
+                return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
+            head = str((out.get("outcome") or {}).get("head_sha") or "")
+            send_reply(
+                chat_id,
+                message_id,
+                f"✅ Held PR #{prn} approved (`{head[:9]}`) — operator-merge set. "
+                f"Mergify queues it in its ET window; you will get one Merged note and one Live note.",
+            )
+            return {**result, "outcome": "APPROVED_HELD", "pr_number": prn,
+                    "approval_id": (out.get("approval") or {}).get("approval_id")}
         # prdall — answer first (Telegram callback deadline), then label, then reply with the result.
         answer_callback(cb_id, f"Approving digest {did}…")
         out = _pmd.settle_approve_all(did, chat_id=chat_id, allowed_chats=_allowed_chat_ids(), telegram=tg)

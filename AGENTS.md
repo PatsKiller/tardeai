@@ -17,10 +17,11 @@ Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
 operator-approved scope is the push authorization — no separate `git-push` grant for an approved-scope fast-forward
 push of the agent's own non-`main` branch; budget and never-`main`/`release/*` still bind. (2) §28.3b: each buildable
-unit is a registered task id, never prose. (3) §25.10 / §17: operator-initiated emergency merge/merge-and-deploy
-bypasses Mergify, SHA-bound; broker rails are never bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy
-authority. §2, §2A, §7A, §23.14 and the broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`.
-Details: LESSONS L28-29/L28-30/L25-07; named debt OI-131/133/134.
+unit is a registered task id, never prose. (3) §25.10 / §17: held PRs merge on the operator's per-PR tap (never
+GitHub), and operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound; broker rails are never
+bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy authority. §2, §2A, §7A, §23.14 and the
+broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`. Details: LESSONS L28-29/L28-30/L25-07; named
+debt OI-131/133/134.
 
 **26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
 (`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
@@ -2191,8 +2192,13 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **"Approve all" in the digest is the operator's merge approval.** It approves exactly the PRs listed, each bound to
   the head SHA the digest showed; a changed head returns in the next digest. A GitHub Approve, an LGTM, an agent
   label, a guard grant or a relayed approval never counts. *Cause: 2026-10-27 — one-tap merges (LESSONS L25-02).*
-- **Held classes are never in "Approve all".** Only the operator's own merge merges a held PR. The list is
-  `config/merge_hold_paths.json`, and `.mergify.yml` is generated from it. These classes bind as written:
+- **Held classes are never in "Approve all".** Held classes are per-PR approval only: each held PR gets its own
+  "Approve #N (held)" tap in the digest, bound to the head SHA the digest showed, and the operator's per-PR tap merges
+  it too (SHA-bound, provenance recorded as `PrMergeDigestApproval@v1`); the operator never merges on GitHub. The
+  §28.15 item 3 rule stands: guard, hook, CI-enforcement and merge/deploy tooling still need two independent
+  `Adversarial-review: MERGE` receipts before the tap — reviews stay required, the tap (not a GitHub merge) is what
+  actually merges. The list is `config/merge_hold_paths.json`, and `.mergify.yml` is generated from it. These classes
+  bind as written:
   - §0 paths: broker, order, stop, sizing, Active Trader, MBI, Schwab, Alpaca, Moomoo, session and 2FA code;
   - secrets: `.env` and `config/secret_registry.yaml`;
   - policy: `AGENTS.md`, `AI_WORK_POLICY.md`, `CLAUDE.md`, `.cursor/rules/`, `.github/copilot-instructions.md`,
