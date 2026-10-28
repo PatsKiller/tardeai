@@ -1418,6 +1418,18 @@ The W8 conflict-engine workstream spec'd its `conflict-resolver` lane as a parag
 
 *Rule:* §28.3b — "designed" means each buildable unit is a task id on the board. AGENTS.md 26.0.0 §28.3b.
 
+### L28-30 · A redundant push grant blocked an approved push (2026-10-28)
+
+The operator approved the work in-session, but the agent's `git push` was refused by the guard hook for a missing `git-push` grant — a second, per-push human re-confirm the operator said should not exist: "The GET push grant. Not needed. It should be automatically pushed by the agent as long as the operator approved the work to be done." 21.0.0 §28.15 item 8 had already ratified grant-free pushes under an approved scope, but §0 rule 4 (matched to the hook in 26.0.0) still said a guard hook "may also require a git-push grant", and the hook enforced it. 26.1.0 removes the grant requirement; the per-branch budget and the never-`main`/`release/*` ban remain the actual rails.
+
+*Rule:* §0 rule 4; §28.15 item 8. AGENTS.md 26.0.0 §0 rule 4.
+
+### L25-07 · An emergency needs merge and deploy without Mergify (2026-10-28)
+
+The operator asked for an emergency path that bypasses Mergify: "in an emergency … merge and push live … commenced through Telegram … use a digest if necessary … bypass Mergify." Waiting on a Mergify window or the market-hours freeze is wrong for a genuine emergency fix, and the operator must be able to act from the phone, not only the host terminal. 26.1.0 adds an operator-initiated emergency merge / merge-and-deploy, SHA-bound, executed under STOP, the locks and a rollback target. The one line it cannot cross: "push live" never bypasses the broker rails (kill switch, trading locks, Schwab `read_only`, order/stop paths) — those stay §17 on Ops → Controls or the host terminal.
+
+*Rule:* §25.10 "Emergency merge and deploy"; §17. AGENTS.md 26.0.0 §25.10.
+
 ### L29-01 · Runs that hit a cap mid-way (2026-10-27)
 
 A paid lane died for three days and nothing said so (§12); runs that hit a cap mid-way leave partial state.

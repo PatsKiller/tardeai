@@ -13,12 +13,19 @@ Supersedes:          26.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**26.1.0 is PROPOSED (MINOR) — "designed" means a claimable task id on the board.** Awaiting the operator's
-`APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). It adds one obligation to §28.3b: a design's buildable unit is a
-registered `-P<n>-T<m>` task, never prose, so `agent_claim.py status` / `next` can surface it and any agent can pick it
-up. The stale-work monitor and the design→task closure check that enforce it are named debt (OPEN_ITEMS OI-131) and are
-built by their own tasks (DSN-20261028-designed-work-lifecycle). §0, §2, §2A, §7A, §17, §23.14 and the broker, order,
-stop, sizing and secret rails are byte-identical; `MBI_BEHAVIOR = 0`.
+**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" means a task id; operator-initiated emergency
+merge/deploy bypasses Mergify.** Awaiting the operator's `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). Three
+changes, directed 2026-10-28. (1) §0 rule 4 and §28.15 item 8: an operator-approved plan or scope is the push
+authorization — a guard hook must not require a separate `git-push` grant for an approved-scope fast-forward push of
+the agent's own non-`main` branch (it logs the push); the per-branch budget and the never-`main`/`release/*` ban still
+bind. (2) §28.3b: a design's buildable unit is a registered `-P<n>-T<m>` task, never prose, so `agent_claim.py
+status` / `next` can surface it and any agent can pick it up (stale-work monitor + design→task closure check are named
+debt, OI-131). (3) §25.10 + §17: the operator may initiate an emergency merge or merge-and-deploy that bypasses Mergify,
+from Telegram or the digest, SHA-bound; broker, order, stop, Schwab `read_only`, trading locks and kill switches are
+never bypassed (governed executor named debt, OI-134). **Why MAJOR:** it edits §0 rule 4, removes the guard-hook
+`git-push` grant requirement, and widens merge/deploy authority for the operator-initiated emergency path (weakest
+guarantee). §2, §2A, §7A, §23.14 and the broker, order, stop, sizing and secret rails are unchanged; `MBI_BEHAVIOR =
+0`.
 
 **26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
 (`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
@@ -68,8 +75,10 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
    `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent (`AI_WORK_POLICY.md` §16).
    An operator-approved plan or scope is that intent for fast-forward pushes of the agent's own
    non-`main` branches, within the per-branch budget the pre-push hook enforces
-   (`AI_WORK_POLICY.md` §3); an approval relayed between agents never counts (§28.4). Where a guard
-   hook is installed it may also require a `git-push` grant; its refusal is a denial under rule 3.
+   (`AI_WORK_POLICY.md` §3); an approval relayed between agents never counts (§28.4). A guard hook
+   must not require a separate `git-push` grant for an approved-scope fast-forward push of the
+   agent's own non-`main` branch (it logs the push); the per-branch budget and the never-`main`/
+   `release/*` ban still bind.
    Never push `main` or `release/*`, force-push, rewrite pushed history or delete a remote branch.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
@@ -1539,6 +1548,9 @@ the operator's own merge (§28.4) — never relayed by another agent, and never 
 - Arming, pausing or revoking the standing **deploy** (promote-only) delegation; clearing a deploy STOP or resuming
   the poller; running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA` (a
   coordinator may run it only on the operator's own instruction in its session, §25.10).
+- **Initiating an emergency merge or merge-and-deploy** that bypasses Mergify (§25.10 "Emergency merge and deploy"):
+  operator-originated and SHA-bound from Telegram or the digest, never a relayed or inferred approval; broker, order,
+  stop, Schwab `read_only`, trading locks and kill switches are never bypassed by it.
 - The operator's own merge of guard, hook, CI-enforcement, merge and deploy tooling, and of any diff that weakens
   §0, §2 or §17 enforcement (§28.15 item 3).
 - Deciding a rollback (an agent's tool is a revert PR); clearing a STOP after a rollback (§25.10).
@@ -2179,7 +2191,8 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **Agents queue; they never merge or promote.** No agent merges, pushes `main`, approves on GitHub, adds or removes
   `operator-merge`, runs prepare or promote, or sets `TRADEAI_EMERGENCY_RELEASE_SHA`. No one runs `gh pr merge`; the
   `PR_MERGE_BOOTSTRAP_GH_MERGE` path is retired. A draft PR may hold a claim (§0 rule 11); Mergify never merges a
-  draft. *Cause: 2026-10-26 — #2208 merged by `gh` (LESSONS L25-01).*
+  draft. The one exception is the operator-initiated emergency merge below ("Emergency merge and deploy"); it bypasses
+  Mergify. *Cause: 2026-10-26 — #2208 merged by `gh` (LESSONS L25-01).*
 - **"Approve all" in the digest is the operator's merge approval.** It approves exactly the PRs listed, each bound to
   the head SHA the digest showed; a changed head returns in the next digest. A GitHub Approve, an LGTM, an agent
   label, a guard grant or a relayed approval never counts. *Cause: 2026-10-27 — one-tap merges (LESSONS L25-02).*
@@ -2206,6 +2219,20 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **The emergency promote (`scripts/emergency_manual_promote.sh`, §24.8) and rollback are the operator's.** A
   coordinator agent may run it only on the operator's explicit instruction given in that coordinator's own session
   (§28.4), quoted verbatim in the receipt. Agents revert by PR. *Cause: 2026-10-27 — review L5 (LESSONS L25-06).*
+- **Emergency merge and merge-and-deploy are operator-initiated and bypass Mergify.** In an emergency the operator
+  declares, they may — from their own allowlisted Telegram chat, or the digest — request a merge, or a merge and
+  promote live, of a named PR, without Mergify's queue or ET windows and without the market-hours freeze. The request
+  is bound to the exact PR number and head SHA the operator saw (and, for deploy, the merged SHA); a relayed or
+  inferred approval never counts (§28.4). The coordinator or host executes it on the operator's own instruction, quoted
+  verbatim in the receipt, under STOP, `GlobalReleaseLock`, the trading locks and a recorded rollback target
+  (`scripts/emergency_manual_promote.sh` for the promote half). **Broker rails are never bypassed:** "push live" means
+  merge code and deploy code; it never clears a trading kill switch, unlocks a trading lock, moves the Schwab
+  `read_only` mode, places or stops an order, or touches §0 rules 1–2 — those stay §17 on Ops → Controls or the host
+  terminal (§27.3, §28.6). This re-admits Telegram as the request channel for this one emergency decision, never as a
+  general remote grant. The governed emergency-merge executor is named debt until built (OI-134); until then the
+  operator's own terminal `gh pr merge <n> --merge --match-head-commit <sha>` is the merge step. *Cause: 2026-10-28 —
+  operator: "in an emergency … merge and push live … commenced through Telegram … use a digest if necessary … bypass
+  Mergify" (LESSONS L25-07).*
 
 ---
 
@@ -2430,8 +2457,8 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **8 Routine pushes and toolchains.** An "operator-approved plan or scope" (§0 rule 4) is a claim-board plan with an
   `Operator-approval:` reference, or a coordinator-assigned task file under `data/coordination/handoffs/`. Under one,
   an agent pushes its own branches fast-forward, within the hook's budget, never to `main` or `release/*`, never
-  force-pushing, resetting, running `filter-branch` or deleting a remote branch. Where the guard hook still asks for
-  a `git-push` grant, it comes only from keyboard `bin/guard` or Ops → Controls. Running `npm run`, Playwright,
+  force-pushing, resetting, running `filter-branch` or deleting a remote branch. The guard hook must not ask for
+  a `git-push` grant on such a push; it logs it. Running `npm run`, Playwright,
   `pytest` or builds is never `deps`. *Cause: 2026-10-25 — Telegram grant asks (LESSONS L28-26).*
 - **9 What reaches the operator is §17;** everything else ships through §25.10, and spending money is never delegated.
   *Cause: 2026-10-25 — "fully automatic" (LESSONS L28-27).*
@@ -2471,7 +2498,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 26.1.0 | 2026-10-28 | PROPOSED | MINOR | §28.3b "designed = a task id on the board": a design's buildable unit is a registered `-P<n>-T<m>` task, never prose, so `agent_claim.py status` / `next` can surface it and any agent can pick it up; closes the designed-but-never-built hole (W8 conflict-resolver, 2026-10-28). The stale-work monitor and design→task closure check that enforce it are named debt (OPEN_ITEMS OI-131). §0, §2, §2A, §7A, §17, §23.14 and role authority unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
+| 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
 | 25.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation (operator 2026-10-27: "Get everything in line as the senior developer and coordinator."): owner clause (§20). | `APPROVE_AGENTS_POLICY_25_0_0 2236 78a919464a2213ea221ae12b43476bb8072d9a28` |

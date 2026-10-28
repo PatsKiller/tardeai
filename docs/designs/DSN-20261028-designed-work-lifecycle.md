@@ -36,6 +36,13 @@ phases:
 
 ## 0 · The failure this closes
 
+**This DSN now carries 26.1.0, which folds TWO operator-directed changes under one token:** (a) the designed-work
+task-id rule (§28.3b), and (b) the push-grant removal (§0 rule 4 + §28.15 item 8 — an operator-approved scope is the
+push authorization; the guard hook must not demand a `git-push` grant for an approved-scope fast-forward push of the
+agent's own branch; the per-branch budget and never-`main`/`release/*` ban still bind). See LESSONS L28-29 (task id) and
+L28-30 (push grant); enforcement gaps OI-131 (stale-work monitor/closure check) and OI-133 (hook still demands
+`git-push`).
+
 On 2026-10-24 the W8 workstream spec'd its `conflict-resolver` lane as a paragraph in `docs/ops/W8_WRITERS_20261024.md`
 ("the separate W8 Conflict Engine PR will declare `conflict-resolver`…") with no task id. Four days later the lane had
 no registry row, allowlist entry, health contract or PR, and every Watch card rendered "conflict ledger not yet
