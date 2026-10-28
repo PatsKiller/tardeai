@@ -33,6 +33,13 @@ phases:
       - id: DSN-20261028-ops-watchdogs-P4-T1
         title: Register + trigger delivery_failure_alerts.py (P1 page on red CI / failed release)
         status: PROPOSED
+  - id: DSN-20261028-ops-watchdogs-P5
+    title: Optional action affordance — a bounded "Request fix" on the strip
+    status: PROPOSED
+    tasks:
+      - id: DSN-20261028-ops-watchdogs-P5-T1
+        title: Operator-session gated queue-self-heal endpoint + strip button (opens a PR, never merges)
+        status: PROPOSED
 ---
 
 # Ops watchdogs — arm the three designed-but-unwired guards
@@ -98,6 +105,24 @@ when something detects a failure and invokes it with `--kind <failure-kind> --me
 
 **Gate:** `delivery_failure_alerts.py --dry-run --kind manual_test` quoted (sends nothing); the registry row passes
 the correlated-reasons gate; the sender goes through the host comms chokepoint, never `bypass_router`.
+
+## P5 — Optional: a bounded "Request fix" on the strip
+
+**What it is:** a button on the strip (or on the self-heal light) that queues one self-heal fixer cycle on demand,
+so "amber, designed-not-running" is not a dead end. It is **not read-only** — it is a write/action, so it gets its
+own gates.
+
+**Bounds (these are non-negotiable):**
+- The button only queues a self-heal cycle; the fixer's own scopes still bind — it opens an ordinary fix PR through
+  CI and **never merges, releases or deploys**, and it refuses broker / Active Trader / MBI / guard / policy /
+  train-self / credential scopes (§28.14 items 3–4).
+- It needs the self-heal fixer armed (P2) to be meaningful; before that the button is disabled with that reason
+  shown (never a silent gray-out).
+- It is an **operator-session, CSRF-protected POST** to a host endpoint (the same auth bar as the rest of Command
+  Center), never a GET and never reachable from n8n or a scheduled job.
+
+**The act (§17):** a new host write endpoint + the button is an operator-surface change; it ships as its own
+reviewed PR after P2 is live, with the endpoint behind the Command Center auth boundary.
 
 ## Honesty
 
