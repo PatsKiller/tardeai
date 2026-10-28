@@ -252,6 +252,53 @@ def test_approve_refuses_wrong_chat_and_unknown(env):
     assert gh.labels_added == []
 
 
+def test_held_pr_approve_is_per_pr_not_bulk(env):
+    gh = env["install"](FakeGH([_pr(1), _pr(5, files=("AGENTS.md",))]))
+    d = pmd.run_digest(apply=True)
+    assert d["ready"] == [1] and d["needs_operator"] == [5]
+    kb = pmd.keyboard(pmd.load_digests()[-1], pmd.load_config())
+    held_btns = [b for row in kb["inline_keyboard"] for b in row if b["callback_data"].startswith("prdheld:")]
+    assert held_btns == [{"text": "🔐 Approve #5 (held)", "callback_data": f"prdheld:{d['digest_id']}:5"}]
+    # Held PRs are never in "Approve all" (the ready buttons cover only #1).
+    assert all("prdheld" not in b["callback_data"] for b in kb["inline_keyboard"][0])
+
+    tg = {"from_id": "77", "from_username": "op", "message_id": 1002, "text": f"prdheld:{d['digest_id']}:5"}
+    out = pmd.settle_approve_held_pr(d["digest_id"], 5, chat_id="77", allowed_chats={"77"}, telegram=tg)
+    assert out["ok"] is True
+    assert gh.labels_added == [5]  # only the held PR, not the ready #1
+    recs = pmd._read_jsonl(pmd.approvals_path())
+    assert len(recs) == 1 and recs[0]["schema"] == "PrMergeDigestApproval@v1"
+    assert recs[0]["held"] is True and recs[0]["operator_chat_id"] == "77" and recs[0]["operator_from_id"] == "77"
+    assert recs[0]["items"][0]["pr"] == 5 and recs[0]["items"][0]["head_sha"] == SHA_A
+    # A second tap cannot re-approve the same held PR in this digest.
+    again = pmd.settle_approve_held_pr(d["digest_id"], 5, chat_id="77", allowed_chats={"77"}, telegram=tg)
+    assert again["ok"] is False and again["reason"] == "ALREADY_APPROVED"
+    # "Approve all" still labels only the ready PR, never the held PR.
+    pmd.settle_approve_all(d["digest_id"], chat_id="77", allowed_chats={"77"}, telegram=tg)
+    assert sorted(gh.labels_added) == [1, 5]
+
+
+def test_held_pr_head_moved_refuses_and_leaves_no_record(env):
+    gh = env["install"](FakeGH([_pr(5, files=("AGENTS.md",))]))
+    d = pmd.run_digest(apply=True)
+    gh.open[5]["headRefOid"] = SHA_B  # pushed after the digest went out
+    out = pmd.settle_approve_held_pr(d["digest_id"], 5, chat_id="77", allowed_chats={"77"})
+    assert out["ok"] is False and out["reason"] == "HEAD_CHANGED"
+    assert gh.labels_added == []
+    assert pmd._read_jsonl(pmd.approvals_path()) == []
+
+
+def test_held_pr_approve_refuses_ready_pr_and_wrong_chat(env):
+    gh = env["install"](FakeGH([_pr(1)]))
+    d = pmd.run_digest(apply=True)
+    # #1 is ready, not held.
+    out = pmd.settle_approve_held_pr(d["digest_id"], 1, chat_id="77", allowed_chats={"77"})
+    assert out["ok"] is False and out["reason"] == "PR_NOT_HELD_IN_DIGEST"
+    out2 = pmd.settle_approve_held_pr(d["digest_id"], 5, chat_id="999", allowed_chats={"77"})
+    assert out2["ok"] is False and out2["reason"] == "CHAT_NOT_ALLOWLISTED"
+    assert gh.labels_added == []
+
+
 def test_superseded_digest_cannot_be_approved(env):
     gh = env["install"](FakeGH([_pr(1)]))
     old = pmd.run_digest(apply=True)
@@ -375,7 +422,8 @@ def test_next_digest_at_weekday_and_weekend():
 
 def test_callback_handler_and_poller_wire_digest():
     h = (ROOT / "scripts" / "telegram_callback_handler.py").read_text(encoding="utf-8")
-    assert 'action in ("prdall", "prdhold", "prdx")' in h and "pr_merge_digest" in h
+    assert 'action in ("prdall", "prdhold", "prdx", "prdheld")' in h and "pr_merge_digest" in h
+    assert 'action == "prdheld"' in h and "settle_approve_held_pr" in h
     p = (ROOT / "scripts" / "run_telegram_callback_poller.py").read_text(encoding="utf-8")
     assert "_handle_digest_hold" in p and "handle_text_command" in p
 

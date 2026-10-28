@@ -44,8 +44,10 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
    `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent (`AI_WORK_POLICY.md` §16).
    An operator-approved plan or scope is that intent for fast-forward pushes of the agent's own
    non-`main` branches, within the per-branch budget the pre-push hook enforces
-   (`AI_WORK_POLICY.md` §3); an approval relayed between agents never counts (§28.4). Where a guard
-   hook is installed it may also require a `git-push` grant; its refusal is a denial under rule 3.
+   (`AI_WORK_POLICY.md` §3); an approval relayed between agents never counts (§28.4). A guard hook
+   must not require a separate `git-push` grant for an approved-scope fast-forward push of the
+   agent's own non-`main` branch (it logs the push); the per-branch budget and the never-`main`/
+   `release/*` ban still bind.
    Never push `main` or `release/*`, force-push, rewrite pushed history or delete a remote branch.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.

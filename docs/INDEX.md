@@ -746,10 +746,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 1: Findings |
 | `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan |
+| `docs/audits/CIO_REVIEW_DECISION_AUTHORITY_RCA_2026-10-28.md` | CIO Review / decision-authority chain — root-cause investigation (Phase 0) |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log |
+| `docs/audits/DISK_HYGIENE_FIRST_APPLY_REVIEW_2026-10-28.md` | Disk-hygiene first-apply review — operator decision package |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
@@ -1043,6 +1045,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/DSN-20261025-anthropic-first.md` | DSN-20261025 Anthropic-first governed routing |
 | `docs/designs/DSN-20261026-ask-hourly.md` | Hourly Ask lifecycle |
+| `docs/designs/DSN-20261028-cio-review-transparency.md` | CIO review transparency — design of record (folded into W8) |
+| `docs/designs/DSN-20261028-designed-work-lifecycle.md` | Designed work never gets lost |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2272,6 +2276,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) |
 | `docs/ops/packets/disk-standing-apply-20261024/README.md` | Disabled source package and operator review packet |
 | `docs/ops/packets/doc-index-pr-flow-20261024/REVIEW.md` | Proposed documentation-index PR flow |
+| `docs/ops/packets/guard-fix-20261028/README.md` | Guard hook fixes — OI-132 and OI-133 (PROPOSAL packet) |
 | `docs/ops/packets/header-right-edge-20261024/README.md` | Header right-edge fixture evidence |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) |
 | `docs/ops/packets/hermes-scorer-canary-20261021/README.md` | hermes-watchlist-scorer: n8n canary → cutover, 2026-10-21 (operator packet) |

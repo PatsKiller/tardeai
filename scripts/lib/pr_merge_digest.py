@@ -11,10 +11,14 @@ Flow
    no ``operator-merge`` yet. It sends ONE message through ``telegram_alert`` with
    "Approve all (N)" / "Hold all" and per-item hold toggles (``prdall:`` / ``prdhold:`` /
    ``prdx:<id>:<pr>``); "hold #N" typed in the chat does the same. Held-path PRs are listed as
-   "needs operator merge" with no Approve. Nothing ready and nothing new → no message.
+   "needs operator merge" with a per-PR "Approve #N" tap (``prdheld:<id>:<pr>``) — never in
+   "Approve all" — so a broker/secret/policy/guard change still needs an explicit per-PR tap.
+   Nothing ready and nothing new → no message.
 2. ``settle_approve_all`` (callback poller) re-reads each PR's head, writes ONE
    ``PrMergeDigestApproval@v1`` record (digest id, chat, operator id, time, [(PR, head SHA)]) —
-   provenance per AGENTS.md §28.4 — then adds ``operator-merge`` to each PR.
+   provenance per AGENTS.md §28.4 — then adds ``operator-merge`` to each PR. A held PR is approved
+   the same way, one tap at a time (``settle_approve_held_pr``): re-read head, write one
+   ``PrMergeDigestApproval@v1`` record, add ``operator-merge`` — never bulk.
 3. ``reconcile`` (host timer, every 3 min): a labelled PR whose head moved off the approved SHA
    loses ``operator-merge`` and returns to the next digest; approved PRs that merged get one
    "Merged N, deploying" note; a ``DeployOnMainReceipt@v1`` that carries them gets one
@@ -343,7 +347,7 @@ def _format_digest(d: dict[str, Any], *, summaries: bool, needs_cap: Optional[in
         lines.append(f"\n+{len(d['overflow'])} more ready — next digest.")
     needs = d.get("needs_operator") or []
     if needs:
-        lines.append("\n\U0001f512 *Needs operator merge* (no Approve here):")
+        lines.append("\n\U0001f512 *Needs operator merge* (per-PR Approve only — never in Approve all):")
         shown = needs if needs_cap is None else needs[:needs_cap]
         for it in shown:
             why = ", ".join((it.get("hold") or {}).get("labels", []) + (it.get("hold") or {}).get("classes", []))
@@ -361,22 +365,33 @@ def _format_digest(d: dict[str, Any], *, summaries: bool, needs_cap: Optional[in
 
 def keyboard(d: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any] | None:
     ready = d.get("ready") or []
-    if not ready:
+    needs = [
+        it for it in (d.get("needs_operator") or [])
+        if "files_unverified" not in (it.get("hold") or {}).get("classes", [])
+    ]
+    if not ready and not needs:
         return None
     did = d["digest_id"]
     excluded = set(int(x) for x in d.get("excluded") or [])
-    n = len([it for it in ready if int(it["pr"]) not in excluded])
-    rows = [[
-        {"text": f"✅ Approve all ({n})", "callback_data": f"prdall:{did}"},
-        {"text": "\U0001f6d1 Hold all", "callback_data": f"prdhold:{did}"},
-    ]]
-    per = []
-    for it in ready[: int(cfg.get("max_item_buttons") or 8)]:
+    rows: list[list[dict[str, str]]] = []
+    if ready:
+        n = len([it for it in ready if int(it["pr"]) not in excluded])
+        rows.append([
+            {"text": f"✅ Approve all ({n})", "callback_data": f"prdall:{did}"},
+            {"text": "\U0001f6d1 Hold all", "callback_data": f"prdhold:{did}"},
+        ])
+        per = []
+        for it in ready[: int(cfg.get("max_item_buttons") or 8)]:
+            pr = int(it["pr"])
+            label = f"↩ Include #{pr}" if pr in excluded else f"⏸ Hold #{pr}"
+            per.append({"text": label, "callback_data": f"prdx:{did}:{pr}"})
+        for i in range(0, len(per), 2):
+            rows.append(per[i:i + 2])
+    # Held PRs are per-PR only, never in "Approve all": each gets its own "Approve #N" tap so a
+    # broker/secret/policy/guard/merge-tooling change still needs explicit per-PR operator intent.
+    for it in needs[: int(cfg.get("max_item_buttons") or 8)]:
         pr = int(it["pr"])
-        label = f"↩ Include #{pr}" if pr in excluded else f"⏸ Hold #{pr}"
-        per.append({"text": label, "callback_data": f"prdx:{did}:{pr}"})
-    for i in range(0, len(per), 2):
-        rows.append(per[i:i + 2])
+        rows.append([{"text": f"🔐 Approve #{pr} (held)", "callback_data": f"prdheld:{did}:{pr}"}])
     return {"inline_keyboard": rows}
 
 
@@ -621,6 +636,95 @@ def settle_approve_all(digest_id: str, *, chat_id: Any, allowed_chats: Iterable[
             "labeled": [o["pr"] for o in outcomes if o["outcome"] == "labeled"],
             "returned": [o["pr"] for o in outcomes if o["outcome"] in ("head_changed", "not_open", "now_draft_or_held", "view_failed", "label_failed")],
             "reason": "LABEL_OR_VIEW_FAILED" if failed else None}
+
+
+def settle_approve_held_pr(digest_id: str, pr_number: int, *, chat_id: Any, allowed_chats: Iterable[Any],
+                           telegram: dict[str, Any] | None = None, apply_label: bool = True) -> dict[str, Any]:
+    """Approve ONE held (needs-operator) PR, bound to its digest head SHA.
+
+    Held PRs are per-PR only and are never in "Approve all", so a broker/secret/policy/guard/
+    merge-tooling change still needs an explicit per-PR operator tap (AGENTS.md §25.10, §28.15
+    item 3; reviews stay required, the tap is what merges). Same ``PrMergeDigestApproval@v1``
+    provenance as ``settle_approve_all``: chat, operator id, time, PR + head SHA.
+    """
+    err, rows, rec = _check_settleable(digest_id, chat_id, allowed_chats)
+    if err:
+        return {"ok": False, "reason": err}
+    assert rec is not None
+    pr = int(pr_number)
+    needs = {int(i["pr"]): i for i in rec.get("needs_operator") or []}
+    item = needs.get(pr)
+    if item is None:
+        return {"ok": False, "reason": "PR_NOT_HELD_IN_DIGEST", "digest": rec}
+    if "files_unverified" in (item.get("hold") or {}).get("classes", []):
+        return {"ok": False, "reason": "FILES_UNVERIFIED", "digest": rec}
+    if pr in {int(x) for x in rec.get("held_approved") or []}:
+        return {"ok": False, "reason": "ALREADY_APPROVED", "digest": rec}
+    bound = str(item["head_sha"])
+    repo = str(rec.get("repo") or pmt.DEFAULT_REPO)
+
+    # SHA-bound: re-read the head now; a moved head / closed PR / draft refuses and returns to the
+    # next digest. No hold-label check here — held PRs legitimately carry hold labels.
+    try:
+        view = pr_view(repo, pr)
+    except RuntimeError as exc:
+        return {"ok": False, "reason": "VIEW_FAILED", "detail": str(exc)[:200], "digest": rec}
+    if str(view.get("state") or "").upper() != "OPEN":
+        return {"ok": False, "reason": "NOT_OPEN", "state": view.get("state"), "digest": rec}
+    if str(view.get("headRefOid") or "") != bound:
+        return {"ok": False, "reason": "HEAD_CHANGED", "bound": bound[:9],
+                "now": str(view.get("headRefOid") or "")[:9], "digest": rec}
+    if view.get("isDraft"):
+        return {"ok": False, "reason": "NOW_DRAFT", "digest": rec}
+
+    # Mark in-flight first so a double tap cannot approve twice.
+    rec.setdefault("held_approved", []).append(pr)
+    save_digests(rows)
+
+    tg = telegram or {}
+    approval = {
+        "schema": APPROVAL_SCHEMA,
+        "approval_id": f"{digest_id}-{secrets.token_hex(3)}",
+        "digest_id": digest_id,
+        "repo": repo,
+        "operator_chat_id": str(chat_id),
+        "operator_from_id": tg.get("from_id"),
+        "operator_from_username": tg.get("from_username"),
+        "telegram_message_id": tg.get("message_id"),
+        "callback_data": tg.get("text"),
+        "approved_at": _now_iso(),
+        "items": [{"pr": pr, "head_sha": bound}],
+        "held": True,
+        "provenance": "operator Telegram tap 'Approve #N (held)' in an allowlisted chat (AGENTS.md §28.4, §25.10); "
+                      "per-PR only, never bulk; the label is the host side-effect of that tap",
+    }
+    _append_jsonl(approvals_path(), approval)
+
+    outcome = {"pr": pr, "outcome": "held_approved", "head_sha": bound[:9]}
+    if apply_label:
+        res = pmt.add_operator_merge_label(pr, repo=repo)
+        approval["items"][0]["label_ok"] = bool(res.get("ok"))
+        outcome["outcome"] = "labeled" if res.get("ok") else "label_failed"
+        if res.get("ok"):
+            pmt.comment_on_pr(
+                pr,
+                f"operator-merge: set by Telegram per-PR held Approve (digest `{digest_id}`, "
+                f"approval `{approval['approval_id']}`, bound head `{bound[:9]}`). "
+                f"If the head changes the host removes the label and the PR returns to the next digest.",
+                repo=repo,
+            )
+
+    rows = load_digests()
+    rec2 = _find(rows, digest_id) or rec
+    rec2.setdefault("events", []).append({"at": _now_iso(), "chat_id": str(chat_id), "pr": pr,
+                                          "action": "held_approve"})
+    rec2.setdefault("outcomes", []).append(outcome)
+    save_digests(rows)
+    failed = outcome["outcome"] == "label_failed"
+    return {"ok": not failed, "digest": rec2, "approval": approval, "outcome": outcome, "pr": pr,
+            "labeled": [pr] if not failed else [],
+            "returned": [pr] if failed else [],
+            "reason": "LABEL_WRITE_FAILED" if failed else None}
 
 
 def format_settle_reply(out: dict[str, Any]) -> str:
