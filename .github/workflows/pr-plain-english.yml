@@ -1,0 +1,38 @@
+name: pr-plain-english
+
+# AGENTS.md §28.12 (26.0.0): every PR title is a plain-English sentence and every description opens with the
+# "In plain English" block (what, why, who, when, approval, risk and fallback). Reads only the PR event; no checkout of
+# PR code is executed beyond the repository's own checker. Not a required context: making it required is a
+# branch-protection change, operator-only (AGENTS.md §17).
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-plain-english-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  plain-english:
+    name: pr-plain-english
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the PR explains itself in plain English
+        # The checker runs from the base commit, so a PR cannot edit the check it is judged by.
+        run: |
+          if [ -f scripts/check_pr_plain_english.py ]; then
+            python3 scripts/check_pr_plain_english.py --event "$GITHUB_EVENT_PATH"
+          else
+            echo "checker not on the base commit yet (this PR adds it)"
+          fi

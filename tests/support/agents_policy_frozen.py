@@ -42,3 +42,46 @@ def read_pre_25(rel: str | Path) -> str:
         assert hashlib.sha256(data).hexdigest() == digest, f"frozen {key} changed"
         return data.decode("utf-8")
     return (ROOT / key).read_text(encoding="utf-8")
+
+
+# ── 26.0.0 consolidation ─────────────────────────────────────────────────────────────────────────────────────────────
+# 26.0.0 rewrote AGENTS.md to the binding rules only (history, lessons and open gaps moved to docs/governance/), changed
+# §0 rules 2, 4 and 6 in every adapter, and aligned AI_WORK_POLICY.md and the governance docs with §25.10. Tests that pin
+# the text of 25.x or earlier read these frozen copies once the live file is 26.0.0 or later (byte-identical to
+# origin/main 274e531f5, AGENTS.md 25.0.1; sha256 pinned below). The 26.0.0 pins live in tests/test_agents_policy_26_0_0.py.
+FROZEN_26_DIR = ROOT / "tests" / "fixtures" / "agents_pre_26_0_0"
+
+FROZEN_26 = {
+    "AGENTS.md": ("AGENTS.md", "ebfd707bc86eed080795332425c57b6d28fe0214e6706342d8382f2176883e2b"),
+    "AI_WORK_POLICY.md": ("AI_WORK_POLICY.md", "948c4cf981ff47666326e4f91038a4447bed332a55990bd5e94fe373dfd2b0a9"),
+    "CLAUDE.md": ("CLAUDE.md", "eeb593c9e930ec2d0a22e685869c62c6fbb9d419629309176ec78e559b48b22a"),
+    ".cursor/rules/00-tradeai-work-policy.mdc": (
+        "00-tradeai-work-policy.mdc", "1e711153b8a17f8dff5eb6c370135e9935b74b5c5398c9569a3147af9a897538"),
+    ".github/copilot-instructions.md": (
+        "copilot-instructions.md", "940e32031273140ceefbb1ab1e9972b08d08ebacd4dccce469f60c80cd88ae1e"),
+    ".goosehints": ("goosehints", "ad137ccf744a238ea72bd0aa0a08b93477eab7ccfd1f0f3ff2aa589b62167505"),
+    "docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md": (
+        "AUTHORITY_AMENDMENT_1_3_0.md", "4f3b0923ca4cf6168d2861679a9c6d883a30190597129c1e102638c516881252"),
+    "docs/governance/ENGINEERING_STANDARD.md": (
+        "ENGINEERING_STANDARD.md", "c85f9e573a0e5e07da01f6080e8748d3dd0ef959337cfeddfb7672c674b9a83b"),
+    "docs/governance/NEW_AGENT_STARTS_HERE.md": (
+        "NEW_AGENT_STARTS_HERE.md", "46a6da8e23f4bba4551d628149347e9afa61d39d6b0b27369408242c615af628"),
+    "docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md": (
+        "AGENT_OPERATING_STANDARDS_v1.md", "607b53ab566b2f89d8a7a6381ae0cd5aa640b06a9ae44a29fa7440fdafa08a89"),
+}
+
+
+def read_pre_26(rel: str | Path) -> str:
+    """The file at ``rel`` as the 25.x tests knew it: the frozen 25.0.1 copy once the live file is 26.0.0 or later.
+
+    Chains to ``read_pre_25`` for files 25.0.0 also froze, so a test that pins 24.0.0-era text and already calls
+    ``read_pre_25`` keeps reading the 24.0.0 copy; call this one from tests that pinned 25.x text or live text that
+    26.0.0 moved out.
+    """
+    key = str(rel)
+    if key in FROZEN_26 and live_major() >= 26:
+        name, digest = FROZEN_26[key]
+        data = (FROZEN_26_DIR / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == digest, f"frozen-26 {key} changed"
+        return data.decode("utf-8")
+    return (ROOT / key).read_text(encoding="utf-8")

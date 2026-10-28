@@ -1,7 +1,13 @@
 # Trade AI — AI Engineering & Remote-Cost Policy
 
 Status: MANDATORY
+as_of: 2026-10-27 (aligned with AGENTS.md 26.0.0)
 Scope: ALL human and AI development tools working in this repository.
+
+This file is canonical for remote synchronization, the push budget, CI cost and the
+deployment authorization boundary. `AGENTS.md` is canonical for everything else an
+agent does, and outranks this file where they overlap (AGENTS.md §22); where either is stricter, the safer
+instruction still wins.
 
 This policy applies regardless of client or model, including but not limited to:
 
@@ -99,30 +105,20 @@ caught in the local acceptance process.
 
 A third push requires explicit operator authorization.
 
-Program exception (operator decision 3, 2026-10-09; AGENTS.md 4.1.0 §23.13;
-status ACTIVE with AGENTS.md 4.1.0, ratified 2026-10-09): a branch whose name starts with exactly
-`n8nmat/` (case-sensitive, at least one character after the slash) has a budget
-of 4 authorized pushes instead of 2, until 2026-10-12T23:59:59-04:00. After that
-instant, and for every other branch, the budget is 2. The pre-push hook enforces
-it from the `PROGRAM_WINDOWS` table in `scripts/lib/tradeai_push_budget.py`; the
-hook change takes effect only when merged, which happens only after
-AGENTS.md 4.1.0 is ratified. Renaming or re-creating a branch under `n8nmat/` to
-gain budget is routing around a denial (AGENTS.md §0 rail 3) and is forbidden.
+**The number that binds is the one the pre-push hook enforces** —
+`MAX_WITHOUT_OVERRIDE` in `scripts/lib/tradeai_push_budget.py` (2 per branch at
+this writing). The hook's block message prints the effective budget. AGENTS.md
+§28.15 item 1 ratified a hands-off budget of 5 pushes per branch plus a logged
+coordinator override for operator-approved scopes; it binds only as far as the
+hook enforces it, and the hook change is tracked in
+`docs/governance/OPEN_ITEMS.md`. Where the two differ, the hook's (smaller)
+number governs.
 
-Hands-off delivery (AGENTS.md 21.0.0 §28.15 item 1; binding (21.0.0 ACTIVE),
-enforced once the hook change in `scripts/lib/tradeai_push_budget.py`
-is merged; until then the budget above is 2): the per-branch budget is 5
-authorized pushes. Past 5, only the coordinator session (the session keeping
-the day's coordinator worklog, AGENTS.md §28.3, by its AGENT_CLAIM_SESSION) may
-push with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`, and only for a PR linked to an
-operator-approved scope: a claim-board plan carrying an operator approval
-reference, or a PR body line `Operator-approval: <quote or reference>`. Each
-override is logged with that reference (`TRADEAI_REMOTE_PUSH_OVERRIDE_REF`, and
-`agent_claim.py note` in the coordinator worklog). An approval relayed between
-agents never counts (AGENTS.md §28.4). An operator-approved scope, plan or
-execution request is the explicit operator intent of section 16 for the pushes
-that deliver it. Force-push stays forbidden, and renaming or re-creating a branch
-to reset a budget is still routing around a denial (AGENTS.md §0 rail 3).
+An operator-approved scope, plan or execution request is the explicit operator
+intent of section 16 for the pushes that deliver it. An approval relayed
+between agents never counts (AGENTS.md §28.4). Force-push stays forbidden, and
+renaming or re-creating a branch to reset a budget is routing around a denial
+(AGENTS.md §0 rule 3).
 
 The following are NOT valid reasons to push:
 
@@ -286,7 +282,9 @@ A watcher must NOT automatically:
 - merge
 - deploy
 
-unless the operator has explicitly requested that action.
+A scheduled job or daemon never pushes, opens or updates a PR, or writes to a remote (AGENTS.md §24.5), and
+no agent or watcher merges or deploys (AGENTS.md §25.10). Mergify's merge after the operator's approval and the
+host deploy poller's promotion are the governed paths AGENTS.md §25.10 names; they are not watchers.
 
 ---
 
@@ -335,25 +333,13 @@ avoid further pushes unless CI identifies a genuine unresolved problem.
 
 PR descriptions may summarize the complete local validation result.
 
-Merge authority: an agent does not merge without operator approval, except
-under a standing approval written into AGENTS.md. AGENTS.md 4.1.0 §23.13
-(PROPOSED) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
-all three hold:
-
-1. Agent A's review verdict for the exact head is recorded on the program
-   board (a GitHub review comment by Agent A on a PR it merges is blocked as
-   self-approval);
-2. the required checks `agent-governance`, `cio-hardening` and
-   `release-readiness` are green on the exact head SHA being merged;
-3. nothing goes live until main CI is green on the exact merged SHA (the
-   promote gate).
-
-There is no merge queue (the repository is user-owned) and strict up-to-date
-protection is off, so main CI on the merged SHA is the check that a green PR
-still works on the `main` it merged into.
-
-It expires at the `Expires-At` timestamp stated in §23.13 (never later than
-2026-10-12T23:59:59-04:00) and does not cover the PR classes §23.13 excludes.
+Merge authority: agents never merge. Mergify merges a PR only when it is not a
+draft, its four required checks are green on its head, and the operator approved
+it (the digest's "Approve all" bound to the head SHA, or a per-PR approval); a
+held-class PR (`config/merge_hold_paths.json`) merges only by the operator's own
+merge (section 28, AGENTS.md §25.10). A draft PR may serve as a claim or recovery
+point (AGENTS.md §0 rule 11) and is never merged; mark it ready only when the
+tranche is complete.
 
 ---
 
@@ -387,19 +373,29 @@ DO NOT PUSH YET.
 
 ## 13.1 REPOSITORY VISIBILITY IS NOT A COST LEVER
 
-`tardeai` is PUBLIC and stays PUBLIC.
+Repository visibility is the operator's decision (AGENTS.md §17), never an agent's and
+never a cleanup step. The cost facts below inform it.
 
 Public repositories get unlimited free GitHub-hosted Actions minutes. A private
-repository on a personal account gets 2,000 minutes/month, and this repo's 14
-workflows exhaust that in one busy merge day.
+repository on a personal account gets only the plan's included minutes (3,000 a
+month on GitHub Pro), and this repo's workflows exhaust that in about a day:
+October 2026's gross Actions usage was $637.14, all covered by the public-repo
+discount.
+
+Treat everything committed — including git history — as published, whatever the
+current visibility: the repository was public for months and may be again. No credential, account or broker identifier, real portfolio data or
+personal identifier is ever committed (AGENTS.md §2A). Secret scanning and push
+protection are on in the repository settings; `scripts/check_no_secrets.py` runs
+at commit and push.
 
 Making the repo private does not save CI cost. It converts free CI into metered
 CI, and when the meter runs out every job fails with `conclusion: failure`, zero
 steps, no runner assigned, and an empty log — indistinguishable from a broken
 test unless you know the signature.
 
-- NEVER flip visibility to private, and never as a session-close or cleanup step.
-- If it must ever go private, set a non-zero Actions spending limit FIRST.
+- No agent changes visibility, for any reason.
+- Before the repository goes private, the operator sets a non-zero Actions budget FIRST,
+  or CI fails with the quota signature below.
 - Cost control in this repository is achieved by pushing less (sections 3, 4, 17),
   not by changing repository visibility.
 
@@ -443,8 +439,8 @@ Do not rewrite protected main.
 
 Do not force-push protected branches.
 
-Do not push directly to main unless the repository's explicit release policy
-allows it.
+Never push to `main`. A change reaches `main` only through a PR merged under
+section 28.
 
 Before remote synchronization:
 
@@ -518,23 +514,17 @@ The pre-push hook:
   grant authorizes the push but lifts the per-branch cap only when its reason
   says "override".
 
-Program exception (ACTIVE with AGENTS.md 4.1.0, §23.13; see §3): on a branch
-named `n8nmat/<something>` the hook allows pushes 1 through 4 and blocks push 5+
-unless the override is set, until 2026-10-12T23:59:59-04:00; after that the
-two-push rule above applies to those branches too. The block message prints the
-effective budget. Renaming a branch to gain budget is routing around a denial
-(AGENTS.md §0 rail 3).
+The block message prints the effective budget. Renaming a branch to gain budget
+is routing around a denial (AGENTS.md §0 rule 3).
 
-Hands-off delivery (AGENTS.md 21.0.0 §28.15; binding (21.0.0 ACTIVE),
-enforced once the hook change is merged; see section 3): the hook allows pushes 1 through 5 on
-every branch, and the override below is the coordinator session's alone, on a PR
-linked to an operator-approved scope, logged with its approval reference.
-Force-push is never allowed. Under an operator-approved plan or scope (a claim
-plan with an `Operator-approval:` reference, or a coordinator-assigned task file
-under data/coordination/handoffs/), an agent's fast-forward push of its own
-feature branch needs no guard `git-push` grant; the guard records it. Pushes to
-`main` or release branches, force pushes, resets, filter-branch and remote
-branch deletion still need the operator (AGENTS.md §28.15 item 8).
+Guard grants: where the Cursor guard is installed it asks for a `git-push` grant.
+21.0.0 ratified grant-free pushes under an operator-approved plan or scope, but the
+guard does not implement that yet (PR #2175, tracked in
+`docs/governance/OPEN_ITEMS.md`), so a `git-push` grant may still be required. When the guard asks and refuses, that is a
+denial (AGENTS.md §0 rule 3). Grants are issued only by the operator, at the
+keyboard (`bin/guard`) or on Ops → Controls — never by Telegram `/approve`
+(retired, AGENTS.md §8). Pushes to `main` or release branches, force pushes,
+resets, filter-branch and remote branch deletion always need the operator.
 
 Override (not the normal path; requires explicit operator approval):
 
@@ -593,6 +583,9 @@ Continue to preserve all applicable authority constraints, including:
     MEMORY_BEHAVIOR_INFLUENCE=0
 
 unless a separately governed change explicitly says otherwise.
+`MEMORY_BEHAVIOR_INFLUENCE` is the reporting flag; AGENTS.md names the same rule
+`MBI_BEHAVIOR = 0`, and the control that enforces it is the unconditional
+`BehaviorWriteRefused` raise in code, not either name (AGENTS.md §2).
 
 Do not infer financial authority from permission to develop software.
 
@@ -602,10 +595,10 @@ Do not infer financial authority from permission to develop software.
 
 A git push does not imply deployment authorization.
 
-A merged PR does not imply deployment authorization.
-
-Deployment follows the repository's canonical release process and its own
-authorization boundary.
+A merge to `main` is promoted by the host `deploy_on_main` poller under the
+operator-armed standing deploy delegation (section 28). That delegation, not the
+merge, is the deployment authorization, which is why merge approval stays with
+the operator. Agents never promote.
 
 ---
 
@@ -653,15 +646,16 @@ Never push merely to ask GitHub whether unfinished code works.
 
 No single instruction-file name is guaranteed across every AI coding product.
 
-Therefore enforcement is layered:
+Authority, highest first, is AGENTS.md §22: a recorded operator grant, then
+`AGENTS.md`, then this file. Enforcement is layered:
 
-1. `AI_WORK_POLICY.md` — canonical human-readable policy
-2. `AGENTS.md` — canonical agent-behaviour standard, read by every tool
-3. tool adapter instruction files (`CLAUDE.md`, Cursor rules, Copilot) — pointers only
+1. `AGENTS.md` — canonical agent-behaviour standard, read by every tool
+2. `AI_WORK_POLICY.md` — canonical for remote sync, push budget, CI cost and the deployment boundary
+3. tool adapter instruction files (`CLAUDE.md`, Cursor rules, Copilot, `.goosehints`) — pointers only
 4. Git pre-push hook — tool-independent enforcement
 5. `scripts/ai_local_acceptance.sh` — one local command before requesting sync
 6. `scripts/ai_work_status.sh` — read-only local status; never contacts GitHub
-7. GitHub CI — final independent validation only
+7. held merge paths and GitHub CI — final independent validation
 
 If an assistant ignores its adapter, Git still blocks casual `git push`.
 
@@ -693,13 +687,12 @@ It does **not** authorize:
 
 # 28. AUTOMATED MERGE AND DEPLOY (AGENTS.md §25.10)
 
-**Binding (AGENTS.md 24.0.0 ACTIVE, §25.10; the 25.0.0 wording below binds once AGENTS.md
-25.0.0 is ACTIVE).** This section governs. The 17.0.0 release train and its push exception
-were retired by the operator on 2026-10-27 and their text is removed.
+**Binding (AGENTS.md §25.10).** This section governs merge and promotion. The release
+train was retired by the operator on 2026-10-27.
 
-- **Mergify** may merge eligible PRs into `main` when required checks are green, the
-  operator has approved the PR (the digest's "Approve all" bound to its head SHA, or a
-  per-PR approval), and its `.mergify.yml` schedule/queue rules allow. A held-class PR
+- **Mergify** may merge an eligible non-draft PR into `main` when required checks are
+  green, the operator has approved the PR (the digest's "Approve all" bound to its head
+  SHA, or a per-PR approval), and its `.mergify.yml` schedule/queue rules allow. A held-class PR
   (`config/merge_hold_paths.json`) merges only by the operator's own merge. That merge is
   not an agent push and does not draw on an agent's push budget (section 3).
 - The host **`deploy_on_main` poller** may promote CURRENT to the new `origin/main` SHA
