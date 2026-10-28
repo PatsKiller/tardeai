@@ -7,6 +7,7 @@
    atomic under the ledger lock, crash-safe, idempotent; an archived id is reported as archived.
 4. install-guardrails.sh installs guard-lib.sh only from the canonical file, or refuses.
 """
+
 from __future__ import annotations
 
 import json
@@ -65,8 +66,10 @@ def test_button_approval_refused_while_a_grant_is_active(adir):
     assert "active `git-push` grant already exists" in msg
     assert f"id: {g['grant_id']}" in msg and "uses left: 7" in msg
     assert "expires: " in msg and "min left" in msg
-    assert (f"{gra.GUARD_BIN} grant git-push --for 1800 --uses 4 --reason "
-            f"'push wt/b [remote_request_id={req['request_id']} chat=42 via=button]' --replace") in msg
+    assert (
+        f"{gra.GUARD_BIN} grant git-push --for 1800 --uses 4 --reason "
+        f"'push wt/b [remote_request_id={req['request_id']} chat=42 via=button]' --replace"
+    ) in msg
     assert f"revoke git-push --grant-id {g['grant_id']}" in msg
     # Nothing settled, nothing granted: the request is still PENDING, the ledger untouched.
     assert _status(req["request_id"]) == "PENDING"
@@ -89,9 +92,21 @@ def test_code_approval_refused_then_allowed_after_revoke(adir):
 
 def test_ambiguous_tier_is_refused_with_doctor_hint(adir):
     now = int(time.time())
-    (adir / "grants.json").write_text(json.dumps({
-        f"cron@{c * 32}": {"tier": "cron", "grant_id": c * 32, "expires": now + 600, "uses": 1, "reason": c,
-                           "status": "active"} for c in "ab"}))
+    (adir / "grants.json").write_text(
+        json.dumps(
+            {
+                f"cron@{c * 32}": {
+                    "tier": "cron",
+                    "grant_id": c * 32,
+                    "expires": now + 600,
+                    "uses": 1,
+                    "reason": c,
+                    "status": "active",
+                }
+                for c in "ab"
+            }
+        )
+    )
     req = gra.mint_request("cron", seconds=600, uses=1, reason="x")
     out = gra.settle_by_request_id(req["request_id"], approve=True, chat_id="42", allowed_chats={"42"})
     assert out["reason"] == "ACTIVE_GRANT_EXISTS" and "MORE THAN ONE active grant" in out["message"]
@@ -100,6 +115,7 @@ def test_ambiguous_tier_is_refused_with_doctor_hint(adir):
 
 def test_poller_replies_with_the_refusal_and_grants_nothing(adir, monkeypatch):
     import run_telegram_callback_poller as poller
+
     gl.ledger_create_grant_row("service", expires=int(time.time()) + 600, uses=3, reason="restart x", adir=adir)
     req = gra.mint_request("service", seconds=600, uses=1, reason="restart y")
     sent = []
@@ -112,15 +128,21 @@ def test_poller_replies_with_the_refusal_and_grants_nothing(adir, monkeypatch):
 
 def test_button_handler_alerts_and_sends_the_full_refusal(adir, monkeypatch):
     import telegram_callback_handler as handler
+
     g = gl.ledger_create_grant_row("config-write", expires=int(time.time()) + 600, uses=2, reason="x", adir=adir)
     req = gra.mint_request("config-write", seconds=600, uses=1, reason="edit y")
     alerts, messages = [], []
     monkeypatch.setattr(handler, "answer_callback", lambda cb_id, text, show_alert=False: alerts.append(text))
     monkeypatch.setattr(handler, "send_reply", lambda chat, mid, text: messages.append(text))
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("bin/guard grant must not run"))
-    handler.handle_callback_query({"id": "cb1", "data": f"gapprove:{req['request_id']}",
-                                   "from": {"id": 1, "username": "op"},
-                                   "message": {"chat": {"id": 42}, "message_id": 77}})
+    handler.handle_callback_query(
+        {
+            "id": "cb1",
+            "data": f"gapprove:{req['request_id']}",
+            "from": {"id": 1, "username": "op"},
+            "message": {"chat": {"id": 42}, "message_id": 77},
+        }
+    )
     assert alerts and "active config-write grant exists" in alerts[0] and len(alerts[0]) <= 200
     assert len(messages) == 1 and f"id: {g['grant_id']}" in messages[0] and "--replace" in messages[0]
     assert _status(req["request_id"]) == "PENDING"
@@ -136,22 +158,23 @@ def test_no_active_grant_settles_as_before(adir):
 
 
 def _row(tier: str, gid: str, **kw) -> tuple[str, dict]:
-    base = {"tier": tier, "grant_id": gid, "expires": 0, "uses": 0, "reason": "r", "created_at": 1,
-            "status": "active"}
+    base = {"tier": tier, "grant_id": gid, "expires": 0, "uses": 0, "reason": "r", "created_at": 1, "status": "active"}
     base.update(kw)
     return f"{tier}@{gid}", base
 
 
 def _seed(adir: Path, now: int) -> dict:
-    rows = dict([
-        _row("cron", "1" * 32, status="revoked", closed_at=now - 90 * DAY - 1, expires=now + DAY),     # due
-        _row("cron", "2" * 32, status="revoked", closed_at=now - 90 * DAY, expires=now + DAY),         # boundary
-        _row("git-push", "3" * 32, expires=now - 91 * DAY, uses=4),                                    # expired, due
-        _row("git-push", "4" * 32, expires=now + DAY, uses=0, exhausted_at=now - 100 * DAY),           # exhausted, due
-        _row("service", "5" * 32, expires=now - 10 * DAY, uses=2),                                     # expired recently
-        _row("service", "6" * 32, expires=now + DAY, uses=3),                                          # ACTIVE
-        _row("llm", "7" * 32, expires=now - 200 * DAY, uses=0),                                        # exhausted, no stamp
-    ])
+    rows = dict(
+        [
+            _row("cron", "1" * 32, status="revoked", closed_at=now - 90 * DAY - 1, expires=now + DAY),  # due
+            _row("cron", "2" * 32, status="revoked", closed_at=now - 90 * DAY, expires=now + DAY),  # boundary
+            _row("git-push", "3" * 32, expires=now - 91 * DAY, uses=4),  # expired, due
+            _row("git-push", "4" * 32, expires=now + DAY, uses=0, exhausted_at=now - 100 * DAY),  # exhausted, due
+            _row("service", "5" * 32, expires=now - 10 * DAY, uses=2),  # expired recently
+            _row("service", "6" * 32, expires=now + DAY, uses=3),  # ACTIVE
+            _row("llm", "7" * 32, expires=now - 200 * DAY, uses=0),  # exhausted, no stamp
+        ]
+    )
     (adir / "grants.json").write_text(json.dumps(rows))
     return rows
 
@@ -196,13 +219,17 @@ def test_crash_between_append_and_ledger_rewrite_recovers_without_duplicates(adi
     now = int(time.time())
     _seed(adir, now)
     before = (adir / "grants.json").read_bytes()
-    env = {**os.environ, "GUARD_APPROVALS_DIR": str(adir), "GUARD_AUDIT_LOG": str(tmp_path / "a.jsonl"),
-           "GUARD_LEDGER_CRASH": "archive_after_append"}
+    env = {
+        **os.environ,
+        "GUARD_APPROVALS_DIR": str(adir),
+        "GUARD_AUDIT_LOG": str(tmp_path / "a.jsonl"),
+        "GUARD_LEDGER_CRASH": "archive_after_append",
+    }
     p = subprocess.run([sys.executable, str(LEDGER_PY), "archive"], env=env, capture_output=True, text=True)
     assert p.returncode == 90
-    assert (adir / "grants.json").read_bytes() == before            # ledger untouched
+    assert (adir / "grants.json").read_bytes() == before  # ledger untouched
     lines_after_crash = (adir / gl.ARCHIVE_NAME).read_text().count("\n")
-    assert len(gl.read_archive(adir)[0]) == lines_after_crash >= 4   # appended before the crash
+    assert len(gl.read_archive(adir)[0]) == lines_after_crash >= 4  # appended before the crash
     # Rows are now in both places: doctor says so, nothing is lost, the next run finishes the move.
     assert gl.doctor(adir)["archive_pending_removal"] == lines_after_crash
     out = gl.ledger_archive_closed(adir, now=int(time.time()))
@@ -235,8 +262,12 @@ def test_archived_id_lookup_is_archived_not_missing(adir):
     with pytest.raises(gl.LedgerError) as e:
         gl.ledger_revoke("cron", adir=adir, grant_id="1" * 32)
     assert e.value.code == "grant_archived"
-    rc = subprocess.run([sys.executable, str(LEDGER_PY), "lookup", "--grant-id", "1" * 32], capture_output=True,
-                        text=True, env={**os.environ, "GUARD_APPROVALS_DIR": str(adir)})
+    rc = subprocess.run(
+        [sys.executable, str(LEDGER_PY), "lookup", "--grant-id", "1" * 32],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GUARD_APPROVALS_DIR": str(adir)},
+    )
     assert rc.returncode == 0 and json.loads(rc.stdout)["status"] == "archived"
 
 
@@ -256,8 +287,12 @@ def test_exhaustion_is_stamped_and_cli_refuses_a_short_window(adir):
     gl.ledger_consume_grant("cron", adir=adir)
     (row,) = _rows(adir).values()
     assert row["uses"] == 0 and abs(row["exhausted_at"] - time.time()) < 60
-    p = subprocess.run([sys.executable, str(LEDGER_PY), "archive", "--days", "1"], capture_output=True, text=True,
-                       env={**os.environ, "GUARD_APPROVALS_DIR": str(adir)})
+    p = subprocess.run(
+        [sys.executable, str(LEDGER_PY), "archive", "--days", "1"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GUARD_APPROVALS_DIR": str(adir)},
+    )
     assert p.returncode == 1 and json.loads(p.stdout)["error"] == "invalid_days"
 
 
@@ -279,10 +314,16 @@ def _fake_checkout(tmp: Path, *, canonical: bool) -> Path:
 def _install(repo: Path, tmp: Path) -> subprocess.CompletedProcess:
     home = tmp / "home"
     home.mkdir(exist_ok=True)
-    env = {**os.environ, "HOME": str(home), "GUARD_APPROVALS_DIR": str(tmp / "approvals"),
-           "GUARD_AUDIT_LOG": str(tmp / "audit.jsonl"), "TMPDIR": str(tmp)}
-    return subprocess.run(["bash", "install-guardrails.sh"], cwd=repo, env=env, capture_output=True, text=True,
-                          timeout=300)
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "GUARD_APPROVALS_DIR": str(tmp / "approvals"),
+        "GUARD_AUDIT_LOG": str(tmp / "audit.jsonl"),
+        "TMPDIR": str(tmp),
+    }
+    return subprocess.run(
+        ["bash", "install-guardrails.sh"], cwd=repo, env=env, capture_output=True, text=True, timeout=300
+    )
 
 
 @pytest.mark.skipif(shutil.which("jq") is None, reason="the installer needs jq")

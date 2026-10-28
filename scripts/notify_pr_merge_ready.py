@@ -118,7 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         head = str(pr.get("headRefOid") or "")
         pending = pmt.find_pending(number, head)
         if pending and pending.get("delivery", {}).get("accepted"):
-            results.append({"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]})
+            results.append(
+                {"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]}
+            )
             continue
         green, statuses = pmt.pr_check_rollup_green(number, repo=args.repo)
         if not green and number != args.force_pr:

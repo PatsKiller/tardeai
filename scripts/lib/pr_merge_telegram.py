@@ -533,9 +533,7 @@ def mint_and_notify_via_guard(
     except ImportError:
         from lib import guard_remote_approval as gra  # type: ignore
 
-    g_reason = guard_reason(
-        pr_number=pr_number, request_id=rec["request_id"], head_sha=head_sha
-    )
+    g_reason = guard_reason(pr_number=pr_number, request_id=rec["request_id"], head_sha=head_sha)
     try:
         greq = gra.mint_request(
             GUARD_BRIDGE_SCOPE,

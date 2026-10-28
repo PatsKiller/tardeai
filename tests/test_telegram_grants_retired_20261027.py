@@ -15,6 +15,7 @@ Pinned here, against the production constant (no monkeypatching of TELEGRAM_REMO
 4. What stays: keyboard ``bin/guard grant`` and Ops → Controls ``grant.issue`` (which drives ``bin/guard grant``) do not
    go through guard_remote_approval, and bin/guard still lists every tier Ops → Controls offers.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,10 +33,16 @@ for p in (str(ROOT), str(ROOT / "scripts")):
 
 from scripts.lib import guard_remote_approval as gra  # noqa: E402
 
-COVERS = ["scripts/lib/guard_remote_approval.py", "scripts/guard_request_approval.py",
-          "scripts/telegram_callback_handler.py", "scripts/run_telegram_callback_poller.py",
-          "scripts/lib/pr_merge_telegram.py", "scripts/request_pr_merge_approve.py",
-          "scripts/notify_pr_merge_ready.py", "bin/guard"]
+COVERS = [
+    "scripts/lib/guard_remote_approval.py",
+    "scripts/guard_request_approval.py",
+    "scripts/telegram_callback_handler.py",
+    "scripts/run_telegram_callback_poller.py",
+    "scripts/lib/pr_merge_telegram.py",
+    "scripts/request_pr_merge_approve.py",
+    "scripts/notify_pr_merge_ready.py",
+    "bin/guard",
+]
 
 CHAT = "1000000001"  # synthetic; never a production identifier
 
@@ -97,9 +104,14 @@ def test_approve_tap_on_a_leftover_request_refuses_and_runs_no_grant(adir, monke
     monkeypatch.setattr(handler, "answer_callback", lambda cb_id, text, show_alert=False: alerts.append(text))
     monkeypatch.setattr(handler, "send_reply", lambda *a, **k: None)
     monkeypatch.setattr(subprocess, "run", _no_grant)
-    out = handler.handle_callback_query({"id": "cb1", "data": f"gapprove:{req['request_id']}",
-                                         "from": {"id": int(CHAT), "username": "op"},
-                                         "message": {"chat": {"id": int(CHAT)}, "message_id": 7}})
+    out = handler.handle_callback_query(
+        {
+            "id": "cb1",
+            "data": f"gapprove:{req['request_id']}",
+            "from": {"id": int(CHAT), "username": "op"},
+            "message": {"chat": {"id": int(CHAT)}, "message_id": 7},
+        }
+    )
     assert out["outcome"] == "REFUSED" and out["reason"] == "TELEGRAM_GRANT_RETIRED"
     assert alerts and "TELEGRAM_GRANT_RETIRED" in alerts[-1]
     assert _row(req["request_id"])["status"] == "PENDING"
@@ -123,9 +135,14 @@ def test_deny_still_clears_a_leftover_request(adir, monkeypatch):
     req = _leftover_pending(monkeypatch)
     monkeypatch.setattr(handler, "answer_callback", lambda *a, **k: None)
     monkeypatch.setattr(subprocess, "run", _no_grant)
-    out = handler.handle_callback_query({"id": "cb2", "data": f"gdeny:{req['request_id']}",
-                                         "from": {"id": int(CHAT)},
-                                         "message": {"chat": {"id": int(CHAT)}, "message_id": 8}})
+    out = handler.handle_callback_query(
+        {
+            "id": "cb2",
+            "data": f"gdeny:{req['request_id']}",
+            "from": {"id": int(CHAT)},
+            "message": {"chat": {"id": int(CHAT)}, "message_id": 8},
+        }
+    )
     assert out["outcome"] == "DENIED"
     assert _row(req["request_id"])["status"] == "DENIED_BY_OPERATOR"
 
@@ -192,13 +209,27 @@ def test_per_pr_clis_default_to_native(pmt, monkeypatch):
     calls: list[str] = []
     monkeypatch.setattr(pmt, "mint_and_notify", lambda **kw: calls.append("native") or {"ok": True, "pr_number": 5})
     monkeypatch.setattr(pmt, "mint_and_notify_via_guard", lambda **kw: calls.append("guard") or {"ok": False})
-    monkeypatch.setattr(rpa, "_pr_view", lambda pr, repo: {"number": 5, "title": "t", "url": "u", "headRefOid": "a" * 40,
-                                                           "state": "OPEN", "labels": [], "files": []})
+    monkeypatch.setattr(
+        rpa,
+        "_pr_view",
+        lambda pr, repo: {
+            "number": 5,
+            "title": "t",
+            "url": "u",
+            "headRefOid": "a" * 40,
+            "state": "OPEN",
+            "labels": [],
+            "files": [],
+        },
+    )
     assert rpa.main(["--pr", "5", "--single", "--json"]) == 0
     assert calls == ["native"]
 
-    monkeypatch.setattr(npr, "_list_prs", lambda repo: [{"number": 6, "title": "t", "url": "u", "headRefOid": "b" * 40,
-                                                         "isDraft": False, "labels": []}])
+    monkeypatch.setattr(
+        npr,
+        "_list_prs",
+        lambda repo: [{"number": 6, "title": "t", "url": "u", "headRefOid": "b" * 40, "isDraft": False, "labels": []}],
+    )
     monkeypatch.setattr(pmt, "find_pending", lambda *a, **k: None)
     monkeypatch.setattr(pmt, "pr_check_rollup_green", lambda *a, **k: (True, {}))
     monkeypatch.setattr(pmt, "write_notify_receipt", lambda summary: None)
@@ -210,8 +241,12 @@ def test_per_pr_clis_default_to_native(pmt, monkeypatch):
 
 
 def test_keyboard_and_ops_grant_paths_do_not_import_the_retired_module():
-    for rel in (".cursor/hooks/guard-lib.sh", ".cursor/hooks/guard_ledger.py",
-                "scripts/lib/ops_controls_core.py", "scripts/lib/ops_controls_api.py"):
+    for rel in (
+        ".cursor/hooks/guard-lib.sh",
+        ".cursor/hooks/guard_ledger.py",
+        "scripts/lib/ops_controls_core.py",
+        "scripts/lib/ops_controls_api.py",
+    ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert "guard_remote_approval" not in text, rel
         assert "guard_request_approval" not in text, rel
@@ -249,11 +284,31 @@ def test_bin_guard_grant_still_issues_at_the_keyboard(tmp_path):
         pytest.skip("bin/guard needs jq")
     adir = tmp_path / "approvals"
     adir.mkdir(mode=0o700)
-    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(tmp_path), "GUARD_APPROVALS_DIR": str(adir),
-           "GUARD_AUDIT_LOG": str(tmp_path / "audit.jsonl")}
-    p = subprocess.run(["bash", str(ROOT / "bin" / "guard"), "grant", "cron", "--for", "10m", "--uses", "1",
-                        "--reason", "keyboard path stays", "--yes"], capture_output=True, text=True, env=env,
-                       timeout=60)
+    env = {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "GUARD_APPROVALS_DIR": str(adir),
+        "GUARD_AUDIT_LOG": str(tmp_path / "audit.jsonl"),
+    }
+    p = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "bin" / "guard"),
+            "grant",
+            "cron",
+            "--for",
+            "10m",
+            "--uses",
+            "1",
+            "--reason",
+            "keyboard path stays",
+            "--yes",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
     assert p.returncode == 0, p.stdout + p.stderr
     sys.path.insert(0, str(ROOT / ".cursor" / "hooks"))
     import guard_ledger as gl

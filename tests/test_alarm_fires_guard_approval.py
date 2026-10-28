@@ -36,25 +36,26 @@ def sent(tmp_path, monkeypatch):
     legacy delivery pins run under LEGACY_TEST so the alarm path stays covered.
     """
     from scripts.lib import guard_remote_approval as gra
+
     monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
     captured: list[str] = []
 
     import telegram_alert
-    monkeypatch.setattr(telegram_alert, "send_telegram",
-                        lambda msg, *a, **k: captured.append(msg) or True)
+
+    monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: captured.append(msg) or True)
     return captured
 
 
 def _run(monkeypatch, *argv):
     import guard_request_approval as g
+
     monkeypatch.setattr(sys, "argv", ["guard_request_approval.py", *argv])
     return g.main()
 
 
 def test_the_request_reaches_the_transport(sent, monkeypatch, capsys):
-    rc = _run(monkeypatch, "git-push", "--for", "30m", "--uses", "8",
-              "--reason", "merge the header work, CI green")
+    rc = _run(monkeypatch, "git-push", "--for", "30m", "--uses", "8", "--reason", "merge the header work, CI green")
     assert rc == 0
     assert len(sent) == 1, "the operator was never told a code exists"
 
@@ -76,12 +77,12 @@ def test_the_code_in_the_message_is_the_one_that_works(sent, monkeypatch):
 
     # Recover the code the operator was shown, exactly as they would read it.
     import re
+
     m = re.search(r"/approve ([A-Z0-9]{6})", msg)
     assert m, f"no approval code in the message: {msg!r}"
     code = m.group(1)
 
-    assert gra.find_pending(code) is not None, (
-        "the code sent to the operator does not match any pending request")
+    assert gra.find_pending(code) is not None, "the code sent to the operator does not match any pending request"
     out = gra.verify_and_consume(code, chat_id="1", allowed_chats={"1"})
     assert out["ok"] is True
 
@@ -103,10 +104,13 @@ def test_a_failed_send_is_reported_not_swallowed(tmp_path, monkeypatch, capsys):
     operator who declined to answer."""
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
     from scripts.lib import guard_remote_approval as gra
+
     monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     import telegram_alert
-    monkeypatch.setattr(telegram_alert, "send_telegram",
-                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network down")))
+
+    monkeypatch.setattr(
+        telegram_alert, "send_telegram", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network down"))
+    )
 
     rc = _run(monkeypatch, "git-push", "--for", "10m", "--reason", "proof")
     assert rc != 0, "a failed notification must not exit 0"
@@ -131,6 +135,7 @@ def test_a_forbidden_scope_never_reaches_the_transport(sent, monkeypatch, capsys
 # reported "sent". A question with a 15-minute fuse cannot be summarised later,
 # and a truthy send_telegram means ACCEPTED, not delivered.
 
+
 def test_the_approval_prompt_bypasses_the_digest_router(sent, monkeypatch):
     """It must be interrupt-class, like research_lane_health's own alarms."""
     seen = {}
@@ -146,7 +151,8 @@ def test_the_approval_prompt_bypasses_the_digest_router(sent, monkeypatch):
     _run(monkeypatch, "git-push", "--for", "10m", "--reason", "prompt routing")
     assert seen.get("bypass_router") is True, (
         "the approval prompt went through default routing; the alert router "
-        "classifies it P1_DIGEST and the operator never sees the code")
+        "classifies it P1_DIGEST and the operator never sees the code"
+    )
 
 
 def test_it_does_not_claim_delivered_when_it_only_knows_accepted(sent, monkeypatch, capsys):
@@ -155,6 +161,5 @@ def test_it_does_not_claim_delivered_when_it_only_knows_accepted(sent, monkeypat
     line this whole session has been removing."""
     _run(monkeypatch, "git-push", "--for", "10m", "--reason", "wording")
     out = capsys.readouterr().out
-    assert "telegram=sent" not in out, (
-        "still reports 'sent' — a weaker word is the honest one here")
+    assert "telegram=sent" not in out, "still reports 'sent' — a weaker word is the honest one here"
     assert "accepted" in out.lower()

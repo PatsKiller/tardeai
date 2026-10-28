@@ -26,6 +26,7 @@ COVERS = ["scripts/lib/guard_remote_approval.py", "scripts/telegram_callback_han
           "scripts/run_telegram_callback_poller.py", "scripts/guard_request_approval.py",
           "scripts/telegram_reply_processor.py"]
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -42,9 +43,13 @@ for p in (str(ROOT), str(ROOT / "scripts")):
 
 from scripts.lib import guard_remote_approval as gra  # noqa: E402
 
-COVERS = ["scripts/lib/guard_remote_approval.py", "scripts/telegram_callback_handler.py",
-          "scripts/run_telegram_callback_poller.py", "scripts/guard_request_approval.py",
-          "scripts/telegram_reply_processor.py"]
+COVERS = [
+    "scripts/lib/guard_remote_approval.py",
+    "scripts/telegram_callback_handler.py",
+    "scripts/run_telegram_callback_poller.py",
+    "scripts/guard_request_approval.py",
+    "scripts/telegram_reply_processor.py",
+]
 
 
 @pytest.fixture
@@ -72,9 +77,14 @@ def _ok_grant(*a, **k):
 
 
 def _tap(handler, rid: str, *, cb_id: str = "cb1"):
-    return handler.handle_callback_query({"id": cb_id, "data": f"gapprove:{rid}",
-                                          "from": {"id": 42, "username": "op"},
-                                          "message": {"chat": {"id": 42}, "message_id": 77}})
+    return handler.handle_callback_query(
+        {
+            "id": cb_id,
+            "data": f"gapprove:{rid}",
+            "from": {"id": 42, "username": "op"},
+            "message": {"chat": {"id": 42}, "message_id": 77},
+        }
+    )
 
 
 # ── 1. a failed grant re-opens the request instead of spending it ──────────────────────────────
@@ -82,6 +92,7 @@ def _tap(handler, rid: str, *, cb_id: str = "cb1"):
 
 def test_a_tap_whose_grant_fails_leaves_the_request_answerable(adir, monkeypatch):
     import telegram_callback_handler as handler
+
     alerts = []
     monkeypatch.setattr(handler, "answer_callback", lambda cb_id, text, show_alert=False: alerts.append(text))
     monkeypatch.setattr(handler, "send_reply", lambda *a, **k: None)
@@ -104,6 +115,7 @@ def test_a_tap_whose_grant_fails_leaves_the_request_answerable(adir, monkeypatch
 
 def test_a_code_whose_grant_fails_leaves_the_code_usable(adir, monkeypatch):
     import run_telegram_callback_poller as poller
+
     sent = []
     monkeypatch.setattr(poller, "_send_reply", lambda chat, reply_to, text: sent.append(text))
     req = gra.mint_request("telegram", seconds=600, uses=1, reason="fixture")
@@ -140,13 +152,19 @@ def test_reopen_only_touches_an_approved_request(adir):
 
 def test_the_handler_returns_the_outcome_of_a_guard_tap(adir, monkeypatch):
     import telegram_callback_handler as handler
+
     monkeypatch.setattr(handler, "answer_callback", lambda *a, **k: None)
     monkeypatch.setattr(handler, "send_reply", lambda *a, **k: None)
     monkeypatch.setattr(subprocess, "run", _ok_grant)
     req = gra.mint_request("telegram", seconds=600, uses=1, reason="fixture")
     out = _tap(handler, req["request_id"])
-    assert out == {"kind": "guard", "action": "gapprove", "request_id": req["request_id"],
-                   "outcome": "GRANTED", "scope": "telegram"}
+    assert out == {
+        "kind": "guard",
+        "action": "gapprove",
+        "request_id": req["request_id"],
+        "outcome": "GRANTED",
+        "scope": "telegram",
+    }
     again = _tap(handler, req["request_id"], cb_id="cb2")
     assert again["outcome"] == "REFUSED" and again["reason"] == "REQUEST_ALREADY_APPROVED"
     assert _tap(handler, "feedfacefeedface")["reason"] == "UNKNOWN_REQUEST"
@@ -154,8 +172,10 @@ def test_the_handler_returns_the_outcome_of_a_guard_tap(adir, monkeypatch):
 
 def test_the_poller_logs_the_tap_outcome(adir):
     import run_telegram_callback_poller as poller
-    line = poller._callback_log_line("gapprove:abc", "42", {"kind": "guard", "outcome": "REFUSED",
-                                                             "reason": "ACTIVE_GRANT_EXISTS"})
+
+    line = poller._callback_log_line(
+        "gapprove:abc", "42", {"kind": "guard", "outcome": "REFUSED", "reason": "ACTIVE_GRANT_EXISTS"}
+    )
     assert line == "callback: gapprove:abc from chat=42 -> REFUSED (ACTIVE_GRANT_EXISTS)"
     assert poller._callback_log_line("ptapprove:1", "42", None) == "callback: ptapprove:1 from chat=42"
 
@@ -165,12 +185,14 @@ def test_the_poller_logs_the_tap_outcome(adir):
 
 def _run_request(monkeypatch, *argv):
     import guard_request_approval as g
+
     monkeypatch.setattr(sys, "argv", ["guard_request_approval.py", *argv])
     return g.main()
 
 
 def test_a_delivered_prompt_records_its_message_id(adir, monkeypatch, capsys):
     import telegram_alert
+
     monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: True)
     monkeypatch.setattr(telegram_alert, "last_message_ids", lambda: ["59917"])
     assert _run_request(monkeypatch, "telegram", "--for", "10m", "--uses", "1", "--reason", "probe") == 0
@@ -182,6 +204,7 @@ def test_a_delivered_prompt_records_its_message_id(adir, monkeypatch, capsys):
 
 def test_an_accepted_but_unconfirmed_prompt_says_so(adir, monkeypatch, capsys):
     import telegram_alert
+
     monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: True)
     monkeypatch.setattr(telegram_alert, "last_message_ids", lambda: [])
     assert _run_request(monkeypatch, "telegram", "--for", "10m", "--uses", "1", "--reason", "probe") == 0
@@ -196,6 +219,7 @@ def test_an_accepted_but_unconfirmed_prompt_says_so(adir, monkeypatch, capsys):
 
 def test_the_reply_processor_does_not_poll_telegram_by_default(monkeypatch):
     import telegram_reply_processor as trp
+
     monkeypatch.delenv("TELEGRAM_REPLY_PROCESSOR_POLL", raising=False)
     monkeypatch.setattr(trp, "_token", lambda: "fixture-not-a-token")
     monkeypatch.setattr(trp.requests, "get", lambda *a, **k: pytest.fail("a second getUpdates consumer"))
@@ -204,6 +228,7 @@ def test_the_reply_processor_does_not_poll_telegram_by_default(monkeypatch):
 
 def test_the_reply_processor_polls_only_when_explicitly_enabled(monkeypatch, tmp_path):
     import telegram_reply_processor as trp
+
     monkeypatch.setenv("TELEGRAM_REPLY_PROCESSOR_POLL", "1")
     monkeypatch.setattr(trp, "_token", lambda: "fixture-not-a-token")
     monkeypatch.setattr(trp, "OFFSET_FILE", tmp_path / ".telegram_offset")
