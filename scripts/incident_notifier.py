@@ -133,7 +133,11 @@ def load_email_mirror(path: Optional[Path] = None) -> dict[str, Any]:
         return empty
     except (OSError, ValueError):
         return {**empty, "status": "unreadable"}
-    if not isinstance(doc, dict) or doc.get("schema") != EMAIL_MIRROR_SCHEMA or doc.get("source") != COMMS_INTENT_SOURCE:
+    if (
+        not isinstance(doc, dict)
+        or doc.get("schema") != EMAIL_MIRROR_SCHEMA
+        or doc.get("source") != COMMS_INTENT_SOURCE
+    ):
         return {**empty, "status": "invalid"}
     sevs = frozenset(s for s in (doc.get("severities") or []) if s in ("P2", "P3"))  # P1 is never mirrored
     prefixes = tuple(
@@ -349,8 +353,12 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
             acked.append(key)
             continue
         prev = out.get(key)
-        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]] or r.get("momentum_host_watch") \
-                or r.get("host_watch"):
+        if (
+            prev is None
+            or SEV_RANK[sev] < SEV_RANK[prev["severity"]]
+            or r.get("momentum_host_watch")
+            or r.get("host_watch")
+        ):
             out[key] = {
                 "key": key,
                 "source": str(r.get("source")),
@@ -384,11 +392,15 @@ def load_state(path: Path) -> dict[str, Any]:
         raise NotifierStateUnavailable("state_unreadable") from exc
     else:
         try:
-            doc = json.loads(raw, object_pairs_hook=_state_object, parse_constant=_state_constant,
-                             parse_float=_state_float)
+            doc = json.loads(
+                raw, object_pairs_hook=_state_object, parse_constant=_state_constant, parse_float=_state_float
+            )
         except (ValueError, RecursionError) as exc:
             raise NotifierStateUnavailable("state_invalid_json") from exc
-        if not isinstance(doc, dict) or doc.get("schema") not in {"IncidentNotifierState@v1", "IncidentNotifierState@v2"}:
+        if not isinstance(doc, dict) or doc.get("schema") not in {
+            "IncidentNotifierState@v1",
+            "IncidentNotifierState@v2",
+        }:
             raise NotifierStateUnavailable("state_unsupported_schema")
         _validate_state_fields(doc)
     defaults = {
@@ -454,7 +466,9 @@ def _validate_state_fields(doc: dict[str, Any]) -> None:
             if field in record and type(record[field]) is not bool:
                 raise NotifierStateUnavailable(f"state_invalid_{field}")
         for field in ("first_notified_at", "last_notified_at", "recovered_at", "last_flap_at"):
-            if record.get(field) is not None and (not isinstance(record[field], str) or _parse_ts(record[field]) is None):
+            if record.get(field) is not None and (
+                not isinstance(record[field], str) or _parse_ts(record[field]) is None
+            ):
                 raise NotifierStateUnavailable(f"state_invalid_{field}")
 
 
@@ -644,8 +658,9 @@ def plan_messages(
                 "item": state["notified"][k].get("item"),
                 "severity": state["notified"][k].get("severity"),
                 # N1 (2026-10-18): only a validator-proved live output run earns "recovered" on a line
-                "detail": (f"recovered (verified run {str((ev[k].get('evidence') or ['run:?'])[0])[4:]})"
-                           if k in ev else ""),
+                "detail": (
+                    f"recovered (verified run {str((ev[k].get('evidence') or ['run:?'])[0])[4:]})" if k in ev else ""
+                ),
                 "recovery_verified": k in ev,
             }
             for k in cleared
@@ -668,8 +683,9 @@ def plan_messages(
                 header = f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) recovered (verified output)"
             else:
                 # External review 2026-10-18 (N1): disappearance from the fan-in is settlement, not recovery.
-                header = (f"TRADE AI SYSTEM NOTICE SETTLED — {len(rec)} incident(s) no longer reported at P1/P2 "
-                          + (f"({verified} verified recovered)" if verified else "(recovery not verified)"))
+                header = f"TRADE AI SYSTEM NOTICE SETTLED — {len(rec)} incident(s) no longer reported at P1/P2 " + (
+                    f"({verified} verified recovered)" if verified else "(recovery not verified)"
+                )
             msgs.append(
                 {
                     "kind": "recovery",
@@ -774,9 +790,16 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
             if r is not None:
                 # ``recovered_at`` keeps its name (the flap cooldown and record TTL key on it); what it means is
                 # recorded beside it: settlement is not recovery unless the validator proved output (N1).
-                r.update({"open": False, "recovered_at": iso, "recovery_count": int(r.get("recovery_count") or 0) + 1,
-                          "settled_at": iso, "recovery_verified": k in verified,
-                          "settlement": "recovered_verified" if k in verified else "no_longer_reported"})
+                r.update(
+                    {
+                        "open": False,
+                        "recovered_at": iso,
+                        "recovery_count": int(r.get("recovery_count") or 0) + 1,
+                        "settled_at": iso,
+                        "recovery_verified": k in verified,
+                        "settlement": "recovered_verified" if k in verified else "no_longer_reported",
+                    }
+                )
         return
     for inc in msg["incidents"]:
         prior = state["notified"].get(inc["key"]) or {}
@@ -788,7 +811,7 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
             "open": True,
             "momentum_host_watch": inc.get("momentum_host_watch") is True,
             "host_watch": inc.get("host_watch") is True,
-            "lane": inc.get("lane") or prior.get("lane"),          # recovery evidence is looked up by lane (N1)
+            "lane": inc.get("lane") or prior.get("lane"),  # recovery evidence is looked up by lane (N1)
             "event_type": inc.get("event_type") or prior.get("event_type"),
             "flapping": bool(prior.get("flapping")) if prior.get("open", True) else False,
             "first_notified_at": prior.get("first_notified_at") or iso,
@@ -886,11 +909,17 @@ def run(
     receipt["acked_keys"] = acked
     receipt["open_notifiable"] = len(open_now)
     receipt["flaps"] = reconcile(open_now, set(acked), work, now, cfg)
-    clearing = [k for k, r in work["notified"].items()
-                if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in set(acked)]
+    clearing = [
+        k
+        for k, r in work["notified"].items()
+        if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in set(acked)
+    ]
     rec_ev = recovery_evidence(work["notified"], clearing, ledger_path) if clearing else {}
-    receipt["recovery_evidence"] = {"clearing": len(clearing), "verified": sorted(rec_ev),
-                                    "basis": "recovery_validator.output_recovered(live) over ledger runs"}
+    receipt["recovery_evidence"] = {
+        "clearing": len(clearing),
+        "verified": sorted(rec_ev),
+        "basis": "recovery_validator.output_recovered(live) over ledger runs",
+    }
     msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked), policy=policy, recovery_ev=rec_ev)
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
@@ -898,8 +927,9 @@ def run(
     # Email mirror: the production gateway sender only on the production path (no injected Telegram sender), so a
     # test that injects a sender never reaches the gateway unless it injects an email sender too.
     mirror = load_email_mirror(email_mirror_path)
-    mail_out = email_sender if email_sender is not None else (
-        _default_email_sender() if live and sender is None else None)
+    mail_out = (
+        email_sender if email_sender is not None else (_default_email_sender() if live and sender is None else None)
+    )
     receipt["email_mirror"] = {"config": mirror["status"], "sent": 0, "failed": 0, "would": 0}
     failed = False
     for m in msgs:
@@ -1003,8 +1033,9 @@ def run(
     return receipt
 
 
-def _mirror_to_email(m: dict, row: dict, mirror: dict, mail_out: Optional[EmailSender], tally: dict,
-                     cfg: dict[str, Any]) -> None:
+def _mirror_to_email(
+    m: dict, row: dict, mirror: dict, mail_out: Optional[EmailSender], tally: dict, cfg: dict[str, Any]
+) -> None:
     """After a live Telegram SENT: one email with the mirrored incidents' lines, through the gateway. A failed or
     gateway-held email is recorded on the row and the receipt; it never changes the Telegram dedupe state."""
     mirrored = email_mirror_incidents(m.get("incidents") or [], mirror)
@@ -1014,14 +1045,16 @@ def _mirror_to_email(m: dict, row: dict, mirror: dict, mail_out: Optional[EmailS
         row["email_mirror"] = {"incidents": len(mirrored), "ok": False, "error": "no_email_sender"}
         tally["failed"] += 1
         return
-    subject = f"Trade AI — {len(mirrored)} notice(s)"   # was "release train" (retired 2026-10-27; no routes left)
+    subject = f"Trade AI — {len(mirrored)} notice(s)"  # was "release train" (retired 2026-10-27; no routes left)
     body = _body(subject, mirrored, "Source: incident notifier P2 (also sent to Telegram).", cfg["max_lines"])
     try:
         res = mail_out(subject, body, identity=m["identity"])
     except Exception as exc:  # noqa: BLE001 — recorded, never fails the Telegram send
         res = {"ok": False, "error": f"exception:{type(exc).__name__}"}
-    row["email_mirror"] = {"incidents": len(mirrored),
-                           **{k: res.get(k) for k in ("ok", "gateway_mode", "event_id", "error") if k in res}}
+    row["email_mirror"] = {
+        "incidents": len(mirrored),
+        **{k: res.get(k) for k in ("ok", "gateway_mode", "event_id", "error") if k in res},
+    }
     tally["sent" if res.get("ok") else "failed"] += 1
 
 
@@ -1060,7 +1093,7 @@ def alert_path_rows(root: Path, now: datetime, env: Optional[dict] = None) -> tu
 
         found_own, own_note = ownership_findings(root, now, env=None if env is None else {**os.environ, **env})
         rows.extend({**f, "state": "HOST_WATCH", "host_watch": True} for f in found_own)
-        if own_note != "effect_ownership:absent":   # absent = no cron copy ever failed closed on this host
+        if own_note != "effect_ownership:absent":  # absent = no cron copy ever failed closed on this host
             note += ";" + own_note
     except Exception as exc:  # noqa: BLE001 - fail-soft, recorded on the receipt
         note += f";effect_ownership_unavailable:{type(exc).__name__}"

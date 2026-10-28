@@ -43,8 +43,9 @@ from scripts.lib import release_delegation as RD  # noqa: E402
 HOME = Path.home()
 STATE_ROOT = Path(os.environ.get("TRADEAI_STATE_ROOT", str(HOME / "trade-ai-releases" / "persistent-state")))
 #: Same directory as scripts/release_window.py STATE_DIR, so STOP.json is one latch.
-STATE_DIR = Path(os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR",
-                                str(STATE_ROOT / "data" / "runtime" / "release_window")))
+STATE_DIR = Path(
+    os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(STATE_ROOT / "data" / "runtime" / "release_window"))
+)
 OPERATOR_COMMANDS = ("arm", "resume", "change-scope", "revoke")
 
 
@@ -64,10 +65,21 @@ def _proof(ctl: RC.ReleaseControl, command: str, *, stdin=None) -> RC.HostCliPro
 
 def _status(ctl: RC.ReleaseControl) -> dict:
     v = ctl.view()
-    return {"mode": v.mode, "epoch": v.epoch, "version": v.version, "latch_state": v.latch_state,
-            "latch": v.latch, "stop_phase": v.stop_phase, "stop": v.stop, "pause": v.pause,
-            "current_train_id": v.current_train_id, "accepted_policy_digest": v.accepted_policy_digest,
-            "mutation_refusal": v.mutation_refusal(v.current_train_id), "error": v.error, "state_dir": str(ctl.root)}
+    return {
+        "mode": v.mode,
+        "epoch": v.epoch,
+        "version": v.version,
+        "latch_state": v.latch_state,
+        "latch": v.latch,
+        "stop_phase": v.stop_phase,
+        "stop": v.stop,
+        "pause": v.pause,
+        "current_train_id": v.current_train_id,
+        "accepted_policy_digest": v.accepted_policy_digest,
+        "mutation_refusal": v.mutation_refusal(v.current_train_id),
+        "error": v.error,
+        "state_dir": str(ctl.root),
+    }
 
 
 def main(argv: list[str] | None = None, *, stdin=None) -> int:
@@ -99,9 +111,18 @@ def main(argv: list[str] | None = None, *, stdin=None) -> int:
                 return 2
             digest = dv.digest
         if getattr(args, "dry_run", False):
-            _print({"outcome": "DRY_RUN", "command": args.cmd, "current": _status(ctl), "policy_digest": digest,
+            _print(
+                {
+                    "outcome": "DRY_RUN",
+                    "command": args.cmd,
+                    "current": _status(ctl),
+                    "policy_digest": digest,
                     "phrase": ctl.expected_phrase(args.cmd.replace("-", "_"))
-                    if args.cmd in OPERATOR_COMMANDS else None, "writes": "nothing"})
+                    if args.cmd in OPERATOR_COMMANDS
+                    else None,
+                    "writes": "nothing",
+                }
+            )
             return 0
         if args.cmd == "stop":
             _print(ctl.request_stop(actor, args.reason))

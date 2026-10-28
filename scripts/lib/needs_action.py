@@ -595,10 +595,18 @@ def rule_desk_truth(p: Any, now: datetime) -> list[dict]:
     missing = [lane for lane in DESK_TRUTH_LANES if (p.get(lane) or {}).get("status") == "NO_RECEIPT"]
     out: list[dict] = []
     if missing:
-        out.append(item("P3", f"Desk truth monitors have no receipt yet ({len(missing)} of {len(DESK_TRUTH_LANES)})",
-                        "At shadow the n8n lanes run --dry-run and write nothing; run `python3 scripts/"
-                        "desk_truth_monitor.py --check <name>` for a read-only view.", R_DESK_TRUTH, "desk_truth",
-                        None, {"lanes": missing}))
+        out.append(
+            item(
+                "P3",
+                f"Desk truth monitors have no receipt yet ({len(missing)} of {len(DESK_TRUTH_LANES)})",
+                "At shadow the n8n lanes run --dry-run and write nothing; run `python3 scripts/"
+                "desk_truth_monitor.py --check <name>` for a read-only view.",
+                R_DESK_TRUTH,
+                "desk_truth",
+                None,
+                {"lanes": missing},
+            )
+        )
     for lane in DESK_TRUTH_LANES:
         r = p.get(lane)
         if not isinstance(r, dict) or r.get("status") == "NO_RECEIPT":
@@ -606,30 +614,71 @@ def rule_desk_truth(p: Any, now: datetime) -> list[dict]:
         if r.get("lane_id") != lane:
             raise SourceUnavailable(f"desk truth receipt for {lane} names another lane")
         if r.get("status") != "ok":
-            out.append(item("P2", f"{lane} failed", str(r.get("error") or "the last run failed")[:240], R_DESK_TRUTH,
-                            "desk_truth", r.get("finished_at"), {"ok_at": r.get("ok_at")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{lane} failed",
+                    str(r.get("error") or "the last run failed")[:240],
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    r.get("finished_at"),
+                    {"ok_at": r.get("ok_at")},
+                )
+            )
         ok_at = _parse(r.get("ok_at"))
         if ok_at is None or (now - ok_at).total_seconds() / 3600.0 > DESK_TRUTH_STALE_H:
-            out.append(item("P2", f"{lane} is stale", f"No completed run in {DESK_TRUTH_STALE_H:g} h; the check it "
-                            "makes is not being made.", R_DESK_TRUTH, "desk_truth", r.get("ok_at"),
-                            {"ok_at": r.get("ok_at")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{lane} is stale",
+                    f"No completed run in {DESK_TRUTH_STALE_H:g} h; the check it makes is not being made.",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    r.get("ok_at"),
+                    {"ok_at": r.get("ok_at")},
+                )
+            )
         summary = r.get("summary") if isinstance(r.get("summary"), dict) else {}
         findings = [f for f in summary.get("findings") or [] if isinstance(f, dict)]
         alerted = [f for f in findings if f.get("alert")]
         since = summary.get("as_of") or r.get("finished_at")
         for f in alerted[:DESK_TRUTH_ITEMS_MAX]:
-            out.append(item("P2", f"{f.get('code')}: {str(f.get('detail'))[:140]}",
-                            f"{lane} (read-only). It never repairs; the owner of the store or the operator acts.",
-                            R_DESK_TRUTH, "desk_truth", since, {"lane": lane, "key": f.get("key")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{f.get('code')}: {str(f.get('detail'))[:140]}",
+                    f"{lane} (read-only). It never repairs; the owner of the store or the operator acts.",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "key": f.get("key")},
+                )
+            )
         if len(alerted) > DESK_TRUTH_ITEMS_MAX:
-            out.append(item("P2", f"{len(alerted) - DESK_TRUTH_ITEMS_MAX} more {lane} findings",
-                            f"See the {lane} receipt (summary.findings).", R_DESK_TRUTH, "desk_truth", since,
-                            {"lane": lane, "total": len(alerted)}))
+            out.append(
+                item(
+                    "P2",
+                    f"{len(alerted) - DESK_TRUTH_ITEMS_MAX} more {lane} findings",
+                    f"See the {lane} receipt (summary.findings).",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "total": len(alerted)},
+                )
+            )
         quiet = [f for f in findings if not f.get("alert")]
         if quiet:
-            out.append(item("P3", f"{lane}: {len(quiet)} finding(s) not measured as alerts",
-                            "; ".join(str(f.get("detail"))[:80] for f in quiet[:3]), R_DESK_TRUTH, "desk_truth",
-                            since, {"lane": lane, "count": len(quiet)}))
+            out.append(
+                item(
+                    "P3",
+                    f"{lane}: {len(quiet)} finding(s) not measured as alerts",
+                    "; ".join(str(f.get("detail"))[:80] for f in quiet[:3]),
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "count": len(quiet)},
+                )
+            )
     return out
 
 
@@ -741,8 +790,10 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
         )
     elif isinstance(latch, dict):
         if latch.get("window_id"):
-            why = (f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
-                   f"{str(latch.get('candidate') or '')[:9]}")
+            why = (
+                f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
+                f"{str(latch.get('candidate') or '')[:9]}"
+            )
         else:
             why = f"STOP latched ({str(latch.get('reason') or latch.get('outcome') or 'no reason recorded')[:120]})"
         items.append(
@@ -835,6 +886,7 @@ def rule_macro_calendar(p: Any, now: datetime) -> list[dict]:
 def probe_anthropic(root: Any = None) -> dict:
     from .anthropic_monitoring import snapshot
     from .anthropic_routing import state_root
+
     return snapshot(root or state_root())
 
 
@@ -842,12 +894,29 @@ def rule_anthropic(payload: Any, now: datetime) -> list[dict]:
     if not isinstance(payload, dict) or not payload.get("status") or payload["status"] == "UNAVAILABLE":
         raise SourceUnavailable("Anthropic provider/accounting observation unavailable")
     if payload.get("p1_continuous_failure"):
-        return [item("P1", "Anthropic first choice failing", payload.get("digest_line") or "Review provider evidence",
-                     "/v3/consumption", "anthropic", payload.get("as_of"), {"status": payload["status"]})]
+        return [
+            item(
+                "P1",
+                "Anthropic first choice failing",
+                payload.get("digest_line") or "Review provider evidence",
+                "/v3/consumption",
+                "anthropic",
+                payload.get("as_of"),
+                {"status": payload["status"]},
+            )
+        ]
     if payload["status"] in {"DEGRADED", "PAUSED_TODAY", "EXHAUSTED"}:
-        return [item("P2", f"Anthropic {payload['status'].lower().replace('_', ' ')}",
-                     payload.get("digest_line") or "Review provider credit and fallback evidence",
-                     "/v3/consumption", "anthropic", payload.get("as_of"), {"status": payload["status"]})]
+        return [
+            item(
+                "P2",
+                f"Anthropic {payload['status'].lower().replace('_', ' ')}",
+                payload.get("digest_line") or "Review provider credit and fallback evidence",
+                "/v3/consumption",
+                "anthropic",
+                payload.get("as_of"),
+                {"status": payload["status"]},
+            )
+        ]
     return []
 
 
