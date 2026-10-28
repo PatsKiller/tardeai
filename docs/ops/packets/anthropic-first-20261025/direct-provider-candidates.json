@@ -1,0 +1,306 @@
+[
+  {
+    "path": "scripts/alert_missing_conditions.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 72,
+        "host": "https://api.anthropic.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/alex_hygiene.py",
+    "sdk_imports": [
+      {
+        "line": 169,
+        "module": "openai"
+      },
+      {
+        "line": 182,
+        "module": "openai"
+      },
+      {
+        "line": 195,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": [
+      {
+        "line": 170,
+        "host": "https://api.x.ai"
+      }
+    ]
+  },
+  {
+    "path": "scripts/api_v2.py",
+    "sdk_imports": [
+      {
+        "line": 52744,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/check_llm_provider_health.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 61,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/deepseek_balance_snapshot.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 64,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/defense_oversight.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 425,
+        "host": "https://api.openai.com"
+      },
+      {
+        "line": 426,
+        "host": "https://api.x.ai"
+      },
+      {
+        "line": 380,
+        "host": "https://api.anthropic.com"
+      },
+      {
+        "line": 390,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/hermes_external_researcher.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 37,
+        "host": "https://api.anthropic.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/iris_taxonomy_agent.py",
+    "sdk_imports": [
+      {
+        "line": 217,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/journal_agent_coach.py",
+    "sdk_imports": [
+      {
+        "line": 75,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/lib/cio_governed_model_bridge.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 1288,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/lib/deepseek_client.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 122,
+        "host": "https://api.deepseek.com"
+      },
+      {
+        "line": 283,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/lib/llm_model_registry.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 114,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/lib/ross_catalog_hermes.py",
+    "sdk_imports": [
+      {
+        "line": 222,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": [
+      {
+        "line": 203,
+        "host": "https://api.openai.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/llm_lane.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 40,
+        "host": "https://api.anthropic.com"
+      },
+      {
+        "line": 87,
+        "host": "https://api.deepseek.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/monthly_protection_meta_review.py",
+    "sdk_imports": [
+      {
+        "line": 62,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/multi_tier_trade_reviewer.py",
+    "sdk_imports": [
+      {
+        "line": 148,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/portfolio_monthly_synthesis.py",
+    "sdk_imports": [
+      {
+        "line": 72,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/portfolio_proxy.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 213,
+        "host": "https://api.anthropic.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/portfolio_yaml_advisor.py",
+    "sdk_imports": [
+      {
+        "line": 349,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/rebalance_verifier.py",
+    "sdk_imports": [
+      {
+        "line": 80,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/scoring.py",
+    "sdk_imports": [
+      {
+        "line": 46,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/secret_validators.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 64,
+        "host": "https://api.anthropic.com"
+      },
+      {
+        "line": 70,
+        "host": "https://api.openai.com"
+      },
+      {
+        "line": 75,
+        "host": "https://api.x.ai"
+      }
+    ]
+  },
+  {
+    "path": "scripts/secrets/rotation_probes.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 79,
+        "host": "https://api.openai.com"
+      },
+      {
+        "line": 94,
+        "host": "https://api.anthropic.com"
+      }
+    ]
+  },
+  {
+    "path": "scripts/trade_plan.py",
+    "sdk_imports": [
+      {
+        "line": 59,
+        "module": "anthropic"
+      }
+    ],
+    "provider_url_literals": []
+  },
+  {
+    "path": "scripts/verify_llm_providers.py",
+    "sdk_imports": [],
+    "provider_url_literals": [
+      {
+        "line": 111,
+        "host": "https://api.openai.com"
+      },
+      {
+        "line": 161,
+        "host": "https://api.anthropic.com"
+      }
+    ]
+  }
+]

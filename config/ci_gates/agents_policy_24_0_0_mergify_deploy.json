@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_24_0_0_mergify_deploy",
+  "files": [
+    "tests/test_agents_policy_24_0_0_mergify_deploy.py"
+  ],
+  "anchor": "AGENTS_POLICY_24_0_0_MERGIFY_DEPLOY",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_24_0_0_MERGIFY_DEPLOY — AGENTS.md 24.0.0 (MAJOR, PROPOSED) Mergify merge queue + host",
+    "deploy-on-main poller: §17/§24.5/§24.8/§25 retarget; emergency manual promote; soft-add until ACTIVE.",
+    "Hermetic text and digest pins."
+  ]
+}

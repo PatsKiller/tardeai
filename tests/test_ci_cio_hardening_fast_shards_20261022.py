@@ -55,7 +55,8 @@ SMOKES = ("Report HTML export smoke", "DOCX smoke (optional)", "PDF smoke (optio
 
 
 def _eval(expr: str, ctx: dict) -> bool:
-    """`(a == 'x' && !cancelled()) || (... && always())` with ==, !=, &&, ||, !cancelled(), always()."""
+    """`(a == 'x' && !cancelled()) || (... && always())` with ==, !=, &&, ||, !cancelled(), always(),
+    and `startsWith(github.head_ref, 'mergify/')` (Mergify speculative drafts must still run checks)."""
     expr = " ".join(str(expr).split())
 
     def sub(m: re.Match) -> str:
@@ -68,6 +69,13 @@ def _eval(expr: str, ctx: dict) -> bool:
         lambda m: repr(ctx["draft"] == (m.group(1) == "true")),
         py,
     )
+    # Mergify merge-queue speculative PRs are drafts on `mergify/*` heads; they must run
+    # required checks or the queue bisects / dequeues on CHECKS_FAILED (2026-10-27).
+    py = re.sub(
+        r"startsWith\(github\.head_ref,\s*'mergify/'\)",
+        repr(bool(ctx.get("mergify_head"))),
+        py,
+    )
     py = py.replace("!cancelled()", repr(not ctx["cancelled"])).replace("always()", "True")
     py = py.replace("&&", " and ").replace("||", " or ")
     assert re.fullmatch(r"[\sA-Za-z()]*", py) and set(re.findall(r"[A-Za-z]+", py)) <= {"True", "False", "and", "or"}, (
@@ -76,8 +84,13 @@ def _eval(expr: str, ctx: dict) -> bool:
     return bool(eval(py))  # noqa: S307 - the string is only True/False/and/or/parentheses
 
 
-def _ctx(event: str, *, draft: bool = False, cancelled: bool = False) -> dict:
-    return {"github.event_name": event, "draft": draft, "cancelled": cancelled}
+def _ctx(event: str, *, draft: bool = False, cancelled: bool = False, mergify_head: bool = False) -> dict:
+    return {
+        "github.event_name": event,
+        "draft": draft,
+        "cancelled": cancelled,
+        "mergify_head": mergify_head,
+    }
 
 
 def test_triggers_cover_ready_for_review_and_keep_push_and_dispatch():
@@ -96,6 +109,8 @@ def test_triggers_cover_ready_for_review_and_keep_push_and_dispatch():
         (_ctx("workflow_dispatch"), True),
         (_ctx("pull_request"), True),  # 2026-10-23: PRs are sharded too (release PRs took 28-38 min in one job)
         (_ctx("pull_request", draft=True), False),  # push policy v2: a draft runs none of the fleet
+        # Mergify speculative drafts on mergify/* must run (else queue CHECKS_FAILED / bisect).
+        (_ctx("pull_request", draft=True, mergify_head=True), True),
     ],
 )
 def test_parts_run_on_every_event_but_drafts(job, ctx, runs):
@@ -311,6 +326,7 @@ def test_rerun_does_not_mask_invalid_or_genuinely_duplicated_shards(tmp_path, mo
         (_ctx("pull_request"), True),
         (_ctx("pull_request", cancelled=True), False),  # a superseded PR run is never reported green
         (_ctx("pull_request", draft=True), False),
+        (_ctx("pull_request", draft=True, mergify_head=True), True),  # Mergify speculative draft
         (_ctx("push"), True),
         (_ctx("push", cancelled=True), True),  # a cancelled/timed-out shard still yields a red aggregate
         (_ctx("workflow_dispatch"), True),

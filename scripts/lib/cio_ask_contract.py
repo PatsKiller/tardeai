@@ -80,9 +80,10 @@ DEEP_RESEARCH_ENTRYPOINT = "scripts.lib.cio_ask_research:run_deep_research"
 
 # AGENTS.md version at which size suggestions could be allowed (operator option, not ratified).
 SIZE_SUGGESTION_POLICY_VERSION = "21.0.0"
-# Anchor the gate requires in AGENTS.md beside the version row. §0 always exists, so today the version row decides; the
-# 21.0.0 amendment should name its own section and this constant moves to it in that PR.
-SIZE_SUGGESTION_POLICY_ANCHOR = "# 0 · If you read nothing else"
+# Anchor the gate requires in AGENTS.md beside the version row: a dedicated, operator-ratified section. 2026-10-25: the
+# 21.0.0 version number was used for the hands-off amendment (#2128), which does NOT authorize size suggestions, so the
+# version row alone must never open this gate. Only an ACTIVE section with this exact heading does.
+SIZE_SUGGESTION_POLICY_ANCHOR = "## Ask the CIO size suggestions (ACTIVE)"
 
 # The InstrumentRecord rail's keys (scripts/lib/cio_instrument_record.py BEHAVIOR_FIELDS) plus sizing words a model
 # might invent. Any of these keys in model output is stripped and recorded.
@@ -341,6 +342,9 @@ class Source:
     url: Optional[str] = None
     store: Optional[str] = None
     security_guid: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    request_id: Optional[str] = None
 
 
 @dataclass
@@ -355,6 +359,8 @@ class ModelDissent:
     model: str
     view: str
     differs_on: str
+    provider: Optional[str] = None
+    role: Optional[str] = None
 
 
 @dataclass
@@ -748,6 +754,7 @@ class AskResearchContext:
     quick_answer: Optional[str] = None
     budget: ResearchBudget = field(default_factory=lambda: ResearchBudget(max_usd=0.0))
     schema: str = RESEARCH_CONTEXT_SCHEMA
+    provider_process_id: Optional[str] = None
 
 
 @runtime_checkable
@@ -764,6 +771,7 @@ class DeepResearchProvider(Protocol):
 _EGRESS_DROP_KEYS = frozenset(
     {
         "sizing_context",
+        "memory_retry_payload",
         "exposure_usd",
         "existing_exposure_usd",
         "portfolio_value_usd",

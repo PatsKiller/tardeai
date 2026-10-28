@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AccountChip } from '../AccountChip'
+import { MobileDetailSheet, useMobilePageDetail } from '../MobileDetailSheet'
+import { readableTimesInText } from '../../lib/readableTime'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
 import { TABS, TOP_N, ageLabel, money, severityTone, visibleItems, type DoNowItem, type DoNowModel, type Tab } from '../../lib/homeDoNow'
 
@@ -10,22 +12,24 @@ import { TABS, TOP_N, ageLabel, money, severityTone, visibleItems, type DoNowIte
 // money at risk first, then severity. "Nothing to do" only when every source answered (lib/homeDoNow.ts).
 
 function itemTip(it: DoNowItem): string {
-  return [
+  return readableTimesInText([
     it.why,
     it.accounts.length ? `Accounts: ${it.accounts.map(a => a.label).join(", ")}` : null,
     it.money != null ? `Money at risk: ${money(it.money)} (${it.moneyBasis ?? 'basis not stated'})` : 'No money at risk on this item',
     `Sources: ${it.sources.join(', ') || 'unknown'}`,
     it.since ? `Since ${it.since}` : null,
-  ].filter(Boolean).join('\n')
+  ].filter(Boolean).join('\n'))
 }
 
 function sourcesTip(m: DoNowModel): string {
-  return m.sources.map(s => `${s.name}: ${s.status}${s.stale ? ' · STALE' : ''} · ${s.basis ?? 'no clock'} ${s.asOf ?? ''}${s.ageS != null ? ` (${ageLabel(s.ageS)} old)` : ''}${s.error ? ` · ${s.error}` : ''}`).join('\n')
+  return readableTimesInText(m.sources.map(s => `${s.name}: ${s.status}${s.stale ? ' · STALE' : ''} · ${s.basis ?? 'no clock'} ${s.asOf ?? ''}${s.ageS != null ? ` (${ageLabel(s.ageS)} old)` : ''}${s.error ? ` · ${s.error}` : ''}`).join('\n'))
 }
 
 export default function DoNowQueue({ model }: { model: DoNowModel }) {
   const [tab, setTab] = useState<Tab>('all')
   const [showAll, setShowAll] = useState(false)
+  const detail = useMobilePageDetail('home-action')
+  const selected = model.items.find(item => item.id === detail.id)
   const { shown, total } = visibleItems(model, tab, showAll)
   const m = model
   const danger = toneVars('danger')
@@ -60,15 +64,16 @@ export default function DoNowQueue({ model }: { model: DoNowModel }) {
       {m.state === 'LOADING' && <div style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.text[3] }}>Checking every source…</div>}
       {m.state === 'UNAVAILABLE' && (
         <div role="alert" data-testid="do-now-unavailable" style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.warning }}>
-          Do-now UNAVAILABLE{m.reason ? ` · ${m.reason}` : ''} — this is not an all-clear.
+          Do-now UNAVAILABLE{m.reason ? ` · ${readableTimesInText(m.reason)}` : ''} — this is not an all-clear.
         </div>
       )}
       {m.state === 'CLEAR' && (
         <div data-testid="do-now-clear" style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.success }}>Nothing to do — every source answered.</div>
       )}
       {m.state === 'STALE' && (
-        <div data-testid="do-now-stale" style={{ padding: '8px 14px 0', fontSize: TYPE.sm, color: TOKENS.warning }}>STALE{m.reason ? ` (${m.reason})` : ''} — the queue below may be out of date.</div>
+        <div data-testid="do-now-stale" style={{ padding: '8px 14px 0', fontSize: TYPE.sm, color: TOKENS.warning }}>STALE{m.reason ? ` (${readableTimesInText(m.reason)})` : ''} — the queue below may be out of date.</div>
       )}
+      {m.unavailableSources.length > 0 && m.state === 'ITEMS' && <p role="status" style={{ margin: '8px 14px', color: TOKENS.warning, fontSize: TYPE.sm }}>Source gaps: {m.unavailableSources.join(', ')}. This is not an all-clear.</p>}
       {shown.length === 0 && (m.state === 'ITEMS' || m.state === 'STALE') && (
         <div style={{ padding: 14, fontSize: TYPE.base, color: TOKENS.text[3] }}>Nothing in this tab.</div>
       )}
@@ -85,13 +90,14 @@ export default function DoNowQueue({ model }: { model: DoNowModel }) {
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }} title={itemTip(it)}>
                 <span style={{ fontSize: TYPE.md, fontWeight: 600, lineHeight: 1.35, color: TOKENS.text[0] }}>
-                  {it.title}
+                  {detail.mobile ? <button type="button" onClick={() => detail.open(it.id)} aria-label={`Details: ${readableTimesInText(it.title)}`}
+                    style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', minHeight: 44 }}>{readableTimesInText(it.title)}</button> : readableTimesInText(it.title)}
                   {it.money != null && <span style={{ ...numStyle, fontSize: TYPE.sm, color: TOKENS.text[2], fontWeight: 500 }}> · {money(it.money)} at risk</span>}
                 </span>
                 {it.accounts.length > 0 && <span data-testid="do-now-accounts" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {it.accounts.map(a => <AccountChip key={a.account || a.label} account={a.account} label={a.label} compact />)}
                 </span>}
-                <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.4, overflowWrap: 'anywhere' }}>{it.why}</span>
+                <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.4, overflowWrap: 'anywhere' }}>{readableTimesInText(it.why)}</span>
               </div>
               <Link to={it.where} data-testid="do-now-action"
                 style={{ whiteSpace: 'nowrap', fontSize: TYPE.sm, fontWeight: 600, padding: '8px 12px', borderRadius: RADIUS.md, minHeight: 36, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', textDecoration: 'none',
@@ -102,6 +108,13 @@ export default function DoNowQueue({ model }: { model: DoNowModel }) {
           )
         })}
       </ol>
+      {detail.mobile && selected && <MobileDetailSheet title={readableTimesInText(selected.title)} onBack={detail.close}>
+        <p>{readableTimesInText(selected.why)}</p>
+        {selected.accounts.map(a => <AccountChip key={a.account || a.label} account={a.account} label={a.label} />)}
+        {selected.money != null && <p>{money(selected.money)} at risk · {selected.moneyBasis}</p>}
+        <p>Sources: {selected.sources.join(', ') || 'unknown'}</p>
+        <p><Link to={selected.where} style={{ color: TOKENS.info, display: 'inline-flex', minHeight: 44, alignItems: 'center' }}>{selected.actionLabel}</Link></p>
+      </MobileDetailSheet>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 14px', flexWrap: 'wrap' }}>
         <span data-testid="do-now-footer" style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}
           title="Items from several sources about the same thing (one symbol's stop, the pending proposals) are merged into one row that lists every source.">

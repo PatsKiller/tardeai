@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_presentation_20261026",
+  "files": [
+    "tests/test_prospectus_presentation_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_PRESENTATION_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_PRESENTATION_20261026 — Ticker Prospectus presentation polish (design prospectus/v001.1; operator 2026-10-26: \"what are these F with the numbers all over the pages? … internal pointers\"): fact ids renumbered to footnotes 1..n in reading order (ids kept as data attributes), fund-aware layout (Fund structure & holdings replaces ownership / estimates / earnings call), one \"not in our data\" line per block, header name fallback, relevant-only source coverage, common chart date axis, HTML / PDF / DOCX footnotes and endnotes. Synthetic fixture; no DB, broker or network."
+  ]
+}

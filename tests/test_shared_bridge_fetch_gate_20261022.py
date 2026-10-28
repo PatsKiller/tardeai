@@ -26,10 +26,17 @@ def test_use_json_takes_an_enabled_gate():
 
 def test_every_pref_fetch_is_gated_on_show():
     s = _text()
-    calls = re.findall(r"useJson\(`/api/v2/ui/prefs/get\?key=\$\{encodeURIComponent\((\w+)\)\}`, ([\w_]+)(, show)?\)", s)
+    # 2026-10-25 (batch 34): the shared context asks only for the exit symbols' slice (`&symbols=...`) and also
+    # waits for that list (`show && !!exitSymbols`) — still gated on `show`.
+    calls = re.findall(
+        r"useJson\(`/api/v2/ui/prefs/get\?key=\$\{encodeURIComponent\((\w+)\)\}(?:&symbols=\$\{encodeURIComponent\(\w+\)\})?`,"
+        r" ([\w_]+)(, show(?: && !!\w+)?)?\)",
+        s,
+    )
     assert len(calls) == 5, calls
     ungated = [key for key, _ms, gate in calls if not gate]
     assert not ungated, f"pref fetched on every route: {ungated}"
+    assert "encodeURIComponent(SHARED_CONTEXT_KEY)}&symbols=" in s
 
 
 def test_show_is_defined_before_the_fetches():

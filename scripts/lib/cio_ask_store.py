@@ -20,8 +20,9 @@ import fcntl
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from scripts.lib.cio_ask_contract import utc_now_iso
 
@@ -38,6 +39,14 @@ EVENT_KINDS = (
     "ask.cost",
     # Operator manual regroup on "My questions" (scripts/lib/cio_ask_groups.py): an event, never a history edit.
     "ask.group_override",
+    "ask.check_requested",
+    "ask.check_started",
+    "ask.check_finished",
+    "ask.research_started",
+    "ask.research_finished",
+    "ask.memory_synced",
+    "ask.delivery_status",
+    "ask.source_checkpoint",
 )
 
 
@@ -78,6 +87,16 @@ class AskEventStore:
     # ── write ──────────────────────────────────────────────────────────────────────────────────────────────────────
     def append(self, kind: str, payload: dict[str, Any], *, event_id: str) -> tuple[dict[str, Any], bool]:
         """Append one event. Returns (event, created). An existing event_id is returned unchanged (idempotent)."""
+        event, created, reason = self.append_guarded(kind, payload, event_id=event_id)
+        if reason or event is None:
+            raise ValueError(reason or "ASK_APPEND_REFUSED")
+        return event, created
+
+    def append_guarded(
+        self, kind: str, payload: dict[str, Any], *, event_id: str,
+        guard: Optional[Callable[[list[dict]], Optional[str]]] = None,
+    ) -> tuple[Optional[dict], bool, Optional[str]]:
+        """Read, admit and append under the same ledger lock (budget and job claims)."""
         if not self.write_authorized():
             raise PermissionError("CIO_ASK_STORE_NOT_APPROVED: cio_asks remains proposed")
         if kind not in EVENT_KINDS:
@@ -87,9 +106,13 @@ class AskEventStore:
         fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            for ev in self._iter_raw():
+            rows = list(self._iter_raw(strict=True))
+            for ev in rows:
                 if ev.get("event_id") == event_id:
-                    return ev, False
+                    return ev, False, None
+            reason = guard(rows) if guard is not None else None
+            if reason:
+                return None, False, reason
             ev = {
                 "schema": STORE_SCHEMA,
                 "event_id": event_id,
@@ -102,13 +125,13 @@ class AskEventStore:
                 fh.write(json.dumps(ev, sort_keys=True, default=str, separators=(",", ":")) + "\n")
                 fh.flush()
                 os.fsync(fh.fileno())
-            return ev, True
+            return ev, True, None
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
     # ── read ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    def _iter_raw(self) -> Iterable[dict[str, Any]]:
+    def _iter_raw(self, *, strict: bool = False) -> Iterable[dict[str, Any]]:
         if not self.path.exists():
             return []
         out = []
@@ -118,10 +141,36 @@ class AskEventStore:
                 if not line:
                     continue
                 try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        raise ValueError("non-object ask event")
+                    out.append(row)
+                except (ValueError, TypeError):
+                    if strict:
+                        raise ValueError("CIO_ASK_LEDGER_CORRUPT") from None
                     continue  # a torn line is skipped, never repaired in place
         return out
+
+    @contextmanager
+    def thread_lock(self, thread_id: str):
+        """Serialize a thread's sources/models across API and native n8n workers."""
+        if not self.write_authorized():
+            raise PermissionError("CIO_ASK_STORE_NOT_APPROVED")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        token = hashlib.sha256(str(thread_id).encode()).hexdigest()[:24]
+        fd = os.open(str(self.path.parent / (".ask-thread-" + token + ".lock")), os.O_CREAT | os.O_RDWR, 0o600)
+        locked = False
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+            except BlockingIOError:
+                pass
+            yield locked
+        finally:
+            if locked:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
     def events(self, *, thread_id: Optional[str] = None) -> list[dict[str, Any]]:
         evs = list(self._iter_raw())
@@ -160,14 +209,15 @@ class AskEventStore:
 
     def cost_today(self, *, day: Optional[str] = None) -> float:
         d = day or utc_now_iso()[:10]
-        return round(
-            sum(
-                float(e.get("usd") or 0)
-                for e in self._iter_raw()
-                if e.get("kind") == "ask.cost" and str(e.get("at"))[:10] == d
-            ),
-            6,
-        )
+        rows = list(self._iter_raw(strict=True))
+        terminal = {e.get("request_id"): e for e in rows if e.get("kind") == "ask.research_finished"}
+        # The cost event meters settled actuals. Unknown/interrupted holds remain binding.
+        actual = sum(float(e.get("usd") or 0) for e in rows
+                     if e.get("kind") == "ask.cost" and str(e.get("at"))[:10] == d)
+        holds = sum(float(e.get("reserved_usd") or 0) for e in rows
+                    if e.get("kind") == "ask.research_started" and str(e.get("at"))[:10] == d
+                    and not (terminal.get(e.get("request_id")) or {}).get("usage_known"))
+        return round(actual + holds, 8)
 
     # ── projection ─────────────────────────────────────────────────────────────────────────────────────────────────
     def threads(self) -> dict[str, dict[str, Any]]:
@@ -248,6 +298,9 @@ class AskEventStore:
                 t["cost_usd"] = round(t["cost_usd"] + float(e.get("usd") or 0), 6)
         for t in th.values():
             t["entities"] = list(t["entities"].values())
+            from scripts.lib.cio_ask_lifecycle import project_lifecycle
+
+            t["lifecycle"] = project_lifecycle(t, self.events(thread_id=t["thread_id"]))
         return th
 
     def thread(self, thread_id: str) -> Optional[dict[str, Any]]:

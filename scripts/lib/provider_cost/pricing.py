@@ -101,6 +101,9 @@ def calculate_usd(
     cache_hit_input: int = 0,
     cache_miss_input: int = 0,
     output: int = 0,
+    cache_creation_input_tokens: int = 0,
+    cache_creation_1h_tokens: int = 0,
+    batch: bool = False,
     schedules: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Measured USD from the effective-dated schedule. Never invents a rate literal."""
@@ -128,11 +131,29 @@ def calculate_usd(
     hit = int(cache_hit_input or 0)
     miss = int(cache_miss_input or 0)
     out = int(output or 0)
+    created = int(cache_creation_input_tokens or 0)
+    hour = int(cache_creation_1h_tokens or 0)
+    if min(hit, miss, out, created, hour) < 0 or hour > created:
+        raise ValueError("invalid token usage")
+    threshold = sched.get("long_context_threshold")
+    if threshold is not None and hit + miss + created > int(threshold):
+        long = sched["long_context"]
+        prices = {"input_cache_hit": long["cache_read"], "input_cache_miss": long["input"], "output": long["output"]}
+        write_5m, write_1h = long["cache_write_5m"], long["cache_write_1h"]
+    else:
+        write_5m = sched.get("input_cache_creation_5m", 0)
+        write_1h = sched.get("input_cache_creation_1h", 0)
+    if created and not write_5m or hour and not write_1h:
+        raise PriceUnknownError("PRICE_UNKNOWN: cache creation price")
     usd = (
         hit / 1_000_000 * float(prices.get("input_cache_hit") or 0)
         + miss / 1_000_000 * float(prices.get("input_cache_miss") or 0)
         + out / 1_000_000 * float(prices.get("output") or 0)
+        + (created - hour) / 1_000_000 * float(write_5m)
+        + hour / 1_000_000 * float(write_1h)
     )
+    if batch:
+        usd *= float(sched["batch_multiplier"])
     return {
         "calculated_cost_usd": round(usd, 8),
         "cost_source": "LOCAL_CALCULATED",

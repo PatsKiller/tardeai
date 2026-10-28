@@ -34,9 +34,11 @@ from typing import Any, Iterable, Optional
 try:
     from scripts.lib import trade_recommendation_linkage as lk
     from scripts.lib import reentry_rules as rr
+    from scripts.lib import wash_sale as wash
 except ImportError:  # scripts/ (not the repo root) on sys.path
     from lib import trade_recommendation_linkage as lk  # type: ignore
     from lib import reentry_rules as rr  # type: ignore
+    from lib import wash_sale as wash  # type: ignore
 
 SCHEMA = "CioProspectLifecycle@v1"
 FILL_MATCH_PCT = 0.5              # an exit within 0.5% of the last observed stop is that stop filling
@@ -355,15 +357,16 @@ def post_exit_review(*, entry_price: Any, exit_price: Any, exit_at: Any, bars: l
 def reentry_advice(*, symbol: str, security_guid: str, round_trip_key: Any, exit_price: Any, exit_at: Any,
                    entry_price: Any, net_pnl: Any, price: Any, price_as_of: Any, rsi: Any,
                    entry_zone: Optional[list[Any]], resistance: Any, conviction: Any, thesis_status: Any,
-                   now: datetime) -> dict[str, Any]:
+                   now: datetime, account: Any = None) -> dict[str, Any]:
     """When to get back in: the desk's READY / NEAR / WAIT state plus the conditions behind it and the levels to
-    watch. Wash window: open only when the exit realised a loss (within WASH_DAYS)."""
+    watch. Wash window (scripts/lib/wash_sale.py, the ONE implementation): open only when the exit realised a
+    loss in a taxable account, through exit trade date + WASH_DAYS calendar days inclusive."""
     lo, hi = ((entry_zone or [None, None]) + [None, None])[:2]
     lo, hi = _f(lo), _f(hi)
     t1 = _ts(exit_at)
-    loss = (_f(net_pnl) is not None and _f(net_pnl) < 0)
-    wash_until = (t1 + timedelta(days=rr.WASH_DAYS)).date().isoformat() if (loss and t1) else None
-    wash_blocked = bool(loss and t1 and now < t1 + timedelta(days=rr.WASH_DAYS))
+    loss = (_f(net_pnl) is not None and _f(net_pnl) < 0) and wash.account_taxable(account)
+    wash_until = wash.window_until(t1).isoformat() if (loss and t1) else None
+    wash_blocked = bool(loss and t1 and wash.window_open(t1, now))
     intel = rr.derive_intel_state(price=_f(price), rsi=_f(rsi), as_of=price_as_of, entry_low=lo, entry_high=hi,
                                   held=False, wash_blocked=wash_blocked)
     conv = _f(conviction)

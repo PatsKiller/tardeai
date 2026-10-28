@@ -642,3 +642,33 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .cc-terminal-ui .cc-table-dense th,
 .cc-terminal-ui .cc-table-dense td { padding: 2px 6px !important; font-size: 10px !important; }
 .cc-terminal-ui .cc-drawer { background: #0a0e1a !important; border-color: #1e293b !important; }
+
+/* ── Phone tap targets (site sweep 2026-10-25) ───────────────────────────────
+   The operator is on a phone most of the time. The sweep measured chips, filter
+   chips, Sync SnapTrade / Sync Schwab, holdings-row buttons, Watch Show context /
+   Open re-entry, Redeploy Detect / Recompute and CIO question-group chips at
+   30px. One shared rule lifts every control in the page body to the 44px WCAG
+   touch floor at phone widths; desktop is untouched. !important beats per-control
+   inline minHeight/height literals (min-height always wins over height). */
+@media (max-width: 820px) {
+  .app-main button,
+  .app-main [role="button"],
+  .app-main select,
+  .app-main summary,
+  .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]) {
+    min-height: 44px !important;
+    box-sizing: border-box;
+  }
+  .app-main button,
+  .app-main [role="button"] { min-width: 44px !important; }
+  /* A checkbox or radio is reached through its wrapping label: the label is the 44px hit area. */
+  .app-main label:has(> input[type="checkbox"]),
+  .app-main label:has(> input[type="radio"]) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+    box-sizing: border-box;
+  }
+  .app-main input[type="checkbox"], .app-main input[type="radio"] { width: 20px; height: 20px; }
+}
