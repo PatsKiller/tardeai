@@ -46,7 +46,8 @@ capability bound to an older epoch never becomes valid again. Pause does not cha
 
 Who may call what (``Actor.kind``):
   request_stop, request_pause          cc, host_cli, telegram, controller
-  acknowledge / settle (controller)    controller
+  acknowledge / settle (controller)    controller (retired 2026-10-27; ``resume(settle_if_idle=True)`` now lets the
+                                       verified operator settle a STOP while it holds the GlobalReleaseLock)
   arm (also re-arms after revoke),     host_cli (a ``HostCliProof``) or telegram (a ``TelegramConfirmation``
   resume, change_scope, revoke         verified by the hook; the shipped hook is a stub that always refuses) or
                                        passkey (a ``PasskeyProof`` vouched for by a ``PasskeyApprovalHook``; the
@@ -439,7 +440,7 @@ class ReleaseControl:
                         "source": "release_control",
                         "actor": {"kind": actor.kind, "identity": actor.identity},
                         "reason": reason,
-                        "detail": "release train STOP; operator resumes via scripts/release_control_cli.py resume",
+                        "detail": "deploy STOP; operator resumes via scripts/release_control_cli.py resume",
                     },
                 )
             if v.mode in (UNARMED, CORRUPT):
@@ -634,19 +635,76 @@ class ReleaseControl:
             self._journal("arm", actor, result)
             return result
 
-    def resume(self, actor: Actor, proof: Any, *, reason: str, readiness: dict) -> dict:
+    def resume(self, actor: Actor, proof: Any, *, reason: str, readiness: dict, settle_if_idle: bool = False) -> dict:
         """Clear STOP / pause: archive the latch (rename, never delete), issue a NEW epoch, RUNNING. Requires the
-        caller to have shown the stop reason, current state and fresh readiness (recorded verbatim)."""
+        caller to have shown the stop reason, current state and fresh readiness (recorded verbatim).
+
+        A STOP that has not reached ``stopped`` is refused (STOP_NOT_SETTLED) unless ``settle_if_idle``: then, and
+        only while this call holds the GlobalReleaseLock (``<state_dir>/.lock``, which the deploy_on_main poller
+        holds for its whole prepare / promote / tester run), the operator's own verified actor acknowledges and
+        settles the STOP with ``in_flight=False``, records itself as the settler, and the resume proceeds. A busy
+        lock means a deploy is in flight: still STOP_NOT_SETTLED, nothing written but the journal line. The
+        controller that used to settle was retired 2026-10-27."""
         self._operator(actor, proof, "resume")
         reason = _reason(reason)
         if not isinstance(readiness, dict) or not readiness.get("checked_at"):
             raise ControlRefused("READINESS_MISSING", "resume shows fresh readiness first")
+        if not settle_if_idle:
+            return self._resume_locked(actor, reason, readiness, settled=None)
+        mode = self.view().mode
+        if mode not in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
+            return self._resume_locked(actor, reason, readiness, settled=None)
+        try:
+            gl = GlobalReleaseLock(self.root, timeout_s=0.0).acquire()
+        except LockBusy as exc:
+            self._journal(
+                "resume",
+                actor,
+                {"outcome": "REFUSED", "code": "STOP_NOT_SETTLED", "in_flight": True, "signal": GLOBAL_LOCK_NAME},
+            )
+            raise ControlRefused(
+                "STOP_NOT_SETTLED", f"{mode}: a deploy holds the global release lock (in flight); retry when it ends"
+            ) from exc
+        try:
+            return self._resume_locked(actor, reason, readiness, settled=self._settle_idle_held(actor))
+        finally:
+            gl.release()
+
+    def _settle_idle_held(self, actor: Actor) -> Optional[dict]:
+        """Caller holds the GlobalReleaseLock: nothing is in flight. Acknowledge and settle the STOP as the operator
+        (the retired controller's step), recorded in control.json ``stop`` and the journal."""
+        with _Flock(self.root / CONTROL_LOCK_NAME, self.lock_timeout_s):
+            v = self.view()
+            if v.mode not in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
+                return None
+            body = dict(v.raw)
+            stop = dict(body.get("stop") or {})
+            now = utc_iso(self.clock())
+            stop["acknowledged_at"] = stop.get("acknowledged_at") or now
+            stop["settling_at"] = stop.get("settling_at") or now
+            stop["stopped_at"] = now
+            settled = {
+                "at": now,
+                "actor": {"kind": actor.kind, "identity": actor.identity},
+                "via": "resume",
+                "from_mode": v.mode,
+                "in_flight": False,
+                "signal": f"{GLOBAL_LOCK_NAME} acquired (no deploy in flight)",
+            }
+            stop["settled_by"] = settled
+            body.update(mode=STOPPED, stop=stop, current_train_id=None)
+            self._commit(body, v)
+            self._journal("operator_settle", actor, {"outcome": STOPPED, **settled})
+            return settled
+
+    def _resume_locked(self, actor: Actor, reason: str, readiness: dict, *, settled: Optional[dict]) -> dict:
         with _Flock(self.root / CONTROL_LOCK_NAME, self.lock_timeout_s):
             v = self.view()
             if v.mode in (UNARMED, CORRUPT, REVOKED):
                 raise ControlRefused("RESUME_NOT_APPLICABLE", f"{v.mode}: use arm/reinstate")
             if v.mode in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
-                raise ControlRefused("STOP_NOT_SETTLED", f"{v.mode}: the controller has not reached stopped")
+                self._journal("resume", actor, {"outcome": "REFUSED", "code": "STOP_NOT_SETTLED", "mode": v.mode})
+                raise ControlRefused("STOP_NOT_SETTLED", f"{v.mode}: the deploy STOP has not reached stopped")
             if v.mode == RUNNING and v.latch_state == LATCH_ABSENT:
                 raise ControlRefused("NOT_STOPPED", "nothing to resume")
             archived = self._archive_latch(v, reason) if v.latch_state != LATCH_ABSENT else None
@@ -668,6 +726,8 @@ class ReleaseControl:
             )
             self._commit(body, v)
             result = {"outcome": "RESUMED", "epoch": body["epoch"], "latch_archived": archived}
+            if settled is not None:
+                result["settled_by"] = settled
             self._journal("resume", actor, result)
             return result
 
