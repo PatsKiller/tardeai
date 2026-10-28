@@ -13,8 +13,10 @@ the command will create. The Command Center may only request STOP (through its o
 n8n never calls this. It works when CC and n8n are down: it reads and writes local files only.
 
   status                                   control mode, epoch, latch (ABSENT/SET/UNREADABLE), stop phase
-  stop   --reason TEXT                     latch STOP + new epoch (safe direction; no confirmation)
-  resume --reason TEXT                     archive the latch (rename), new epoch, RUNNING (shows state first)
+  stop   --reason TEXT                     latch the deploy STOP + new epoch (safe direction; no confirmation)
+  resume --reason TEXT                     settle the deploy STOP if no deploy is in flight (the global release
+                                           lock is free; recorded as settled by this operator), then archive the
+                                           latch (rename), new epoch, RUNNING (shows state first)
   pause  --reason TEXT                     train-era: pause after the claimed train
   arm    --delegation PATH --reason TEXT   train-era: accept a release delegation's digest; RUNNING, new epoch
   change-scope --delegation PATH --reason  train-era: accept a changed release delegation digest; new epoch
@@ -139,7 +141,7 @@ def main(argv: list[str] | None = None, *, stdin=None) -> int:
                 _print(ctl.revoke(actor, proof, reason=args.reason))
             else:
                 readiness = {"checked_at": RC.utc_iso(ctl.clock()), "shown": _status(ctl)}
-                _print(ctl.resume(actor, proof, reason=args.reason, readiness=readiness))
+                _print(ctl.resume(actor, proof, reason=args.reason, readiness=readiness, settle_if_idle=True))
         return 0
     except RC.ControlRefused as exc:
         _print({"outcome": "REFUSED", "code": exc.code, "detail": exc.detail})
