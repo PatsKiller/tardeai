@@ -6,6 +6,7 @@ All actions route Telegram → bot poll → MS-01. No inbound HTTP required.
 
 Paper mode only. No live trading.
 """
+
 import json, logging, os, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,7 @@ def _allowed_chat_ids():
 def _tg_post(method, data):
     """POST to Telegram API."""
     import urllib.request, urllib.error
+
     token = _token()
     payload = json.dumps(data).encode()
     req = urllib.request.Request(
@@ -61,34 +63,42 @@ def _tg_post(method, data):
 
 
 def answer_callback(cb_id, text, show_alert=False):
-    _tg_post("answerCallbackQuery", {
-        "callback_query_id": cb_id,
-        "text": text[:200],
-        "show_alert": show_alert,
-    })
+    _tg_post(
+        "answerCallbackQuery",
+        {
+            "callback_query_id": cb_id,
+            "text": text[:200],
+            "show_alert": show_alert,
+        },
+    )
 
 
 def send_reply(chat_id, reply_to_message_id, text):
-    result = _tg_post("sendMessage", {
-        "chat_id": chat_id,
-        "reply_to_message_id": reply_to_message_id,
-        "text": text,
-        "parse_mode": "Markdown",
-    })
-    # T2: if Markdown parse failed the first message was NOT posted.
-    # Send plaintext once. Do not send a second copy when the first succeeded.
-    if not result.get("ok"):
-        _tg_post("sendMessage", {
+    result = _tg_post(
+        "sendMessage",
+        {
             "chat_id": chat_id,
             "reply_to_message_id": reply_to_message_id,
             "text": text,
-        })
+            "parse_mode": "Markdown",
+        },
+    )
+    # T2: if Markdown parse failed the first message was NOT posted.
+    # Send plaintext once. Do not send a second copy when the first succeeded.
+    if not result.get("ok"):
+        _tg_post(
+            "sendMessage",
+            {
+                "chat_id": chat_id,
+                "reply_to_message_id": reply_to_message_id,
+                "text": text,
+            },
+        )
 
 
 def edit_message(chat_id, message_id, text):
     """Replace a button-message's text after the action (removes the inline keyboard)."""
     _tg_post("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text})
-
 
 
 def _allowed_from_ids():
@@ -98,10 +108,12 @@ def _allowed_from_ids():
     for a private chat equal the operator's own user id. Never hardcoded.
     """
     import os as _os
+
     raw = _os.environ.get("TRADEAI_OPERATOR_FROM_IDS", "").strip()
     if raw:
         return {x.strip() for x in raw.split(",") if x.strip()}
     return set(_allowed_chat_ids())
+
 
 def handle_callback_query(cb):
     """Main callback handler for proposal inline buttons."""
@@ -134,6 +146,7 @@ def handle_callback_query(cb):
     if action in ("gapprove", "gdeny"):
         import subprocess
         from pathlib import Path as _Path
+
         try:
             from scripts.lib import guard_remote_approval as _gra
         except ImportError:
@@ -144,19 +157,37 @@ def handle_callback_query(cb):
         # `callback: gapprove:<id>` whether the tap granted, was refused or hit an unknown request.
         result = {"kind": "guard", "action": action, "request_id": rid}
         out = _gra.settle_by_request_id(
-            rid, approve=(action == "gapprove"), chat_id=chat_id,
+            rid,
+            approve=(action == "gapprove"),
+            chat_id=chat_id,
             allowed_chats=_allowed_chat_ids(),
-            telegram={"message_id": message_id, "from_id": user_id,
-                      "from_username": user.get("username"), "text": data},
+            telegram={
+                "message_id": message_id,
+                "from_id": user_id,
+                "from_username": user.get("username"),
+                "text": data,
+            },
         )
         if not out.get("ok") and out.get("reason") == "ACTIVE_GRANT_EXISTS":
             # One active grant per tier: a tap never replaces one (operator 2026-10-21). The alert is
             # capped at 200 chars, so the full reply (grant id, uses, expiry, --replace CLI) is a message.
             ag = out["active_grant"]
-            answer_callback(cb_id, f"Not granted: an active {ag.get('tier')} grant exists "
-                                   f"({str(ag.get('grant_id'))[:8]}). Details in chat.", show_alert=True)
+            answer_callback(
+                cb_id,
+                f"Not granted: an active {ag.get('tier')} grant exists "
+                f"({str(ag.get('grant_id'))[:8]}). Details in chat.",
+                show_alert=True,
+            )
             send_reply(chat_id, message_id, out["message"])
             return {**result, "outcome": "REFUSED", "reason": "ACTIVE_GRANT_EXISTS"}
+        if not out.get("ok") and out.get("reason") == "TELEGRAM_GRANT_RETIRED":
+            # Telegram guard grants are retired (PR #2185). The alert is capped at 200 chars, so tell the
+            # operator where to grant instead (keyboard `bin/guard grant`, or Ops → Controls) in chat.
+            answer_callback(
+                cb_id, "Not granted: TELEGRAM_GRANT_RETIRED. Where to grant instead: see chat.", show_alert=True
+            )
+            send_reply(chat_id, message_id, f"❌ Not granted. {out.get('detail') or _gra.RETIRED_MSG}")
+            return {**result, "outcome": "REFUSED", "reason": "TELEGRAM_GRANT_RETIRED"}
         if not out.get("ok"):
             answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
             return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
@@ -173,24 +204,44 @@ def handle_callback_query(cb):
         else:
             try:
                 proc = subprocess.run(
-                    [str(guard_bin), "grant", r["scope"], "--for", str(int(r["seconds"])),
-                     "--uses", str(int(r["uses"])), "--reason", reason, "--yes"],
-                    capture_output=True, text=True, timeout=30)
-                detail = "" if proc.returncode == 0 else \
-                    f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()}"
+                    [
+                        str(guard_bin),
+                        "grant",
+                        r["scope"],
+                        "--for",
+                        str(int(r["seconds"])),
+                        "--uses",
+                        str(int(r["uses"])),
+                        "--reason",
+                        reason,
+                        "--yes",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                detail = (
+                    "" if proc.returncode == 0 else f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()}"
+                )
             except Exception as e:  # noqa: BLE001 — a timeout must re-open, not spend, the request
                 detail = f"{type(e).__name__}: {e}"
         if detail:
             # Settled but not granted: re-open the request so the same button works once fixed.
             reopened = _gra.reopen_after_grant_failure(r["request_id"], detail=detail)
-            again = "Tap Approve again once fixed." if reopened.get("ok") else \
-                f"Request closed ({reopened.get('reason')}); ask for a new one."
+            again = (
+                "Tap Approve again once fixed."
+                if reopened.get("ok")
+                else f"Request closed ({reopened.get('reason')}); ask for a new one."
+            )
             answer_callback(cb_id, f"Approved, but the grant failed: {detail[:90]}. {again}", show_alert=True)
-            return {**result, "outcome": "GRANT_FAILED",
-                    "reason": "REOPENED" if reopened.get("ok") else str(reopened.get("reason"))}
-        answer_callback(cb_id,
-                        f"Granted {r['scope']} for {int(r['seconds']) // 60} min "
-                        f"({r['uses']} uses) — {now_short}")
+            return {
+                **result,
+                "outcome": "GRANT_FAILED",
+                "reason": "REOPENED" if reopened.get("ok") else str(reopened.get("reason")),
+            }
+        answer_callback(
+            cb_id, f"Granted {r['scope']} for {int(r['seconds']) // 60} min ({r['uses']} uses) — {now_short}"
+        )
         return {**result, "outcome": "GRANTED"}
 
     # ── PR merge go-signal (prmapprove:<request_id> / prmdeny:<request_id>) ──
@@ -243,8 +294,7 @@ def handle_callback_query(cb):
 
         did = parts[1] if len(parts) > 1 else ""
         result = {"kind": "pr_merge_digest", "action": action, "digest_id": did}
-        tg = {"message_id": message_id, "from_id": user_id,
-              "from_username": user.get("username"), "text": data}
+        tg = {"message_id": message_id, "from_id": user_id, "from_username": user.get("username"), "text": data}
         if action == "prdx":
             try:
                 prn = int(parts[2])
@@ -255,13 +305,18 @@ def handle_callback_query(cb):
             if not out.get("ok"):
                 answer_callback(cb_id, f"Not changed: {out.get('reason')}", show_alert=True)
                 return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
-            answer_callback(cb_id, f"#{prn} {'held' if out['held'] else 'included'} — "
-                                   f"Approve all now covers {out['remaining']}")
+            answer_callback(
+                cb_id, f"#{prn} {'held' if out['held'] else 'included'} — Approve all now covers {out['remaining']}"
+            )
             try:  # refresh the buttons in place; best effort
-                _tg_post("editMessageReplyMarkup", {
-                    "chat_id": chat_id, "message_id": message_id,
-                    "reply_markup": _pmd.keyboard(out["digest"], _pmd.load_config()),
-                })
+                _tg_post(
+                    "editMessageReplyMarkup",
+                    {
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reply_markup": _pmd.keyboard(out["digest"], _pmd.load_config()),
+                    },
+                )
             except Exception:  # noqa: BLE001
                 pass
             return {**result, "outcome": "HELD" if out["held"] else "INCLUDED", "pr_number": prn}
@@ -271,8 +326,12 @@ def handle_callback_query(cb):
                 answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
                 return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
             answer_callback(cb_id, f"Held all {len(out['held'])}. They return in the next digest.")
-            edit_message(chat_id, message_id, f"\U0001f6d1 Digest {did} held by {user_name} — {now_short}. "
-                                              f"Nothing labelled; PRs return in the next digest.")
+            edit_message(
+                chat_id,
+                message_id,
+                f"\U0001f6d1 Digest {did} held by {user_name} — {now_short}. "
+                f"Nothing labelled; PRs return in the next digest.",
+            )
             return {**result, "outcome": "HELD_ALL"}
         # prdall — answer first (Telegram callback deadline), then label, then reply with the result.
         answer_callback(cb_id, f"Approving digest {did}…")
@@ -280,11 +339,19 @@ def handle_callback_query(cb):
         if not out.get("outcomes") and not out.get("ok"):
             send_reply(chat_id, message_id, f"Digest not settled: {out.get('reason')}")
             return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
-        edit_message(chat_id, message_id, f"✅ Digest {did} approved by {user_name} — {now_short}. "
-                                          f"Labelled: {', '.join('#' + str(p) for p in out.get('labeled') or []) or 'none'}")
+        edit_message(
+            chat_id,
+            message_id,
+            f"✅ Digest {did} approved by {user_name} — {now_short}. "
+            f"Labelled: {', '.join('#' + str(p) for p in out.get('labeled') or []) or 'none'}",
+        )
         send_reply(chat_id, message_id, _pmd.format_settle_reply(out))
-        return {**result, "outcome": "APPROVED" if out.get("ok") else "PARTIAL",
-                "labeled": out.get("labeled"), "approval_id": (out.get("approval") or {}).get("approval_id")}
+        return {
+            **result,
+            "outcome": "APPROVED" if out.get("ok") else "PARTIAL",
+            "labeled": out.get("labeled"),
+            "approval_id": (out.get("approval") or {}).get("approval_id"),
+        }
 
     # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
     # ── Coordination acknowledgement (ack:<idempotency_key>) — roadmap Phase 1, 2026-10-07 ──
@@ -305,13 +372,20 @@ def handle_callback_query(cb):
         except ImportError:
             from lib.n8n_gateway_client import GatewayClient  # type: ignore
         client = GatewayClient(caller_id="tradeai-telegram-ack")
-        res = client.transition("consumer_ack", idem,
-                                consumer_receipt={"consumer": f"operator-telegram:{user_id}", "receipt_id": f"cb-{cb_id}"})
+        res = client.transition(
+            "consumer_ack",
+            idem,
+            consumer_receipt={"consumer": f"operator-telegram:{user_id}", "receipt_id": f"cb-{cb_id}"},
+        )
         state, reason = res.get("state"), res.get("reason")
         if state == "CONSUMED":
             answer_callback(cb_id, f"Acknowledged {now_short}")
             try:
-                edit_message(chat_id, message_id, (cb["message"].get("text") or "")[:3800] + f"\n\n✓ acknowledged by {user_name} {now_short}")
+                edit_message(
+                    chat_id,
+                    message_id,
+                    (cb["message"].get("text") or "")[:3800] + f"\n\n✓ acknowledged by {user_name} {now_short}",
+                )
             except Exception:
                 pass
         else:
@@ -343,9 +417,19 @@ def handle_callback_query(cb):
             answer_callback(cb_id, "Invalid package reply", show_alert=True)
             return
         try:
-            view = _ap.apply_reply(led, rep, decided_by={"who": "operator", "from_id": user_id,
-                                                          "from_username": user.get("username"), "via": "button",
-                                                          "message_id": message_id, "chat_id": chat_id, "text": data})
+            view = _ap.apply_reply(
+                led,
+                rep,
+                decided_by={
+                    "who": "operator",
+                    "from_id": user_id,
+                    "from_username": user.get("username"),
+                    "via": "button",
+                    "message_id": message_id,
+                    "chat_id": chat_id,
+                    "text": data,
+                },
+            )
         except _ap.LedgerError as exc:
             answer_callback(cb_id, f"Not recorded: {exc}", show_alert=True)
             return
@@ -357,21 +441,29 @@ def handle_callback_query(cb):
     if action in ("bkapprove", "bkreject"):
         try:
             import sys as _sys, os as _os
+
             _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
             from brokers import approval_service
+
             iid = parts[1] if len(parts) > 1 else ""
             if action == "bkapprove":
                 # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14): no approval is recorded and
                 # nothing is submitted while trading is locked. bkreject stays allowed (no broker write).
                 from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
                 try:
-                    assert_trading_unlocked("place", broker=approval_service._intent_broker(iid),
-                                            caller="telegram_callback_handler.bkapprove")
+                    assert_trading_unlocked(
+                        "place",
+                        broker=approval_service._intent_broker(iid),
+                        caller="telegram_callback_handler.bkapprove",
+                    )
                 except TradingLocked as _tl:
                     answer_callback(cb_id, "TRADING LOCKED — not approved, nothing sent", show_alert=True)
-                    edit_message(chat_id, message_id,
-                                 f"⛔ TRADING LOCKED — approval refused {now_short}\n"
-                                 f"intent {iid[:8]} · {str(_tl)[:200]}")
+                    edit_message(
+                        chat_id,
+                        message_id,
+                        f"⛔ TRADING LOCKED — approval refused {now_short}\nintent {iid[:8]} · {str(_tl)[:200]}",
+                    )
                     return
                 code = parts[2] if len(parts) > 2 else None
                 r = approval_service.confirm(iid, "telegram", code)
@@ -381,10 +473,13 @@ def handle_callback_query(cb):
                     if full:
                         try:
                             from brokers import intent_submit_router as _isr
+
                             sub = _isr.submit_fully_approved(iid)
                             if sub.get("stage") == "submit" and sub.get("ok"):
                                 oid = sub.get("broker_order_id") or (sub.get("result") or {}).get("broker_order_id")
-                                submit_line = f"\n✅ LIVE order submitted · #{oid or '—'} ({sub.get('status') or 'submitted'})"
+                                submit_line = (
+                                    f"\n✅ LIVE order submitted · #{oid or '—'} ({sub.get('status') or 'submitted'})"
+                                )
                             elif sub.get("stage") == "modify_cancel":
                                 submit_line = f"\n⛔ Replace blocked — old stop not canceled: {(sub.get('error') or 'cancel failed')[:160]}"
                             elif sub.get("stage") == "submit":
@@ -393,8 +488,7 @@ def handle_callback_query(cb):
                             submit_line = f"\n⛔ Submit error: {str(se)[:120]}"
                     summ = approval_service.intent_action_summary_for_id(iid)
                     act = summ.get("action_label") or summ.get("action") or "order"
-                    answer_callback(cb_id, f"{act} approved" +
-                                    (" — submitting" if full else " — need web ticker"))
+                    answer_callback(cb_id, f"{act} approved" + (" — submitting" if full else " — need web ticker"))
                     try:
                         _notice = approval_service.execution_notice(iid)
                     except Exception:
@@ -406,24 +500,32 @@ def handle_callback_query(cb):
                     else:
                         tick = summ.get("symbol") or "ticker"
                         status_line = f"Telegram OK — type {tick} in web to finish"
-                    edit_message(chat_id, message_id,
-                                 f"✅ {act} approved by {user_name} {now_short}\n"
-                                 f"intent {iid[:8]} · {status_line}"
-                                 + (f"\n{_notice}" if _notice else "") + submit_line)
+                    edit_message(
+                        chat_id,
+                        message_id,
+                        f"✅ {act} approved by {user_name} {now_short}\n"
+                        f"intent {iid[:8]} · {status_line}" + (f"\n{_notice}" if _notice else "") + submit_line,
+                    )
                 else:
-                    answer_callback(cb_id, f"Denied: {r.get('reason','')}"[:180], show_alert=True)
+                    answer_callback(cb_id, f"Denied: {r.get('reason', '')}"[:180], show_alert=True)
             else:
                 r = approval_service.reject(iid)
                 answer_callback(cb_id, "Approval rejected")
-                edit_message(chat_id, message_id,
-                             f"❌ Approval REJECTED by {user_name} {now_short}\nintent {iid[:8]}")
+                edit_message(chat_id, message_id, f"❌ Approval REJECTED by {user_name} {now_short}\nintent {iid[:8]}")
         except Exception as e:
             answer_callback(cb_id, f"error: {str(e)[:120]}", show_alert=True)
         return
 
     # ── Proposal buttons (ptapprove:123, ptreject:123, ptinfo:123) ──
-    if action in ("ptapprove", "ptapprove_half", "ptapprove_2x", "ptreject", "ptinfo",
-                  "ptmodify_size", "ptmodify_risk"):
+    if action in (
+        "ptapprove",
+        "ptapprove_half",
+        "ptapprove_2x",
+        "ptreject",
+        "ptinfo",
+        "ptmodify_size",
+        "ptmodify_risk",
+    ):
         try:
             pid = int(parts[1]) if len(parts) > 1 else None
         except ValueError:
@@ -442,29 +544,46 @@ def handle_callback_query(cb):
             result = _run_approve(pid, user_id, {})
             _post_confirmation(chat_id, message_id, result, f"APPROVED by {user_name} at {now_short}")
             if _tm:
-                _tm.audit_decision("approve", proposal_id=pid, actor=user_name, channel="telegram",
-                                   after={"shares": result.get("shares")}, reason="telegram approve")
+                _tm.audit_decision(
+                    "approve",
+                    proposal_id=pid,
+                    actor=user_name,
+                    channel="telegram",
+                    after={"shares": result.get("shares")},
+                    reason="telegram approve",
+                )
             answer_callback(cb_id, _short_result(result))
         elif action == "ptapprove_half":
             result = _run_approve(pid, user_id, {"shares_multiplier": 0.5})
             _post_confirmation(chat_id, message_id, result, f"APPROVED \u00bd\u00d7 by {user_name} at {now_short}")
             if _tm:
-                _tm.audit_decision("modify_size", proposal_id=pid, actor=user_name, channel="telegram",
-                                   after={"shares_multiplier": 0.5, "shares": result.get("shares")}, reason="telegram \u00bd\u00d7")
+                _tm.audit_decision(
+                    "modify_size",
+                    proposal_id=pid,
+                    actor=user_name,
+                    channel="telegram",
+                    after={"shares_multiplier": 0.5, "shares": result.get("shares")},
+                    reason="telegram \u00bd\u00d7",
+                )
             answer_callback(cb_id, _short_result(result))
         elif action == "ptapprove_2x":
             result = _run_approve(pid, user_id, {"shares_multiplier": 2.0})
             _post_confirmation(chat_id, message_id, result, f"APPROVED 2\u00d7 by {user_name} at {now_short}")
             if _tm:
-                _tm.audit_decision("modify_size", proposal_id=pid, actor=user_name, channel="telegram",
-                                   after={"shares_multiplier": 2.0, "shares": result.get("shares")}, reason="telegram 2\u00d7")
+                _tm.audit_decision(
+                    "modify_size",
+                    proposal_id=pid,
+                    actor=user_name,
+                    channel="telegram",
+                    after={"shares_multiplier": 2.0, "shares": result.get("shares")},
+                    reason="telegram 2\u00d7",
+                )
             answer_callback(cb_id, _short_result(result))
         elif action == "ptreject":
             result = _run_reject(pid, user_id, "telegram_inline_reject")
             _post_confirmation(chat_id, message_id, result, f"DENIED by {user_name} at {now_short}")
             if _tm:
-                _tm.audit_decision("deny", proposal_id=pid, actor=user_name, channel="telegram",
-                                   reason="telegram deny")
+                _tm.audit_decision("deny", proposal_id=pid, actor=user_name, channel="telegram", reason="telegram deny")
             answer_callback(cb_id, _short_result(result))
         elif action in ("ptmodify_size", "ptmodify_risk"):
             # Two-step: record what the next reply modifies, then prompt the operator to reply with a value.
@@ -477,16 +596,24 @@ def handle_callback_query(cb):
                 except Exception:
                     pass
                 _tm.set_pending(chat_id, pid, kind, sym)
-                _tm.audit_decision(f"modify_{kind}_requested", proposal_id=pid, actor=user_name,
-                                   channel="telegram", reason="operator requested modify")
-            prompt = (f"\u270f\ufe0f Reply with the new SHARE COUNT for {sym or ('#' + str(pid))} "
-                      f"(whole number)." if kind == "size" else
-                      f"\U0001f3af Reply with the new STOP PRICE for {sym or ('#' + str(pid))} "
-                      f"(re-sizes by the same risk engine).")
+                _tm.audit_decision(
+                    f"modify_{kind}_requested",
+                    proposal_id=pid,
+                    actor=user_name,
+                    channel="telegram",
+                    reason="operator requested modify",
+                )
+            prompt = (
+                f"\u270f\ufe0f Reply with the new SHARE COUNT for {sym or ('#' + str(pid))} (whole number)."
+                if kind == "size"
+                else f"\U0001f3af Reply with the new STOP PRICE for {sym or ('#' + str(pid))} "
+                f"(re-sizes by the same risk engine)."
+            )
             send_reply(chat_id, message_id, prompt)
             answer_callback(cb_id, "Reply with the value")
         elif action == "ptinfo":
             from proposal_alerter import build_proposal_info
+
             send_reply(chat_id, message_id, build_proposal_info(pid))
             answer_callback(cb_id, "Details posted")
         return
@@ -500,19 +627,30 @@ def handle_callback_query(cb):
             return
         try:
             import generate_max_hold_exit_proposals as gen
+
             r = gen.decide(pid, "approve" if action == "texitapprove" else "reject", operator=user_name)
         except Exception as e:
             answer_callback(cb_id, f"Failed: {str(e)[:80]}")
             return
         sym = r.get("symbol", "?")
         if action == "texitreject":
-            _post_confirmation(chat_id, message_id, {"success": r.get("ok")}, f"Time-exit DISMISSED -- {sym} by {user_name} at {now_short}")
+            _post_confirmation(
+                chat_id,
+                message_id,
+                {"success": r.get("ok")},
+                f"Time-exit DISMISSED -- {sym} by {user_name} at {now_short}",
+            )
             answer_callback(cb_id, f"{sym}: dismissed")
         else:
-            label = (f"Time-exit CLOSED -- {sym} by {user_name} at {now_short}" if r.get("ok")
-                     else f"Time-exit FAILED -- {sym}: {str(r.get('error') or r.get('status'))[:50]}")
+            label = (
+                f"Time-exit CLOSED -- {sym} by {user_name} at {now_short}"
+                if r.get("ok")
+                else f"Time-exit FAILED -- {sym}: {str(r.get('error') or r.get('status'))[:50]}"
+            )
             _post_confirmation(chat_id, message_id, {"success": r.get("ok")}, label)
-            answer_callback(cb_id, f"{sym}: closed" if r.get("ok") else f"Failed: {str(r.get('error') or r.get('status'))[:70]}")
+            answer_callback(
+                cb_id, f"{sym}: closed" if r.get("ok") else f"Failed: {str(r.get('error') or r.get('status'))[:70]}"
+            )
         return
 
     # ── Stop decision buttons (stopexit:RTX, stophold:RTX, etc.) ──
@@ -521,10 +659,15 @@ def handle_callback_query(cb):
     if action == "stopexit":
         result = _handle_stop_decision(sym, "EXIT", user_id, "operator honored stop via Telegram")
         _post_confirmation(chat_id, message_id, result, f"STOP HONORED -- {sym} marked for exit by {user_name}")
-        answer_callback(cb_id, f"{sym}: stop honored" if result.get("ok") else f"Failed: {result.get('error', '?')[:80]}")
+        answer_callback(
+            cb_id, f"{sym}: stop honored" if result.get("ok") else f"Failed: {result.get('error', '?')[:80]}"
+        )
         try:
             from email_notifier import send_email
-            send_email(f"Trade AI: {sym} STOP HONORED — exit", f"Stop honored for {sym}.\nDecision: EXIT\nBy: {user_name}")
+
+            send_email(
+                f"Trade AI: {sym} STOP HONORED — exit", f"Stop honored for {sym}.\nDecision: EXIT\nBy: {user_name}"
+            )
         except Exception:
             pass
 
@@ -535,6 +678,7 @@ def handle_callback_query(cb):
             # Resolve trade ID to symbol
             try:
                 from db_adapter import _get_conn
+
                 _c = _get_conn()
                 _cur = _c.cursor()
                 _cur.execute("SELECT symbol FROM paper_trades WHERE id=%s", (int(sym),))
@@ -547,7 +691,11 @@ def handle_callback_query(cb):
         answer_callback(cb_id, f"{hold_sym}: override logged")
         try:
             from email_notifier import send_email
-            send_email(f"Trade AI: {hold_sym} STOP OVERRIDE — holding", f"Stop overridden for {hold_sym}.\nDecision: HOLD\nBy: {user_name}")
+
+            send_email(
+                f"Trade AI: {hold_sym} STOP OVERRIDE — holding",
+                f"Stop overridden for {hold_sym}.\nDecision: HOLD\nBy: {user_name}",
+            )
         except Exception:
             pass
 
@@ -569,6 +717,7 @@ def handle_callback_query(cb):
 
     elif action == "stopinfo":
         from stop_alert_assembler import assemble_stop_alert_data
+
         data = assemble_stop_alert_data(sym)
         if data:
             info = _build_stop_info(data)
@@ -587,8 +736,12 @@ def handle_callback_query(cb):
             return
         result = _execute_stop_out(trade_id, user_id, user_name)
         if result.get("ok"):
-            _post_confirmation(chat_id, message_id, result,
-                               f"STOPPED OUT -- {result.get('symbol', '?')} closed by {user_name} at {now_short}")
+            _post_confirmation(
+                chat_id,
+                message_id,
+                result,
+                f"STOPPED OUT -- {result.get('symbol', '?')} closed by {user_name} at {now_short}",
+            )
             answer_callback(cb_id, f"{result.get('symbol', '?')}: stopped out")
         else:
             send_reply(chat_id, message_id, f"Stop-out failed: {result.get('error', 'unknown')}")
@@ -604,8 +757,12 @@ def handle_callback_query(cb):
             return
         result = _switch_to_trailing_stop(trade_id, trail_pct, user_id, user_name)
         if result.get("ok"):
-            _post_confirmation(chat_id, message_id, result,
-                               f"TRAILING STOP SET -- {result.get('symbol', '?')} now trailing at {trail_pct}% by {user_name}")
+            _post_confirmation(
+                chat_id,
+                message_id,
+                result,
+                f"TRAILING STOP SET -- {result.get('symbol', '?')} now trailing at {trail_pct}% by {user_name}",
+            )
             answer_callback(cb_id, f"{result.get('symbol', '?')}: trail {trail_pct}%")
         else:
             send_reply(chat_id, message_id, f"Trail switch failed: {result.get('error', 'unknown')}")
@@ -654,8 +811,10 @@ def _run_approve(pid, user_id, overrides):
             try:
                 conn2 = _get_conn()
                 cur2 = conn2.cursor()
-                cur2.execute("UPDATE paper_trade_proposals SET override_payload=%s, approved_by=%s WHERE id=%s",
-                             (json.dumps(overrides), user_id, pid))
+                cur2.execute(
+                    "UPDATE paper_trade_proposals SET override_payload=%s, approved_by=%s WHERE id=%s",
+                    (json.dumps(overrides), user_id, pid),
+                )
                 conn2.commit()
                 conn2.close()
             except Exception:
@@ -669,6 +828,7 @@ def _run_approve(pid, user_id, overrides):
             try:
                 from proposal_paper_submitter import submit_paper
                 from session13_db import get_conn as _get_sub_conn
+
                 sub_conn = _get_sub_conn()
                 if sub_conn:
                     alpaca_result = submit_paper(sub_conn, pid, dry_run=False)
@@ -683,12 +843,17 @@ def _run_approve(pid, user_id, overrides):
             # Email confirmation
             try:
                 from email_notifier import notify_approval_result
+
                 notify_approval_result(
-                    result.get("symbol", p["symbol"]), result.get("shares", eff_shares),
+                    result.get("symbol", p["symbol"]),
+                    result.get("shares", eff_shares),
                     result.get("entry", float(p.get("proposed_entry") or 0)),
                     result.get("stop", float(p.get("proposed_stop") or 0)),
                     result.get("target", float(p.get("proposed_target1") or 0)),
-                    result.get("risk_gate", "?"), alpaca_status, broker_order_id or "")
+                    result.get("risk_gate", "?"),
+                    alpaca_status,
+                    broker_order_id or "",
+                )
             except Exception:
                 pass
 
@@ -712,6 +877,7 @@ def _run_reject(pid, user_id, reason):
     """Reject a proposal."""
     try:
         from paper_trade_logger import reject_proposal
+
         result = reject_proposal(pid, reason)
         if result.get("success"):
             return {"ok": True, "symbol": result.get("symbol", "?"), "message": result.get("message", "Rejected")}
@@ -726,11 +892,13 @@ def _post_confirmation(chat_id, original_msg_id, result, label):
     if result.get("ok"):
         body = f"{label}\n"
         if result.get("shares"):
-            body += (f"{sym}: shares={result['shares']} "
-                     f"entry=${result.get('entry_price', 0):.2f} "
-                     f"stop=${result.get('stop_price', 0):.2f} "
-                     f"target=${result.get('target_price', 0):.2f}\n"
-                     f"Risk gate: {result.get('risk_gate_decision', '?')}")
+            body += (
+                f"{sym}: shares={result['shares']} "
+                f"entry=${result.get('entry_price', 0):.2f} "
+                f"stop=${result.get('stop_price', 0):.2f} "
+                f"target=${result.get('target_price', 0):.2f}\n"
+                f"Risk gate: {result.get('risk_gate_decision', '?')}"
+            )
             if result.get("alpaca_status"):
                 body += f"\nAlpaca: {result['alpaca_status']}"
                 if result.get("broker_order_id"):
@@ -740,11 +908,14 @@ def _post_confirmation(chat_id, original_msg_id, result, label):
     else:
         body = f"{label} FAILED: {result.get('error', 'unknown')}"
     # Send without Markdown to avoid parse errors
-    _tg_post("sendMessage", {
-        "chat_id": chat_id,
-        "reply_to_message_id": original_msg_id,
-        "text": body,
-    })
+    _tg_post(
+        "sendMessage",
+        {
+            "chat_id": chat_id,
+            "reply_to_message_id": original_msg_id,
+            "text": body,
+        },
+    )
 
 
 def _short_result(result):
@@ -757,10 +928,14 @@ def _handle_stop_decision(symbol, decision, user_id, notes=""):
     """Record a stop decision (EXIT or HOLD_OVERRIDE). Paper mode only."""
     try:
         from db_adapter import _get_conn
+
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute("""INSERT INTO stop_decisions (symbol, decision, decided_by, decided_at, notes)
-            VALUES (%s, %s, %s, NOW(), %s)""", (symbol, decision, user_id, notes))
+        cur.execute(
+            """INSERT INTO stop_decisions (symbol, decision, decided_by, decided_at, notes)
+            VALUES (%s, %s, %s, NOW(), %s)""",
+            (symbol, decision, user_id, notes),
+        )
         conn.commit()
         conn.close()
         return {"ok": True, "symbol": symbol, "decision": decision, "message": decision}
@@ -773,13 +948,16 @@ def _handle_stop_snooze(symbol, minutes, user_id):
     try:
         from db_adapter import _get_conn
         from datetime import timedelta
+
         snooze_until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute("""INSERT INTO stop_snooze (symbol, snoozed_until, snoozed_by, created_at)
+        cur.execute(
+            """INSERT INTO stop_snooze (symbol, snoozed_until, snoozed_by, created_at)
             VALUES (%s, %s, %s, NOW())
             ON CONFLICT (symbol) DO UPDATE SET snoozed_until=%s, snoozed_by=%s""",
-            (symbol, snooze_until, user_id, snooze_until, user_id))
+            (symbol, snooze_until, user_id, snooze_until, user_id),
+        )
         conn.commit()
         conn.close()
         return {"ok": True, "symbol": symbol, "message": f"snoozed until {snooze_until.strftime('%H:%M UTC')}"}
@@ -791,6 +969,7 @@ def _handle_stop_loosen(symbol, pct, user_id):
     """Loosen stop by pct%. Updates paper_trades stop_loss."""
     try:
         from db_adapter import _get_conn
+
         conn = _get_conn()
         cur = conn.cursor()
         cur.execute("SELECT id, stop_loss FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", (symbol,))
@@ -804,9 +983,17 @@ def _handle_stop_loosen(symbol, pct, user_id):
         conn.commit()
         try:
             from stop_change_audit import log_stop_change
-            log_stop_change(conn, tid, symbol, old_stop, new_stop,
-                            change_type='manual_operator', source='telegram_callback',
-                            reason=f'operator widen {pct}%')
+
+            log_stop_change(
+                conn,
+                tid,
+                symbol,
+                old_stop,
+                new_stop,
+                change_type="manual_operator",
+                source="telegram_callback",
+                reason=f"operator widen {pct}%",
+            )
         except Exception:
             pass
         conn.close()
@@ -837,10 +1024,13 @@ def _build_stop_info(data):
         lines += ["", f"Sector: {sector}"]
     if tax:
         lines.append(f"Tax: {tax}")
-    lines += ["", "Commands:",
-              f"  `/stopexit {sym}` \u2014 honor stop",
-              f"  `/stophold {sym}` \u2014 override, keep holding",
-              f"  `/stopdelay {sym} 30` \u2014 snooze 30 min"]
+    lines += [
+        "",
+        "Commands:",
+        f"  `/stopexit {sym}` \u2014 honor stop",
+        f"  `/stophold {sym}` \u2014 override, keep holding",
+        f"  `/stopdelay {sym} 30` \u2014 snooze 30 min",
+    ]
     return "\n".join(lines)
 
 
@@ -850,6 +1040,7 @@ def resolve_proposal_from_reply(chat_id, reply_msg_id):
         return None
     try:
         from db_adapter import _get_conn
+
         conn = _get_conn()
         cur = conn.cursor()
         cur.execute(
@@ -893,16 +1084,20 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
     """Immediately close a paper trade at market. Called from stop proximity alert."""
     try:
         from db_adapter import _get_conn
+
         conn = _get_conn()
         if not conn:
             return {"ok": False, "error": "no DB connection"}
 
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status,
                    shares, dollar_risk, entry_time, created_at
             FROM paper_trades WHERE id = %s
-        """, (trade_id,))
+        """,
+            (trade_id,),
+        )
         row = cur.fetchone()
         if not row:
             return {"ok": False, "error": f"trade #{trade_id} not found"}
@@ -911,8 +1106,11 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
         trade = dict(zip(cols, row))
 
         if trade["status"] != "open":
-            return {"ok": False, "error": f"trade #{trade_id} status is {trade['status']}, not open",
-                    "symbol": trade["symbol"]}
+            return {
+                "ok": False,
+                "error": f"trade #{trade_id} status is {trade['status']}, not open",
+                "symbol": trade["symbol"],
+            }
 
         symbol = trade["symbol"]
         exit_price = float(trade["current_price"] or trade["stop_loss"] or 0)
@@ -932,15 +1130,17 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
         if entry_time:
             try:
                 from datetime import datetime as _dt2, timezone as _tz2
+
                 _now2 = _dt2.now(_tz2.utc)
                 _et2 = entry_time.replace(tzinfo=_tz2.utc) if entry_time.tzinfo is None else entry_time
                 hold_min = round((_now2 - _et2).total_seconds() / 60, 1)
             except Exception:
                 pass
-        verdict = 'WIN' if pnl > 0 else ('LOSS' if pnl < 0 else 'BREAKEVEN')
+        verdict = "WIN" if pnl > 0 else ("LOSS" if pnl < 0 else "BREAKEVEN")
 
         # Close the trade
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE paper_trades
             SET status = 'closed', lifecycle_state = 'closed',
                 exit_price = %s, exit_reason = 'operator_stop_out',
@@ -949,15 +1149,26 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
                 hold_time_min = COALESCE(%s, hold_time_min),
                 outcome_verdict = %s, decision_state = 'OPERATOR_STOP_OUT'
             WHERE id = %s
-        """, (exit_price, pnl, pnl_pct, r_mult, hold_min, verdict, trade_id))
+        """,
+            (exit_price, pnl, pnl_pct, r_mult, hold_min, verdict, trade_id),
+        )
 
         # Log the risk action
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO paper_trade_risk_actions (paper_trade_id, symbol, action_type, old_value, new_value,
                                                   trigger_price, trigger_reason)
             VALUES (%s, %s, 'operator_stop_out', %s, %s, %s, %s)
-        """, (trade_id, symbol, trade["stop_loss"], exit_price, exit_price,
-              f"operator {user_name} stop-out via Telegram"))
+        """,
+            (
+                trade_id,
+                symbol,
+                trade["stop_loss"],
+                exit_price,
+                exit_price,
+                f"operator {user_name} stop-out via Telegram",
+            ),
+        )
 
         conn.commit()
 
@@ -967,8 +1178,7 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
         except Exception as e:
             log.warning(f"Alpaca close failed for {symbol}: {e}")
 
-        return {"ok": True, "symbol": symbol, "exit_price": exit_price,
-                "pnl": round(pnl, 2), "trade_id": trade_id}
+        return {"ok": True, "symbol": symbol, "exit_price": exit_price, "pnl": round(pnl, 2), "trade_id": trade_id}
 
     except Exception as e:
         log.error(f"Stop-out failed for trade #{trade_id}: {e}")
@@ -979,15 +1189,19 @@ def _switch_to_trailing_stop(trade_id: int, trail_pct: float, user_id: str, user
     """Switch a trade from fixed stop to trailing stop at trail_pct%."""
     try:
         from db_adapter import _get_conn
+
         conn = _get_conn()
         if not conn:
             return {"ok": False, "error": "no DB connection"}
 
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status
             FROM paper_trades WHERE id = %s
-        """, (trade_id,))
+        """,
+            (trade_id,),
+        )
         row = cur.fetchone()
         if not row:
             return {"ok": False, "error": f"trade #{trade_id} not found"}
@@ -996,8 +1210,7 @@ def _switch_to_trailing_stop(trade_id: int, trail_pct: float, user_id: str, user
         trade = dict(zip(cols, row))
 
         if trade["status"] != "open":
-            return {"ok": False, "error": f"trade #{trade_id} not open",
-                    "symbol": trade["symbol"]}
+            return {"ok": False, "error": f"trade #{trade_id} not open", "symbol": trade["symbol"]}
 
         symbol = trade["symbol"]
         price = float(trade["current_price"] or trade["entry_price"] or 0)
@@ -1010,30 +1223,49 @@ def _switch_to_trailing_stop(trade_id: int, trail_pct: float, user_id: str, user
         if new_stop <= old_stop:
             new_stop = old_stop
 
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE paper_trades
             SET stop_loss = %s, decision_state = 'TRAILING_STOP_ACTIVE'
             WHERE id = %s
-        """, (new_stop, trade_id))
+        """,
+            (new_stop, trade_id),
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO paper_trade_risk_actions (paper_trade_id, symbol, action_type, old_value, new_value,
                                                   trigger_price, trigger_reason)
             VALUES (%s, %s, 'trailing_stop_switch', %s, %s, %s, %s)
-        """, (trade_id, symbol, old_stop, new_stop, price,
-              f"operator {user_name} switched to {trail_pct}% trail via Telegram"))
+        """,
+            (
+                trade_id,
+                symbol,
+                old_stop,
+                new_stop,
+                price,
+                f"operator {user_name} switched to {trail_pct}% trail via Telegram",
+            ),
+        )
 
         conn.commit()
 
         # Update Alpaca stop order if applicable
         try:
             from open_trade_monitor import _update_stop_on_alpaca
+
             _update_stop_on_alpaca(conn, trade, new_stop)
         except Exception as e:
             log.warning(f"Alpaca stop update failed for {symbol}: {e}")
 
-        return {"ok": True, "symbol": symbol, "old_stop": old_stop,
-                "new_stop": new_stop, "trail_pct": trail_pct, "trade_id": trade_id}
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "old_stop": old_stop,
+            "new_stop": new_stop,
+            "trail_pct": trail_pct,
+            "trade_id": trade_id,
+        }
 
     except Exception as e:
         log.error(f"Trail switch failed for trade #{trade_id}: {e}")
@@ -1047,6 +1279,7 @@ def _close_alpaca_position(conn, trade):
         return
     try:
         import requests
+
         key = os.environ.get("ALPACA_API_KEY", "")
         secret = os.environ.get("ALPACA_SECRET_KEY", "")
         if not key or not secret:
