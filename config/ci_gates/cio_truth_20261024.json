@@ -2,9 +2,11 @@
   "schema": "CiGate@v1",
   "name": "cio_truth_20261024",
   "files": [
-    "tests/test_cio_truth_20261024.py"
+    "tests/test_cio_truth_20261024.py",
+    "tests/test_cio_truth_today_pnl_20261026.py"
   ],
   "comment": [
-    "W1 read-only canonical CIO display truth and cross-surface consistency."
+    "W1 read-only canonical CIO display truth and cross-surface consistency.",
+    "2026-10-26: header TODAY P&L partial-sum and today census on canonical keys."
   ]
 }

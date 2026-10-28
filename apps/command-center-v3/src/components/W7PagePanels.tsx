@@ -91,7 +91,7 @@ export function W7HomePanels({ data }: { data: any }) {
         <div style={line}><Link to="/trading?tab=Proposals" style={linkStyle}>Approvals</Link><b style={mono}>{text(approvals.total)}</b></div>
         {approvals.gap && <W7Gap>{typeof approvals.gap === 'string' ? approvals.gap : approvals.gap.reason}</W7Gap>}
         <div style={line}><Link to="/cio/questions" style={linkStyle}>My questions</Link><span>Review replies →</span></div>
-        <div style={line}><Link to="/releases" style={linkStyle}>Releases</Link><span>Review readiness →</span></div>
+        <div style={line}><Link to="/system/releases" style={linkStyle}>Releases</Link><span>Review readiness →</span></div>
       </W7Panel>
     </div>
   </div>

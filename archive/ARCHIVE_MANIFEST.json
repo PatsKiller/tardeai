@@ -1,9 +1,9 @@
 {
   "schema": "ArchiveManifest@v1",
   "status": "BATCH1_APPLIED",
-  "as_of": "2026-09-16",
+  "as_of": "2026-10-26",
   "author": "operator-approved-full-package",
-  "note": "Batch1 applied under operator APPROVE E5 2026-09-16.",
+  "note": "Batch1 applied under operator APPROVE E5 2026-09-16. Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26. Train removal 2026-10-27: train code, tests, UI and docs moved under archive/release_train_20261026 (operator directive).",
   "items": [
     {
       "path": "archive/retired_providers_20260913/discovery_sources/polygon_source.py",
@@ -148,6 +148,1293 @@
       "date": "2026-09-16",
       "review_by": "2026-10-16",
       "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer config/systemd/user/tradeai-agent-runtime@pulse.timer"
+    },
+    {
+      "path": "archive/release_train_20261026/TRIPWIRE.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_TRIPWIRE.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/TRIPWIRE.md docs/ops/RELEASE_TRAIN_TRIPWIRE.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_API.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_API.md docs/ops/RELEASE_TRAIN_API.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_GITHUB_APP.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_GITHUB_APP.md docs/ops/RELEASE_TRAIN_GITHUB_APP.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md"
+    },
+    {
+      "path": "archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
+      "original_path": "docs/ops/RELEASE_TRAIN_UI_CONTRACT.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/RELEASE_TRAIN_UI_CONTRACT.md docs/ops/RELEASE_TRAIN_UI_CONTRACT.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/README.md",
+      "original_path": "docs/ops/packets/release-train-20261021/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/README.md docs/ops/packets/release-train-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/ci-merge-group.proposed.diff",
+      "original_path": "docs/ops/packets/release-train-20261021/ci-merge-group.proposed.diff",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/ci-merge-group.proposed.diff docs/ops/packets/release-train-20261021/ci-merge-group.proposed.diff"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/ci-train-profile.proposed.diff",
+      "original_path": "docs/ops/packets/release-train-20261021/ci-train-profile.proposed.diff",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/ci-train-profile.proposed.diff docs/ops/packets/release-train-20261021/ci-train-profile.proposed.diff"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/install_release_window_timer.sh",
+      "original_path": "docs/ops/packets/release-train-20261021/install_release_window_timer.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/install_release_window_timer.sh docs/ops/packets/release-train-20261021/install_release_window_timer.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/merge-queue-ruleset.json",
+      "original_path": "docs/ops/packets/release-train-20261021/merge-queue-ruleset.json",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/merge-queue-ruleset.json docs/ops/packets/release-train-20261021/merge-queue-ruleset.json"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.path.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.path.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.path.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.path.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.service.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.service.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed docs/ops/packets/release-train-20261021/tradeai-release-train-claim.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-arming-20261021/README.md",
+      "original_path": "docs/ops/packets/release-train-arming-20261021/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-arming-20261021/README.md docs/ops/packets/release-train-arming-20261021/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-arming-20261021/framework_pending_evidence.json",
+      "original_path": "docs/ops/packets/release-train-arming-20261021/framework_pending_evidence.json",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-arming-20261021/framework_pending_evidence.json docs/ops/packets/release-train-arming-20261021/framework_pending_evidence.json"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/README.md docs/ops/packets/release-train-canary-arm-20261025/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/install.sh",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/install.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/install.sh docs/ops/packets/release-train-canary-arm-20261025/install.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0300.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@0900.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1200.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@1500.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-pr-census@2100.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0000.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0300.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0600.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@0900.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1200.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1500.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.service.d--schedule-live.conf.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@2100.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-canary-arm-20261025/update-delegation-windows.sh",
+      "original_path": "docs/ops/packets/release-train-canary-arm-20261025/update-delegation-windows.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-canary-arm-20261025/update-delegation-windows.sh docs/ops/packets/release-train-canary-arm-20261025/update-delegation-windows.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md docs/ops/packets/release-train-host-trigger-20261023/N8N_STEP_F_BOOTSTRAP_EXCEPTION_PROPOSAL.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/README.md",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/README.md docs/ops/packets/release-train-host-trigger-20261023/README.md"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/install.sh",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/install.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/install.sh docs/ops/packets/release-train-host-trigger-20261023/install.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/rollback.sh",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/rollback.sh",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/rollback.sh docs/ops/packets/release-train-host-trigger-20261023/rollback.sh"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0000.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0600.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@0800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@1800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0000.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0600.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@0800.timer.proposed"
+    },
+    {
+      "path": "archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed",
+      "original_path": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed",
+      "verdict": "SUPERSEDED",
+      "evidence": "Soft-add archive/release_train_20261026 (Mergify cutover) 2026-10-26.",
+      "date": "2026-10-26",
+      "review_by": "2026-11-26",
+      "restore_command": "git mv archive/release_train_20261026/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@1800.timer.proposed"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "apps/command-center-v3/src/components/home/ReleaseTrainCard.tsx",
+      "path": "archive/release_train_20261026/apps/command-center-v3/src/components/home/ReleaseTrainCard.tsx",
+      "restore_command": "git mv archive/release_train_20261026/apps/command-center-v3/src/components/home/ReleaseTrainCard.tsx apps/command-center-v3/src/components/home/ReleaseTrainCard.tsx",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "apps/command-center-v3/src/lib/releaseTrain.test.ts",
+      "path": "archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrain.test.ts",
+      "restore_command": "git mv archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrain.test.ts apps/command-center-v3/src/lib/releaseTrain.test.ts",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "apps/command-center-v3/src/lib/releaseTrain.ts",
+      "path": "archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrain.ts",
+      "restore_command": "git mv archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrain.ts apps/command-center-v3/src/lib/releaseTrain.ts",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "apps/command-center-v3/src/lib/releaseTrainFixtures.ts",
+      "path": "archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrainFixtures.ts",
+      "restore_command": "git mv archive/release_train_20261026/apps/command-center-v3/src/lib/releaseTrainFixtures.ts apps/command-center-v3/src/lib/releaseTrainFixtures.ts",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "apps/command-center-v3/src/pages/ReleaseTrainTab.tsx",
+      "path": "archive/release_train_20261026/apps/command-center-v3/src/pages/ReleaseTrainTab.tsx",
+      "restore_command": "git mv archive/release_train_20261026/apps/command-center-v3/src/pages/ReleaseTrainTab.tsx apps/command-center-v3/src/pages/ReleaseTrainTab.tsx",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_20261021.json config/ci_gates/release_train_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_app_token_reservation_20261022.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_app_token_reservation_20261022.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_app_token_reservation_20261022.json config/ci_gates/release_train_app_token_reservation_20261022.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_arming_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_arming_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_arming_20261021.json config/ci_gates/release_train_arming_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_canonical_head_20261024.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_canonical_head_20261024.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_canonical_head_20261024.json config/ci_gates/release_train_canonical_head_20261024.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_census_live_p6_t9_20261023.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_census_live_p6_t9_20261023.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_census_live_p6_t9_20261023.json config/ci_gates/release_train_census_live_p6_t9_20261023.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_checkout_20261022.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_checkout_20261022.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_checkout_20261022.json config/ci_gates/release_train_checkout_20261022.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_controller_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_controller_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_controller_20261021.json config/ci_gates/release_train_controller_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_email_mirror_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_email_mirror_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_email_mirror_20261021.json config/ci_gates/release_train_email_mirror_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_forced_canary_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_forced_canary_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_forced_canary_20261021.json config/ci_gates/release_train_forced_canary_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_github_app_config_20261023.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_github_app_config_20261023.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_github_app_config_20261023.json config/ci_gates/release_train_github_app_config_20261023.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_github_app_writer_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_github_app_writer_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_github_app_writer_20261021.json config/ci_gates/release_train_github_app_writer_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_host_trigger_20261023.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_host_trigger_20261023.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_host_trigger_20261023.json config/ci_gates/release_train_host_trigger_20261023.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_import_gate_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_import_gate_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_import_gate_20261021.json config/ci_gates/release_train_import_gate_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_injected_failures_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_injected_failures_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_injected_failures_20261021.json config/ci_gates/release_train_injected_failures_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_n8n_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_n8n_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_n8n_20261021.json config/ci_gates/release_train_n8n_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_orphan_watchdog_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_orphan_watchdog_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_orphan_watchdog_20261021.json config/ci_gates/release_train_orphan_watchdog_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_phase7_prereqs_20261022.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_phase7_prereqs_20261022.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_phase7_prereqs_20261022.json config/ci_gates/release_train_phase7_prereqs_20261022.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_queue_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_queue_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_queue_20261021.json config/ci_gates/release_train_queue_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_refusal_codes_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_refusal_codes_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_refusal_codes_20261021.json config/ci_gates/release_train_refusal_codes_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_rtw_key_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_rtw_key_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_rtw_key_20261021.json config/ci_gates/release_train_rtw_key_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_shadow_p5_20261023.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_shadow_p5_20261023.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_shadow_p5_20261023.json config/ci_gates/release_train_shadow_p5_20261023.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_train_ui_contract_stop_vocab_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_train_ui_contract_stop_vocab_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_train_ui_contract_stop_vocab_20261021.json config/ci_gates/release_train_ui_contract_stop_vocab_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/ci_gates/release_window_timer_superseded_20261021.json",
+      "path": "archive/release_train_20261026/config/ci_gates/release_window_timer_superseded_20261021.json",
+      "restore_command": "git mv archive/release_train_20261026/config/ci_gates/release_window_timer_superseded_20261021.json config/ci_gates/release_window_timer_superseded_20261021.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/release_train_drain_policy.json",
+      "path": "archive/release_train_20261026/config/release_train_drain_policy.json",
+      "restore_command": "git mv archive/release_train_20261026/config/release_train_drain_policy.json config/release_train_drain_policy.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/release_train_n8n.json",
+      "path": "archive/release_train_20261026/config/release_train_n8n.json",
+      "restore_command": "git mv archive/release_train_20261026/config/release_train_n8n.json config/release_train_n8n.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/release_control.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/release_control.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/release_control.v1.schema.json config/schemas/release_train/release_control.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_candidate.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_candidate.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_candidate.v1.schema.json config/schemas/release_train/train_candidate.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_event.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_event.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_event.v1.schema.json config/schemas/release_train/train_event.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_evidence.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_evidence.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_evidence.v1.schema.json config/schemas/release_train/train_evidence.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_outcome.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_outcome.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_outcome.v1.schema.json config/schemas/release_train/train_outcome.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_submission.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_submission.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_submission.v1.schema.json config/schemas/release_train/train_submission.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_window_receipt.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_window_receipt.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_window_receipt.v1.schema.json config/schemas/release_train/train_window_receipt.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "config/schemas/release_train/train_window_request.v1.schema.json",
+      "path": "archive/release_train_20261026/config/schemas/release_train/train_window_request.v1.schema.json",
+      "restore_command": "git mv archive/release_train_20261026/config/schemas/release_train/train_window_request.v1.schema.json config/schemas/release_train/train_window_request.v1.schema.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/designs/DSN-20261021-release-train.md",
+      "path": "archive/release_train_20261026/docs/designs/DSN-20261021-release-train.md",
+      "restore_command": "git mv archive/release_train_20261026/docs/designs/DSN-20261021-release-train.md docs/designs/DSN-20261021-release-train.md",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json",
+      "path": "archive/release_train_20261026/docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json",
+      "restore_command": "git mv archive/release_train_20261026/docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/TRAIN_CANONICAL_HEAD_ALIGNMENT_20261024.md",
+      "path": "archive/release_train_20261026/docs/ops/TRAIN_CANONICAL_HEAD_ALIGNMENT_20261024.md",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/TRAIN_CANONICAL_HEAD_ALIGNMENT_20261024.md docs/ops/TRAIN_CANONICAL_HEAD_ALIGNMENT_20261024.md",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/packets/train-canonical-head-20261024/arm-corrected-2.xml",
+      "path": "archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/arm-corrected-2.xml",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/arm-corrected-2.xml docs/ops/packets/train-canonical-head-20261024/arm-corrected-2.xml",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/packets/train-canonical-head-20261024/controller-core-green.xml",
+      "path": "archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/controller-core-green.xml",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/controller-core-green.xml docs/ops/packets/train-canonical-head-20261024/controller-core-green.xml",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/packets/train-canonical-head-20261024/native-NON_GREEN.xml.gz",
+      "path": "archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/native-NON_GREEN.xml.gz",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/native-NON_GREEN.xml.gz docs/ops/packets/train-canonical-head-20261024/native-NON_GREEN.xml.gz",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/packets/train-canonical-head-20261024/stop-reviewed-5.xml",
+      "path": "archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/stop-reviewed-5.xml",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/stop-reviewed-5.xml docs/ops/packets/train-canonical-head-20261024/stop-reviewed-5.xml",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/packets/train-canonical-head-20261024/verification.json",
+      "path": "archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/verification.json",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/packets/train-canonical-head-20261024/verification.json docs/ops/packets/train-canonical-head-20261024/verification.json",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/train-smoke/T1.md",
+      "path": "archive/release_train_20261026/docs/ops/train-smoke/T1.md",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/train-smoke/T1.md docs/ops/train-smoke/T1.md",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "docs/ops/train-smoke/T2.md",
+      "path": "archive/release_train_20261026/docs/ops/train-smoke/T2.md",
+      "restore_command": "git mv archive/release_train_20261026/docs/ops/train-smoke/T2.md docs/ops/train-smoke/T2.md",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_census.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_census.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_census.py scripts/lib/release_train_census.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_classify.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_classify.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_classify.py scripts/lib/release_train_classify.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_contracts.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_contracts.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_contracts.py scripts/lib/release_train_contracts.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_controller.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_controller.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_controller.py scripts/lib/release_train_controller.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_drain.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_drain.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_drain.py scripts/lib/release_train_drain.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_queue.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_queue.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_queue.py scripts/lib/release_train_queue.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_run_now.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_run_now.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_run_now.py scripts/lib/release_train_run_now.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_timing.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_timing.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_timing.py scripts/lib/release_train_timing.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_view.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_view.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_view.py scripts/lib/release_train_view.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_window.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_window.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_window.py scripts/lib/release_train_window.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/lib/release_train_window_view.py",
+      "path": "archive/release_train_20261026/scripts/lib/release_train_window_view.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/lib/release_train_window_view.py scripts/lib/release_train_window_view.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/ops/release_train_arm.sh",
+      "path": "archive/release_train_20261026/scripts/ops/release_train_arm.sh",
+      "restore_command": "git mv archive/release_train_20261026/scripts/ops/release_train_arm.sh scripts/ops/release_train_arm.sh",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/ops/release_train_github_app_config.py",
+      "path": "archive/release_train_20261026/scripts/ops/release_train_github_app_config.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/ops/release_train_github_app_config.py scripts/ops/release_train_github_app_config.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "scripts/release_train_window_request.py",
+      "path": "archive/release_train_20261026/scripts/release_train_window_request.py",
+      "restore_command": "git mv archive/release_train_20261026/scripts/release_train_window_request.py scripts/release_train_window_request.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/fixtures/release_train_arm/make_sandbox.sh",
+      "path": "archive/release_train_20261026/tests/fixtures/release_train_arm/make_sandbox.sh",
+      "restore_command": "git mv archive/release_train_20261026/tests/fixtures/release_train_arm/make_sandbox.sh tests/fixtures/release_train_arm/make_sandbox.sh",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/fixtures/release_train_arm/stubs/curl",
+      "path": "archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/curl",
+      "restore_command": "git mv archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/curl tests/fixtures/release_train_arm/stubs/curl",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/fixtures/release_train_arm/stubs/docker",
+      "path": "archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/docker",
+      "restore_command": "git mv archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/docker tests/fixtures/release_train_arm/stubs/docker",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/fixtures/release_train_arm/stubs/psql",
+      "path": "archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/psql",
+      "restore_command": "git mv archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/psql tests/fixtures/release_train_arm/stubs/psql",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/fixtures/release_train_arm/stubs/systemctl",
+      "path": "archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/systemctl",
+      "restore_command": "git mv archive/release_train_20261026/tests/fixtures/release_train_arm/stubs/systemctl tests/fixtures/release_train_arm/stubs/systemctl",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/release_train_arm_test.sh",
+      "path": "archive/release_train_20261026/tests/release_train_arm_test.sh",
+      "restore_command": "git mv archive/release_train_20261026/tests/release_train_arm_test.sh tests/release_train_arm_test.sh",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/support/release_train_h0.py",
+      "path": "archive/release_train_20261026/tests/support/release_train_h0.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/support/release_train_h0.py tests/support/release_train_h0.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_20261021.py tests/test_release_train_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_app_token_reservation_20261022.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_app_token_reservation_20261022.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_app_token_reservation_20261022.py tests/test_release_train_app_token_reservation_20261022.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_arming_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_arming_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_arming_20261021.py tests/test_release_train_arming_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_canonical_head_20261024.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_canonical_head_20261024.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_canonical_head_20261024.py tests/test_release_train_canonical_head_20261024.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_census_live_p6_t9_20261023.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_census_live_p6_t9_20261023.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_census_live_p6_t9_20261023.py tests/test_release_train_census_live_p6_t9_20261023.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_checkout_20261022.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_checkout_20261022.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_checkout_20261022.py tests/test_release_train_checkout_20261022.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_controller_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_controller_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_controller_20261021.py tests/test_release_train_controller_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_email_mirror_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_email_mirror_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_email_mirror_20261021.py tests/test_release_train_email_mirror_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_forced_canary_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_forced_canary_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_forced_canary_20261021.py tests/test_release_train_forced_canary_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_github_app_config_20261023.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_github_app_config_20261023.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_github_app_config_20261023.py tests/test_release_train_github_app_config_20261023.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_github_app_writer_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_github_app_writer_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_github_app_writer_20261021.py tests/test_release_train_github_app_writer_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_host_trigger_20261023.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_host_trigger_20261023.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_host_trigger_20261023.py tests/test_release_train_host_trigger_20261023.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_import_gate_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_import_gate_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_import_gate_20261021.py tests/test_release_train_import_gate_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_injected_failures_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_injected_failures_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_injected_failures_20261021.py tests/test_release_train_injected_failures_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_n8n_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_n8n_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_n8n_20261021.py tests/test_release_train_n8n_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_orphan_watchdog_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_orphan_watchdog_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_orphan_watchdog_20261021.py tests/test_release_train_orphan_watchdog_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_phase7_prereqs_20261022.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_phase7_prereqs_20261022.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_phase7_prereqs_20261022.py tests/test_release_train_phase7_prereqs_20261022.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_queue_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_queue_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_queue_20261021.py tests/test_release_train_queue_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_refusal_codes_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_refusal_codes_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_refusal_codes_20261021.py tests/test_release_train_refusal_codes_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_rtw_key_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_rtw_key_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_rtw_key_20261021.py tests/test_release_train_rtw_key_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_run_now_20261025.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_run_now_20261025.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_run_now_20261025.py tests/test_release_train_run_now_20261025.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_shadow_p5_20261023.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_shadow_p5_20261023.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_shadow_p5_20261023.py tests/test_release_train_shadow_p5_20261023.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_train_ui_contract_stop_vocab_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_train_ui_contract_stop_vocab_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_train_ui_contract_stop_vocab_20261021.py tests/test_release_train_ui_contract_stop_vocab_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
+    },
+    {
+      "date": "2026-10-27",
+      "evidence": "Operator directive 2026-10-27: remove the retired release train from the code and the Command Center (Mergify + host deploy_on_main replace it, AGENTS.md \u00a725.10).",
+      "original_path": "tests/test_release_window_timer_superseded_20261021.py",
+      "path": "archive/release_train_20261026/tests/test_release_window_timer_superseded_20261021.py",
+      "restore_command": "git mv archive/release_train_20261026/tests/test_release_window_timer_superseded_20261021.py tests/test_release_window_timer_superseded_20261021.py",
+      "review_by": "2026-11-26",
+      "verdict": "SUPERSEDED"
     }
   ]
 }

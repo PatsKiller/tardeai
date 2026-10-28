@@ -9,6 +9,7 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
+import ProspectusLink from '../components/prospectus/ProspectusLink'
 import './WatchLayout.css'
 import './W9Mobile.css'
 import ConflictLine from '../components/conflicts/ConflictLine'
@@ -25,6 +26,7 @@ import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountL
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { fmtAsOf } from '../lib/asOfDisplay'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
   LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, drawers, headerChips, laneById,
@@ -216,6 +218,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{companyDisplayName({ value: r.company ?? null, display_name: r.company_facts?.company?.display_name }) || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <div><ProspectusLink symbol={r.symbol} testId="watch-detail-prospectus" /></div>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />
       <div data-testid="watch-detail-why" style={{ fontSize: TYPE.base, lineHeight: 1.5 }}><b>Why here:</b> {r.why}</div>
       {(r as ListRow).expiry_suggestion && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Review suggested: {(r as ListRow).expiry_suggestion?.suggest}</div>}
@@ -224,7 +227,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         <span style={label} title={TOOLTIPS.conviction}>
           Conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of
         </span>
-        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>No components — not in the CIO curator universe yet.</span>}
+        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>Conviction factors not recorded.</span>}
         {r.conviction_components.map(c => (
           <div key={c.key} title={[c.detail, c.source ? `source: ${c.source}` : null, c.weight != null ? `weight ${Math.round(c.weight * 100)}%` : null].filter(Boolean).join(' · ')}
             style={{ display: 'grid', gridTemplateColumns: '120px 1fr 40px', gap: 8, alignItems: 'center', fontSize: TYPE.base }}>
@@ -260,11 +263,11 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
       <div data-testid="watch-detail-next" style={{ display: 'grid', gap: 8, fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
         <span><b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}</span>
         {/* Never a dead end: a step that asks the CIO always carries the button (the flags block carries it when shown). */}
-        {asksCio(r.next_action.kind) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
-        {!asksCio(r.next_action.kind) && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
+        {(asksCio(r.next_action.kind) || currentReviewState(r, cio)?.publication_verified) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
+        {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
       <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
-        Evidence {r.evidence_at ? r.evidence_at.slice(0, 16).replace('T', ' ') : '—'} · expires {r.expires_at ? r.expires_at.slice(0, 16).replace('T', ' ') : '—'}
+        Evidence {fmtAsOf(r.evidence_at) || '—'} · expires {fmtAsOf(r.expires_at) || '—'}
         {r.stale ? ' · stale' : ''}. The CIO sets stance and priority; it never sizes or places orders.
       </span>
     </div>

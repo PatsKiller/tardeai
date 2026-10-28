@@ -217,6 +217,33 @@ def test_policy_no_evidence_is_never_enforced():
     assert all(r["status"] == "WRITTEN-only" for r in c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA, enforcement=forged)["rules"])
 
 
+def test_policy_sections_ordered_like_agents_chapters_not_document_preamble():
+    """Rulebook TOC starts at §0; meta headings such as Document version policy come last."""
+    text = (
+        "Policy-Version: 24.0.0\n"
+        "Last-Reviewed: 2026-10-26T10:25:00-04:00\n\n"
+        "# AGENTS.md — the operating standard\n\n"
+        "Intro preamble is not a chapter.\n\n"
+        "# Document version policy\n\n"
+        "- Every semantic change updates Policy-Version.\n\n"
+        "# 0 · If you read nothing else\n\n"
+        "1. MBI_BEHAVIOR = 0.\n\n"
+        "# 2A · Data egress\n\n"
+        "- Credentials never leave this box.\n\n"
+        "# 2 · Authority rails\n\n"
+        "- BehaviorWriteRefused raises on size fields.\n"
+    )
+    policy = c.policy_projection(text, source_sha=SHA)
+    assert policy["sections"][0].startswith("0 ·")
+    assert policy["sections"][1].startswith("2 ·")
+    assert policy["sections"][2].startswith("2A ·")
+    assert policy["sections"][-1] == "Document version policy"
+    assert "AGENTS.md" not in " ".join(policy["sections"])
+    assert policy["policy_version"] == "24.0.0"
+    assert policy["last_reviewed"] == "2026-10-26T10:25:00-04:00"
+    assert policy["counts_measured"] is False
+
+
 def test_explicit_ref_dedup_preserves_pending_governed_items(rig):
     ctx, row, _ = rig
     financial = c.item(ident="financial:action_queue:7", kind="FINANCIAL", title=row["title"], proposed_by=None,
@@ -254,6 +281,38 @@ def test_rule_disagreement_becomes_proposal_without_changing_policy(rig):
     assert ctx.ledger.proposal_rows()[0]["kind"] == "DESIGN"
     with pytest.raises(c.Refused, match="DOCUMENT_CHANGED"):
         ctx.ledger.feedback(ctx.principal(), lambda: policy, {**body, "document_sha": "old"})
+
+
+def test_add_section_becomes_proposal_without_rule_id(rig):
+    """Rulebook 'Propose new section' lands in Approvals; AGENTS.md is unchanged until a reviewed PR."""
+    ctx, _, _ = rig
+    policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
+    before = repr(policy)
+    body = {"position": "DISAGREE", "action": "add_section", "section_title": "29 · Observability",
+            "comment": "Add a section on alert ownership and runbooks.", "document_sha": policy["document_sha"]}
+    result = ctx.ledger.feedback(ctx.principal(), lambda: policy, body)
+    assert result["effect"] == "PROPOSAL_ONLY" and result["action"] == "add_section"
+    assert result["section"] == "29 · Observability" and result.get("rule_id") is None
+    assert repr(policy) == before
+    proposal = ctx.ledger.proposal_rows()[0]
+    assert proposal["kind"] == "DESIGN" and "29 · Observability" in proposal["title"]
+    with pytest.raises(c.Refused, match="SECTION_TITLE_REQUIRED"):
+        ctx.ledger.feedback(ctx.principal(), lambda: policy, {**body, "section_title": "  "})
+
+
+def test_policy_document_view_returns_full_rulebook(rig):
+    """view=document is one openable AGENTS.md; paged view stays capped at 40."""
+    ctx, _, _ = rig
+    text = "# 0 · Rules\n\n1. Never delete.\n\n# 28 · Operations\n\n- An agent may propose.\n"
+    policy = c.policy_projection(text, source_sha=SHA)
+    ctx.policy = lambda: dict(policy)
+    status, envelope = api.handle(api.PREFIX + "/policy", "GET", query={"view": "document"}, ctx=ctx)
+    assert status == 200 and envelope["data"]["view"] == "document"
+    assert len(envelope["data"]["rules"]) == len(policy["rules"])
+    assert envelope["data"]["total_rules"] == len(policy["rules"])
+    status, paged = api.handle(api.PREFIX + "/policy", "GET", query={}, ctx=ctx)
+    assert status == 200 and paged["data"]["view"] == "paged"
+    assert len(paged["data"]["rules"]) <= 40
 
 
 def test_actual_rulebook_before_after_pair_fits_and_offsets_name_exact_changed_text():

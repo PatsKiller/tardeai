@@ -127,6 +127,7 @@ def git_policy(root: Path = ROOT) -> dict:
     if not report_path.is_file() or report_path.stat().st_size > 4_000_000:
         return policy
     report = json.loads(report_path.read_text())
+    policy["audit"] = core.unverified_audit(report)  # replaced below only when the report binds this exact version
     ledger = core.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=lambda: False)
     # A report is a derived view. Bind it back to an actual canonical proposal event.
     verified = any(row.get("event") == "AUDIT_FINDINGS" and row.get("hash_self") == report.get("event_hash")
@@ -211,9 +212,21 @@ def _default_sources(root: Path) -> dict:
 
     def designs():
         from scripts.lib.design_registry import DesignStore, designs_awaiting, ledger_approved_ids
+        from scripts.lib import activation_reconcile as reconcile
         designs, errors = DesignStore(root).load()
         candidates = designs_awaiting(root, designs, ledger_approved_ids(None))
-        code_sha, out = _git(root, "rev-parse", "HEAD").strip(), []
+        code_sha, out, resolved = _git(root, "rev-parse", "HEAD").strip(), [], []
+        git = lambda *args: _git(root, *args)  # noqa: E731
+        owners = {d.get("id"): d.get("owner") for d in designs}
+        # Reconcile packets with what is live (lane registry, n8n live list, served release) and describe every row.
+        targets = reconcile.load_targets(root)
+        facts = reconcile.default_facts(root, git, code_sha)
+        added = reconcile.added_commits_cached(git, [row.get("path") for row in candidates[:200]], code_sha)
+        try:
+            from scripts.lib.agent_claim_board import default_claims_dir
+            claims = reconcile.claim_index(default_claims_dir())
+        except Exception:  # noqa: BLE001 - claim metadata is optional; the row then says "unknown" and why
+            claims = {}
         deadline = time.monotonic() + 1.5
         incomplete = False
         for row in candidates[:200]:
@@ -222,13 +235,27 @@ def _default_sources(root: Path) -> dict:
                 break
             path = row["path"]
             text = _git(root, "show", f"{code_sha}:{path}")
+            packet = row["kind"] == "packet"
+            target = targets.get(row["id"]) if packet else None
+            meta = reconcile.describe(kind=row["kind"], ident=row["id"], path=path, readme_text=text if packet else None,
+                                      owner=None if packet else owners.get(row["id"]), target=target,
+                                      added=added.get(path), claims=claims, title=row.get("title"))
             # Packets containing activations/policy edits cannot be approved as a generic design.
-            mode = "ACTIVATE" if row["kind"] == "packet" else "DESIGN"
-            out.append(core.item(ident="design:" + row["id"], kind=mode, title=row["title"],
-                                 proposed_by=None, created_at=None, source="design_registry",
-                                 doc=core.document(text, source_sha=code_sha, version=row["id"]),
-                                 governed_href="/coordination?tab=work" if mode == "ACTIVATE" else None))
-        return {"rows": out, "gap": "Design scan incomplete or invalid" if errors or incomplete or len(candidates) > 200 else None}
+            mode = "ACTIVATE" if packet else "DESIGN"
+            entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
+                              proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
+                              doc=core.document(text, source_sha=code_sha, version=row["id"]),
+                              governed_href="/coordination?tab=work" if mode == "ACTIVATE" else None)
+            entry["proposed_by_basis"], entry["created_at_basis"] = meta["proposed_by_basis"], meta["created_at_basis"]
+            if packet:
+                state = reconcile.reconcile(target, facts)
+                entry["reconcile"] = {**state, "note": (target or {}).get("note")}
+                if state["state"] != reconcile.WAITING:
+                    resolved.append(entry)  # already applied or superseded: shown under Resolved, never deleted
+                    continue
+            out.append(entry)
+        return {"rows": out, "resolved": resolved,
+                "gap": "Design scan incomplete or invalid" if errors or incomplete or len(candidates) > 200 else None}
 
     def policy_prs():
         from scripts.lib.design_registry import work_board
@@ -449,6 +476,9 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["items"] = [{k: v for k, v in it.items() if k != "document"} | {
                     "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
                                  for it in data["items"]]
+                data["resolved"] = [{k: v for k, v in it.items() if k != "document"} | {
+                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
+                                    for it in data.get("resolved") or []]
                 return 200, {"ok": True, "data": data}
             if sub == "/policy":
                 data = ctx.policy()
@@ -456,16 +486,32 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 section = q.get("section")
                 if isinstance(section, list):
                     section = section[0] if section else None
+                view = q.get("view")
+                if isinstance(view, list):
+                    view = view[0] if view else None
                 all_rules = data["rules"]
                 selected = [r for r in all_rules if not section or r["section"] == section]
-                raw_offset = q.get("offset", 0)
-                if isinstance(raw_offset, list):
-                    raw_offset = raw_offset[0] if raw_offset else 0
-                try:
-                    offset = max(0, int(raw_offset))
-                except (TypeError, ValueError):
-                    offset = 0
-                data["rules"], data["total_rules"], data["section_total"], data["offset"] = selected[offset:offset+40], len(all_rules), len(selected), offset
+                # Document view: one openable AGENTS.md — every section and rule in order.
+                # Cap guards accidental runaway; measured corpus is ~900 rules / ~600 KB.
+                if view == "document":
+                    data["rules"] = selected[:2000]
+                    data["total_rules"] = len(all_rules)
+                    data["section_total"] = len(selected)
+                    data["offset"] = 0
+                    data["view"] = "document"
+                else:
+                    raw_offset = q.get("offset", 0)
+                    if isinstance(raw_offset, list):
+                        raw_offset = raw_offset[0] if raw_offset else 0
+                    try:
+                        offset = max(0, int(raw_offset))
+                    except (TypeError, ValueError):
+                        offset = 0
+                    data["rules"] = selected[offset:offset + 40]
+                    data["total_rules"] = len(all_rules)
+                    data["section_total"] = len(selected)
+                    data["offset"] = offset
+                    data["view"] = "paged"
                 data["positions"] = [r for r in ctx.ledger.rows() if r.get("event") == "RULE_FEEDBACK"][-100:]
                 return 200, {"ok": True, "data": data}
             if sub.startswith("/approvals/"):

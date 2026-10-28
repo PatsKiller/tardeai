@@ -154,9 +154,8 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     # Forward W1's values, including None, provenance, stop state and conflicts.
     result = {name: truth.get(name) or unavailable("CIO field unavailable")[name]
               for name in ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "sectors")}
-    from scripts.lib.home_board14 import shape_do_now
-    ranked = shape_do_now(result["do_now"])
-    result["do_now"] = {**ranked, "items": (ranked.get("items") or [])[:7]}
+    from scripts.lib.home_board14 import cap_do_now
+    result["do_now"] = cap_do_now(result["do_now"])
     # Engine findings are a registered read projection. Legacy record diagnostics
     # are never reclassified into a page warning here.
     result["conflicts"] = truth.get("conflicts") or {
@@ -192,7 +191,10 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     result["portfolio"] = {k: v for k, v in result["portfolio"].items() if k not in ("holdings", "stored_totals")}
     display_keys = {"symbol", "account_id", "account_label", "shares", "quantity", "price", "current_price", "market_value",
                     "stop_price", "stop_source", "stop_state", "stop_captured_at", "stop_evidence", "broker_protected",
-                    "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd"}
+                    "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd",
+                    # #2141 stop categories: Risk/Defense need these to show resting stops and hide dust rows.
+                    "counted", "stop_category", "resting_stop_distance_pct", "loss_at_resting_stop_usd",
+                    "planned_stop_distance_pct"}
     result["positions"] = {**result["positions"], "rows": [
         {k: v for k, v in row.items() if k in display_keys} for row in result["positions"].get("rows") or []]}
     return result

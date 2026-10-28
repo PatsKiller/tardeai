@@ -1,8 +1,9 @@
 // System → Releases & schedules (operator-approved 2026-10-22; mockup gate3 Pipeline.dc.html). What is queued and for
-// when, what actually shipped, what failed — the release train and n8n / host cron in one place. Read-only view of
+// when, what actually shipped, what failed — deploys and n8n / host cron in one place. Read-only view of
 // GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py; contract docs/ops/RELEASES_SCHEDULES_PAGE.md).
 // Every section shows its own freshness (state · age · source); UNAVAILABLE renders with its reason, never 0 or green.
-// There is no control here: STOP RELEASES stays on Coordination → Release train (components/ReleaseStopControl).
+// There is no control here: the deploy STOP is on Home → Deploys and Ops → Controls (components/DeployStopControl).
+// The retired release train's windows and queue sections and its tab were removed 2026-10-27 (operator directive).
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -11,10 +12,10 @@ import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, shadowLine, stageTone, verifyLabel, windowTone,
-  type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
-  type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
+  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
+  sectionView, stageTone, verifyLabel,
+  type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
+  type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -23,7 +24,7 @@ const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const cell: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm }
-const TABS = [['train', 'Release train'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
+const TABS = [['deploys', 'Deploys'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
 type TabKey = (typeof TABS)[number][0]
 
 function useNow(ms: number): number {
@@ -65,33 +66,11 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
 }
 
-function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
-  const w = s.windows.value as Windows | null
-  const q = s.queue.value as Queue | null
+function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
   const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
   const nx = s.next_release.value as NextRelease | null
-  const stop = w?.stop
   return <div style={{ display: 'grid', gap: 12 }}>
-    <Section title="Next windows" testId="rs-windows" v={s.windows}
-      sub={w ? `train ${w.armed ? 'ARMED' : 'UNARMED'} · delegation ${w.delegation?.state ?? 'UNAVAILABLE'} · STOP latch ${stop?.state ?? 'UNAVAILABLE'}` : undefined}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
-        {(w?.windows ?? []).map((x, i) => (
-          <div key={x.window_id} style={{ background: TOKENS.bg[2], border: `1px solid ${i === 0 ? toneVars(windowTone(x.state)).border : TOKENS.border}`, borderRadius: RADIUS.sm, padding: '10px 12px', display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ ...mono, fontSize: TYPE.lg, fontWeight: 700, color: TOKENS.text[0] }}>{x.local_time}</span>
-              <Pill tone={windowTone(x.state)}>{x.state}</Pill>
-            </div>
-            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{x.role ?? '—'} window · {etDateTime(x.starts_at)}</span>
-            <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{x.reason ?? (x.enabled ? 'enabled' : 'not enabled')}{x.note ? ` · ${x.note}` : ''}</span>
-            <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>last shadow tick: {x.last_shadow_request_at ? `${etDateTime(x.last_shadow_request_at)} · ${x.last_shadow_receipt_state ?? 'no receipt'}` : 'never'}</span>
-            {x.last_shadow ? <span data-testid={`rs-shadow-${x.slot}`} style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{shadowLine(x.last_shadow)}</span> : null}
-          </div>
-        ))}
-      </div>
-      {w ? <p style={muted}>{w.manual_path}</p> : null}
-    </Section>
-
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),
@@ -100,20 +79,6 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
           {(nx.ci.workflows ?? []).length ? <span style={{ ...muted, display: 'block' }}>{(nx.ci.workflows ?? []).map(w => `${w.name ?? '?'} ${w.state ?? '?'}`).join(' · ')}</span> : null}
           {nx.ci.reason ? <span style={{ ...muted, display: 'block' }}>{nx.ci.reason}</span> : null}</span>,
       ]]} /> : null}
-    </Section>
-
-    <Section title="Queue · what rides next" sub="PR · state · why not riding" testId="rs-queue" v={s.queue}>
-      {q ? <>
-        {q.census.alert ? <p role="alert" data-testid="rs-census-alert" style={{ margin: 0, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, fontWeight: 700, color: toneVars('danger').color, background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}` }}>{q.census.alert}</p> : null}
-        <ChipRow>
-          <Chip tone={q.store.freshness === 'OK' && q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.store.reason ?? ''}>{queueStoreText(q)}</Chip>
-          <Chip tone={q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.census.reason ?? ''}>PR census {q.census.freshness ?? 'UNAVAILABLE'} · {countOrUnavailable(q.census.open_prs)} open{q.census.as_of ? ` · ${etDateTime(q.census.as_of)}` : ''}</Chip>
-        </ChipRow>
-        <Table label="Open PRs and why each is not riding" heads={['PR', 'Title', 'Bucket', 'Riding?', 'Why not riding']}
-          empty={q.census.freshness === 'UNAVAILABLE' ? `UNAVAILABLE · ${q.census.reason ?? 'census unavailable'}` : 'No open PRs in the census'}
-          rows={q.open_prs.slice(0, 60).map(p => [<span style={mono}>{'#' + String(p.pr)}</span>, p.title ?? '—', p.bucket,
-            <Pill tone={p.riding ? 'success' : 'neutral'}>{p.riding ? 'QUEUED' : 'NO'}</Pill>, p.riding ? '—' : p.why_not_riding])} />
-      </> : null}
     </Section>
 
     <Section title="Shipped · release history" sub="served SHA · PRs · verify · rollback" testId="rs-history" v={s.history}>
@@ -135,7 +100,13 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
         <p style={muted}>Not covered: {errs.not_covered}</p>
       </> : null}
     </Section>
-    <p style={muted}>STOP RELEASES and the train's own queue/trains/events views live on <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }}>Coordination → Release train</Link>.</p>
+    <p style={muted} data-testid="rs-where-to-act">
+      Deploy STOP / resume:{' '}
+      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Deploys</Link>
+      {' '}· Observe:{' '}
+      <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Deploy</Link>
+      . Mergify owns the merge queue; emergency promote is host CLI under release-write naming the SHA. This tab is serving pin, main HEAD, release history and errors.
+    </p>
   </div>
 }
 
@@ -196,28 +167,28 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
   const [params, setParams] = useSearchParams()
-  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'train'
+  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
-  const keys: SectionKey[] = ['serving', 'next_release', 'windows', 'queue', 'history', 'release_errors', 'n8n_today', 'timeline']
+  const keys: SectionKey[] = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
   const current = !api.error && !api.stale && keys.some(k => s[k].state === 'OK')
   const kpis = api.data?.schema === 'ReleasesSchedules@v1' ? api.data.kpis ?? [] : []
-  const kpiKeys = ['serving', 'next_release', 'next_window', 'n8n_runs', 'n8n_errors']
-  const labels: Record<string, string> = { serving: 'Serving', next_release: 'Releasing next', next_window: 'Next train window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
+  const kpiKeys = ['serving', 'next_release', 'n8n_runs', 'n8n_errors']
+  const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
-  const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
-  return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
+  const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
+  return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
-      <p style={muted}>What is queued, for when · what actually shipped · what failed. Release train and n8n in one place. Read-only; nothing here releases, stops or schedules.</p>
+      <p style={muted}>Serving pin · last promote · deploy STOP · Mergify queue (external) · n8n schedules. Read-only; nothing here merges, promotes or schedules.</p>
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
           : <Chip tone={api.data?.status === 'OK' && current ? 'neutral' : 'warning'}>{current ? (api.data?.status ?? 'UNKNOWN') : 'STALE'}</Chip>}
         <Chip tone="neutral">generated {etDateTime(api.data?.generated_at)}</Chip>
         {serving ? <Chip tone={serving.pins_agree ? 'neutral' : 'warning'} title={serving.release_name ?? ''}>pins {serving.pins_agree ? 'agree with CURRENT' : 'DISAGREE with CURRENT'}</Chip> : null}
-        {api.data?.stop?.effective_stop ? <Chip tone="danger">release STOP {api.data.stop.state}</Chip> : null}
+        {api.data?.stop?.effective_stop ? <Chip tone="danger">deploy STOP {api.data.stop.state}</Chip> : null}
       </ChipRow>
     </div>
 
@@ -238,7 +209,7 @@ export default function ReleasesSchedules() {
         style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
-    {tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
   </OpsDeskFrame>
 }

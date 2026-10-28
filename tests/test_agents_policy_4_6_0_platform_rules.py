@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
@@ -127,6 +128,23 @@ S17_ENTRY_17_0_0 = (
     "\n"
 )
 
+# Keep in sync with tests/test_agents_policy_20_0_0_agent_operations.py (PROPOSED + ACTIVE forms).
+S17_ENTRY_24_0_0_PROPOSED = (
+    "**Mergify deploy (24.0.0, §25.10) — binding only once AGENTS.md 24.0.0 is ACTIVE:** installing or re-permissioning the\n"
+    "Mergify GitHub App · arming, pausing or revoking the standing **deploy** (promote-only) delegation · clearing a\n"
+    "deploy STOP or resuming the deploy poller · running `scripts/emergency_manual_promote.sh` or setting\n"
+    "`TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never promote, never set that env. Until 24.0.0 is ACTIVE the\n"
+    "17.0.0 / 22.0.0 release-train §17 items above still govern.\n\n"
+)
+S17_ENTRY_24_0_0_ACTIVE = (
+    "**Mergify deploy (24.0.0, §25.10):** installing or re-permissioning the Mergify GitHub App · arming, pausing or\n"
+    "revoking the standing **deploy** (promote-only) delegation · clearing a deploy STOP or resuming the deploy poller ·\n"
+    "running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never merge, never\n"
+    "promote, never set that env. The 17.0.0 / 22.0.0 release-train merge and Run now paths are retired for live use\n"
+    "(§25.10); train libraries may remain for read-only history.\n\n"
+)
+S17_ENTRY_24_0_0 = S17_ENTRY_24_0_0_PROPOSED
+
 
 def _section(text: str, start: str, end: str) -> str:
     s = re.search(rf"^{re.escape(start)}", text, re.M)
@@ -134,6 +152,7 @@ def _section(text: str, start: str, end: str) -> str:
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
+    block = block.replace(S17_ENTRY_24_0_0_ACTIVE, "").replace(S17_ENTRY_24_0_0_PROPOSED, "")  # 24.0.0 Mergify §17
     block = block.replace(S17_ENTRY_17_0_0, "")  # 17.0.0's §17 paragraph; see the constant
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
@@ -198,9 +217,11 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 20.2.0 (MINOR, ratified on #2073) supersedes 20.1.0 (ACTIVE, #2019).
     # 20.3.0 (MINOR, ratified on #2107) supersedes 20.2.0 (ACTIVE, #2073).
     # 21.0.0 (MAJOR, ratified on #2128) supersedes 20.3.0 (ACTIVE, #2107).
+    # 22.0.0 (MAJOR, ratified on #2149) supersedes 21.0.0 (ACTIVE, #2128).
+    # 24.0.0 (MAJOR, PROPOSED) supersedes 22.0.0 (ACTIVE, #2149).
     allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
                (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}, (20, 2, 0): {"20.1.0"}, (20, 3, 0): {"20.2.0"},
-               (21, 0, 0): {"20.3.0"}}.get(
+               (21, 0, 0): {"20.3.0"}, (22, 0, 0): {"21.0.0"}, (24, 0, 0): {"22.0.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f
@@ -232,7 +253,7 @@ def test_23_14_is_byte_identical():
 def test_claude_md_adapter_restates_no_new_rule():
     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
     text = (
-        pre_20_0_0_adapter((ROOT / "CLAUDE.md").read_text(encoding="utf-8")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+        pre_20_0_0_adapter(read_pre_26("CLAUDE.md")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
         .replace(RULE_6_EXCEPTION_15_0_0, "")
     )
     assert "n8n" not in text.lower() and "§24" not in text

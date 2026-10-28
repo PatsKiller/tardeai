@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_watch_batch_20261026",
+  "files": [
+    "tests/test_prospectus_watch_batch_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_WATCH_BATCH_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_WATCH_BATCH_20261026 — cheaper Watch prospectuses (operator 2026-10-26: \"implement this cost savings right now\"): per-scope generation settings (holdings unchanged; Watch medium effort, 5k tokens, concise), Message Batches API at 50% through the governed credit path with the data-quality gate before submit, idempotent collect through the shared persist path, re-queue on errored/expired results, operator rewrites stay synchronous. Synthetic tickers; batch client, writer and Haiku stubbed."
+  ]
+}

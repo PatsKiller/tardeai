@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "incident_ledger_20261027",
+  "files": [
+    "tests/test_incident_ledger_20261027.py"
+  ],
+  "comment": [
+    "Incident ledger (IncidentRecord@v1, one writer, append-only events + derived index), deterministic watchers (dedupe by SHA/job fingerprint, gap resolves nothing), governed supervisor (allowlisted actions only, refused scopes before any model, fallback provider read-only, never DeepSeek, fixer contract, one P1 per incident), Ops Incidents API (operator decision first). Temp ledgers, stubbed model/runner/Telegram/fixer/gh/git; no psycopg2."
+  ]
+}
