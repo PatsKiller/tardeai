@@ -1,0 +1,96 @@
+# .gitleaks.toml -- secret-scan rules for Trade AI (2026-10-27).
+#
+# Read by gitleaks in .github/workflows/secret-scan.yml (and by anyone running `gitleaks git` locally at the
+# repo root). The default gitleaks ruleset stays on (useDefault); the rules below re-state the credential
+# shapes this repository actually handles, so a future gitleaks upgrade that renames or drops a default rule
+# cannot silently stop catching them.
+#
+# False positives are suppressed ONLY by fingerprint in .gitleaksignore (one finding = one line, reviewable).
+# There are no path or folder exemptions here: tests/ and docs/ are scanned exactly like scripts/.
+# A pull request is judged by main's copy of this file and of .gitleaksignore (see secret-scan.yml), so a
+# false positive in a NEW line is handled with an inline `gitleaks:allow` comment on that line, visible in
+# review, or by landing the rule change first.
+# Personal data (emails, account numbers, chat ids, private addresses, home paths) is checked by
+# scripts/check_no_pii.py, not here.
+
+title = "Trade AI gitleaks config"
+
+[extend]
+useDefault = true
+
+# Narrow the DEFAULT generic-api-key rule (gitleaks merges this allowlist into it; the rule itself is
+# unchanged). Two shapes made up ~190 of its ~250 inherited hits on main and are not credentials:
+#   1. record identifiers named *_key (subject_key, dedupe_key, incident_key, *event_key, idempotency_key,
+#      approval_key, storageKey) -- low-entropy ids or UUIDs, never a credential in this codebase;
+#   2. evidence manifests mapping a FILE PATH to its hex digest ("src/x/tokens.ts": "<sha256>").
+# A credential under any other name (api_key, token, secret, AccountKey, ...) still fires.
+[[rules]]
+id = "generic-api-key"
+
+    [rules.allowlist]
+    regexTarget = "match"
+    regexes = [
+        '''(?i)\b(?:subject|dedupe|incident|[a-z]*_event|event|idempotency|approval|storage)[_-]?key\b["']?\s*(?:[:=]|==)\s*["'`]?[A-Za-z0-9_.:/@-]+["'`]?$''',
+        '''\.(?:ts|tsx|js|jsx|mjs|cjs|py|css|json|ya?ml|md|sh|html|toml|sql|txt)["']\s*:\s*["'][0-9a-f]{40}(?:[0-9a-f]{24})?["']?$''',
+    ]
+
+[[rules]]
+id = "tradeai-github-token"
+description = "GitHub app / OAuth / user-to-server / refresh token (ghs_, gho_, ghu_, ghr_)"
+regex = '''\b(?:ghs|gho|ghu|ghr)_[A-Za-z0-9]{36}\b'''
+keywords = ["ghs_", "gho_", "ghu_", "ghr_"]
+
+[[rules]]
+id = "tradeai-github-fine-grained-pat"
+description = "GitHub fine-grained personal access token"
+regex = '''\bgithub_pat_[A-Za-z0-9_]{82}\b'''
+keywords = ["github_pat_"]
+
+[[rules]]
+id = "tradeai-telegram-bot-token"
+description = "Telegram bot token (bot id, colon, 35-char secret)"
+regex = '''\b\d{8,10}:[A-Za-z0-9_-]{35}\b'''
+
+[[rules]]
+id = "tradeai-google-api-key"
+description = "Google API key"
+regex = '''\bAIza[0-9A-Za-z_-]{35}\b'''
+keywords = ["aiza"]
+
+[[rules]]
+id = "tradeai-google-oauth-client-secret"
+description = "Google OAuth client secret"
+regex = '''\bGOCSPX-[0-9A-Za-z_-]{28}\b'''
+keywords = ["gocspx-"]
+
+[[rules]]
+id = "tradeai-google-oauth-access-token"
+description = "Google OAuth access token"
+regex = '''\bya29\.[0-9A-Za-z_-]{30,}'''
+keywords = ["ya29."]
+
+[[rules]]
+id = "tradeai-jwt"
+description = "JSON Web Token (header.payload.signature)"
+regex = '''\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{16,}'''
+keywords = ["eyj"]
+
+[[rules]]
+id = "tradeai-database-url-with-password"
+description = "Database / broker connection URL with an inline password"
+regex = '''\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?)://[^:@\s/'"]+:([^@\s/'"]{4,})@[^\s'"/]+'''
+secretGroup = 1
+keywords = ["postgres", "mysql", "mariadb", "mongodb", "redis", "amqp"]
+
+    # Placeholders and env interpolation are not credentials. The allowlist matches the captured
+    # password only (regexTarget "secret"), so a real password next to a placeholder host still fires.
+    [rules.allowlist]
+    regexTarget = "secret"
+    regexes = [
+        '''^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$''',
+        '''^\{[A-Za-z_][A-Za-z0-9_]*\}$''',
+        '''^%\([A-Za-z_]+\)s$''',
+        '''^<[^>]+>$''',
+        '''(?i)^(?:password|passwd|pass|pw|secret|hunter2|x+|\*+)$''',
+        '''(?i)^(?:fake|dummy|example|sample|placeholder|changeme|redacted)[A-Za-z0-9_-]*$''',
+    ]

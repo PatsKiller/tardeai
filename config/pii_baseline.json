@@ -1,0 +1,13 @@
+{
+  "schema": "PiiBaseline@v1",
+  "_note": "Ratchet: findings per category already in the tree when scripts/check_no_pii.py landed. Counts only, never values or paths. May only shrink; --write-baseline refuses to raise a count.",
+  "counts": {
+    "email": 99,
+    "date_of_birth": 1,
+    "account_number": 17,
+    "telegram_chat_id": 18,
+    "private_ip": 465,
+    "home_path": 16955,
+    "blocked_path": 18
+  }
+}
