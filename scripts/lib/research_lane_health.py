@@ -376,7 +376,7 @@ def collect_coverage_stall(
     return rec
 
 
-def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
+def collect_report(*, now: Optional[datetime] = None, cio_ask_health_reader=None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(hours=silence_hours())
     lanes: list[dict[str, Any]] = []
@@ -461,6 +461,17 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         except Exception:
             from cio_hermes_queue_health import collect_cio_hermes_queue_health  # type: ignore
         lanes.append(collect_cio_hermes_queue_health(now=now))
+    # Ask lifecycle: transport success cannot stand in for hourly checks,
+    # memory synchronization, canonical readback or delivery. The injectable
+    # reader lets integration tests exercise registration without any host IO.
+    if cio_ask_health_reader is None:
+        from scripts.lib.cio_ask_lifecycle_health import collect_cio_ask_lifecycle_health
+        cio_ask_health_reader = collect_cio_ask_lifecycle_health
+    try:
+        lanes.append(cio_ask_health_reader(now=now))
+    except Exception:
+        from scripts.lib.cio_ask_lifecycle_health import unavailable
+        lanes.append(unavailable(now=now, code="collector_unavailable"))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

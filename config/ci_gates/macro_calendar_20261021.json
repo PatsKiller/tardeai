@@ -12,7 +12,8 @@
     "config/macro_calendar_overrides.json (FOMC 2026-2027 at 14:00, operator add/remove with reasons); MacroCalendar@v1",
     "written atomically to data/runtime/macro_calendar.json. Reader scripts/lib/macro_calendar.py skip_0800 /",
     "ReleaseTrainCalendar.verdict fails closed (missing, corrupt, > 72 h, uncovered); needs-action source macro_calendar",
-    "(P2); n8n-native ingest lane macro-calendar-refresh at SHADOW (daily 05:05 ET, DRAFT contract). Hermetic: FRED",
+    "(P2); n8n-native ingest lane macro-calendar-refresh (daily 05:05 ET, REVIEWED contract): SHADOW 2026-10-21, CANARY",
+    "(dispatch live, live_arg []) 2026-10-26 on the operator decision. Hermetic: FRED",
     "faked at the fetcher seam, urlopen refused, tmp state roots."
   ]
 }

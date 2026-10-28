@@ -64,14 +64,15 @@ def test_seeded_registry_parses_and_ids_are_consistent():
     assert errors == []
     ids = {d["id"] for d in designs}
     assert {
-        "DSN-20261021-release-train",
         "DSN-20261022-momentum-alerts",
         "DSN-20261023-ask-the-cio",
         "DSN-20261022-cio-prospect-store",
         "DSN-20261022-data-domains",
     } <= ids
-    rt = next(d for d in designs if d["id"] == "DSN-20261021-release-train")
-    assert [p["id"].rsplit("-", 1)[1] for p in rt["phases"]] == [f"P{i}" for i in range(8)]
+    # The retired release train's design was archived 2026-10-27 (archive/release_train_20261026/, operator directive).
+    assert "DSN-20261021-release-train" not in ids
+    ask = next(d for d in designs if d["id"] == "DSN-20261023-ask-the-cio")
+    assert ask["phases"] and all(p["id"].startswith("DSN-20261023-ask-the-cio-P") for p in ask["phases"])
 
 
 @pytest.mark.parametrize(

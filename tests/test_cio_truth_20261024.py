@@ -75,12 +75,22 @@ def test_missing_holdings_or_day_value_is_unknown(holdings):
     assert truth.portfolio_for({}, now=NOW)["total_usd"] is None
     del holdings["holdings"][0]["day_change"]
     result = truth.portfolio_for(holdings, now=NOW)
-    assert result["day_pl_usd"] is None and result["gap"]
+    # One unknown row no longer blanks the day: the known rows are summed, the
+    # figure is flagged incomplete and the excluded row is named in the gap.
+    assert result["day_pl_usd"] == -37 and result["day_pl_complete"] is False
+    assert result["day_pl_coverage"]["unknown_rows"] == 1 and result["gap"]
+    for row in holdings["holdings"]:
+        row.pop("day_change", None)
+    assert truth.portfolio_for(holdings, now=NOW)["day_pl_usd"] == 0.0  # only the cash row is known
+    holdings["holdings"] = [r for r in holdings["holdings"] if not r.get("is_cash")]
+    assert truth.portfolio_for(holdings, now=NOW)["day_pl_usd"] is None
 
 
 @pytest.mark.parametrize("status,state,protected", [
     ("WORKING", "active", True), ("pending_activation", "pending_activation", False),
     ("FILLED", "filled", False), ("CANCELED", "none", False), (None, "unknown", False),
+    # Schwab's status for a resting STOP order (accuracy audit 2026-10-26: it showed as "unknown")
+    ("AWAITING_STOP_CONDITION", "pending_activation", False),
 ])
 def test_stop_state_is_independent_of_stop_price(status, state, protected):
     rows = [{"account": "schwab_roth", "symbol": "SPCX", "stop_price": 90, "status": status,

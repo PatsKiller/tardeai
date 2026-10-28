@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_collab_untrusted_context_20261027",
+  "files": [
+    "tests/test_agent_collab_untrusted_context_20261027.py",
+    "tests/test_agent_untrusted_data.py"
+  ],
+  "anchor": "AGENT_COLLAB_UNTRUSTED_20261027",
+  "comment": [
+    "ANCHOR: AGENT_COLLAB_UNTRUSTED_20261027 — agent-controls audit 2026-09-18 (prompt injection PARTIAL):",
+    "agent_collab peer / third-party prompt context is fenced as UNTRUSTED_DATA, fails closed, and",
+    "untrusted_delimiter neutralises fence-break and role-tag sequences with a content-bound fence id.",
+    "tests/test_agent_untrusted_data.py was only run by agent-intelligence-foundation-ci; gated here too",
+    "because the shared helper changed."
+  ]
+}

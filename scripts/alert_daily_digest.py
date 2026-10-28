@@ -68,7 +68,15 @@ def _build_message() -> str | None:
     if new_n + ongoing_n + recovered_n + suppressed_n == 0 and total:
         new_n = total
 
-    if total == 0 and new_n == 0 and recovered_n == 0:
+    from lib.anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot, digest_noteworthy
+    try:
+        from lib.anthropic_routing import state_root
+        anthropic = anthropic_snapshot(state_root())
+    except Exception:
+        anthropic = unavailable_snapshot()
+    # Preserve the quiet empty-day behavior unless this provider has material
+    # evidence. No key, expired/disabled promotions and unused credit stay quiet.
+    if total == 0 and new_n == 0 and recovered_n == 0 and not digest_noteworthy(anthropic):
         return None
 
     lines = [
@@ -95,6 +103,7 @@ def _build_message() -> str | None:
         lines.append(f"🔔 watch alerts fired: {watch['n']}")
     if (unacked.get("n") or 0) > 0:
         lines.append(f"⚠ unacked critical/urgent: {unacked['n']} — review Command Center → alerts")
+    lines.append(anthropic["digest_line"])
     lines.append("raw audit: Command Center /v3/")
     return "\n".join(lines)
 

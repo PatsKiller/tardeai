@@ -4128,7 +4128,17 @@ _DOSSIER_STORES = (
     ("industry", "industry_momentum_latest.json"), ("research", "hermes_research_intelligence"),
     ("thesis", "symbol thesis store"), ("agents", "watchlist_agent_results"),
     ("iv", "options_iv_history"), ("dividends", "ticker_dividend_data"),
+    ("prospectus", "security_research_spine (prospectus)"),
 )
+
+
+def _latest_prospectus(symbol: str) -> dict[str, Any] | None:
+    """The latest Ticker Prospectus from the CIO memory (shared research spine), or None."""
+    try:
+        from scripts.lib.prospectus.cio_memory import latest_for  # noqa: PLC0415
+    except ImportError:
+        from lib.prospectus.cio_memory import latest_for  # type: ignore  # noqa: PLC0415
+    return latest_for(symbol, root=PROJECT_ROOT)
 
 
 def _attach_subject_dossier(intent: dict[str, Any], evidence: dict[str, Any]) -> None:
@@ -4160,6 +4170,7 @@ def _attach_subject_dossier(intent: dict[str, Any], evidence: dict[str, Any]) ->
         analyst_fn=subject_analyst_view, research_fn=subject_research,
         thesis_fn=(lambda s: thesis_fields_for_symbol(s, root=PROJECT_ROOT)) if thesis_fields_for_symbol else None,
         held=_held_positions_map(),
+        prospectus_fn=_latest_prospectus,
     )
     prices: dict[str, float] = {}
     known = avail.get("subject_price") or subject_price_facts(syms)

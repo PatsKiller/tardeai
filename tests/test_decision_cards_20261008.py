@@ -157,15 +157,13 @@ def test_command_center_decision_layout_is_wired():
                       ("security", "ai")):
         assert f"{fam}: '{tone}'" in parts                                  # strict colour discipline, tokens only
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", parts)
-    # Approved board 14 (desks-redesign 2026-10-24) replaced the Home decision layout: CIO-ranked
-    # "Do now" first, then protection, the CIO market view and what waits on the operator; the
-    # header carries the metrics, so Home no longer repeats them ("More metrics" retired).
+    # Operator rejected Board 14 on 2026-10-25; restore the approved Do-now page.
     home = (src / "pages/HomeHub.tsx").read_text()
-    assert "<W7HomePanels" in home and "More metrics" not in home
-    panels = (src / "components/W7PagePanels.tsx").read_text()
-    body = panels[panels.index("export function W7HomePanels"):]
-    assert (body.index('title="Do now"') < body.index('title="Protection"')
-            < body.index('title="CIO view of the market"') < body.index('title="Waiting on you"'))
+    assert "<HomeDoNow" in home and "<W7HomePanels" not in home
+    body = (src / "pages/HomeDoNow.tsx").read_text()
+    assert body.index('<DoNowQueue') < body.index('data-testid="home-accounts"')
+    assert body.index('data-testid="home-numbers"') < body.index('data-testid="home-opportunities"')
+    assert body.index('data-testid="home-pulse"') < body.index('id="briefing"')
     hd = (src / "components/decision/HomeDecision.tsx").read_text()
     assert hd.index("<RequiresAttention") < hd.index("<BestOpportunities") < hd.index("<TopRisks")
     comms = (src / "pages/CommunicationsHub.tsx").read_text()

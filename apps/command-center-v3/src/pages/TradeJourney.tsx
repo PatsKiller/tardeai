@@ -18,6 +18,7 @@ import {
   unwrapDetail, type Chart, type FilterId, type Journey, type JourneysPayload,
 } from '../lib/tradeJourneyModel'
 import { serverNumber, tradeLink } from '../lib/tradeInViewModel'
+import { readableTimesInText } from '../lib/readableTime'
 import '../components/tradeinview/TradeInViewLayout.css'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
@@ -27,7 +28,10 @@ const GRID = '90px 200px 110px 110px 150px minmax(0, 1fr)'
 
 function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; children: ReactNode; tip?: string; testId?: string; size?: 'sm' | 'md' }) {
   return (
-    <span title={tip} data-testid={testId} style={{ ...chipStyle(tone, 'soft', size), ...(size === 'md' ? { fontSize: TYPE.base, padding: '5px 10px' } : {}), cursor: tip ? 'help' : undefined }}>
+    <span title={tip} data-testid={testId} style={{ ...chipStyle(tone, 'soft', size), ...(size === 'md' ? { fontSize: TYPE.base, padding: '5px 10px' } : {}), cursor: tip ? 'help' : undefined,
+      // A long receipt ("Ledger synced … · ledger row write") wraps inside the column instead of pushing the
+      // phone page 5px sideways (site sweep 2026-10-25).
+      maxWidth: '100%', boxSizing: 'border-box', whiteSpace: 'normal', overflowWrap: 'anywhere', flexWrap: 'wrap' }}>
       {children}
     </span>
   )
@@ -60,7 +64,7 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
       <span data-label="P/L" style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right', color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }} title={TOOLTIPS.pl}>{plText(j)}</span>
       <span style={{ fontSize: TYPE.base, color: toneVars(exitTone).color, lineHeight: 1.3 }} title={`${j.exit_cause.detail}\n\n${TOOLTIPS.exit}`} data-testid="tj-exit">
         <span style={{ ...chipStyle(exitTone, 'soft', 'sm') }}>{exitText(j)}</span>
-        <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm, marginTop: 4 }}>{j.exit_cause.detail}</span>
+        <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm, marginTop: 4 }}>{readableTimesInText(j.exit_cause.detail)}</span>
       </span>
     </div>
   )
@@ -146,13 +150,13 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
 
       {j.exit_cause.kind === 'stop_likely_filled' && <section data-testid="tj-awaiting-fill" style={{ background: toneVars('info').bg, border: `1px solid ${toneVars('info').border}`, borderRadius: RADIUS.md, padding: 10 }}>
         <b style={{ color: TOKENS.info, fontSize: TYPE.md }}>Awaiting fill confirmation</b>
-        <div style={{ fontSize: TYPE.base, marginTop: 4 }}>{j.exit_cause.detail}</div>
+        <div style={{ fontSize: TYPE.base, marginTop: 4 }}>{readableTimesInText(j.exit_cause.detail)}</div>
       </section>}
       {j.reconciliation_facts?.length ? <section aria-label="Reconciliation evidence" data-testid="tj-conflicts">
         <div className="tradeinview-reconciliation">
           {j.reconciliation_facts.map(f => <div key={f.key} style={{ background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 8 }} title={f.source || 'Source unavailable'}>
             <span style={{ ...label, display: 'block' }}>{f.label}</span>
-            <span style={{ fontSize: TYPE.base }}>{f.value == null ? f.missing_reason || 'Evidence unavailable' : String(f.value)}</span>
+            <span style={{ fontSize: TYPE.base }}>{f.value == null ? f.missing_reason || 'Evidence unavailable' : readableTimesInText(f.value)}</span>
             <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], display: 'block' }}>{f.at ? etShort(f.at) : 'Time unavailable'}</span>
           </div>)}
         </div>
@@ -200,8 +204,8 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
               <span style={{ ...numStyle, color: TOKENS.text[2] }} title={e.at ? undefined : 'Time not recorded — the order is known, the time is not'}>{e.at ? etShort(e.at) : 'time n/r'}</span>
               <span style={{ color: t.color, fontWeight: 700 }}>{TIMELINE_LABEL[e.kind]}</span>
               <span style={{ color: TOKENS.text[1], lineHeight: 1.35 }}>
-                {e.label}{e.unconfirmed && <span style={{ color: TOKENS.info }}> · unconfirmed</span>}
-                {e.kind === 'exit_fill' && e.detail && <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm }}>{e.detail}</span>}
+                {readableTimesInText(e.label)}{e.unconfirmed && <span style={{ color: TOKENS.info }}> · unconfirmed</span>}
+                {e.kind === 'exit_fill' && e.detail && <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm }}>{readableTimesInText(e.detail)}</span>}
               </span>
             </div>
           )
@@ -214,7 +218,7 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
         {j.review.facts.map(f => (
           <div key={f.key} title={`source: ${f.source}`} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, fontSize: TYPE.base }}>
             <span style={{ color: TOKENS.text[2] }}>{f.label}</span>
-            <span style={{ ...numStyle, color: f.tone === 'neutral' ? TOKENS.text[0] : toneVars(f.tone).color }}>{f.value}</span>
+            <span style={{ ...numStyle, color: f.tone === 'neutral' ? TOKENS.text[0] : toneVars(f.tone).color }}>{readableTimesInText(f.value)}</span>
           </div>
         ))}
         {j.review.advisory && (
@@ -366,7 +370,7 @@ export default function TradeJourney({ payload, loading, error, embedded = false
 
       <div role="group" aria-label="Data freshness" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {(p.freshness_chips || []).map(ch => (
-          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}${ch.source ? `\nsource: ${ch.source}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{ch.value ?? ch.missing_reason ?? 'Sync evidence unavailable'}{ch.at && ch.source_label ? <span data-testid={`tj-chip-${ch.key}-source`}>&nbsp;· {ch.source_label}</span> : null}</Chip>
+          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}${ch.source ? `\nsource: ${ch.source}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{readableTimesInText(ch.value ?? ch.missing_reason ?? 'Sync evidence unavailable')}{ch.at && ch.source_label ? <span data-testid={`tj-chip-${ch.key}-source`}>&nbsp;· {ch.source_label}</span> : null}</Chip>
         ))}
         {!p.freshness_chips && <span className="tradeinview-gap" style={{ fontSize: TYPE.base }}>Freshness receipt fields unavailable — sync times are not inferred from fill or stop observations.</span>}
       </div>

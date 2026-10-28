@@ -2,8 +2,8 @@
 
 AGENTS.md 19.0.0 §27.2-§27.3 (PROPOSED). This handler records and authorises change requests; it never applies a
 host change itself (crontab, live list, settings, grants and the kill switch are applied only by the host applier,
-scripts/ops/operator_controls_applier.py). The only in-process effects are the two safe release-train requests (the
-same writers the existing STOP button and ReleaseControl use) and the passkey store.
+scripts/ops/operator_controls_applier.py). The only in-process effects are the safe deploy STOP request (the same
+writer the Home STOP button uses, scripts/lib/deploy_stop.py) and the passkey store.
 
 Order of refusals on every POST: POLICY_NOT_ACTIVE (19.0.0 not ACTIVE, read at request time) -> AGENT_CALLER_REFUSED
 (anything but a tailnet operator identity on the serve_proxy listener; the service token is refused) -> CSRF_REFUSED
@@ -369,7 +369,7 @@ def approve(ctx: Ctx, op: str, req: dict, body: dict):
     if link:
         detail["sudo_window"] = link
     _audit(ctx, "request.approved", "ok", kind=r["kind"], request_id=rid, detail=detail)
-    if r["executor"] == C.EXEC_CC and r["kind"] in ("release_train.stop", "release_train.pause", "passkey.revoke"):
+    if r["executor"] == C.EXEC_CC and r["kind"] in ("deploy.stop", "passkey.revoke"):
         r = execute_cc(ctx, op, r)
     elif r["executor"] == C.EXEC_APPLIER:
         ctx.notify(f"Ops Controls: {r['kind']} approved", f"{(r.get('preview') or {}).get('summary', '')} — by "
@@ -378,7 +378,7 @@ def approve(ctx: Ctx, op: str, req: dict, body: dict):
 
 
 def execute_cc(ctx: Ctx, op: str, r: dict) -> dict:
-    """The CC-executed kinds: release-train STOP/pause (existing writers) and passkey revocation."""
+    """The CC-executed kinds: deploy STOP (existing writer) and passkey revocation."""
     rid = r["request_id"]
     r2 = ctx.store.transition(rid, ("APPROVED",), "APPLYING")
     if not r2:
@@ -882,7 +882,8 @@ def data_approvals_view(ctx: Ctx) -> dict:
                     "that records the approval with data_dictionary.promote; nothing on this tab approves a row."}
 
 
-def release_view(ctx: Ctx) -> dict:
+def deploy_view(ctx: Ctx) -> dict:
+    """The deploy STOP latch + release control (the latch the host deploy_on_main poller refuses on)."""
     from scripts.lib import release_control as RC
 
     v = RC.ReleaseControl(ctx.hosts.release_dir).view()
@@ -949,7 +950,7 @@ def build_state(ctx: Ctx, op: str) -> dict:
         "settings": _section(lambda: settings_view(ctx, store_ok)),
         "grants": _section(lambda: grants_view(ctx)),
         "data_approvals": _section(lambda: data_approvals_view(ctx)),
-        "release_train": _section(lambda: release_view(ctx)),
+        "deploy": _section(lambda: deploy_view(ctx)),
         "passkeys": [{"credential_id": c["credential_id"], "credential_id8": c["credential_id"][:8],
                       "name": c["name"], "created_at": _ts(c.get("created_at")),
                       "last_used_at": _ts(c.get("last_used_at")), "revoked_at": _ts(c.get("revoked_at"))}
@@ -959,7 +960,7 @@ def build_state(ctx: Ctx, op: str) -> dict:
         "sudo_window": _section(lambda: sudo_view(ctx, op)) if store_ok else {
             "state": "INERT", "reason": f"store {store.get('state')}: {sreason}", "window": None},
     }
-    for name in ("jobs", "n8n", "settings", "grants", "data_approvals", "release_train", "applier", "audit"):
+    for name in ("jobs", "n8n", "settings", "grants", "data_approvals", "deploy", "applier", "audit"):
         sec = out.get(name)
         if isinstance(sec, dict) and sec.get("state") not in ("OK", None) and not sec.get("reason"):
             # 2026-10-22: no section reaches the page as "<STATE> — no reason given".

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_on_main_20261026",
+  "files": [
+    "tests/test_deploy_on_main_20261026.py"
+  ],
+  "anchor": "DEPLOY_ON_MAIN_20261026",
+  "comment": [
+    "ANCHOR: DEPLOY_ON_MAIN_20261026 — Host deploy-on-main poller (DeployOnMainReceipt@v1), STOP latch,",
+    "GlobalReleaseLock sharing with emergency_manual_promote, and thin post_release / failure-alert stubs.",
+    "Hermetic: tmp_path, no live promote."
+  ]
+}

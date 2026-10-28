@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "yfinance_info_snapshot_lane_20261026",
+  "files": [
+    "tests/test_yfinance_info_snapshot_lane_20261026.py"
+  ],
+  "anchor": "YFINANCE_INFO_SNAPSHOT_LANE_20261026",
+  "comment": [
+    "ANCHOR: YFINANCE_INFO_SNAPSHOT_LANE_20261026 — yfinance snapshot owner lane (operator 2026-10-26: \"Yahoo Finance feed … switched on: yes\"): universe = holdings + My Watchlist + prospectus universe through the ticker guard; due windows + negative cache; run cap, pacing and stop on throttle; dry run writes nothing (READ ONLY session); apply writes through the single declared writer with a LaneRunReceipt v2; missing table = unconfigured; prospectus fund block reads AUM/issuer/inception/index/top holdings from a fresh ok snapshot and degrades to the named gaps otherwise; lane pinned at SHADOW. Synthetic tickers; DB and provider stubbed."
+  ]
+}

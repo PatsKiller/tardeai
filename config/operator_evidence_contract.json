@@ -32,7 +32,7 @@
       "earnings_calendar", "news_sentiment",
       "finviz_enrichment_snapshot", "scalp_list", "latest_quote", "social_feed", "yfinance_info",
       "watch_prospects", "cio_prospect", "watch_curation", "watch_universe", "trade_journey",
-      "trade_calendar", "holding_history", "trade_replay"
+      "trade_calendar", "holding_history", "trade_replay", "street_detail"
     ]
   },
   "fact_spec_format": {
@@ -171,6 +171,7 @@
     "broker_projections": {
       "trade_calendar": "TradeInView Calendar (2026-10-24 redesign, batch 28): month grid of realized trips and catalyst/wash events from stored rows, read by the TradeInView page only. No operator-desk intent reads it yet.",
       "holding_history": "TradeInView Holding history (2026-10-24 redesign, batch 28): per-symbol accounts, trips and holding observations from stored ledgers, read by the TradeInView page only. No operator-desk intent reads it yet.",
+      "street_detail": "Ticker Prospectus institutional blocks (2026-10-27): stored analyst target / rating history and the extended Yahoo capture, option chain summaries, SEC XBRL / Form 4 / 13F and dividend ex-dates for one symbol, never a provider fetch; read by the prospectus assembler only. Claim it under a research intent when a desk answer needs the Street view.",
       "trade_replay": "TradeInView stored Replay (2026-10-24 redesign, batch 28): stored daily bars, fills, observed stops and CIO annotations for one trade, never a provider fetch; read by the TradeInView page only.",
       "trade_journey": "TradeInView per-trade journey (2026-10-22, AGENTS.md \u00a726.3): origin, stop path, exit cause, post-exit review and re-entry for one trade, read by the TradeInView page only. No operator-desk intent reads it yet; claim it under the reentry/attention intents when a desk answer needs a trade's origin or exit cause.",
       "watch_prospects": "Watch redesign (2026-10-22): the Watch page's prospect lanes (cio_prospect when the store is live, else the labelled interim adapter over opportunity + watch_decision + re-entry desk + the Watch held reader). No operator-desk intent reads it; desk answers keep reading watch_intelligence and opportunity, whose facts it composes. Claim it under the attention intent when the desk answers from the prospect record.",

@@ -1,0 +1,14 @@
+# Lane n8n-workflow-drift-check. Promoted 2026-10-27 from the reviewed packet copy (n8n-platform-hardening-20261022,
+# FW-P3); directives identical. Every 15 minutes at :07/:22/:37/:52. Outside n8n by construction (systemd --user on
+# the host). Install is a host step after merge and deploy; no crontab line (cron freeze 2026-10-09).
+[Unit]
+Description=Trade AI n8n workflow drift watch every 15 minutes - FW-P3
+
+[Timer]
+OnCalendar=*-*-* *:07/15:00
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-n8n-drift-watch.service
+
+[Install]
+WantedBy=timers.target
