@@ -4,8 +4,8 @@
 Policy-Version:      26.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
+Status:              ACTIVE
+Effective-Date:      2026-10-28
 Last-Reviewed:       2026-10-27T23:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
@@ -13,7 +13,9 @@ Supersedes:          25.0.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**26.0.0 is PROPOSED (MAJOR) — consolidation.** Every rule that was true in 25.0.1 is kept, stated once. History,
+**26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
+(`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
+ Every rule that was true in 25.0.1 is kept, stated once. History,
 incident narratives, measurements and open gaps moved out to `docs/governance/` (AGENTS_HISTORY.md,
 LESSONS_LEARNED.md, OPEN_ITEMS.md); reference material moved to the document that owns its subject. Contradictions
 were settled in favour of what the code does and what the operator ratified (the 2026-10-27 governance review).
@@ -2456,7 +2458,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 26.0.0 | 2026-10-27 | PROPOSED | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | PENDING — `APPROVE_AGENTS_POLICY_26_0_0 <pr_number> <head_sha>` (§20) |
+| 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
 | 25.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation (operator 2026-10-27: "Get everything in line as the senior developer and coordinator."): owner clause (§20). | `APPROVE_AGENTS_POLICY_25_0_0 2236 78a919464a2213ea221ae12b43476bb8072d9a28` |
 | 24.0.0 | 2026-10-26 | ACTIVE | MAJOR | §25.10 Mergify + host deploy: Mergify merges green PRs on ET schedules. | ACTIVE — operator 2026-10-26 in session (approved 24.0.0 PRO… |
