@@ -230,10 +230,13 @@ def main(argv: list[str] | None = None) -> int:
         used_after, free_after, _ = disk_used_pct(a.path)
         out["used_pct_after"] = round(used_after, 2)
         out["free_after"] = _fmt_gb(free_after)
-        out["reclaimed"] = _fmt_gb(max(0, free_after - free))
+        # Was "reclaimed" (until 2026-10-27). Signed change in free space observed across the plan-only enforcer
+        # call -- NOT a reclaim: this guard removes nothing (AGENTS.md §24.12), so a nonzero value is unrelated
+        # activity on the host (writes, other cleaners), never this run's work.
+        out["free_space_delta_observed_gb"] = round((free_after - free) / (1024**3), 2)
 
-    # State AFTER acting: if the reclaim worked, the operator should be told the
-    # condition recovered, not that it is still bad.
+    # State measured AFTER the plan call: if free space recovered by any means, the
+    # operator should be told the condition recovered, not that it is still bad.
     final_used = out.get("used_pct_after", out["used_pct"])
     state = "PRESSURE" if final_used >= a.used_pct else "OK"
     try:

@@ -367,7 +367,9 @@ def test_pressure_guard_pages_the_governed_route(monkeypatch, tmp_path, capsys):
 
     sent: list[str] = []
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipts.jsonl")
-    monkeypatch.setattr(g, "disk_used_pct", lambda path="/": (91.0, 40 * 1024**3, 468 * 1024**3))
+    # Free space rises 1 GiB between the two reads from unrelated host activity: the guard did none of it.
+    reads = iter([(91.0, 40 * 1024**3, 468 * 1024**3), (90.8, 41 * 1024**3, 468 * 1024**3)])
+    monkeypatch.setattr(g, "disk_used_pct", lambda path="/": next(reads))
     monkeypatch.setattr(g, "run_enforcer", lambda **k: {"_would_remove_count": 3, "_deleted_count": 0})
     monkeypatch.setattr(acs, "observe", lambda *a, **k: {"action": "alert", "notify": True})
     monkeypatch.setattr(g, "notify", lambda text: sent.append(text) or "accepted")
@@ -376,6 +378,8 @@ def test_pressure_guard_pages_the_governed_route(monkeypatch, tmp_path, capsys):
     assert out["removal"].startswith("none") and sent
     assert "disk-hygiene lane owns reclaim" in sent[0] and "scripts/disk_hygiene.py --report" in sent[0]
     assert "reclaimed" not in sent[0], "the page must not claim a reclaim the guard no longer attempts"
+    # the receipt labels the change as observed, never as this run's reclaim
+    assert "reclaimed" not in out and out["free_space_delta_observed_gb"] == 1.0
 
 
 def test_weekly_apply_runs_plans_only_and_keeps_preclean_dirs(monkeypatch, tmp_path):
