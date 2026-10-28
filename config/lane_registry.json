@@ -7652,26 +7652,26 @@
       "lane_id": "n8n-workflow-drift-check",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "7 * * * *",
-        "match": "scripts/check_n8n_workflow_drift.py --write",
-        "install_line": "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  # TRADEAI_LANE n8n-workflow-drift-check"
+        "kind": "systemd",
+        "expression": "tradeai-n8n-drift-watch.timer",
+        "match": "scripts/n8n_drift_watch.py --live"
       },
-      "expected_cadence_hours": 1.0,
+      "scheduler_note": "2026-10-27 (operator, verbatim: \"I want all of your recommendations done\", including scheduling the drift check): the scheduler moved from the never-installed host cron line (kind cron, \"7 * * * *\", install_line `... safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write ...  # TRADEAI_LANE n8n-workflow-drift-check`, 2026-10-09) to the systemd user timer tradeai-n8n-drift-watch.timer (config/systemd/user, every 15 min at :07/:22/:37/:52). Why: the cron freeze (operator 2026-10-09) admits no new crontab line, and the bare checker writes the receipt but cannot page P1 (its fan-in findings are P2 and the fan-in is n8n-fired). scripts/n8n_drift_watch.py --live runs the same checker (check_n8n_workflow_drift.evaluate/build_receipt), writes the same receipt, and pages P1 through send_system (host SYSTEM ops transport). Only one of the two may ever be installed: both write data/runtime/n8n_workflow_drift_last.json.",
+      "expected_cadence_hours": 0.25,
       "state": "PAUSED",
       "state_since": "2026-10-09",
-      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron hourly at :07, not n8n: P18 checks what n8n runs, so it must not depend on n8n being healthy. The allowlist entry and the generated workflows n8n-workflow-drift-check(-shadow) (tranche N7) stay inactive; activating them as well would double-schedule the lane. Was NEVER_SCHEDULED; packet governance-checks-cron.md (#1608).",
+      "state_reason": "APPROVED, PENDING INSTALL (re-declared 2026-10-27; operator, verbatim: \"I want all of your recommendations done\", including scheduling the drift check as its own PR). AGENTS.md §23.23 (2) says git-vs-live workflow drift pages P1 and §23.24 Logging (5) says the check runs on a schedule outside n8n; nothing ran it. The unit files are config/systemd/user/tradeai-n8n-drift-watch.{service,timer}, promoted unchanged from the reviewed FW-P3 packet copy (docs/ops/packets/n8n-platform-hardening-20261022/units/). No release step installs user units yet, so the install is a host step after merge and deploy (PR body; packet step FW-P3). PAUSED is the one state that is green before and after the install: check_lane_registry --state-drift reports no conflict for a PAUSED timer row enabled or not, the lane monitor treats PAUSED as EXPECTED_SILENT, and the fan-in governance liveness (receipt:missing/stale) arms only on ACTIVE. Flip to ACTIVE in a registry PR once `systemctl --user list-timers tradeai-n8n-drift-watch.timer` shows a next run and data/runtime/n8n_drift_watch_last.json says mode live. Host timer, not n8n (§23.23 Independence, §24.1 P1 path): the check of what n8n runs must not depend on n8n; config/lane_cutover_policy.json keeps the lane out of the n8n cutover (operator hold 2026-10-16) and the generated workflows n8n-workflow-drift-check(-shadow) stay inactive. History: NEVER_SCHEDULED until 2026-10-09, then PAUSED pending a cron line that the freeze never allowed.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_workflow_drift_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py; tests/test_registry_ops_crons_20261009.py; packets/governance-checks-cron.md (exact line; receipt data/runtime/n8n_workflow_drift_last.json).",
-      "note": "Read-only governance lane for the n8n Agent preconditions (P18): one SELECT on the n8n DB, atomic receipt; no send. Hourly at :07; the fan-in reads the receipt (GOVERNANCE_SOURCES: DRIFT / MISSING_IN_GIT / unsubstituted placeholder P2; receipt:missing/stale P2 once the row is ACTIVE).",
-      "review_by": "2026-10-16",
+      "reason_evidence": "tests/test_n8n_drift_check_schedule_20261027.py (unit files, registry row, state drift before/after install, fan-in arming, P1 through the host sender); tests/test_n8n_platform_hardening_20261022.py (drift watch pages P1 once, reminds, recovers; dry run writes nothing); scripts/n8n_drift_watch.py --workflows-json dry run 2026-10-27 (PR body).",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18). The timer runs scripts/n8n_drift_watch.py --live: one SELECT on the n8n DB, the drift receipt data/runtime/n8n_workflow_drift_last.json (atomic; not rewritten on CANNOT_RUN, so a broken read goes stale) and data/runtime/n8n_drift_watch_last.json (N8nDriftWatch@v1). DRIFT / MISSING_IN_GIT pages P1 once per drift signature through send_system (host SYSTEM ops family; n8n not involved), a reminder every 6 h, one CLEARED notice. The fan-in still reads the drift receipt (GOVERNANCE_SOURCES: P2 findings; receipt:missing/stale P2 once the row is ACTIVE, stale = 3 x 0.25 h = 45 min, the FW-P3 probe bound).",
+      "review_by": "2026-11-03",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
-      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because it audits what n8n runs, so it must not depend on n8n."
+      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this lane, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because it audits what n8n runs, so it must not depend on n8n. 2026-10-27: still KEEP_ON_CRON in that sense (host-scheduled, never n8n); the host scheduler is now a systemd user timer."
     },
     {
       "lane_id": "trade-ai-scalp-live",
