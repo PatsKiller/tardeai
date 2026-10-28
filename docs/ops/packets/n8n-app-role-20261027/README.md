@@ -28,6 +28,7 @@ create roles, and rewrite any table, including the credential table and the audi
 | Changes | Does not change |
 |---|---|
 | A new role `n8n_app` (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 40`) owns n8n's schema objects | the role `n8n` (kept; it stays the bootstrap superuser the db container's own tools use) |
+| PUBLIC loses `CONNECT, TEMPORARY` on databases `postgres` and `template1`, so of the databases that exist, `n8n_app` can connect to `n8n` only. By default every role may connect to `postgres` and make temp tables there. A database created later gets PostgreSQL's default (PUBLIC may connect): the weekly restore drill's throwaway `n8n_drill_<UTC>` does, for the minutes it exists, but `n8n_app` owns nothing there and has no table grants (the drill restores with `--no-owner --no-privileges`) | database `n8n`'s own ACL; the superuser `n8n`, which bypasses these checks |
 | The n8n service connects as `n8n_app`, password by file (`DB_POSTGRESDB_PASSWORD_FILE` + compose secret `n8n_app_pg_password`) | the db service, its volume, its `POSTGRES_PASSWORD`; the image; any workflow; any credential in n8n |
 | The n8n container no longer holds the superuser's password (`DB_POSTGRESDB_PASSWORD` removed from the n8n service) | execution-data settings (FW-P1 is **not** in this packet, see "Relation to the hardening packet") |
 | Optional, later (step 05): the superuser can no longer log in over the network | local-socket logins inside the db container (nightly `pg_dump`, restore drill, governance reads) |
@@ -94,14 +95,25 @@ network still logs in as `n8n` over TCP (04 and 05 read `pg_stat_activity`).
 2. `00_preflight.sh` exits 0, with the containers running in project `m8m-n8n` and both volumes
    (`m8m-n8n_n8n-data`, `m8m-n8n_n8n-pg`) present. Healthz must be ok, a relay `op: due` line must be no older than 15
    min, at least one workflow must be active, and the backup directory must be writable.
-3. `01_backup.sh --apply` has run less than 6 h before step 02, and so has the preflight. Step 02 refuses otherwise.
+3. `01_backup.sh --apply` passed (receipt `ok: true`; it moves `LATEST_BACKUP` only then) less than 6 h before step 02,
+   the dump still matches the receipt's sha256, and the preflight is also less than 6 h old. Step 02 refuses otherwise.
 4. Step 03 refuses unless step 02 is done (`n8n_app` has `rolsuper=f`, `rolcanlogin=t`) and the password file
-   `~/.config/tradeai/n8n/n8n_app_pg_password` exists with mode 600 and owner you. The diff's secret path must equal it,
-   the candidate must pass `docker compose … config --quiet`, the patch must apply without fuzz, and healthz must be ok
-   before the change.
+   `~/.config/tradeai/n8n/n8n_app_pg_password` is readable by the container's uid (see "Password file"). The diff's
+   secret path must equal it, the candidate must pass `docker compose … config --quiet`, the patch must apply without
+   fuzz, and healthz must be ok before the change.
 5. Step 05 needs a step-04 PASS at least 24 h old (`--soak-hours`), a fresh 04 PASS, no TCP session as `n8n`, and the
    network-login probe answering `LOGIN_OK` first. That proves the container's `POSTGRES_PASSWORD` equals the role's
    current password, so the 05 rollback restores a working value.
+
+### Password file
+
+Non-swarm compose bind-mounts the secret file into the container with its host owner and mode, and n8n reads it as the
+container's uid. That is the image's `node` user, **uid 1000** (measured 2026-10-22, `docker exec m8m-n8n id`). Step 03
+reads the uid with `docker exec m8m-n8n id -u` (default 1000) and refuses unless the file is owned by that uid with mode
+600. On this host the operator is uid 1000, so the file step 02 writes already qualifies. If your uid differs, run
+`sudo chown 1000 ~/.config/tradeai/n8n/n8n_app_pg_password` before step 03. Change it back to yourself before any
+`02 --apply --reuse-password-file`: the role script reads only a file that you own. An ACL does not work here, because
+it shows as group bits and the role script requires mode 600.
 
 ## Window
 
@@ -132,14 +144,14 @@ refuses without it, and the receipt records it.
 | 02 create role | role DDL and ownership in database `n8n` | **`db-write`** (the hook classifies psql DDL as db-write; the role script's AUTHORITY line makes it an operator DB act) |
 | 03 switch compose | `~/m8m-bakeoff-lab/docker-compose.n8n.yml`, recreate of the `n8n` container | **`config-write`** + **`service`** (N8N_CONFIGURATION §1 restart/upgrade) |
 | 05 close superuser login | one `ALTER ROLE` | **`db-write`** |
-| 09 rollback | compose file and recreate; with `--also-role` or after 05, role changes | **`config-write`** + **`service`** (+ **`db-write`**) |
+| 09 rollback | compose file and recreate; DB changes only after 05 (password restore) or with `--also-role` | **`config-write`** + **`service`** (+ **`db-write`** in those two cases) |
 
 ## Steps (the operator runs these; each prints its dry run first)
 
 ```
 cd ~/trade-ai-releases/portfolio-server/CURRENT/docs/ops/packets/n8n-app-role-20261027
 bash 00_preflight.sh                                          # read-only; snapshot + finding
-bash 01_backup.sh            && bash 01_backup.sh --apply      # fresh pg_dump + roles snapshot + manifest
+bash 01_backup.sh            && bash 01_backup.sh --apply      # fresh pg_dump + roles snapshot + manifest (no grant)
 bash 02_create_app_role.sh                                     # PLAN + SQL (verifier redacted)
 N8N_APP_ROLE_GRANT=<db-write id> bash 02_create_app_role.sh --apply          # at hh:07 / hh:37
 bash 03_switch_compose.sh                                      # candidate, diff, config --quiet
@@ -147,7 +159,15 @@ N8N_APP_ROLE_GRANT="<config-write id> <service id>" bash 03_switch_compose.sh --
 bash 04_verify.sh                                              # PASS = the P13 receipt
 # soak >= 24 h (one nightly backup + one dispatcher day), then optionally:
 bash 05_close_superuser_login.sh && N8N_APP_ROLE_GRANT=<db-write id> bash 05_close_superuser_login.sh --apply
+# rollback, at any time (add <db-write id> if 05 ran or with --also-role):
+bash 09_rollback.sh              && N8N_APP_ROLE_GRANT="<config-write id> <service id>" bash 09_rollback.sh --apply
 ```
+
+If anything fails in `03 --apply` after it installs the candidate (config, `compose up`, or healthz not ok within
+`N8N_HEALTHZ_WAIT`, default 180 s), an EXIT trap reverts on its own. It saves the container log tail to the evidence
+folder (not printed), copies the backup back over the compose file, runs `up -d --no-deps n8n` again and writes
+`switch_compose_failed.json`. It then prints the 09 command, to finish or re-check the rollback. No database change is
+needed for that revert: n8n is back on `n8n`, which still has every privilege.
 
 ### Expected outputs
 
@@ -181,8 +201,8 @@ DRY RUN — the live file and the container are unchanged. ...
 ```
 
 Step 02 `--apply` ends `apply OK: n8n_app created; password file {… 'mode': '0o600' …}; rolsuper=f; ownership and
-privileges verified`. That is the 2026-10-22 rehearsal line. On the host, the owners line afterwards shows only
-`n8n_app:` kinds.
+privileges verified`. That is the 2026-10-22 rehearsal line. Then the PUBLIC revoke runs and `n8n_app may connect to:
+n8n` is printed. On the host, the owners line afterwards shows only `n8n_app:` kinds.
 
 ## Verify
 
@@ -191,7 +211,8 @@ privileges verified`. That is the 2026-10-22 rehearsal line. On the host, the ow
 1. healthz is `{"status":"ok"}`.
 2. The container has `DB_POSTGRESDB_USER=n8n_app`, `DB_POSTGRESDB_PASSWORD` unset and `DB_POSTGRESDB_PASSWORD_FILE` set.
 3. `pg_roles` for the role read from the container shows `rolsuper=f` and no createrole, createdb, replication or
-   bypassrls (`f|f|f|f|f`).
+   bypassrls (`f|f|f|f|f`). That role may connect to database `n8n` and not to `postgres` or `template1`; a database
+   created later, such as the restore drill's, is reported, not failed.
 4. Every TCP session to `n8n` is `n8n_app`.
 5. `scripts/ops/n8n_db_app_role.py --verify` gives `verify PASS: n8n_app rolsuper=f; n8n connects as n8n_app; all checks
    pass`.
@@ -203,17 +224,24 @@ The receipt is `~/n8n-maturity-verification/packets/n8n-app-role-20261027/<UTC>-
 
 ## Rollback
 
-- **Compose (seconds):** `N8N_APP_ROLE_GRANT="<config-write> <service>" bash 09_rollback.sh --apply`.
+- **Compose (seconds):** `N8N_APP_ROLE_GRANT="<config-write id> <service id>" bash 09_rollback.sh --apply`.
   1. If step 05 was applied, it first restores the superuser's password from the db container's own `POSTGRES_PASSWORD`
-     (psql `\getenv` inside the container; never on an argv, the host or a log).
-  2. It renames the live compose file to `docker-compose.n8n.yml.rolledback-<UTC>`, copies the newest
-     `docker-compose.n8n.yml.bak-<UTC>-pre-n8n-app-role` back, runs `config --quiet` and `up -d --no-deps n8n`.
+     (psql `\getenv` inside the container; never on an argv, the host or a log). That is a database change, one
+     `ALTER ROLE`, so add a `db-write` grant id.
+  2. It renames the live compose file to `docker-compose.n8n.yml.rolledback-<UTC>`, then copies back the
+     `docker-compose.n8n.yml.bak-<UTC>-pre-n8n-app-role` whose `<UTC>` in the name is newest (`cp -p` keeps old
+     mtimes, so mtime is not used). It runs `config --quiet` and `up -d --no-deps n8n`.
   3. It checks healthz, `connects_as=n8n`, the active workflows and the relay `op: due`.
 
-  The superuser still has every privilege, so n8n works whatever the owner of a table is.
-- **Role (optional):** add `--also-role`, which runs `n8n_db_app_role.py --rollback --apply`. That sets `n8n_app` to
-  NOLOGIN and runs `REASSIGN OWNED BY n8n_app TO n8n`. The role is never dropped. Archive the password file by rename if
-  you want: `mv ~/.config/tradeai/n8n/n8n_app_pg_password{,.retired-$(date -u +%Y%m%dT%H%M%SZ)}`.
+  Without step 05 and without `--also-role`, the rollback makes **no database change**. It **takes no new backup**: the
+  step-01 dump was taken before anything changed, and the rollback does not touch the database's contents. The superuser
+  still has every privilege, so n8n works whatever the owner of a table is. If the live file already does not name
+  `n8n_app` and n8n connects as `n8n` (after 03's automatic revert or an earlier 09), it is a no-op: "already rolled
+  back".
+- **Role (optional, database changes):** add `--also-role`, with a `db-write` grant id. It runs
+  `n8n_db_app_role.py --rollback --apply`, which sets `n8n_app` to NOLOGIN and runs `REASSIGN OWNED BY n8n_app TO n8n`.
+  It also grants `CONNECT, TEMPORARY` on `postgres` and `template1` back to PUBLIC. The role is never dropped. Archive the
+  password file by rename if you want: `mv ~/.config/tradeai/n8n/n8n_app_pg_password{,.retired-$(date -u +%Y%m%dT%H%M%SZ)}`.
 - **Step 05 alone:** `N8N_APP_ROLE_GRANT=<db-write> bash 05_close_superuser_login.sh --rollback --apply`.
 - **Restore from the dump: the last resort only, by hand, never over the live database.** Use it only if the n8n
   database itself is damaged, which nothing in this packet is expected to cause. Restore into a NEW database and point n8n
@@ -252,17 +280,20 @@ the container log would say `permission denied`. Mitigations:
    `02_create_app_role.sh --apply --reuse-password-file`. That moves ownership of any new objects and re-checks the role
    (the role script ALTERs an existing role instead of creating it). Then run `03` and `04` again. The window is one
    restart each way.
-4. Rollback at any point is one command and needs no database change.
+4. Rollback at any point is one command. Before step 05 it needs no database change; after 05 it first restores the
+   superuser's password, one `ALTER ROLE`.
 
-Smaller risks: a TCP user of the superuser nobody knew about breaks at step 05, not before. 05 refuses while
-`pg_stat_activity` shows one, and its rollback is one command. The password file must stay readable by uid 1000 (the
-container's `node` user, measured; the file owner). Step 03 checks the mode and owner.
+Smaller risks:
+- A TCP user of the superuser that nobody knew about breaks at step 05, not before. 05 refuses while `pg_stat_activity`
+  shows one, and its rollback is one command.
+- The password file must stay readable by the container's uid 1000 (see "Password file"). Step 03 checks it.
 
 ## What to record (quote in the closing PR; nothing secret in any of it)
 
 - The evidence folder `~/n8n-maturity-verification/packets/n8n-app-role-20261027/` holds the `<UTC>-preflight/` snapshot
   (`active_workflows.txt`, roles, owners, hba, sessions, `preflight.json`), `<UTC>-backup/backup.json`,
-  `<UTC>-create-app-role/`, `<UTC>-switch-compose/` (with `compose.diff`, the candidate and `switch_compose.json`),
+  `<UTC>-create-app-role/` (with `db_acls_before.txt` / `db_acls_after.txt`), `<UTC>-switch-compose/` (with
+  `compose.diff`, the candidate and `switch_compose.json`, or `switch_compose_failed.json` and the log tail),
   `<UTC>-verify/verify.json`, and, if run, `<UTC>-close-superuser-login/` and `<UTC>-rollback/`.
 - The dump path, sha256 and TOC count from `01` (the manifest beside the dump).
 - The grant ids used, the 03 `up_at`, and the compose sha256 before and after.
@@ -291,4 +322,9 @@ rebuilt from the committed proposal. It proves:
 - `--apply` without `N8N_APP_ROLE_GRANT` refuses before any mutation;
 - there is no `down`, no `-v`, no DROP of a role, database, table or schema, no `rm`, no literal password, no `.env`
   read, and no `config` without `--quiet`;
-- step 03's candidate names `n8n_app` with the password by file.
+- step 03's candidate names `n8n_app` with the password by file;
+- 01 moves `LATEST_BACKUP` only on an `ok` dump, and 02 refuses a receipt that is not `ok` or a dump whose sha256
+  changed;
+- 03 reverts by itself, with a failure receipt and the 09 command, when `compose up` fails or healthz stays down;
+- 03 refuses a password file the container's uid cannot read;
+- 09 picks the backup by the stamp in its name and is a no-op when already rolled back.

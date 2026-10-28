@@ -30,8 +30,14 @@ RELAY_LOG="${N8N_RELAY_LOG:-$STATE_ROOT/data/runtime/n8n_relay/relay_log.jsonl}"
 EVIDENCE_DIR="${N8N_APP_ROLE_EVIDENCE_DIR:-$HOME/n8n-maturity-verification/packets/n8n-app-role-20261027}"
 PASSWORD_FILE="${N8N_APP_PASSWORD_FILE:-$HOME/.config/tradeai/n8n/n8n_app_pg_password}"
 HEALTHZ_URL="${N8N_HEALTHZ_URL:-http://127.0.0.1:5678/healthz}"
+HEALTHZ_WAIT="${N8N_HEALTHZ_WAIT:-180}" # seconds to wait for /healthz after a recreate
+RELAY_WAIT="${N8N_RELAY_WAIT:-300}"     # seconds to wait for a relay op:due after a recreate
 ROLE_SCRIPT="$REPO_ROOT/scripts/ops/n8n_db_app_role.py"
-COMPOSE_DIFF="$REPO_ROOT/docs/ops/packets/n8n-platform-hardening-20261022/compose/fw-p2-n8n-app-role.compose.diff.proposed"
+REVIEWED_COMPOSE_DIFF="$REPO_ROOT/docs/ops/packets/n8n-platform-hardening-20261022/compose/fw-p2-n8n-app-role.compose.diff.proposed"
+# The reviewed FW-P2 diff. The override exists for the hermetic test (a tmp secret path); 03 warns when it is used.
+COMPOSE_DIFF="${N8N_APP_ROLE_COMPOSE_DIFF:-$REVIEWED_COMPOSE_DIFF}"
+CONTAINER_UID_DEFAULT="${N8N_CONTAINER_UID:-1000}" # the n8n image's `node` user (measured 2026-10-22: uid=1000)
+OTHER_DBS=("postgres" "template1")                 # step 02 revokes PUBLIC CONNECT, TEMPORARY on these
 BACKUP_TAG="pre-n8n-app-role"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -239,6 +245,7 @@ restore_bootstrap_password() {
 -- q:restore_bootstrap_password
 SET log_statement = 'none';
 SET log_min_error_statement = 'panic';
+SET log_min_duration_statement = -1;
 \getenv pw POSTGRES_PASSWORD
 ALTER ROLE n8n PASSWORD :'pw';
 SQL
@@ -285,6 +292,42 @@ except ValueError:
     print(99999)' "$1"
 }
 
-newest() { # newest GLOB-DIR PATTERN — newest file by mtime, or empty
+newest() { # newest DIR PATTERN — newest file by mtime, or empty
   find "$1" -maxdepth 1 -name "$2" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-
+}
+
+# newest_by_name DIR PATTERN — the file whose NAME sorts last (names carry a <UTC> stamp YYYYmmddTHHMMSSZ, which
+# sorts in time order; mtime does not, because `cp -p` keeps the source file's time).
+newest_by_name() {
+  local f
+  f="$(find "$1" -maxdepth 1 -name "$2" -printf '%f\n' 2>/dev/null | LC_ALL=C sort | tail -n 1)"
+  [[ -n "$f" ]] && printf '%s\n' "$1/$f"
+  return 0
+}
+
+# The uid the n8n container runs as (it reads the compose secret as that uid). Read-only `id -u` in the container;
+# falls back to N8N_CONTAINER_UID (default 1000, the image's `node` user).
+container_uid() {
+  local u
+  u="$(docker exec "$N8N_CONTAINER" id -u 2>/dev/null | tr -d '[:space:]' || true)"
+  [[ "$u" =~ ^[0-9]+$ ]] || u="$CONTAINER_UID_DEFAULT"
+  printf '%s\n' "$u"
+}
+
+# Non-swarm compose bind-mounts a secret file with its host owner and mode, so the container's uid must own it
+# (mode 600) to read it. Prints a one-line verdict; returns 0 when readable. Never reads the content.
+password_file_container_readable() {
+  local cuid="$1" owner mode
+  [[ -f "$PASSWORD_FILE" ]] || {
+    echo "absent"
+    return 1
+  }
+  owner="$(stat -c %u "$PASSWORD_FILE")"
+  mode="$(stat -c %a "$PASSWORD_FILE")"
+  if [[ "$mode" == 600 || "$mode" == 400 ]] && [[ "$owner" == "$cuid" ]]; then
+    echo "readable by container uid $cuid (owner $owner, mode $mode)"
+    return 0
+  fi
+  echo "NOT readable by container uid $cuid (owner $owner, mode $mode): need owner $cuid and mode 600 (README 'Password file')"
+  return 1
 }

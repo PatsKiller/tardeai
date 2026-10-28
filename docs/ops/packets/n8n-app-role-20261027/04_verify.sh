@@ -7,7 +7,8 @@
 #   1. GET /healthz → {"status":"ok"}
 #   2. the n8n container's DB_POSTGRESDB_USER is n8n_app, DB_POSTGRESDB_PASSWORD is unset, the _FILE form is set
 #   3. pg_roles for the role n8n CONNECTS AS (read from the container, not assumed): rolsuper=f and no
-#      createrole / createdb / replication / bypassrls
+#      createrole / createdb / replication / bypassrls; and that role may CONNECT to database n8n and not to
+#      postgres or template1 (a database created later, e.g. the restore drill's, is reported, not failed)
 #   4. every TCP session to database n8n is n8n_app (none as the superuser n8n)
 #   5. scripts/ops/n8n_db_app_role.py --verify → PASS (ownership of every public object, privileges, login)
 #   6. the active workflow ids equal the step-00 snapshot
@@ -17,7 +18,7 @@ set -euo pipefail
 # shellcheck source=docs/ops/packets/n8n-app-role-20261027/_lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_lib.sh"
 SINCE=""
-WAIT=300
+WAIT="$RELAY_WAIT"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --since)
@@ -66,6 +67,19 @@ fi
 ok=0
 [[ "$row" == "f|f|f|f|f" ]] && ok=1
 check rolsuper "$ok" "role $user (super|createrole|createdb|replication|bypassrls) = ${row:-absent}"
+
+connect_dbs=""
+if valid_role_name "$user"; then
+  connect_dbs="$(q app_connect_dbs "select coalesce(string_agg(datname, ',' order by datname), '') from pg_database where datallowconn and exists (select 1 from pg_roles where rolname = '$user') and has_database_privilege('$user', datname, 'CONNECT');")"
+fi
+ok=1
+[[ ",$connect_dbs," == *",$DB_NAME,"* ]] || ok=0
+for d in "${OTHER_DBS[@]}"; do [[ ",$connect_dbs," == *",$d,"* ]] && ok=0; done
+check databases "$ok" "role $user may connect to: ${connect_dbs:-nothing} (want $DB_NAME, and none of ${OTHER_DBS[*]})"
+# A database created later gets PostgreSQL's default ACL (PUBLIC may connect), e.g. the weekly restore drill's
+# n8n_drill_<UTC> for the minutes it exists. Reported, not failed: n8n_app owns nothing there and has no table grant.
+extra="$(tr ',' '\n' <<<"$connect_dbs" | grep -vx -e "$DB_NAME" -e postgres -e template1 | paste -sd',' || true)"
+[[ -z "$extra" ]] || say "  note: $user may also connect to $extra (created after step 02; default PUBLIC CONNECT)"
 
 sessions="$(q sessions "select usename, coalesce(host(client_addr), 'local'), count(*) from pg_stat_activity where datname = '$DB_NAME' and backend_type = 'client backend' group by 1, 2 order by 1, 2;")"
 printf '%s\n' "$sessions" >"$OUT/sessions.txt"

@@ -52,19 +52,29 @@ docker exec "$DB_CONTAINER" pg_dumpall -U "$BOOTSTRAP_ROLE" --roles-only --no-ro
 chmod 600 "$DUMP" "$ROLES"
 bytes="$(stat -c %s "$DUMP")"
 sha="$(sha256_of "$DUMP")"
-toc="$(docker exec -i "$DB_CONTAINER" pg_restore -l <"$DUMP" 2>/dev/null | awk '/TABLE DATA/ {n++} END {print n+0}')"
+toc_list="$(docker exec -i "$DB_CONTAINER" pg_restore -l <"$DUMP" 2>/dev/null || true)"
+toc="$(awk '/TABLE DATA/ {n++} END {print n+0}' <<<"$toc_list")"
+toc_has_workflows=0
+grep -Eq 'TABLE DATA public workflow_entity( |$)' <<<"$toc_list" && toc_has_workflows=1
 roles_have_app="$(grep -c "ROLE $APP_ROLE" "$ROLES" || true)"
-write_receipt "$MANIFEST" schema_note=N8nPreAppRoleDump step=01_backup at="$NOW_ISO" dump="$DUMP" bytes="$bytes" \
-  sha256="$sha" toc_table_data_entries="$toc" public_tables="$tables" workflow_count="$workflows" \
-  active_workflow_ids="$ids_before" roles_snapshot="$ROLES" roles_snapshot_names_n8n_app="$roles_have_app" \
+# ok only when the dump is non-empty, its TOC lists table data, and workflow_entity's data is in it.
+ok=false
+[[ "$bytes" -gt 0 && "$toc" -gt 0 && $toc_has_workflows == 1 ]] && ok=true
+write_receipt "$MANIFEST" schema_note=N8nPreAppRoleDump step=01_backup at="$NOW_ISO" ok="$ok" dump="$DUMP" \
+  bytes="$bytes" sha256="$sha" toc_table_data_entries="$toc" toc_has_workflow_entity="$toc_has_workflows" \
+  public_tables="$tables" workflow_count="$workflows" active_workflow_ids="$ids_before" roles_snapshot="$ROLES" \
+  roles_snapshot_names_n8n_app="$roles_have_app" \
   note="encryption key not in the dump; restore only into a NEW database (README, last resort)"
 chmod 600 "$MANIFEST"
-write_receipt "$EVIDENCE_DIR/$STAMP-backup/backup.json" step=01_backup at="$NOW_ISO" dump="$DUMP" sha256="$sha" \
-  bytes="$bytes" toc_table_data_entries="$toc" manifest="$MANIFEST"
-printf '%s\n' "$STAMP-backup" >"$EVIDENCE_DIR/LATEST_BACKUP"
-if [[ "$bytes" -gt 0 && "$toc" -gt 0 ]]; then
+write_receipt "$EVIDENCE_DIR/$STAMP-backup/backup.json" step=01_backup at="$NOW_ISO" ok="$ok" dump="$DUMP" \
+  sha256="$sha" bytes="$bytes" toc_table_data_entries="$toc" toc_has_workflow_entity="$toc_has_workflows" \
+  manifest="$MANIFEST"
+if [[ $ok == true ]]; then
+  # the pointer 02 reads moves only for a backup that passed
+  printf '%s\n' "$STAMP-backup" >"$EVIDENCE_DIR/LATEST_BACKUP"
   say "BACKUP OK: $DUMP ($bytes bytes, sha256 $sha, $toc TABLE DATA entries) — next: bash 02_create_app_role.sh"
   exit 0
 fi
-say "BACKUP SUSPECT: bytes=$bytes toc=$toc — do not continue; the file is kept for inspection"
+say "BACKUP SUSPECT: bytes=$bytes toc=$toc workflow_entity_data=$toc_has_workflows — do not continue."
+say "LATEST_BACKUP not moved; the files are kept for inspection. Re-run 01_backup.sh --apply after the cause is fixed."
 exit 1
