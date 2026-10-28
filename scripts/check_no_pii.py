@@ -44,10 +44,14 @@ NO INLINE ESCAPE HATCH. No marker on a line silences a finding. --range reports 
 an inline allow marker (this scanner's old "pii" "-ok" or gitleaks' allow comment) so a reviewer sees them;
 CI runs gitleaks with --ignore-gitleaks-allow. Synthetic test values are assembled at runtime instead.
 
-ONE PATH EXCLUSION, content only: tests/fixtures/agents_pre_*/** holds verbatim, sha256-pinned snapshots of
-the policy files (AGENTS.md and its adapters) taken before a major AGENTS.md version. They are never edited
-(a test pins their hash), and every line in them is a copy of a policy file scanned at its live path, so
-counting them again would only double-count and block the snapshot PR. Blocked-path rules still apply there.
+ONE CONTENT EXCLUSION, verified by bytes: tests/fixtures/agents_pre_*/** holds verbatim, hash-pinned snapshots
+of the policy files (AGENTS.md, its adapters, docs/governance) taken before a major AGENTS.md version. A file
+there is skipped ONLY when its exact bytes, hashed as a git blob, equal a past version of one of
+POLICY_SOURCES in the history of the base ref (--range: the range's left side; --tree: HEAD). Such a file adds
+nothing that main's own history did not already hold, and re-flagging it would block every snapshot PR. Any
+other file in those folders (an extra notes.md, an edited copy, a new agents_pre_x/ folder) is scanned like
+everything else. In CI a pull request runs main's copy of this script, so a PR cannot widen the rule.
+Blocked-path rules always apply there, and gitleaks has no path exemption at all.
 .gz files are decompressed and scanned.
 
 OUTPUT never prints any part of a found value: path:line and category only (for blocked_path, the rule).
@@ -62,6 +66,7 @@ import bisect
 import datetime as _dt
 import fnmatch
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -182,12 +187,61 @@ _BLOCKED_BASENAMES = frozenset({".netrc", "_netrc", ".npmrc", "credentials.json"
 _BLOCKED_DIRS = ("sessions", "persistent-state", ".next")
 
 
-def snapshot_excluded(path: str) -> bool:
-    """tests/fixtures/agents_pre_*/**: verbatim, hash-pinned policy snapshots whose content is already counted
-    in the tree baseline at the live policy paths. Content scanning skips them in both modes; see the module
-    docstring. Blocked-path rules are NOT skipped."""
+# The live policy files a snapshot may be a verbatim copy of (any past version, on the base ref).
+POLICY_SOURCES = (
+    "AGENTS.md",
+    "AI_WORK_POLICY.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    ".goosehints",
+    ".github/copilot-instructions.md",
+    ".cursor/rules/00-tradeai-work-policy.mdc",
+    "docs/governance/",
+)
+
+
+def snapshot_candidate(path: str) -> bool:
+    """A path under tests/fixtures/agents_pre_*/. Being here is NOT enough to be skipped; see SnapshotVerifier."""
     parts = PurePosixPath(path).parts
     return len(parts) > 3 and parts[0] == "tests" and parts[1] == "fixtures" and parts[2].startswith("agents_pre_")
+
+
+class SnapshotVerifier:
+    """Skip a snapshot candidate only when its bytes are a verbatim past version of a POLICY_SOURCES file in the
+    history of ``ref``: the git blob id of the bytes must appear in ``git log --raw <ref> -- POLICY_SOURCES``."""
+
+    def __init__(self, repo: Path, ref: str) -> None:
+        self.repo, self.ref = repo, ref
+        self.skipped = 0
+        self._blobs: frozenset[str] | None = None
+        self._algo = "sha1"
+
+    def _load(self) -> frozenset[str]:
+        fmt = subprocess.run(["git", "rev-parse", "--show-object-format"], cwd=self.repo, capture_output=True)
+        if fmt.returncode == 0 and fmt.stdout.strip():
+            self._algo = fmt.stdout.decode().strip()
+        raw = _git(
+            self.repo, "log", "--format=", "--raw", "--no-abbrev", "--no-renames", self.ref, "--", *POLICY_SOURCES
+        )
+        blobs = set()
+        for line in raw.decode("utf-8", errors="replace").splitlines():
+            if line.startswith(":"):
+                fields = line.split("\t", 1)[0].split()
+                blobs.update(b for b in fields[2:4] if b.strip("0"))
+        return frozenset(blobs)
+
+    def blob_id(self, data: bytes) -> str:
+        return hashlib.new(self._algo, b"blob %d\0" % len(data) + data).hexdigest()
+
+    def skip(self, path: str, data: bytes) -> bool:
+        if not snapshot_candidate(path):
+            return False
+        if self._blobs is None:
+            self._blobs = self._load()
+        if self.blob_id(data) in self._blobs:
+            self.skipped += 1
+            return True
+        return False
 
 
 @dataclass(frozen=True)
@@ -374,7 +428,8 @@ def _git(repo: Path, *args: str) -> bytes:
 
 
 # ── modes ───────────────────────────────────────────────────────────────────────────────────────────
-def scan_tree(repo: Path, deny: list[re.Pattern[str]]) -> list[Finding]:
+def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None) -> list[Finding]:
+    verifier = verifier or SnapshotVerifier(repo, "HEAD")
     out: list[Finding] = []
     for entry in _git(repo, "ls-files", "-s", "-z").split(b"\0"):
         if not entry:
@@ -384,12 +439,14 @@ def scan_tree(repo: Path, deny: list[re.Pattern[str]]) -> list[Finding]:
         reason = blocked_reason(path)
         if reason:
             out.append(Finding(path, 0, "blocked_path", reason))
-        if meta.startswith(b"120000") or meta.startswith(b"160000") or snapshot_excluded(path):
-            continue  # symlink, submodule, hash-pinned policy snapshot
+        if meta.startswith(b"120000") or meta.startswith(b"160000"):
+            continue  # symlink, submodule
         try:
             data = (repo / path).read_bytes()
         except OSError:
             continue
+        if verifier.skip(path, data):
+            continue  # verbatim past version of a live policy file (see SnapshotVerifier)
         text = _decode(data, path)
         if text:
             out.extend(scan_text(path, text, deny))
@@ -407,8 +464,19 @@ def _target(rng: str) -> str:
     return "HEAD"
 
 
-def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> tuple[list[Finding], int]:
+def _base(rng: str) -> str:
+    """The old side of a range (A..B, A...B, or a single rev meaning rev..HEAD): whose history vouches for snapshots."""
+    for sep in ("...", ".."):
+        if sep in rng:
+            return rng.split(sep, 1)[0] or "HEAD"
+    return rng
+
+
+def scan_range(
+    repo: Path, rng: str, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None
+) -> tuple[list[Finding], int]:
     """(findings on added lines, number of added lines carrying an inline allow marker)."""
+    verifier = verifier or SnapshotVerifier(repo, _base(rng))
     out: list[Finding] = []
     status_raw = _git(repo, "diff", "--name-status", "-z", "-M", "--diff-filter=ACMR", rng)
     parts = [p.decode("utf-8", errors="replace") for p in status_raw.split(b"\0") if p]
@@ -444,8 +512,6 @@ def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> tuple[list[
     target = _target(rng)
     markers = 0
     for path in sorted(statuses):
-        if snapshot_excluded(path):
-            continue
         lines = added.get(path)
         whole = path.endswith(".gz") and statuses[path] in ("A", "M", "R", "C")
         if not lines and not whole:
@@ -453,6 +519,8 @@ def scan_range(repo: Path, rng: str, deny: list[re.Pattern[str]]) -> tuple[list[
         r = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
         if r.returncode != 0:
             raise ScanError(f"git show {target}:{path} failed")
+        if verifier.skip(path, r.stdout):
+            continue  # verbatim past version of a live policy file on the base ref (see SnapshotVerifier)
         text = _decode(r.stdout, path)
         if text:
             out.extend(scan_text(path, text, deny, None if whole else lines))
@@ -573,12 +641,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if raised else 0
 
     markers = 0
+    verifier = SnapshotVerifier(repo, _base(args.rng) if args.rng else "HEAD")
     try:
         deny = load_deny_patterns(repo)
         if args.rng:
-            findings, markers = scan_range(repo, args.rng, deny)
+            findings, markers = scan_range(repo, args.rng, deny, verifier)
         else:
-            findings = scan_tree(repo, deny)
+            findings = scan_tree(repo, deny, verifier)
     except ScanError as exc:
         print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
         return 2
@@ -594,10 +663,16 @@ def main(argv: list[str] | None = None) -> int:
                     "ok": not findings,
                     "counts": by_cat,
                     "allow_markers_added": markers,
+                    "snapshot_files_skipped": verifier.skipped,
                     "findings": [asdict(f) for f in findings],
                 }
             )
             return 1 if findings else 0
+        if verifier.skipped:
+            print(
+                f"check_no_pii: {verifier.skipped} policy snapshot file(s) skipped: byte-identical to a past version "
+                f"of a live policy file on {verifier.ref}"
+            )
         if findings:
             print(f"check_no_pii: {len(findings)} new finding(s) in {args.rng} (values never printed):")
             _print(findings, args.limit)
@@ -636,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
                 "grew": grew,
                 "shrank": shrank,
                 "deny_pattern_advisory": deny_n,
+                "snapshot_files_skipped": verifier.skipped,
             }
         )
         return 1 if grew else 0
@@ -646,6 +722,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {k:18} {base[k]:>8} {current[k]:>6}{flag}")
     if deny_n or deny:
         print(f"  {'deny_pattern':18} {'n/a':>8} {deny_n:>6}  (advisory; private deny file, not ratcheted)")
+    if verifier.skipped:
+        print(f"  {verifier.skipped} policy snapshot file(s) skipped: byte-identical to a past policy file on HEAD")
     if args.verbose:
         _print(findings, args.limit)
     if grew:

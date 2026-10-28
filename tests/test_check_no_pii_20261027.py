@@ -253,14 +253,15 @@ def test_not_blocked_paths(path: str):
     assert pii.blocked_reason(path) is None
 
 
-def test_snapshot_exclusion_is_exactly_the_agents_pre_fixture_folders():
-    assert pii.snapshot_excluded("tests/fixtures/agents_pre_26_0_0/AGENTS.md")
-    assert pii.snapshot_excluded("tests/fixtures/agents_pre_25_0_0/sub/CLAUDE.md")
-    assert not pii.snapshot_excluded("tests/fixtures/agents_pre_26_0_0")  # the folder name itself
-    assert not pii.snapshot_excluded("tests/fixtures/other/AGENTS.md")
-    assert not pii.snapshot_excluded("docs/tests/fixtures/agents_pre_26_0_0/AGENTS.md")
-    assert not pii.snapshot_excluded("tests/agents_pre_26_0_0/AGENTS.md")
-    assert not pii.snapshot_excluded("AGENTS.md")
+def test_snapshot_candidates_are_only_the_agents_pre_fixture_folders():
+    """Being a candidate is necessary, never sufficient: SnapshotVerifier must also match the bytes."""
+    assert pii.snapshot_candidate("tests/fixtures/agents_pre_26_0_0/AGENTS.md")
+    assert pii.snapshot_candidate("tests/fixtures/agents_pre_25_0_0/sub/CLAUDE.md")
+    assert not pii.snapshot_candidate("tests/fixtures/agents_pre_26_0_0")  # the folder name itself
+    assert not pii.snapshot_candidate("tests/fixtures/other/AGENTS.md")
+    assert not pii.snapshot_candidate("docs/tests/fixtures/agents_pre_26_0_0/AGENTS.md")
+    assert not pii.snapshot_candidate("tests/agents_pre_26_0_0/AGENTS.md")
+    assert not pii.snapshot_candidate("AGENTS.md")
 
 
 # ── git: range, tree and the baseline guard ──────────────────────────────────────────────────────────
@@ -349,34 +350,97 @@ def test_range_blocks_added_and_renamed_never_commit_files(repo: Path):
     ]
 
 
-def test_range_skips_policy_snapshot_content_but_not_blocked_files(repo: Path):
+POLICY_V1 = f"# AGENTS.md v1\nServed from {HOME_PATH} on {IP_TS}\n"  # a historical version with findings
+POLICY_V2 = "# AGENTS.md v2\nNo host details here.\n"
+HINTS_V1 = f"goose hints: {HOME_PATH}\n"
+
+
+def _policy_history(repo: Path) -> None:
+    """Base history: AGENTS.md and .goosehints v1 (with findings), then AGENTS.md v2. v1 is a PAST version."""
+    (repo / "AGENTS.md").write_text(POLICY_V1, encoding="utf-8")
+    (repo / ".goosehints").write_text(HINTS_V1, encoding="utf-8")
+    _commit(repo, "policy v1")
+    (repo / "AGENTS.md").write_text(POLICY_V2, encoding="utf-8")
+    _commit(repo, "policy v2")
+
+
+def test_byte_identical_copy_of_a_historical_policy_file_is_skipped(repo: Path):
+    _policy_history(repo)
     base = _head(repo)
     snap = repo / "tests" / "fixtures" / "agents_pre_26_0_0"
     snap.mkdir(parents=True)
-    (snap / "AGENTS.md").write_text(f"Served from {HOME_PATH} on {IP_TS}\n", encoding="utf-8")
+    (snap / "AGENTS.md").write_text(POLICY_V1, encoding="utf-8")  # verbatim past AGENTS.md
+    (snap / "goosehints").write_text(HINTS_V1, encoding="utf-8")  # flattened name, verbatim past .goosehints
     _commit(repo, "snapshot")
     rc, out = _run(repo, "--range", f"{base}..HEAD")
-    assert (rc, out["findings"]) == (0, [])
+    assert (rc, out["findings"], out["snapshot_files_skipped"]) == (0, [], 2)
 
-    mid = _head(repo)
-    (snap / ".env").write_text("A=1\n", encoding="utf-8")
-    (repo / "tests" / "fixtures" / "AGENTS_copy.md").write_text(f"{HOME_PATH}\n", encoding="utf-8")
-    _commit(repo, "outside the exclusion")
-    rc, out = _run(repo, "--range", f"{mid}..HEAD")
-    assert rc == 1
-    assert sorted((f["path"], f["category"]) for f in out["findings"]) == [
-        ("tests/fixtures/AGENTS_copy.md", "home_path"),
+
+def test_unpinned_or_edited_files_under_agents_pre_are_reported(repo: Path):
+    _policy_history(repo)
+    base = _head(repo)
+    snap = repo / "tests" / "fixtures" / "agents_pre_26_0_0"
+    snap.mkdir(parents=True)
+    other = repo / "tests" / "fixtures" / "agents_pre_x"
+    other.mkdir(parents=True)
+    (snap / "AGENTS.md").write_text(POLICY_V1, encoding="utf-8")  # verbatim: skipped
+    (snap / "notes.md").write_text(f"see {HOME_PATH}\n", encoding="utf-8")  # extra file in a real snapshot folder
+    (other / "notes.md").write_text(f"host {IP_192}\n", encoding="utf-8")  # a new agents_pre_ folder
+    (other / "AGENTS.md").write_text(POLICY_V1 + f"owner {PERSONAL_EMAIL}\n", encoding="utf-8")  # edited copy
+    (snap / ".env").write_text("A=1\n", encoding="utf-8")  # blocked paths are never skipped
+    _commit(repo, "snapshot plus smuggled files")
+    rc, out = _run(repo, "--range", f"{base}..HEAD")
+    assert rc == 1 and out["snapshot_files_skipped"] == 1
+    got = sorted({(f["path"], f["category"]) for f in out["findings"]})
+    assert got == [
         ("tests/fixtures/agents_pre_26_0_0/.env", "blocked_path"),
+        ("tests/fixtures/agents_pre_26_0_0/notes.md", "home_path"),
+        ("tests/fixtures/agents_pre_x/AGENTS.md", "email"),
+        ("tests/fixtures/agents_pre_x/AGENTS.md", "home_path"),
+        ("tests/fixtures/agents_pre_x/AGENTS.md", "private_ip"),
+        ("tests/fixtures/agents_pre_x/notes.md", "private_ip"),
     ]
 
 
-def test_tree_skips_policy_snapshot_content(repo: Path):
+def test_a_pr_cannot_vouch_for_its_own_new_policy_version(repo: Path):
+    """Only the BASE ref's history vouches: a snapshot of the PR's own new AGENTS.md is scanned."""
+    _policy_history(repo)
+    base = _head(repo)
+    v3 = f"# AGENTS.md v3\nhost {IP_10}\n"
+    (repo / "AGENTS.md").write_text(v3, encoding="utf-8")
+    snap = repo / "tests" / "fixtures" / "agents_pre_27_0_0"
+    snap.mkdir(parents=True)
+    (snap / "AGENTS.md").write_text(v3, encoding="utf-8")
+    _commit(repo, "new policy + its own snapshot")
+    rc, out = _run(repo, "--range", f"{base}..HEAD")
+    assert rc == 1 and out["snapshot_files_skipped"] == 0
+    assert sorted(f["path"] for f in out["findings"]) == ["AGENTS.md", "tests/fixtures/agents_pre_27_0_0/AGENTS.md"]
+
+
+def test_tree_mode_applies_the_same_byte_test_against_head(repo: Path):
+    _policy_history(repo)
     snap = repo / "tests" / "fixtures" / "agents_pre_25_0_0"
     snap.mkdir(parents=True)
-    (snap / "AGENTS.md").write_text(f"{HOME_PATH}\n{IP_TS}\n", encoding="utf-8")
+    (snap / "AGENTS.md").write_text(POLICY_V1, encoding="utf-8")
+    (snap / "extra.md").write_text(f"{IP_TS}\n", encoding="utf-8")
     _commit(repo, "snapshot")
-    found = pii.scan_tree(repo, [])
-    assert not [f for f in found if f.path.startswith("tests/fixtures/agents_pre_")]
+    verifier = pii.SnapshotVerifier(repo, "HEAD")
+    found = pii.scan_tree(repo, [], verifier)
+    assert verifier.skipped == 1
+    assert sorted((f.path, f.category) for f in found if f.path.startswith("tests/fixtures/")) == [
+        ("tests/fixtures/agents_pre_25_0_0/extra.md", "private_ip")
+    ]
+
+
+def test_blob_id_matches_git_hash_object(repo: Path):
+    data = POLICY_V1.encode()
+    (repo / "probe.bin").write_bytes(data)
+    want = subprocess.run(
+        ["git", "hash-object", "probe.bin"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    v = pii.SnapshotVerifier(repo, "HEAD")
+    v._load()
+    assert v.blob_id(data) == want
 
 
 def test_range_scans_inside_added_gz(repo: Path):
