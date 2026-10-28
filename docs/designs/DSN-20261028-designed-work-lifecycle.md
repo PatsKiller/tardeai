@@ -14,7 +14,7 @@ phases:
         status: IN_PROGRESS
         areas: [AGENTS.md, docs/governance/LESSONS_LEARNED.md, docs/governance/OPEN_ITEMS.md]
       - id: DSN-20261028-designed-work-lifecycle-P1-T2
-        title: OPERATOR: ratify and merge 26.1.0 (held-class)
+        title: "OPERATOR: ratify and merge 26.1.0 (held-class)"
         status: PROPOSED
         owner: OPERATOR
         areas: [operator/agents-policy/26-1-0]
@@ -23,11 +23,11 @@ phases:
     status: PROPOSED
     tasks:
       - id: DSN-20261028-designed-work-lifecycle-P2-T1
-        title: Stale-work monitor: flag PROPOSED designs with no owner, IN_PROGRESS phases with unclaimed tasks, and lanes a design names "to admit" still NEVER_SCHEDULED/PAUSED
+        title: "Stale-work monitor: flag PROPOSED designs with no owner, IN_PROGRESS phases with unclaimed tasks, and lanes a design names 'to admit' still NEVER_SCHEDULED/PAUSED"
         status: PROPOSED
         areas: [scripts/lib/agent_claim_board.py, scripts/lib/agent_task_board.py]
       - id: DSN-20261028-designed-work-lifecycle-P2-T2
-        title: Design→task closure check (CI, mirroring check_open_items.py): a DSN's buildable prose item must have a registered task; a design naming a lane must match a registry row
+        title: "Design→task closure check (CI, mirroring check_open_items.py): a DSN's buildable prose item must have a registered task; a design naming a lane must match a registry row"
         status: PROPOSED
         areas: [scripts/check_design_task_closure.py, config/ci_gates]
 ---
