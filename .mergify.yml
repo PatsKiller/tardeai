@@ -10,6 +10,17 @@
 # Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
 
 pull_request_rules:
+  # Keep approved (operator-merge) PRs current with main so they never fall out of the queue when
+  # another PR merges first. Without this, every merge to main re-stales the waiting PRs (check-success
+  # computed on an old head) and the queue drains to empty — the 2026-10-28 held-PR deadlock.
+  - name: keep approved PRs up to date with main
+    conditions:
+      - base=main
+      - -draft
+      - label=operator-merge
+    actions:
+      update:
+
   # GENERATED from config/merge_hold_paths.json — do not hand-edit the file list.
   # Regenerate: python scripts/lib/merge_hold_paths.py --print-mergify
   # tests/test_pr_merge_digest_20261027.py fails if this list drifts from the config.
