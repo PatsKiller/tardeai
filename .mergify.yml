@@ -124,12 +124,14 @@ pull_request_rules:
     actions:
       queue:
         name: solo
-  - name: Keep PRs up to date
+  - name: Auto-merge approved PRs
     conditions:
-      - -draft
-      - "#commits-behind >= 1"
+      - base = main
+      - "#approved-reviews-by >= 2"
+      - check-success = ci/build
     actions:
-      update: null
+      merge:
+        method: squash
 
 queue_rules:
   - name: default
