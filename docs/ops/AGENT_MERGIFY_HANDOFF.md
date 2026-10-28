@@ -20,7 +20,7 @@ See also: scripts/pr_merge_digest.py · scripts/lib/pr_merge_digest.py · config
 |---|---|---|
 | 1. Claim | Agent | `scripts/agent_claim.py` claim + worklog |
 | 2. Build / test / dry-run | Agent | `TRADE_AI_CI=1` tests; dry-run quoted if writes/sends |
-| 3. Open ready PR to `main` | Agent | Not draft. `solo` / `shared-infra` if needed. Last remote act |
+| 3. Open ready PR to `main` | Agent | Not draft. `shared-infra` when it applies (never `solo`: retired with the release train, AGENTS.md §28.15 item 7). Last remote act |
 | 4. Nothing to request | — | The digest timer finds the PR once it is ready (not draft, four checks green on the head, no held path). `request_pr_merge_approve.py --pr <N>` is optional and only records a nomination + prints the next digest time |
 | 5. Approve all | **Operator (phone)** | One tap on the digest. Per-item Hold button or reply `hold #N` excludes one. Held-path PRs are listed as "needs operator merge" with no Approve |
 | 6. STOP | Agent | No `gh pr merge`, no promote, no hand-applied `operator-merge`. Pushing a new head after approval drops the label; the PR returns to the next digest |
