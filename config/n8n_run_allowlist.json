@@ -4538,6 +4538,39 @@
       "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
       "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
       "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
+    },
+    {
+      "lane_id": "conflict-resolver",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/conflict_resolver.py --dry-run --state-root reads canonical W1 truth (cio_truth.resolve / stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe and watch_decision.reentry_rows -> db_adapter._execute; cio_prospect shadow JSON). DB names from db_adapter.py. The LaneRunReceipt writes through lane_last_receipt to <state-root>/data/runtime/conflict-resolver_last.json (state root passed explicitly as --state-root $STATE_ROOT).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (compose_universe/reentry_rows -> db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
+      "source": "SHADOW-stage dispatcher-row proposal (W10 conflict engine, docs/ops/W8_WRITERS_20261024.md). No cron line: the dispatcher fires the write-free dry run only. SHADOW ONLY: live_arg null (no live mode admitted yet); registry dispatch.mode dry_run, scheduler.stage shadow. dry_run_arg runs --dry-run --state-root $STATE_ROOT, which computes the report and writes a LaneRunReceipt (ok_at) but never writes the conflict ledger. lock = /tmp/conflict_resolver.lock (the allowlist requires /tmp/ locks; the runner's own internal fcntl.flock is data/conflicts/conflict_resolver.lock, state-root-relative — a W10 handoff to align that internal lock to /tmp before canary); at shadow the executor takes <lock>.dryrun (disjoint).",
+      "command": [
+        "$PY",
+        "scripts/conflict_resolver.py"
+      ],
+      "lock": "/tmp/conflict_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/conflict-resolver_last.json",
+      "output_receipt": "v2"
     }
   ],
   "blocked_reasons": {
