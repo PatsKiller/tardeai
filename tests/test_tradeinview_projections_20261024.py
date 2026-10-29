@@ -271,6 +271,46 @@ def test_history_legacy_only_rows_survive_as_fallback_when_no_broker_round_trip_
     assert out["detail"]["stats"]["round_trip_count"] == 2
 
 
+def test_history_legacy_cross_account_double_record_is_dropped():
+    data = history_snapshot()
+    # Broker round trip in schwab_roth only; the retired CSV recorded the same fill
+    # (same shares, same sell price, same exit date) under schwab_rollover_ira too.
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(
+        account="schwab_roth", exit_time="2026-11-02T15:25:00+00:00", exit_price=43.75, qty=11)]
+    data["files"]["legacy_journal"]["document"]["closed_trades"] = [
+        old_trip(account="schwab_rollover_ira", close_date="2026-11-02", shares=11, sell_price=43.75, buy_price=41.25)]
+    trips, gaps = hist.history_trips(data)
+    assert [r["source"] for r in trips] == ["schwab_round_trips"]
+    assert any("probable double-records" in g["reason"] for g in gaps)
+
+
+def test_history_legacy_cross_account_distinct_fill_is_kept():
+    data = history_snapshot()
+    # Same exit date, but a different share quantity and price -> genuinely distinct,
+    # not a double-record; the legacy row survives as the fallback.
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(
+        account="schwab_roth", exit_time="2026-11-02T15:25:00+00:00", exit_price=43.75, qty=11)]
+    data["files"]["legacy_journal"]["document"]["closed_trades"] = [
+        old_trip(account="schwab_rollover_ira", close_date="2026-11-02", shares=50, sell_price=30.0, buy_price=25.0)]
+    trips, gaps = hist.history_trips(data)
+    assert {r["source"] for r in trips} == {"schwab_round_trips", "legacy_journal.closed_trades"}
+    assert not any("probable double-records" in g["reason"] for g in gaps)
+
+
+def test_history_one_broker_fill_explains_at_most_one_legacy_row():
+    data = history_snapshot()
+    # Two legacy rows that both approximate one broker fill: only one is dropped,
+    # the other is retained (a single fill cannot explain two distinct rows).
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(
+        account="schwab_roth", exit_time="2026-11-02T15:25:00+00:00", exit_price=43.75, qty=11)]
+    data["files"]["legacy_journal"]["document"]["closed_trades"] = [
+        old_trip(account="schwab_rollover_ira", close_date="2026-11-02", shares=11, sell_price=43.75, buy_price=41.25),
+        old_trip(account="schwab_rollover_ira", open_date="2023-01-01", close_date="2026-11-02", shares=11, sell_price=43.75, buy_price=41.25)]
+    trips, gaps = hist.history_trips(data)
+    legacy_kept = [t for t in trips if t["source"].startswith("legacy_journal")]
+    assert len(legacy_kept) == 1, "one of the two matching legacy rows must be retained"
+
+
 def test_history_explicit_range_uses_source_dates_not_current_session():
     data = history_snapshot()
     data["files"]["legacy_journal"]["document"]["closed_trades"] = [old_trip(), old_trip(
@@ -873,12 +913,27 @@ def test_name_fallbacks_read_stored_files_only(tmp_path):
     (runtime / "sec_company_tickers.json").write_text(json.dumps({"0": {"ticker": "NERV", "title": "Minerva Neurosciences, Inc."}}))
     (runtime / "schwab_instrument_evidence.json").write_text(json.dumps({"instruments": {
         "FJSCX": {"description": "FIDELITY JAPAN SMALLER COMPANIES"},
-        "SHFS": {"description": "SHF HLDGS INC A", "identifiers": {"cusip": "824430300"}}}}))
+        "SHFS": {"description": "SHF HLDGS INC A", "identifiers": {"cusip": "824430300"}}},
+        "misses": {"CDEX": {"reason": "broker_returned_no_identifier"},
+                   "SGBX": {"reason": "broker_returned_no_identifier"}}}))
     before = sorted(p.name for p in runtime.iterdir())
-    out = src.name_fallbacks({"NERV", "FJSCX", "SCHD", "824430300"}, tmp_path,
+    out = src.name_fallbacks({"NERV", "FJSCX", "SCHD", "824430300", "CDEX", "SGBX", "AAPL"}, tmp_path,
                              {"holdings": [{"symbol": "SCHD", "name": "SCHWAB US DIVIDEND EQUITY ETF"}]})
     assert out["names"]["NERV"]["source"] == "SEC company tickers"
     assert out["names"]["FJSCX"]["name"] == "FIDELITY JAPAN SMALLER COMPANIES"
     assert out["names"]["SCHD"]["source"] == "holdings broker position name"
     assert out["cusip_tickers"] == {"824430300": "SHFS"}
+    # Delisted symbols live in `misses`, not `instruments`; they are labelled, not named.
+    assert out["no_identifier"] == ["CDEX", "SGBX"]
     assert sorted(p.name for p in runtime.iterdir()) == before
+
+
+def test_history_delisted_symbol_is_labelled_from_misses_not_left_unexplained():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(), roundtrip(
+        id=902, dedupe_key="ira", account="schwab_rollover_ira")]
+    data["company_names"] = {"names": {}, "cusip_tickers": {}, "no_identifier": ["TSTA"]}
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    row, = out["symbols"]
+    assert row["company_name"] is None
+    assert "delisted or no longer quoted" in row["company_missing_reason"]
