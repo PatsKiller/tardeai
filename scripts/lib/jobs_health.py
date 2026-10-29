@@ -122,6 +122,48 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
                             "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
 
 
+#: The operations watchers surfaced by the Jobs & health stoplight strip (operator 2026-10-28: "a mode in the
+#: command center that shows stoplights when these along with the alerts"). Each is a guard that must actually run
+#: for "did it die and did anyone notice" to be answered honestly. An absent or unwired watcher renders red/amber,
+#: never silently green — the same "a component reporting success is not evidence" rule as the rows below.
+WATCHER_LANES = {
+    "self-heal-fixer": "Self-heal fixer",
+    "pr-merge-telegram-notify": "Merge notifier",
+    "delivery-failure-alerts": "Failure pager",
+}
+
+
+def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool) -> list[dict]:
+    """Deterministic read-only watcher lights from the registry, the run rows and the independent monitor.
+
+    ``status`` is one of ok / degraded / down / absent; the strip maps it to green / amber / red / red.
+    """
+    by_lane = {r["lane_id"]: r for r in rows}
+    out = [{"id": "missed-run-watchdog", "label": "Missed-run watchdog",
+            "status": "ok" if monitor_ok else "degraded", "cause": None if monitor_ok else monitor["cause"]}]
+    for lane_id, label in WATCHER_LANES.items():
+        row = by_lane.get(lane_id)
+        if row is None:
+            out.append({"id": lane_id, "label": label, "status": "absent",
+                        "cause": "Not a registered job — it cannot run, watch or page"})
+            continue
+        state, result = row["state"], row["result"]
+        if result == "failed":
+            status, cause = "down", row["cause"]
+        elif state in {"PAUSED", "DISABLED"}:
+            status, cause = "degraded", row["cause"] or f"{label} is {state.lower()}: designed, not running"
+        elif state == "NEVER_SCHEDULED":
+            status, cause = "degraded", f"{label} is never scheduled: its unit is not installed"
+        elif state == "RETIRED":
+            status, cause = "absent", f"{label} is retired"
+        elif result in {"succeeded", "due"}:
+            status, cause = "ok", None
+        else:
+            status, cause = "degraded", row["cause"] or f"{label} is not proven running"
+        out.append({"id": lane_id, "label": label, "status": status, "cause": cause})
+    return out
+
+
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
@@ -213,7 +255,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
-        "monitor": monitor, "incidents": incidents, "incident_count": len(incidents),
+        "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
+        "incidents": incidents, "incident_count": len(incidents),
         "coverage_gaps": captured.get("collection_gaps") or [],
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
 
