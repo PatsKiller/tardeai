@@ -6059,6 +6059,18 @@ def approval_decide(body: dict):
     return 200, {"ok": True, "action": decision, "queue_id": queue_id}
 
 
+def _admin_secrets_listing():
+    """GET /api/v2/admin/secrets — presence for every reader; age/config values only for the operator."""
+    try:
+        from lib.cc_auth import current_principal as _cc_current_principal
+    except ImportError:  # pragma: no cover - imported as scripts.api_v2
+        from scripts.lib.cc_auth import current_principal as _cc_current_principal
+    import importlib as _il
+
+    _sa = _il.reload(__import__("secrets_admin"))
+    return _sa.list_secrets(principal=_cc_current_principal())
+
+
 def _orchestration():
     """GET /api/v2/orchestration — system timers, services, skills, scripts."""
     import subprocess
@@ -6242,7 +6254,7 @@ def _orchestration():
             from telegram_alert import _token as _tg_token
 
             t = _tg_token() or ""
-            return (bool(t), f"Token: ...{t[-8:]}" if len(t) >= 8 else ("configured" if t else "missing"))
+            return (bool(t), "configured" if t else "missing")  # never any character of the token
         except Exception as e:
             return (False, str(e)[:80])
 
@@ -6253,7 +6265,7 @@ def _orchestration():
     )
     _env_check(
         "Finviz API",
-        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), f"Token: ...{os.getenv('FINVIZ_API_TOKEN', '')[-8:]}"),
+        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), "configured" if os.getenv("FINVIZ_API_TOKEN") else "missing"),
         "Add FINVIZ_API_TOKEN to .env",
     )
     _env_check(
@@ -49263,7 +49275,9 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
-    "/api/v2/admin/secrets": lambda: __import__("importlib").reload(__import__("secrets_admin")).list_secrets(),
+    # Presence only for agents/unauthenticated readers; the operator (tailnet principal) also gets ages.
+    # Never any character of a secret (page audit 2026-10-25).
+    "/api/v2/admin/secrets": lambda: _admin_secrets_listing(),
     "/api/v2/admin/strategy-enablement": lambda: {
         "rows": [
             {k: _json_clean(v) for k, v in r.items()}
