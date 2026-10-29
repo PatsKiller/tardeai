@@ -87,24 +87,57 @@ def history_trips(snapshot):
     # (symbol, account, exit date) with a broker-verified round trip, the round
     # trip is authoritative (the operator retired the legacy FIFO journal on
     # 2026-07-21). Drop the legacy duplicate and record the link, never double-count.
-    by_key = defaultdict(list)
+    # The retired CSV also attributed some fills to two accounts; when the legacy
+    # account differs but the shares and sell price match a broker-verified trip on
+    # the same exit date, the legacy row is that same fill mis-attributed, and is
+    # dropped too (recorded separately so the correction is visible).
+    broker = [t for t in trips if not t["source"].startswith("legacy_journal")]
+    broker_by_date = defaultdict(list)
+    broker_account_dates = set()
+    for t in broker:
+        if t.get("exit_date"):
+            broker_by_date[(t["symbol"], t.get("exit_date"))].append(t)
+            broker_account_dates.add((t["symbol"], t.get("account_id"), t.get("exit_date")))
+
+    def _same_fill(legacy_trip, broker_trip) -> bool:
+        lq, bq = legacy_trip.get("shares"), broker_trip.get("shares")
+        if lq is None or bq is None or abs(lq - bq) > 0.01:
+            return False
+        lp, bp = legacy_trip.get("exit_price"), broker_trip.get("exit_price")
+        if lp is None or bp is None:
+            return False
+        if lp == 0 and bp == 0:
+            return True
+        return abs(lp - bp) / max(abs(lp), abs(bp), 1e-9) <= 0.005 or abs(lp - bp) <= 0.05
+
+    deduped, same_account, cross_account = [], 0, 0
+    used_broker = set()
     for trip in trips:
-        if trip.get("exit_date"):
-            by_key[(trip["symbol"], trip.get("account_id"), trip["exit_date"])].append(trip)
-    broker_keys = {
-        key for key, group in by_key.items()
-        if any(not r["source"].startswith("legacy_journal") for r in group)
-    }
-    deduped, superseded = [], 0
-    for trip in trips:
+        if not trip["source"].startswith("legacy_journal") or not trip.get("exit_date"):
+            deduped.append(trip)
+            continue
         key = (trip["symbol"], trip.get("account_id"), trip.get("exit_date"))
-        if trip["source"].startswith("legacy_journal") and trip.get("exit_date") and key in broker_keys:
-            superseded += 1
+        if key in broker_account_dates:
+            same_account += 1
+            continue
+        matched = None
+        for b in broker_by_date.get((trip["symbol"], trip.get("exit_date")), ()):
+            if id(b) in used_broker or b.get("account_id") == trip.get("account_id"):
+                continue
+            if _same_fill(trip, b):
+                matched = b
+                break
+        if matched is not None:
+            used_broker.add(id(matched))
+            cross_account += 1
             continue
         deduped.append(trip)
-    if superseded:
+    if same_account:
         gaps.append({"source": "closed trips",
-                     "reason": f"{superseded} legacy journal row(s) superseded by broker-verified round trips on the same exit date (deduped, never double-counted)"})
+                     "reason": f"{same_account} legacy journal row(s) superseded by broker-verified round trips on the same exit date (deduped, never double-counted)"})
+    if cross_account:
+        gaps.append({"source": "closed trips",
+                     "reason": f"{cross_account} legacy journal row(s) dropped as probable double-records (identical shares and sell price to a broker-verified fill in another account on the same exit date)"})
     return deduped, gaps
 
 
