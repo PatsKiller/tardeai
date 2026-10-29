@@ -302,6 +302,17 @@ def test_budget_exhausted_after_throttle_starts_no_http(isolated, monkeypatch):
 
 
 def test_expired_fetch_rolls_back_without_starting_membership_writes(isolated, monkeypatch):
+    from types import ModuleType
+
+    # The real function imports the cursor type even when its connection is
+    # mocked. Keep that import local to this case and independent of DB extras.
+    driver, extras = ModuleType("psycopg2"), ModuleType("psycopg2.extras")
+    driver.__path__ = []
+    driver.extras = extras
+    driver.connect = lambda **_kw: pytest.fail("unmocked database connection")
+    extras.RealDictCursor = object
+    monkeypatch.setitem(sys.modules, "psycopg2", driver)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
     clock = Clock()
     monkeypatch.setattr(screener, "time", clock)
     queries = []
