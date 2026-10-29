@@ -170,6 +170,40 @@ def conviction_block(opp: Optional[dict[str, Any]], *, now: datetime) -> dict[st
     }
 
 
+def conviction_block_cio(cio: dict[str, Any], *, fallback: dict[str, Any]) -> dict[str, Any]:
+    """Conviction block from a canonical ``cio_truth.stances_for_symbols`` entry (the CIO record, GUID-keyed).
+
+    The curator-only rank/coverage and the "factors not scored" list are different facts that belong to the
+    opportunity projection, so they are carried over from the fallback block rather than dropped.
+    """
+    comps = []
+    for fx in cio.get("material_inputs") or []:
+        if not isinstance(fx, dict):
+            continue
+        key = str(fx.get("source") or "factor")
+        comps.append(
+            {
+                "key": key,
+                "label": key.replace("_", " ").capitalize(),
+                "value": _f(fx.get("value")),
+                "weight": _f(fx.get("weight")),
+                "detail": None,
+                "source": fx.get("source"),
+            }
+        )
+    comps.sort(key=lambda c: -(c["weight"] or 0))
+    return {
+        "conviction": round(float(cio["conviction"]), 1),
+        "components": comps,
+        "missing_components": list(fallback.get("missing_components") or []),
+        "evidence_at": cio.get("inputs_as_of") or cio.get("as_of"),
+        "stale": bool(cio.get("stale")),
+        "source": "cio_prospect",
+        "rank": fallback.get("rank"),
+        "coverage": fallback.get("coverage"),
+    }
+
+
 # ── conflicts — shown, never resolved (AGENTS.md §26.5) ───────────────────────
 
 
@@ -537,6 +571,7 @@ def build_row(
     now: datetime,
     interim: bool = True,
     mine: Optional[dict[str, Any]] = None,
+    cio_stances: Optional[dict[str, dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """One prospect row. ``mine`` is the operator membership (watch_domains.membership_operator()["names"][SYM]) when
     the name is the operator's own: such a row is never put in Expired — expiry only suggests a review (operator
@@ -551,6 +586,18 @@ def build_row(
         lane, why = "forming", f"{why} — yours, so it stays; review or remove"
     conv = conviction_block(opp, now=now)
     stance = _up((opp or {}).get("stance")) or None
+    cio_gap: Optional[dict[str, Any]] = None
+    cio = (cio_stances or {}).get(sym)
+    if cio is not None:
+        if cio.get("gap") is None:
+            # The CIO record is the canonical stance/conviction; the opportunity projection is only the fallback.
+            if cio.get("stance") is not None:
+                stance = _up(cio.get("stance")) or stance
+            if cio.get("conviction") is not None:
+                conv = conviction_block_cio(cio, fallback=conv)
+        else:
+            # Gap (e.g. GUID unresolved, or no stance/conviction recorded): keep the interim source, say so.
+            cio_gap = cio.get("gap") or {"reason": "CIO stance or conviction unavailable"}
     conflicts = conflicts_for(symbol=sym, card=card, opp=opp, held=held, held_source=held_source, reentry=reentry)
     price = _f((card or {}).get("last")) if card else _f((reentry or {}).get("price"))
     rsi = _f((card or {}).get("rsi")) if card else _f((reentry or {}).get("rsi"))
@@ -608,9 +655,12 @@ def build_row(
         "conviction_stale": conv["stale"],
         "stance": stance,
         "stance_family": family(stance),
-        "whats_missing": whats_missing(
-            card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity, mine=bool(mine)
-        ),
+        "cio_stance_gap": cio_gap,
+        "whats_missing": [
+            *whats_missing(card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity, mine=bool(mine)),
+            *([f"CIO record unavailable ({str(cio_gap.get('reason'))}) — showing the interim opportunity stance"]
+              if cio_gap else []),
+        ],
         "conflicts": conflicts,
         "next_trigger": trig,
         "next_action": step,
@@ -720,6 +770,7 @@ def build_watch_prospects(
     now: Optional[datetime] = None,
     caps: Optional[dict[str, int]] = None,
     operator: Optional[dict[str, dict[str, Any]]] = None,
+    cio_stances: Optional[dict[str, dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Pure: today's sources → the WatchProspects@v1 payload (interim adapter). ``operator`` is
     watch_domains.membership_operator()["names"]: every operator name gets a row, uncapped, never Expired."""
@@ -760,6 +811,7 @@ def build_watch_prospects(
             now=now,
             interim=True,
             mine=operator.get(s),
+            cio_stances=cio_stances,
         )
         for s in symbols
     ]
@@ -1146,6 +1198,27 @@ def _curator_projection() -> dict[str, Any]:
         return {}
 
 
+def _canonical_stances_for(
+    symbols: Iterable[str], *, db_query=None, now: Optional[datetime] = None
+) -> dict[str, dict[str, Any]]:
+    """CIO record stance/conviction per symbol via ``cio_truth.stances_for_symbols`` (GUID-keyed; wraps
+    data_broker.cio_prospect with its store/shadow admission). Read-only. Any unavailable resolver or
+    exception returns ``{}`` so the caller falls back to the interim source and marks the gap — never a
+    silent drop and never a raised error on the Watch read path."""
+    try:
+        from lib import cio_truth
+    except Exception:  # noqa: BLE001
+        return {}
+    try:
+        return cio_truth.stances_for_symbols(
+            list(dict.fromkeys(str(s).upper() for s in symbols if str(s).strip())),
+            db_query=db_query,
+            now=now,
+        )
+    except Exception:  # noqa: BLE001 — the interim source still answers
+        return {}
+
+
 _GATHER_LOCK = threading.Lock()
 
 
@@ -1212,6 +1285,8 @@ def _gather_build(
         held, held_source, hd = set(composed["held"]), composed["held_source"], composed["held_detail"]
         syms = list(set(cards) | set(desk) | set(operator) | set(opps))
         idents = _identities(syms)
+        cio_db_query = db_query if db_query is not None else _db_query()
+        cio_stances = _canonical_stances_for(syms, db_query=cio_db_query, now=now)
         out = build_watch_prospects(
             cards=card_list,
             opportunities=opps,
@@ -1223,11 +1298,13 @@ def _gather_build(
             opp_as_of=proj.get("as_of"),
             now=now,
             operator=operator,
+            cio_stances=cio_stances,
         )
 
         def _row_for(sym: str) -> dict[str, Any]:
             s = _up(sym)
             ids = idents if s in idents else _identities([s])
+            cs = cio_stances if s in cio_stances else _canonical_stances_for([s], db_query=cio_db_query, now=now)
             return build_row(
                 s,
                 card=cards.get(s),
@@ -1239,6 +1316,7 @@ def _gather_build(
                 now=now,
                 interim=True,
                 mine=operator.get(s),
+                cio_stances=cs,
             )
 
     out["cio_prospect_status"] = cp_status
