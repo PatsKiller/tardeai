@@ -547,6 +547,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
         # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
+        # 2026-10-28 conflict-resolver shadow admission (W8): n8n-native learn-class dispatcher row, write-free
+        # dry-run at shadow (docs/designs/DSN-20261028-cio-review-transparency.md; PR #2266).
+        "conflict-resolver",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
