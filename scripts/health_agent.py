@@ -774,6 +774,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             stderr = ""
             t0 = _time_module.time()
             try:
+                from lib.watchlist_deadline import child_environment
                 proc = subprocess.Popen(
                     cmd,
                     shell=True,
@@ -782,6 +783,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     text=True,
                     cwd=str(run_cwd),
                     start_new_session=True,
+                    env=child_environment(cmd, timeout),
                 )
                 try:
                     stdout, stderr = proc.communicate(timeout=timeout)
@@ -860,33 +862,38 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 "ineffective_streak": st.get("ineffective_streak", 0),
                 "trigger": f.get("message", "")[:200],
             }
-            # Parse iterative remediator JSON stdout for root_cause / how_to_fix.
-            # The old txt.find("{") + json.loads broke on trailing prose/log lines
-            # after the JSON object — iterate { positions from the END and raw_decode.
-            if ftype in ladder_types and stdout:
+            # Parse whole objects: a nested service receipt must not replace its
+            # enclosing PENDING result or manufacture a recovered outcome.
+            if (ftype in ladder_types or "process_watchlist_agent_jobs.py" in cmd) and stdout:
                 try:
-                    txt = stdout.strip()
-                    decoder = json.JSONDecoder()
-                    # Find the LAST valid JSON object (skip trailing log lines)
-                    for i in range(len(txt) - 1, -1, -1):
-                        if txt[i] == "{":
-                            try:
-                                parsed, _ = decoder.raw_decode(txt[i:])
-                                if isinstance(parsed, dict):
-                                    entry["root_cause"] = parsed.get("root_cause")
-                                    entry["how_to_fix"] = parsed.get("how_to_fix")
-                                    entry["strategy_id"] = parsed.get("strategy_id")
-                                    entry["held"] = parsed.get("held")
-                                    entry["outcome"] = parsed.get("outcome")
-                                    entry["hold_until"] = parsed.get("hold_until")
-                                    entry["operator_action_required"] = parsed.get("operator_action_required")
-                                    if parsed.get("note"):
-                                        entry["note"] = str(parsed.get("note"))[:300]
-                                break  # found and parsed — stop
-                            except json.JSONDecodeError:
-                                continue  # try next { from the end
+                    from lib.watchlist_deadline import last_json_object
+                    parsed = last_json_object(stdout) or {}
+                    for key in ("root_cause", "how_to_fix", "strategy_id", "held", "outcome", "hold_until",
+                                "operator_action_required", "accepted", "completed", "deferred"):
+                        entry[key] = parsed.get(key)
+                    entry["_handled_pending"] = (
+                        rc == 0 and parsed.get("ok") is False and parsed.get("accepted") is True
+                        and parsed.get("outcome") == "PENDING"
+                    ) or (
+                        rc == 75 and parsed.get("schema") == "WatchlistDrain@v1"
+                        and parsed.get("outcome") == "DEFERRED" and parsed.get("ok") is False
+                    )
+                    if parsed.get("note"):
+                        entry["note"] = str(parsed["note"])[:300]
                 except Exception:
                     pass
+            if entry.pop("_handled_pending", False):
+                entry["ok"] = False
+                entry["pending"] = True
+                st["fail_streak"] = previous_fail_streak
+                entry["fail_streak"] = previous_fail_streak
+                results.append(entry)
+                REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(REMEDIATION_LOG, "a") as fh:
+                    fh.write(json.dumps({**entry, "record": "pending"}) + "\n")
+                state[ftype] = st
+                ran_cmds.add(cmd)
+                continue
             if rc in (69, 99):
                 entry["ok"] = False
                 entry["flock_contention"] = True

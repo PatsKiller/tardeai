@@ -1,0 +1,22 @@
+# PROPOSAL ONLY: operator installs after reviewing this shared-infra PR.
+# Instances are strictly enrichment or orchestrator (validated by runner).
+# No timer: existing watchdog/remediation cadence requests the named instance.
+[Unit]
+Description=Trade AI independently owned pipeline repair (%i)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_PIPELINE_REPAIR_KIND=%i
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=LLM_DEFER_OFFPEAK=1
+UnsetEnvironment=HEALTH_TICK_STEP_TIMEOUT_S
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/run_pipeline_repair.py %i --apply
+# Orchestrator remains protected by the unchanged 30m process reaper. Enrichment
+# uses its own 240s batch budget; per-instance drop-in below is documented.
+TimeoutStartSec=1830
+TimeoutStopSec=10
+SuccessExitStatus=75
+KillMode=control-group
+Nice=10
