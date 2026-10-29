@@ -47,7 +47,8 @@
     "high": "claude-opus-5-5",
     "highest": "claude-opus-5-5",
     "long_form": "claude-opus-5-5",
-    "premium": "claude-fable-5-1"
+    "premium": "claude-fable-5-1",
+    "mid": "claude-sonnet-5-5"
   },
   "policy_tiers": {
     "FAST": "standard",
@@ -58,11 +59,12 @@
   },
   "per_call_caps_usd": {
     "bulk": "0.10",
-    "standard": "0.25",
-    "high": "0.50",
-    "highest": "0.50",
+    "standard": "2.00",
+    "high": "2.00",
+    "highest": "2.00",
     "long_form": "2.00",
-    "premium": "4.00"
+    "premium": "4.00",
+    "mid": "0.10"
   },
   "retry": {
     "max_attempts": 2,
@@ -161,7 +163,7 @@
   "milestone_dedupe_minutes": 43200,
   "activation_note": "Operator requested enable and a governed test call on 2026-10-25; promotional org key stored and validated HTTP 200 on 2026-10-26. Live canary results must be recorded separately.",
   "activated_by": "operator 2026-10-26: stored the promotional-organization key as ANTHROPIC_API_KEY (validated HTTP 200) and asked to get it running",
-  "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable. Amended operator 2026-10-26: \"Opus for all, Fable for top\" — Fable only for prospectus_writer_premium (top holdings).",
+  "model_selection_approved_by": "operator 2026-10-25: Opus for general tasks; Haiku for bulk; no Fable. Amended operator 2026-10-26: \"Opus for all, Fable for top\" — Fable only for prospectus_writer_premium (top holdings). Amended operator 2026-10-27 (news methodology): Sonnet 5.5 (tier mid) for prospectus_cio_news_note only.",
   "thinking_controls": {
     "claude-haiku-5-5": {
       "enabled": {
@@ -247,10 +249,17 @@
     "topic_curator"
   ],
   "activation_approved_by": "operator 2026-10-25: \"what disable enable and test call\"",
+  "ops_process_tiers": {
+    "_why": "Operations processes pinned to a credit tier, read by anthropic_routing.tier_for after process_tiers. incident_supervisor: operator 2026-10-27 incident ledger + supervisor brief (\"Sonnet 5.5; <= $1/day; fallback OAuth grok read-only triage; never DeepSeek\"); the $1/day cap is daily_cost_cap_usd in config/llm_process_registry.json.",
+    "incident_supervisor": "mid"
+  },
   "process_tiers": {
     "prospectus_writer": "long_form",
     "prospectus_writer_premium": "premium",
-    "prospectus_fact_check": "bulk"
+    "prospectus_fact_check": "bulk",
+    "prospectus_accuracy_review": "long_form",
+    "prospectus_news_classify": "bulk",
+    "prospectus_cio_news_note": "mid"
   },
   "premium_tier_processes": [
     "prospectus_writer_premium"
@@ -259,6 +268,9 @@
     "prospectus_writer": "operator 2026-10-26: prospectus jobs QUEUE when the credit is unavailable; never a paid DeepSeek fallback",
     "prospectus_writer_premium": "operator 2026-10-26: same; a Fable refusal falls back to Opus (prospectus_writer), never to another provider",
     "prospectus_fact_check": "operator 2026-10-26 data-quality gate: Haiku read on the credit; when unusable the caller uses prospectus_fact_check_oauth (free Grok OAuth), never DeepSeek",
+    "prospectus_news_classify": "operator 2026-10-27 news methodology: Haiku relevance read on the credit only; unusable credit -> the items wait for the next window, never DeepSeek",
+    "prospectus_cio_news_note": "operator 2026-10-27 news methodology: Sonnet 5.5 CIO note on the credit only; unusable credit or cap -> the note waits for the next window, never DeepSeek",
+    "prospectus_accuracy_review": "accuracy audit 2026-10-26: monthly Opus prose-vs-facts sample of written prospectuses, <= $2 per UTC month (scripts/prospectus_accuracy_audit.py --review); skipped when the credit is unusable, never another provider",
     "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget"
   },
   "thinking_tiers": [

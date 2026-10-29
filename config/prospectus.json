@@ -36,8 +36,105 @@
       "material_news": true,
       "stop_event": true,
       "cio_stance_change": true,
-      "promoted_to_proposal": true
+      "promoted_to_proposal": true,
+      "day_move_scopes": [
+        "holding"
+      ],
+      "note": "Triggers only ENQUEUE with a reason (scripts/lib/prospectus/schedule.py); a run window writes. day_move is measured on the CLOSE: the last two daily closes, once per session close after the last report. material_news fires only from the window's news review (2026-10-27): a material + relevant item whose CIO note reads impact thesis, breaker or stop; a fresh catalyst row alone never fires."
     }
+  },
+  "run_windows": {
+    "timezone": "America/New_York",
+    "note": "Operator 2026-10-26: reports are queued and run at set times, not ad hoc. The n8n lane prospectus-build fires every 15 min; a window runs once per day from its start until catch_up_minutes later. Off-window fires drain only operator 'Rewrite now' rows.",
+    "catch_up_minutes": 120,
+    "windows": [
+      {
+        "id": "post_close",
+        "label": "After the close",
+        "time": "17:45",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding",
+          "watch"
+        ],
+        "triggers": "all",
+        "max_reports": 12,
+        "note": "after the 16:00 ET close so the 8% day-move test uses the closing price"
+      },
+      {
+        "id": "pre_market",
+        "label": "Pre-market",
+        "time": "07:00",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding"
+        ],
+        "triggers": [
+          "missing",
+          "after_earnings",
+          "material_news",
+          "stop_event",
+          "cio_stance_change"
+        ],
+        "max_reports": 6,
+        "note": "overnight news and earnings for holdings only"
+      }
+    ],
+    "operator_rewrite": {
+      "immediate": true,
+      "max_per_fire": 3
+    },
+    "watch_batch": {
+      "enabled": true,
+      "max_submit": 20,
+      "note": "Watch rows use the Message Batches API (scripts/lib/prospectus/batch.py, 50% price; generation config watch.batch): each window first collects finished batch results (batch.collect; delivered with that run), and a window covering the watch scope submits up to max_submit queued Watch rows (batch.submit_due, gate + web planning first). false = the window writes Watch rows synchronously."
+    }
+  },
+  "delivery": {
+    "note": "Host sender scripts/prospectus_deliver.py (timer tradeai-prospectus-deliver.timer). Operator 2026-10-26: Telegram = summary + each report's PDF and Word; email = the run audit PLUS the PDF and Word of HOLDINGS reports (attach_scopes), at most max_attachment_bytes per email (the rest linked); Watch reports are linked, not attached.",
+    "telegram": {
+      "enabled": true,
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attached_reports": 10
+    },
+    "email": {
+      "enabled": true,
+      "attachments": true,
+      "attach_scopes": [
+        "holding"
+      ],
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attachment_bytes": 20971520
+    },
+    "scopes": {
+      "holding": true,
+      "watch": true
+    },
+    "on_operator_rewrite": true,
+    "max_attempts": 3,
+    "link_template": "https://ms01-openclaw.tail163d14.ts.net/v3/prospectus/{symbol}"
   },
   "estimate": {
     "note": "Dry-run cost estimate only; real spend is settled from provider usage.",
@@ -284,6 +381,9 @@
     "transcripts": {
       "reader": "transcripts",
       "note": "not a registry domain: youtube_transcripts (transcript_processor/tagger)"
+    },
+    "operator_decisions": {
+      "excluded": "operator governance decisions (approvals, merge decisions, rule feedback); not ticker research"
     }
   },
   "registry_domains_note": "Every domain in config/data_source_authority.json must appear here: read (reader / covered_by) or excluded with a reason. tests/test_prospectus_domains_20261026.py enforces it.",
@@ -440,5 +540,20 @@
       "BITB",
       "ARKB"
     ]
+  },
+  "news": {
+    "note": "Operator 2026-10-27 news methodology (scripts/lib/prospectus/news_gate.py + news_note.py): every run window reviews the items since each report — deterministic relevance gate (issuer / foreign-listing collisions via config/prospectus_symbol_collisions.json, 48h syndication dedupe, catalyst grade/type >= medium), a Haiku read of the uncertain ones (prospectus_news_classify, <= $0.25/day), and a Sonnet CIO note on each material + relevant item (prospectus_cio_news_note, <= $1.50/day; per symbol below). impact thesis/breaker/stop -> one news rewrite per symbol per day (delta; full on a breaker or earnings item; Watch through the batch).",
+    "scopes": [
+      "holding",
+      "watch"
+    ],
+    "per_symbol_note_usd_per_day": 0.1,
+    "max_notes_per_symbol_per_day": 3,
+    "max_news_rewrites_per_day": 1,
+    "classify_max_items": 12,
+    "classify_max_output_tokens": 600,
+    "note_max_output_tokens": 400,
+    "timeout_s": 90,
+    "log_keep": 60
   }
 }

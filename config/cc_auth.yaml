@@ -106,13 +106,14 @@ cc_auth:
       - action: unlock
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v[23]/(.+/)?unlock(/.*)?
-      # Release Train v2 (2026-10-21): POST .../release-train/stop SETS the release-window STOP latch (set-only;
+      # Deploy STOP (2026-10-21; moved from the retired release-train path 2026-10-27): POST .../deploys/stop SETS the
+      # release-window STOP latch the host deploy_on_main poller refuses on (set-only;
       # resume is host-CLI-only, decision D3). Same-origin is enforced here even in report_only, and the handler
       # re-checks it (cc_auth.command_csrf_check) and requires a tailnet operator identity. NEVER step-up: the
       # operator declined TOTP, and stopping is the safe direction. Not the trading kill switch.
-      - action: release_train_command
+      - action: deploy_stop_command
         methods: [POST, PUT, PATCH, DELETE]
-        pattern: /api/v2/coordination/release-train(/.*)?
+        pattern: /api/v2/ops/deploys(/.*)?
       # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED): same-origin enforced here even in report_only;
       # the handler re-checks it (cc_auth.command_csrf_check), requires a tailnet operator identity on serve_proxy
       # and its own passkey step-up for the risky direction. NOT a cc_auth step_up route: the factor is WebAuthn,

@@ -38,14 +38,17 @@ class GenerationFailed(RuntimeError):
 
 
 def _cio_ask():
-    try:
-        from lib import cio_ask_research as mod  # type: ignore
-    except ImportError:
-        from scripts.lib import cio_ask_research as mod  # type: ignore
-    return mod
+    from .inputs import _imp_any
+    return _imp_any("lib.cio_ask_research", "scripts.lib.cio_ask_research")
 
 
 # ── prompt ────────────────────────────────────────────────────────────────────────────────────────────────────
+MIN_EPS_CHART = 3
+
+#: Fact kinds trimmed first when the prompt is over its byte budget (most expendable first).
+TRIM_FIRST = ("news", "peers", "social", "research", "journal", "lineage", "momentum", "relative")
+
+
 def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = None, max_bytes: int = 60000,
                  section_words: str = "120-260") -> str:
     ids = sections_for(bundle.scope) if mode == "full" else tuple(
@@ -74,6 +77,11 @@ def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = 
         + "; thesis_breakers is a bullet list of observable conditions that would "
         "prove the thesis wrong. Use the macro, SEC filing, ownership, peer and relative-performance facts where they "
         "bear on the name; cite web facts (W-prefixed sources) with their fact ids like any other fact.",
+        "Say what the Street is saying: in analyst_view use the rating distribution and its trend, the price-target "
+        "trend and the named analyst actions (firm, old → new rating / target) from the facts; in financials_and_trend "
+        "the EPS / revenue consensus, estimate revisions, the beat / miss record and the reported SEC quarters; in "
+        "catalysts_and_dates the upcoming dated events with the options-implied move and how the stock reacted to past "
+        "ones; in valuation_vs_peers where the trailing P/E sits in its own range. Name a firm only when a fact names it.",
         "Also return \"scenarios\": three objects {\"case\": \"bear\"|\"base\"|\"bull\", \"price_fact\": <the fact "
         "id of the analyst target low, mean or high that anchors the case>, \"probability_pct\": <integer, the three "
         "summing to 100; this is your stated judgment>, \"narrative\": <2-3 sentences citing fact ids>}. If no analyst "
@@ -100,9 +108,16 @@ def build_prompt(bundle: Bundle, *, mode: str = "full", previous: dict | None = 
             val = f"NOT RELIABLE ({f['unreliable']}) - do not cite"
         lines.append(f"{f['id']} | {f['label']} | {val} | {f['source']} | {f.get('as_of') or 'n/a'}")
     prompt = "\n".join(head + tail + lines)
-    while len(prompt.encode("utf-8")) > max_bytes and lines:
-        lines.pop()  # facts are ordered most-important first; trim the tail (web/news) to the byte budget
-        prompt = "\n".join(head + tail + lines + ["(further facts omitted for length)"])
+    # Over budget: drop the lowest-priority kinds first (newest-added first within a kind), then the tail.
+    order = [i for k in TRIM_FIRST for i in range(len(facts) - 1, -1, -1) if facts[i].get("kind") == k]
+    dropped: set[int] = set()
+    while len(prompt.encode("utf-8")) > max_bytes and len(dropped) < len(lines):
+        nxt = next((i for i in order if i not in dropped), None)
+        if nxt is None:
+            nxt = max(i for i in range(len(lines)) if i not in dropped)
+        dropped.add(nxt)
+        prompt = "\n".join(head + tail + [ln for i, ln in enumerate(lines) if i not in dropped]
+                           + ["(further facts omitted for length)"])
     return prompt
 
 
@@ -246,7 +261,8 @@ def build_charts(bundle: Bundle) -> list[dict]:
                            "window": window, "series": rel[window], "windows": {w: rel[w] for w in rel}})
             break
     eps = (bundle.blocks.get("estimates") or {}).get("eps_surprises") or []
-    if any(e.get("surprise_pct") is not None for e in eps):
+    # A chart needs at least MIN_EPS_CHART quarters (one quarter drew a page-wide bar); the table always shows them.
+    if sum(1 for e in eps if e.get("surprise_pct") is not None) >= MIN_EPS_CHART:
         charts.append({"id": "eps_surprise", "type": "bar", "title": "EPS surprise (%)",
                        "series": [{"name": "Surprise %", "points": [[e.get("date") or "last", e["surprise_pct"]]
                                                                      for e in eps if e.get("surprise_pct") is not None]}]})
@@ -257,10 +273,8 @@ def build_charts(bundle: Bundle) -> list[dict]:
 def governed_generate(prompt: str, *, process_id: str, max_tokens: int, timeout: float,
                       manual: bool = False) -> tuple[str, dict]:
     """One call through the governed credit path. Never a direct provider call."""
-    try:
-        from lib import llm_consumption as lc  # type: ignore
-    except ImportError:
-        from scripts.lib import llm_consumption as lc  # type: ignore
+    from .inputs import _imp_any
+    lc = _imp_any("lib.llm_consumption", "scripts.lib.llm_consumption")
     cfg = lc.get_process_config(process_id)
     lane = (cfg.get("allowed_lanes") or ["pro"])[0]
     text, prov = lc.gate_and_generate(prompt, process_id=process_id, lane=lane, max_tokens=max_tokens,

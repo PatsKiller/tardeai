@@ -3,7 +3,10 @@
 
 Lets the operator ADD/ROTATE API keys + secrets from the admin UI WITHOUT ever exposing existing values.
 Security model:
-  • NEVER returns, displays, or logs a full secret value — list shows presence + a masked '••••1234' hint only.
+  • NEVER returns, displays, or logs any part of a secret value — no prefix, no suffix, no length.
+    The list shows presence ("set" / "not set") to every reader; only an authenticated operator
+    (a "tailnet:" principal) also sees when a key was last set here (from the write audit) and the
+    plain config values. Agents (service-token) and unauthenticated readers get presence only.
   • Writes to .env atomically (0600), preserving every other line. .env is gitignored (never committed).
   • Validates the key name + a minimum value length; updates the current process env too.
   • Audits each write (key name + actor + timestamp — NEVER the value).
@@ -68,10 +71,33 @@ def _read_env():
 
 
 def _mask(v):
-    if not v:
+    """Presence word only. Page audit 2026-10-25: the old '••••' + last-4 hint showed four characters
+    of every secret (incl. DB_PASSWORD) to an unauthenticated reader. Never any character of a value."""
+    if not v or not str(v).strip().strip("'\""):
         return None
-    v = v.strip().strip("'\"")
-    return ("••••" + v[-4:]) if len(v) >= 8 else "••••"
+    return "set"
+
+
+def _is_operator(principal: str | None) -> bool:
+    """Only an authenticated tailnet operator gets detail beyond presence (never a service token)."""
+    return str(principal or "").startswith("tailnet:")
+
+
+def _last_set_times() -> dict:
+    """key -> ISO timestamp of the latest write recorded by this module's audit (names only, no values)."""
+    out: dict = {}
+    try:
+        for line in AUDIT_PATH.read_text().splitlines():
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            k, ts = row.get("key"), row.get("ts")
+            if isinstance(k, str) and isinstance(ts, str) and ts > out.get(k, ""):
+                out[k] = ts
+    except Exception:
+        return {}
+    return out
 
 
 def _format_env_line(key: str, value: str) -> str:
@@ -120,8 +146,13 @@ def _read_env_file(path: Path):
     return lines, d
 
 
-def list_secrets():
-    """Names + presence + masked hint. NEVER full values."""
+def list_secrets(principal: str | None = None):
+    """Names + presence. NEVER any character of a value.
+
+    Operator (tailnet principal): also ``last_set_at`` when this module's write audit knows it, and the
+    plain config values. Everyone else (agents, unauthenticated): presence only."""
+    operator = _is_operator(principal)
+    last_set = _last_set_times() if operator else {}
     _, d = _read_secret_store()
     # never surface BWS_*
     d = {k: v for k, v in d.items() if not k.upper().startswith("BWS_")}
@@ -130,7 +161,9 @@ def list_secrets():
     for k in keys:
         if k.upper().startswith("BWS_"):
             continue
-        row = {"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False}
+        row = {"key": k, "present": bool(d.get(k)), "is_config": False}
+        if operator and last_set.get(k):
+            row["last_set_at"] = last_set[k]
         if k in _ALPACA_LIVE_LABELS:
             row["label"] = _ALPACA_LIVE_LABELS[k]
             row["badge"] = (
@@ -140,12 +173,20 @@ def list_secrets():
             )
         out.append(row)
     # config values are NOT secrets → shown in full (still editable here)
-    out += [{"key": k, "present": bool(d.get(k)), "masked": d.get(k) or None, "is_config": True} for k in KNOWN_CONFIG]
-    # read-only status rows (connect-flow-owned) — masked, present/absent only, NOT editable here
-    out += [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False, "read_only": True}
+    # config values are NOT secrets, but they are account identifiers: the value only for the operator
+    for k in KNOWN_CONFIG:
+        row = {"key": k, "present": bool(d.get(k)), "is_config": True}
+        if operator:
+            row["value"] = d.get(k) or None
+            if last_set.get(k):
+                row["last_set_at"] = last_set[k]
+        out.append(row)
+    # read-only status rows (connect-flow-owned) — present/absent only, NOT editable here
+    out += [{"key": k, "present": bool(d.get(k)), "is_config": False, "read_only": True}
             for k in KNOWN_READONLY]
     return {"secrets": out,
-            "note": "Secrets are write-only. Backend: Bitwarden Secrets Manager (trade-ai-prod) → tmpfs render. BWS machine tokens are never stored here."}
+            "detail": "operator" if operator else "presence_only",
+            "note": "Secrets are write-only and never shown, not even in part. Backend: Bitwarden Secrets Manager (trade-ai-prod) → tmpfs render. BWS machine tokens are never stored here."}
 
 
 def _audit(key, actor):
@@ -303,7 +344,7 @@ def set_secret(key, value, actor="operator"):
     return {
         "ok": True,
         "key": key,
-        "masked": (value if is_config else _mask(value)),
+        "masked": ("set" if value else None),
         "is_config": is_config,
         "rotated": action == "edited",
         "backend": "bitwarden_sm",

@@ -1,19 +1,22 @@
 // System → Releases & schedules (operator-approved 2026-10-22; mockup gate3 Pipeline.dc.html). What is queued and for
-// when, what actually shipped, what failed — the release train and n8n / host cron in one place. Read-only view of
+// when, what actually shipped, what failed — deploys and n8n / host cron in one place. Read-only view of
 // GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py; contract docs/ops/RELEASES_SCHEDULES_PAGE.md).
 // Every section shows its own freshness (state · age · source); UNAVAILABLE renders with its reason, never 0 or green.
-// There is no control here: STOP RELEASES stays on Coordination → Release train (components/ReleaseStopControl).
+// There is no control here: the deploy STOP is on Home → Deploys and Ops → Controls (components/DeployStopControl).
+// The retired release train's windows and queue sections and its tab were removed 2026-10-27 (operator directive);
+// the Mergify ET windows tab (OPEN/NEXT) replaces the release-train shadow slots (CONFLICT-RESOLVED-20261029).
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import JobsHealth from '../components/JobsHealth'
+import DeployInFlightBoard from '../components/DeployInFlightBoard'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
+  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
   sectionView, stageTone, verifyLabel, windowTone,
-  type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
+  type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
@@ -23,7 +26,7 @@ const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const cell: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm }
-const TABS = [['train', 'Mergify windows'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
+const TABS = [['deploys', 'Deploys'], ['train', 'Mergify windows'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
 type TabKey = (typeof TABS)[number][0]
 
 function useNow(ms: number): number {
@@ -66,11 +69,8 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
+  // Mergify ET windows (OPEN/NEXT) replace the retired release-train shadow slots (CONFLICT-RESOLVED-20261029).
   const w = s.windows.value as Windows | null
-  const q = s.queue.value as Queue | null
-  const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
-  const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
-  const nx = s.next_release.value as NextRelease | null
   const stop = w?.stop
   return <div style={{ display: 'grid', gap: 12 }}>
     <Section title="Mergify merge windows (ET)" testId="rs-windows" v={s.windows}
@@ -90,7 +90,15 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
       {w?.schedules?.length ? <p style={{ ...muted, ...mono }} data-testid="rs-mergify-schedules">{(w.schedules).join(' · ')}</p> : null}
       {w ? <p style={muted}>{w.manual_path}</p> : null}
     </Section>
+  </div>
+}
 
+function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
+  const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
+  const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
+  const nx = s.next_release.value as NextRelease | null
+  return <div style={{ display: 'grid', gap: 12 }}>
+    <DeployInFlightBoard />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),
@@ -99,20 +107,6 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
           {(nx.ci.workflows ?? []).length ? <span style={{ ...muted, display: 'block' }}>{(nx.ci.workflows ?? []).map(w => `${w.name ?? '?'} ${w.state ?? '?'}`).join(' · ')}</span> : null}
           {nx.ci.reason ? <span style={{ ...muted, display: 'block' }}>{nx.ci.reason}</span> : null}</span>,
       ]]} /> : null}
-    </Section>
-
-    <Section title="Queue · what rides next" sub="PR · state · why not riding" testId="rs-queue" v={s.queue}>
-      {q ? <>
-        {q.census.alert ? <p role="alert" data-testid="rs-census-alert" style={{ margin: 0, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, fontWeight: 700, color: toneVars('danger').color, background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}` }}>{q.census.alert}</p> : null}
-        <ChipRow>
-          <Chip tone={q.store.freshness === 'OK' && q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.store.reason ?? ''}>{queueStoreText(q)}</Chip>
-          <Chip tone={q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.census.reason ?? ''}>PR census {q.census.freshness ?? 'UNAVAILABLE'} · {countOrUnavailable(q.census.open_prs)} open{q.census.as_of ? ` · ${etDateTime(q.census.as_of)}` : ''}</Chip>
-        </ChipRow>
-        <Table label="Open PRs and why each is not riding" heads={['PR', 'Title', 'Bucket', 'Riding?', 'Why not riding']}
-          empty={q.census.freshness === 'UNAVAILABLE' ? `UNAVAILABLE · ${q.census.reason ?? 'census unavailable'}` : 'No open PRs in the census'}
-          rows={q.open_prs.slice(0, 60).map(p => [<span style={mono}>{'#' + String(p.pr)}</span>, p.title ?? '—', p.bucket,
-            <Pill tone={p.riding ? 'success' : 'neutral'}>{p.riding ? 'QUEUED' : 'NO'}</Pill>, p.riding ? '—' : p.why_not_riding])} />
-      </> : null}
     </Section>
 
     <Section title="Shipped · release history" sub="served SHA · PRs · verify · rollback" testId="rs-history" v={s.history}>
@@ -135,11 +129,11 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
       </> : null}
     </Section>
     <p style={muted} data-testid="rs-where-to-act">
-      Deploy hold / STOP:{' '}
-      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Deploy hold</Link>
+      Deploy STOP / resume:{' '}
+      <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Deploys</Link>
       {' '}· Observe:{' '}
       <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Deploy</Link>
-      . Mergify owns the merge queue; emergency promote is host CLI under release-write naming the SHA. This tab is serving pin, PR census and schedule timeline.
+      . Mergify owns the merge queue; emergency promote is host CLI under release-write naming the SHA. This tab is serving pin, main HEAD, release history and errors.
     </p>
   </div>
 }
@@ -201,18 +195,18 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
   const [params, setParams] = useSearchParams()
-  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'train'
+  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : params.get('tab') === 'train' ? 'train' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
-  const keys: SectionKey[] = ['serving', 'next_release', 'windows', 'queue', 'history', 'release_errors', 'n8n_today', 'timeline']
+  const keys: SectionKey[] = ['serving', 'next_release', 'windows', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
   const current = !api.error && !api.stale && keys.some(k => s[k].state === 'OK')
   const kpis = api.data?.schema === 'ReleasesSchedules@v1' ? api.data.kpis ?? [] : []
   const kpiKeys = ['serving', 'next_release', 'next_window', 'n8n_runs', 'n8n_errors']
   const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', next_window: 'Next Mergify window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
-  const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'train') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
-  return <OpsDeskFrame page="releases" asOf={{ train: api.data?.generated_at }}>
+  const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
+  return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
@@ -222,7 +216,7 @@ export default function ReleasesSchedules() {
           : <Chip tone={api.data?.status === 'OK' && current ? 'neutral' : 'warning'}>{current ? (api.data?.status ?? 'UNKNOWN') : 'STALE'}</Chip>}
         <Chip tone="neutral">generated {etDateTime(api.data?.generated_at)}</Chip>
         {serving ? <Chip tone={serving.pins_agree ? 'neutral' : 'warning'} title={serving.release_name ?? ''}>pins {serving.pins_agree ? 'agree with CURRENT' : 'DISAGREE with CURRENT'}</Chip> : null}
-        {api.data?.stop?.effective_stop ? <Chip tone="danger">release STOP {api.data.stop.state}</Chip> : null}
+        {api.data?.stop?.effective_stop ? <Chip tone="danger">deploy STOP {api.data.stop.state}</Chip> : null}
       </ChipRow>
     </div>
 
@@ -243,7 +237,7 @@ export default function ReleasesSchedules() {
         style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
-    {tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
   </OpsDeskFrame>
 }

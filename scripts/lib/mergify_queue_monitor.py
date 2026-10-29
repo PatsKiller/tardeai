@@ -96,7 +96,10 @@ def classify_dequeue(
     body = body or ""
     checks = checks or {}
 
-    if reason in {"CONFLICTS", "CONFLICT"} or (mergeable or "").upper() == "CONFLICTING":
+    # Only while still conflicting. A historical CONFLICTS dequeue with mergeable
+    # MERGEABLE (rebase already pushed) must fall through to the requeue path —
+    # otherwise Dequeued becomes a dead end after the conflict is fixed.
+    if (mergeable or "").upper() == "CONFLICTING":
         return ActionPlan(
             pr=0,
             classification="CONFLICTS",
@@ -116,8 +119,11 @@ def classify_dequeue(
         and any(checks.get(c) == "SUCCESS" for c in REQUIRED_CHECKS)
         and "draft #" in body.lower()
     )
+    # Cleared CONFLICTS dequeue (now MERGEABLE) is the same resubmit class as
+    # CHECKS_FAILED once the head is green — do not leave it on Dequeued.
+    cleared_conflict = reason in {"CONFLICTS", "CONFLICT"} and (mergeable or "").upper() == "MERGEABLE"
 
-    if draft_skip or reason == "CHECKS_FAILED":
+    if draft_skip or reason == "CHECKS_FAILED" or cleared_conflict:
         real_red = [
             c
             for c in REQUIRED_CHECKS
@@ -138,25 +144,30 @@ def classify_dequeue(
                 detail={"red": real_red},
             )
         if hotfix_on_main:
+            kind = "cleared conflict" if cleared_conflict else "speculative draft skip (false fail)"
             return ActionPlan(
                 pr=0,
-                classification="DRAFT_SKIP_FALSE_FAIL",
+                classification="CLEARED_READY" if cleared_conflict else "DRAFT_SKIP_FALSE_FAIL",
                 action="auto_requeue",
                 message=(
-                    "Dequeued on speculative draft skip (false fail). Hotfix on main — "
-                    "auto-requeueing with `@mergifyio queue`."
+                    f"Dequeued on {kind}. Head is MERGEABLE with required checks green; "
+                    "hotfix on main — auto-requeueing with `@mergifyio queue`."
                 ),
                 requeue=True,
                 page_p1=False,
                 wake_claim=False,
-                detail={"draft_skip": True, "hotfix_on_main": True},
+                detail={
+                    "draft_skip": draft_skip,
+                    "cleared_conflict": cleared_conflict,
+                    "hotfix_on_main": True,
+                },
             )
         return ActionPlan(
             pr=0,
-            classification="DRAFT_SKIP_FALSE_FAIL",
+            classification="CLEARED_READY" if cleared_conflict else "DRAFT_SKIP_FALSE_FAIL",
             action="wait_hotfix",
             message=(
-                "Dequeued because Mergify speculative drafts skipped required checks. "
+                "Dequeued (draft-skip false fail and/or cleared conflict). "
                 "Root fix: `.mergify.yml` merge_conditions tolerate skip + CI runs on "
                 "`mergify/*` heads. Once that hotfix is on main, this monitor requeues "
                 "automatically. Do not treat Dequeued as done."
@@ -164,7 +175,11 @@ def classify_dequeue(
             requeue=False,
             page_p1=True,
             wake_claim=True,
-            detail={"draft_skip": True, "hotfix_on_main": False},
+            detail={
+                "draft_skip": draft_skip,
+                "cleared_conflict": cleared_conflict,
+                "hotfix_on_main": False,
+            },
         )
 
     return ActionPlan(

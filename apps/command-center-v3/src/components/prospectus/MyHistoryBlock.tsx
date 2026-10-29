@@ -5,6 +5,7 @@
  *  blocks.fund_profile (etf_profile.py). Generic: any absent field shows "—"; an absent block shows nothing (never
  *  traded) or "not available". Accounts arrive by name only. Phone: lots and trips are tap-to-open rows (44px+). */
 import { Card, NotAvailable } from './ProspectusBlocks'
+import { CiteText } from './Citations'
 import {
   dayText, daysText, eventLabel, eventTone, fundProfileOf, headline, lessonValue, money, myHistoryOf, numText, pctText,
   reactionText, tone, whyText, type HistoryEvent, type RoundTrip,
@@ -94,7 +95,7 @@ export function MyHistoryBlock({ blocks, symbol, phone }: { blocks?: unknown; sy
           </div>
         ))}
       </div>
-      {mh.writer_note?.summary && <p className="psp-body" data-testid="prospectus-mh-summary">{mh.writer_note.summary}</p>}
+      {mh.writer_note?.summary && <p className="psp-body" data-testid="prospectus-mh-summary"><CiteText text={mh.writer_note.summary} /></p>}
 
       {lots.length > 0 && (
         <section aria-label="Open lots" data-testid="prospectus-mh-lots">
@@ -148,7 +149,7 @@ export function MyHistoryBlock({ blocks, symbol, phone }: { blocks?: unknown; sy
       {(stats.length > 0 || notes.length > 0 || mh.writer_note?.lessons) && (
         <section aria-label="Lessons" data-testid="prospectus-mh-lessons">
           <h3 className="psp-mh-h">Lessons from your trades</h3>
-          {mh.writer_note?.lessons && <p className="psp-body-sm">{mh.writer_note.lessons}</p>}
+          {mh.writer_note?.lessons && <p className="psp-body-sm"><CiteText text={mh.writer_note.lessons} /></p>}
           <ul className="psp-mh-stats">
             {stats.map(s => <li key={s.id}><span>{s.label}</span><b>{lessonValue(s)}</b><span className="psp-muted">{s.n != null ? `${s.n} trips` : ''}</span></li>)}
             {notes.slice(0, 4).map(n => <li key={`j${n.trip}`}><span>Journal, trip {n.trip}</span><span className="psp-mh-quote">{n.lesson}</span><span /></li>)}

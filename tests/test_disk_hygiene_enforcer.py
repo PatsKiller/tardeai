@@ -1,4 +1,9 @@
-"""Unit tests for disk_hygiene_enforcer release keep-N + stale backup planning."""
+"""Unit tests for disk_hygiene_enforcer release keep-N + stale backup planning.
+
+Since 2026-10-27 the enforcer plans only: apply is refused (AGENTS.md §24.12); see
+tests/test_disk_enforcer_scope_24_12_20261027.py for the refusal regression tests.
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -50,7 +55,9 @@ def test_plan_releases_keeps_n_and_current(tmp_path):
     assert len(res["deleted"]) == plan["would_delete_count"]
 
 
-def test_apply_releases_deletes_only_planned(tmp_path):
+def test_apply_releases_is_refused_and_removes_nothing(tmp_path):
+    """Was test_apply_releases_deletes_only_planned. Apply is refused (AGENTS.md §24.12): the plan is the same,
+    every planned release is still on disk, and the result says so."""
     hy = _load()
     root = tmp_path / "portfolio-server"
     root.mkdir()
@@ -72,11 +79,15 @@ def test_apply_releases_deletes_only_planned(tmp_path):
         "protect_symlinks": ["CURRENT"],
     }
     plan = hy.plan_releases(cfg)
+    assert plan["delete"], "fixture must plan at least one removal"
     res = hy.apply_release_deletes(plan, dry_run=False)
     assert res["ok"] is True
+    assert res["refused"] is True and res["status"] == hy.REFUSED_STATUS
+    assert res["deleted"] == [] and res["bytes_reclaimed_est"] == 0
+    assert sorted(i["path"] for i in res["refused_items"]) == sorted(plan["delete"])
     assert current.exists()
     for d in plan["delete"]:
-        assert not Path(d).exists()
+        assert Path(d).exists() and (Path(d) / "marker").read_text() == "x"
 
 
 def test_stale_backup_age_filter(tmp_path):
@@ -95,6 +106,9 @@ def test_stale_backup_age_filter(tmp_path):
     assert str(old) in paths
     assert str(new) not in paths
     res = hy.apply_stale_backup_deletes(plan, dry_run=False)
-    assert not old.exists()
+    # 2026-10-27: backups are never in AGENTS.md §24.12's scope -- apply is refused, the old file stays.
+    assert old.exists() and old.read_bytes() == b"old" * 1000
     assert new.exists()
     assert res["ok"] is True
+    assert res["refused"] is True and res["deleted"] == [] and res["bytes_reclaimed_est"] == 0
+    assert [i["path"] for i in res["refused_items"]] == [str(old)]

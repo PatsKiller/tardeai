@@ -228,6 +228,5 @@ def test_l214_has_a_retired_row():
 
 def test_live_list_mismatches_are_documented():
     assert "dry_run" in ROWS["maturity-remeasure"]["live_list_note"]
-    for slot in ("0000", "0600", "0800", "1800"):
-        r = ROWS[f"release-train-request-{slot}"]
-        assert r["state"] == "NEVER_SCHEDULED" and "H.0" in r["live_list_note"]
+    # 2026-10-27: the release-train request lanes (also documented here until then) were removed with the train.
+    assert not any(lid.startswith("release-train-") for lid in ROWS)

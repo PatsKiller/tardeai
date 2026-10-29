@@ -37,7 +37,7 @@
     "max_for_s": 21600,
     "max_uses": 50
   },
-  "release_train": {
+  "deploy": {
     "state_dir": "~/trade-ai-releases/persistent-state/data/runtime/release_window"
   },
   "work_pipeline": {

@@ -363,12 +363,85 @@ def fund_profile(bundle: Any, sources: Any, fund: dict, cls: dict, *, lookthroug
         put("holdings_count", "Fund number of holdings", out["holdings_count"], "count", yf_src, yf_at)
     else:
         out["gaps"].append("total number of holdings: not published in the yfinance snapshot (top holdings only)")
+    for key, label in (("fund_name", "Fund name"), ("asset_class", "Fund asset class (look-through file)"),
+                       ("reconstitution_date", "Fund last index reconstitution")):
+        if lt.get(key):
+            out[key] = lt[key]
+            bundle.add("fund", label, text=str(lt[key])[:200], source="fund_lookthrough.json", as_of=lt.get("fetched_date"))
+    growth = distribution_growth(hist)
+    if growth:
+        out["distribution_growth"] = growth
+        put("distribution_growth_pct", f"Fund distributions, trailing year vs {growth['years']} year(s) earlier %",
+            growth["pct"], "%", "derived: ticker_dividends ex-date history", growth["as_of"])
+    elif hist:
+        out["gaps"].append("distribution growth: ex-date history is shorter than two years")
+    ov = book_overlap(sources, sym, rows)
+    if ov:
+        out["book_overlap"] = ov
+        put("book_overlap_pct", "Fund top holdings also in my book (share of the fund's top-holding weight) %",
+            ov["overlap_weight_pct"], "%", "derived: fund look-through vs held positions and held funds' look-through",
+            lt.get("fetched_date"))
     lt_up = _f(fund.get("analyst_look_through_pct"))
     if lt_up is not None:
         put("analyst_look_through_pct", f"Analyst look-through upside % ({fund.get('analyst_basis') or 'basis n/a'})",
             lt_up, "%", "symbol_profiles (etf_analyst_enrich)", fund.get("updated_at"))
         out["analyst_basis"] = fund.get("analyst_basis")
     return out
+
+
+def distribution_growth(hist: list[dict]) -> Optional[dict]:
+    """Trailing-year distributions vs the same window N years earlier (N = 3 when the history allows, else 2/1)."""
+    pts = sorted((date.fromisoformat(h["ex_date"]), h["amount"]) for h in hist or [] if h.get("ex_date") and h.get("amount"))
+    if not pts:
+        return None
+    end = pts[-1][0]
+
+    def ttm(until: date) -> float:
+        return sum(a for d, a in pts if until - timedelta(days=350) < d <= until)
+    now_ttm = ttm(end)
+    for years in (3, 2, 1):
+        then_end = end - timedelta(days=365 * years)
+        if pts[0][0] <= then_end - timedelta(days=300):
+            then = ttm(then_end)
+            if then > 0 and now_ttm > 0:
+                pct = ((now_ttm / then) ** (1 / years) - 1) * 100 if years > 1 else (now_ttm / then - 1) * 100
+                return {"years": years, "pct": round(pct, 2), "ttm": round(now_ttm, 4), "then": round(then, 4),
+                        "basis": "annualized" if years > 1 else "1-year change", "as_of": end.isoformat()}
+    return None
+
+
+_BOOK_MEMO: dict[str, Any] = {"sources": None, "held": None}
+
+
+def book_overlap(sources: Any, sym: str, rows: list[dict]) -> Optional[dict]:
+    """Share of the fund's top-holding weight that the book already owns: directly, or through another held fund's
+    top holdings (look-through). Read-only over the position store and the look-through files."""
+    if not rows or not hasattr(sources, "holdings"):
+        return None
+    if _BOOK_MEMO["sources"] is not sources:
+        try:
+            held = set((sources.holdings() or {}).keys())
+        except Exception:  # noqa: BLE001
+            return None
+        via: dict[str, list[str]] = {}
+        for other in held - {sym}:
+            try:
+                lt = sources.lookthrough(other) or {}
+            except Exception:  # noqa: BLE001
+                continue
+            for r in lookthrough_rows(((lt.get("fund") or {}).get("top_holdings")) or lt.get("holdings") or {}):
+                via.setdefault(str(r["name"]).upper(), []).append(other)
+        _BOOK_MEMO.update(sources=sources, held={"direct": held, "via": via})
+    book = _BOOK_MEMO["held"] or {"direct": set(), "via": {}}
+    hits = []
+    for r in rows:
+        name = str(r["name"]).upper()
+        direct, funds = name in book["direct"], sorted(set(book["via"].get(name, [])) - {sym})
+        if direct or funds:
+            hits.append({"name": r["name"], "weight_pct": r["weight_pct"], "direct": direct, "via_funds": funds})
+    total = sum(r["weight_pct"] for r in rows)
+    return {"overlap_weight_pct": round(sum(h["weight_pct"] for h in hits) / total * 100, 2) if total else 0.0,
+            "names": hits, "of_top": len(rows)}
 
 
 def lookthrough_rows(top: Any, limit: int = 10) -> list[dict]:
@@ -569,6 +642,9 @@ def attach(sources: Any, bundle: Any, *, bars: list, holding: dict | None, now: 
     except Exception:  # noqa: BLE001
         lt = {}
     cls = classify(sym, rec=rec, fund=fund, lookthrough=lt, holding=holding, cats=cats)
+    fname = ((lt.get("fund") or {}).get("fund_name") if isinstance(lt, dict) else None)
+    if fname and (not bundle.name or bundle.name == sym):
+        bundle.name = str(fname)[:120]  # header showed the symbol twice when the Finviz cache had no company name
     bundle.context["fund_category"] = cls
     if cls["is_fund"]:
         if cls.get("category_id"):

@@ -79,6 +79,29 @@ export type ProspectusDoc = {
   inputs_digest?: Record<string, unknown>
   next_due?: string | null
   mode?: string
+  /** "Since this report" (operator 2026-10-27): what happened after this version was written. Latest version only. */
+  since_report?: SinceReport | null
+}
+
+export type SinceImpact = 'none' | 'watch' | 'thesis' | 'breaker' | 'stop'
+export type SinceItem = {
+  id: string; at?: string | null; kind?: string | null; title?: string | null; source?: string | null; url?: string | null
+  material: boolean; badge: string; status: string
+  note?: { impact?: SinceImpact | null; which_breaker?: string | null; one_line?: string | null; at?: string | null } | null
+}
+export type SinceReport = {
+  written_at?: string | null; checked_at?: string | null; items: SinceItem[]; item_count?: number
+  hidden?: Record<string, number>
+  price?: { at_report?: number | null; last_close?: number | null; as_of?: string | null; move_pct?: number | null } | null
+  stop_events?: { kind: string; at_report?: number[] | null; now?: number[] | null; status?: string }[]
+  rewrite?: { reason?: string | null; status?: string | null } | null
+  next_window?: { id?: string; start?: string; time?: string | null; label?: string | null } | null
+}
+
+/** Tone for a CIO news-note impact (never hex). */
+export function impactTone(impact: unknown): 'danger' | 'warning' | 'info' | 'neutral' {
+  const i = String(impact ?? '')
+  return i === 'breaker' || i === 'stop' ? 'danger' : i === 'thesis' ? 'warning' : i === 'watch' ? 'info' : 'neutral'
 }
 
 export const API_BASE = '/api/v2/prospectus'
@@ -224,13 +247,28 @@ export function orderedSections(sections: ProspectusSection[] | null | undefined
 }
 
 /** Markdown blocks (no HTML is ever injected): headings, bullet / numbered items, paragraphs. */
-export type MdBlock = { kind: 'h' | 'li' | 'oli' | 'p'; text: string; level?: number }
+export type MdBlock = { kind: 'h' | 'li' | 'oli' | 'p' | 'table'; text: string; level?: number; head?: string[]; rows?: string[][] }
+const MD_ROW_RE = /^\|.*\|$/
+const MD_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/
+const mdCells = (l: string) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
 export function mdBlocks(md: string): MdBlock[] {
   const out: MdBlock[] = []
   let para: string[] = []
   const flush = () => { if (para.length) { out.push({ kind: 'p', text: para.join(' ') }); para = [] } }
-  for (const raw of String(md ?? '').replace(/\r\n/g, '\n').split('\n')) {
-    const line = raw.trim()
+  const lines = String(md ?? '').replace(/\r\n/g, '\n').split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    // A markdown pipe table (header, separator, rows) renders as a table, never as raw "| a | b |" text.
+    if (MD_ROW_RE.test(line) && i + 1 < lines.length && MD_SEP_RE.test(lines[i + 1].trim()) && lines[i + 1].includes('|')) {
+      flush()
+      const head = mdCells(line)
+      const rows: string[][] = []
+      let j = i + 2
+      for (; j < lines.length && MD_ROW_RE.test(lines[j].trim()); j++) rows.push([...mdCells(lines[j].trim()), ...head.map(() => '')].slice(0, head.length))
+      out.push({ kind: 'table', text: '', head, rows })
+      i = j - 1
+      continue
+    }
     if (!line) { flush(); continue }
     if (/^([-*•]|\d+[.)])$/.test(line)) { flush(); continue }  // an empty bullet is never rendered
     const h = /^(#{1,4})\s+(.*)$/.exec(line)
@@ -273,7 +311,10 @@ export function chartRows(series: ChartSeries[] | null | undefined): Array<Recor
       rows.set(x, row)
     }
   }
-  return [...rows.values()]
+  const out = [...rows.values()]
+  // A common axis: when every x is an ISO date, merge on the sorted dates (series with gaps stay aligned).
+  if (isDateAxis(out.map(r => r.x))) out.sort((a, b) => String(a.x).localeCompare(String(b.x)))
+  return out
 }
 
 /** Analyst target range: low / mean / high (+ current price when given) from series or annotations. */
@@ -363,7 +404,7 @@ export type StopPlan = {
   not_applicable?: string
   recommended?: { level?: Num; method?: string | null; distance_pct?: Num; usd_at_risk?: Num; policy?: string; as_of?: string | null;
     band?: { label?: string | null; stop_min_pct?: Num; stop_max_pct?: Num; levels?: Num[] } }
-  broker?: { level?: Num; state?: 'active' | 'resting' | 'filled' | 'none' | 'unknown'; as_of?: string | null; source?: string }
+  broker?: { level?: Num; state?: 'active' | 'resting' | 'filled' | 'none' | 'unknown'; as_of?: string | null; source?: string; other_accounts?: string | null }
   comparison?: string
   advisory?: string
   gaps?: string[]
@@ -417,13 +458,13 @@ export function signTone(v: unknown): 'success' | 'danger' | 'neutral' {
 
 /** Rows for the rebased chart in one window: { x, [line.name]: value }. */
 export function relRows(rel: RelativePerformance | null | undefined, w: string): { rows: Array<Record<string, string | number | null>>; names: string[] } {
-  const lines = (rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? []
+  const lines = nonEmptySeries((rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? [])
   return { rows: chartRows(lines), names: lines.map(l => l.name) }
 }
 
 /** The windows that actually have lines (the toggle only offers these). */
 export function relWindows(rel: RelativePerformance | null | undefined): string[] {
-  return REL_WINDOWS.filter(w => ((rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? []).length > 0)
+  return REL_WINDOWS.filter(w => nonEmptySeries((rel?.series as Record<string, RelLine[]> | undefined)?.[w] ?? []).length > 0)
 }
 
 const PEER_DEFAULT_LABELS: Record<string, string> = {
@@ -466,6 +507,8 @@ function fact(doc: ProspectusDoc, re: RegExp): ProspectusFact | undefined {
 
 /** The five verdict tiles. Server-supplied `blocks.verdict_tiles` win; otherwise each is read from the cited facts by
  *  label. A tile the data cannot fill has value null (rendered "not available yet"), never an invented number. */
+const STOP_STATE_SHORT: Record<string, string> = { active: 'active', resting: 'resting', filled: 'filled', none: 'none on record' }
+
 export function verdictTiles(doc: ProspectusDoc | null | undefined): VerdictTile[] {
   const d = doc ?? ({ symbol: '' } as ProspectusDoc)
   const given = d.blocks?.verdict_tiles ?? {}
@@ -482,8 +525,12 @@ export function verdictTiles(doc: ProspectusDoc | null | undefined): VerdictTile
   const plPct = fact(d, /^Unrealized P\/L %/i)
   const stop = fact(d, /^Recorded protective stop level/i)
   const dist = fact(d, /^Distance from last close to stop/i)
-  const yld = fact(d, /^Dividend yield/i)
-  const exp = fact(d, /expense ratio/i)
+  const fp = ((d.blocks as Record<string, unknown> | undefined)?.fund_profile ?? {}) as Record<string, unknown>
+  // Yield tile reads the same fund-profile fields as the fund block; facts are the fallback (stocks).
+  const yldFact = fact(d, /^(Dividend yield|Fund distribution yield)/i)
+  const expFact = fact(d, /expense ratio/i)
+  const yld = toNumber(fp.dividend_yield_pct) != null ? { value: toNumber(fp.dividend_yield_pct) as number } : yldFact
+  const exp = toNumber(fp.expense_ratio_pct) != null ? { value: toNumber(fp.expense_ratio_pct) as number } : expFact
   const money = (v: unknown) => { const n = toNumber(v); return n == null ? null : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
   const verdictTone = /SELL|EXIT|TRIM|REVIEW|AVOID/.test(verdictWord ?? '') ? 'danger' : /HOLD|WATCH|WAIT/.test(verdictWord ?? '') ? 'success' : /BUY|ADD|ACCUM/.test(verdictWord ?? '') ? 'success' : 'neutral'
   const base: VerdictTile[] = [
@@ -493,14 +540,29 @@ export function verdictTiles(doc: ProspectusDoc | null | undefined): VerdictTile
       ? { id: 'position', label: 'Your position', value: 'Not held', sub: 'Watch list', tone: 'neutral' }
       : { id: 'position', label: 'Your position', value: money(mv?.value), sub: plDollar?.value != null || plPct?.value != null ? `${plDollar?.value != null ? `${plDollar.value >= 0 ? '+' : '−'}${money(Math.abs(plDollar.value))}` : ''}${plPct?.value != null ? ` (${pct(plPct.value, 1)})` : ''} on cost`.trim() : null, tone: signTone(plDollar?.value ?? plPct?.value) },
     { id: 'stop', label: 'Stop', value: money(stop?.value), sub: dist?.value != null ? `${Math.abs(dist.value).toFixed(1)}% below` : (d.scope === 'watch' ? 'No position' : null), tone: stop ? 'warning' : 'neutral' },
-    { id: 'yield', label: 'Yield · Expense', value: yld || exp ? `${yld?.value != null ? `${yld.value.toFixed(2)}%` : '—'} · ${exp?.value != null ? `${exp.value.toFixed(2)}%` : '—'}` : null, sub: yld || exp ? 'trailing 12 months' : null, tone: 'neutral' },
+    exp || Object.keys(fp).length
+      ? { id: 'yield', label: 'Yield · Expense', value: yld || exp ? `${yld?.value != null ? `${yld.value.toFixed(2)}%` : '—'} · ${exp?.value != null ? `${exp.value.toFixed(2)}%` : '—'}` : null, sub: yld || exp ? 'trailing 12 months' : null, tone: 'neutral' }
+      : { id: 'yield', label: 'Dividend yield', value: yld?.value != null ? `${yld.value.toFixed(2)}%` : null, sub: yld ? 'trailing 12 months' : null, tone: 'neutral' },
   ]
-  return base.map(t => {
+  const merged = base.map(t => {
     const g = given[t.id]
     if (!g) return t
     const tone = (['success', 'warning', 'danger', 'info', 'ai', 'neutral'] as const).find(x => x === g.tone) ?? t.tone
     return { ...t, value: g.value ?? t.value, sub: g.sub ?? t.sub, tone }
   })
+  // Stop tile, concise: "$33.59 · resting" + "house $32.83". Other accounts live in the stop-plan block, not the tile.
+  const sp = d.blocks?.stop_plan
+  if (sp && !sp.not_applicable) {
+    const brokerLevel = money(sp.broker?.level)
+    const house = money(sp.recommended?.level)
+    const state = STOP_STATE_SHORT[String(sp.broker?.state ?? '')] ?? null
+    const i = merged.findIndex(t => t.id === 'stop')
+    if (i >= 0 && (brokerLevel || house)) {
+      merged[i] = { ...merged[i], value: brokerLevel ? `${brokerLevel}${state ? ` · ${state}` : ''}` : (state ?? 'No broker stop'),
+        sub: house ? `house ${house}` : null, tone: sp.broker?.state === 'none' ? 'danger' : merged[i].tone === 'neutral' ? 'warning' : merged[i].tone }
+    }
+  }
+  return merged
 }
 
 /** Every citation across the sections, de-duplicated by id, in first-seen order (the "Sources" list). */
@@ -512,3 +574,251 @@ export function allCitations(sections: ProspectusSection[] | null | undefined): 
 
 /** Section ids that render as their own tile row / summary instead of the narrative grid. */
 export const SUMMARY_SECTION = 'summary_verdict'
+
+// ── Presentation polish (design prospectus/v001.1, operator 2026-10-26: "what are these F with the numbers all over
+//    the pages? … internal pointers. Do those really need to be shown?") ───────────────────────────────────────────
+//    The backend attaches `presentation` (scripts/lib/prospectus/presentation.py) to the detail payload; every function
+//    below reads it and falls back to the same rules computed here when it is absent (older payloads, fixtures).
+
+export type Footnote = { n: number; id: string; label: string; source?: string | null; as_of?: string | null; url?: string | null; value?: string | null }
+export type CoverageItem = { domain: string; label: string; status: string; as_of?: string | null; reason?: string | null }
+export type CoverageGroupId = 'used' | 'stale' | 'failed' | 'missing'
+export type FundStructureRow = { group: string; label: string; value: string; cites?: string[] }
+export type FundStructure = {
+  rows: FundStructureRow[]
+  top_holdings: { symbol?: string | null; name: string; weight_pct?: number | null }[]
+  sectors: { name: string; weight_pct: number }[]
+  countries: { name: string; weight_pct: number }[]
+  missing: string[]
+  as_of?: string | null
+}
+export type Presentation = {
+  schema?: string
+  display_name?: string | null
+  is_fund?: boolean
+  footnotes?: Footnote[]
+  section_footnotes?: Record<string, number[]>
+  fund_structure?: FundStructure | null
+  coverage?: { groups: Record<CoverageGroupId, CoverageItem[]>; counts: Record<CoverageGroupId, number>; hidden: number; key_gaps?: string[] } | null
+  validation?: Validation | null
+  street?: StreetTable[]
+}
+
+/** The one validation statement shown instead of citations (presentation.validation). */
+export type Validation = {
+  status: 'validated' | 'partial' | 'unchecked'
+  line: string
+  figures?: number
+  sources?: number
+  not_validated?: number
+  by_source?: Record<string, number>
+  unreliable?: { id: string; label: string; reason: string }[]
+  reasons?: string[]
+  as_of?: string | null
+  gate_status?: string | null
+}
+
+/** A Street table (tables.street_tables): analyst coverage, action log, estimates, catalysts, positioning, valuation. */
+export type StreetTable = {
+  id: string
+  title: string
+  columns: string[]
+  rows: string[][]
+  kpis?: [string, string][]
+  note?: string | null
+  highlight?: number | null
+}
+
+export function validationOf(doc: ProspectusDoc | null | undefined): Validation | null {
+  const v = presentationOf(doc)?.validation
+  return v && v.line ? v : null
+}
+
+export function validationTone(v: Validation | null | undefined): 'success' | 'warning' | 'neutral' {
+  return v?.status === 'validated' ? 'success' : v?.status === 'partial' ? 'warning' : 'neutral'
+}
+
+export function streetTables(doc: ProspectusDoc | null | undefined): StreetTable[] {
+  const t = presentationOf(doc)?.street
+  return Array.isArray(t) ? t.filter(x => x && x.id && Array.isArray(x.columns)) : []
+}
+
+/** Blank cells ("n/a", "—", "n/a · n/a") never print; a row whose value cells are all blank folds into one note. */
+export function streetRows(t: StreetTable): { rows: string[][]; absent: string[] } {
+  const keyed = ['Measure'].includes(t.columns[0])
+  const rows: string[][] = []
+  const absent: string[] = []
+  for (const r of t.rows ?? []) {
+    if (keyed && r.slice(1).every(c => isBlankValue(c))) absent.push(String(r[0]))
+    else rows.push(r)
+  }
+  return { rows, absent }
+}
+
+/** One bracket group of citation ids: "[F7]", "[F7, F8]", "[^c1]" (same rule as presentation.GROUP_RE). */
+const CITE_GROUP_RE = /\[\^?([A-Za-z][\w.:-]*(?:\s*[,;]\s*\^?[A-Za-z][\w.:-]*)*)\](?!\()/g
+const FACT_ID_RE = /^[FW]\d+$/  // internal fact (F7) and web-fact (W2) ids; never shown
+export const UNRELIABLE_RE = /(?:statistically\s+)?(?:not reliable|unreliable)(?:\s*\([^)]*\)|:\s*[^;.\n\][]+)?/gi
+
+function groupIds(g: string): string[] { return g.split(/[,;]/).map(s => s.trim().replace(/^\^/, '')).filter(Boolean) }
+
+/** Render-side prose cleanup: dangling empty bullets, doubled spaces, space before punctuation, empty brackets. */
+export function cleanProse(text: unknown): string {
+  const lines: string[] = []
+  for (const raw of String(text ?? '').replace(/\r\n/g, '\n').split('\n')) {
+    if (/^\s*([-*•]|\d{1,2}[.)])\s*$/.test(raw)) continue
+    const lead = /^\s*/.exec(raw)![0]
+    let body = raw.slice(lead.length)
+    body = body.replace(/[ \t ]{2,}/g, ' ').replace(/\s+\[\s*\]|\(\s*\)/g, '').replace(/\s+([,.;:!?])(?=\s|$)/g, '$1')
+    lines.push((/^([-*•]|\d{1,2}[.)])\s/.test(body) ? lead : '') + body.replace(/\s+$/, ''))
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function walkStrings(o: unknown, out: string[]): string[] {
+  if (typeof o === 'string') out.push(o)
+  else if (Array.isArray(o)) o.forEach(v => walkStrings(v, out))
+  else if (o && typeof o === 'object') Object.values(o as Record<string, unknown>).forEach(v => walkStrings(v, out))
+  return out
+}
+
+/** Footnotes 1..n in order of first use: verdict line, sections in reading order, then block texts. */
+export function footnotes(doc: ProspectusDoc | null | undefined): Footnote[] {
+  if (!doc) return []
+  const given = (doc as ProspectusDoc & { presentation?: Presentation }).presentation?.footnotes
+  if (Array.isArray(given) && given.length) return given
+  const known = new Map<string, Record<string, unknown>>()
+  for (const f of doc.facts ?? []) if (f?.id) known.set(f.id, f as unknown as Record<string, unknown>)
+  for (const s of doc.sections ?? []) for (const c of s.citations ?? []) if (c?.id) known.set(c.id, { ...(known.get(c.id) ?? {}), ...Object.fromEntries(Object.entries(c).filter(([, v]) => v != null && v !== '')) })
+  // Reading order: verdict line, "My history" (rendered right after the tiles), the sections, then the other blocks.
+  const blocks = (doc.blocks ?? {}) as Record<string, unknown>
+  const texts = [String(doc.verdict_line ?? ''), ...walkStrings(blocks.my_history, []), ...orderedSections(doc.sections, doc.scope).map(s => s.body_md),
+    ...walkStrings(Object.fromEntries(Object.entries(blocks).filter(([k]) => k !== 'my_history')), [])]
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const t of texts) for (const m of t.matchAll(CITE_GROUP_RE)) {
+    const ids = groupIds(m[1])
+    if (!ids.length || !ids.every(i => FACT_ID_RE.test(i) || known.has(i))) continue
+    for (const i of ids) if (!seen.has(i)) { seen.add(i); order.push(i) }
+  }
+  return order.map((id, k) => {
+    const f = known.get(id) ?? {}
+    const v = f.value != null ? `${f.value}${f.unit === '%' ? '%' : f.unit ? ` ${f.unit}` : ''}` : String(f.text ?? '').slice(0, 140)
+    return { n: k + 1, id, label: String(f.label ?? f.source ?? 'Source not recorded'), source: (f.source as string) ?? null, as_of: (f.as_of as string) ?? null, url: (f.url as string) ?? null, value: v || null }
+  })
+}
+
+export type TextPart = { text: string; muted?: boolean } | { notes: Footnote[]; ids: string[] }
+
+/** Split prose into text runs, muted "not reliable (…)" notes and footnote groups (known ids only; unknown internal
+ *  F-ids are dropped, never shown raw). */
+export function splitFootnotes(text: string, byId: Map<string, Footnote>): TextPart[] {
+  const out: TextPart[] = []
+  const pushText = (t: string) => {
+    if (!t) return
+    let last = 0
+    for (const m of t.matchAll(UNRELIABLE_RE)) {
+      if (m.index! > last) out.push({ text: t.slice(last, m.index) })
+      out.push({ text: m[0], muted: true })
+      last = m.index! + m[0].length
+    }
+    if (last < t.length) out.push({ text: t.slice(last) })
+  }
+  let last = 0
+  for (const m of text.matchAll(CITE_GROUP_RE)) {
+    const ids = groupIds(m[1])
+    if (!ids.length || !ids.every(i => FACT_ID_RE.test(i) || byId.has(i))) continue
+    pushText(text.slice(last, m.index).replace(/\s+$/, ''))
+    const notes = ids.map(i => byId.get(i)).filter((x): x is Footnote => !!x)
+    out.push({ notes, ids })
+    last = m.index! + m[0].length
+  }
+  pushText(text.slice(last))
+  return out
+}
+
+/** Footnotes a section's prose uses, ascending. */
+export function sectionFootnotes(s: ProspectusSection, byId: Map<string, Footnote>): Footnote[] {
+  const ns = new Map<number, Footnote>()
+  for (const m of String(s.body_md ?? '').matchAll(CITE_GROUP_RE)) for (const i of groupIds(m[1])) { const f = byId.get(i); if (f) ns.set(f.n, f) }
+  return [...ns.values()].sort((a, b) => a.n - b.n)
+}
+
+/** Header name: the presentation's display name, else the payload name; never the symbol repeated. */
+export function displayName(doc: ProspectusDoc | null | undefined, row?: ProspectusIndexItem | null): string {
+  const sym = normSymbol(doc?.symbol ?? row?.symbol)
+  const cands = [(doc as (ProspectusDoc & { presentation?: Presentation }) | null | undefined)?.presentation?.display_name, doc?.name, row?.name]
+  for (const c of cands) { const s = String(c ?? '').trim(); if (s && s.toUpperCase() !== sym) return s }
+  return ''
+}
+
+export function presentationOf(doc: ProspectusDoc | null | undefined): Presentation | null {
+  return (doc as (ProspectusDoc & { presentation?: Presentation }) | null | undefined)?.presentation ?? null
+}
+
+/** A fund (ETF / mutual fund): the presentation says so, or the fund profile / look-through block is present. */
+export function isFundDoc(doc: ProspectusDoc | null | undefined): boolean {
+  const p = presentationOf(doc)
+  if (p && typeof p.is_fund === 'boolean') return p.is_fund
+  const b = (doc?.blocks ?? {}) as Record<string, unknown>
+  const fp = b.fund_profile as Record<string, unknown> | undefined
+  return !!(fp && Object.keys(fp).length && !fp.not_applicable) || !!b.fund_lookthrough
+}
+
+export const COVERAGE_GROUPS: Array<[CoverageGroupId, string]> = [['used', 'Used'], ['stale', 'Stale'], ['failed', 'Failed'], ['missing', 'Missing']]
+
+/** Source coverage grouped for a security report: not-applicable / plumbing domains are hidden (kept in the JSON). */
+export function coverageGroups(doc: ProspectusDoc | null | undefined): { groups: Record<CoverageGroupId, CoverageItem[]>; counts: Record<CoverageGroupId, number>; hidden: number } {
+  const p = presentationOf(doc)?.coverage
+  if (p && p.groups) return { groups: p.groups, counts: p.counts, hidden: p.hidden ?? 0 }
+  const groups: Record<CoverageGroupId, CoverageItem[]> = { used: [], stale: [], failed: [], missing: [] }
+  let hidden = 0
+  for (const d of doc?.source_coverage?.domains ?? []) {
+    const st = String(d.status || '').toLowerCase()
+    if (st === 'not_applicable') { hidden++; continue }
+    const g: CoverageGroupId = st === 'used' || st === 'stale' || st === 'failed' ? st : 'missing'
+    groups[g].push({ domain: d.domain, label: domainLabel(d), status: st, as_of: d.as_of, reason: d.reason })
+  }
+  return { groups, counts: { used: groups.used.length, stale: groups.stale.length, failed: groups.failed.length, missing: groups.missing.length }, hidden }
+}
+
+/** "missing value" test for a rendered cell: '—', 'n/a', '— / —', '— · —'. */
+export function isBlankValue(v: unknown): boolean {
+  if (v == null) return true
+  if (typeof v !== 'string' && typeof v !== 'number') return false
+  return /^[\s·/|,()—-]*(?:(?:n\/a|none|not available(?: yet)?|—|-)[\s·/|,()—-]*)*$/i.test(String(v))
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}/
+export function isDateAxis(xs: Array<string | number | null>): boolean { return xs.length > 0 && xs.every(x => ISO_DAY.test(String(x))) }
+/** '2026-01-14' → 'Jan 26' (month + 2-digit year); anything else unchanged. */
+export function monthLabel(x: unknown): string {
+  const s = String(x ?? '')
+  return ISO_DAY.test(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${s.slice(2, 4)}` : s
+}
+/** Evenly spaced ticks on month boundaries (the first point of a month), at most `want`. */
+export function monthTicks(xs: string[], want = 6): string[] {
+  if (!isDateAxis(xs)) return []
+  let starts = xs.map((x, i) => (i === 0 || x.slice(0, 7) !== xs[i - 1].slice(0, 7) ? i : -1)).filter(i => i >= 0)
+  if (starts.length > 2 && starts[1] - starts[0] < (xs.length / starts.length) / 2) starts = starts.slice(1)  // a stub first month would crowd the next label
+  const step = Math.max(1, Math.ceil(starts.length / want))
+  return starts.filter((_, k) => k % step === 0).map(i => xs[i])
+}
+/** Series that have at least one numeric point (an empty series is never drawn or put in a legend). */
+export function nonEmptySeries<T extends { points?: ChartPoint[] }>(series: T[] | null | undefined): T[] {
+  return (series ?? []).filter(s => (s.points ?? []).some(p => Array.isArray(p) && toNumber(p[1]) != null))
+}
+
+/** Footnote label for a group: consecutive runs of three or more compress ("117–121"), others list ("3,4"). */
+export function footnoteLabel(ns: number[]): string {
+  const xs = [...new Set(ns)].sort((a, b) => a - b)
+  const out: string[] = []
+  for (let i = 0; i < xs.length;) {
+    let j = i
+    while (j + 1 < xs.length && xs[j + 1] === xs[j] + 1) j++
+    out.push(j - i >= 2 ? `${xs[i]}–${xs[j]}` : xs.slice(i, j + 1).join(','))
+    i = j + 1
+  }
+  return out.join(',')
+}

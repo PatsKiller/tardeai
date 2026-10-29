@@ -1851,6 +1851,25 @@
           "anthropic_first": true,
           "anthropic_only": true
         },
+        "prospectus_accuracy_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 600000,
+          "cost_ceiling_usd": 1.0,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
         "prospectus_fact_check": {
           "primary": {
             "provider": "deepseek",
@@ -1887,6 +1906,44 @@
           "on_health_unknown": "refuse",
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.05
+        },
+        "prospectus_news_classify": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.02,
+          "anthropic_first": true,
+          "anthropic_only": true
+        },
+        "prospectus_cio_news_note": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "anthropic_first": true,
+          "anthropic_only": true
         },
         "cio_ask_reanswer": {
           "primary": {
@@ -1959,6 +2016,24 @@
             "provider": "chatgpt",
             "policy": "FAST"
           }
+        },
+        "incident_supervisor": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
         }
       }
     }

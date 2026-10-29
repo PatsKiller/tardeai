@@ -2,27 +2,100 @@
 # Mergify merges to main inside ET windows; the host deploy_on_main poller promotes CURRENT.
 # Agents never merge. Installing / re-permissioning the Mergify GitHub App is §17.
 #
-# Go signal: Telegram Approve → host adds label ``operator-merge`` (no GitHub Approve UI).
+# Go signal: one Telegram digest tap ("Approve all", scripts/pr_merge_digest.py) → host adds label
+# ``operator-merge`` to each approved PR, bound to its head SHA (no GitHub Approve UI). A shared-infra /
+# solo PR approved in a digest queues on the one-at-a-time ``solo`` queue below; a held PR queues only on
+# its own per-PR "Approve #N (held)" tap (never in "Approve all" — host-enforced).
 # Required checks must match GitHub check names exactly.
 # Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
 
 pull_request_rules:
-  - name: Hold broker / Active Trader / MBI / secrets forever
+  # Keep approved (operator-merge) PRs current with main so they never fall out of the queue when
+  # another PR merges first. Without this, every merge to main re-stales the waiting PRs (check-success
+  # computed on an old head) and the queue drains to empty — the 2026-10-28 held-PR deadlock.
+  - name: keep approved PRs up to date with main
+    conditions:
+      - base=main
+      - -draft
+      - label=operator-merge
+    actions:
+      update:
+
+  # GENERATED from config/merge_hold_paths.json — do not hand-edit the file list.
+  # Regenerate: python scripts/lib/merge_hold_paths.py --print-mergify
+  # tests/test_pr_merge_digest_20261027.py fails if this list drifts from the config.
+  - name: Hold broker / secrets / policy / hooks / guard / merge+deploy control forever
     conditions:
       - or:
-          - label=broker_active_trader
           - label=held
           - label=broker
-          - files~=^(scripts/active_trader/|scripts/brokers/|scripts/moomoo/)
-          - files~=^(\.env|config/secret_registry\.yaml)
+          - label=broker_active_trader
+          - files~=^scripts/active_trader/.*$
+          - files~=^scripts/brokers/.*$
+          - files~=^scripts/moomoo/.*$
+          - files~=^scripts/schwab_[^/]*$
+          - files~=^scripts/lib/schwab_[^/]*$
+          - files~=^scripts/validate_schwab_write_policy\.py$
+          - files~=^scripts/broker_[^/]*$
+          - files~=^scripts/lib/broker[^/]*$
+          - files~=^scripts/alpaca_[^/]*stop[^/]*$
+          - files~=^scripts/[^/]*order_intent[^/]*$
+          - files~=^scripts/lib/[^/]*order_intent[^/]*$
+          - files~=^scripts/[^/]*execution_guard[^/]*$
+          - files~=^scripts/lib/[^/]*execution_guard[^/]*$
+          - files~=^scripts/defense_execution\.py$
+          - files~=^scripts/lib/trading_lock\.py$
+          - files~=^scripts/lib/trading_session_grant\.py$
+          - files~=^apps/broker\-admin/.*$
+          - files~=^config/active_trader[^/]*$
+          - files~=^(.*/)?\.env$
+          - files~=^(.*/)?\.env\.[^/]*$
+          - files~=^config/secret_registry\.yaml$
+          - files~=^(.*/)?AGENTS\.md$
+          - files~=^AI_WORK_POLICY\.md$
+          - files~=^CLAUDE\.md$
+          - files~=^GEMINI\.md$
+          - files~=^\.cursor/rules/.*$
+          - files~=^\.github/copilot\-instructions\.md$
+          - files~=^\.goosehints$
+          - files~=^\.githooks/.*$
+          - files~=^\.cursor/hooks/.*$
+          - files~=^scripts/hooks/.*$
+          - files~=^bin/guard$
+          - files~=^scripts/lib/guard[^/]*$
+          - files~=^scripts/guard_[^/]*$
+          - files~=^install\-guardrails\.sh$
+          - files~=^scripts/install_ai_work_policy\.sh$
+          - files~=^scripts/agent_claim_precommit\.sh$
+          - files~=^scripts/lib/tradeai_push_budget\.py$
+          - files~=^\.mergify\.yml$
+          - files~=^config/merge_hold_paths\.json$
+          - files~=^scripts/lib/merge_hold_paths\.py$
+          - files~=^scripts/lib/pr_merge_telegram\.py$
+          - files~=^scripts/lib/pr_merge_digest\.py$
+          - files~=^scripts/pr_merge_digest\.py$
+          - files~=^scripts/request_pr_merge_approve\.py$
+          - files~=^scripts/notify_pr_merge_ready\.py$
+          - files~=^config/pr_merge_digest\.json$
+          - files~=^scripts/lib/deploy_on_main\.py$
+          - files~=^scripts/deploy_on_main_poll\.py$
+          - files~=^scripts/cio_phase2_exact_main_deploy\.sh$
+          - files~=^scripts/emergency_manual_promote\.sh$
+          - files~=^scripts/ci_outage_emergency_release\.py$
+          - files~=^scripts/lib/release_grant_binding\.py$
+          - files~=^scripts/lib/deploy_delegation_binding\.py$
+          - files~=^scripts/release_grant_preflight\.py$
+          - files~=^config/systemd/user/tradeai\-deploy\-on\-main\.[^/]*$
+          - files~=^config/systemd/user/tradeai\-pr\-merge\-[^/]*$
+          - files~=^\.github/.*$
+          - files~=^scripts/lib/release_control\.py$
     actions:
       label:
         add:
           - held
       comment:
         message: >
-          Held: broker / Active Trader / MBI / secrets paths are never Mergify-merged
-          (AGENTS.md §0 rules 1–2, §25.10). Operator merge only.
+          Held: this PR touches a path Mergify never merges except on the operator's own per-PR tap (broker / Active Trader / MBI / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, or the merge + deploy control plane; config/merge_hold_paths.json; AGENTS.md §0 rules 1-2, §25.10). The Telegram digest lists it as "needs operator merge" with a per-PR "Approve #N (held)" button — never in "Approve all".
 
   - name: Queue default when CI green and operator-merge (Telegram Approve)
     conditions:
@@ -33,9 +106,6 @@ pull_request_rules:
       - check-success=agent-governance
       - check-success=release-readiness
       - check-success=ci-gate
-      - label!=held
-      - label!=broker
-      - label!=broker_active_trader
       - label!=solo
       - label!=shared-infra
       - or:
@@ -58,9 +128,6 @@ pull_request_rules:
       - or:
           - label=solo
           - label=shared-infra
-      - label!=held
-      - label!=broker
-      - label!=broker_active_trader
       - or:
           - schedule=Mon-Fri 16:15-23:59[America/New_York]
           - schedule=Mon-Fri 00:00-09:30[America/New_York]
@@ -68,6 +135,12 @@ pull_request_rules:
     actions:
       queue:
         name: solo
+  - name: Keep PRs up to date
+    conditions:
+      - -draft
+      - "#commits-behind >= 1"
+    actions:
+      update: null
 
 queue_rules:
   - name: default

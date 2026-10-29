@@ -1,0 +1,22 @@
+# Deterministic incident watchers every 5 minutes: open/auto-resolve IncidentRecord@v1 rows; never sends.
+# Host timer, not n8n (AGENTS.md §28.14 item 1, §23.14). Install: docs/ops/INCIDENT_LEDGER.md §Install.
+
+[Unit]
+Description=Trade AI incident watchers (deterministic, no model)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+# No EnvironmentFile: the watchers read files and call read-only gh/git only (no model, no send).
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TMPDIR=%h/.cache/agent-tmp/incident-units
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/agent-tmp/incident-units
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/incident_watchers.py --apply
+Nice=10
+TimeoutStartSec=240
+
+[Install]
+WantedBy=default.target

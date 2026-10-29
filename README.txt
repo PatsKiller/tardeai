@@ -1,16 +1,17 @@
 # Trade AI v12 -- Trading Intelligence Platform
 # ==============================================
 #
-# Owner: John W. Whiting
-# Server: ms01-openclaw (Linux)
+# Owner: the repository owner (the operator)
+# Server: the operator's Linux host
 # Status: Paper trading validation (6-month window)
 #
 # DOCUMENTATION INDEX
 # -------------------
 # Start here. Command Center is /v3/ on port 7777.
 #
-#   AGENTS.md                                              -- operator policy
-#   docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md             -- merge and promote
+#   AGENTS.md                                              -- agent operating standard (start here)
+#   docs/governance/OPEN_ITEMS.md                          -- known gaps, owners, review dates
+#   docs/ops/MERGIFY_DEPLOY_FOUNDATION.md                  -- merge (Mergify) and promote (host poller)
 #   docs/ops/ROLLBACK_COMMANDS.md                          -- rollback
 #   docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md
 #   docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md
@@ -26,20 +27,18 @@
 #   Command Center: /v2/topic-monitor     -- Admin page
 #   Telegram: topic status|add|url|run    -- Mobile management
 #   docs/RESTORE_GUIDE.md                 -- Disaster recovery procedures
-#   docs/DOCX_UPDATE_PROTOCOL.md          -- DOCX maintenance protocol
 #
 # STRATEGY & AGENT DOCS
 # ---------------------
-#   docs/project/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md  -- 20 strategy playbooks
-#   docs/project/agents_bible.md                      -- Agent behavior rules
-#   docs/project/SKILL.md                             -- Agent skills inventory
+#   config/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md        -- 20 strategy playbooks
+#   AGENTS.md                                         -- Agent behavior rules (agents_bible.md retired)
+#   .claude/skills/*/SKILL.md                         -- Agent skills (domain knowledge only)
 #   docs/project/project_openclaw.md                  -- OpenClaw gateway config
 #   docs/project/Trade_AI_v12_Reference_Architecture.docx -- Canonical DOCX
 #
 # ARCHIVE
 # -------
-#   docs/archive/       -- Historical session handoffs (pre-bible era)
-#   docs/_archive/      -- Superseded system bibles and session docs
+#   archive/            -- Retired code and docs, with manifest and tripwire (AGENTS.md §14)
 #
 # QUICK START
 # -----------

@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 61 domains · 22 providers.
+Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 62 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -111,6 +111,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **cio_prospect** | derived | `cio_prospect` | `scripts/lib/cio_instrument_record.py` | */30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes | 0.5h | `cio_prospect` | derived | — | — | `say_so` | operator 2026-10-22 |
 | **cio_asks** | native | `data/cio/cio_ask_events.jsonl` | `scripts/lib/cio_ask_store.py` | event-driven (operator ask on CC or Telegram; material-change re-answer) | 168h | — | internal | — | — | `say_so` | operator 2026-10-24 |
 | **anthropic_promotional_credit** | native | `runtime/provider_cost/anthropic_credit.jsonl` | `scripts/lib/anthropic_credit.py` | before each governed promotional request; settle after usage; existing llm-provider-health observations | 0.25h | — | — | durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock | — | `Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available` | operator 2026-10-25 |
+| **operator_decisions** | native | `governance/operator_decisions.jsonl` | `scripts/lib/operator_approvals.py` | event-driven authenticated operator review and separately governed audit proposals | 720h | — | native | — | — | `say_so` | operator 2026-10-27 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -187,6 +188,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **Operator reply 2026-10-22 ~22:30 ET (verbatim): "yes i approve 'approve all' (A–L)" — item E, as presented: "Approve the `cio_prospect` registry row, the migration (sha `6bac8924…`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run." Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.** — 1 rows: domain `cio_prospect`
 - **PR #2075 — operator 2026-10-24: "push it live now ... I want everything live" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'** — 1 rows: domain `cio_asks`
 - **Operator in this session: "what disable enable and test call", following deployed PR #2181. Authorizes the promotional router and its required append-only credit authorization journal. This records activation intent, not a successful authentication/canary or backup proof.** — 1 rows: domain `anthropic_promotional_credit`
+- **Operator in the coordinator Claude Code session 2026-10-27, verbatim: "D1–D7 as recommended" (D5 = turn on the operator_decisions store) and "Markups approved." for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)** — 1 rows: domain `operator_decisions`
 
 ## Monitors
 

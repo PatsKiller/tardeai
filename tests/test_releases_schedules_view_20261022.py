@@ -131,20 +131,15 @@ def host(tmp_path):
                "*/5 * * * * cd $P && python scripts/watchdog.py\n"
                "# PAUSED 2026-10-14 schwab-app-deactivated 33 16 * * 1-5 cd $P && python scripts/cost_basis_sync.py\n"
                "# a plain comment 0 1 * * * nothing\n")
-    readiness = {"schema": "ReleaseTrainReadiness@v1", "state": "OK", "as_of": NOW.isoformat(),
-                 "stop": {"state": "ABSENT", "effective_stop": False}, "armed": False, "shadow_enabled": True,
-                 "delegation": {"state": "PAUSED", "source": "test"}, "policy_version": "t",
-                 "shadow_coverage": [{"slot": "1800", "last_requested_at": None, "request_id": None,
-                                      "receipt_state": None}]}
     git = _git(subjects={f"{SHA_B}..{SHA_MAIN}": ["Merge pull request #1927 from a/b", "fix x (#1934)"],
                          f"{SHA_A}..{SHA_B}": ["Merge pull request #1918 from a/b"]})
-    return {"paths": paths, "crontab": lambda: (crontab, "crontab", None, None), "readiness": lambda: readiness,
+    return {"paths": paths, "crontab": lambda: (crontab, "crontab", None, None),
             "git": git, "rw": rw, "dep": dep, "base": base}
 
 
 def _build(host, **kw):
     return R.build(lambda *a, **k: None, now=NOW, paths=host["paths"], git=host["git"],
-                   crontab_reader=host["crontab"], readiness=host["readiness"], **kw)
+                   crontab_reader=host["crontab"], **kw)
 
 
 def test_full_projection_reads_every_fixture_source(host):
@@ -182,8 +177,10 @@ def test_kpis_and_n8n_today_from_ledger(host):
 
 
 def test_windows_mergify_after_hours_not_train_shadow(host):
-    """Mergify windows replace train SHADOW/OFF; STOP is deploy promote, not window state."""
-    w = _build(host)["windows"]["value"]
+    """Mergify windows replace train SHADOW/OFF; the retired queue section stays removed."""
+    d = _build(host)
+    assert "queue" not in d
+    w = d["windows"]["value"]
     assert w["preset"] == "after_hours"
     assert w["open_now"] is False and w["market_freeze"] is True
     assert w["windows"][0]["local_time"] == "16:15"
@@ -230,8 +227,8 @@ def test_unavailable_sources_are_null_never_zero(host, tmp_path):
     paths = dict(host["paths"], releases_base=tmp_path / "nope", ledger=tmp_path / "nope.sqlite",
                  deploy_state_dir=tmp_path / "nodeploy", registry=tmp_path / "noreg.json")
     d = R.build(lambda *a, **k: None, now=NOW, paths=paths, git=lambda a: (128, ""),
-                crontab_reader=lambda: ("", "none", "crontab -l denied", None), readiness=host["readiness"])
-    for key in ("serving", "next_release", "n8n_today", "timeline", "history", "queue"):
+                crontab_reader=lambda: ("", "none", "crontab -l denied", None))
+    for key in ("serving", "next_release", "n8n_today", "timeline", "history"):
         assert d[key]["freshness"] == "UNAVAILABLE", key
         assert d[key]["value"] is None and d[key]["reason"], key
     k = {x["key"]: x for x in d["kpis"]}

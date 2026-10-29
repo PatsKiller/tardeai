@@ -40,9 +40,16 @@ Full 23-stage pipeline:
 """
 
 from __future__ import annotations
+import atexit
 import argparse, json, os, sys, traceback
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from lib.orchestrator_admission import CONTENTION_EXIT, orchestrator_admission
+except ImportError:
+    from scripts.lib.orchestrator_admission import CONTENTION_EXIT, orchestrator_admission
 
 try:
     from dotenv import load_dotenv
@@ -1591,6 +1598,12 @@ def _enrich_opaque_exit(code_or_msg, root: Path | None = None) -> str | int:
 
 
 if __name__ == "__main__":
+    _admission_stack = ExitStack()
+    _admitted = _admission_stack.enter_context(orchestrator_admission())
+    atexit.register(_admission_stack.close)
+    if not _admitted:
+        print("[orchestrator] already running; admission skipped (rc=75)", file=sys.stderr)
+        raise SystemExit(CONTENTION_EXIT)
     with PipelineRun("trade_ai_orchestrator") as _run:
         _root_guess = Path(".").resolve()
         try:

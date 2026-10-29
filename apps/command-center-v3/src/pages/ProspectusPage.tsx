@@ -15,14 +15,17 @@ import { useApi } from '../hooks/useApi'
 import { inlineMarkdown } from '../components/PolicyRuleParts'
 import ProspectusCharts from '../components/prospectus/ProspectusCharts'
 import { FundProfileBlock, MyHistoryBlock } from '../components/prospectus/MyHistoryBlock'
+import SinceReportStrip from '../components/prospectus/SinceReportStrip'
 import {
-  CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, MacroBlock, OptionsBlock, OwnershipBlock, PeerComparisonBlock,
-  RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
+  CallBlock, CoverageBlock, EstimatesBlock, FilingsBlock, FundStructureBlock, MacroBlock, OptionsBlock, OwnershipBlock,
+  PeerComparisonBlock, RelativePerformanceBlock, RiskBlock, ScenariosBlock, StopPlanBlock, VerdictTiles,
 } from '../components/prospectus/ProspectusBlocks'
+import { CiteText, FootnoteProvider } from '../components/prospectus/Citations'
+import { StreetBlocks, ValidationBadge } from '../components/prospectus/StreetBlocks'
 import {
-  SECTION_TONE, SUMMARY_SECTION, allCitations, budgetView, detailPath, detailState, filePath, filterItems, indexPath,
-  mdBlocks, modelLabel, normSymbol, orderedSections, pageRoute, refreshPath, rowStatus, scopeCounts, splitCitations,
-  statusOf, toNumber, totals, whenEt,
+  SECTION_TONE, SUMMARY_SECTION, budgetView, cleanProse, detailPath, detailState, displayName, filePath, filterItems,
+  footnotes, indexPath, isFundDoc, mdBlocks, modelLabel, normSymbol, orderedSections, pageRoute, presentationOf,
+  refreshPath, rowStatus, scopeCounts, statusOf, streetTables, toNumber, totals, whenEt,
   type ProspectusDoc, type ProspectusIndex, type ProspectusIndexItem, type ProspectusSection, type ScopeFilter,
 } from '../lib/prospectusModel'
 import './Prospectus.css'
@@ -145,43 +148,33 @@ function PhoneCards({ rows, linkSearch }: { rows: ProspectusIndexItem[]; linkSea
 
 // ── Report pieces ───────────────────────────────────────────────────────────────────────────────────────────────
 
-function MdText({ text, ids }: { text: string; ids: Set<string> }) {
-  return <>{splitCitations(text, ids).map((p, i) => 'cite' in p
-    ? <a key={i} href={`#cite-${p.cite}`} className="psp-cite-inline" data-testid="prospectus-cite-inline">{p.cite}</a>
-    : <span key={i}>{inlineMarkdown(p.text, `t${i}`)}</span>)}</>
-}
-
 function SectionBody({ s }: { s: ProspectusSection }) {
-  const cites = s.citations ?? []
-  const ids = new Set(cites.map(c => c.id))
   const items: React.ReactNode[] = []
   let list: { ordered: boolean; nodes: React.ReactNode[] } | null = null
   const flush = () => { if (list) { items.push(list.ordered ? <ol key={`l${items.length}`}>{list.nodes}</ol> : <ul key={`l${items.length}`}>{list.nodes}</ul>); list = null } }
-  mdBlocks(s.body_md).forEach((b, i) => {
+  mdBlocks(cleanProse(s.body_md)).forEach((b, i) => {
     if (b.kind === 'li' || b.kind === 'oli') {
       const ordered = b.kind === 'oli'
       if (!list || list.ordered !== ordered) { flush(); list = { ordered, nodes: [] } }
-      list.nodes.push(<li key={i}><MdText text={b.text} ids={ids} /></li>)
+      list.nodes.push(<li key={i}><CiteText text={b.text} /></li>)
       return
     }
     flush()
-    items.push(b.kind === 'h' ? <h4 key={i} className="psp-h"><MdText text={b.text} ids={ids} /></h4> : <p key={i}><MdText text={b.text} ids={ids} /></p>)
+    if (b.kind === 'table') {
+      items.push(
+        <div key={i} className="psp-table-wrap psp-md-table" data-testid="prospectus-md-table">
+          <table className="psp-table psp-table-left">
+            <thead><tr>{(b.head ?? []).map((c, k) => <th key={k}><CiteText text={c} /></th>)}</tr></thead>
+            <tbody>{(b.rows ?? []).map((r, k) => <tr key={k}>{r.map((c, m) => <td key={m}><CiteText text={c} /></td>)}</tr>)}</tbody>
+          </table>
+        </div>)
+      return
+    }
+    items.push(b.kind === 'h' ? <h4 key={i} className="psp-h"><CiteText text={b.text} /></h4> : <p key={i}><CiteText text={b.text} /></p>)
   })
   flush()
   return (
-    <>
-      <div className="psp-body">{items}</div>
-      {cites.length > 0 && (
-        <div className="psp-cites" data-testid="prospectus-citations">
-          {cites.map(c => {
-            const label = <>{c.source}{c.as_of ? <span className="psp-cite-asof"> · {whenEt(c.as_of)}</span> : null}</>
-            return c.url
-              ? <a key={c.id} className="psp-cite" href={c.url} target="_blank" rel="noopener noreferrer" data-testid="prospectus-cite"><b>{c.id}</b> {label}</a>
-              : <span key={c.id} className="psp-cite" data-testid="prospectus-cite"><b>{c.id}</b> {label}</span>
-          })}
-        </div>
-      )}
-    </>
+    <div className="psp-body">{items}</div>
   )
 }
 
@@ -290,7 +283,12 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
   const stale = doc?.stale ?? row?.stale ?? false
   const hasReport = state === 'ready' || state === 'partial'
   const isOperator = viewerOperator || doc?.viewer?.operator === true
-  const name = doc?.name || row?.name || ''
+  const name = displayName(doc, row)
+  const fund = isFundDoc(doc)
+  const pres = presentationOf(doc)
+  const notes = useMemo(() => footnotes(doc), [doc])
+  const street = useMemo(() => streetTables(doc), [doc])
+  const hasStreet = street.length > 0
   const blocks = doc?.blocks
   const price = toNumber((doc?.facts ?? []).find(f => /^Last close/i.test(f.label))?.value)
   const backRef = useRef<HTMLButtonElement>(null)
@@ -321,7 +319,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
         <VersionPicker doc={doc} current={currentVersion} onPick={pickVersion} />
       </div>
       <h1 id="psp-report-title" className="psp-report-sym">{symbol}</h1>
-      <div className="psp-report-name">{name}</div>
+      {name && <div className="psp-report-name" data-testid="prospectus-name">{name}</div>}
       <div className="psp-report-meta">
         <TypeChip scope={scope} />
         <ModelChip model={model} long />
@@ -329,6 +327,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
         {state !== 'loading' && <StatusChip it={{ status: doc?.status ?? row?.status ?? (hasReport ? 'ready' : 'missing'), stale }} testId="prospectus-detail-status" />}
         {stale && <span data-testid="prospectus-detail-stale" hidden>stale</span>}
       </div>
+      {hasReport && <ValidationBadge doc={doc} />}
       {dl && <div className="psp-dl3" data-testid="prospectus-actions">{dl}</div>}
     </header>
   ) : (
@@ -336,7 +335,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
       <Link to={{ pathname: pageRoute(), search: listSearch }} className="psp-back-link" data-testid="prospectus-back">← All prospectuses</Link>
       <header className="psp-report-head">
         <div className="psp-report-id">
-          <div className="psp-report-titlebar"><h1 id="psp-report-title" className="psp-report-sym">{symbol}</h1><span className="psp-report-name">{name}</span></div>
+          <div className="psp-report-titlebar"><h1 id="psp-report-title" className="psp-report-sym">{symbol}</h1>{name && <span className="psp-report-name" data-testid="prospectus-name">{name}</span>}</div>
           <div className="psp-report-meta">
             <span className="psp-meta-pill">{scope === 'holding' ? 'Holding' : 'Watch'}</span>
             {modelLabel(model).tier !== 'none' && <span className="psp-meta-pill psp-meta-model" data-testid="prospectus-model">Written by <ModelChip model={model} long /></span>}
@@ -345,6 +344,7 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
             {state !== 'loading' && <StatusChip it={{ status: doc?.status ?? row?.status ?? (hasReport ? 'ready' : 'missing'), stale }} testId="prospectus-detail-status" />}
             {stale && <span data-testid="prospectus-detail-stale" hidden>stale</span>}
           </div>
+          {hasReport && <ValidationBadge doc={doc} />}
         </div>
         <div className="psp-actions" data-testid="prospectus-actions">
           {dl}
@@ -355,10 +355,10 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
     </>
   )
 
-  const cites = allCitations(sections)
   return (
     <article className={`psp-report${phone ? ' psp-report-phone' : ''}`} data-testid="prospectus-report" data-state={state} aria-labelledby="psp-report-title">
       {header}
+      {hasReport && doc?.since_report && <SinceReportStrip since={doc.since_report} phone={phone} />}
       {state === 'partial' && (
         <div className="psp-banner psp-tone-warning psp-bg-soft-warning" data-testid="prospectus-partial-banner" role="note">
           Partial: {(doc?.partial_gaps ?? doc?.source_coverage?.key_gaps ?? []).join('; ') || 'a key source was missing'}.
@@ -395,12 +395,12 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
         </div>
       )}
       {hasReport && doc && (
-        <>
+        <FootnoteProvider notes={notes}>
           <VerdictTiles doc={doc} />
           <MyHistoryBlock blocks={blocks} symbol={symbol} phone={phone} />
           <section className="psp-card psp-summary-card" data-testid="prospectus-summary" aria-label="Summary">
             <h2 className="psp-card-title">Summary</h2>
-            {(doc.verdict_line || row?.verdict_line) && <p className="psp-verdict-banner" data-testid="prospectus-verdict-banner">{doc.verdict_line || row?.verdict_line}</p>}
+            {(doc.verdict_line || row?.verdict_line) && <p className="psp-verdict-banner" data-testid="prospectus-verdict-banner"><CiteText text={doc.verdict_line || row?.verdict_line} /></p>}
             {summary ? <SectionBody s={summary} /> : null}
           </section>
           {!phone && <ProspectusCharts charts={doc.charts ?? []} symbol={symbol} />}
@@ -408,11 +408,13 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
           <PeerComparisonBlock blocks={blocks} phone={phone} />
           {phone ? (
             <>
+              {hasStreet && <StreetBlocks tables={street} phone only={['analyst_coverage', 'analyst_targets_trend', 'analyst_actions', 'estimates', 'estimates_history', 'catalyst_calendar']} />}
               <ScenariosBlock blocks={blocks} price={price} />
               <MacroBlock blocks={blocks} />
               <FilingsBlock blocks={blocks} />
-              <EstimatesBlock blocks={blocks} withCall />
-              <OptionsBlock blocks={blocks} withOwnership />
+              {fund ? <FundStructureBlock doc={doc} /> : hasStreet ? <CallBlock blocks={blocks} /> : <EstimatesBlock blocks={blocks} withCall />}
+              {hasStreet && <StreetBlocks tables={street} phone only={['catalyst_history', 'positioning', 'valuation_history', 'fundamentals_xbrl']} />}
+              <OptionsBlock blocks={blocks} withOwnership={!fund} fund={fund} />
               <RiskBlock blocks={blocks} phone />
               <StopPlanBlock blocks={blocks} />
               {(doc.charts ?? []).length > 0 && (
@@ -422,41 +424,44 @@ function Report({ symbol, row, viewerOperator, onBack, phone, listSearch }: { sy
                 </details>
               )}
               <div className="psp-sections">{narrative.map(s => <SectionBlock key={s.id} s={s} phone />)}</div>
-              <FundProfileBlock blocks={blocks} />
+              {!(fund && pres?.fund_structure) && <FundProfileBlock blocks={blocks} />}
               <CoverageBlock doc={doc} />
               {isOperator && <div className="psp-rewrite-row"><RewriteButton symbol={symbol} onQueued={() => setNonce(n => n + 1)} big /></div>}
             </>
           ) : (
             <>
-              <div className="psp-grid3">
-                <EstimatesBlock blocks={blocks} />
-                <OwnershipBlock blocks={blocks} />
-                <RiskBlock blocks={blocks} />
-              </div>
+              {fund ? (
+                <div className="psp-grid3 psp-grid-fund">
+                  <FundStructureBlock doc={doc} wide />
+                  <RiskBlock blocks={blocks} />
+                </div>
+              ) : hasStreet ? (
+                <div className="psp-grid2">
+                  <OwnershipBlock blocks={blocks} />
+                  <RiskBlock blocks={blocks} />
+                </div>
+              ) : (
+                <div className="psp-grid3">
+                  <EstimatesBlock blocks={blocks} />
+                  <OwnershipBlock blocks={blocks} />
+                  <RiskBlock blocks={blocks} />
+                </div>
+              )}
+              {hasStreet && <StreetBlocks tables={street} phone={false} />}
               <StopPlanBlock blocks={blocks} />
               <ScenariosBlock blocks={blocks} price={price} />
               <div className="psp-sections psp-grid2">{narrative.map(s => <SectionBlock key={s.id} s={s} phone={false} />)}</div>
               <div className="psp-grid2">
                 <MacroBlock blocks={blocks} />
                 <FilingsBlock blocks={blocks} />
-                <CallBlock blocks={blocks} />
-                <OptionsBlock blocks={blocks} />
+                {!fund && <CallBlock blocks={blocks} />}
+                <OptionsBlock blocks={blocks} fund={fund} />
               </div>
-              <FundProfileBlock blocks={blocks} />
+              {!(fund && pres?.fund_structure) && <FundProfileBlock blocks={blocks} />}
               <CoverageBlock doc={doc} />
-              {cites.length > 0 && (
-                <section className="psp-card" aria-label="Sources" data-testid="prospectus-sources">
-                  <h2 className="psp-card-title">Sources</h2>
-                  <ol className="psp-sources">
-                    {cites.map(c => (
-                      <li key={c.id} id={`cite-${c.id}`}><b>{c.id}</b> {c.url ? <a className="psp-link" href={c.url} target="_blank" rel="noopener noreferrer">{c.source}</a> : c.source}{c.as_of ? <span className="psp-muted"> · {whenEt(c.as_of)}</span> : null}</li>
-                    ))}
-                  </ol>
-                </section>
-              )}
             </>
           )}
-        </>
+        </FootnoteProvider>
       )}
     </article>
   )

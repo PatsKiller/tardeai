@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from html import escape
 import io
+import re
 from typing import Any
 
 TOKENS = {
@@ -52,6 +53,48 @@ def _scale(lo: float, hi: float):
     return lo, hi, (lambda y: PAD_T + (hi - y) / (hi - lo) * (H - PAD_T - PAD_B))
 
 
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_ISO_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+def line_axis(series: list[dict]) -> tuple[list[str], list[dict]]:
+    """One common x axis for every line series: the union of their x values, sorted when they are ISO dates (input
+    order otherwise). Series with no numeric point are dropped (an empty series is never drawn or listed)."""
+    keep = [s for s in series if any(_num(p[1]) is not None for p in s.get("points") or [] if isinstance(p, (list, tuple)) and len(p) > 1)]
+    xs: list[str] = []
+    seen: set[str] = set()
+    for s in keep:
+        for p in s.get("points") or []:
+            x = str(p[0])
+            if x not in seen:
+                seen.add(x)
+                xs.append(x)
+    if xs and all(_ISO_DAY.match(x) for x in xs):
+        xs.sort()
+    return xs, keep
+
+
+def month_label(x: str) -> str:
+    """'2026-01-14' -> 'Jan 26'; anything else unchanged (trimmed)."""
+    if _ISO_DAY.match(x):
+        return f"{MONTHS[int(x[5:7]) - 1]} {x[2:4]}"
+    return x[:10]
+
+
+def month_ticks(xs: list[str], want: int = 6) -> list[int]:
+    """Evenly spaced tick indexes on month boundaries (first point of a month), at most ``want`` of them."""
+    if not xs:
+        return []
+    if not all(_ISO_DAY.match(x) for x in xs):
+        n = len(xs)
+        return sorted({0, n // 2, n - 1}) if n > 2 else list(range(n))
+    starts = [i for i, x in enumerate(xs) if i == 0 or x[:7] != xs[i - 1][:7]]
+    if len(starts) > 2 and starts[1] - starts[0] < (len(xs) / len(starts)) / 2:
+        starts = starts[1:]  # a stub first month would crowd the next label
+    step = max(1, -(-len(starts) // want))
+    return starts[::step]
+
+
 def svg(chart: dict) -> str:
     """One chart as inline SVG. Strokes/fills reference --chart-N and token variables."""
     kind, series = chart.get("type"), chart.get("series") or []
@@ -70,16 +113,19 @@ def svg(chart: dict) -> str:
                    f'<text x="{PAD_L - 6}" y="{yy + 4:.1f}" class="pc-axis" text-anchor="end">{_fmt(y)}</text>')
     plot_w = W - PAD_L - PAD_R
     if kind == "line":
+        xs, series = line_axis(series)
+        pos = {x: i for i, x in enumerate(xs)}
+        step = plot_w / max(1, len(xs) - 1)
         for si, s in enumerate(series):
-            pts = [p for p in s.get("points") or [] if _num(p[1]) is not None]
+            pts = [p for p in s.get("points") or [] if _num(p[1]) is not None and str(p[0]) in pos]
+            pts.sort(key=lambda p: pos[str(p[0])])
             if len(pts) < 2:
                 continue
-            step = plot_w / (len(pts) - 1)
-            path = " ".join(f"{'M' if i == 0 else 'L'}{PAD_L + i * step:.1f},{ty(_num(p[1])):.1f}" for i, p in enumerate(pts))
+            path = " ".join(f"{'M' if i == 0 else 'L'}{PAD_L + pos[str(p[0])] * step:.1f},{ty(_num(p[1])):.1f}" for i, p in enumerate(pts))
             out.append(f'<path d="{path}" fill="none" stroke="var(--chart-{si % 6 + 1})" stroke-width="2"/>')
-            for idx in (0, len(pts) // 2, len(pts) - 1):
-                out.append(f'<text x="{PAD_L + idx * step:.1f}" y="{H - 14}" class="pc-axis" text-anchor="middle">'
-                           f'{escape(str(pts[idx][0])[:10])}</text>')
+        for idx in month_ticks(xs):
+            out.append(f'<text x="{PAD_L + idx * step:.1f}" y="{H - 14}" class="pc-axis" text-anchor="middle">'
+                       f'{escape(month_label(xs[idx]))}</text>')
     else:
         labels = []
         for s in series:
@@ -119,10 +165,13 @@ def svg(chart: dict) -> str:
         out.append(f'<line x1="{PAD_L}" x2="{W - PAD_R}" y1="{yy:.1f}" y2="{yy:.1f}" stroke="{tone}" '
                    f'stroke-dasharray="6 4" stroke-width="1.5"/><text x="{W - PAD_R - 4}" y="{yy - 4:.1f}" '
                    f'class="pc-ann" fill="{tone}" text-anchor="end">{escape(str(a.get("label", "")))} {_fmt(_num(a["y"]))}</text>')
-    if len(series) > 1:
+    if len(series) > 1:  # legend: same colors as the lines, packed left to right
+        x = PAD_L
         for si, s in enumerate(series):
-            out.append(f'<rect x="{PAD_L + si * 150}" y="6" width="10" height="10" fill="var(--chart-{si % 6 + 1})"/>'
-                       f'<text x="{PAD_L + 14 + si * 150}" y="15" class="pc-axis">{escape(str(s.get("name", ""))[:20])}</text>')
+            label = str(s.get("name", ""))[:20]
+            out.append(f'<rect x="{x}" y="8" width="10" height="10" rx="2" fill="var(--chart-{si % 6 + 1})"/>'
+                       f'<text x="{x + 14}" y="17" class="pc-axis">{escape(label)}</text>')
+            x += 26 + 6 * len(label)
     out.append("</svg>")
     return "".join(out)
 
@@ -147,13 +196,15 @@ def png(chart: dict, *, theme: str = "light") -> bytes | None:
     ax.set_title(chart.get("title", ""), color=t["text"], fontsize=9, loc="left")
     drawn = False
     if chart.get("type") == "line":
+        xs, series = line_axis(series)
+        pos = {x: i for i, x in enumerate(xs)}
         for si, s in enumerate(series):
-            pts = [p for p in s.get("points") or [] if _num(p[1]) is not None]
+            pts = sorted((p for p in s.get("points") or [] if _num(p[1]) is not None and str(p[0]) in pos), key=lambda p: pos[str(p[0])])
             if pts:
-                ax.plot(range(len(pts)), [_num(p[1]) for p in pts], color=t["chart"][si % 6], linewidth=1.6, label=s.get("name"))
-                ticks = sorted({0, len(pts) // 2, len(pts) - 1})
-                ax.set_xticks(ticks, [str(pts[i][0])[:10] for i in ticks])
+                ax.plot([pos[str(p[0])] for p in pts], [_num(p[1]) for p in pts], color=t["chart"][si % 6], linewidth=1.6, label=s.get("name"))
                 drawn = True
+        ticks = month_ticks(xs)
+        ax.set_xticks(ticks, [month_label(xs[k]) for k in ticks])
     else:
         labels = []
         for s in series:

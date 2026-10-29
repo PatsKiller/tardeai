@@ -37,13 +37,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+AGENTS = read_pre_25("AGENTS.md")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
 # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
 # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
@@ -56,7 +59,7 @@ AGENTS = pre_20_0_0(AGENTS)
 from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
 
 AGENTS = pre_19_0_0(AGENTS)
-AWP = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
+AWP = read_pre_25("AI_WORK_POLICY.md")
 TOKEN = "APPROVE_AGENTS_POLICY_17_0_0"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
 
@@ -272,7 +275,7 @@ def test_23_14_is_byte_identical():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_carry_nothing_from_17_0_0(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_25(adapter)
     for frag in ("17.0.0", "release train", "train/*", "ReleaseDelegation", "release_control"):
         assert frag not in text, f"{adapter} carries {frag!r}"
 
@@ -351,7 +354,8 @@ def test_code_named_in_section_25_exists_and_agrees():
                  "scripts/lib/release_control.py", "scripts/release_control_cli.py",
                  "config/release_train_delegation.example.json", "config/schemas/release_delegation_v1.schema.json",
                  "docs/ops/RELEASE_TRAIN_GITHUB_APP.md", "tests/test_release_train_authority_20261021.py"):
-        assert (ROOT / path).exists(), path
+        # 2026-10-27: the retired release train's docs moved to archive/release_train_20261026/ (operator directive).
+        assert (ROOT / path).exists() or (ROOT / "archive" / "release_train_20261026" / path).exists(), path
         assert path.split("/")[-1] in s25 or path.startswith("config/schemas"), path
     # the four 17.0.0 windows plus the 2026-10-25 schedule slots (weekdays 12:00; weekends every three hours)
     assert set(RD.WINDOW_IDS) == {"0000", "0300", "0600", "0800", "0900", "1200", "1500", "1800", "2100"}

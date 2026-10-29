@@ -45,13 +45,13 @@ LANE = "prospectus-build"
 
 
 def state_root() -> Path:
-    from scripts.lib.anthropic_routing import state_root as resolve
-    return Path(resolve())
+    from scripts.lib.prospectus.inputs import _imp_any
+    return Path(_imp_any("scripts.lib.anthropic_routing", "lib.anthropic_routing").state_root())
 
 
 def _pricing() -> dict:
-    from scripts.lib.anthropic_transport import load_policy
-    return load_policy().get("pricing") or {}
+    from scripts.lib.prospectus.inputs import _imp_any
+    return _imp_any("scripts.lib.anthropic_transport", "lib.anthropic_transport").load_policy().get("pricing") or {}
 
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
@@ -128,7 +128,8 @@ def apply(args: argparse.Namespace, sources, cfg: dict, base: Path) -> dict:
         from scripts.lib.prospectus.pipeline import handle_blocked
         summary["batch_collect"] = batch.collect(base, cfg, now=datetime.now(timezone.utc))
         summary["batch_submit"] = batch.submit_due(base, sources, cfg, now=datetime.now(timezone.utc),
-                                                   force=args.batch_now, on_blocked=handle_blocked)
+                                                   force=args.batch_now,
+                                                   on_blocked=lambda sym, exc: handle_blocked(base, sym, exc))
     signal = {"ok_at": datetime.now(timezone.utc).isoformat(), "lane": LANE, "enqueued": queued, **summary,
               "queue_depth": len(store.read_queue(base)["items"])}
     store.write_json(Path(state_root()) / "data/runtime" / f"{LANE}_last.json", signal)

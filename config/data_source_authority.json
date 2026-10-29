@@ -3740,6 +3740,67 @@
         "surface_read_ceilings": {}
       },
       "accessor": "scripts/lib/anthropic_monitoring.py::snapshot"
+    },
+    {
+      "domain": "operator_decisions",
+      "entity": "Operator document reviews, decisions and rule feedback",
+      "title": "Approvals Center operator decision ledger",
+      "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-27",
+        "reference": "Operator in the coordinator Claude Code session 2026-10-27, verbatim: \"D1–D7 as recommended\" (D5 = turn on the operator_decisions store) and \"Markups approved.\" for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)",
+        "scope": "authoritative ledger for operator document reviews, decisions (including MERGE decisions bound to a PR head SHA) and rule feedback; single writer scripts/lib/operator_approvals.py"
+      },
+      "facts": [
+        "exact document reviewed",
+        "operator decision",
+        "per-change read marker",
+        "rule feedback",
+        "evidence-backed enforcement audit proposals (no decisions)"
+      ],
+      "store": {
+        "file": "governance/operator_decisions.jsonl"
+      },
+      "writer": "scripts/lib/operator_approvals.py",
+      "writer_status": "single",
+      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
+      "stale_after_hours": 720,
+      "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "operator document review",
+        "never_list": true,
+        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
+      },
+      "projection": null,
+      "readers": [
+        "Approvals Center",
+        "Rulebook",
+        "CIO approval truth projection",
+        "agents (read only)"
+      ],
+      "derived_copies": [],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "proposal": {
+        "proposed_by": "codex-w11-approvals-20261024",
+        "proposed_on": "2026-10-24",
+        "reference": "DSN-20261024-approvals; boards 19-21 build instruction",
+        "decision": "Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval."
+      },
+      "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions.",
+      "projection_note": "No broker-catalog projection: read through the approved accessor scripts/lib/operator_approvals_api.py::queue_summary (Approvals Center API), not the data broker."
     }
   ],
   "proposed_domains": [
@@ -5209,62 +5270,6 @@
         "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
         "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
       }
-    },
-    {
-      "domain": "operator_decisions",
-      "status": "proposed",
-      "entity": "Operator document reviews, decisions and rule feedback",
-      "title": "Approvals Center operator decision ledger",
-      "class": "native",
-      "facts": [
-        "exact document reviewed",
-        "operator decision",
-        "per-change read marker",
-        "rule feedback",
-        "evidence-backed enforcement audit proposals (no decisions)"
-      ],
-      "store": {
-        "file": "governance/operator_decisions.jsonl"
-      },
-      "writer": "scripts/lib/operator_approvals.py",
-      "writer_status": "single",
-      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
-      "stale_after_hours": 720,
-      "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
-      "refresh_lane": {
-        "runner": "host",
-        "lane": "operator document review",
-        "never_list": true,
-        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
-      },
-      "projection": "scripts/lib/operator_approvals_api.py::queue_summary",
-      "readers": [
-        "Approvals Center",
-        "Rulebook",
-        "CIO approval truth projection",
-        "agents (read only)"
-      ],
-      "derived_copies": [],
-      "primary_provider": "native",
-      "backup": [],
-      "retired": [],
-      "no_coverage": "say_so",
-      "on_gap": [
-        {
-          "vector": "operator_ask",
-          "cost_class": "free",
-          "max_per_day": 1,
-          "expected_seconds": 0
-        }
-      ],
-      "approval": null,
-      "proposal": {
-        "proposed_by": "codex-w11-approvals-20261024",
-        "proposed_on": "2026-10-24",
-        "reference": "DSN-20261024-approvals; boards 19-21 build instruction",
-        "decision": "Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval."
-      },
-      "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions."
     },
     {
       "domain": "conflict_ledger",

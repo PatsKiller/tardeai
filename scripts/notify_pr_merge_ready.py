@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Scan open PRs and Telegram-notify ones that are merge-ready.
 
+RETIRED for per-PR messages (2026-10-27): the one-tap digest (scripts/pr_merge_digest.py,
+timer tradeai-pr-merge-digest) replaces them. ``--apply`` now sends nothing unless
+``--legacy-per-pr`` is passed; the dry-run scan still works for diagnostics.
+
 A PR is notified when:
   - base=main, state=open
   - not draft
@@ -70,14 +74,31 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--native",
         action="store_true",
-        help="Use prmapprove (needs CURRENT promote); default is guard bridge",
+        help="Use prmapprove (the default while Telegram guard grants are retired, PR #2185)",
+    )
+    p.add_argument(
+        "--legacy-per-pr",
+        action="store_true",
+        help="Re-enable the retired per-PR prompts (coordinator only; the digest replaces them)",
     )
     args = p.parse_args(argv)
     apply = bool(args.apply) and not args.dry_run
+    if apply and not args.legacy_per_pr:
+        msg = {
+            "ok": True,
+            "apply": False,
+            "retired": True,
+            "detail": "per-PR prompts retired; the PR merge digest (scripts/pr_merge_digest.py) sends one "
+            "message per digest. Pass --legacy-per-pr to force the old behaviour.",
+        }
+        print(json.dumps(msg, indent=2) if args.as_json else msg["detail"])
+        return 0
 
     from scripts.lib import pr_merge_telegram as pmt
 
-    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", "1").strip() not in ("0", "false", "no")
+    # The guard bridge needs a Telegram guard grant; retired (PR #2185), so native is the default.
+    via_default = "0" if pmt.guard_bridge_retired() else "1"
+    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", via_default).strip() not in ("0", "false", "no")
     via_guard = (not args.native) and env_via
 
     prs = _list_prs(args.repo)
@@ -97,7 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         head = str(pr.get("headRefOid") or "")
         pending = pmt.find_pending(number, head)
         if pending and pending.get("delivery", {}).get("accepted"):
-            results.append({"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]})
+            results.append(
+                {"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]}
+            )
             continue
         green, statuses = pmt.pr_check_rollup_green(number, repo=args.repo)
         if not green and number != args.force_pr:
