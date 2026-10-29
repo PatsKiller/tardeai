@@ -152,6 +152,35 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
+/** Whole hours since a row's own `expires_at` — the one timestamp the server marks `stale` against.
+ *  Returns null when the age cannot be derived, so the badge falls back to a bare "STALE". */
+function staleAgeHours(expiresAt: string | null | undefined, now: Date): number | null {
+  if (!expiresAt) return null
+  const t = Date.parse(String(expiresAt))
+  if (!Number.isFinite(t)) return null
+  const h = Math.floor((now.getTime() - t) / 3_600_000)
+  return h < 0 ? null : h
+}
+
+/** A visible "STALE · N h ago" badge in the row list, from the row's own expiry. Display-only: never
+ *  hides the row (a held name stays visible), never writes, re-runs, or calls a broker. */
+function StaleBadge({ expiresAt }: { expiresAt: string | null }) {
+  const h = staleAgeHours(expiresAt, new Date())
+  const age = h == null ? '' : h < 1 ? ' · <1 h ago' : ` · ${h} h ago`
+  return (
+    <span data-testid="watch-row-stale"
+      title={`Review expired ${fmtAsOf(expiresAt) ?? '—'}. Still shown — a held name stays visible until new evidence arrives.`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start',
+        whiteSpace: 'normal', textAlign: 'left', fontSize: TYPE.sm, fontWeight: 700, lineHeight: 1.35,
+        padding: '3px 8px', borderRadius: RADIUS.pill,
+        background: toneVars('warning').bg, color: toneVars('warning').color, border: `1px solid ${toneVars('warning').border}`,
+      }}>
+      STALE{age}
+    </span>
+  )
+}
+
 export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert, onOpenConflict, cio }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
   cio?: CioReviewController
@@ -185,6 +214,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
     company={<WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="company" ticker={ticker} ownership={ownershipNode} />}
     setup={<>
       <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
+      {r.stale && <StaleBadge expiresAt={r.expires_at} />}
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
       {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
         border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
