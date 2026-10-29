@@ -65,3 +65,45 @@ def test_active_containment_still_runs_with_process_override(tmp_path):
 def test_wrapper_never_touches_the_host_flag():
     text = WRAPPER.read_text()
     assert 'rm -f "$FLAG_HOST"' not in text and "mv " not in text
+
+
+def test_autonomous_path_passes_enqueue_refresh(tmp_path):
+    """A blocked symbol must enqueue its evidence refresh so the next run can clear it.
+
+    Regression (2026-10-29): the governed wrapper ran the acquisition with --apply but never
+    --enqueue-refresh, so a symbol BLOCKED on an evidence gap never enqueued the Hermes refresh
+    that would change the evidence — and blocked_backoff kept skipping it on unchanged evidence
+    forever. This drives the wrapper's autonomous path with a fake runner and asserts the argv.
+    """
+    home = tmp_path / "home"
+    state = home / ".local/state/tradeai"
+    state.mkdir(parents=True)
+    (state / "AGENT_JOBS_P0_CONTAINED").write_text("active reason=test\n")
+    src = tmp_path / "src"
+    (src / "scripts").mkdir(parents=True)
+    (src / "scripts" / "run_symbol_thesis_acquisition.py").write_text("")
+    argv_file = tmp_path / "argv.txt"
+    fake_py = tmp_path / "fake_py.sh"
+    fake_py.write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{argv_file}"\nexit 0\n')
+    fake_py.chmod(0o755)
+    log = tmp_path / "acq.log"
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(home),
+        "TRADEAI_SRC": str(src),
+        "TRADEAI_PROJ": str(src),
+        "PY": str(fake_py),
+        "TRADEAI_RUN_ENV_PATH": str(tmp_path / "no-run-env"),
+        "TRADEAI_GOVERNED_THESIS_LOG": str(log),
+        "TRADEAI_GOVERNED_THESIS_DRY_RUN": "0",
+        "TRADEAI_THESIS_LOCK_PATH": str(tmp_path / "acq.lock"),
+        "TRADEAI_GOVERNED_THESIS_TIMEOUT_SEC": "30",
+        "deepseek_tradeai": "test-key-not-used",
+        "LLM_GLOBAL_DAILY_USD_CAP": "1.0",
+        "LANG": "C.UTF-8",
+    }
+    proc = subprocess.run(["bash", str(WRAPPER)], env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    argv = argv_file.read_text().splitlines() if argv_file.exists() else []
+    assert "--apply" in argv, argv
+    assert "--enqueue-refresh" in argv, argv
