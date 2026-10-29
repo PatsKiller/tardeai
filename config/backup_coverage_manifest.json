@@ -515,6 +515,8 @@
     "unit:tradeai-operator-answer-quality.service",
     "unit:tradeai-operator-answer-quality.timer",
     "unit:tradeai-ops-applier.service",
+    "unit:tradeai-pipeline-repair@.service",
+    "unit:tradeai-pipeline-repair@enrichment.service.d",
     "unit:tradeai-platform-maintenance-monthly.service",
     "unit:tradeai-platform-maintenance-monthly.timer",
     "unit:tradeai-platform-maintenance-nightly.service",
