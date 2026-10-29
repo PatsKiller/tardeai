@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "push_budget_hands_off_20261025",
+  "files": [
+    "tests/test_push_budget_hands_off_20261025.py"
+  ],
+  "comment": [
+    "AGENTS.md 20.4.0 hands-off delivery (2026-10-25), inert until 20.4.0 is ACTIVE on origin/main:",
+    "push budget 2 -> 5; TRADEAI_REMOTE_PUSH_OVERRIDE without a fresh interactive approval only for the",
+    "coordinator (live coordination/COORDINATOR claim + Operator-approval: ref); every used override logged",
+    "to <git common dir>/tradeai-push-overrides.jsonl; force push / remote branch deletion refused under any override."
+  ]
+}
