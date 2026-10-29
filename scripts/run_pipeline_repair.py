@@ -20,6 +20,12 @@ from lib.pipeline_repair_handoff import independently_owned
 
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = ("enrichment", "orchestrator")
+NO_CONSUMER_REASON = (
+    "External CLI caller: config/systemd/user/tradeai-pipeline-repair@.service, "
+    "NOT installed by this PR. PipelineRepairRun@v1 receipts are operator acceptance "
+    "evidence described in docs/ops/PIPELINE_SUPERVISION_20261029.md; no automated "
+    "receipt consumer yet. Existing monitoring continues to consume pipeline_runs."
+)
 
 
 def command_for(kind: str) -> list[str]:
