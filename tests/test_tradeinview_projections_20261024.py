@@ -245,17 +245,30 @@ def test_history_equal_legacy_occurrences_are_not_guessed_to_be_duplicate_trades
     assert {r["provenance"][0]["occurrence"] for r in out["detail"]["trips"]} == {1, 2}
 
 
-def test_history_unlinked_journal_ledger_overlap_retains_rows_but_withholds_a_complete_total():
+def test_history_legacy_row_superseded_by_broker_round_trip_on_same_exit_date():
     data = history_snapshot()
     data["sources"]["schwab_round_trips"]["rows"] = [roundtrip()]
-    data["files"]["legacy_journal"]["document"]["closed_trades"] = [old_trip(close_date="2026-11-02")]
+    # Same (symbol, account, exit date) as the broker round trip -> superseded.
+    # A different exit date survives as the legacy-only fallback.
+    data["files"]["legacy_journal"]["document"]["closed_trades"] = [
+        old_trip(close_date="2026-11-02"),
+        old_trip(open_date="2023-01-01", close_date="2023-02-01"),
+    ]
     out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
-    assert len(out["detail"]["trips"]) == 2
-    assert out["detail"]["stats"]["round_trip_count"] is None
-    assert out["detail"]["stats"]["realized_pl"] is None
-    assert out["detail"]["stats"]["known_realized_pl"] is None
-    assert out["detail"]["stats"]["observed_trip_rows"] == 2
-    assert any('without an explicit trade link' in g["reason"] for g in out["gaps"])
+    assert len(out["detail"]["trips"]) == 2  # 1 broker round trip + 1 legacy fallback
+    assert {r["source"] for r in out["detail"]["trips"]} == {"schwab_round_trips", "legacy_journal.closed_trades"}
+    assert out["detail"]["stats"]["round_trip_count"] == 2
+    assert out["detail"]["stats"]["realized_pl"] == 29
+    assert any('superseded' in g["reason"] for g in out["gaps"])
+
+
+def test_history_legacy_only_rows_survive_as_fallback_when_no_broker_round_trip_matches():
+    data = history_snapshot()
+    data["files"]["legacy_journal"]["document"]["closed_trades"] = [
+        old_trip(), old_trip(open_date="2023-01-01", close_date="2023-02-01")]
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    assert {r["source"] for r in out["detail"]["trips"]} == {"legacy_journal.closed_trades"}
+    assert out["detail"]["stats"]["round_trip_count"] == 2
 
 
 def test_history_explicit_range_uses_source_dates_not_current_session():
@@ -441,7 +454,7 @@ def test_history_discloses_mapping_sync_and_taxlot_disagreements_without_repair(
         'symbol':'TSTA','account':'schwab_roth_ira','shares_remaining':9,'cost_per_share':20,'closed':False}]}}
     out=hist.build_history(data, {'symbol':'TSTA'},now=NOW)
     reasons=[g['reason'] for g in out['gaps']]
-    assert any('Fidelity mapping' in r for r in reasons) and any('successful sync receipt' in r for r in reasons)
+    assert any('Fidelity mapping' in r for r in reasons)
     assert 'stored share quantities disagree' in reasons and 'stored cost basis disagrees' in reasons
     assert out['detail']['stats']['times_held'] is None
     assert out['symbols'][0]['accounts'][0]['held_quantity']==10
@@ -790,8 +803,51 @@ def test_history_account_absent_from_observed_broker_positions_is_not_held_there
     assert accts["schwab_roth_ira"]["held_quantity"] == 7
     assert accts["schwab_rollover_ira"]["held_quantity"] == 0
     assert accts["schwab_rollover_ira"]["quantity_basis"].startswith("absent from")
-    cash = {a["account_id"]: a for a in next(s for s in out["symbols"] if s["symbol"] == "CASH")["accounts"]}
-    assert cash["schwab_rollover_ira"]["held_quantity"] is None, "a stored cash row is never read as zero"
+    # Cash rows never appear as a held name on the repeat-holdings page.
+    assert "CASH" not in [s["symbol"] for s in out["symbols"]]
+
+
+def test_history_placeholder_symbol_is_never_a_held_name():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [
+        roundtrip(), roundtrip(id=902, dedupe_key="ira", account="schwab_rollover_ira")]
+    data["sources"]["trade_transactions"]["rows"] = [
+        {"symbol": "—", "account": "schwab_rollover_ira"}, {"symbol": "—", "account": "schwab_roth"}]
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    assert "—" not in [s["symbol"] for s in out["symbols"]]
+
+
+def test_history_fidelity_legacy_account_does_not_block_held_now():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip()]
+    data["sources"]["position_transfer_history"]["rows"] = [
+        {"symbol": "TSTA", "from_account": "fidelity_rollover_ira", "to_account": "schwab_roth", "status": "recorded"}]
+    data["files"]["holdings"]["document"]["holdings"] = [
+        {"symbol": "TSTA", "account": "schwab_roth", "shares": 0, "broker_position_as_of": "2026-11-02"}]
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    row, = [s for s in out["symbols"] if s["symbol"] == "TSTA"]
+    accounts = {a["account_id"]: a for a in row["accounts"]}
+    # Fidelity is legacy: it contributes historical membership but not held_now.
+    assert "fidelity_rollover_ira" in accounts
+    assert accounts["fidelity_rollover_ira"]["legacy"] is True
+    assert "no live broker sync" in accounts["fidelity_rollover_ira"]["missing_reason"]
+    assert row["held_now"] is False
+    # The retired-account gap is a global note, never a per-symbol row chip.
+    assert any(g["source"] == "Fidelity accounts" and "retired" in g["reason"] for g in out["gaps"])
+
+
+def test_history_global_gaps_stay_out_of_per_symbol_chips():
+    data = history_snapshot()
+    data["sources"]["schwab_round_trips"]["rows"] = [roundtrip(), roundtrip(
+        id=902, dedupe_key="ira", account="schwab_rollover_ira")]
+    data["files"]["holdings"]["document"]["holdings"] = [
+        {"symbol": "TSTA", "account": "schwab_roth", "shares": 7, "provider_observed_at": "2026-11-02T16:00:00Z"}]
+    # A symbol-specific gap appears on its row; the global gaps do not.
+    data["files"]["tax_lots"] = {"status": "ok", "document": {"fixture": [{
+        "symbol": "TSTA", "account": "schwab_roth_ira", "shares_remaining": 9, "cost_per_share": 20, "closed": False}]}}
+    out = hist.build_history(data, {"symbol": "TSTA"}, now=NOW)
+    row, = [s for s in out["symbols"] if s["symbol"] == "TSTA"]
+    assert all(g.get("symbol") == "TSTA" for g in row["gaps"])
 
 
 def test_history_names_fall_back_to_stored_names_and_label_cusips():
