@@ -590,14 +590,25 @@ def activation_module():
 
 def activation_fixture(tmp_path):
     mod = activation_module()
-    packet = ROOT / 'docs/ops/packets/disk-standing-apply-20261024'
-    pins = json.loads((packet/'activation-input-sha256.json').read_text())
+    source_packet = ROOT / 'docs/ops/packets/disk-standing-apply-20261024'
+    source_pins = json.loads((source_packet/'activation-input-sha256.json').read_text())
     config = tmp_path/'config'
     config.mkdir()
-    for name in pins:
+    for name in source_pins:
         (config/name).write_bytes((ROOT/'config'/name).read_bytes())
+    # Capture this test's own base before any mutation. Production packet pins and pending review are immutable.
+    packet = tmp_path/'synthetic-packet'
+    packet.mkdir()
+    for name in ('standing-contract.draft.json', 'review.required.json'):
+        (packet/name).write_bytes((source_packet/name).read_bytes())
+    pins={name:hashlib.sha256((config/name).read_bytes()).hexdigest() for name in source_pins}
+    (packet/'activation-input-sha256.json').write_text(json.dumps(pins,indent=2)+'\n')
     review = json.loads((packet/'review.required.json').read_text())
-    review.update(decision='APPROVE_DISK_STANDING_APPLY',approved_by='SYNTHETIC_OPERATOR_FIXTURE_ONLY',approved_at=NOW.isoformat())
+    review.update(decision='APPROVE_DISK_STANDING_APPLY',approved_by='SYNTHETIC_OPERATOR_FIXTURE_ONLY',approved_at=NOW.isoformat(),
+                  source_config_pins_sha256=hashlib.sha256((packet/'activation-input-sha256.json').read_bytes()).hexdigest(),
+                  rules_sha256=pins['disk_hygiene_rules.json'],
+                  draft_contract_sha256=hashlib.sha256((packet/'standing-contract.draft.json').read_bytes()).hexdigest())
+    mod.PACKET=packet  # CLI tests must use the same owned fixture packet, including after source mutations.
     return mod,packet,config,review
 
 

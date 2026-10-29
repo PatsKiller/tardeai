@@ -249,6 +249,10 @@
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
   },
+  "prospectus-build": {
+   "broker_module": "2026-10-26 prospectus go-live PR (reviewed addition under the DD01 operator ruling 2026-10-15, tests/test_lane_transitive_capabilities_20261015.py FROZEN_20261015 edit): function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/prospectus_window.py -> scripts/lib/prospectus/batch.py (also quality_gate.py) -> scripts/lib/llm_consumption.py -> scripts/db_adapter.py -> scripts/holdings_guard.py -> scripts/schwab_position_sync.py (file name), the same lazy write-path chain as the baselined lanes. The lane reads house stores and calls the governed Anthropic credit path; no broker call. Owner: cio; review under DD02 worker isolation.",
+   "order_placement": "2026-10-26 prospectus go-live PR (reviewed addition under the DD01 operator ruling 2026-10-15, tests/test_lane_transitive_capabilities_20261015.py FROZEN_20261015 edit): function-level (lazy) import only, not loaded at import (at_import=false); reached via ... -> scripts/schwab_position_sync.py -> scripts/schwab_transport.py (defines place_order()); the trading lock refuses every order placement. Owner: cio; review under DD02 worker isolation."
+  },
   "scalp-hot-list": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
@@ -304,6 +308,10 @@
   "wire-advisory-lessons": {
    "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
    "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+  },
+  "yfinance-info-snapshot": {
+   "broker_module": "2026-10-26 yfinance snapshot owner lane (reviewed addition, tests/test_lane_transitive_capabilities_20261015.py YFINANCE_SNAPSHOT_20261026): function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/yfinance_info_snapshot_refresh.py -> scripts/lib/data_broker/watch_domains.py -> scripts/positions_sync.py -> scripts/schwab_transport.py (file name schwab_transport.py). watch_domains imports positions_sync only inside _store_freshness, which membership_operator never calls. Market reference-data ingest; no broker call. Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "2026-10-26 yfinance snapshot owner lane (reviewed addition, tests/test_lane_transitive_capabilities_20261015.py YFINANCE_SNAPSHOT_20261026): function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/yfinance_info_snapshot_refresh.py -> scripts/lib/data_broker/watch_domains.py -> scripts/positions_sync.py -> scripts/schwab_transport.py (defines place_order() line 108). watch_domains imports positions_sync only inside _store_freshness, which membership_operator never calls. Market reference-data ingest; no broker call. Owner: platform; review under DD02 worker isolation."
   }
  },
  "schema": "N8nLaneCapabilityBaseline@v1"

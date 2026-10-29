@@ -149,7 +149,7 @@ def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=N
     if not symbol or not _re.fullmatch(r"[A-Z0-9.\-^/]{1,12}", symbol):
         return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
     reason = str(body.get("reason") or "").strip()[:300] or None
-    by = _principal() or "unauthenticated"
+    by = _principal() or (str(by)[:64] if by else "") or "unauthenticated"
     payload = {"by": by, "reason": reason, "surface": "watch.system_suggests",
                "universe_rank": body.get("universe_rank") if isinstance(body.get("universe_rank"), int) else None,
                "conviction": body.get("conviction") if isinstance(body.get("conviction"), (int, float)) else None}
@@ -194,8 +194,14 @@ def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=N
 _MINE_EVENTS = {"add": "watch_mine_added", "remove": "watch_mine_removed"}
 
 
-def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=None) -> dict[str, Any]:
-    """POST /api/v3/watch/commands/mine {symbol, action: add|remove, note?, surface?}. Injectable for tests."""
+def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=None, by: str | None = None,
+                       star_write: bool = True) -> dict[str, Any]:
+    """POST /api/v3/watch/commands/mine {symbol, action: add|remove, note?, surface?}. Injectable for tests.
+
+    ``by`` and ``star_write`` are for host scripts only (never read from the request body): ``by`` names the actor
+    when there is no authenticated principal; ``star_write=False`` leaves operator_starred_symbols untouched (the
+    delisted archive, scripts/watch_archive_delisted.py: the remove event hides the name, the star row is kept so
+    --undo restores it exactly — nothing is deleted)."""
     import json as _json
     import re as _re
 
@@ -208,7 +214,7 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
         return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
     note = str(body.get("note") or body.get("reason") or "").strip()[:300] or None
     surface = str(body.get("surface") or "watch")[:40]
-    by = _principal() or "unauthenticated"
+    by = _principal() or (str(by)[:64] if by else "") or "unauthenticated"
     if db_execute is None or db_query is None:
         from db_adapter import _execute, _get_conn
 
@@ -224,12 +230,15 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
 
     archived: list[int] = []
     try:
-        if action == "add":
+        if action == "add" and not star_write:
+            pass
+        elif action == "add":
             db_execute("INSERT INTO operator_starred_symbols (symbol, starred_at, starred_by) VALUES (%s, NOW(), %s) "
                        "ON CONFLICT (symbol) DO UPDATE SET starred_at = EXCLUDED.starred_at, "
                        "starred_by = EXCLUDED.starred_by", (symbol, by[:64]))
         else:
-            db_execute("DELETE FROM operator_starred_symbols WHERE upper(symbol) = %s", (symbol,))
+            if star_write:
+                db_execute("DELETE FROM operator_starred_symbols WHERE upper(symbol) = %s", (symbol,))
             rows = db_query("SELECT id FROM watch_directives WHERE kind = 'ticker' AND status = 'active' "
                             "AND created_by = 'operator' AND upper(spec->>'symbol') = %s", (symbol,)) or []
             if rows:
@@ -255,5 +264,6 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
     except Exception:  # noqa: BLE001
         pass
     return {"ok": True, "command": "mine", "action": action, "symbol": symbol, "by": by, "note": note,
-            "event_type": _MINE_EVENTS[action], "archived_directives": archived, "starred": action == "add",
+            "event_type": _MINE_EVENTS[action], "archived_directives": archived,
+            "starred": (action == "add") if star_write else None,
             "provider_calls": 0, "broker_write": False, "accepted_at": _now()}

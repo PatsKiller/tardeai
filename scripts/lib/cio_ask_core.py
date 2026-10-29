@@ -71,64 +71,17 @@ DEEP_RE = re.compile(
 OPERATOR_STOP_RE = re.compile(r"\bstop\s+(?:at|of|near|around)\s+\$?(\d+(?:\.\d+)?)", re.I)
 
 
-def load_config(path: Optional[Path] = None) -> dict[str, Any]:
-    try:
-        return json.loads(Path(path or CONFIG_PATH).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"enabled": False, "_error": "config unreadable — Ask the CIO fails closed"}
+from scripts.lib.cio_ask_runtime import load_config as load_config
 
 
 # ── dependencies (injectable; tests pass fakes) ────────────────────────────────────────────────────────────────────
 
 
-class CostGate:
-    """Ask-level caps on top of the governed LLM caps. Fails closed. Quick answers use the desk loop's own caps."""
-
-    def __init__(
-        self, config: dict[str, Any], store: AskEventStore, global_check: Optional[Callable[[str, float], dict]] = None
-    ):
-        self.cfg = config.get("cost") or {}
-        self.store = store
-        self.global_check = global_check
-
-    @property
-    def approved(self) -> bool:
-        return str((self.cfg.get("approval") or {}).get("status") or "").upper() == "APPROVED"
-
-    def allow(self, projected_usd: float) -> dict[str, Any]:
-        if not self.approved:
-            return {
-                "allow": False,
-                "reason": "CAP_AWAITING_APPROVAL",
-                "detail": "the Ask-the-CIO daily cap is PROPOSED; deep answers and re-answers stay inert",
-            }
-        per_q = float(self.cfg.get("per_question_cap_usd") or 0)
-        if projected_usd > per_q:
-            return {"allow": False, "reason": "PER_QUESTION_CAP", "detail": f"${projected_usd:.2f} > ${per_q:.2f}"}
-        daily = float(self.cfg.get("daily_cap_usd") or 0)
-        spent = self.store.cost_today()
-        if spent + projected_usd > daily:
-            return {"allow": False, "reason": "DAILY_CAP", "detail": f"${spent:.2f} spent of ${daily:.2f}"}
-        check = self.global_check or _global_cap_check
-        try:
-            g = check(str(self.cfg.get("process_id") or "cio_ask_deep_research"), projected_usd) or {}
-        except Exception as exc:  # noqa: BLE001 — never fail open
-            return {"allow": False, "reason": "GLOBAL_CAP_UNAVAILABLE", "detail": type(exc).__name__}
-        if not g.get("allow"):
-            return {"allow": False, "reason": str(g.get("reason") or "GLOBAL_CAP"), "detail": g.get("scope")}
-        return {"allow": True, "reason": "OK", "spent_today": spent}
-
-    def record(self, *, thread_id: str, ask_id: str, usd: float, kind: str) -> None:
-        self.store.append(
-            "ask.cost",
-            {"thread_id": thread_id, "ask_id": ask_id, "usd": round(float(usd), 6), "cost_kind": kind},
-            event_id=event_id_for("ask.cost", ask_id, kind, utc_now_iso()),
-        )
+from scripts.lib.cio_ask_runtime import CostGate as CostGate
 
 
 def _global_cap_check(process_id: str, projected_usd: float) -> dict:
-    from scripts.lib.llm_consumption import check_cost_cap  # noqa: PLC0415
-
+    from scripts.lib.llm_consumption import check_cost_cap
     return check_cost_cap(process_id, projected_usd=projected_usd)
 
 
@@ -200,56 +153,16 @@ class DefaultResolver:
         return out
 
 
-def _default_telegram_send(text: str) -> dict:
-    """Queue a CIO-origin advisory message in the CIO notification outbox. Never a direct send: the CIO send
-    entrypoints are a shrink-only allowlist (tests/test_cio_origin_gate_20260916.py), and delivery (live or shadow)
-    stays governed by the outbox's delivery worker. Cross-channel follow-up does not need the outbound message id:
-    the body carries the thread id, and a Telegram reply quotes it (``reply_to_text``)."""
-    import hashlib  # noqa: PLC0415
-
-    from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: PLC0415
-
-    nid = "ntf_ask_" + uuid.uuid4().hex[:16]
-    body = str(text or "")[:3800]
-    note = {
-        "notification_id": nid,
-        "message_class": "advisory",
-        "channel_targets": ["telegram"],
-        "subject": "CIO · Ask the CIO",
-        "body": body,
-        "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-        "sender": "cio_ask",
-        "trace_id": f"trace_{nid}",
-        "dedupe_key": "cio_ask:" + hashlib.sha256(body.encode("utf-8")).hexdigest()[:24],
-        "idempotency_key": f"cio_ask:{nid}",
-        "authority": "READ_ONLY_ADVISORY",
-        "financial_action": False,
-        "parse_mode": None,
-    }
-    NotificationOutbox().enqueue(note, actor_id="cio_ask", actor_type="agent", authority="advisory")
-    return {"ok": True, "queued": nid, "message_id": None}
+from scripts.lib.cio_ask_runtime import _default_notification_enqueue as _default_telegram_send
 
 
-def _default_deep_provider() -> Optional[Callable[[AskResearchContext], AskAnswer]]:
-    mod, _, fn = DEEP_RESEARCH_ENTRYPOINT.partition(":")
-    try:
-        return getattr(importlib.import_module(mod), fn)
-    except Exception:  # noqa: BLE001 — Phase 9 not landed
-        return None
+from scripts.lib.cio_ask_runtime import _default_delivery_read as _default_delivery_read
 
 
-@dataclass
-class AskDeps:
-    store: AskEventStore
-    memory: Any
-    tracker: Any
-    resolver: Callable[[str], list[EntityRef]]
-    sizing: Any
-    cost: CostGate
-    config: dict[str, Any]
-    deep_provider: Optional[Callable[[AskResearchContext], AskAnswer]] = None
-    telegram_send: Optional[Callable[[str], dict]] = None
-    run_async: bool = True
+from scripts.lib.cio_ask_runtime import _default_deep_provider as _default_deep_provider
+
+
+from scripts.lib.cio_ask_runtime import AskDeps as AskDeps
 
 
 _DEPS_OVERRIDE: Optional[AskDeps] = None
@@ -278,10 +191,12 @@ def default_deps() -> AskDeps:
         ),
         resolver=DefaultResolver(),
         sizing=DefaultSizingFacts(),
-        cost=CostGate(cfg, store),
+        cost=CostGate(cfg, store, _global_cap_check),
         config=cfg,
         deep_provider=_default_deep_provider(),
         telegram_send=_default_telegram_send,
+        notification_enqueue=_default_telegram_send,
+        delivery_read=_default_delivery_read,
     )
 
 
@@ -630,11 +545,7 @@ def auto_track(turn: AskTurn, *, deps: Optional[AskDeps] = None) -> None:
         _remember(d, e, "ask.tracking_changed", f"tracked from question: {turn.request.question}", turn.ask_id)
 
 
-def _remember(d: AskDeps, e: EntityRef, kind: str, summary: str, ref: str) -> None:
-    try:
-        d.memory.append(entity=e, kind=kind, summary=summary, ref=ref)
-    except Exception:  # noqa: BLE001 — memory failure is recorded on the answer provenance, never costs the reply
-        pass
+from scripts.lib.cio_ask_runtime import _remember as _remember
 
 
 def finish_turn(
@@ -716,41 +627,11 @@ def finish_turn(
 
 
 def record_answer(ans: AskAnswer, *, turn: Optional[AskTurn] = None, deps: Optional[AskDeps] = None) -> None:
-    d = _deps(deps)
-    if d is None:
-        return
-    problems = validate_answer(ans, allow_size_suggestion=False)
-    payload = ans.to_dict(allow_size_suggestion=False)
-    payload["validation"] = problems
-    d.store.append(
-        "ask.answer_version",
-        {"thread_id": ans.thread_id, "ask_id": ans.ask_id, "version": ans.version, "answer": payload},
-        event_id=event_id_for("ask.answer_version", ans.ask_id, ans.version),
-    )
-    q = turn.request.question if turn else ""
-    kind_q = "ask.follow_up" if turn and turn.turn_kind == "follow_up" else "ask.asked"
-    for e in ans.entities or (turn.entities if turn else []):
-        if turn and ans.version == 1:
-            _remember(d, e, kind_q, f"({ans.ask_id} via {turn.request.channel}) {q}", ans.ask_id)
-            _remember(
-                d, e, "ask.entity_resolved", f"{e.name} → {e.symbol or e.entity_guid} ({e.resolution})", ans.ask_id
-            )
-        if ans.status == "reanswer":
-            _remember(
-                d,
-                e,
-                "ask.reanswer_triggered",
-                f"{(ans.trigger or {}).get('summary') or 'material change'}",
-                ans.answer_id,
-            )
-        _remember(d, e, "ask.answer_version", f"v{ans.version} {ans.status}: {_plain(ans.summary, 600)}", ans.answer_id)
-        for s in ans.sources[:6]:
-            _remember(d, e, "ask.source", f"{s.title} ({s.kind}, as of {s.as_of})", ans.answer_id)
+    from scripts.lib.cio_ask_runtime import record_answer as shared_record_answer
+    shared_record_answer(ans, turn=turn, deps=_deps(deps))
 
 
-def _plain(text: str, n: int) -> str:
-    s = " ".join(str(text or "").split())
-    return s if len(s) <= n else s[: n - 1] + "…"
+from scripts.lib.cio_ask_runtime import _plain as _plain
 
 
 def _latest_answer_for_ask(store: AskEventStore, ask_id: str) -> Optional[AskAnswer]:
@@ -781,12 +662,7 @@ def _sources_from_provenance(prov: Optional[dict], turn: AskTurn) -> list[Source
     return out[:20]
 
 
-def link_channel(store: AskEventStore, *, thread_id: str, channel: str, chat_id: Any, message_id: Any) -> None:
-    store.append(
-        "ask.channel_link",
-        {"thread_id": thread_id, "channel": channel, "chat_id": str(chat_id), "message_id": str(message_id)},
-        event_id=event_id_for("ask.channel_link", channel, chat_id, message_id),
-    )
+from scripts.lib.cio_ask_runtime import link_channel as link_channel
 
 
 # ── CC entry point ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -886,122 +762,54 @@ def ask_from_cc(
 # ── deep path (Phase 9 hand-off) ───────────────────────────────────────────────────────────────────────────────────
 
 
-def request_deep(thread_id: str, ask_id: str, *, deps: Optional[AskDeps] = None) -> dict[str, Any]:
+def request_deep(thread_id: str, ask_id: str, *, deps: Optional[AskDeps] = None,
+                 request_id: Optional[str] = None) -> dict[str, Any]:
+    """Genuine operator request; scheduled checks use their own admitted lifecycle entry."""
     d = _deps(deps)
     if d is None:
         return {"ok": False, "error": "ASK_DISABLED"}
-    t = d.store.thread(thread_id)
-    if not t:
-        return {"ok": False, "error": "THREAD_NOT_FOUND"}
-    turn_row = next((x for x in t["turns"] if x["ask_id"] == ask_id), t["turns"][-1] if t["turns"] else None)
-    if not turn_row:
-        return {"ok": False, "error": "ASK_NOT_FOUND"}
-    ask_id = turn_row["ask_id"]
-    entities = _thread_entities(d.store, thread_id)
-    projected = float((d.config.get("cost") or {}).get("projected_usd_deep") or 0.25)
-    gate = d.cost.allow(projected)
-    version = d.store.next_version(ask_id)
-    if not gate["allow"]:
-        status = "capped"
-        why = {"CAP_AWAITING_APPROVAL": "the research spend cap ($5/day proposed) awaits your approval"}.get(
-            gate["reason"], f"{gate['reason']}: {gate.get('detail')}"
-        )
-        ans = AskAnswer(
-            ask_id=ask_id,
-            thread_id=thread_id,
-            version=version,
-            depth="deep",
-            status=status,
-            summary=f"Deep research not run — {why}. The quick answer stands.",
-            entities=entities,
-            provenance={"cost_gate": gate},
-        )
-        record_answer(ans, deps=d)
-        return {"ok": True, "status": status, "gate": gate}
-    if d.deep_provider is None:
-        ans = AskAnswer(
-            ask_id=ask_id,
-            thread_id=thread_id,
-            version=version,
-            depth="deep",
-            status="deep_pending",
-            summary="Deep research (Phase 9 pipeline) is not installed yet; the quick answer stands and "
-            "this thread will carry the prospectus when it lands.",
-            entities=entities,
-        )
-        record_answer(ans, deps=d)
-        return {"ok": True, "status": "deep_pending"}
-    req = AskRequest(
-        question=turn_row["question"],
-        channel=turn_row.get("channel") or "cc",
-        source_ref=f"deep:{ask_id}",
-        depth="deep",
-        thread_id=thread_id,
-        entities=entities,
-    )
-    recall = []
-    for e in entities:
-        recall += research_context_for_model(d.memory.recall(entity=e, limit=6, exclude_refs=()) or [])
-    prior = _latest_answer_for_ask(d.store, ask_id)
-    ctx = AskResearchContext(
-        request=req,
-        thread_id=thread_id,
-        version=version,
-        recall=recall,
-        quick_answer=prior.summary if prior else None,
-        budget=ResearchBudget(max_usd=projected, process_id=str((d.config.get("cost") or {}).get("process_id"))),
-    )
+    from scripts.lib.cio_ask_lifecycle import request_deep as execute
 
-    def _run() -> None:
-        try:
-            res = d.deep_provider(ctx)
-            raw, findings = mbi_guard_payload(res.to_dict(allow_size_suggestion=False))
-            ans = AskAnswer.from_dict(raw)
-            ans.ask_id, ans.thread_id, ans.version, ans.depth = ask_id, thread_id, version, "deep"
-            ans.status = "deep" if ans.status not in ("failed",) else "failed"
-            ans.mbi_guard = {
-                "stripped": len(findings) + int((ans.mbi_guard or {}).get("stripped") or 0),
-                "findings": findings + list((ans.mbi_guard or {}).get("findings") or []),
-            }
-            ans.sizing_context = prior.sizing_context if prior else []
-            record_answer(ans, deps=d)
-            d.cost.record(thread_id=thread_id, ask_id=ask_id, usd=float(ans.cost_usd or projected), kind="deep")
-            _post_to_telegram(d, thread_id, f"Deep answer (v{version}) for: {turn_row['question']}\n\n{ans.summary}")
-        except Exception as exc:  # noqa: BLE001
-            record_answer(
-                AskAnswer(
-                    ask_id=ask_id,
-                    thread_id=thread_id,
-                    version=version,
-                    depth="deep",
-                    status="failed",
-                    summary=f"Deep research failed: {type(exc).__name__}. The quick answer stands.",
-                    entities=entities,
-                ),
-                deps=d,
-            )
-
-    if d.run_async:
-        threading.Thread(target=_run, name=f"ask-deep-{ask_id}", daemon=True).start()
-        return {"ok": True, "status": "deep_running"}
-    _run()
-    return {"ok": True, "status": "deep_done"}
+    return execute(thread_id, ask_id, deps=d, request_id=request_id, automated=False)
 
 
-def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> None:
+def sync_answer_memory(ans: AskAnswer, *, deps: Optional[AskDeps] = None) -> dict:
+    from scripts.lib.cio_ask_runtime import sync_answer_memory as shared_sync
+    return shared_sync(ans, deps=_deps(deps))
+
+
+def _post_to_telegram(d: AskDeps, thread_id: str, text: str) -> dict:
     if not d.telegram_send:
-        return
+        return {"state": "not_configured", "reason": "NO_CHANNEL_TARGET"}
     has_tg = any(x.get("channel") == "telegram" for x in d.store.channel_links(thread_id))
     if not (has_tg or d.config.get("mirror_cc_to_telegram")):
-        return
+        return {"state": "not_required", "reason": "NO_CHANNEL_TARGET"}
     try:
         res = d.telegram_send(f"{text}\n\nThread {thread_id}") or {}
         if res.get("message_id") is not None:
             link_channel(
-                d.store, thread_id=thread_id, channel="telegram", chat_id=cc_chat_id(), message_id=res["message_id"]
+                d.store,
+                thread_id=thread_id,
+                channel="telegram",
+                chat_id=str(
+                    res.get("chat_id")
+                    or next(
+                        (
+                            r.get("chat_id")
+                            for r in reversed(d.store.channel_links(thread_id))
+                            if r.get("channel") == "telegram"
+                        ),
+                        "cc:operator",
+                    )
+                ),
+                message_id=res["message_id"],
             )
-    except Exception:  # noqa: BLE001
-        pass
+            return {"state": "delivered", "ref": str(res["message_id"])}
+        if res.get("ok") is True and res.get("queued"):
+            return {"state": "queued", "ref": str(res["queued"])}
+        return {"state": "failed", "reason": "DELIVERY_NOT_ACKNOWLEDGED"}
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "failed", "reason": "DELIVERY_FAILED:" + type(exc).__name__}
 
 
 # ── untrack ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1064,6 +872,7 @@ def list_threads(*, deps: Optional[AskDeps] = None, limit: int = 50) -> list[dic
                 "channels": t["channels"],
                 "turns": len(t["turns"]),
                 "reanswers": t["reanswers"],
+                "lifecycle": t.get("lifecycle"),
                 "entities": [
                     {
                         "key": e.get("key"),

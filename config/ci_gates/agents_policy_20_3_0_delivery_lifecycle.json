@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_20_3_0_delivery_lifecycle",
+  "files": [
+    "tests/test_agents_policy_20_3_0_delivery_lifecycle.py"
+  ],
+  "anchor": "AGENTS_POLICY_20_3_0_DELIVERY_LIFECYCLE",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_20_3_0_DELIVERY_LIFECYCLE — AGENTS.md 20.3.0 §28.12 (PROPOSED): the ordered delivery lifecycle",
+    "claim -> design -> build -> test -> PR -> CI green -> queue -> release -> post-release verification -> failure paging",
+    "(Telegram, email, SMS). Hermetic text checks."
+  ]
+}

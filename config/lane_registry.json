@@ -3337,11 +3337,16 @@
         "expression": "tradeai-disk-hygiene-enforcer.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none"
       },
-      "note": "Disk hygiene enforcement; deletion-only effect, no durable artifact.",
+      "note": "RETIRED 2026-10-27 (AGENTS.md §24.12 + §0 rule 6; branch fix/disk-enforcer-scope-20261027): disk_hygiene_enforcer.py removes nothing — --apply prints the dry-run plan, reports REFUSED_OUTSIDE_24_12 and exits 77, so this daily --apply timer only refuses. Release-dir removal is lane disk-hygiene (scripts/disk_hygiene.py); backups are operator-only. Disable the timer with systemctl --user disable --now tradeai-disk-hygiene-enforcer.timer, then systemctl --user reset-failed tradeai-disk-hygiene-enforcer.service. Previous note: Disk hygiene enforcement; deletion-only effect, no durable artifact.",
+      "state_reason": "Removes nothing since 2026-10-27: under AGENTS.md §24.12 only scripts/disk_hygiene.py (lane disk-hygiene, or the operator CLI) may remove a release directory and backups are never in scope, so disk_hygiene_enforcer.py --apply now returns REFUSED_OUTSIDE_24_12 with the dry-run plan and exits 77.",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "superseded_by": "disk-hygiene",
+      "reason_evidence": "tests/test_disk_enforcer_scope_24_12_20261027.py (branch fix/disk-enforcer-scope-20261027): --apply, --apply --releases-only and --apply --backups-only leave a sha256 tree snapshot unchanged and exit 77, and the enforcer source holds no rmtree / unlink / archive_files_then_unlink / subprocess. AGENTS.md §24.12 'Open gaps, stated' named the script as uncovered by the exception (2026-10-18).",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
@@ -7647,26 +7652,26 @@
       "lane_id": "n8n-workflow-drift-check",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "7 * * * *",
-        "match": "scripts/check_n8n_workflow_drift.py --write",
-        "install_line": "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  # TRADEAI_LANE n8n-workflow-drift-check"
+        "kind": "systemd",
+        "expression": "tradeai-n8n-drift-watch.timer",
+        "match": "scripts/n8n_drift_watch.py --live"
       },
-      "expected_cadence_hours": 1.0,
+      "scheduler_note": "2026-10-27 (operator, verbatim: \"I want all of your recommendations done\", including scheduling the drift check): the scheduler moved from the never-installed host cron line (kind cron, \"7 * * * *\", install_line `... safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write ...  # TRADEAI_LANE n8n-workflow-drift-check`, 2026-10-09) to the systemd user timer tradeai-n8n-drift-watch.timer (config/systemd/user, every 15 min at :07/:22/:37/:52). Why: the cron freeze (operator 2026-10-09) admits no new crontab line, and the bare checker writes the receipt but cannot page P1 (its fan-in findings are P2 and the fan-in is n8n-fired). scripts/n8n_drift_watch.py --live runs the same checker (check_n8n_workflow_drift.evaluate/build_receipt), writes the same receipt, and pages P1 through send_system (host SYSTEM ops transport). Only one of the two may ever be installed: both write data/runtime/n8n_workflow_drift_last.json.",
+      "expected_cadence_hours": 0.25,
       "state": "PAUSED",
       "state_since": "2026-10-09",
-      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron hourly at :07, not n8n: P18 checks what n8n runs, so it must not depend on n8n being healthy. The allowlist entry and the generated workflows n8n-workflow-drift-check(-shadow) (tranche N7) stay inactive; activating them as well would double-schedule the lane. Was NEVER_SCHEDULED; packet governance-checks-cron.md (#1608).",
+      "state_reason": "APPROVED, PENDING INSTALL (re-declared 2026-10-27; operator, verbatim: \"I want all of your recommendations done\", including scheduling the drift check as its own PR). AGENTS.md §23.23 (2) says git-vs-live workflow drift pages P1 and §23.24 Logging (5) says the check runs on a schedule outside n8n; nothing ran it. The unit files are config/systemd/user/tradeai-n8n-drift-watch.{service,timer}, promoted unchanged from the reviewed FW-P3 packet copy (docs/ops/packets/n8n-platform-hardening-20261022/units/). No release step installs user units yet, so the install is a host step after merge and deploy (PR body; packet step FW-P3). PAUSED is the one state that is green before and after the install: check_lane_registry --state-drift reports no conflict for a PAUSED timer row enabled or not, the lane monitor treats PAUSED as EXPECTED_SILENT, and the fan-in governance liveness (receipt:missing/stale) arms only on ACTIVE. Flip to ACTIVE in a registry PR once `systemctl --user list-timers tradeai-n8n-drift-watch.timer` shows a next run and data/runtime/n8n_drift_watch_last.json says mode live. Host timer, not n8n (§23.23 Independence, §24.1 P1 path): the check of what n8n runs must not depend on n8n; config/lane_cutover_policy.json keeps the lane out of the n8n cutover (operator hold 2026-10-16) and the generated workflows n8n-workflow-drift-check(-shadow) stay inactive. History: NEVER_SCHEDULED until 2026-10-09, then PAUSED pending a cron line that the freeze never allowed.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_workflow_drift_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py; tests/test_registry_ops_crons_20261009.py; packets/governance-checks-cron.md (exact line; receipt data/runtime/n8n_workflow_drift_last.json).",
-      "note": "Read-only governance lane for the n8n Agent preconditions (P18): one SELECT on the n8n DB, atomic receipt; no send. Hourly at :07; the fan-in reads the receipt (GOVERNANCE_SOURCES: DRIFT / MISSING_IN_GIT / unsubstituted placeholder P2; receipt:missing/stale P2 once the row is ACTIVE).",
-      "review_by": "2026-10-16",
+      "reason_evidence": "tests/test_n8n_drift_check_schedule_20261027.py (unit files, registry row, state drift before/after install, fan-in arming, P1 through the host sender); tests/test_n8n_platform_hardening_20261022.py (drift watch pages P1 once, reminds, recovers; dry run writes nothing); scripts/n8n_drift_watch.py --workflows-json dry run 2026-10-27 (PR body).",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18). The timer runs scripts/n8n_drift_watch.py --live: one SELECT on the n8n DB, the drift receipt data/runtime/n8n_workflow_drift_last.json (atomic; not rewritten on CANNOT_RUN, so a broken read goes stale) and data/runtime/n8n_drift_watch_last.json (N8nDriftWatch@v1). DRIFT / MISSING_IN_GIT pages P1 once per drift signature through send_system (host SYSTEM ops family; n8n not involved), a reminder every 6 h, one CLEARED notice. The fan-in still reads the drift receipt (GOVERNANCE_SOURCES: P2 findings; receipt:missing/stale P2 once the row is ACTIVE, stale = 3 x 0.25 h = 45 min, the FW-P3 probe bound).",
+      "review_by": "2026-11-03",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
-      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because it audits what n8n runs, so it must not depend on n8n."
+      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this lane, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because it audits what n8n runs, so it must not depend on n8n. 2026-10-27: still KEEP_ON_CRON in that sense (host-scheduled, never n8n); the host scheduler is now a systemd user timer."
     },
     {
       "lane_id": "trade-ai-scalp-live",
@@ -7951,28 +7956,28 @@
         "expression": "dispatcher",
         "match": "scripts/macro_calendar_refresh.py",
         "cadence": "5 5 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
         "timezone": "America/New_York"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-21",
-      "state_reason": "Operator ruling 2026-10-21: the release train's 08:00 ET window needs a macro-release calendar - FRED as the primary source plus a yearly file for FOMC and overrides (config/macro_calendar_overrides.json), managed by n8n, the host controller decides, fail closed. n8n-native dispatcher ingest lane at stage SHADOW, daily 05:05 ET plus on-demand (coordination/run): the stage clamp runs it --dry-run (fetches FRED read-only and prints; writes nothing). Ingest lanes on n8n are allowed by the operator's 2026-10-10 dispatch ruling. No cron line exists or is added (cron freeze). The operator says when it is promoted to live.",
+      "state_since": "2026-10-26",
+      "state_reason": "Operator decision 2026-10-26 (verbatim, relayed by the coordinator): \"1. macro-calendar job: switch it from test mode to live … yes.\" Promoted shadow -> canary (dispatch live) 2026-10-26: daily 05:05 ET plus on-demand the dispatcher runs scripts/macro_calendar_refresh.py with no flag, which fetches FRED read-only and writes ONLY data/runtime/macro_calendar.json (MacroCalendar@v1, atomic) and the receipt data/runtime/macro-calendar-refresh_last.json. Live from n8n only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES and FRED_API_KEY is in the executor environment (host steps); until then fires run dry. Prior history - operator ruling 2026-10-21: the release train's 08:00 ET window needs a macro-release calendar - FRED as the primary source plus a yearly file for FOMC and overrides (config/macro_calendar_overrides.json), managed by n8n, the host controller decides, fail closed. registered at stage SHADOW 2026-10-21 (the stage clamp ran it --dry-run; contract REVIEWED by the operator 2026-10-21). Ingest lanes on n8n are allowed by the operator's 2026-10-10 dispatch ruling. No cron line exists or is added (cron freeze).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/macro-calendar-refresh_last.json",
         "key": "ok_at",
         "evidence": "SOURCE_ONLY",
-        "evidence_ref": "scripts/macro_calendar_refresh.py main() writes data/runtime/macro_calendar.json (MacroCalendar@v1, atomic) and then the LaneRunReceipt (v2 output fields) on a real run (tests/test_macro_calendar_20261021.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+        "evidence_ref": "scripts/macro_calendar_refresh.py main() writes data/runtime/macro_calendar.json (MacroCalendar@v1, atomic) and then the LaneRunReceipt (v2 output fields) on every live run (tests/test_macro_calendar_20261021.py; real-layout proof on a temp state root in the promotion PR body); NOT_MEASURED until the first live n8n fire after relay arming"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_macro_calendar_20261021.py (FRED HTTP mocked: id verification, paging, maintenance page, mapping, coverage, overrides merge; reader fail-closed cases, Thursday claims, CPI day, DST; needs-action source; registry/allowlist/contract pins; closure: no sender/broker/order/DB reach).",
       "review_by": "2026-10-28",
-      "note": "Read-only toward FRED: GET /fred/releases (id verification) and GET /fred/releases/dates (realtime_start..realtime_end, include_release_dates_with_no_data=true), about 2-3 requests a day, free. FRED_API_KEY is never printed or stored. A real run writes data/runtime/macro_calendar.json atomically and its receipt; a failed run writes no calendar (the previous one ages to STALE after 72 h and the 08:00 window is skipped). Reader: scripts/lib/macro_calendar.py skip_0800(date) / ReleaseTrainCalendar.verdict(day, now) for the release-train controller; GET /api/v2/needs-action source macro_calendar raises P2 when the calendar is missing or stale. No DB, no model, no sender, no broker. Exit 0 = calendar written; 1 = FRED unavailable / non-JSON / id verification failed / overrides invalid / no key.",
+      "note": "Read-only toward FRED: GET /fred/releases (id verification) and GET /fred/releases/dates (realtime_start..realtime_end, include_release_dates_with_no_data=true), about 2-3 requests a day, free. FRED_API_KEY is never printed or stored. A real run writes data/runtime/macro_calendar.json atomically and its receipt; a failed run writes no calendar (the previous one ages to STALE after 72 h and the 08:00 window is skipped). Reader: scripts/lib/macro_calendar.py skip_0800(date) / verdict(day, now) (CIO and prospectus readers; the release-train adapter was removed 2026-10-27); GET /api/v2/needs-action source macro_calendar raises P3 information when the calendar is missing or stale. No DB, no model, no sender, no broker. Exit 0 = calendar written; 1 = FRED unavailable / non-JSON / id verification failed / overrides invalid / no key.",
       "severity": "Low",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "5 5 * * *"
         ],
@@ -7981,6 +7986,11 @@
         "class": "ingest",
         "priority": 6,
         "retry_policy": "none"
+      },
+      "canary": {
+        "since": "2026-10-26",
+        "evidence": "temp state-root proof (promotion PR body): the allowlist argv with live_arg [] (FRED mocked) wrote data/runtime/macro_calendar.json (MacroCalendar@v1) and the v2 receipt only; the --dry-run argv wrote nothing; the reader (lib.macro_calendar) accepted the written calendar",
+        "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; or drop the lane from TRADEAI_N8N_RELAY_LIVE_LANES (kill switch, the lane then runs dry)"
       }
     },
     {
@@ -17238,106 +17248,6 @@
       }
     },
     {
-      "lane_id": "release-train-request-1800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "tradeai-fabric-release-train",
-        "match": "tradeai-fabric-release-train:1800",
-        "cadence": "30 16 * * *",
-        "stage": "canary"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 18:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 1800, request tick W-90 = 30 16 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-1800_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
-      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
-    },
-    {
-      "lane_id": "release-train-request-0000",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "tradeai-fabric-release-train",
-        "match": "tradeai-fabric-release-train:0000",
-        "cadence": "30 22 * * *",
-        "stage": "canary"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 00:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0000, request tick W-90 = 30 22 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0000_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
-      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
-    },
-    {
-      "lane_id": "release-train-request-0600",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "tradeai-fabric-release-train",
-        "match": "tradeai-fabric-release-train:0600",
-        "cadence": "30 4 * * *",
-        "stage": "canary"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 06:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0600, request tick W-90 = 30 4 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0600_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
-      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
-    },
-    {
-      "lane_id": "release-train-request-0800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "tradeai-fabric-release-train",
-        "match": "tradeai-fabric-release-train:0800",
-        "cadence": "30 6 * * *",
-        "stage": "canary"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 08:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0800, request tick W-90 = 30 6 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0800_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
-      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
-    },
-    {
       "lane_id": "schwab-position-sync",
       "owner": "execution",
       "scheduler": {
@@ -18056,228 +17966,6 @@
       "note": "Row added 2026-10-22 (incident-pause review: L214 had no registry row). RETIRED, archive note: superseded, not deleted."
     },
     {
-      "lane_id": "release-train-claim",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-release-train-claim.timer"
-      },
-      "expected_cadence_hours": 0.05,
-      "state": "ACTIVE",
-      "state_since": "2026-10-22",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "a pass with no pending TrainWindowRequest writes nothing; receipts appear only when a request is claimed"
-      },
-      "state_reason": "Installed and enabled on the host (operator item O7, release-train packet docs/ops/packets/release-train-20261021/): tradeai-release-train-claim.timer fires every minute (fallback tick), .path starts the claimer on n8n TrainWindowRequest files, .service runs `scripts/release_window.py train-claim --apply`. While TRAIN_CONTROLLER_STATUS is BUILD_ONLY every live request is refused CONTROLLER_BUILD_ONLY; nothing is pushed, merged or promoted (AGENTS.md §25). Declared 2026-10-22 because the unit ran undeclared and failed check_lane_registry --fail-on-new for every agent. Operator 2026-10-22, verbatim: \"yes i approve 'approve all' (A–L)\" (item D: lane-registry truth).",
-      "note": "Declared by registry-truth PR (approval D). Companion units: tradeai-release-train-claim.service, tradeai-release-train-claim.path.",
-      "post_snapshot_install": {
-        "installed_on": "2026-10-22",
-        "evidence": "systemctl --user list-timers: tradeai-release-train-claim.timer active, firing every minute (2026-10-22); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
-      }
-    },
-    {
-      "lane_id": "release-train-request-timer-1800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-release-train-request@1800.timer",
-        "timezone": "America/New_York",
-        "cadence": "18:00 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 18:00 ET window: tradeai-release-train-request@1800.service runs `scripts/release_train_window_request.py --window 1800 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-1800-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @1800.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-1800_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Same writer, same lane receipt file as the n8n row release-train-request-1800 (the writer names its receipt by slot); run_id host-timer-1800 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
-    },
-    {
-      "lane_id": "release-train-request-timer-0000",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-release-train-request@0000.timer",
-        "timezone": "America/New_York",
-        "cadence": "00:00 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 00:00 ET window: tradeai-release-train-request@0000.service runs `scripts/release_train_window_request.py --window 0000 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0000-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0000.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0000_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0000 (the writer names its receipt by slot); run_id host-timer-0000 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
-    },
-    {
-      "lane_id": "release-train-request-timer-0600",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-release-train-request@0600.timer",
-        "timezone": "America/New_York",
-        "cadence": "06:00 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 06:00 ET window: tradeai-release-train-request@0600.service runs `scripts/release_train_window_request.py --window 0600 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0600-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0600.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0600_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0600 (the writer names its receipt by slot); run_id host-timer-0600 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
-    },
-    {
-      "lane_id": "release-train-request-timer-0800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-release-train-request@0800.timer",
-        "timezone": "America/New_York",
-        "cadence": "08:00 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at the 08:00 ET window: tradeai-release-train-request@0800.service runs `scripts/release_train_window_request.py --window 0800 --append --shadow-only` from portfolio-server/CURRENT, appending one shadow TrainWindowRequest@v1 (id rtw-<date>-0800-win) for the installed claimer (tradeai-release-train-claim.*). Interim trigger while n8n step F is refused by the §23.24 import gate (docs/ops/packets/release-train-arming-20261021 step F).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed and @0800.timer.proposed; tests/test_release_train_host_trigger_20261023.py pins the argv to the writer's CLI and the slot time.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/release-train-request-0800_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Medium",
-      "note": "Same writer, same lane receipt file as the n8n row release-train-request-0800 (the writer names its receipt by slot); run_id host-timer-0800 in the request's requested_by tells them apart. If n8n step F later publishes tradeai-fabric-release-train, a second on-window request for the same window is a journal duplicate (O_EXCL), not a second train; the operator then disables these timers (rollback.sh). REQUEST_ONLY: never merges, pushes, promotes, reads a credential or sends."
-    },
-    {
-      "lane_id": "pr-census-timer-1800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-census@1800.timer",
-        "timezone": "America/New_York",
-        "cadence": "17:40 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 17:40 ET, 20 minutes before the 18:00 window: tradeai-pr-census@1800.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @1800.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/pr-hygiene-audit_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Low",
-      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-1800."
-    },
-    {
-      "lane_id": "pr-census-timer-0000",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-census@0000.timer",
-        "timezone": "America/New_York",
-        "cadence": "23:40 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 23:40 ET, 20 minutes before the 00:00 window: tradeai-pr-census@0000.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0000.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/pr-hygiene-audit_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Low",
-      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0000."
-    },
-    {
-      "lane_id": "pr-census-timer-0600",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-census@0600.timer",
-        "timezone": "America/New_York",
-        "cadence": "05:40 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 05:40 ET, 20 minutes before the 06:00 window: tradeai-pr-census@0600.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0600.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/pr-hygiene-audit_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Low",
-      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0600."
-    },
-    {
-      "lane_id": "pr-census-timer-0800",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-pr-census@0800.timer",
-        "timezone": "America/New_York",
-        "cadence": "07:40 daily"
-      },
-      "rollout_stage": "shadow",
-      "rollout_stage_note": "Host systemd lane at shadow: the request lanes pass --shadow-only (simulate-only requests) and the census is read-only. Not an n8n §23.11 scheduler.stage, so it is kept out of scheduler.stage (which would make it an n8n health-contract target).",
-      "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-23",
-      "state_reason": "Release-train host trigger (operator-approved plan 2026-10-23, 'Make the release train actually run', §1; operator, verbatim: \"design and execute this right now and give it some test jobs to actually go and do so we can start putting real jobs in there. No more excuses.\"). Units ship as *.proposed in docs/ops/packets/release-train-host-trigger-20261023/; NOT installed: the operator installs them with install.sh --apply (AGENTS §17, new production systemd entry). Stage shadow. After the install the row moves NEVER_SCHEDULED -> ACTIVE by a follow-up registry PR citing list-timers and the first receipt. Fires at 07:40 ET, 20 minutes before the 08:00 window: tradeai-pr-census@0800.service runs `flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock scripts/pr_hygiene_audit.py` (the n8n lane pr-hygiene-audit's live argv and lock) so the train selects from a census under 30 minutes old.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/ops/packets/release-train-host-trigger-20261023/tradeai-pr-census@.service.proposed and @0800.timer.proposed; config/n8n_run_allowlist.json lane pr-hygiene-audit (argv, live_arg [], lock); tests/test_release_train_host_trigger_20261023.py.",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/pr-hygiene-audit_last.json",
-        "key": "ok_at"
-      },
-      "severity": "Low",
-      "note": "Read-only on GitHub and git (scripts/pr_hygiene_audit.py). Shares the lock and receipt with the n8n lane pr-hygiene-audit (06:30 ET), so the two never run at once; a held lock exits 75, declared SuccessExitStatus. run_id host-timer-census-0800."
-    },
-    {
       "lane_id": "ops-controls-applier",
       "owner": "platform",
       "scheduler": {
@@ -18354,7 +18042,7 @@
         "match": "scripts/cio_prospect_shadow_build.py",
         "cadence": "*/30 9-16 * * 1-5",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.5,
@@ -18366,23 +18054,23 @@
         4
       ],
       "state": "ACTIVE",
-      "state_since": "2026-10-22",
-      "state_reason": "Operator directive 2026-10-22 (CIO prospect data foundation is the baseline of the site; AGENTS.md §26 18.0.0 ACTIVE; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P1 Shadow). n8n-native dispatcher lane at stage SHADOW: every 30 min in market hours the stage clamp runs --dry-run (assembles one prospect per security_guid from the existing CIO stores, prints the summary, writes nothing). No cron line exists or is added (cron freeze 2026-10-09). Canary (--write-shadow: the shadow artifact the cio_prospect projection serves) is a later registry PR after the owner marks the health contract REVIEWED. Historical contract review is retained unchanged; any canary still needs its separate approved registry PR.",
+      "state_since": "2026-10-25",
+      "state_reason": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" Promoted shadow -> canary, dispatch live: every 30 min in market hours the dispatcher runs --write-shadow, which writes ONLY data/cio/cio_prospect_shadow.json (the artifact the cio_prospect projection and lib/cio_truth.stance_for serve while the store is not live), data/cio/cio_prospect_shadow_compare.json and the receipt data/runtime/cio-prospect-shadow_last.json. It never writes cio_prospect, never calls InstrumentRecordStore, never sends, never calls a broker (--write-company-facts is NOT in the argv). Live from n8n only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (host step). No cron line exists or is added (cron freeze 2026-10-09). Prior history: shadow since 2026-10-22 (operator item F on #1953, contract REVIEWED).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_cio_prospect_shadow_readonly_20261023.py (static transitive closure has no forbidden broker/order/sender capability; injected-query core parity); tests/test_cio_prospect_foundation_20261022.py (write-free dry run, MBI, conflicts and identity). Historical operative contract review retained from operator item F on #1953; no canary/live authority added.",
+      "reason_evidence": "tests/test_cio_prospect_shadow_readonly_20261023.py (static transitive closure has no forbidden broker/order/sender capability; canary pins: live_arg exactly [\"--write-shadow\"], writes only the three named paths); tests/test_cio_prospect_foundation_20261022.py (write-free dry run, MBI, conflicts and identity). Real-layout proof on a temp state root in the promotion PR body.",
       "review_by": "2026-11-05",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/cio-prospect-shadow_last.json",
         "key": "ok_at",
         "evidence": "SOURCE_ONLY",
-        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count); at shadow no real run happens, so runtime is NOT_MEASURED"
+        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count) on every live run; NOT_MEASURED until the first live n8n fire after relay arming"
       },
       "value_class": "Operationally Important",
       "severity": "Medium",
       "note": "Read-only shadow builder (scripts/lib/cio_prospect_builder.py): CIO files, the held set through the positions_context projection (holdings via lib.portfolio_positions; never positions_current) and, with --with-db, bulk SELECTs on a READ ONLY session. No broker call, no model, no send, no store write; never calls InstrumentRecordStore. Exit 0 = built; 1 = no prospect assembled (empty output is a failure); 2 = could not run.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 9-16 * * 1-5"
         ],
@@ -18391,6 +18079,11 @@
         "class": "report",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "canary": {
+        "since": "2026-10-25",
+        "evidence": "real-layout proof on a temp PROJECT_ROOT/state root (promotion PR body): the allowlist argv + live_arg wrote the shadow, compare and receipt files only; dry-run against production state read-only assembled the prospects with 0 errors",
+        "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; or drop the lane from TRADEAI_N8N_RELAY_LIVE_LANES (kill switch, the lane then runs dry)"
       }
     },
     {
@@ -18463,6 +18156,53 @@
         "wave": "W4",
         "class": "hygiene",
         "priority": 3,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "yfinance-info-snapshot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/yfinance_info_snapshot_refresh.py",
+        "cadence": "40 5 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-26",
+      "state_reason": "Operator decision 2026-10-26 (verbatim: \"Yahoo Finance feed … switched on: yes\"); store approved 2026-10-10 (CONSOLIDATION_PLAN.md §D.13, registry domain yfinance_info_snapshot). The owner lane the registry row said was missing (§D.12): n8n-native dispatcher ingest lane at stage SHADOW, weekdays 05:40 ET: the stage clamp runs it --dry-run (reads the universe and the store on a READ ONLY session, probes at most 3 symbols from yfinance, prints, writes nothing). No cron line exists or is added (cron freeze). Canary (--apply) is a later registry PR after the migration is applied and the owner marks the health contract REVIEWED.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/yfinance-info-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/yfinance_info_snapshot_refresh.py run() writes the LaneRunReceipt (v2 output fields) on --apply (tests/test_yfinance_info_snapshot_lane_20261026.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_yfinance_info_snapshot_lane_20261026.py (universe = holdings + My Watchlist + prospectus universe through the ticker guard; due windows and the negative cache; run cap, pacing, throttle stop; dry run writes nothing; apply writes through the single writer and the v2 receipt; missing table = unconfigured; registry/allowlist/contract pins; closure: no broker/order/sender/model).",
+      "review_by": "2026-11-09",
+      "note": "Universe: non-cash holdings with shares > 0 (lib.portfolio_positions.load_store), the operator's My Watchlist (lib.data_broker.watch_domains.membership_operator) and the prospectus universe (data/prospectus/universe.json), each through lib.provider_ticker_guard (profile quote). A symbol is fetched only when its stored snapshot is older than 20 h (ok) or 168 h (no_profile/error, the negative cache); at most 300 fetches per run, sequential, 1 s apart; a provider throttle stops the run (rate_limited). Funds also carry _house_fund (funds_data top holdings, description, overview). Writes only through lib.writers.yfinance_info_snapshot_writer (single declared writer). Needs migrations/2026_10_10_yfinance_info_snapshot.sql applied (operator); without the table the run exits 1 unconfigured. No broker, no sender, no model. Exit 0 = run completed (rows written or nothing due); 1 = table missing / DB or provider unavailable / empty universe.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "40 5 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 6,
         "retry_policy": "none"
       }
     },
@@ -18766,6 +18506,236 @@
         "priority": 5,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "cio-ask-lifecycle",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "tradeai-cio-ask-lifecycle-native",
+        "match": "scripts/cio_ask_lifecycle.py --once",
+        "cadence": "0 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-ask-lifecycle_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 * * * *"
+        ],
+        "tz": "America/New_York",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient",
+        "wave": "W5"
+      },
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
+      ]
+    },
+    {
+      "lane_id": "cio-ask-material-events",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "tradeai-cio-ask-lifecycle-native",
+        "match": "scripts/cio_ask_lifecycle.py --once --events-only",
+        "cadence": "*/5 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-ask-material-events_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient",
+        "wave": "W5"
+      },
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
+      ]
+    },
+    {
+      "lane_id": "pr-merge-telegram-notify",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-notify.timer",
+        "match": "scripts/notify_pr_merge_ready.py --apply"
+      },
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/notify_receipt.json"
+      },
+      "note": "Scans open PRs; sends Telegram Approve when CI green; settle adds operator-merge (AGENTS.md §25.10). Install of the user timer is operator-only (§17). NEVER_SCHEDULED until granted.",
+      "state_since": "2026-10-26",
+      "state_reason": "Telegram go-signal for Mergify: notify_pr_merge_ready scans open PRs with green required checks and sends an Approve-merge interrupt; settle adds label operator-merge (§25.10). Install of tradeai-pr-merge-notify.timer is operator-only (§17). NEVER_SCHEDULED until the operator grants the user unit install; then ACTIVE.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_pr_merge_telegram_20261026.py; config/systemd/user/tradeai-pr-merge-notify.{service,timer}; docs/ops/MERGIFY_DEPLOY_FOUNDATION.md; AGENTS.md §25.10",
+      "value_class": "Platform",
+      "recommendation": "SCHEDULE_AFTER_GRANT"
+    },
+    {
+      "lane_id": "pr-merge-digest",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-digest.timer"
+      },
+      "expected_cadence_hours": 12.0,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); unit files live in config/systemd/user. Installing the user timer is an operator act (§17). Flip to ACTIVE in the install PR once `systemctl --user list-timers` shows it.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-digest.timer is new in this PR; not installed on the host at merge time.",
+      "note": "One Telegram message per digest (weekdays 08:00/12:00/16:30 ET, weekends every 3h); Approve all labels operator-merge; scripts/pr_merge_digest.py --apply writes digest_last_run.json each run."
+    },
+    {
+      "lane_id": "pr-merge-reconcile",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-27",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-pr-merge-reconcile.timer"
+      },
+      "expected_cadence_hours": 0.1,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pr_merge_telegram/digest_reconcile_last_run.json"
+      },
+      "state_reason": "Shipped in the digest PR (2026-10-27); installing the user timer is an operator act (§17). Flip to ACTIVE once installed.",
+      "reason_evidence": "config/systemd/user/tradeai-pr-merge-reconcile.timer is new in this PR; not installed on the host at merge time.",
+      "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
+    },
+    {
+      "lane_id": "prospectus-build",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/prospectus_window.py",
+        "cadence": "*/15 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-26",
+      "state_reason": "operator 2026-10-26 Ticker Prospectus; run windows 2026-10-26 (\"queued up and run a certain time of the day\"). SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs scripts/prospectus_window.py --dry-run (names the due window, the rows its triggers would enqueue and the drain size; no model call, no writes).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/prospectus_window.py dry run (tests/test_prospectus_schedule_delivery_20261026.py::test_window_dry_run_writes_nothing).",
+      "review_by": "2026-11-09",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/prospectus-build_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Ticker Prospectus run windows (docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md). Fires every 15 min; a window runs once per day (config/prospectus.json run_windows, ET): 17:45 after the close (holdings + watch; |day move| >= 8% on the close, material news, stop event, CIO stance change, promoted to proposal, earnings-after, monthly / quarterly due, weekly delta) and 07:00 pre-market (holdings only). Triggers only enqueue; a window drains by priority (operator, holdings by $ value, watch) up to max_reports inside the governed Anthropic credit cap; leftovers wait. Other fires drain only operator 'Rewrite now' rows. Each run leaves an outbox record for the host sender prospectus-deliver; this lane sends nothing. Lock /tmp/prospectus_build.lock.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "prospectus-deliver",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-prospectus-deliver.timer"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-26",
+      "state_reason": "operator 2026-10-26: prospectus reports 'sent out both in Word and PDF as a notification [on] Telegram and [email]' (email = run audit + holdings PDF/Word attachments, go-live direction the same day). Host sender because an n8n lane never sends (AGENTS.md §23.14, §24.1). Unit files in config/systemd/user; install is the coordinator's/operator's step.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/prospectus_deliver.py dry run (tests/test_prospectus_schedule_delivery_20261026.py::test_deliver_dry_run_sends_nothing).",
+      "review_by": "2026-11-09",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/prospectus-deliver_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Every 10 min: sends pending prospectus run outboxes (data/prospectus/delivery/outbox) through telegram_alert.send_telegram / send_telegram_document (P2 intents; summary + PDF + Word) and email_notifier.send_email (gog Gmail run audit + holdings PDF/Word attachments, <= 20 MB per email, the rest linked). Idempotent per SYMBOL@version (delivery/ledger.json). Cadence 24h: an idle healthy sender writes its receipt every fire, but outboxes appear at most a few times a day. Lock /tmp/prospectus_deliver.lock."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

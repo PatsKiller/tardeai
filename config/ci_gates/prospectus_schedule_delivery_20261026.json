@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_schedule_delivery_20261026",
+  "files": [
+    "tests/test_prospectus_schedule_delivery_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_SCHEDULE_DELIVERY_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_SCHEDULE_DELIVERY_20261026 — prospectus run windows (17:45 / 07:00 ET, DST-safe), triggers only enqueue, capped priority drain, operator rewrites immediate; host sender delivers Telegram summary + PDF + Word and an email audit, idempotent per SYMBOL@version."
+  ]
+}

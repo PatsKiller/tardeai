@@ -274,7 +274,12 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.out).write_text(json.dumps({**doc, "comparison": cmp}, indent=2, default=str), encoding="utf-8")
     if args.report_md and cmp is not None:
         Path(args.report_md).write_text(render_md(doc, cmp), encoding="utf-8")
-    if write_shadow:
+    if write_shadow and not out["ok"]:
+        # 2026-10-25 canary guard: an empty build never replaces the last good shadow (every CIO stance read
+        # through cio_truth would turn into a gap) and never advances the receipt's ok_at. Exit 1 below.
+        out["wrote"] = []
+        out["refused_write"] = "empty_output: no prospect assembled; last shadow and receipt left unchanged"
+    elif write_shadow:
         from scripts.lib.data_broker.atomic_json import atomic_write_json
         atomic_write_json(state_root / SHADOW_REL, doc)
         atomic_write_json(state_root / COMPARE_REL, cmp)

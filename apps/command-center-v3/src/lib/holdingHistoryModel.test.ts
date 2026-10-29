@@ -1,4 +1,4 @@
-import { dateText, decodeHistory, gapText, historyUrl, money, namedGaps, numberText, percent, provenanceText, segmentGeometry, sortFrom } from './holdingHistoryModel.ts'
+import { accountCountText, dateText, decodeHistory, gapText, heldText, historyUrl, money, tripCountText, namedGaps, numberText, percent, provenanceText, segmentGeometry, sortFrom } from './holdingHistoryModel.ts'
 import type { HoldingHistoryPayload } from './holdingHistoryModel.ts'
 let n = 0
 function eq(label: string, actual: unknown, expected: unknown) { n++; if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${label}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`) }
@@ -34,4 +34,13 @@ eq('unknown gap account never emits raw id', gapText(namedGaps([{ account_id: 'R
 eq('gap identity and original calendar date survive', gapText({ symbol: 'TEST', date: '2024-01-02', account_label: 'Named fixture account', source: 'ledger', reason: 'unlinked_overlap' }), 'TEST · Named fixture account · 2024-01-02 · ledger · unlinked overlap')
 eq('null segment fails schema instead of crashing presentation', decodeHistory({ ...p, detail: { ...p.detail, account_segments: [{ account_label: 'fixture', segments: [null] }] } }), null)
 eq('malformed coverage fails schema instead of crashing explanation', decodeHistory({ ...p, range: { ...p.range, coverage: { reasons: 'not an array' } } }), null)
+eq('confirmed trip count', tripCountText({ round_trip_count: 13, known_trip_count: 13 }), '13 round trips')
+eq('unconfirmed trip count shows recorded rows, never a bare dash', tripCountText({ round_trip_count: null, known_trip_count: 3 }), '3 recorded round trips (count unconfirmed)')
+eq('no trip count says unknown', tripCountText({ round_trip_count: null, known_trip_count: null }), 'round trips unknown')
+eq('account count unknown', accountCountText(null), 'accounts unknown')
+eq('held quantity', heldText({ held_quantity: 6000.25 }), '6,000.25 sh')
+eq('absent from observed broker positions reads not held', heldText({ held_quantity: 0, as_of: '2026-10-23', quantity_basis: 'absent' }), 'not held · broker positions 2026-10-23')
+eq('missing quantity keeps its reason', heldText({ held_quantity: null, missing_reason: 'account_has_no_stored_broker_positions' }), 'quantity unavailable · account has no stored broker positions')
+eq('known stats decode', decodeHistory({ ...p, detail: { ...p.detail, stats: { ...stats, known_win_rate_pct: 83.33, excluded_basis_unknown_count: 1 } } })?.detail?.stats.known_win_rate_pct, 83.33)
+eq('known stats wrong type refused', decodeHistory({ ...p, detail: { ...p.detail, stats: { ...stats, known_win_rate_pct: '83' } } }), null)
 console.log(`Holding history presentation model: ${n} assertions passed`)

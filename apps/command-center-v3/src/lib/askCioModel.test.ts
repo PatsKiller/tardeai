@@ -5,7 +5,7 @@ import { ASK_RESPONSE, LIST, THREAD } from '../fixtures/askCio.fixture.ts'
 import {
   ASK_PATHS, MAX_QUESTION_CHARS, buildAskBody, currentVersion, entityLabel, filterSummaries, isAskShortcut, isPending,
   latestAnswer, relativeAge, trackedChips, sizingLine, sortSummaries, statusLabel, statusTone, trackedEntities, unwrap,
-  validateQuestion, type ThreadSummary,
+  validateQuestion, researchLifecycle, researchStatus, researchRefreshText, RESEARCH_STATES, type ThreadSummary,
 } from './askCioModel.ts'
 
 let failed = 0
@@ -73,6 +73,45 @@ eq('tracked chips tolerate a missing payload', trackedChips(undefined), [])
 const now = new Date('2026-10-23T15:20:00Z')
 eq('ages', [relativeAge('2026-10-23T15:10:00Z', now), relativeAge('2026-10-21T15:20:00Z', now), relativeAge(null, now)],
   ['10m ago', '2d ago', ''])
+
+
+// Hourly monitoring clocks are independent of the durable answer clock.
+const checked = researchLifecycle({ state: 'current', last_checked_at: '2031-03-10T15:00:00Z', last_answer_at: '2031-03-09T15:00:00Z',
+  last_check_outcome: 'no_change', next_check_at: '2031-03-10T16:00:00Z', monitoring_active: true,
+  memory_sync: {state: 'saved'}, delivery: {state: 'not_needed', reason: 'No material change'},
+  sources: [{name: 'Synthetic filing', status: 'checked'}], providers: [{provider: 'Synthetic primary', model: 'Example model', role: 'primary', state: 'not_called'}] })
+eq('no-change check has its own label', researchStatus(checked), 'Checked — no material change')
+eq('checking does not advance the saved answer time', checked.last_answer_at, '2031-03-09T15:00:00Z')
+eq('next hourly check is preserved', checked.next_check_at, '2031-03-10T16:00:00Z')
+eq('sources and provider evidence remain independent', [checked.sources[0].state, checked.providers[0].state], ['checked', 'not_called'])
+const missing = researchLifecycle(undefined)
+eq('missing measurements are not zeros or freshness', [missing.state, missing.last_checked_at, missing.last_answer_at, missing.monitoring_active, missing.memory_sync.state], ['not_measured', null, null, null, null])
+eq('current without a measured check clock is unknown', researchLifecycle({state:'current', last_checked_at:'invalid'}).state, 'not_measured')
+for (const state of RESEARCH_STATES) eq(`lifecycle state ${state}`, researchLifecycle({state, last_checked_at:'2031-03-10T15:00:00Z'}).state, state)
+eq('malformed evidence arrays never throw', researchLifecycle({sources:{}, providers:null}).sources, [])
+eq('typed blocker is shown', researchLifecycle({state:'blocked', blocker:{reason:'Synthetic hourly cap'}}).reason, 'Synthetic hourly cap')
+eq('pending result is not completion', researchRefreshText({status:'deep_pending'}), 'Research pending')
+eq('blocked response wins over retained current lifecycle', researchRefreshText({status:'blocked', reason:'Synthetic hourly cap', lifecycle:checked}), 'Research blocked — Synthetic hourly cap')
+eq('unknown response stays unmeasured', researchRefreshText({}), 'Refresh result not measured')
+// Mocked transport only: a shared thread under two securities must cause one paid-job request.
+const { requestDeep } = await import('./askCioApi.ts')
+const originalFetch = globalThis.fetch
+const requests: {request_id?: string}[] = []
+let release: (response: Response) => void = () => {}
+globalThis.fetch = async (_url, init) => { requests.push(JSON.parse(String(init?.body))); return new Promise<Response>(resolve => { release = resolve }) }
+try {
+  const first = requestDeep('synthetic-shared-thread', undefined, 'synthetic-request-one')
+  const duplicate = requestDeep('synthetic-shared-thread', undefined, 'synthetic-request-two')
+  ok('duplicate thread request shares the in-flight promise', first === duplicate)
+  eq('one request for two securities', requests.length, 1)
+  eq('request id stays stable while in flight', requests[0].request_id, 'synthetic-request-one')
+  release(new Response(JSON.stringify({ok:true,data:{status:'blocked',reason:'Synthetic cap'}}),{status:200,headers:{'Content-Type':'application/json'}}))
+  eq('honest blocked result retained', (await first).status, 'blocked')
+  const later = requestDeep('synthetic-shared-thread', undefined, 'synthetic-request-three')
+  eq('intentional later refresh has a new request id', requests[1].request_id, 'synthetic-request-three')
+  release(new Response(JSON.stringify({status:'pending'}),{status:200}))
+  await later
+} finally { globalThis.fetch = originalFetch }
 
 if (failed) { console.error(`askCioModel: ${failed} failure(s)`); process.exit(1) }
 console.log('askCioModel: all checks passed')

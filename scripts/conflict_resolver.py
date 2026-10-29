@@ -100,11 +100,21 @@ def _run(root, bundles, *, now, shadow=False, run_id=None, memory_writer=None, p
     observations = []
     findings = []
     events = []
+    # The one rule-proposal hook (docs/ops/CONFLICT_RULE_PROPOSALS.md): approved data-only amendments, then the
+    # unchanged engine, then UNMATCHED detection. A broken amendment store applies no amendment and says so.
+    from scripts.lib.conflicts import proposals as rule_proposals
+    try:
+        effective, amendments_gap = rule_proposals.effective_rulebook(root), None
+    except (OSError, ValueError) as exc:
+        effective, amendments_gap = None, f"rulebook amendments unavailable: {exc}"
+    unmatched = []
     for bundle in bundles:
         bundle = deepcopy(bundle)
         bundle.inputs.extend(decision_inputs(root, bundle.subject, now=now))
         subject_prior = [h for h in prior if h.get("subject_id") == bundle.subject.id]
-        current = evaluate_inputs(bundle, now=now, history=subject_prior)
+        current, subject_unmatched = rule_proposals.evaluate(bundle, now=now, history=subject_prior,
+                                                             effective=effective, evaluate_inputs=evaluate_inputs)
+        unmatched.extend(subject_unmatched)
         findings.extend(f.as_dict() for f in current)
         sources = [i.source for i in bundle.inputs if i.as_of and i.metadata.get("quality", "complete") == "complete"]
         if bundle.canonical:
@@ -132,8 +142,12 @@ def _run(root, bundles, *, now, shadow=False, run_id=None, memory_writer=None, p
               "findings_count": len(findings), "findings": findings, "events_written": len(events) if shadow else 0,
               "planned_events": events if not shadow else [], "notifications": 0,
               "comparison": {"before": len(before), "after": len(st.records()) if shadow else len(before)},
+              "unmatched_count": len(unmatched), "unmatched": unmatched, "amendments_gap": amendments_gap,
+              "effective_rulebook_version": (effective or {}).get("version"),
               "duration_seconds": time.monotonic() - started}
     if shadow:
+        if unmatched:
+            rule_proposals.record_unmatched(root, unmatched, at=now, run_id=run_id)
         if observations:
             observation_path.parent.mkdir(parents=True, exist_ok=True)
             with observation_path.open("a") as handle:
@@ -176,7 +190,12 @@ def main(argv=None):
     now = datetime.now(timezone.utc)
     run_id = os.environ.get("TRADEAI_RUN_ID")
     try:
-        bundles = fixture_inputs(args.input_file) if args.input_file else collect_inputs(args.state_root, now)
+        if args.input_file:
+            bundles = fixture_inputs(args.input_file)
+        else:
+            # R9 wash windows, R10 option positions, R12 pending fills — read-only stored-state producers.
+            from scripts.lib.conflicts.producers import attach as attach_producers
+            bundles, _ = attach_producers(collect_inputs(args.state_root, now), now=now, root=args.state_root)
         from scripts.lib.conflicts.cio import memory_writer
         result = run(args.state_root, bundles, now=now, shadow=args.shadow,
                      run_id=run_id,

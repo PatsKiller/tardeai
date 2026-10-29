@@ -1,0 +1,13 @@
+# Every 3 minutes: a head pushed after approval loses operator-merge well before CI can re-green it.
+[Unit]
+Description=Trade AI — PR merge reconcile every 3 minutes
+Documentation=docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+
+[Timer]
+OnCalendar=*:0/3
+AccuracySec=20s
+Persistent=false
+Unit=tradeai-pr-merge-reconcile.service
+
+[Install]
+WantedBy=timers.target

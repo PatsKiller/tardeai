@@ -29,6 +29,7 @@ import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
+import ProspectusPage from './pages/ProspectusPage'
 import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
 import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
@@ -40,12 +41,15 @@ import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
 import OpsControlsPage from './pages/OpsControls'
 import JobsPage from './pages/JobsPage'
+import OpsIncidents from './pages/OpsIncidents'
 import OpsDeskFrame from './components/OpsDeskFrame'
 import JobsHealth from './components/JobsHealth'
 import AskCioBar from './components/AskCioBar'
+import './styles/phoneShell.css'
 import MyQuestions from './pages/MyQuestions'
 import ApprovalsHub from './pages/ApprovalsHub'
 import PolicyHub from './pages/PolicyHub'
+import ConflictRules from './pages/ConflictRules'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
@@ -273,6 +277,8 @@ function Shell() {
             <Route path="rotation" element={<RouteErrorBoundary route="/v3/rotation"><RotationIntelligence /></RouteErrorBoundary>} />
             <Route path="redeploy" element={<RouteErrorBoundary route="/v3/redeploy"><RedeployDeskIntegrated /></RouteErrorBoundary>} />
             <Route path="advisor-changes" element={<RouteErrorBoundary route="/v3/advisor-changes"><Navigate to="/rotation?tab=advisor-guide" replace /></RouteErrorBoundary>} />
+            <Route path="prospectus" element={<RouteErrorBoundary route="/v3/prospectus"><ProspectusPage /></RouteErrorBoundary>} />
+            <Route path="prospectus/:symbol" element={<RouteErrorBoundary route="/v3/prospectus/:symbol"><ProspectusPage /></RouteErrorBoundary>} />
             <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
             <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
@@ -280,6 +286,7 @@ function Shell() {
             <Route path="cio/questions/:threadId" element={<RouteErrorBoundary route="/v3/cio/questions/:threadId"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage /></RouteErrorBoundary>} />
+            <Route path="ops/incidents" element={<RouteErrorBoundary route="/v3/ops/incidents"><OpsIncidents /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><OpsDeskFrame page="coordination"><CoordinationPage jobsHealth={<JobsHealth />} /></OpsDeskFrame></RouteErrorBoundary>} />
@@ -290,6 +297,7 @@ function Shell() {
             <Route path="approvals" element={<RouteErrorBoundary route="/v3/approvals"><ApprovalsHub /></RouteErrorBoundary>} />
             <Route path="approvals/:id" element={<RouteErrorBoundary route="/v3/approvals/:id"><ApprovalsHub /></RouteErrorBoundary>} />
             <Route path="policy" element={<RouteErrorBoundary route="/v3/policy"><PolicyHub /></RouteErrorBoundary>} />
+            <Route path="conflicts/rules" element={<RouteErrorBoundary route="/v3/conflicts/rules"><ConflictRules /></RouteErrorBoundary>} />
             <Route path="system/ops-controls" element={<RouteErrorBoundary route="/v3/system/ops-controls"><OpsControlsPage /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}
             <Route path="control-plane" element={<RouteErrorBoundary route="/v3/control-plane"><><SurfaceModeBanner route="/v3/control-plane" /><ControlPlaneHub /></></RouteErrorBoundary>} />

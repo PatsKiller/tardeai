@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
+import { money } from '../lib/tradeJourneyModel'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import TradeReplayChart from '../components/TradeReplayChart'
@@ -595,7 +596,7 @@ export default function JournalHub({ onDrill }: Props) {
                 <ResponsiveContainer width="100%" height={150}>
                   <AreaChart data={equityCurve}>
                     <defs><linearGradient id="jEq" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient></defs>
-                    <XAxis dataKey="date" tick={{ fontSize: 7, fill: 'var(--text3)' }} /><YAxis tick={{ fontSize: 7, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${v}`} />
+                    <XAxis dataKey="date" tick={{ fontSize: 7, fill: 'var(--text3)' }} /><YAxis tick={{ fontSize: 7, fill: 'var(--text3)' }} tickFormatter={(v: number) => money(v)} width={58} label={{ value: 'Cumulative P&L', angle: -90, position: 'insideLeft', fontSize: 8, fill: 'var(--text3)' }} />
                     <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} />
                     <Area type="monotone" dataKey="cumulative" stroke="#22c55e" fill="url(#jEq)" strokeWidth={2} />
                   </AreaChart>
@@ -607,7 +608,7 @@ export default function JournalHub({ onDrill }: Props) {
               {dailyPnl.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>No data</div> : (
                 <ResponsiveContainer width="100%" height={150}>
                   <BarChart data={dailyPnl}>
-                    <XAxis dataKey="date" tick={{ fontSize: 7, fill: 'var(--text3)' }} /><YAxis tick={{ fontSize: 7, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${v}`} />
+                    <XAxis dataKey="date" tick={{ fontSize: 7, fill: 'var(--text3)' }} /><YAxis tick={{ fontSize: 7, fill: 'var(--text3)' }} tickFormatter={(v: number) => money(v)} width={58} label={{ value: 'Daily P&L', angle: -90, position: 'insideLeft', fontSize: 8, fill: 'var(--text3)' }} />
                     <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} />
                     <Bar dataKey="pnl" radius={[3, 3, 0, 0]} shape={(props: any) => {
                       const { x, y, width, height, payload } = props

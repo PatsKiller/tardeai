@@ -10,7 +10,6 @@ and method notes make that explicit in the UI.
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -81,43 +80,35 @@ def _f(v: Any) -> float | None:
         return None
 
 
-@lru_cache(maxsize=1)
+def _shared_json(path: Path) -> dict[str, Any]:
+    """Parsed state file from the process-wide stat-keyed cache (one copy per file per process; a rewrite
+    is picked up on the next read — the old lru_cache(maxsize=1) never refreshed and kept a private 10 MB copy
+    of the enrichment cache alive for four ETF symbols)."""
+    try:
+        from scripts.lib import shared_json_cache as _sjc
+    except ImportError:  # pragma: no cover - lib-path import style
+        try:
+            from lib import shared_json_cache as _sjc  # type: ignore[no-redef]
+        except ImportError:
+            import shared_json_cache as _sjc  # type: ignore[no-redef]
+    return _sjc.load_json(path, default={})
+
+
 def _enrich() -> dict[str, Any]:
-    if not ENRICH_PATH.exists():
-        return {}
-    try:
-        d = json.loads(ENRICH_PATH.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+    return _shared_json(ENRICH_PATH)
 
 
-@lru_cache(maxsize=1)
 def _finviz() -> dict[str, Any]:
-    if not FINVIZ_PATH.exists():
-        return {}
-    try:
-        d = json.loads(FINVIZ_PATH.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+    return _shared_json(FINVIZ_PATH)
 
 
-@lru_cache(maxsize=1)
 def _price_cache() -> dict[str, Any]:
-    if not PRICE_CACHE_PATH.exists():
-        return {}
-    try:
-        d = json.loads(PRICE_CACHE_PATH.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+    return _shared_json(PRICE_CACHE_PATH)
 
 
 def clear_benchmark_cache() -> None:
-    _enrich.cache_clear()
-    _finviz.cache_clear()
-    _price_cache.cache_clear()
+    """Kept for callers; the shared cache is stat-keyed, so there is nothing stale to clear."""
+    return None
 
 
 def _return_between(sym: str, start_date: str, end_date: str | None = None) -> float | None:

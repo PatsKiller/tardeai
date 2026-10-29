@@ -2,8 +2,14 @@
 import re
 from pathlib import Path
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402
+
+# 26.0.0 rewrote §28.9 in the one-line *Cause:* format; these 20.2.0 pins read the frozen 25.0.1 copy.
+AGENTS = read_pre_26("AGENTS.md")
 
 
 def _section() -> str:
@@ -48,7 +54,10 @@ def test_section_28_10_conflict_engine_rules_cite_causes():
 
 def test_section_28_11_transition_exceptions_name_replacement_and_sunset():
     s = AGENTS.index("\n## 28.11 ")
-    sec = AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    end = AGENTS.index("\n---\n\n# Version history", s)
+    if "\n## 28.12 " in AGENTS[s:end]:  # 20.3.0 (§28.12) follows §28.11
+        end = AGENTS.index("\n## 28.12 ", s)
+    sec = AGENTS[s:end]
     bullets = re.split(r"\n- ", sec)[1:]
     assert len(bullets) == 6 and all("*Cause (§20):" in b for b in bullets)
     assert "2026-12-31" in sec and "No exception allows anything §0, §2 or §17 forbids" in sec

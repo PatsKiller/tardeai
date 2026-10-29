@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "telegram_grants_retired_20261027",
+  "files": [
+    "tests/test_telegram_grants_retired_20261027.py"
+  ],
+  "anchor": "TELEGRAM_GRANTS_RETIRED_20261027",
+  "comment": [
+    "ANCHOR: TELEGRAM_GRANTS_RETIRED_20261027 — Telegram remote guard grants retired (operator-ratified on PR #2185,",
+    "APPROVE_AGENTS_POLICY_23_0_0 2185 c366dd8d165c7eedf286d18604af8b0a11fe85db). Carries #2185's code onto main:",
+    "TELEGRAM_REMOTE_GRANT_STATUS=RETIRED; mint raises; /approve and Approve taps refuse TELEGRAM_GRANT_RETIRED and run",
+    "no bin/guard grant; deny still clears; bin/guard request exits 2; the PR-merge guard bridge refuses and the per-PR",
+    "CLIs default to native prmapprove. Keyboard bin/guard grant and Ops → Controls grant.issue stay. Code pins only:",
+    "the policy text is in the AGENTS.md doc PR, so nothing here reads AGENTS.md."
+  ]
+}

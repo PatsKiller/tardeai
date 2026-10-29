@@ -22,9 +22,9 @@ The deploy's promote calls it first, then runs conformance and the exact-SHA
 ``--ci-only`` re-query (which writes the receipt), then the consuming call,
 whose CI gate reuses that receipt. One use, consumed only after all of them.
 
-Standing-release binding (arming packet §K, 2026-10-22; PROPOSED, inert). While
+Standing-release binding (arming packet §K, 2026-10-22; ACTIVE since 2026-10-25). While
 ``release_grant_binding.CAPABILITY_BINDING_STATUS`` is "PROPOSED" nothing below
-changes. When a reviewed PR sets it ACTIVE, a ``prepare``/``promote`` under campaign
+changes. While it is ACTIVE, a ``prepare``/``promote`` under campaign
 ``release-train-<train_id>`` that no grant binds is accepted on the host capability
 ledger instead (``decide_capability``: a signed, RESERVED promote-phase capability for
 this train and exact SHA, live lock holder, latch ABSENT, current epoch and digest).
@@ -281,9 +281,16 @@ def main() -> int:
     ap.add_argument("--skip-ci-gate", action="store_true",
                     help="promote only: do not read exact-SHA CI before consuming (CI-outage emergency path only)")
     ap.add_argument("--artifact-digest", default=None,
-                    help="capability binding only (packet §K, inert while CAPABILITY_BINDING_STATUS is PROPOSED): "
+                    help="capability binding only (packet §K; consulted only while CAPABILITY_BINDING_STATUS is ACTIVE): "
                          "the prepared artifact digest; it can only narrow, never grant")
+    ap.add_argument("--release-dir", type=Path, default=None,
+                    help="capability binding only (review F4): the prepared release dir; its artifact digest is "
+                         "computed here and must equal the promote capability's")
     args = ap.parse_args()
+    if args.release_dir is not None and args.artifact_digest is None:
+        from scripts.lib.release_grant_binding import release_artifact_digest  # noqa: PLC0415
+
+        args.artifact_digest = release_artifact_digest(args.release_dir, args.sha)
     if args.backstop_check:
         return backstop_check(args.sha, args.backstop_receipt)
     if args.ci_only:
@@ -299,7 +306,7 @@ def main() -> int:
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
     _bind_consume_grant(v.grant_id)  # 2026-10-21: a use is consumed only from the grant this verdict approved
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
-    # Packet §K (2026-10-22): the standing-release binding. Inert while CAPABILITY_BINDING_STATUS is PROPOSED (this
+    # Packet §K (2026-10-22; ACTIVE 2026-10-25): the standing-release binding. Inert while CAPABILITY_BINDING_STATUS is PROPOSED (this
     # block never runs and the output above is unchanged). A grant naming the release is tried first and keeps
     # working; only a train campaign with no binding grant consults the host capability ledger, and the campaign
     # only identifies the train: the signed, RESERVED capability is the authority.
@@ -312,7 +319,23 @@ def main() -> int:
             cap_allowed = True
             out.update(allowed=True, reason=cv.reason, matched_by=list(cv.matched_by),
                        binding_source="capability_ledger")
-    allowed = v.allowed or cap_allowed
+    # Deploy-delegation binding (AGENTS.md §25.10, 2026-10-27). The host deploy_on_main poller's authority is the
+    # operator's armed standing deploy delegation, not a per-SHA grant. Consulted only when no grant and no
+    # capability bound the release AND the poller's ticket env is present; scripts/lib/deploy_delegation_binding.py
+    # verifies the ticket, that its pid is this process's ancestor inside the poller unit holding
+    # GlobalReleaseLock, STOP absent, delegation ACTIVE, SHA == origin/main, required checks green.
+    # Agents / n8n / Mergify / emergency / train never satisfy it. The guard ledger is not consumed.
+    dd_allowed = False
+    if not v.allowed and not cap_allowed and args.action in ("prepare", "promote") and os.environ.get(
+            "TRADEAI_DEPLOY_DELEGATION_TICKET"):
+        from scripts.lib.deploy_delegation_binding import MATCHED_BY, decide_from_env  # noqa: PLC0415
+
+        dv = decide_from_env(args.action, args.sha, root=ROOT)
+        out["deploy_delegation_binding"] = dv.to_dict()
+        if dv.allowed:
+            dd_allowed = True
+            out.update(allowed=True, reason=dv.reason, matched_by=[MATCHED_BY], binding_source=MATCHED_BY)
+    allowed = v.allowed or cap_allowed or dd_allowed
     # The CI gate guards the consume. A --no-consume call (the deploy script's early binding verdict) consumes
     # nothing, so it reads no CI; the deploy's own exact-SHA re-query and this gate on the consuming call do
     # (release-1 integration of #1628 + release train, 2026-10-21: one use, consumed only after CI).
@@ -335,15 +358,21 @@ def main() -> int:
         if cap_allowed and not args.no_consume:
             # §K: the guard ledger is not consumed; the capability's attempt budget is the accounting.
             out["consumed"] = {"skipped": "capability_binding"}
+        elif dd_allowed and not args.no_consume:
+            # §25.10: the standing deploy delegation is not a counted grant; the poller receipt is the accounting.
+            out["consumed"] = {"skipped": "deploy_delegation"}
         else:
             out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
     print(json.dumps(out, sort_keys=True))
     if allowed:
         return 0
+    dd_note = ""
+    if out.get("deploy_delegation_binding"):
+        dd_note = " (deploy_delegation: " + str(out["deploy_delegation_binding"].get("reason")) + ")"
     if mode == "warn":
-        print("RELEASE GRANT BINDING: REFUSED (warn mode — continuing): " + v.reason, file=sys.stderr)
+        print("RELEASE GRANT BINDING: REFUSED (warn mode — continuing): " + v.reason + dd_note, file=sys.stderr)
         return 0
-    print("RELEASE GRANT BINDING: REFUSED — " + v.reason, file=sys.stderr)
+    print("RELEASE GRANT BINDING: REFUSED — " + v.reason + dd_note, file=sys.stderr)
     return 2
 
 

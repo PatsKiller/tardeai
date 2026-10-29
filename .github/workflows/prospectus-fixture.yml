@@ -1,0 +1,77 @@
+name: prospectus-fixture
+# Ticker Prospectus page (/v3/prospectus) on the built app with every /api call fulfilled by the spec
+# (synthetic tickers, made-up numbers). 1440 / 412 / 390, taps, full-screen sheet, download hrefs, states.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/prospectus-fixture.yml'
+      - 'apps/command-center-v3/src/pages/ProspectusPage.tsx'
+      - 'apps/command-center-v3/src/pages/Prospectus.css'
+      - 'apps/command-center-v3/src/components/prospectus/**'
+      - 'apps/command-center-v3/src/lib/prospectusModel*'
+      - 'apps/command-center-v3/src/fixtures/prospectus.fixture.ts'
+      - 'apps/command-center-v3/src/components/HoldingReportLinks.tsx'
+      - 'apps/command-center-v3/src/components/opportunity/OpportunityModal.tsx'
+      - 'apps/command-center-v3/src/components/NavRail.tsx'
+      - 'apps/command-center-v3/src/App.tsx'
+      - 'apps/command-center-v3/e2e/prospectus.spec.ts'
+      - 'apps/command-center-v3/e2e/prospectus-my-history.spec.ts'
+      - 'apps/command-center-v3/src/lib/myHistoryModel.ts'
+      - 'apps/command-center-v3/src/fixtures/prospectusMyHistory.fixture.ts'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: prospectus-fixture-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prospectus-proof:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node --experimental-strip-types src/lib/prospectusModel.test.ts
+      - run: npm run build
+      - name: Prospectus list, report sheet and states at 1440/412/390 without a server
+        shell: bash
+        env:
+          PROSPECTUS_SHOTS_DIR: ${{ runner.temp }}/prospectus
+          PROSPECTUS_EMPTY_ENV: ${{ runner.temp }}/prospectus-empty-env
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROSPECTUS_EMPTY_ENV"
+          node --input-type=module <<'JS'
+          import {preview} from 'vite';
+          import {spawn} from 'node:child_process';
+          const p=await preview({configFile:false,envDir:process.env.PROSPECTUS_EMPTY_ENV,base:'/v3/',preview:{host:'127.0.0.1',port:0,strictPort:true,proxy:{}}});
+          try {
+            const code=await new Promise((resolve,reject)=>{
+              const child=spawn(process.execPath,['node_modules/@playwright/test/cli.js','test','e2e/prospectus.spec.ts','e2e/prospectus-my-history.spec.ts','--project=chromium','--reporter=line'],{stdio:'inherit',env:{...process.env,PLAYWRIGHT_BASE_URL:'http://127.0.0.1:'+p.httpServer.address().port}});
+              child.on('error',reject);child.on('exit',code=>resolve(code));
+            });
+            process.exitCode=code;
+          } finally { await new Promise(resolve=>p.httpServer.close(resolve)); }
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prospectus-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/prospectus/
+            apps/command-center-v3/test-results/
+          if-no-files-found: ignore

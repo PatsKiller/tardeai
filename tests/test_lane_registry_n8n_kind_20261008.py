@@ -359,6 +359,12 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
         # (no host line; tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # Hourly Ask/source polling proposals remain native, shadow and inactive; no host schedule is retired.
+        "cio-ask-lifecycle",
+        "cio-ask-material-events",
+        # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 15 min (windows 17:45 / 07:00 ET) dry_run
+        # (no host line; tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
@@ -385,8 +391,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-21 pr-hygiene-audit: n8n-native dispatcher row at shadow, daily 06:30 dry_run (no
         # host line; tests/test_pr_hygiene_audit_20261021.py). Added in the release-1 integration.
         "pr-hygiene-audit",
-        # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row at shadow, daily 05:05
-        # dry_run (no host line; tests/test_macro_calendar_20261021.py).
+        # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row, daily 05:05 (no host line;
+        # tests/test_macro_calendar_20261021.py); shadow 2026-10-21, canary (dispatch live) 2026-10-26.
         "macro-calendar-refresh",
         # WP-21: restored n8n-native shadow builder after removing forbidden transitive imports.
         # No host line; tests/test_cio_prospect_shadow_readonly_20261023.py.
@@ -402,8 +408,20 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-23 jsonl-archive-rotate: n8n-native hygiene dispatcher row at shadow, weekdays 16:45
         # dry_run (no host line; tests/test_jsonl_archive_rotate_20261023.py).
         "jsonl-archive-rotate",
+        # 2026-10-26 yfinance-info-snapshot: n8n-native ingest dispatcher row at shadow, weekdays 05:40 dry_run
+        # (no host line; tests/test_yfinance_info_snapshot_lane_20261026.py).
+        "yfinance-info-snapshot",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
+    ask_native={"cio-ask-lifecycle": "0 * * * *", "cio-ask-material-events": "*/5 * * * *"}
+    allow={entry["lane_id"]: entry for entry in json.loads((ROOT/"config/n8n_run_allowlist.json").read_text())["lanes"]}
+    for lane,cadence in ask_native.items():
+        row=native[lane]
+        assert row["state"]=="NEVER_SCHEDULED" and row["scheduler"]["stage"]=="shadow"
+        assert row["scheduler"]["workflow_id"]=="tradeai-cio-ask-lifecycle-native"
+        assert row["scheduler"]["cadence"]==cadence and row["dispatch"]["cron"]==[cadence]
+        assert row["dispatch"]["mode"]=="dry_run" and allow[lane]["live_arg"] is None
+        assert row["scheduler"]["match"]=="scripts/cio_ask_lifecycle.py --once"+ (" --events-only" if lane.endswith("material-events") else "")
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it runs live (2026-10-19: the five HL.LIVE steps are ACTIVE); `match` names the process step, so no
     # host line maps to them (the scripts' retired cron rows keep their own lines).
@@ -424,17 +442,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         assert s["match"] == f"tradeai-fabric-hermes-learning:{s['process_step']}"
         # 2026-10-19 registry truth: the five n8n-owned steps run live (ACTIVE); the held feedback agent is not.
         assert native[lane]["state"] == ("ACTIVE" if lane in HL.LIVE else "NEVER_SCHEDULED")
-    # 2026-10-21 Release Train v2 Phase 4: the four request lanes of tradeai-fabric-release-train (one per window
-    # slot), fired only by that workflow through Run Lane; NEVER_SCHEDULED until the operator imports it. The H.0
-    # shadow-enable PR (2026-10-22) moved the stage shadow -> canary (live_arg --append --shadow-only).
-    # `match` names the workflow slot, so no host line maps to them and no host scheduler is flipped.
-    release_train = {f"release-train-request-{s}" for s in ("1800", "0000", "0600", "0800")}
-    for lane in release_train:
-        s = native[lane]["scheduler"]
-        assert s["expression"] == "tradeai-fabric-release-train" and s["stage"] == "canary"
-        assert s["match"] == f"tradeai-fabric-release-train:{lane[-4:]}"
-        assert native[lane]["state"] == "NEVER_SCHEDULED"
-    assert set(native) == monitors | cutover | n8n_native_lanes | process_steps | release_train
+    # 2026-10-27: the four release-train request lanes (tradeai-fabric-release-train) were removed with the train.
+    assert not any(lane.startswith("release-train-") for lane in native)
+    assert set(native) == monitors | cutover | n8n_native_lanes | process_steps
     assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)
