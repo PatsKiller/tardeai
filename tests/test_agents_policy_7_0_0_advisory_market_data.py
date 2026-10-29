@@ -76,6 +76,12 @@ BASELINE = {
     # the entry script it shares with the */5 early lane statically reaches auto_proposal_generator (advisory send,
     # account_policy reads). Fix: give the hot-list owner its own entry script (cron + allowlist change, cron grant).
     "scalp-hot-list": "shared entry script reaches the early-lane proposal handoff (path-insensitive scan)",
+    # conflict-resolver (W8 learn-class, operator baseline approval 2026-10-28): the data-broker read path
+    # (watch_intelligence -> watch_domains -> positions_sync -> api_v2) transitively reaches api_v2 place_order /
+    # cancel_order and momentum_alerts send_telegram. The lane is dry-run/shadow only, writes no conflict ledger at
+    # shadow, calls no broker or sender; the reach is import-only (at_import=false). Fix the reach or drop from the
+    # wave; keep the entry script read-only.
+    "conflict-resolver": "data-broker read path reaches api_v2 order verbs + momentum_alerts send_telegram (import-only)",
 }
 NAMED_SENDER_EXCEPTIONS = frozenset({"trade-ai-scalp-live"})
 
