@@ -1044,6 +1044,10 @@ def test_libraries_are_wired_into_nothing():
         # CI gate registration for the resume-settle tests (fix/release-stop-settle-20261028): names the test
         # file, which names release_control. A gate list is not a caller.
         "config/ci_gates/release_control_resume_settle_20261028.json",
+        # Shard duration hints (generated from the green full-suite run's cio-timings artifact): its keys are
+        # test-file paths, so a test named test_release_control_resume_settle_20261028.py appears as a key. A
+        # filename in a generated timing map is not a caller or a wire-in; the test file itself is allowed below.
+        "config/ci_shard_duration_hints.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
