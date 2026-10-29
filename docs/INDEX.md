@@ -2120,6 +2120,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md` | portfolio-server memory spikes after release 7 (2026-10-23) |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
 | `docs/ops/SETUP_READINESS_SHARED_VERDICT_2026-10-23.md` | SetupReadiness@v1 — one "driven by / ready / missing" verdict (2026-10-23) |
+| `docs/ops/SHARD_HINTS_REFRESH_RUNBOOK.md` | Shard duration hints — refresh runbook (unblocks every PR) |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
 | `docs/ops/SITE_FIX_W1_20261024.md` | W1 CIO truth and consistency |
 | `docs/ops/SITE_FIX_W2_20261024.md` | W2: payload budgets, paging and lazy reads |
