@@ -1366,7 +1366,11 @@
   "tests/test_check_no_pii_20261027.py": 2.1,
   "tests/test_needs_action_release_window_20261028.py": 1.1,
   "tests/test_policy_freshness_20261028.py": 3.8,
-  "tests/test_policy_freshness_gates_20261028.py": 9.7
+  "tests/test_policy_freshness_gates_20261028.py": 9.7,
+  "tests/test_pipeline_repair_handoff_20261029.py": 3.0,
+  "tests/test_watchlist_deadline_20261029.py": 3.0,
+  "tests/test_finviz_deadline_resume_20261029.py": 3.0,
+  "tests/test_orchestrator_admission_20261029.py": 3.0
  },
  "note": "Measured per-file seconds from the sharded full-suite run (junit test time plus an even share of the unit's start-up). Candidate for config/ci_shard_duration_hints.json; hints only order and pack work, they never decide what runs.",
  "schema": "CiShardTimings@v1",

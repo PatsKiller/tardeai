@@ -28,7 +28,7 @@ Alert triggers (LIVE mode  -- suppressed otherwise):
 """
 from __future__ import annotations
 
-import argparse, json, os, sys, time, subprocess
+import argparse, json, os, sys, time, subprocess, signal
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -1086,19 +1086,81 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
 
 # "   "    Full cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
-def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
+def _stop_full_pipeline(proc) -> None:
+    """Stop the owned session, including children that outlive its leader."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    # A leader may exit promptly while one of its children ignores SIGTERM.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait(timeout=5)
+
+
+def run_full_cycle(root: Path, run_label: str, date_str: str) -> int:
     cmd = [sys.executable, str(root/"scripts"/"trade_ai_orchestrator.py"),
            "--run-label", run_label, "--date", date_str, "--skip-market-check",
            "--allow-underfilled"]
     print("  [FULL] Launching complete pipeline...")
+    proc = None
+    previous_handlers = {}
+
+    def interrupted(signum, frame):
+        # Preserve an outer PipelineRun signal exception/handler when present.
+        previous = previous_handlers.get(signum)
+        if callable(previous):
+            previous(signum, frame)
+        raise SystemExit(128 + signum)
+
     try:
+        for signum in (signal.SIGTERM, signal.SIGHUP):
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, interrupted)
         # 45 min hard limit. Must stay above process_reaper's trade_ai_orchestrator cap (30m):
         # docs/ops/PIPELINE_TIME_SETTINGS.md, tests/test_pipeline_time_settings_20261022.py.
-        subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
+        proc = subprocess.Popen(cmd, env=os.environ.copy(), start_new_session=True)
+        rc = proc.wait(timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
-        print("  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
+        try:
+            _stop_full_pipeline(proc)
+        except Exception as exc:
+            print(f"  [FULL] Pipeline timeout cleanup failed: {exc}")
+        else:
+            print("  [FULL] Owned pipeline process group stopped")
+        print("  [FULL] Pipeline timed out after 45 min (rc=124)")
+        return 124
     except Exception as e:
+        if proc is not None:
+            try:
+                _stop_full_pipeline(proc)
+            except Exception as exc:
+                print(f"  [FULL] Pipeline error cleanup failed: {exc}")
         print(f"  [FULL]            Pipeline error: {e}")
+        return 1
+    except BaseException:
+        if proc is not None:
+            try:
+                _stop_full_pipeline(proc)
+            except Exception as exc:
+                print(f"  [FULL] Pipeline interruption cleanup failed: {exc}")
+        raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+    if rc == 75:
+        print("  [FULL] Pipeline already running; admission skipped (rc=75)")
+    elif rc != 0:
+        print(f"  [FULL] Pipeline failed (rc={rc})")
+    else:
+        print("  [FULL] Pipeline completed (rc=0)")
+    return rc
 
 
 # ─── News-triggered re-critique ───────────────────────────────────────────────
@@ -1270,8 +1332,13 @@ def main() -> int:
     _startup_date  = _startup_now.strftime("%Y-%m-%d")
     print(f"\n[STARTUP] {_startup_now.strftime('%H:%M:%S')}  -- immediate FULL run (label={_startup_label})")
     try:
-        run_full_cycle(root, _startup_label, _startup_date)
-        print("[STARTUP] Complete")
+        _startup_rc = run_full_cycle(root, _startup_label, _startup_date)
+        if _startup_rc == 0:
+            print("[STARTUP] Complete")
+        elif _startup_rc == 75:
+            print("[STARTUP] Skipped: a pipeline is already running (rc=75)")
+        else:
+            print(f"[STARTUP] Failed (rc={_startup_rc})")
     except Exception as _e:
         import traceback as _tb
         print(f"[STARTUP] ERROR: {_e}")
