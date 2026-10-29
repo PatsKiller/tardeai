@@ -7,6 +7,7 @@ import EntryDeskRow, { type TechGrade } from '../components/EntryDeskRow'
 import EntryDeskDiligenceStrip, { type WatchlistDiligence } from '../components/EntryDeskDiligenceStrip'
 import DeskAutomationBar from '../components/DeskAutomationBar'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from '../components/BrokerPromoteModal'
+import { draftOrderView, protectiveStopLine } from '../lib/draftOrderView'
 
 export type SourceKind = 'PROPOSAL' | 'WATCHLIST' | 'DRAFT'
 type SetupState = 'READY' | 'GENERATED' | 'BROKER_OBSERVED' | 'EXCEPTION'
@@ -32,6 +33,8 @@ export type SetupRow = {
   score?: number | string | null; decision?: string | null; reason?: string | null
   sector?: string | null; description?: string | null; sourceLabel?: string | null; origin?: string | null
   tier?: string | null; directiveId?: any; diligence?: WatchlistDiligence | null
+  /** Display only: the draft is itself a protective sell stop on a held position (side/type from the draft). */
+  protective?: boolean; trailPct?: number | null
 }
 
 type AccountSnapshot = { key: string; label: string; cash: number | null; buyingPower: number | null; accountValue: number | null }
@@ -128,7 +131,7 @@ function fromDraft(d: any, local: LocalState, paMap: Record<string, any>): Setup
   const symbol = String(first(d.symbol, it.instrument?.symbol, '')).toUpperCase()
   if (!symbol) return null
   const id = String(first(d.intent_id, `draft-${symbol}`))
-  const entry = it.entry ?? {}
+  const view = draftOrderView(it)
   const pro = paMap[symbol] ?? {}
   return {
     id, source: 'DRAFT', raw: d, symbol,
@@ -136,9 +139,11 @@ function fromDraft(d: any, local: LocalState, paMap: Record<string, any>): Setup
     analystCount: pro?.n, analystUpside: pro?.upside,
     account: local[id]?.account ?? String(first(it.account_key, 'ANY')),
     qty: local[id]?.qty ?? (Number(first(it.quantity?.qty, 10)) || 10),
-    side: it.direction === 'SHORT' ? 'SELL SHORT' : 'BUY',
-    entryType: String(first(entry.method, 'LIMIT')).toUpperCase(),
-    entryPrice: num(first(entry.limit_price, entry.stop_price)),
+    // side / type / price read from the draft's own fields (lib/draftOrderView) — never assumed BUY
+    side: view.side,
+    entryType: view.orderType,
+    entryPrice: view.price,
+    protective: view.protective, trailPct: view.trailPct,
     stop: num(it.exit_policy?.stop?.price),
     trail: it.exit_policy?.stop?.trail ?? null,
     targets: Array.isArray(it.exit_policy?.targets) ? it.exit_policy.targets : [],
@@ -148,6 +153,7 @@ function fromDraft(d: any, local: LocalState, paMap: Record<string, any>): Setup
 }
 
 function setupLine(r: SetupRow) {
+  if (r.protective) return protectiveStopLine({ side: r.side, qty: r.qty, symbol: r.symbol, orderType: r.entryType, price: r.entryPrice, tif: r.tif, trailPct: r.trailPct })
   const price = r.entryPrice != null ? ` ${r.entryPrice.toFixed(2)}` : ''
   return `${r.side} ${r.qty} ${r.symbol} ${r.entryType}${price} ${r.tif}`
 }

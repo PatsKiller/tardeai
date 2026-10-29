@@ -1,0 +1,559 @@
+{
+  "schema": "ProspectusConfig@v1",
+  "approved_by": "operator 2026-10-26: \"Opus for all, Fable for top. [3: $25/day for 3 days] Build everything now.\" Contract: persistent-state coordination/handoffs/prospectus-20261026/CONTRACT.md",
+  "premium_top_n": 5,
+  "processes": {
+    "standard": "prospectus_writer",
+    "premium": "prospectus_writer_premium"
+  },
+  "storage_rel": "data/prospectus",
+  "max_prompt_bytes": 60000,
+  "max_output_tokens": 16000,
+  "delta_max_output_tokens": 6000,
+  "timeout_s": 900,
+  "max_attempts_per_day": 2,
+  "brave": {
+    "caller": "prospectus_writer",
+    "daily_limit": 40,
+    "per_holding": 2,
+    "scopes": [
+      "holding"
+    ],
+    "note": "Brave 1500/mo, 120/day overall; at most 40/day are reserved for this job (holdings only on the first pass)."
+  },
+  "cadence": {
+    "holding": {
+      "full_days": 30,
+      "delta_days": 7,
+      "after_earnings": true
+    },
+    "watch": {
+      "full_days": 90,
+      "after_earnings": true
+    },
+    "triggers": {
+      "day_move_abs_pct": 8.0,
+      "material_news": true,
+      "stop_event": true,
+      "cio_stance_change": true,
+      "promoted_to_proposal": true,
+      "day_move_scopes": [
+        "holding"
+      ],
+      "note": "Triggers only ENQUEUE with a reason (scripts/lib/prospectus/schedule.py); a run window writes. day_move is measured on the CLOSE: the last two daily closes, once per session close after the last report. material_news fires only from the window's news review (2026-10-27): a material + relevant item whose CIO note reads impact thesis, breaker or stop; a fresh catalyst row alone never fires."
+    }
+  },
+  "run_windows": {
+    "timezone": "America/New_York",
+    "note": "Operator 2026-10-26: reports are queued and run at set times, not ad hoc. The n8n lane prospectus-build fires every 15 min; a window runs once per day from its start until catch_up_minutes later. Off-window fires drain only operator 'Rewrite now' rows.",
+    "catch_up_minutes": 120,
+    "windows": [
+      {
+        "id": "post_close",
+        "label": "After the close",
+        "time": "17:45",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding",
+          "watch"
+        ],
+        "triggers": "all",
+        "max_reports": 12,
+        "note": "after the 16:00 ET close so the 8% day-move test uses the closing price"
+      },
+      {
+        "id": "pre_market",
+        "label": "Pre-market",
+        "time": "07:00",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "weekend": false,
+        "enabled": true,
+        "scopes": [
+          "holding"
+        ],
+        "triggers": [
+          "missing",
+          "after_earnings",
+          "material_news",
+          "stop_event",
+          "cio_stance_change"
+        ],
+        "max_reports": 6,
+        "note": "overnight news and earnings for holdings only"
+      }
+    ],
+    "operator_rewrite": {
+      "immediate": true,
+      "max_per_fire": 3
+    },
+    "watch_batch": {
+      "enabled": true,
+      "max_submit": 20,
+      "note": "Watch rows use the Message Batches API (scripts/lib/prospectus/batch.py, 50% price; generation config watch.batch): each window first collects finished batch results (batch.collect; delivered with that run), and a window covering the watch scope submits up to max_submit queued Watch rows (batch.submit_due, gate + web planning first). false = the window writes Watch rows synchronously."
+    }
+  },
+  "delivery": {
+    "note": "Host sender scripts/prospectus_deliver.py (timer tradeai-prospectus-deliver.timer). Operator 2026-10-26: Telegram = summary + each report's PDF and Word; email = the run audit PLUS the PDF and Word of HOLDINGS reports (attach_scopes), at most max_attachment_bytes per email (the rest linked); Watch reports are linked, not attached.",
+    "telegram": {
+      "enabled": true,
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attached_reports": 10
+    },
+    "email": {
+      "enabled": true,
+      "attachments": true,
+      "attach_scopes": [
+        "holding"
+      ],
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "max_attachment_bytes": 20971520
+    },
+    "scopes": {
+      "holding": true,
+      "watch": true
+    },
+    "on_operator_rewrite": true,
+    "max_attempts": 3,
+    "link_template": "https://ms01-openclaw.tail163d14.ts.net/v3/prospectus/{symbol}"
+  },
+  "estimate": {
+    "note": "Dry-run cost estimate only; real spend is settled from provider usage.",
+    "expected_output_tokens": 9000,
+    "chars_per_token": 3.6
+  },
+  "registry_domains": {
+    "quote_price": {
+      "reader": "quote_price",
+      "stale_days": 5
+    },
+    "symbol_identity": {
+      "covered_by": [
+        "dossier_profile"
+      ]
+    },
+    "analyst_opinion": {
+      "covered_by": [
+        "analyst_targets"
+      ]
+    },
+    "catalyst_news": {
+      "covered_by": [
+        "catalysts",
+        "news"
+      ]
+    },
+    "technicals": {
+      "reader": "technicals",
+      "stale_days": 7,
+      "refreshable": true
+    },
+    "sector_momentum": {
+      "covered_by": [
+        "sector_momentum"
+      ]
+    },
+    "industry_momentum": {
+      "covered_by": [
+        "industry_momentum"
+      ]
+    },
+    "market_regime": {
+      "reader": "market_regime",
+      "stale_days": 7
+    },
+    "earnings_date": {
+      "covered_by": [
+        "dossier_profile"
+      ]
+    },
+    "holdings_accounts": {
+      "covered_by": [
+        "position"
+      ]
+    },
+    "positions_store": {
+      "covered_by": [
+        "position",
+        "journal_trades",
+        "stops"
+      ]
+    },
+    "options_iv": {
+      "covered_by": [
+        "options_iv"
+      ]
+    },
+    "research_thesis": {
+      "covered_by": [
+        "house_research",
+        "symbol_thesis"
+      ]
+    },
+    "watch_directives": {
+      "reader": "watch_directives"
+    },
+    "watch_discovery": {
+      "excluded": "screener discovery candidates; a security's watch state is read via watch_directives and cio_prospect"
+    },
+    "web_search": {
+      "covered_by": [
+        "web_search"
+      ]
+    },
+    "private_company": {
+      "reader": "private_company"
+    },
+    "dividends": {
+      "covered_by": [
+        "dossier"
+      ]
+    },
+    "macro": {
+      "reader": "macro",
+      "stale_days": 45,
+      "refreshable": true,
+      "note": "FRED via fred_data_ingest + macro_calendar_refresh"
+    },
+    "fundamentals": {
+      "reader": "fundamentals",
+      "refreshable": true,
+      "note": "fundamental_data + sec_xbrl (sec_fundamentals_ingest)"
+    },
+    "agent_opinion": {
+      "covered_by": [
+        "house_agents",
+        "final_synthesis"
+      ]
+    },
+    "agent_debate": {
+      "reader": "agent_debate"
+    },
+    "ai_reports": {
+      "reader": "ai_reports"
+    },
+    "redeploy_analytics": {
+      "excluded": "portfolio-level redeploy analytics, not per-security"
+    },
+    "inverse_stoplights": {
+      "excluded": "portfolio hedge signal surface, not per-security research"
+    },
+    "data_gaps": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "operator_conversation": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_memory_contexts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_retrieval_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_heartbeats": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "approval_packages": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "platform_conformance": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_gir_projection": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_breaches": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "research_write_path_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "edge_fanout_work_items": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "intelligence_research_index": {
+      "reader": "intelligence_research_index"
+    },
+    "sec_filing_events": {
+      "reader": "sec_filing_events",
+      "refreshable": true,
+      "note": "sec_filings_feed + sec_form4 (sec_data_ingest) + Form 4 momentum context"
+    },
+    "agent_checkpoints": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "lesson_promotions": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "contradiction_verdicts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "agent_registry": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "model_chooser_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_ladder_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "maturity_scores": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "conformance_gate_receipts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "supervisor_recoveries": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "capital_plan_decisions": {
+      "excluded": "portfolio capital plan decisions (operator-level), not per-security research"
+    },
+    "cio_operator_artifacts": {
+      "excluded": "not ticker-keyed: platform/governance/agent-operations data, no per-security content"
+    },
+    "counterfactual_ledger": {
+      "reader": "counterfactual_ledger"
+    },
+    "active_trader_microstructure": {
+      "excluded": "intraday microstructure for alerts; not research content"
+    },
+    "opportunity_assessment": {
+      "reader": "opportunity_assessment",
+      "stale_days": 7
+    },
+    "finviz_enrichment": {
+      "covered_by": [
+        "fundamentals"
+      ]
+    },
+    "scalp_list": {
+      "excluded": "intraday scalp candidates; not research content"
+    },
+    "social_posts": {
+      "reader": "social_posts"
+    },
+    "yfinance_info_snapshot": {
+      "reader": "yfinance_info_snapshot",
+      "stale_days": 30,
+      "refreshable": true
+    },
+    "earnings_calendar": {
+      "reader": "earnings_calendar",
+      "stale_days": 14,
+      "refreshable": true
+    },
+    "news_sentiment": {
+      "reader": "news_sentiment",
+      "stale_days": 3
+    },
+    "cio_prospect": {
+      "covered_by": [
+        "cio_record",
+        "cio_lineage_origin"
+      ]
+    },
+    "cio_asks": {
+      "excluded": "operator questions; answers already flow into the CIO record"
+    },
+    "anthropic_promotional_credit": {
+      "excluded": "model credit ledger (funding), not research content"
+    },
+    "transcripts": {
+      "reader": "transcripts",
+      "note": "not a registry domain: youtube_transcripts (transcript_processor/tagger)"
+    },
+    "operator_decisions": {
+      "excluded": "operator governance decisions (approvals, merge decisions, rule feedback); not ticker research"
+    }
+  },
+  "registry_domains_note": "Every domain in config/data_source_authority.json must appear here: read (reader / covered_by) or excluded with a reason. tests/test_prospectus_domains_20261026.py enforces it.",
+  "web": {
+    "max_uses": {
+      "holding": 6,
+      "watch": 3
+    },
+    "plan_max_output_tokens": 4000,
+    "note": "governed search_router (free tier first, then Brave under its budget); the job's daily paid-search allowance is brave.daily_limit"
+  },
+  "etf_peer_groups": {
+    "_note": "ETF peers by category/style (the Finviz enrichment cache files every ETF under one industry, 'Exchange Traded Fund', which sorts alphabetically and is not a peer set). An ETF in no group shows 'peers not available (reason)'.",
+    "us_large_cap_growth": [
+      "SCHG",
+      "VUG",
+      "IWF",
+      "SPYG",
+      "MGK",
+      "VONG",
+      "IWY",
+      "QQQ",
+      "QQQM"
+    ],
+    "us_large_cap_blend": [
+      "SPY",
+      "VOO",
+      "IVV",
+      "SPLG",
+      "SCHX",
+      "VV",
+      "IWB",
+      "SCHK"
+    ],
+    "us_total_market": [
+      "VTI",
+      "ITOT",
+      "SCHB",
+      "SPTM",
+      "IWV"
+    ],
+    "us_large_cap_value": [
+      "VTV",
+      "IWD",
+      "SCHV",
+      "SPYV",
+      "VONV",
+      "MGV"
+    ],
+    "us_dividend": [
+      "SCHD",
+      "VYM",
+      "DVY",
+      "DGRO",
+      "HDV",
+      "NOBL",
+      "VIG",
+      "SDY"
+    ],
+    "us_small_cap": [
+      "IWM",
+      "VB",
+      "SCHA",
+      "IJR",
+      "VTWO",
+      "SPSM"
+    ],
+    "us_mid_cap": [
+      "VO",
+      "IJH",
+      "SCHM",
+      "MDY",
+      "IWR",
+      "SPMD"
+    ],
+    "international_developed": [
+      "VEA",
+      "EFA",
+      "IEFA",
+      "SCHF",
+      "SPDW",
+      "VXUS",
+      "IXUS"
+    ],
+    "emerging_markets": [
+      "VWO",
+      "IEMG",
+      "EEM",
+      "SCHE",
+      "SPEM"
+    ],
+    "us_aggregate_bond": [
+      "BND",
+      "AGG",
+      "SCHZ",
+      "SPAB",
+      "IUSB"
+    ],
+    "short_treasury_cash": [
+      "SGOV",
+      "BIL",
+      "SHV",
+      "SHY",
+      "SCHO",
+      "VGSH",
+      "USFR"
+    ],
+    "technology_sector": [
+      "XLK",
+      "VGT",
+      "FTEC",
+      "IYW"
+    ],
+    "semiconductors": [
+      "SMH",
+      "SOXX",
+      "XSD",
+      "PSI"
+    ],
+    "financials_sector": [
+      "XLF",
+      "VFH",
+      "IYF",
+      "FNCL"
+    ],
+    "health_care_sector": [
+      "XLV",
+      "VHT",
+      "IYH",
+      "FHLC"
+    ],
+    "energy_sector": [
+      "XLE",
+      "VDE",
+      "IYE",
+      "FENY"
+    ],
+    "industrials_sector": [
+      "XLI",
+      "VIS",
+      "IYJ",
+      "FIDU"
+    ],
+    "gold": [
+      "GLD",
+      "IAU",
+      "GLDM",
+      "SGOL"
+    ],
+    "bitcoin": [
+      "IBIT",
+      "FBTC",
+      "GBTC",
+      "BITB",
+      "ARKB"
+    ]
+  },
+  "news": {
+    "note": "Operator 2026-10-27 news methodology (scripts/lib/prospectus/news_gate.py + news_note.py): every run window reviews the items since each report — deterministic relevance gate (issuer / foreign-listing collisions via config/prospectus_symbol_collisions.json, 48h syndication dedupe, catalyst grade/type >= medium), a Haiku read of the uncertain ones (prospectus_news_classify, <= $0.25/day), and a Sonnet CIO note on each material + relevant item (prospectus_cio_news_note, <= $1.50/day; per symbol below). impact thesis/breaker/stop -> one news rewrite per symbol per day (delta; full on a breaker or earnings item; Watch through the batch).",
+    "scopes": [
+      "holding",
+      "watch"
+    ],
+    "per_symbol_note_usd_per_day": 0.1,
+    "max_notes_per_symbol_per_day": 3,
+    "max_news_rewrites_per_day": 1,
+    "classify_max_items": 12,
+    "classify_max_output_tokens": 600,
+    "note_max_output_tokens": 400,
+    "timeout_s": 90,
+    "log_keep": 60
+  }
+}

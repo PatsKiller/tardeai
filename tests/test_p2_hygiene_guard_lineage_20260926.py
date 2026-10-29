@@ -74,7 +74,8 @@ def test_c10_pre_push_consumes_unless_shell_guard_did():
     # 2026-10-21: the consume sits inside a guard_ok branch AFTER the budget decision and the
     # secrets scan, and names the exact grant; a refused push costs no use.
     consume_at = src.index("consume --tier git-push")
-    assert src.index("decide_push(") < consume_at
+    # 2026-10-25 (AGENTS.md 20.4.0 hands-off): the budget decision is one hook_decision(...) call (wraps decide_push).
+    assert src.index("hook_decision(") < consume_at
     assert src.index("check_no_secrets.py") < consume_at
     assert src.index("record_authorized_push") > consume_at
     branch = src[:consume_at].rsplit('if [[ "$guard_ok" == "1"', 1)[1]

@@ -1,8 +1,9 @@
-"""Reader for the macro-release calendar (``MacroCalendar@v1``): may the release train use the 08:00 ET window?
+"""Reader for the macro-release calendar (``MacroCalendar@v1``): does a weekday have an 08:30 ET macro release?
 
 Operator ruling 2026-10-21: FRED is the primary source, plus a yearly file for FOMC and overrides
 (``config/macro_calendar_overrides.json``); n8n runs the refresh (lane ``macro-calendar-refresh``,
-``scripts/macro_calendar_refresh.py``); the host controller decides; fail closed.
+``scripts/macro_calendar_refresh.py``); readers decide; fail closed. (Built 2026-10-21 for the release train's 08:00
+window; the train was removed 2026-10-27 and CIO / prospectus readers remain.)
 
 The refresh writes ``<state root>/data/runtime/macro_calendar.json``. This module only reads it:
 
@@ -10,11 +11,8 @@ The refresh writes ``<state root>/data/runtime/macro_calendar.json``. This modul
   ``skip_0800`` true: every mapped 08:30 FRED release, an operator ``add``, FOMC only if the operator set it),
   and skip (fail closed)
   when the file is missing, corrupt, older than :data:`MAX_AGE_H` (3 days) or does not cover the day.
-* :func:`verdict` ``(day, now) -> (verdict, reason)`` with the release-train controller's vocabulary
+* :func:`verdict` ``(day, now) -> (verdict, reason)`` with the vocabulary
   (``CLEAR`` / ``MACRO_DAY`` / ``STALE`` / ``UNAVAILABLE``); ``skip_0800`` is ``verdict != CLEAR``.
-* :class:`ReleaseTrainCalendar`: a drop-in for ``release_train_controller.MacroCalendar`` (same ``verdict(day, now)``
-  signature), so ``TrainController(calendar=ReleaseTrainCalendar())`` keeps its ``WINDOW_SKIPPED_MACRO_<verdict>``
-  halts unchanged.
 
 ``day`` is an ET calendar date. A ``datetime`` is accepted too: an aware one is converted to America/New_York first
 (so 2026-11-02T13:00Z is the 08:00 EST window of 2026-11-02), a naive one is taken as ET wall time. Age is measured
@@ -160,15 +158,3 @@ def skip_0800(
     """``(skip, reason)``: True on an 08:30 release day and on every fail-closed case. Never raises."""
     v, why = verdict(day, now, path=path, max_age_h=max_age_h)
     return v != CLEAR, f"{v}: {why}"
-
-
-class ReleaseTrainCalendar:
-    """Drop-in for ``release_train_controller.MacroCalendar``: ``verdict(day, now) -> (verdict, detail)``."""
-
-    SCHEMA = SCHEMA
-
-    def __init__(self, path: Optional[Union[str, Path]] = None, *, max_age_h: float = MAX_AGE_H) -> None:
-        self.path, self.max_age_h = (Path(path) if path is not None else None), max_age_h
-
-    def verdict(self, day: DayLike, now: datetime) -> tuple[str, str]:
-        return verdict(day, now, path=self.path, max_age_h=self.max_age_h)

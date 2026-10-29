@@ -8,6 +8,8 @@ import { etShort, pct, plText, px, type Journey, type JourneysPayload } from '..
 import { replayPayload, responseReason, serverMoney, serverNumber, storedReplayPath } from '../../lib/tradeInViewModel'
 import TradeReplayChart from '../TradeReplayChart'
 import TradeCompareReplay from './TradeCompareReplay'
+import ReadableTime from '../ReadableTime'
+import { readableTimesInText } from '../../lib/readableTime'
 import './TradeInViewLayout.css'
 
 export default function TradeReplayPage({ payload, loading, error }: { payload: JourneysPayload | null; loading?: boolean; error?: string | null }) {
@@ -47,9 +49,9 @@ export default function TradeReplayPage({ payload, loading, error }: { payload: 
           <Stat label="Exit type" value={data.stats.exit_label || 'Unknown'} reason={data.stats.exit_basis} />
           {data.stats.coach_note && <Stat label="Coach note · stored advisory" value={data.stats.coach_note} reason="Matched stored coaching note." />}
         </div>
-        <div className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>Source {data.source.table || 'unavailable'} · observed {data.source.as_of || 'time unavailable'} · {data.source.bar_basis} · collection {data.as_of}</div>
-        {data.markers.length > 0 && <details><summary>Recorded fills, stops and CIO annotations</summary>{data.markers.map((m, i) => <div key={`${m.kind}-${m.at}-${i}`} style={{ padding: '4px 0' }}>{m.label} · {m.source} · {m.at || 'time unavailable'}</div>)}</details>}
-        {data.gaps.map((g, i) => <div key={`${g.source}-${i}`} role="note" className="tradeinview-gap">{g.source}: {g.reason}</div>)}
+        <div className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>Source {data.source.table || 'unavailable'} · observed <ReadableTime value={data.source.as_of} /> · {data.source.bar_basis} · collection <ReadableTime value={data.as_of} /></div>
+        {data.markers.length > 0 && <details><summary>Recorded fills, stops and CIO annotations</summary>{data.markers.map((m, i) => <div key={`${m.kind}-${m.at}-${i}`} style={{ padding: '4px 0' }}>{m.label} · {m.source} · <ReadableTime value={m.at} /></div>)}</details>}
+        {data.gaps.map((g, i) => <div key={`${g.source}-${i}`} role="note" className="tradeinview-gap">{g.source}: {readableTimesInText(g.reason)}</div>)}
       </>}
       {compare && <TradeCompareReplay trades={journeys.map(replayChoice)} initialTradeId={id} storedOnly onClose={() => setCompare(false)} />}
     </section>

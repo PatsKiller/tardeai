@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_desks_display_20261025",
+  "files": [
+    "tests/test_stop_desks_display_20261025.py",
+    "tests/test_desks_a_20261025.py",
+    "tests/test_w7_risk_stop_fields_20261025.py"
+  ],
+  "comment": [
+    "Stop desks (boards 3, 14, 15): one stop category per counted position, resting-stop distance/loss beside the active-stop figure, Defense Your book from the same categories, desk times in ET."
+  ]
+}

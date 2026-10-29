@@ -83,7 +83,7 @@ def test_orchestrator_fallback_rule_equals_policy():
 
 def test_orchestrator_cap_still_catches_hangs_before_the_runner_limit():
     src = (ROOT / "scripts" / "continuous_runner.py").read_text(encoding="utf-8")
-    m = re.search(r"trade_ai_orchestrator\.py.*?subprocess\.run\(cmd, env=os\.environ\.copy\(\), timeout=(\d+)\)",
+    m = re.search(r"def run_full_cycle.*?subprocess\.Popen\(cmd, env=os\.environ\.copy\(\), start_new_session=True\).*?proc\.wait\(timeout=(\d+)\)",
                   src, re.S)
     assert m and int(m.group(1)) == CONTINUOUS_RUNNER_LIMIT_S
     cap_s = _orch_rule(process_reaper.DEFAULT_RULES)["max_runtime_min"] * 60

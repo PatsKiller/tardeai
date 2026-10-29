@@ -1,0 +1,219 @@
+{
+  "status": "PROPOSED_NOT_APPLIED",
+  "task": "DSN-20261026-ask-hourly-P1-T2",
+  "requires_owner_handoff": [
+    "config/llm_process_registry.json",
+    "config/llm_routing_policy.json",
+    "config/anthropic_credit_policy.json",
+    "config/data_source_authority.json"
+  ],
+  "unchanged_caps": {
+    "shared_ask_daily_usd": 5,
+    "question_cap_usd": 0.5,
+    "default_question_projection_usd": 0.25,
+    "parent_native_daily_soft_cap": 30,
+    "parent_native_daily_cost_cap_usd": 5.0,
+    "global_paid_usd": "unchanged; resolved by existing native gate",
+    "promotion_total_usd": 190,
+    "promotion_daily_usd": 10,
+    "aggregate_native_requests_per_day": 30
+  },
+  "process_rows_to_add": [
+    {
+      "id": "cio_ask_reanswer",
+      "name": "Ask CIO hourly/material re-answer",
+      "category": "CIO",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": true
+    },
+    {
+      "id": "cio_ask_critique_deepseek",
+      "name": "Ask CIO deepseek independent critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
+    },
+    {
+      "id": "cio_ask_critique_grok",
+      "name": "Ask CIO grok independent critique",
+      "category": "CIO",
+      "lane_policy": "grok_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "grok"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
+    },
+    {
+      "id": "cio_ask_critique_chatgpt",
+      "name": "Ask CIO chatgpt independent critique",
+      "category": "CIO",
+      "lane_policy": "chatgpt_only",
+      "default_mode": "automated",
+      "description": "Operator-requested sourced research for Ask the CIO, through the existing governed bridge. READ_ONLY_ADVISORY; no tools, broker authority or model-selected quantities.",
+      "allowed_lanes": [
+        "chatgpt"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 5.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "DSN-20261026-ask-hourly-P1-T2",
+      "registered_at": "2026-10-26",
+      "notes": "Child role of the existing shared Ask $5/day and $0.50/question budget, not an additional budget pool. Root Ask ledger reserves the complete panel before dispatch; actuals settle once and unknowns retain their hold. Existing paid global and promotional caps remain unchanged. Native request/USD caps are backstops, not independent spending authority.",
+      "anthropic_first": false
+    }
+  ],
+  "routing_rows_to_add": {
+    "cio_ask_reanswer": {
+      "primary": {
+        "provider": "deepseek",
+        "policy": "FAST"
+      },
+      "health_gate": true,
+      "latency_budget_ms": 150000,
+      "cost_ceiling_usd": 0.5,
+      "transport_failover": false,
+      "anthropic_first": true
+    },
+    "cio_ask_critique_deepseek": {
+      "primary": {
+        "provider": "deepseek",
+        "policy": "FAST"
+      },
+      "health_gate": true,
+      "latency_budget_ms": 150000,
+      "cost_ceiling_usd": 0.5,
+      "transport_failover": false,
+      "anthropic_first": false
+    },
+    "cio_ask_critique_grok": {
+      "primary": {
+        "provider": "grok",
+        "policy": "FAST"
+      },
+      "health_gate": true,
+      "latency_budget_ms": 150000,
+      "cost_ceiling_usd": 0.5,
+      "transport_failover": false,
+      "anthropic_first": false
+    },
+    "cio_ask_critique_chatgpt": {
+      "primary": {
+        "provider": "chatgpt",
+        "policy": "FAST"
+      },
+      "health_gate": true,
+      "latency_budget_ms": 150000,
+      "cost_ceiling_usd": 0.5,
+      "transport_failover": false,
+      "anthropic_first": false
+    }
+  },
+  "anthropic_policy_delta": {
+    "anthropic_only_processes_add": {
+      "cio_ask_deep_research": "Opus primary is a named provider role; never relabel another provider as Opus",
+      "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget"
+    },
+    "excluded_processes_add": {
+      "cio_ask_critique_deepseek": "Independent provider-pinned Ask critique; never enter Anthropic overlay",
+      "cio_ask_critique_grok": "Independent provider-pinned Ask critique; never enter Anthropic overlay",
+      "cio_ask_critique_chatgpt": "Independent provider-pinned Ask critique; never enter Anthropic overlay"
+    }
+  },
+  "server_task_routes_added_in_source": {
+    "cio_ask_reanswer": "cio_ask_reanswer",
+    "cio_ask_critique_deepseek": "cio_ask_critique_deepseek",
+    "cio_ask_critique_grok": "cio_ask_critique_grok",
+    "cio_ask_critique_chatgpt": "cio_ask_critique_chatgpt"
+  },
+  "source_authority_delta": {
+    "domain": "cio_asks",
+    "writer": "scripts/lib/cio_ask_store.py",
+    "writer_changed": false,
+    "cadence": "Hourly evidence checks and governed material-event re-answers; unchanged evidence records a check only",
+    "new_authoritative_store": false,
+    "memory_writer": "existing CIOEnvelopeIntegrator and SpineAskMemory only"
+  },
+  "integration_requirements": [
+    "Apply rows only after the active registry owner accepts normal handoff.",
+    "Root retains one aggregate question/day USD reservation across manual, automated and all critique roles.",
+    "Root atomically reserves four native request slots per panel against the existing aggregate 30/day; settle a smaller observed count only when native_request_count_known is true, otherwise retain four. This is not a request-cap increase.",
+    "Register/sync native process caps and deploy server task maps through the normal reviewed release; this packet performs no runtime mutation.",
+    "Add scheduled n8n process set including the primary and independent critic IDs; otherwise executor binding must refuse. Lane/allowlist/health contracts are owned elsewhere."
+  ]
+}

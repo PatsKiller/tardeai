@@ -8,13 +8,16 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *  shows. "Add to my watchlist" and the ★ on each row → POST /api/v3/watch/commands/mine (the operator star + a
  *  logged watchlist_events row); "Dismiss" → POST /api/v3/watch/commands/suggest-dismiss (recorded in the
  *  watchlist_events log with who and why; 30 days; "Restore" undoes it). Nothing here sizes or orders. */
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
-import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watchProspectsModel'
-import { armedBySymbol, askCioReview, unwrapAny, type ListRow } from '../lib/watchListsModel'
-import { Detail, Row } from './WatchProspects'
+import { TOOLTIPS, alertIntel, proposeSeed, asksCio, type ProspectRow, type ReviewState } from '../lib/watchProspectsModel'
+import { armedBySymbol, unwrapAny, type ListRow } from '../lib/watchListsModel'
+import { Detail, Row, conflictSection } from './WatchProspects'
+import { useCioReview, currentReviewState } from '../components/watch/CioReview'
+import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
+import WatchReloadNotice from '../components/watch/WatchReloadNotice'
 import { laneWord } from './WatchMyList'
 import { MINE_TIPS, mineAction } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
@@ -41,15 +44,40 @@ export default function WatchSuggests() {
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const c = useMemo(() => unwrapAny<any>(raw), [raw])
   const armed = useMemo(() => armedBySymbol(alertsRaw), [alertsRaw])
-  const sel = sp.get('symbol')
-  const setSel = (symbol: string | null) => setSp(p => { if (symbol) p.set('symbol', symbol); else p.delete('symbol'); return p })
+  const detail = useMobilePageDetail('symbol')
+  const sel = detail.id
+  const setSel = (symbol: string | null) => symbol ? detail.open(symbol) : detail.close()
   const [msg, setMsg] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState('')
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
-  const [cioMsg, setCioMsg] = useState('')
+  const cio = useCioReview(refetch)
   const s = c?.suggests
   const rows: ListRow[] = s?.rows || []
+  const pending = rows.filter(r => currentReviewState(r, cio)?.open).map(r => r.symbol).sort().join(',')
+  const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden')
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+  const { data: progressRaw, error: progressError } = useApi<any>(`/api/v3/data-broker/watch-curation?review_status=1&symbols=${encodeURIComponent(pending)}`,
+    10_000, { enabled: !!pending && visible })
+  const progress = useMemo(() => unwrapAny<any>(progressRaw), [progressRaw])
+  const completed = useRef(new Set<string>())
+  const sync = cio.sync
+  useEffect(() => {
+    if (!progress?.ok || !progress.rows) return
+    const states = progress.rows as Record<string, ReviewState>
+    sync(states)
+    for (const [sym, state] of Object.entries(states)) {
+      const key = `${sym}:${state.request_id}:${state.updated_at}`
+      if (state.status === 'answered' && !completed.current.has(key)) {
+        completed.current.add(key)
+        setBump(b => b + 1)
+      }
+    }
+  }, [progress, sync])
   const selected = rows.find(r => r.symbol === sel) || null
   const say = (sym: string, text: string) => setMsg(m => ({ ...m, [sym]: text }))
 
@@ -78,6 +106,11 @@ export default function WatchSuggests() {
     setBusy('')
   }
   const onStep = (r: ProspectRow) => {
+    if (asksCio(r.next_action.kind)) {
+      setSel(r.symbol)
+      if (!currentReviewState(r, cio)?.open) void cio.ask(r, conflictSection(r).findings[0]?.key)
+      return
+    }
     setSel(r.symbol)
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
@@ -93,6 +126,10 @@ export default function WatchSuggests() {
   const skipped = s?.skipped || {}
   return (
     <div data-testid="watch-suggests" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
+      <WatchReloadNotice />
+      {pending && (progressError || progress?.ok === false) && <div role="status" style={{ color: TOKENS.warning }}>
+        CIO progress unavailable — {progress?.error || progressError}. Your recorded request is retained.
+      </div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <span style={{ fontSize: TYPE.base + 1, color: TOKENS.text[1] }} title={`Ranking: ${c.ranking?.label} — curator run ${c.ranking?.as_of || '—'}. Same list as Watch › Full universe.`}>
           Top <b>{s?.n}</b> of <b>{s?.eligible}</b> eligible from the Full universe ranking ({s?.ranked} ranked)
@@ -130,7 +167,7 @@ export default function WatchSuggests() {
               return (
                 <div key={r.symbol} data-testid="suggest-row" data-symbol={r.symbol}>
                   <Row r={{ ...r, why: `${sg.status === 'listed' ? sg.reason : `#${sg.universe_rank} · ${sg.status}: ${sg.reason}`}${sg.top_factor ? ` · ${sg.top_factor}` : ''} · ${laneWord(r.lane)}` }}
-                    selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0}
+                    selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0} cio={cio}
                     onMineChanged={m => { say(r.symbol, m); setBump(b => b + 1) }}
                     extra={<>
                       <button type="button" disabled={busy === r.symbol} onClick={() => add(r)} data-testid="suggest-add" style={btn('success')}
@@ -144,10 +181,13 @@ export default function WatchSuggests() {
             })}
           </div>
         </section>
-        <aside className="watch-card-detail" data-open={!!selected} aria-label="Record" style={{ ...panel, position: 'static', width: 'auto', flex: '1 1 300px', maxWidth: 440, padding: 12 }}>
+        {!detail.mobile && <aside className="watch-card-detail" data-open={!!selected} aria-label="Record" style={{ ...panel, position: 'static', width: 'auto', flex: '1 1 300px', maxWidth: 440, padding: 12 }}>
           {selected && <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...btn('info'), minHeight: 44 }}>Back to list</button>}
-          <Detail r={selected} cioMsg={cioMsg} onAskCio={async r => { setCioMsg('Queuing…'); setCioMsg(await askCioReview(r.symbol, `Watch conflict: ${r.conflicts.map(x => x.summary).join(' | ')}`)) }} />
-        </aside>
+          <Detail r={selected} cio={cio} />
+        </aside>}
+        {detail.mobile && selected && <MobileDetailSheet title={`${selected.symbol} · suggestion record`} onBack={detail.close}>
+          <Detail r={selected} cio={cio} />
+        </MobileDetailSheet>}
       </div>
       {(s?.left || []).length > 0 && (
         <div style={{ ...panel, padding: '8px 12px' }} data-testid="suggest-left">
