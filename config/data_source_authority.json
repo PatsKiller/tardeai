@@ -5378,6 +5378,65 @@
       },
       "retention_days": 400,
       "retention_mode": "archive_then_tripwire; no deletion by this module"
+    },
+    {
+      "domain": "self_heal_fix_log",
+      "status": "proposed",
+      "approval": null,
+      "entity": "Self-heal fixes of release-train, main CI, post-release tester and nightly sweep failures",
+      "title": "Self-heal fix log",
+      "class": "derived",
+      "store": {
+        "file": "data/self_heal/fix_log.jsonl"
+      },
+      "writer": "scripts/self_heal_train_monitor.py",
+      "facts": [
+        "failure detected (source, signature, evidence refs)",
+        "remediation kind (deterministic / claude_code / refused / coordinator)",
+        "attempts and model cost",
+        "fix PR number and head",
+        "outcome (fixed-released / fix-PR-open / escalated / gave-up / ...)",
+        "released SHA and verified_at"
+      ],
+      "cadence": "every 5 min (host timer tradeai-self-heal-train-monitor.timer, once installed); one row per change of a fix",
+      "stale_after_hours": 1,
+      "freshness_sla": "the heartbeat data/runtime/self-heal-train-monitor_last.json ok_at is younger than 15 min; the log itself is append-only and only grows on change",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "self-heal-train-monitor",
+        "note": "lane row proposed in docs/ops/proposals/self-heal-train-monitor-lane-20261025/registry_rows.json (config/lane_registry.json is sha-pinned by the disk-standing packet)"
+      },
+      "projection": "scripts.lib.self_heal_train_intake.project",
+      "readers": [
+        "Ops -> Releases & schedules -> Fixes (GET /api/v2/ops/self-heal-fixes)",
+        "advice digest daily self-heal line",
+        "scripts/self_heal_fixer.py (verified rows recover train-monitor jobs)"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "data/self_heal/train_monitor_state.json"
+          },
+          "role": "derived",
+          "how": "the monitor's working state (open fixes, per-day caps); rebuilt from the log's latest rows"
+        },
+        {
+          "store": {
+            "file": "data/self_heal/fixer_defects.jsonl"
+          },
+          "role": "derived",
+          "how": "N8nCodeDefect@v1 hand-off records the fixer consumes read-only"
+        }
+      ],
+      "no_coverage": "say_so",
+      "proposal": {
+        "proposed_by": "claude-self-heal-train-20261025",
+        "proposed_on": "2026-10-25",
+        "reference": "operator 2026-10-25 'Arm the fixer and also a logger that tracks what was fixed'; docs/ops/SELF_HEAL_TRAIN_FIXER.md; PR #2129",
+        "decision": "Row promotion is an operator act; the store exists only once the timer is installed."
+      },
+      "retention_days": 400,
+      "retention_mode": "append-only; archive_then_tripwire; never deleted by the writer"
     }
   ],
   "data_dictionary": {

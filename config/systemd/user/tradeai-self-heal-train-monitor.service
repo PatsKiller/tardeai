@@ -1,0 +1,26 @@
+# Installed by the release itself: scripts/install_staged_units.py (config/staged_user_units.json, PR #2134) after a
+# --dry-run of the monitor succeeded; no operator step. Requires CURRENT to contain scripts/self_heal_train_monitor.py.
+# Host timer, independent of n8n: the monitor must not depend on what it monitors. It runs SHADOW (detect, log,
+# propose; nothing executed or sent) until AGENTS.md 21.0.0 is ACTIVE with section 28.14 ACTIVE.
+# A missed run is caught by the cron outage watchdog (lane self-heal-train-monitor, heartbeat ok_at).
+
+[Unit]
+Description=Trade AI self-heal train monitor (train / main CI / post-release tester -> fix log, deterministic fixes)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TRADEAI_CANONICAL_SOURCE=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# Agent temp on disk, never /tmp (2026-10-25 /tmp ENOSPC incident).
+Environment=TMPDIR=%h/.cache/tradeai-self-heal
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/tradeai-self-heal
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/self_heal_train_monitor.py --apply
+Nice=10
+MemoryMax=512M
+CPUQuota=50%
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target

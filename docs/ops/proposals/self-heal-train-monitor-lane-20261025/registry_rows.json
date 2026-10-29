@@ -1,0 +1,47 @@
+{
+  "schema": "LaneRegistryProposal@v1",
+  "why": "Operator 2026-10-25: 'Somebody needs to monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md.' Rows to merge into config/lane_registry.json (sha-pinned by docs/ops/packets/disk-standing-apply-20261024: re-pin in the same PR). Not applied here: config/lane_registry.json is claimed by the in-flight watchdog-activation PR.",
+  "add": [
+    {
+      "lane_id": "self-heal-train-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-self-heal-train-monitor.timer (5m)",
+        "match": "tradeai-self-heal-train-monitor.timer",
+        "cadence": "*/5 * * * *",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 0.1,
+      "state": "PAUSED",
+      "state_since": "<install date>",
+      "state_reason": "PROPOSED, NOT INSTALLED. Host systemd timer independent of n8n (the monitor must not depend on what it monitors). Reads main CI of main HEAD (gh GET), release-train outcomes/receipts, post-release tester and nightly sweep receipts; one fix per failure signature; deterministic remediations first; Claude Code fixer hand-off; append-only data/self_heal/fix_log.jsonl. SHADOW until AGENTS.md 21.0.0 section 28.14 is ACTIVE. Installed by the release's staged-units step (config/staged_user_units.json); flip to ACTIVE in the same follow-up that applies this row.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/self-heal-train-monitor_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "tests/test_self_heal_train_monitor_20261025.py (every --apply tick writes ok/ok_at; dry run writes nothing)"
+      },
+      "severity": "High",
+      "note": "Never merges, deploys, edits crontab/systemd, touches broker code, credentials, guard/policy or train files. Fix PRs are ordinary PRs carried by the release train. Not in config/n8n_run_allowlist.json by design (host lane that may push a branch).",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "Host lane like self-heal-fixer: KEEP_ON_CRON keeps it never dispatch-eligible (lane_dispatch._keep_on_cron)."
+    }
+  ],
+  "update": [
+    {
+      "lane_id": "self-heal-fixer",
+      "set": {
+        "scheduler": {
+          "kind": "systemd",
+          "expression": "tradeai-self-heal-fixer.timer (20m after each cycle)",
+          "match": "tradeai-self-heal-fixer.timer"
+        },
+        "expected_cadence_hours": 1.0
+      },
+      "why": "Weekends are the heaviest release days; the never-installed weekday cron line (40 9-18 * * 1-5) would leave them uncovered. Armed only by AGENTS.md 21.0.0 section 28.14 ACTIVE (no guard grant); installed by the release's staged-units step."
+    }
+  ]
+}

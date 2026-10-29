@@ -556,7 +556,11 @@
     "unit:tradeai-telegram-callback-poller.service",
     "unit:tradeai-watch-decision-scheduler.service",
     "unit:tradeai-watch-decision-scheduler.service.d",
-    "unit:tradeai-watch-decision-scheduler.timer"
+    "unit:tradeai-watch-decision-scheduler.timer",
+    "unit:tradeai-self-heal-fixer.service",
+    "unit:tradeai-self-heal-fixer.timer",
+    "unit:tradeai-self-heal-train-monitor.service",
+    "unit:tradeai-self-heal-train-monitor.timer"
    ]
   },
   {
@@ -889,7 +893,8 @@
     "ps:data/active_trader",
     "ps:data/governance",
     "ps:data/options_intent",
-    "ps:data/runtime"
+    "ps:data/runtime",
+    "ps:data/self_heal"
    ]
   }
  ]

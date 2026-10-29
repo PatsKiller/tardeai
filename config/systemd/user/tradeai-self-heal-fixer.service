@@ -1,0 +1,21 @@
+# Installed by the release (staged units, config/staged_user_units.json). Replaces the never-installed cron line of
+# lane self-heal-fixer (registry PAUSED, "40 9-18 * * 1-5") so the fixer also runs on weekends, when the release train
+# is busiest. Arming is AGENTS.md 21.0.0 section 28.14 being ACTIVE at origin/main (no guard grant); until then every
+# cycle is "not armed" and runs no model. Kill switch: data/self_heal/FIXER_DISABLED. It never merges or deploys.
+
+[Unit]
+Description=Trade AI self-heal Claude Code fixer (one fix job per cycle; budget reserved up front)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TMPDIR=%h/.cache/tradeai-self-heal
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/tradeai-self-heal
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/self_heal_fixer.py --cycle --apply
+Nice=10
+TimeoutStartSec=10800
+
+[Install]
+WantedBy=default.target

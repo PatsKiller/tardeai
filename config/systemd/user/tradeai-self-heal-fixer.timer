@@ -1,0 +1,16 @@
+# Installed by the release (staged units). 20 minutes after the previous cycle ends, every day.
+# OnActiveSec gives the first cycle when the timer is enabled mid-uptime; OnUnitInactiveSec then chains the cycles.
+
+[Unit]
+Description=Trade AI self-heal fixer cycle
+
+[Timer]
+OnBootSec=10min
+OnActiveSec=5min
+OnUnitInactiveSec=20min
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-self-heal-fixer.service
+
+[Install]
+WantedBy=timers.target
