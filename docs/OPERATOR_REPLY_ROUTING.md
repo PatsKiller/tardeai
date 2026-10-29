@@ -260,3 +260,69 @@ control that replaces the chokepoint with identity and shows the attention reply
 Sources line (then restores it), the same control for the pending retraction, the static
 single-chokepoint test, the interceptor test (steps aside for a named symbol, still fires for "what's
 ready to buy back"), the receipt field-name test, and exact-string tests for the SCHG footer.
+
+<!-- moved from AGENTS.md 25.0.1 lines 752-798 -->
+## Moved from AGENTS.md (25.0.1 lines 752-798)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+## Moved from AGENTS.md §7 (26.0.0): the reply rules in full
+
+- **Every operator reply leaves through one chokepoint.** `reply_provenance.finalize_operator_reply`
+  adds `Sources:` (stores read with their as-of, the model and its role) and, only when the answer
+  used something outside the Command Center, `Went outside: <what> — <why>`, then the authority
+  tail. A new reply branch calls it; a `_send` of anything but `final_reply` in the converse core
+  fails `tests/test_operator_reply_routing_sources_20260913.py`. Slash and `ack` output is out of scope.
+- **House facts first, and the distance between store and prompt is measured.** Cash, sectors,
+  policy, model portfolio and rotation are read from Trade-AI before any model call.
+  `scripts/lib/operator_evidence_contract.py` (`config/operator_evidence_contract.json`) reports
+  `MISSING_FACT` and `FALSE_EMPTY_CLAIM`. A reply never tells the operator a store is empty when it is not.
+- **Answer the subject that was named.** `scripts/lib/operator_subject_resolver.py` is the one
+  resolver: tickers bind in any case only for the operator's own book, registry symbols only
+  UPPER-CASE or as a `$cashtag` (514 registry symbols are English words); names come from the broker
+  feed; GUIDs are read, never minted. A named symbol gets its own card and subject brief, never the book.
+- **A model may reword a subject brief only if every number survives the check.** The DeepSeek
+  Flash summary (`CIO_SUBJECT_FLASH`) is used only with zero unsupported numbers
+  (`agent_number_grounding`), the symbol, close, mean target and as-of intact, and no order language.
+  Otherwise the deterministic brief is sent.
+- **Promise only what is queued.** A deferred reply names its gap rows and the gap resolver's next
+  run **read from the crontab** — never a copied schedule; no known run time, no follow-up promised.
+  A pending with an ETA stays open until ETA + `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` (default 1),
+  otherwise 2 h; an ask with no resolvable instrument is refused at once. The closing message states
+  the question, how long it was open, why it closed and what was missing.
+- **`resolved` means proven.** `data_gap_registry` is written only by
+  `scripts/lib/writers/data_gap_registry_writer.py`. A queued Maria job leaves the gap `enriching`;
+  `resolved` requires the job `completed` **with a result row** that was not demoted for
+  `UNGROUNDED_NUMBERS`; a dead job reopens the gap and three failures abandon it. *Cause: gaps were
+  marked resolved when a job had only been queued, while most Maria, Steph and risk jobs were failing
+  on a 4,000-token input cap before reaching the model.*
+- **Agent numbers come from the prompt (rule G0).** `cio_agent_contract.GROUNDING_RULE` is in every
+  watchlist agent contract; `agent_number_grounding` checks each number after parsing and, in the
+  default `enforce` mode, demotes an answer with ≥3 unsupported numbers that are ≥50% of those
+  checked to `RESEARCH_MORE` below the 40% gate. `AGENT_NUMBER_GROUNDING_MODE=record` flags only,
+  `off` disables. Live rate: `scripts/report_agent_number_grounding.py`.
+- **Chat memory is keyed by subject GUID and read-only.** `cio_operator_desk_loop.subject_memory()`
+  reads up to 3 earlier exchanges per subject in the same chat within `CIO_SUBJECT_MEMORY_DAYS` (30)
+  from `operator_conversation_turns`, whose one writer is `scripts/lib/inbound_identity_tagger.py`.
+  It is **not** `scripts/lib/comms/subject_memory.py` (`SubjectThread@v1`) — two things share the name.
+
+Traps this work paid for:
+
+- **A second `def` of the same name in one module silently replaces the first.** Python raises
+  nothing and every earlier caller gets the new body. *Cause: a new `_fmt_usd` in the 3,700-line
+  desk module replaced the whole-dollar cash formatter; the price helper is now `_fmt_price`.* Grep
+  `^def <name>(` in the module before adding a helper.
+- **Stored agent results keep an input snapshot, not the prompt that was sent.** A calibration
+  replayed over stored rows checks numbers against less context than the model had, so its flag rate
+  is an **upper bound**, never the live rate. Measure live from `number_grounding` on new rows.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1841-1845 -->
+## Moved from AGENTS.md (25.0.1 lines 1841-1845)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **A pending answer must be joined back by id, not by store.**
+  - Hermes writes `hermes_research_results.jsonl`, never a promoted `hermes_research_intelligence` row.
+  - A pending that waits on the table never closes.
+  - Join path: pending_id → `cio_operator_gap_requests.jsonl` (plan_id, research_id) → `hermes_research_projection.json` → result.
+  - Monitor rule: `RESEARCH_LANDED_UNSENT`.

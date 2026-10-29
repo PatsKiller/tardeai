@@ -457,7 +457,9 @@ def test_bare_tokens_need_identity_confirmation():
 # ------------------------------------------------------------------------------------------------ memory
 def test_memory_append_is_idempotent_and_keyed_by_guid(tmp_path):
     sink = []
-    mem = car.MemoryAppender(ledger_path=tmp_path / "ledger.jsonl", sink=sink.append)
+    mem = car.MemoryAppender(
+        ledger_path=tmp_path / "ledger.jsonl", apply=True, sink=lambda env: sink.append(env) or {"accepted": True}
+    )
     panel = [car.PanelMember("grok", lambda p: model_reply("bullish"), est_usd=0.0)]
     a1 = run(panel=panel, memory=mem)
     n = len(sink)
@@ -465,7 +467,9 @@ def test_memory_append_is_idempotent_and_keyed_by_guid(tmp_path):
     assert {e["subject_guid"] for e in sink} == {TSLA_GUID}
     assert {e["predicate"] for e in sink} == {"ask.source", "ask.answer_version"}
     # same request again, fresh appender over the same ledger: nothing new
-    mem2 = car.MemoryAppender(ledger_path=tmp_path / "ledger.jsonl", sink=sink.append)
+    mem2 = car.MemoryAppender(
+        ledger_path=tmp_path / "ledger.jsonl", apply=True, sink=lambda env: sink.append(env) or {"accepted": True}
+    )
     a2 = run(panel=panel, memory=mem2)
     assert len(sink) == n and a2["memory_receipt"]["skipped_duplicate"] == n
     # no sizing in memory (FORBIDDEN_OBJECT_KEYS / §2A)

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_stop_plan_20261026",
+  "files": [
+    "tests/test_prospectus_stop_plan_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_STOP_PLAN_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_STOP_PLAN_20261026 — Ticker Prospectus stop plan (operator 2026-10-26: \"it should also recommend what the stops are\"): the house protection advisory within the stop policy band beside the broker stop and its state read as Risk reads it (cio_truth.stop_for over stop_last_known), the Stop verdict tile from that state, level supplied as a fact so the writer cannot alter it. Synthetic tickers; no DB, broker or token store."
+  ]
+}

@@ -15,8 +15,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+#: weekly_disk_cleanup_notify.py is declared WHOLE (it was ``:265``): the file has exactly one
+#: send_telegram site, inside run()'s notify branch, which the test below drives. A line pin broke on
+#: the first edit above the call (2026-10-27, a ruff format pass moved it to 271) -- the same failure
+#: test_alarm_fires_disk_pressure_20260921.py records for disk_pressure_guard.py. If a second site is
+#: ever added there, go back to per-site entries.
 COVERS = [
-    "scripts/weekly_disk_cleanup_notify.py:265",
+    "scripts/weekly_disk_cleanup_notify.py",
     "scripts/telegram_command_handler.py:103",
     "scripts/telegram_command_handler.py:793",
 ]

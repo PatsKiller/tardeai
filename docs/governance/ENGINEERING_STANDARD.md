@@ -1,9 +1,9 @@
 # Trade AI Engineering Standard
 
-Status:      PROPOSED (v1.0.0; becomes ACTIVE with the AGENTS.md amendment that links it)
+Status:      ACTIVE (v2.0.0, with AGENTS.md 26.0.0; sections 9 and 10 rewritten for §25.10)
 Owner:       platform
-as_of:       2026-09-25T09:30:00-04:00
-Measured at: base 1c60ecb42 / served 1c60ecb42
+as_of:       2026-10-27T23:30:00-04:00
+Measured at: base 274e531f5 (sections 9–10); other sections as measured at base 1c60ecb42
 
 This standard describes the conventions this repository **actually enforces**, and names each
 enforcer. A rule marked **UNENFORCED** is still expected, but nothing checks it. Don't cite it
@@ -97,13 +97,13 @@ Legend for "Enforced by":
 
 | Rule | Enforced by |
 |---|---|
-| Push only with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + explicit operator intent (`AI_WORK_POLICY.md`); budget 1 (max 2) pushes per tranche | HOOK `.githooks/pre-push`. **Gap:** `.githooks/pre-push:19-35` + `scripts/lib/guard_push_auth.py:30-48` treat **any** active `git-push` guard grant as authorization **and** a budget override, without checking that its reason names this branch. While any git-push grant is active, the budget and branch scope are **not enforced** |
-| Relationship between `bin/guard` and `AI_WORK_POLICY.md` | `AI_WORK_POLICY.md` never mentions `bin/guard`. The policy's authority is `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + operator intent; the hook additionally accepts a guard grant as a substitute (gap above) |
+| Push only with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + explicit operator intent (`AI_WORK_POLICY.md`); per-branch budget = `MAX_WITHOUT_OVERRIDE` in `scripts/lib/tradeai_push_budget.py` (the hook prints it) | HOOK `.githooks/pre-push`, counted per (git common dir, branch). A guard `git-push` grant authorizes only the branches its reason names (unscoped grants are refused unless `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0`), and lifts the cap only when its reason says "override" (2026-10-21) |
+| Relationship between `bin/guard` and `AI_WORK_POLICY.md` | The policy's authority is `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + operator intent; the hook also accepts a scoped guard grant. Grants are issued only by the operator at the keyboard or on Ops → Controls (Telegram remote grants retired, AGENTS.md 23.0.0/26.0.0) |
 | Force-push, history rewrite | user-level `~/.claude/settings.json` (Claude Code only) + GitHub `allow_force_pushes: false`. **Not** `bin/guard` |
 | `cio-hardening` must pass before merge | GitHub branch protection (required; `enforce_admins: true` since 2026-09-25) |
 | `agent-governance` must pass before merge | GitHub branch protection: **required since 2026-09-25** (operator decision), strict, admins included |
-| Only the operator merges; independent review of sensitive paths | **UNENFORCED**: 0 required reviews, code-owner review off (CODEOWNERS added but not required), and `gh pr merge` isn't classified by any hook. Required reviews are deferred until a second reviewer account or bot exists |
-| Deploy = `prepare` then `promote`; verify live SHA and process `cwd` independently | `scripts/cio_phase2_exact_main_deploy.sh` (refuses a hybrid SHA; auto-rollback on failed health). `release-write` grant is **advisory** (the promote command isn't classified by the Cursor hook) |
+| Merges need the operator | Mergify merges only a non-draft PR with `operator-merge` and the four required checks green on its head, after the operator's digest "Approve all" or per-PR approval; held classes (`config/merge_hold_paths.json`) merge only by the operator's own merge (AGENTS.md §25.10). GitHub required reviews stay 0. **Gap:** `PR_MERGE_BOOTSTRAP_GH_MERGE` still lets `scripts/lib/pr_merge_telegram.py` run `gh pr merge` when set (OPEN_ITEMS) |
+| Promotion is the host's, never an agent's | The `deploy_on_main` poller promotes the exact `origin/main` SHA under STOP clear, GlobalReleaseLock and the operator-armed standing deploy delegation (`scripts/lib/deploy_on_main.py`, which runs `cio_phase2_exact_main_deploy.sh`: refuses a hybrid SHA, auto-rollback on failed health). Emergency promote is operator CLI only. Agents verify the live SHA and process `cwd` after promotion |
 
 ## 9a. Hidden mutations in the standard tools (know before you run them)
 
@@ -141,23 +141,24 @@ Legend for "Enforced by":
 5. **Local gates.** Run `bash scripts/ai_local_acceptance.sh` with `.venv/bin` first on PATH, and grep for
    `FAILED|STOP|GATES FAILED` (the exit code lies). Run `regenerate_generated_files.sh` **last**, then
    `check_no_secrets.py --tree`.
-6. **PR.** One push with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` and explicit operator intent. If you use a guard grant, confirm its reason names this branch; the hook doesn't check (§9). The PR body states base/head
-   SHA, files and stores, authority class, contracts, migrations, negative tests, proof, and rollback.
-   Don't claim your own PR was independently reviewed.
-7. **Merge.** Only the operator merges. Stacked PRs: merge the top one. Update a behind branch with a
-   merge commit, never a force-push.
-8. **Deploy verification** (operator-merged SHA only).
-   - Dry run first (AGENTS.md §0 rule 7): state what will restart and what the next run will do.
-   - Commands, cwd `~/tradeai-exact-main-20260827` (`prepare` refuses unless HEAD == origin/main and the
-     tree is clean; `git checkout -- apps/command-center-v3/build-meta.json` first):
-     `git fetch origin && git checkout --detach origin/main && bash scripts/cio_phase2_exact_main_deploy.sh prepare && bash scripts/cio_phase2_exact_main_deploy.sh promote`.
-   - `promote` **always restarts `portfolio-server`** (so a `service` grant is always implied) plus
-     `TRADEAI_CURRENT_BOUND_UNITS`, and fast-forwards the dev tree.
-   - Cron producers run from the **dev tree**, not CURRENT, so they pick up changes on their next
-     natural run, which may be hours or days away (weekday-only or market-hours lines).
+6. **PR.** Push with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` and explicit operator intent, within the per-branch
+   budget. If you use a guard grant, confirm its reason names this branch. The PR title is a plain-English
+   sentence and the body opens with `## In plain English` (what changes, why, who or what it affects, when it
+   takes effect, approval type, risk and fallback; AGENTS.md §28.12, `scripts/check_pr_plain_english.py`). The
+   technical detail then states base/head SHA, files and stores, authority class, contracts, migrations,
+   negative tests, proof, and rollback, and quotes the operator instruction it delivers. A draft PR is a claim; mark it ready only when complete.
+   Never review your own PR.
+7. **Merge.** Agents never merge. Mergify merges after the operator approves; a held-class PR is merged by
+   the operator. Stacked PRs: merge the top one. Update a behind branch with a merge commit, never a
+   force-push.
+8. **After promotion** (the host poller promotes merged `main`; agents never run `prepare`, `promote` or the
+   emergency script).
+   - `promote` restarts `portfolio-server` plus `TRADEAI_CURRENT_BOUND_UNITS`, and fast-forwards the canonical
+     checkout. Units outside that list keep their old code until restarted (an operator `service` decision).
+   - Cron producers resolve against the tree their `cd` names; they pick up changes on their next run, which
+     may be hours or days away. Prove the change with a forced run (AGENTS.md §8.1), not by waiting.
    - Verify: `readlink -f ~/trade-ai-releases/portfolio-server/CURRENT`, `readlink /proc/<MainPID>/cwd`
      for each unit you rely on, and `git -C ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild rev-parse HEAD`.
-     Restart units promote doesn't bind (the CIO desk bot).
 9. **Handoff.** Report what's live versus merged versus local, open operator decisions, and the evidence
    paths.
 
@@ -174,7 +175,7 @@ Goal: change what `/v3/agents` shows for Alex's gate progress, safely.
 | No contract? | If the value has no `Name@vN` contract (e.g. an untyped dict like `api_v2.py:8194` with a hand-written TS type), don't invent one silently. Either add a versioned schema name **with a consumer** (`check_dark_contracts.py` fails a new contract nobody consumes), or record the gap. Never widen an untyped payload without a test pinning its shape | `python3 scripts/check_dark_contracts.py --fail-on-new` |
 | Render `as_of` | Reuse `apps/command-center-v3/src/lib/surfaceFreshness.ts` (`parseTimestamp` :41, `tradeAiSurfaceFreshness` :87). Flag `last_updated` strings with no timezone as ambiguous instead of guessing | `npm run build` |
 | Trace a displayed value | Pick the Alex row on `/v3/agents` → find its field in the API JSON → find which `maturity_observability` function set it → confirm the catalog/bridge input and its `as_of` | if a step can't be followed, file it as a gap |
-| Grants | Code: none beyond git-push for the PR. Deploy: `release-write` (+ `service` if a restart is needed) | `bin/guard show` right before acting (another session can replace a grant of the same scope) |
+| Grants | Code: none beyond git-push for the PR (where the guard asks). Deploy: none for agents — promotion is the host's (§25.10) | `bin/guard show` right before acting (another session can replace a grant of the same scope) |
 
 A safe change here: add or propagate `as_of` / `NOT_YET_MEASURED` from the bridge output through
 the observation to the page. Test it at each layer, with a refusal test for a missing measurement,

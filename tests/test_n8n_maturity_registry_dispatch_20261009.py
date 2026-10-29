@@ -517,6 +517,12 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
         # (tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # Approved source registration only: two native inactive Ask proposals, never host cron or live mode.
+        "cio-ask-lifecycle",
+        "cio-ask-material-events",
+        # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 15 min (windows 17:45 / 07:00 ET) dry_run
+        # (tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",
@@ -524,9 +530,8 @@ N8N_NATIVE_SHADOW = frozenset(
         # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
         "cio-portfolio-thesis",
         "advisory-maturity-evidence",
-        # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
-        # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
-        "macro-calendar-refresh",
+        # 2026-10-21 macro-calendar-refresh shadow lane; promoted to canary 2026-10-26
+        # (tests/support/macro_calendar_canary_20261026.py).
         # WP-21 shadow lane; promoted to canary 2026-10-25 (tests/support/cio_prospect_canary_20261025.py).
         # 2026-10-22 operator Gate 4 design: calibration shadow harness, n8n-native report lane, weekdays 12:25
         # dry_run (tests/test_calibration_shadow_harness_20261022.py).
@@ -539,6 +544,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
         # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
         "jsonl-archive-rotate",
+        # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
+        # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
+        "yfinance-info-snapshot",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
@@ -547,6 +555,7 @@ N8N_NATIVE_SHADOW = frozenset(
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
 from tests.support import cio_prospect_canary_20261025 as _CPC  # noqa: E402
+from tests.support import macro_calendar_canary_20261026 as _MCC  # noqa: E402
 
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
 N8N_NATIVE_CANARY = frozenset(
@@ -564,6 +573,8 @@ N8N_NATIVE_CANARY = frozenset(
         "pr-hygiene-audit",
         # 2026-10-25 operator "turn on everything": cio-prospect-shadow shadow -> canary, live_arg --write-shadow.
         *_CPC.LIVE,
+        # 2026-10-26 operator "switch it from test mode to live": macro-calendar-refresh shadow -> canary, live_arg [].
+        *_MCC.LIVE,
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
@@ -578,6 +589,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
     **_CPC.LIVE_ARG,
+    **_MCC.LIVE_ARG,
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
@@ -663,6 +675,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+            if lane in {"cio-ask-lifecycle", "cio-ask-material-events"}:
+                assert row["state"]=="NEVER_SCHEDULED" and allow[lane]["live_arg"] is None, lane
+                assert LD.r1_class_admission(row, allow[lane])==(True, "r1_admitted:llm"), lane
         elif lane in SYSTEMD_TIMER_SHADOW:
             assert sched["kind"] == "systemd" and sched.get("stage") == "shadow", lane
             assert sched["expression"].endswith(".timer"), lane
