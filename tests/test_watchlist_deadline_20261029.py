@@ -29,6 +29,19 @@ def worker(monkeypatch):
 
 
 @pytest.fixture
+def fake_postgres_driver(monkeypatch):
+    """Exercise driver arguments without requiring an installed DB package."""
+    driver, extras = ModuleType("psycopg2"), ModuleType("psycopg2.extras")
+    driver.__path__ = []
+    driver.extras = extras
+    driver.connect = lambda **_kw: pytest.fail("unmocked database connection")
+    extras.RealDictCursor = object
+    monkeypatch.setitem(sys.modules, "psycopg2", driver)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
+    return driver
+
+
+@pytest.fixture
 def fake_alarm(monkeypatch):
     calls = []
     monkeypatch.setattr(deadline.signal, "getitimer", lambda *_: (0, 0))
@@ -216,7 +229,9 @@ def test_dead_connection_reconnects_within_cleanup_budget_and_preserves_claim(wo
     )
 
 
-def test_database_connection_waits_clamp_without_opening_real_database(worker, monkeypatch, fake_alarm):
+def test_database_connection_waits_clamp_without_opening_real_database(
+    worker, monkeypatch, fake_alarm, fake_postgres_driver
+):
     import psycopg2
 
     monkeypatch.setenv("DB_PASSWORD", "synthetic-test-only")
@@ -264,7 +279,9 @@ def test_bridge_provider_receives_remaining_timeout_without_changing_route(worke
     assert calls[0][1] == {"timeout_s": 8, "max_tokens": 200}
 
 
-def test_later_job_is_not_claimed_when_remaining_time_is_too_short(worker, monkeypatch, fake_alarm):
+def test_later_job_is_not_claimed_when_remaining_time_is_too_short(
+    worker, monkeypatch, fake_alarm, fake_postgres_driver
+):
     clock = [0]
     jobs = [
         {"id": f"job-{n}", "symbol": f"FAKE{n}", "requested_agent": "maria", "request_type": "full_analysis"}

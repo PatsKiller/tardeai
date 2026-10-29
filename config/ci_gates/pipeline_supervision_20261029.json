@@ -9,6 +9,6 @@
   ],
   "anchor": "PIPELINE_SUPERVISION_20261029",
   "comment": [
-    "PIPELINE_SUPERVISION_20261029 \u2014 independent repair ownership, cross-launcher admission, cooperative deadlines and resumable Finviz refresh. Hermetic: no production services, credentials, DB or providers."
+    "PIPELINE_SUPERVISION_20261029 — independent repair ownership, cross-launcher admission, cooperative deadlines and resumable Finviz refresh. Hermetic: no production services, credentials, DB or providers."
   ]
 }

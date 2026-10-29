@@ -23,7 +23,8 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.lib import orchestrator_admission as admission  # noqa: E402
 
-COVERS = ["scripts/lib/orchestrator_admission.py", "scripts/trade_ai_orchestrator.py", "scripts/continuous_runner.py"]
+# Functional lifecycle coverage only: alarm send sites are mocked, not fired.
+FUNCTIONAL_TARGETS = ["scripts/lib/orchestrator_admission.py", "scripts/trade_ai_orchestrator.py", "scripts/continuous_runner.py"]
 
 
 def test_one_writer_and_next_owner_use_the_same_inode(tmp_path):
