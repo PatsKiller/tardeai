@@ -8,6 +8,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import JobsHealth from '../components/JobsHealth'
+import DeployInFlightBoard from '../components/DeployInFlightBoard'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
@@ -71,6 +72,7 @@ function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
   const nx = s.next_release.value as NextRelease | null
   return <div style={{ display: 'grid', gap: 12 }}>
+    <DeployInFlightBoard />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),
