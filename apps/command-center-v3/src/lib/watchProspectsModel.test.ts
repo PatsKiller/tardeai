@@ -5,7 +5,7 @@ import { FIXTURE as FIX } from '../fixtures/watchProspects.fixture.ts'
 import {
   LANE_ORDER, alertIntel, allRows, conflictCount, convictionTone, drawers, headerChips, laneById, orphanWhy,
   proposeSeed, stanceTone, stepTone, tieAlerts, TOOLTIPS, unwrap, type ProspectRow,
-  asksCio, cioReviewNote, reviewStateText, reviewStateTone,
+  asksCio, cioReviewNote, reviewStateText, reviewStateTone, cioMemoryState,
 } from './watchProspectsModel.ts'
 
 let failed = 0
@@ -118,6 +118,21 @@ eq('note carries the gap', cioReviewNote({ conflicts: [], next_action: { kind: '
   'Watch: no CIO view — CIO stance missing')
 eq('note carries the flags', cioReviewNote({ conflicts: [{ kind: 'k', summary: 'A vs B', a: { value: 1, source: null, at: null }, b: { value: 2, source: null, at: null } }],
   next_action: { kind: 'resolve_conflict', label: 'x', reason: 'r' } }), 'Watch conflict: A vs B')
+
+// CIO-memory linkage (batch 31 follow-up): a review either is linked into the canonical CIO record,
+// is recorded but awaiting the CIO decision, or is not linked — never a silent nothing.
+eq('no request → no memory chip', cioMemoryState(null), null)
+eq('none status → no memory chip', cioMemoryState({ status: 'none', label: 'Not requested', open: false }), null)
+eq('publication_verified is tracked in CIO memory', cioMemoryState({ status: 'answered', label: 'x', open: false, publication_verified: true }),
+  { tone: 'success', label: 'tracked in CIO memory' })
+eq('research_link_verified is CIO decision pending', cioMemoryState({ status: 'answered', label: 'x', open: false, research_link_verified: true }),
+  { tone: 'info', label: 'research recorded · CIO decision pending' })
+eq('answered without linkage is pending', cioMemoryState({ status: 'answered', label: 'x', open: false }),
+  { tone: 'warning', label: 'research published · CIO linkage pending' })
+eq('queued is not yet linked', cioMemoryState({ status: 'queued', label: 'x', open: true }),
+  { tone: 'neutral', label: 'not yet linked to CIO memory' })
+eq('publication_verified beats research_link_verified', cioMemoryState({ status: 'answered', label: 'x', open: false, publication_verified: true, research_link_verified: true }),
+  { tone: 'success', label: 'tracked in CIO memory' })
 
 if (failed) { console.error(`watchProspectsModel: ${failed} failure(s)`); process.exit(1) }
 console.log('watchProspectsModel: all checks passed')

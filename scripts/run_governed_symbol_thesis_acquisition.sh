@@ -198,6 +198,7 @@ flock -n -E 99 "$LOCK" timeout "$TIMEOUT_SEC" "$PY" "$RUNNER" \
   --max-llm "$MAX_LLM" \
   "${SYM_ARGS[@]}" \
   --apply \
+  --enqueue-refresh \
   >>"$LOG" 2>&1
 rc=$?
 set -e
