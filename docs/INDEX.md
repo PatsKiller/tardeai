@@ -1854,6 +1854,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DISCARDED_MEMBER_AGGREGATES_2026-08-30.md` | Aggregates that discard their members — system inventory |
 | `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) |
 | `docs/ops/CIO_GATE_EXECUTION_HISTORY_2026-08-30.md` | CIO Gate Execution History — 2026-08-30 |
+| `docs/ops/CIO_GO_LIVE_MONITORING_PROPOSAL_2026-10-29.md` | CIO go-live — monitoring proposal (2026-10-29) |
+| `docs/ops/CIO_GO_LIVE_RUNTIME_VERIFY_2026-10-29.md` | CIO go-live — runtime verification runbook (2026-10-29) |
 | `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) |
 | `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 |
