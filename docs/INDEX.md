@@ -746,6 +746,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 1: Findings |
 | `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan |
+| `docs/audits/CIO_READINESS_GO_LIVE_AUDIT_2026-10-28.md` | CIO review / decision-authority readiness — go-live audit |
 | `docs/audits/CIO_REVIEW_DECISION_AUTHORITY_RCA_2026-10-28.md` | CIO Review / decision-authority chain — root-cause investigation (Phase 0) |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche |
@@ -1855,6 +1856,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DISCARDED_MEMBER_AGGREGATES_2026-08-30.md` | Aggregates that discard their members — system inventory |
 | `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) |
 | `docs/ops/CIO_GATE_EXECUTION_HISTORY_2026-08-30.md` | CIO Gate Execution History — 2026-08-30 |
+| `docs/ops/CIO_GO_LIVE_OPERATOR_APPROVALS_2026-10-28.md` | CIO review go-live — what is actually left (accurate) |
 | `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) |
 | `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 |
