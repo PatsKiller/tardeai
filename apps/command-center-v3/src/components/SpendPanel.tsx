@@ -88,7 +88,7 @@ export default function SpendPanel() {
         </div>
       </div>
 
-      {error || read.stale ? <div role="alert" style={{ ...statePill('red'), marginBottom: 8 }}>Spend {report ? 'out of date' : 'unavailable'}: {error || 'refresh pending'}. Retrying automatically.</div> : null}
+      {error || read.stale ? <div role="alert" style={{ ...statePill('red'), marginBottom: 8, maxWidth: '100%', whiteSpace: 'normal' }}>Spend {report ? 'out of date' : 'unavailable'}: {error || 'refresh pending'}. Retrying automatically.</div> : null}
       {loading && !report ? <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading spend…</div> : null}
 
       {t ? (

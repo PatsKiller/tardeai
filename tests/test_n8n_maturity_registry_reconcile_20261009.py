@@ -210,7 +210,9 @@ def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     # + L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (siem-active-flip 2026-10-11; ACTIVE with install_line)
     # + L1065 tmp-scratch-cleanup (weekly /tmp sweep, installed 2026-10-14 under cron grant 0cbad9ec6cef7eb6)
     # + L639 the scalp hot-list line (2026-10-14 scalp-premarket-onboard: its own row scalp-hot-list)
-    assert len(lines) == 446
+    # - L1053 check_n8n_workflow_drift.py (2026-10-27: withdrawn from the approved install, never on the host; the
+    #   lane n8n-workflow-drift-check is the user timer tradeai-n8n-drift-watch.timer)
+    assert len(lines) == 445
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad
@@ -251,7 +253,9 @@ def test_no_active_row_maps_nothing(inputs, committed):
             # the install date (> captured_on) and live evidence; the live gate (check_lane_registry --fail-on-new)
             # is what proves it maps a real unit. Anything else must still map the snapshot.
             post = r.get("post_snapshot_install") or {}
-            if post.get("installed_on", "") > str(inputs["snap"].get("captured_on") or "2026-10-09")[:10] and post.get("evidence"):
+            if post.get("installed_on", "") > str(inputs["snap"].get("captured_on") or "2026-10-09")[:10] and post.get(
+                "evidence"
+            ):
                 continue
             if not names & units:
                 empty.append(r["lane_id"])
@@ -438,8 +442,11 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             or (r.get("state") == "PAUSED" and r.get("incident") == "INC-20261014-SPCX")
             # ...and resumed by the operator 2026-10-22 (resume-operator.sh; "approve all" item D): stays adopted so
             # the generator keeps the resume provenance instead of re-deriving a bare row
-            or (r.get("state") == "ACTIVE" and r.get("incident") == "INC-20261014-SPCX"
-                and r.get("state_since") == "2026-10-22")
+            or (
+                r.get("state") == "ACTIVE"
+                and r.get("incident") == "INC-20261014-SPCX"
+                and r.get("state_since") == "2026-10-22"
+            )
             # desk truth 2026-10-22: PAUSED (cron line commented) + f09_staged record (staged n8n lane, mode off)
             or "f09_staged" in r
         )

@@ -3,7 +3,7 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
-import ReleaseTrainTab from './ReleaseTrainTab'
+import DeploysPanel from '../components/home/DeploysPanel'
 import AgentClaimsPanel from './AgentClaimsPanel'
 import WorkBoardPanel from './WorkBoardPanel'
 import WorkPipelinePanel from './WorkPipelinePanel'
@@ -31,15 +31,15 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
   ['consumed', 'consumed'], ['refused', 'refused'], ['failed', 'failed'],
 ]
 
-// Tabs: the events ledger (events + outbox + approvals), the n8n migration board (stream G, 2026-10-08) and the
-// release train (Release Train v2, 2026-10-21: queue, trains, history, census, STOP RELEASES) and the agent claim board
+// Tabs: the events ledger (events + outbox + approvals), the n8n migration board (stream G, 2026-10-08), Deploys
+// (?tab=release; the retired release train's tab was replaced by the Deploys panel 2026-10-27) and the agent claim board
 // (2026-10-22: who's working on what — Claude, Codex, Cursor sessions and the files each has claimed).
 // 2026-10-23 (operator, 13:15 ET): the Work pipeline — one row per work item, incubator stages with RAG and next step —
 // is the DEFAULT tab; the per-file claim table is kept as "Files held" (?tab=agents); Automation moved to ?tab=operations.
 // 2026-10-25 (board 16, batch 27): ?tab=jobs embeds the one Jobs & health view (same component and data as /ops/jobs).
 const TABS = ['pipeline', 'operations', 'jobs', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: 'Files held', work: 'Work board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Deploys', agents: 'Files held', work: 'Work board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', minHeight: 44, borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -121,14 +121,12 @@ export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNod
         ))}
       </nav>
       {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
-              release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
+        <div style={{ display: 'grid', gap: 12 }} data-testid="coordination-deploy-tab">
           <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Serving release, what releases next, train windows, shipped history, release errors and the next 3 hours of n8n and cron are on one page.</div>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Mergify merges to main on the ET schedule; the host poller promotes. Deploy STOP is below; resume and the kill switch live on Ops → Controls. Serving pin and history are on Releases &amp; schedules. Emergency promote is host CLI only.</div>
             <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
           </div>
-          <ReleaseTrainTab />
+          <DeploysPanel />
         </div>
       ) : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">

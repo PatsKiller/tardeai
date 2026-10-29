@@ -66,7 +66,9 @@ test.describe('phone: My questions grouped', () => {
       await expect(page.getByTestId('mq-group')).toHaveCount(sec.groups.length)
       const tsla = page.locator('[data-testid="mq-group"]', { hasText: 'TSLA' })
       await expect(tsla.getByTestId('mq-group-counts')).toHaveText('2 questions · 1 thread')
-      await expect(tsla.getByTestId('mq-group-memory')).toContainText('CIO memory: CIO prospect store not live (shadow)')
+      await expect(tsla.getByTestId('mq-group-memory')).toContainText('Question memory: answer recorded')
+      await expect(tsla.getByTestId('mq-group-memory')).toContainText('Current stance: unavailable (shadow record)')
+      await expect(tsla.getByTestId('ask-research-lifecycle')).toContainText('Last checked: not measured')
       for (const gb of ['sector', 'theme', 'date', 'none', 'security']) {
         await tapTarget(page.getByTestId(`mq-group-${gb}`))
         await expect(page.getByTestId(`mq-group-${gb}`)).toHaveAttribute('aria-pressed', 'true')

@@ -2,12 +2,15 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
+import { protectionHref } from '../lib/stopDisplay'
 
 export const usd = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : 'Not available'
 export const pct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : 'Not measured'
 const fractionPct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 2 }) : 'Not measured'
 export const text = (v: unknown, gap = 'Not available') => v == null ? gap : String(v)
 const localHref = (v: unknown) => typeof v === 'string' ? v.replace(/^\/v3(?=\/|$)/, '') || '/' : null
+/** Do-now links: a protection item opens its own position on Risk (account+symbol), others go where the CIO says. */
+const itemHref = (item: any) => protectionHref(item) || localHref(item.href || item.action?.where)
 export const when = (v: unknown) => {
   if (!v) return 'Time unavailable'
   const raw = String(v)
@@ -46,6 +49,9 @@ export function W7HomePanels({ data }: { data: any }) {
   const items: any[] = todo.items || []
   const nearest = stops.nearest
   const awaiting: any[] = stops.awaiting_fill || []
+  const filledAwaitingSync: any[] = stops.filled_awaiting_sync || []
+  const stopsGap = stops.gap ? (typeof stops.gap === 'string' ? stops.gap : stops.gap.reason)
+    : stops.stale ? `Stop data is out of date — counts are from the last broker stop read${stops.last_broker_read_label ? ` on ${stops.last_broker_read_label}` : ''}.` : null
   const favoured = data.sectors?.favoured
   return <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))' }}>
     <W7Panel title="Do now" testId="home-do-now">
@@ -57,17 +63,20 @@ export function W7HomePanels({ data }: { data: any }) {
           {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
           <div style={{ color: TOKENS.text[2], marginTop: 4 }}>{item.reason || item.why || item.detail}</div>
           {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
-        </div>{localHref(item.href || item.action?.where) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={localHref(item.href || item.action?.where)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
+        </div>{itemHref(item) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={itemHref(item)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
       </div>)}
     </W7Panel>
     <div style={{ display: 'grid', gap: 12 }}>
       <W7Panel title="Protection">
         <div style={grid}>
           <W7Metric label="With an active broker stop" value={stops.active_count != null && stops.position_count != null ? `${stops.active_count} of ${stops.position_count}` : text(stops.active_count)} detail={stops.pending_count == null ? undefined : `${stops.pending_count} pending activation`} />
-          <W7Metric label="Awaiting fill" value={awaiting.length ? awaiting.map(p => p.symbol).join(', ') : text(stops.awaiting_fill_count)} />
+          <W7Metric label="Awaiting fill" value={awaiting.length || filledAwaitingSync.length
+            ? [...new Set([...awaiting, ...filledAwaitingSync].map(p => p.symbol))].join(', ') : text(stops.awaiting_fill_count)}
+            detail={filledAwaitingSync.length ? <span data-testid="home-filled-awaiting-sync">{filledAwaitingSync.map(p => `${p.symbol}${p.account_label ? ` (${p.account_label})` : ''}`).join(', ')}: stop filled · awaiting holdings sync</span> : undefined} />
           <W7Metric label="Nearest active stop" value={nearest ? `${nearest.symbol} ${pct(nearest.distance_pct)}` : 'Not available'} />
         </div>
-        {stops.gap && <W7Gap>{typeof stops.gap === 'string' ? stops.gap : stops.gap.reason}</W7Gap>}
+        {stops.last_broker_read_label && <p data-testid="home-stops-as-of" style={{ color: TOKENS.text[2], margin: '8px 0 0' }}>As of last broker read {stops.last_broker_read_label}</p>}
+        {stopsGap && <W7Gap>{stopsGap}</W7Gap>}
         <p><Link to="/risk" style={linkStyle}>All positions and stops → Risk</Link></p>
       </W7Panel>
       <W7Panel title="CIO view of the market">
@@ -82,7 +91,7 @@ export function W7HomePanels({ data }: { data: any }) {
         <div style={line}><Link to="/trading?tab=Proposals" style={linkStyle}>Approvals</Link><b style={mono}>{text(approvals.total)}</b></div>
         {approvals.gap && <W7Gap>{typeof approvals.gap === 'string' ? approvals.gap : approvals.gap.reason}</W7Gap>}
         <div style={line}><Link to="/cio/questions" style={linkStyle}>My questions</Link><span>Review replies →</span></div>
-        <div style={line}><Link to="/releases" style={linkStyle}>Releases</Link><span>Review readiness →</span></div>
+        <div style={line}><Link to="/system/releases" style={linkStyle}>Releases</Link><span>Review readiness →</span></div>
       </W7Panel>
     </div>
   </div>

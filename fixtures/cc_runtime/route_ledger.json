@@ -255,12 +255,24 @@
       "path": "ops/jobs"
     },
     {
+      "url": "/v3/ops/incidents",
+      "path": "ops/incidents"
+    },
+    {
       "url": "/v3/approvals",
       "path": "approvals"
     },
     {
       "url": "/v3/policy",
       "path": "policy"
+    },
+    {
+      "url": "/v3/conflicts/rules",
+      "path": "conflicts/rules"
+    },
+    {
+      "url": "/v3/prospectus",
+      "path": "prospectus"
     }
   ],
   "spa_routes": [
@@ -443,10 +455,19 @@
       "route": "/v3/ops/jobs"
     },
     {
+      "route": "/v3/ops/incidents"
+    },
+    {
       "route": "/v3/approvals"
     },
     {
       "route": "/v3/policy"
+    },
+    {
+      "route": "/v3/conflicts/rules"
+    },
+    {
+      "route": "/v3/prospectus"
     }
   ],
   "apis": [

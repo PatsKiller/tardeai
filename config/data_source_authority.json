@@ -3602,7 +3602,11 @@
         "ask thread",
         "ask tracking change",
         "ask channel link",
-        "ask research cost"
+        "ask research cost",
+        "evidence check observation time",
+        "research reservation and actual-usage settlement",
+        "shared memory acknowledgement",
+        "outbox delivery readback"
       ],
       "store": {
         "file": "data/cio/cio_ask_events.jsonl",
@@ -3617,10 +3621,12 @@
       "stale_after_hours": 168,
       "freshness_sla": "appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event",
       "refresh_lane": {
-        "runner": "host",
-        "lane": "cio-ask-reanswer (proposed, shadow)",
+        "runner": "n8n",
+        "lane": "cio-ask-lifecycle",
+        "material_lane": "cio-ask-material-events",
+        "stage": "source_registered_inactive",
         "never_list": false,
-        "note": "the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)"
+        "note": "Operator requests remain event-driven; native hourly evidence checks and five-minute material polling are source-registered but await reviewed contract admission and deployment. Existing question-ledger retention SLA is distinct from the one-hour per-thread evidence-check clock."
       },
       "projection_status": "to_build",
       "readers": [
@@ -3655,7 +3661,146 @@
         "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md §26.2, §7A.",
         "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
       },
-      "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection."
+      "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection.",
+      "lifecycle_contract": {
+        "check_interval_seconds": 3600,
+        "check_grace_seconds": 900,
+        "timezone": "America/New_York",
+        "last_checked_at": "ask.check_finished.checked_at",
+        "last_answer_at": "AskAnswer.produced_at",
+        "writer_unchanged": true,
+        "no_new_authoritative_store": true
+      }
+    },
+    {
+      "domain": "anthropic_promotional_credit",
+      "class": "native",
+      "store": {
+        "file": "runtime/provider_cost/anthropic_credit.jsonl"
+      },
+      "writer": "scripts/lib/anthropic_credit.py",
+      "cadence": "before each governed promotional request; settle after usage; existing llm-provider-health observations",
+      "stale_after_hours": 0.25,
+      "required_fields": [
+        "promotion_id",
+        "sequence",
+        "previous",
+        "event",
+        "at",
+        "checksum"
+      ],
+      "backup": [
+        "durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock"
+      ],
+      "no_coverage": "Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_note": "The runtime journal is excluded from current data offsite backup. No backup proof is claimed. Durable cap backstop uses existing PostgreSQL reservation table. Retain this evidence through promotion expiry and operator reconciliation; no automated purge. Operational accessor is a shared read-only helper used by existing consumption/health endpoints, not an admitted data-broker projection id.",
+      "entity": "LLM operational credit",
+      "title": "Anthropic promotional-credit authorization evidence",
+      "facts": [
+        "credit authorization",
+        "actual usage settlement",
+        "ambiguous holds",
+        "provider fallback reasons"
+      ],
+      "freshness_sla": "Each request is authorized before dispatch; provider-health projection refreshed on existing monitor cadence; no call on unreadable/corrupt evidence",
+      "refresh_lane": {
+        "runner": "event",
+        "lane": "llm-provider-health",
+        "note": "Existing provider-health lane and application dispatch; no new schedule or activation"
+      },
+      "readers": [
+        "LLM Spend",
+        "Health",
+        "Agent Runtime",
+        "daily digest"
+      ],
+      "derived_copies": [],
+      "proposal": {
+        "proposed_by": "codex-anthropic-first-20261025",
+        "proposed_on": "2026-10-25",
+        "reference": "Operator-approved build: llm-anthropic-first-20261025/REQUIREMENTS.md sections 4 and 4a. New journal source admission remains proposed for operator review before release.",
+        "decision": "Superseded by explicit operator activation instruction 2026-10-25; live authentication and canary still require receipt evidence."
+      },
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-25",
+        "reference": "Operator in this session: \"what disable enable and test call\", following deployed PR #2181. Authorizes the promotional router and its required append-only credit authorization journal. This records activation intent, not a successful authentication/canary or backup proof.",
+        "scope": "Anthropic promotional calls under unchanged $190 total/$10 UTC-day/per-call caps and expiry; CreditBook is the only journal writer; existing operational monitoring reads its projection. No broker/order/stop authority, cap increase, new schedule or secret reads."
+      },
+      "dictionary": {
+        "writer_ceiling": 1,
+        "surface_read_ceilings": {}
+      },
+      "accessor": "scripts/lib/anthropic_monitoring.py::snapshot"
+    },
+    {
+      "domain": "operator_decisions",
+      "entity": "Operator document reviews, decisions and rule feedback",
+      "title": "Approvals Center operator decision ledger",
+      "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-27",
+        "reference": "Operator in the coordinator Claude Code session 2026-10-27, verbatim: \"D1–D7 as recommended\" (D5 = turn on the operator_decisions store) and \"Markups approved.\" for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)",
+        "scope": "authoritative ledger for operator document reviews, decisions (including MERGE decisions bound to a PR head SHA) and rule feedback; single writer scripts/lib/operator_approvals.py"
+      },
+      "facts": [
+        "exact document reviewed",
+        "operator decision",
+        "per-change read marker",
+        "rule feedback",
+        "evidence-backed enforcement audit proposals (no decisions)"
+      ],
+      "store": {
+        "file": "governance/operator_decisions.jsonl"
+      },
+      "writer": "scripts/lib/operator_approvals.py",
+      "writer_status": "single",
+      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
+      "stale_after_hours": 720,
+      "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "operator document review",
+        "never_list": true,
+        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
+      },
+      "projection": null,
+      "readers": [
+        "Approvals Center",
+        "Rulebook",
+        "CIO approval truth projection",
+        "agents (read only)"
+      ],
+      "derived_copies": [],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "proposal": {
+        "proposed_by": "codex-w11-approvals-20261024",
+        "proposed_on": "2026-10-24",
+        "reference": "DSN-20261024-approvals; boards 19-21 build instruction",
+        "decision": "Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval."
+      },
+      "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions.",
+      "projection_note": "No broker-catalog projection: read through the approved accessor scripts/lib/operator_approvals_api.py::queue_summary (Approvals Center API), not the data broker."
     }
   ],
   "proposed_domains": [
@@ -5127,62 +5272,6 @@
       }
     },
     {
-      "domain": "operator_decisions",
-      "status": "proposed",
-      "entity": "Operator document reviews, decisions and rule feedback",
-      "title": "Approvals Center operator decision ledger",
-      "class": "native",
-      "facts": [
-        "exact document reviewed",
-        "operator decision",
-        "per-change read marker",
-        "rule feedback",
-        "evidence-backed enforcement audit proposals (no decisions)"
-      ],
-      "store": {
-        "file": "governance/operator_decisions.jsonl"
-      },
-      "writer": "scripts/lib/operator_approvals.py",
-      "writer_status": "single",
-      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
-      "stale_after_hours": 720,
-      "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
-      "refresh_lane": {
-        "runner": "host",
-        "lane": "operator document review",
-        "never_list": true,
-        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
-      },
-      "projection": "scripts/lib/operator_approvals_api.py::queue_summary",
-      "readers": [
-        "Approvals Center",
-        "Rulebook",
-        "CIO approval truth projection",
-        "agents (read only)"
-      ],
-      "derived_copies": [],
-      "primary_provider": "native",
-      "backup": [],
-      "retired": [],
-      "no_coverage": "say_so",
-      "on_gap": [
-        {
-          "vector": "operator_ask",
-          "cost_class": "free",
-          "max_per_day": 1,
-          "expected_seconds": 0
-        }
-      ],
-      "approval": null,
-      "proposal": {
-        "proposed_by": "codex-w11-approvals-20261024",
-        "proposed_on": "2026-10-24",
-        "reference": "DSN-20261024-approvals; boards 19-21 build instruction",
-        "decision": "Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval."
-      },
-      "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions."
-    },
-    {
       "domain": "conflict_ledger",
       "status": "proposed",
       "approval": null,
@@ -5235,6 +5324,57 @@
         "proposed_on": "2026-10-24",
         "reference": "conflict-engine-build.md; DESIGN sections7/12; EXCEPTIONS_MATRIX R4",
         "decision": "Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts."
+      },
+      "retention_days": 400,
+      "retention_mode": "archive_then_tripwire; no deletion by this module"
+    },
+    {
+      "domain": "conflict_rule_proposals",
+      "status": "proposed",
+      "approval": null,
+      "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
+      "title": "Conflict rule proposals and rulebook amendments",
+      "class": "derived",
+      "store": {
+        "file": "data/conflicts/rule_proposals.jsonl"
+      },
+      "writer": "scripts/lib/conflicts/proposals.py",
+      "facts": [
+        "unmatched conflict pattern",
+        "AI rule proposal",
+        "operator proposal decision",
+        "rulebook amendment"
+      ],
+      "cadence": "conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions",
+      "stale_after_hours": 24,
+      "freshness_sla": "a pending proposal is announced once (grouped P2); no produced evidence means a gap",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "conflict-rule-proposals",
+        "note": "schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)"
+      },
+      "projection": "scripts.lib.conflicts.proposals.collection",
+      "readers": [
+        "Conflict rules page",
+        "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
+        "GET /api/v3/conflicts/proposals",
+        "conflict-resolver (effective rulebook)"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "data/conflicts/rulebook_amendments.jsonl"
+          },
+          "role": "derived",
+          "how": "hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten"
+        }
+      ],
+      "no_coverage": "say_so",
+      "proposal": {
+        "proposed_by": "claude-conflict-proposals-20261025",
+        "proposed_on": "2026-10-25",
+        "reference": "operator 2026-10-25 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'; docs/ops/CONFLICT_RULE_PROPOSALS.md",
+        "decision": "Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts."
       },
       "retention_days": 400,
       "retention_mode": "archive_then_tripwire; no deletion by this module"

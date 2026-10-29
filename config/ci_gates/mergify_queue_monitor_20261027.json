@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "mergify_queue_monitor_20261027",
+  "files": [
+    "tests/test_mergify_queue_monitor_20261027.py"
+  ],
+  "comment": [
+    "Mergify Dequeued is not a dead end: classify DRAFT_SKIP / REAL_CI_FAIL / CONFLICTS,",
+    "auto-requeue when safe, else wake the claim owner. Pins resubmit path for Checks Failed + Conflicts."
+  ]
+}

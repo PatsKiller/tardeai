@@ -103,3 +103,16 @@ python scripts/llm_spend_report.py --period daily            # dry run: prints t
 python scripts/llm_spend_report.py --period weekly --send    # sends once per week (ledger)
 curl -s 'http://127.0.0.1:7777/api/v2/consumption/spend?period=month' | jq .data.report.totals
 ```
+
+<!-- moved from AGENTS.md 25.0.1 lines 2827-2833 -->
+## Moved from AGENTS.md (25.0.1 lines 2827-2833)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+### This box runs US Eastern (`America/New_York`) and observes DST
+
+| | EDT (Mar–Nov, UTC−4) | EST (Nov–Mar, UTC−5) |
+|---|---|---|
+| Peak block 1 | 21:00–00:00 | 20:00–23:00 |
+| Peak block 2 | 02:00–06:00 | 01:00–05:00 |
+| Off-peak | 00:00–02:00 and 06:00–21:00 | 23:00–01:00 and 05:00–20:00 |

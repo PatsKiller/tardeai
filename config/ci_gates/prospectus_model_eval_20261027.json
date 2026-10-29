@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_model_eval_20261027",
+  "files": [
+    "tests/test_prospectus_model_eval_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_MODEL_EVAL_20261027",
+  "comment": [
+    "ANCHOR: PROSPECTUS_MODEL_EVAL_20261027 — Watch prospectus model eval harness (operator 2026-10-27: \"Yes, ... let me test.\"): Sonnet 5.5 via tier mid for prospectus_writer inside the harness process only (eval_route, restored on exit), effort medium, hard cap, preflight of every limit, no write to the prospectus store; scores both models with the production gate and accuracy auditor. Stubbed models, synthetic data."
+  ]
+}

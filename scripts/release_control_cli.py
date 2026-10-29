@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""Host CLI for the release-train control state (Release Train v2, decision D3). Wired into nothing.
+"""Host CLI for the deploy STOP latch and the ReleaseControl@v1 state (decision D3, 2026-10-21).
+
+An operator tool, run by hand at the host; no timer, unit, n8n lane or Command Center route invokes it. It acts on
+the same ``STOP.json`` latch that the host ``deploy_on_main`` poller and the emergency promote refuse on
+(AGENTS.md §25.10; ``docs/ops/EMERGENCY_MANUAL_PROMOTE.md`` uses ``status``). The release train it was written for
+was retired 2026-10-27 (operator directive); ``pause``, ``arm``, ``change-scope`` and ``revoke`` act on the retired
+train's release delegation and control state only, and never on the deploy delegation.
 
 This is the ONLY entrypoint that builds a ``HostCliProof``: stdin must be a TTY, and for every operator command
 (arm, resume, change-scope, revoke) the operator re-types the phrase the library prints, which names the epoch
-the command will create. The Command Center may only request STOP or pause (through its own typed endpoint,
-not this file); n8n never calls this. It works when CC and n8n are down: it reads and writes local files only.
+the command will create. The Command Center may only request STOP (through its own typed endpoint, not this file);
+n8n never calls this. It works when CC and n8n are down: it reads and writes local files only.
 
   status                                   control mode, epoch, latch (ABSENT/SET/UNREADABLE), stop phase
-  stop   --reason TEXT                     latch STOP + new epoch (safe direction; no confirmation)
-  pause  --reason TEXT                     pause after the current train
-  arm    --delegation PATH --reason TEXT   accept the delegation's digest; RUNNING with a new epoch
-  resume --reason TEXT                     archive the latch (rename), new epoch, RUNNING (shows state first)
-  change-scope --delegation PATH --reason  accept a changed delegation digest; new epoch
-  revoke --reason TEXT                     stop automation; new epoch
+  stop   --reason TEXT                     latch the deploy STOP + new epoch (safe direction; no confirmation)
+  resume --reason TEXT                     settle the deploy STOP if no deploy is in flight (the global release
+                                           lock is free; recorded as settled by this operator), then archive the
+                                           latch (rename), new epoch, RUNNING (shows state first)
+  pause  --reason TEXT                     train-era: pause after the claimed train
+  arm    --delegation PATH --reason TEXT   train-era: accept a release delegation's digest; RUNNING, new epoch
+  change-scope --delegation PATH --reason  train-era: accept a changed release delegation digest; new epoch
+  revoke --reason TEXT                     train-era: revoke the release delegation's automation; new epoch
 
 Every mutating command supports --dry-run, which prints the transition and the phrase and writes nothing
 (AGENTS §0 rule 7). Exit: 0 ok, 2 refused, 3 usage.
@@ -37,8 +45,9 @@ from scripts.lib import release_delegation as RD  # noqa: E402
 HOME = Path.home()
 STATE_ROOT = Path(os.environ.get("TRADEAI_STATE_ROOT", str(HOME / "trade-ai-releases" / "persistent-state")))
 #: Same directory as scripts/release_window.py STATE_DIR, so STOP.json is one latch.
-STATE_DIR = Path(os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR",
-                                str(STATE_ROOT / "data" / "runtime" / "release_window")))
+STATE_DIR = Path(
+    os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(STATE_ROOT / "data" / "runtime" / "release_window"))
+)
 OPERATOR_COMMANDS = ("arm", "resume", "change-scope", "revoke")
 
 
@@ -58,10 +67,21 @@ def _proof(ctl: RC.ReleaseControl, command: str, *, stdin=None) -> RC.HostCliPro
 
 def _status(ctl: RC.ReleaseControl) -> dict:
     v = ctl.view()
-    return {"mode": v.mode, "epoch": v.epoch, "version": v.version, "latch_state": v.latch_state,
-            "latch": v.latch, "stop_phase": v.stop_phase, "stop": v.stop, "pause": v.pause,
-            "current_train_id": v.current_train_id, "accepted_policy_digest": v.accepted_policy_digest,
-            "mutation_refusal": v.mutation_refusal(v.current_train_id), "error": v.error, "state_dir": str(ctl.root)}
+    return {
+        "mode": v.mode,
+        "epoch": v.epoch,
+        "version": v.version,
+        "latch_state": v.latch_state,
+        "latch": v.latch,
+        "stop_phase": v.stop_phase,
+        "stop": v.stop,
+        "pause": v.pause,
+        "current_train_id": v.current_train_id,
+        "accepted_policy_digest": v.accepted_policy_digest,
+        "mutation_refusal": v.mutation_refusal(v.current_train_id),
+        "error": v.error,
+        "state_dir": str(ctl.root),
+    }
 
 
 def main(argv: list[str] | None = None, *, stdin=None) -> int:
@@ -93,9 +113,18 @@ def main(argv: list[str] | None = None, *, stdin=None) -> int:
                 return 2
             digest = dv.digest
         if getattr(args, "dry_run", False):
-            _print({"outcome": "DRY_RUN", "command": args.cmd, "current": _status(ctl), "policy_digest": digest,
+            _print(
+                {
+                    "outcome": "DRY_RUN",
+                    "command": args.cmd,
+                    "current": _status(ctl),
+                    "policy_digest": digest,
                     "phrase": ctl.expected_phrase(args.cmd.replace("-", "_"))
-                    if args.cmd in OPERATOR_COMMANDS else None, "writes": "nothing"})
+                    if args.cmd in OPERATOR_COMMANDS
+                    else None,
+                    "writes": "nothing",
+                }
+            )
             return 0
         if args.cmd == "stop":
             _print(ctl.request_stop(actor, args.reason))
@@ -112,7 +141,7 @@ def main(argv: list[str] | None = None, *, stdin=None) -> int:
                 _print(ctl.revoke(actor, proof, reason=args.reason))
             else:
                 readiness = {"checked_at": RC.utc_iso(ctl.clock()), "shown": _status(ctl)}
-                _print(ctl.resume(actor, proof, reason=args.reason, readiness=readiness))
+                _print(ctl.resume(actor, proof, reason=args.reason, readiness=readiness, settle_if_idle=True))
         return 0
     except RC.ControlRefused as exc:
         _print({"outcome": "REFUSED", "code": exc.code, "detail": exc.detail})

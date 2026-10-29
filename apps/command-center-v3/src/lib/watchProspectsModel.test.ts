@@ -5,6 +5,7 @@ import { FIXTURE as FIX } from '../fixtures/watchProspects.fixture.ts'
 import {
   LANE_ORDER, alertIntel, allRows, conflictCount, convictionTone, drawers, headerChips, laneById, orphanWhy,
   proposeSeed, stanceTone, stepTone, tieAlerts, TOOLTIPS, unwrap, type ProspectRow,
+  asksCio, cioReviewNote, reviewStateText, reviewStateTone,
 } from './watchProspectsModel.ts'
 
 let failed = 0
@@ -98,6 +99,25 @@ const pagedTies = tieAlerts(paged, FIX.alerts)
 eq('paging does not manufacture orphaned alerts', pagedTies.orphans.map(a => a.alert.symbol), T.orphans.map(a => a.alert.symbol))
 eq('paging retains full curated conflict count', conflictCount(paged), conflictCount(P))
 eq('missing canonical conflict check stays unknown', headerChips({ ...paged, conflict_count: null }).find(c => c.key === 'conflicts')?.value, 'check unavailable')
+
+// Batch 31: a missing CIO view asks the CIO (actionable) without being called a conflict; request state is visible.
+ok('resolve_conflict asks the CIO', asksCio('resolve_conflict'))
+ok('cio_missing asks the CIO', asksCio('cio_missing'))
+ok('propose does not ask the CIO', !asksCio('propose') && !asksCio(null))
+eq('cio_missing is not a warning-toned conflict', stepTone('cio_missing'), 'info')
+eq('no request → no chip', reviewStateText({ status: 'none', label: 'Not requested', open: false }), null)
+eq('no state → no chip', reviewStateText(null), null)
+const blocked = { status: 'blocked', label: 'Blocked: waiting for evidence — no contradicting evidence on file yet', open: true,
+  queued_at: '2026-10-24T04:54:05+00:00', expires_at: '2026-10-31T04:54:05+00:00',
+  last_attempt: { status: 'BLOCKED', at: '2026-10-25T08:25:03+00:00', block_reason: 'BLOCKED_PENDING_ACQUISITION_AND_CURATION' } }
+eq('blocked reads plainly with its times', reviewStateText(blocked),
+  'Blocked: waiting for evidence — no contradicting evidence on file yet · asked 2026-10-24 04:54 UTC · expires 2026-10-31 04:54 UTC · last run 2026-10-25 08:25 UTC')
+eq('blocked tone', reviewStateTone(blocked), 'warning')
+eq('queued tone', reviewStateTone({ status: 'queued', label: 'Queued for the CIO', open: true }), 'info')
+eq('note carries the gap', cioReviewNote({ conflicts: [], next_action: { kind: 'cio_missing', label: 'x', reason: 'r', gap: { reason: 'CIO stance missing' } } }),
+  'Watch: no CIO view — CIO stance missing')
+eq('note carries the flags', cioReviewNote({ conflicts: [{ kind: 'k', summary: 'A vs B', a: { value: 1, source: null, at: null }, b: { value: 2, source: null, at: null } }],
+  next_action: { kind: 'resolve_conflict', label: 'x', reason: 'r' } }), 'Watch conflict: A vs B')
 
 if (failed) { console.error(`watchProspectsModel: ${failed} failure(s)`); process.exit(1) }
 console.log('watchProspectsModel: all checks passed')

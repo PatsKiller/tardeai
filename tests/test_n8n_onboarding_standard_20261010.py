@@ -241,7 +241,10 @@ def test_configuration_names_variables_never_values():
 
 
 def _agents() -> str:
-    return (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    # These pins are 4.5.0-era text; 26.0.0 rewrote §23 and the adapters, so they read the frozen 25.0.1 copy.
+    from tests.support.agents_policy_frozen import read_pre_26
+
+    return read_pre_26("AGENTS.md")
 
 
 def _section_23() -> str:
@@ -277,7 +280,9 @@ def test_claude_md_adapter_restates_no_n8n_rule():
         "\n   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,"
         "\n   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12)."
     )
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(rule_6_exception_15_0_0, "")
+    from tests.support.agents_policy_frozen import read_pre_26
+
+    text = read_pre_26("CLAUDE.md").replace(rule_6_exception_15_0_0, "")
     assert "n8n" not in text.lower()
 
 

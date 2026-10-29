@@ -1,0 +1,25 @@
+{
+  "schema": "ProspectusSymbolCollisions@v1",
+  "approved_by": "operator 2026-10-27: \"Implement these fixes … I need this to execute quickly\" (Prospectus NEWS methodology: reject ticker collisions)",
+  "note": "Per symbol: the issuer the house means, and other companies or funds that share (or shared) the ticker. A headline that names an excluded company, or carries a foreign-listing marker for the ticker (LON:XAR, (LSE…), XAR.L), is a collision unless it also names the issuer. Read by scripts/lib/prospectus/news_gate.py (news triggers, the Since-this-report strip) and the quality gate (report facts). Public company names only; no positions.",
+  "foreign_markers_note": "Exchange prefixes/suffixes below are matched only against the symbol itself, e.g. 'LON:XAR', 'XAR.L', '(LSE: XAR)'.",
+  "foreign_exchange_prefixes": ["LON", "LSE", "AIM", "TSX", "TSXV", "CVE", "ASX", "HKEX", "HKG", "FRA", "ETR", "XETRA", "EPA", "AMS", "EBR", "BIT", "SWX", "SIX", "TYO", "TSE", "NSE", "BSE", "KRX", "KOSDAQ", "SGX", "JSE", "BME", "STO", "OSL", "CPH", "HEL", "WSE", "TLV", "NZE"],
+  "foreign_suffixes": ["L", "TO", "V", "AX", "HK", "DE", "F", "PA", "AS", "BR", "MI", "SW", "T", "NS", "BO", "KS", "SI", "JO", "MC", "ST", "OL", "CO", "HE", "WA", "TA", "NZ"],
+  "symbols": {
+    "XAR": {
+      "issuer": "SPDR S&P Aerospace & Defense ETF",
+      "issuer_aliases": ["SPDR S&P Aerospace", "Aerospace & Defense ETF"],
+      "exclude": [
+        {"name": "Xaar", "why": "Xaar plc trades on the London Stock Exchange as LON:XAR (inkjet printheads), a different company"}
+      ]
+    },
+    "SPCX": {
+      "issuer": "the current SPCX listing (see the identity registry)",
+      "issuer_aliases": [],
+      "exclude": [
+        {"name": "SPAC and New Issue ETF", "why": "the former SPCX fund (Tuttle Capital SPAC and New Issue ETF); its news is not the current security's"},
+        {"name": "Tuttle Capital SPAC", "why": "the former SPCX fund sponsor line"}
+      ]
+    }
+  }
+}

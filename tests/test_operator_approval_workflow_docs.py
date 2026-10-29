@@ -1,4 +1,8 @@
-"""Guarded remote-push and live-deployment workflow must stay fail-closed."""
+"""Guarded remote-push and live-deployment workflow must stay fail-closed.
+
+AGENTS.md 26.0.0 moved the keyboard procedure to docs/ops/GUARD_GRANTS.md (AGENTS.md keeps the rule: grants come
+only from the keyboard or Ops -> Controls); the pins follow the procedure to its home.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENTS = ROOT / "AGENTS.md"
+AGENTS = ROOT / "docs" / "ops" / "GUARD_GRANTS.md"
 TITLE = "## Operator approval for remote push and live deployment"
 
 

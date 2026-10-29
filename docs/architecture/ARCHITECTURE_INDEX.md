@@ -1,6 +1,6 @@
 # Architecture Index — where to look before you change a component
 
-Status:      PROPOSED (ships with the unratified AGENTS.md amendment)
+Status:      ACTIVE (index only; linked from AGENTS.md since 1.3.0)
 Owner:       platform (coordinator-maintained; any agent may propose edits via PR)
 as_of:       2026-09-25T09:20:00-04:00
 Measured at: base 1c60ecb42 / served 1c60ecb42-main-exact-phase2-20260925-091436
