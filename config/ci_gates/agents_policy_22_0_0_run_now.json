@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_22_0_0_run_now",
+  "files": [
+    "tests/test_agents_policy_22_0_0_run_now.py"
+  ],
+  "anchor": "AGENTS_POLICY_22_0_0_RUN_NOW",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_22_0_0_RUN_NOW — AGENTS.md 22.0.0 (PROPOSED MAJOR): Ops → Controls",
+    "release_train.run_now live canary force. Hermetic: amendment pins, POLICY_NOT_ACTIVE gate,",
+    "phrase/market-hours, KindSpec + ALWAYS_FRESH, lifecycle chamber math from by_state.",
+    "2026-10-27: tests/test_release_train_run_now_20261025.py archived with the retired release train (operator directive); the AGENTS.md amendment pins stay."
+  ]
+}

@@ -69,3 +69,14 @@ function knownLevelTime(field: WatchMarketField): boolean {
 export function levelTimeUnknown(fields: WatchMarketField[]): boolean {
   return fields.some(field => (field.value != null || field.broken_reference != null) && !knownLevelTime(field))
 }
+
+/** The observation time for the stored levels, or the honest reason it is absent. The master source
+ *  exposes no per-level timestamp, so a master level is "not timestamped by source" — never presented
+ *  as a generic "time unknown" bug when the truth is that the source never carried one. */
+export function levelTimeLabel(fields: WatchMarketField[]): string {
+  const valued = fields.filter(f => (f.value != null || f.broken_reference != null))
+  if (valued.length === 0) return 'not measured'
+  if (valued.some(f => !knownLevelTime(f) && f.as_of_basis === 'not exposed by source')) return 'not timestamped by source'
+  if (valued.some(f => !knownLevelTime(f))) return 'time unknown'
+  return Array.from(new Set(valued.map(f => f.as_of).filter(Boolean))).join(' / ')
+}

@@ -44,6 +44,19 @@ for _stale in (
     _sys_heal.modules.pop(_stale, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SCRIPTS_DIR = str(PROJECT_ROOT / "scripts")
+
+
+def _ensure_scripts_path() -> None:
+    """Put scripts/ on sys.path once. 2026-10-25 perf: ~88 handlers (and ``_db_query`` on EVERY query) ran
+    ``sys.path.insert(0, ...)`` unconditionally, so sys.path grew by one entry per DB query — 20k queries made every
+    failed import (the ``try: from lib import X / except ImportError`` fallbacks) cost ~170 ms instead of 0.2 ms."""
+    import sys
+
+    if _SCRIPTS_DIR not in sys.path:
+        sys.path.insert(0, _SCRIPTS_DIR)
+
+
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
     from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
@@ -1808,7 +1821,7 @@ def _protective_stop_refresh_quote(body=None):
         try:
             import sys as _mq_sys
 
-            _mq_sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from db_adapter import _get_conn as _mq_get_conn, USE_DB as _mq_use_db
             from lib.writers.market_quotes_writer import write_market_quotes as _write_market_quotes
 
@@ -2067,7 +2080,7 @@ def _stops_lifecycle_api():
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         import stop_lifecycle_monitor as _slm
 
         data = _slm.scan(persist=True)
@@ -2977,12 +2990,29 @@ def _today_pnl_provenance(
             if _a:
                 held_by_acct[_a] = held_by_acct.get(_a, 0) + 1
 
+    # account_summaries carry holdings keys (schwab_roth); the day figures are
+    # keyed by the canonical account key (schwab_roth_ira). Look up by both, so
+    # an alias never reads as "no report" or picks up a 0.0 filler row.
+    try:
+        from lib.account_display import canonical_key as _ck
+    except Exception:  # noqa: BLE001 -- loaded standalone by tests
+
+        def _ck(k):
+            return k
+
+    _by_canon = {_ck(k): v for k, v in (today_by_account or {}).items()}
+
     contributing: list[str] = []
     zero_change: list[str] = []
     empty: list[str] = []
     missing: list[str] = []
     for acct in sorted(account_summaries or {}):
-        row = (today_by_account or {}).get(acct)
+        row = _by_canon.get(_ck(acct))
+        if row is None:
+            row = (today_by_account or {}).get(acct)
+        # A change of None is an UNKNOWN day, not a flat one.
+        if row is not None and row.get("change") is None:
+            row = None
         if row is None:
             summary = (account_summaries or {}).get(acct) or {}
             try:
@@ -3079,7 +3109,7 @@ def _db_query(sql, params=None, fetch="all"):
     try:
         import sys
 
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from db_adapter import _execute, USE_DB
 
         if not USE_DB:
@@ -3576,11 +3606,13 @@ def overview():
             today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
 
     # per-account breakdown — from broker snapshot, with per-account top-movers from holdings
+    from lib.account_display import canonical_key as _canon_acct
+
     today_by_account = {}
     for a, d in snap.get("by_account", {}).items():
         entry = {"change": d.get("change", 0), "value": d.get("value", 0), "pct": d.get("pct")}
         movers_a = sorted(
-            [p for p in holdings if (p.get("account") or "unknown") == a],
+            [p for p in holdings if (_canon_acct(p.get("account")) or "unknown") == a],
             key=lambda p: abs(p.get("day_change") or 0),
             reverse=True,
         )[:2]
@@ -3591,8 +3623,11 @@ def overview():
         )
         today_by_account[a] = entry
     # Ensure every known account gets an entry (snapshot may only cover accounts with activity)
+    # Snapshot rows are keyed canonically (schwab_roth_ira); holdings rows carry
+    # the raw key (schwab_roth). Comparing raw to canonical added a fake 0.0 row
+    # for every aliased account, which the census then counted as "flat".
     for p in holdings:
-        a = p.get("account") or "unknown"
+        a = _canon_acct(p.get("account")) or "unknown"
         if a not in today_by_account:
             today_by_account[a] = {"change": 0.0, "value": 0.0, "pct": None, "top_movers": ""}
 
@@ -5225,7 +5260,7 @@ def watchlist_combined():
     """Return all watchlist sources in one normalized list."""
     import sys
 
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     wl_json = _load_json(STATE_DIR / "watchlist.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
@@ -6024,6 +6059,18 @@ def approval_decide(body: dict):
     return 200, {"ok": True, "action": decision, "queue_id": queue_id}
 
 
+def _admin_secrets_listing():
+    """GET /api/v2/admin/secrets — presence for every reader; age/config values only for the operator."""
+    try:
+        from lib.cc_auth import current_principal as _cc_current_principal
+    except ImportError:  # pragma: no cover - imported as scripts.api_v2
+        from scripts.lib.cc_auth import current_principal as _cc_current_principal
+    import importlib as _il
+
+    _sa = _il.reload(__import__("secrets_admin"))
+    return _sa.list_secrets(principal=_cc_current_principal())
+
+
 def _orchestration():
     """GET /api/v2/orchestration — system timers, services, skills, scripts."""
     import subprocess
@@ -6207,7 +6254,7 @@ def _orchestration():
             from telegram_alert import _token as _tg_token
 
             t = _tg_token() or ""
-            return (bool(t), f"Token: ...{t[-8:]}" if len(t) >= 8 else ("configured" if t else "missing"))
+            return (bool(t), "configured" if t else "missing")  # never any character of the token
         except Exception as e:
             return (False, str(e)[:80])
 
@@ -6218,7 +6265,7 @@ def _orchestration():
     )
     _env_check(
         "Finviz API",
-        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), f"Token: ...{os.getenv('FINVIZ_API_TOKEN', '')[-8:]}"),
+        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), "configured" if os.getenv("FINVIZ_API_TOKEN") else "missing"),
         "Add FINVIZ_API_TOKEN to .env",
     )
     _env_check(
@@ -8996,8 +9043,64 @@ def _sync_screener_find_pin(symbol, reason="", strategy_type=None, brief_snippet
 
 def _sync_all_screener_find_pins():
     _ensure_screener_find_pins_table()
-    for r in _db_query("SELECT symbol FROM screener_find_pins") or []:
+    rows = _db_query("SELECT symbol FROM screener_find_pins") or []
+    if _sync_all_screener_find_pins_batch([r["symbol"] for r in rows]):
+        return
+    for r in rows:
         _sync_screener_find_pin(r["symbol"])
+
+
+def _sync_all_screener_find_pins_batch(symbols) -> bool:
+    """``_sync_screener_find_pin(sym)`` for every pin in 2 statements instead of 3 per pin (perf 2026-10-25: 261
+    pins = 791 queries, 2.4-3.8 s per Watchpool load). Same effect per pin: CIO verdict read the same way, the same
+    upsert (blank reason/snippet keep the stored values; auto_research_at moves to now). auto_research_at keeps the
+    per-pin order of the loop (the endpoint sorts on it): pin k gets now() + k µs. False = not applied; the caller
+    falls back to the per-pin loop."""
+    syms, seen = [], {}
+    for raw in symbols:
+        sym = str(raw or "").upper().strip()
+        if sym:
+            seen.pop(sym, None)
+            seen[sym] = True  # a repeated symbol keeps its LAST loop position, as the second upsert wins
+    syms = list(seen)
+    if not syms:
+        return True
+    recs = _db_query(
+        """
+        SELECT DISTINCT ON (upper(wi.symbol)) upper(wi.symbol) AS sym,
+               COALESCE(fs.recommendation, rc.latest_recommendation) AS rec
+        FROM watchlist_items wi
+        LEFT JOIN watchlist_final_synthesis fs ON upper(fs.symbol) = upper(wi.symbol)
+        LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+        WHERE upper(wi.symbol) = ANY(%s) AND wi.status <> 'removed'
+    """,
+        (syms,),
+    )
+    if recs is None:
+        return False
+    rec_by = {str(r.get("sym") or ""): str(r.get("rec") or "").upper().strip() for r in recs}
+    cios = [rec_by.get(s, "") for s in syms]
+    actives = [c in _SCREENER_FIND_BUY_SIDE for c in cios]
+    done = _db_query(
+        """
+        INSERT INTO screener_find_pins
+            (symbol, auto_research_at, discovery_reason, strategy_type, brief_snippet,
+             cio_recommendation, active, pinned_at)
+        SELECT v.sym, now() + v.ord * interval '1 microsecond', '', NULL, '', NULLIF(v.cio, ''), v.active, now()
+          FROM unnest(%s::text[], %s::text[], %s::boolean[]) WITH ORDINALITY AS v(sym, cio, active, ord)
+         ORDER BY v.ord
+        ON CONFLICT (symbol) DO UPDATE SET
+            auto_research_at = COALESCE(EXCLUDED.auto_research_at, screener_find_pins.auto_research_at),
+            discovery_reason = COALESCE(NULLIF(EXCLUDED.discovery_reason, ''), screener_find_pins.discovery_reason),
+            strategy_type = COALESCE(EXCLUDED.strategy_type, screener_find_pins.strategy_type),
+            brief_snippet = COALESCE(NULLIF(EXCLUDED.brief_snippet, ''), screener_find_pins.brief_snippet),
+            cio_recommendation = EXCLUDED.cio_recommendation,
+            active = EXCLUDED.active
+        RETURNING symbol
+    """,
+        (syms, cios, actives),
+    )
+    return done is not None
 
 
 def _screener_finds_candidates(query=None):
@@ -9850,7 +9953,7 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         import process_watchlist_agent_jobs as _pwaj
         from lib.llm_consumption import ManualRequired as _ManualRequired
 
@@ -10099,7 +10202,7 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from watchlist_enrichment_sweep import enrich_symbols
 
         er = enrich_symbols([sym])
@@ -10452,7 +10555,7 @@ def _wl_research_card(symbol: str):
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from decision_qa import assess_symbol
 
         qa = assess_symbol(sym)
@@ -10963,7 +11066,7 @@ def _social_api_status():
     """GET /api/v2/social/status — which social APIs are configured."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from social_monitor import check_api_status
 
     status = check_api_status()
@@ -13001,7 +13104,7 @@ def _iris_status():
     """
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from iris_taxonomy_agent import get_iris_status, iris_status_summary
 
     status = get_iris_status()
@@ -14184,7 +14287,7 @@ def _llm_oauth_lanes():
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from lib.oauth_lane_status import all_lanes
 
         lanes = []
@@ -14263,7 +14366,7 @@ def _llm_oauth_lanes():
 def _consumption_overview():
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_consumption as _lc
     from lib.oauth_lane_status import lanes_available
 
@@ -14273,7 +14376,7 @@ def _consumption_overview():
 def _consumption_processes():
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_consumption as _lc
 
     return _json_clean({"ok": True, "processes": _lc.list_processes()})
@@ -14288,7 +14391,7 @@ def _llm_caller_priorities():
     """
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_deferral as _ld
 
     return _json_clean(
@@ -14306,7 +14409,7 @@ def _llm_deferred_queue():
     """GET /api/v2/consumption/deferred-queue — what is waiting for the off-peak window."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_deferral as _ld
 
     rows = (
@@ -14326,7 +14429,7 @@ def _llm_deferred_queue():
 def _consumption_lane_registry():
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_consumption as _lc
 
     return _json_clean({"ok": True, **_lc.registry_lane_map()})
@@ -14340,7 +14443,7 @@ def _consumption_spend(query=None):
     """
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_spend as _spend
 
     q = query or {}
@@ -14354,7 +14457,7 @@ def _consumption_spend(query=None):
 def _consumption_logs(query=None):
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib import llm_consumption as _lc
 
     q = query or {}
@@ -18591,7 +18694,7 @@ def _db_write(sql, params=None):
     try:
         import sys
 
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from db_adapter import _get_conn, USE_DB
 
         if not USE_DB:
@@ -19510,7 +19613,7 @@ def _journal_report():
 
         import sys
 
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from db_adapter import _get_conn
         import psycopg2.extras
 
@@ -23197,7 +23300,7 @@ def _indicator_confluence_handler(query: dict) -> tuple:
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from indicator_engine import analyze_confluence
 
         result = analyze_confluence(symbol, profile)
@@ -23267,7 +23370,7 @@ def _indicator_batch_handler(body: dict) -> tuple:
 
     import sys as _sys, time as _time
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from indicator_engine import analyze_confluence
     from lib.json_finite import json_safe
 
@@ -23428,7 +23531,7 @@ def _indicator_levels_handler(query: dict) -> tuple:
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from indicator_engine import analyze_confluence
 
             result = analyze_confluence(symbol, "swing")
@@ -30718,12 +30821,13 @@ def _needs_action(query=None):
         "pr_hygiene": _na.probe_pr_hygiene,
         # 2026-10-22: the three desk-truth monitor lanes' receipts (read-only; scripts/desk_truth_monitor.py)
         "desk_truth": _na.probe_desk_truth,
-        # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
+        # 2026-10-21: a failed release window / the deploy STOP latch is an inbox item.
         "release_window": _na.read_release_window_state,
-        # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).
+        # 2026-10-21 macro calendar: a missing/stale calendar is information (P3; read-only).
         "macro_calendar": _na.probe_macro_calendar,
         # 2026-10-25 (#2134): a failed staged host-unit install at promote (StagedUnitsInstall@v1, read-only).
         "staged_units": _na.probe_staged_units,
+        "anthropic": _na.probe_anthropic,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)
@@ -31903,7 +32007,7 @@ def _hermes_source_approve(body: dict):
     try:
         import sys
 
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         import hermes_source_registry as hsr
         from db_adapter import _get_conn, USE_DB
 
@@ -34179,8 +34283,28 @@ def _hermes_promotion_review():
     }
 
 
-def _hermes_pipeline_quality():
-    """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings."""
+_HERMES_FINDING_COLS = """id, hermes_agent_name, finding_type, severity, LEFT(description, 300) AS description,
+               evidence_json, recommended_action, status, created_at"""
+# Same "closed" set the Hermes quality spot-check uses client-side (status lower-cased).
+_HERMES_FINDING_CLOSED = ("resolved", "closed", "archived")
+
+
+def _hermes_pipeline_quality(query=None):
+    """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings.
+
+    ``?limit=N`` (memory 2026-10-25): the full list is ~31.6k findings / 15.7 MB of JSON and ~80 MB of Python per
+    request; the Hermes page shows the newest 10 findings and the newest 8 open ones plus the counts. With ``limit``
+    the response carries ``findings`` (newest N), ``open_findings`` (newest N not resolved/closed/archived),
+    ``total`` and ``open_count`` — all computed in Postgres. Without ``limit`` the full payload is unchanged."""
+    raw = (query or {}).get("limit")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    if raw not in (None, ""):
+        try:
+            limit = max(1, min(200, int(str(raw))))
+        except ValueError:
+            limit = 10
+        return _hermes_pipeline_quality_page(limit)
     findings = (
         _db_query("""
         SELECT id, hermes_agent_name, finding_type, severity, LEFT(description, 300) AS description,
@@ -34194,6 +34318,45 @@ def _hermes_pipeline_quality():
         "ok": True,
         "findings": [{k: _json_clean(v) for k, v in f.items()} for f in findings],
         "total": len(findings),
+        "advisory_notice": "Pipeline Quality — Hermes Advisory Only — Not Execution",
+    }
+
+
+def _hermes_pipeline_quality_page(limit: int):
+    counts = (
+        _db_query(
+            """SELECT count(*) AS total,
+                      count(*) FILTER (WHERE lower(coalesce(status, '')) <> ALL(%s)) AS open_count
+                 FROM hermes_validation_findings WHERE source='hermes'""",
+            (list(_HERMES_FINDING_CLOSED),),
+            fetch="one",
+        )
+        or {}
+    )
+    newest = (
+        _db_query(
+            f"SELECT {_HERMES_FINDING_COLS} FROM hermes_validation_findings WHERE source='hermes' "
+            "ORDER BY created_at DESC LIMIT %s",
+            (limit,),
+        )
+        or []
+    )
+    open_rows = (
+        _db_query(
+            f"SELECT {_HERMES_FINDING_COLS} FROM hermes_validation_findings WHERE source='hermes' "
+            "AND lower(coalesce(status, '')) <> ALL(%s) ORDER BY created_at DESC LIMIT %s",
+            (list(_HERMES_FINDING_CLOSED), limit),
+        )
+        or []
+    )
+    clean = lambda rows: [{k: _json_clean(v) for k, v in f.items()} for f in rows]  # noqa: E731
+    return {
+        "ok": True,
+        "findings": clean(newest),
+        "open_findings": clean(open_rows),
+        "total": int(counts.get("total") or 0),
+        "open_count": int(counts.get("open_count") or 0),
+        "limit": limit,
         "advisory_notice": "Pipeline Quality — Hermes Advisory Only — Not Execution",
     }
 
@@ -36144,7 +36307,26 @@ def _ui_prefs_get(query=None):
     key = str((q.get("key") or [""])[0] if isinstance(q.get("key"), list) else q.get("key") or "").strip()
     if not key:
         return {"ok": False, "error": "key required"}
-    r = _db_query("SELECT value, updated_at FROM ui_prefs WHERE key=%s", (key,), fetch="one")
+    raw_syms = q.get("symbols")
+    if isinstance(raw_syms, list):
+        raw_syms = raw_syms[0] if raw_syms else None
+    if raw_syms is not None:
+        # ?symbols=A,B (perf 2026-10-25): return the blob with value.symbols cut to those keys, cut IN Postgres —
+        # the Watch re-entry banner needs ~100 symbols of portfolio.shared-symbol-context.v1 (9.4 MB, ~45 MB of
+        # Python per read). Every other key of the blob is returned unchanged; a non-object `symbols` is untouched.
+        wanted = sorted({p.strip().upper() for p in str(raw_syms).split(",") if p.strip()})
+        r = _db_query(
+            """SELECT CASE WHEN jsonb_typeof(value->'symbols') = 'object' THEN
+                          (value - 'symbols') || jsonb_build_object('symbols', COALESCE(
+                              (SELECT jsonb_object_agg(e.k, e.v) FROM jsonb_each(value->'symbols') AS e(k, v)
+                                WHERE upper(e.k) = ANY(%s)), '{}'::jsonb))
+                      ELSE value END AS value, updated_at
+                 FROM ui_prefs WHERE key=%s""",
+            (wanted, key),
+            fetch="one",
+        )
+    else:
+        r = _db_query("SELECT value, updated_at FROM ui_prefs WHERE key=%s", (key,), fetch="one")
     return {
         "ok": True,
         "key": key,
@@ -36397,7 +36579,33 @@ def _sector_target_sources() -> dict:
         return {}
 
 
+# Per-request memo (perf 2026-10-25): GET /api/v2/watch/two-way-curation composed the CIO capital plan twice and the
+# sector synthesis four times in ONE request (capital plan -> sectors, report v2 -> capital plan + sectors, plus the
+# compact summaries) — ~2.5 s of its ~3.5 s. Inside that request each is now built once; callers get a deep copy so
+# no caller sees another's mutations. Outside a memo scope (the routes themselves) nothing changes.
+import contextvars as _memo_cv  # noqa: E402
+import copy as _memo_copy  # noqa: E402
+
+_REQUEST_MEMO: "_memo_cv.ContextVar[Optional[dict]]" = _memo_cv.ContextVar("api_v2_request_memo", default=None)
+
+
+def _request_memoized(name, build):
+    memo = _REQUEST_MEMO.get()
+    if memo is None:
+        return build()
+    if name not in memo:
+        memo[name] = build()
+    return _memo_copy.deepcopy(memo[name])
+
+
 def _cio_sector_opportunities(query=None):
+    """GET /api/v2/cio/sector-opportunities — Alex's sector-opportunity synthesis (read-only)."""
+    if query is None:
+        return _request_memoized("cio_sector_opportunities", lambda: _cio_sector_opportunities_build())
+    return _cio_sector_opportunities_build(query)
+
+
+def _cio_sector_opportunities_build(query=None):
     """GET /api/v2/cio/sector-opportunities — Alex's sector-opportunity synthesis (read-only)."""
     try:
         from scripts.lib.cio_sector_opportunity import build_synthesis_from_executor
@@ -36480,6 +36688,13 @@ def _ratified_investment_policy() -> Optional[dict]:
 
 
 def _cio_capital_plan(query=None):
+    """GET /api/v2/cio/capital-plan (per-request memo; see ``_request_memoized``)."""
+    if query is None:
+        return _request_memoized("cio_capital_plan", lambda: _cio_capital_plan_build())
+    return _cio_capital_plan_build(query)
+
+
+def _cio_capital_plan_build(query=None):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
     READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
@@ -36646,7 +36861,7 @@ def _cio_report_v2(query=None):
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from portfolio_report_ms import assemble as _ms_assemble
 
             part_b = _ms_assemble() or {}
@@ -36735,6 +36950,14 @@ def _two_way_curation_health(query=None):
     Forward: staging undrained / desk directives / desk hits / audit.
     Reverse: realized_outcome / hermes_research / options_edge coverage.
     """
+    token = _REQUEST_MEMO.set({})
+    try:
+        return _two_way_curation_health_body(query)
+    finally:
+        _REQUEST_MEMO.reset(token)
+
+
+def _two_way_curation_health_body(query=None):
 
     def q1(sql):
         rows = _db_query(sql) or []
@@ -36882,7 +37105,47 @@ def _two_way_curation_health(query=None):
 
 
 def _watch_directives(query=None):
-    """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
+    """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only).
+
+    ``?offset=&limit=`` (2026-10-25): the Watchpool asks for 50 rows at a time and pages with ListPager, but the
+    handler ignored the window and sent all ~1.2k directives (1.29 MB). With ``limit`` the ``directives`` list is
+    that window plus ``pagination``; every other field (counts, hits, desk suggestions) is unchanged. Without
+    ``limit`` (Watchlist hub, Hermes panel) the response is unchanged."""
+    out = _watch_directives_all(query)
+    q = query or {}
+    raw_limit = q.get("limit")
+    if isinstance(raw_limit, list):
+        raw_limit = raw_limit[0] if raw_limit else None
+    if raw_limit in (None, "") or not isinstance(out, dict) or not isinstance(out.get("directives"), list):
+        return out
+    raw_offset = q.get("offset")
+    if isinstance(raw_offset, list):
+        raw_offset = raw_offset[0] if raw_offset else None
+    try:
+        limit = max(1, min(500, int(str(raw_limit))))
+        offset = max(0, int(str(raw_offset or 0)))
+    except ValueError:
+        return out
+    rows = out["directives"]
+    total = len(rows)
+    window = rows[offset : offset + limit]
+    end = offset + len(window)
+    return {
+        **out,
+        "directives": window,
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "returned": len(window),
+            "next_offset": end if window and end < total else None,
+            "has_more": end < total,
+        },
+    }
+
+
+def _watch_directives_all(query=None):
+    """All directives (the unpaged body of ``_watch_directives``)."""
     directives = (
         _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
                               last_serviced_at, created_at, spec, created_by, rationale, ttl_days,
@@ -37525,10 +37788,13 @@ def _finviz_strip_map(query=None):
     _fresh = str((_q.get("fresh", [""])[0] if isinstance(_q.get("fresh"), list) else _q.get("fresh")) or "").lower()
     if _fresh not in ("1", "true", "yes") and _FINVIZ_STRIP_CACHE_PATH.exists():
         try:
-            _cached = json.loads(_FINVIZ_STRIP_CACHE_PATH.read_text())
-            if _time.time() - float(_cached.get("_cached_at") or 0) < _FINVIZ_STRIP_TTL_SEC:
-                _cached["cached"] = True
-                return _cached
+            # Parsed once per file version (shared_json_cache, keyed on mtime+size) instead of a 1.7 MB json.loads
+            # on every poll (perf 2026-10-25). The shared object is read-only: the response is a shallow copy.
+            from scripts.lib.shared_json_cache import load_json as _shared_load_json
+
+            _cached = _shared_load_json(_FINVIZ_STRIP_CACHE_PATH)
+            if _cached is not None and _time.time() - float(_cached.get("_cached_at") or 0) < _FINVIZ_STRIP_TTL_SEC:
+                return _finviz_strip_filter({**_cached, "cached": True}, _q)
         except Exception:
             pass
     _out = _finviz_strip_map_compute()
@@ -37538,7 +37804,19 @@ def _finviz_strip_map(query=None):
         _FINVIZ_STRIP_CACHE_PATH.write_text(json.dumps(_out, default=str))
     except Exception:
         pass
-    return _out
+    return _finviz_strip_filter(_out, _q)
+
+
+def _finviz_strip_filter(out, query):
+    """``?symbols=A,B`` keeps only those keys of ``map`` (Portfolio asks for its holdings, not the ~1.7 MB universe
+    map). No ``symbols`` = the whole payload, unchanged."""
+    raw = (query or {}).get("symbols")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    if not raw or not isinstance(out, dict) or not isinstance(out.get("map"), dict):
+        return out
+    wanted = {p.strip().upper() for p in str(raw).split(",") if p.strip()}
+    return {**out, "map": {k: v for k, v in out["map"].items() if str(k).upper() in wanted}}
 
 
 def _finviz_strip_map_compute(query=None):
@@ -37979,7 +38257,7 @@ def _watch_directive_create(body):
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             import directive_promotion as _dp
 
             res = _dp.promote_directive_lead_bounded(
@@ -38733,7 +39011,7 @@ def _trade_chart(query=None):
     + entry/exit markers for a per-trade replay chart. Source hierarchy: Alpaca -> Schwab -> Finviz image."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     try:
         q = query or {}
         # Explicit stored replay can never enter the legacy provider hierarchy,
@@ -39429,7 +39707,7 @@ def _broker_orders_approval_status(query=None):
         return {"ok": False, "error": "intent_id required"}
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from brokers import approval_service
 
     return _json_clean(approval_service.status(iid))
@@ -39460,7 +39738,7 @@ def _broker_orders_capabilities(query=None):
     )
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from brokers import capabilities as caps
 
     c = caps.get(b)
@@ -39545,7 +39823,7 @@ def _broker_orders_preview(body=None):
     Body: canonical OrderIntent dict (see docs/brokers/ui-card-contracts-schwab.md)."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from brokers.order_intent import OrderIntent, validate as oi_validate
     from brokers import capabilities as caps, audit as br_audit
     from brokers.execution_guard import authorize
@@ -39661,7 +39939,7 @@ def _broker_orders_drafts(query=None):
     b = (q.get("broker") or [None])[0] if isinstance(q.get("broker"), list) else q.get("broker")
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from brokers import audit as br_audit
 
     return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
@@ -39669,6 +39947,11 @@ def _broker_orders_drafts(query=None):
 
 _SYMBOL_CARDS_CACHE = {"ts": 0.0, "etag": None, "payload": None}
 _SYMBOL_CARDS_TTL = 300  # rebuild at most every 5 min; card inputs move on cron cadence
+# Single-flight rebuild (perf + memory 2026-10-25): Portfolio, Watchlist, Open Trades and Re-Entry all poll this
+# map; on an expired cache each request ran its own ~3 s, ~120 MB build side by side.
+import threading as _sc_threading  # noqa: E402
+
+_SYMBOL_CARDS_LOCK = _sc_threading.Lock()
 
 
 def _symbol_cards(query=None):
@@ -39679,12 +39962,16 @@ def _symbol_cards(query=None):
 
     c = _SYMBOL_CARDS_CACHE
     if c["payload"] is None or _t.time() - c["ts"] > _SYMBOL_CARDS_TTL:
-        import hashlib as _hl, json as _j
+        with _SYMBOL_CARDS_LOCK:
+            if c["payload"] is None or _t.time() - c["ts"] > _SYMBOL_CARDS_TTL:
+                import hashlib as _hl, json as _j
 
-        payload = _symbol_cards_build()
-        c["etag"] = 'W/"sc-' + _hl.sha1(_j.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:16] + '"'
-        c["payload"] = payload
-        c["ts"] = _t.time()
+                payload = _symbol_cards_build()
+                c["etag"] = (
+                    'W/"sc-' + _hl.sha1(_j.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:16] + '"'
+                )
+                c["payload"] = payload
+                c["ts"] = _t.time()
     out = dict(c["payload"])  # shallow copy: json_response pops __etag__, must not mutate cache
     out["__etag__"] = c["etag"]
     from lib.cc_symbol_cards import apply_symbol_cards_query
@@ -40402,7 +40689,7 @@ def _schwab_access_fields() -> dict:
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from lib import schwab_access_mode as _sam
 
         st = _sam.status()
@@ -41155,7 +41442,7 @@ def _options_intents(query=None):
     ticker watch directives) joined to the matcher's latest live-contract snapshot. READ-ONLY."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib.options_intent import matcher as _mt
     from lib import options_desk_accuracy as _acc
 
@@ -41242,7 +41529,7 @@ def _options_intent_upsert(body):
     Advisory memory: nothing is staged or ordered."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     from lib.options_intent import store as _st
 
     body = dict(body or {})
@@ -44345,7 +44632,7 @@ def _schwab_token_health(query=None):
     )
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     import schwab_token_manager as tm
 
     key = tm.canonical_token_key("schwab", "live")
@@ -44627,7 +44914,7 @@ def _schwab_reauth_url(query=None):
     into POST /api/v2/brokers/schwab/exchange-code (or the CC reauth page). Never exposes secrets."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     import schwab_token_manager as tm
 
     q = query or {}
@@ -44667,7 +44954,7 @@ def _schwab_exchange_code(body=None):
     Body: {redirect_url|code, account_key?}. Never logs the code or full redirect URL."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     import schwab_token_manager as tm
 
     b = body if isinstance(body, dict) else {}
@@ -44721,7 +45008,7 @@ def _fee_efficiency(query=None):
     total + by-account, and flagged fee-inefficient holdings with cheaper-alternative contrast. Read-only."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     try:
         import fee_efficiency_analyzer as _fa
 
@@ -44905,7 +45192,7 @@ def _synthetic_stops_list(query=None):
     positions. ?status=all|armed|triggered|canceled. Read-only."""
     import sys as _sys
 
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    _ensure_scripts_path()
     import synthetic_stop_monitor as _ssm
 
     q = query or {}
@@ -48962,7 +49249,7 @@ ROUTES = {
     "/api/v2/hermes/external-research": _hermes_external_research,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
-    "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
+    "/api/v2/hermes/pipeline-quality": lambda q=None: _hermes_pipeline_quality(q),
     "/api/v2/hermes/research-critique": lambda q: _hermes_research_critique(q),
     "/api/v2/hermes/maturity-dashboard": lambda: _hermes_maturity_dashboard(),
     "/api/v2/hermes/holdings-lifecycle": lambda q: _hermes_holdings_lifecycle(q),
@@ -48990,7 +49277,9 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
-    "/api/v2/admin/secrets": lambda: __import__("importlib").reload(__import__("secrets_admin")).list_secrets(),
+    # Presence only for agents/unauthenticated readers; the operator (tailnet principal) also gets ages.
+    # Never any character of a secret (page audit 2026-10-25).
+    "/api/v2/admin/secrets": lambda: _admin_secrets_listing(),
     "/api/v2/admin/strategy-enablement": lambda: {
         "rows": [
             {k: _json_clean(v) for k, v in r.items()}
@@ -49069,33 +49358,40 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
-    # Release Train v2 STOP (2026-10-21, Phase 2 pulled forward): GET reads the release-window STOP latch back;
-    # POST SETS it (scripts/lib/release_train_stop.py; the same STOP.json scripts/release_window.py obeys). Set-only:
-    # every other command under release-train is refused — resume is host-CLI-only (decision D3). Actor = the
-    # authenticated cc_auth principal, never the body; same-origin enforced here regardless of report_only; no
-    # step-up (declined). Separate from the trading kill switch, which this never touches.
-    _rt_base = base_path.rstrip("/")
-    if _rt_base == "/api/v2/coordination/release-train/stop" or (
-        method != "GET"
-        and (
-            _rt_base == "/api/v2/coordination/release-train"
-            or _rt_base.startswith("/api/v2/coordination/release-train/")
-        )
+    # Deploys (AGENTS.md §25.10; operator directive 2026-10-27 removed the retired release train): GET
+    # /api/v2/ops/deploys is the read-only status (latest DeployOnMainReceipt@v1 + the deploy STOP latch,
+    # scripts/lib/deploys_view.py). GET .../deploys/stop reads the latch back; POST .../deploys/stop SETS it
+    # (scripts/lib/deploy_stop.py; the same STOP.json the host deploy_on_main poller and emergency promote refuse on).
+    # Set-only: every other command under /api/v2/ops/deploys is refused -- resume is Ops -> Controls (passkey) or
+    # the host CLI. Actor = the authenticated cc_auth principal, never the body; same-origin enforced here regardless
+    # of report_only; no step-up (declined). Separate from the trading kill switch, which this never touches.
+    _dp_base = base_path.rstrip("/")
+    if _dp_base == "/api/v2/ops/deploys" and method == "GET":
+        try:
+            try:
+                from lib import deploys_view as _dpv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploys_view as _dpv
+            return _dpv.handle(base_path, method)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+    if _dp_base == "/api/v2/ops/deploys/stop" or (
+        method != "GET" and (_dp_base == "/api/v2/ops/deploys" or _dp_base.startswith("/api/v2/ops/deploys/"))
     ):
         try:
-            from lib import release_train_stop as _rts
+            from lib import deploy_stop as _rts
             from lib import cc_auth as _rt_auth
         except ImportError:  # pragma: no cover - imported as scripts.api_v2
-            from scripts.lib import release_train_stop as _rts
+            from scripts.lib import deploy_stop as _rts
             from scripts.lib import cc_auth as _rt_auth
-        if _rt_base == "/api/v2/coordination/release-train/stop" and method == "GET":
+        if _dp_base == "/api/v2/ops/deploys/stop" and method == "GET":
             try:
                 return 200, {"ok": True, "data": _rts.status()}
             except Exception as e:
                 return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
         _rt_actor = _rt_auth.current_principal()
         _rt_csrf_ok, _rt_csrf_why = _rt_auth.command_csrf_check(_rt_auth.load_config(), method, base_path)
-        if _rt_base != "/api/v2/coordination/release-train/stop" or method != "POST":
+        if _dp_base != "/api/v2/ops/deploys/stop" or method != "POST":
             # Any clear / resume / other command route: refused and audited. There is no resume endpoint.
             return _rts.request_stop(
                 actor=_rt_actor,
@@ -49121,7 +49417,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "outcome": "STOP_NOT_CONFIRMED",
                 "error": type(e).__name__,
                 "detail": str(e)[:200],
-                "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
+                "fallback": "host: python3 scripts/lib/deploy_stop.py stop --reason TEXT",
             }
 
     # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
@@ -49169,27 +49465,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         # Future: auth + paper_trade_proposals insert only — never orders
         return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
 
-    # Release Train v2, Phase 1 (2026-10-21): read-only view. GET /api/v2/coordination/release-train (summary),
-    # /queue, /trains, /trains/{id}, /events — contract docs/ops/RELEASE_TRAIN_API.md. Every source is read in a
-    # worker pool with its own deadline (scripts/lib/release_train_view.py, the needs-action / platform-health
-    # pattern); missing data is null + UNAVAILABLE, never 0/green. GET only: non-GET and .../stop fall through
-    # (handle() returns None for them) to the STOP block, which owns them.
-    if method == "GET" and base_path.rstrip("/").startswith("/api/v2/coordination/release-train"):
-        try:
-            try:
-                from lib import release_train_view as _rtv
-            except ImportError:  # pragma: no cover - imported as scripts.api_v2
-                from scripts.lib import release_train_view as _rtv
-            _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
-            if _rtv_out is not None:
-                return _rtv_out
-        except Exception as e:
-            return 500, {"ok": False, "error": type(e).__name__}
-
     # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
-    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
-    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
-    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # schedules — serving release, main HEAD, shipped history, release errors, n8n today and the next 3 hours of
+    # cron + n8n (release-train sections removed 2026-10-27). scripts/lib/releases_schedules_view.py (each source
+    # in a worker with its own deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
     # docs/ops/RELEASES_SCHEDULES_PAGE.md.
     if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
         try:
@@ -49200,6 +49479,35 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _rsv_out = _rsv.handle(base_path, method, query or {}, _db_query)
             if _rsv_out is not None:
                 return _rsv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Deploy console P1 (DSN-20261029-deploy-console, read-only): the "not live / in flight" open-PR board.
+    # scripts/lib/deploy_in_flight.py — lists open PRs to main through `gh pr list` (GitHub IS called here, unlike
+    # the releases-schedules request path). No label write, no merge, no push, no promote, no schedule. GET only.
+    if base_path.rstrip("/") == "/api/v2/ops/in-flight":
+        try:
+            try:
+                from lib import deploy_in_flight as _dif
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploy_in_flight as _dif
+            _dif_out = _dif.handle(base_path, method, query or {}, _db_query)
+            if _dif_out is not None:
+                return _dif_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Ops → Incidents (operator 2026-10-27): IncidentRecord@v1 ledger (data/coordination/incidents) — GET list/detail;
+    # POST <id>/ack | <id>/close (operator decision first, scripts/lib/operator_approvals.py). docs/ops/INCIDENT_LEDGER.md.
+    if base_path.rstrip("/") == "/api/v2/ops/incidents" or base_path.startswith("/api/v2/ops/incidents/"):
+        try:
+            try:
+                from lib import incidents_view as _incv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import incidents_view as _incv
+            _inc_out = _incv.handle(base_path, method, query or {}, body)
+            if _inc_out is not None:
+                return _inc_out
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
@@ -50705,7 +51013,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 import synthetic_stop_monitor as _ssm
 
                 b = body or {}
@@ -50725,7 +51033,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 import synthetic_stop_monitor as _ssm
 
                 b = body or {}
@@ -52226,7 +52534,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 from lib import llm_consumption as _lc
 
                 b = body or {}
@@ -52242,7 +52550,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 import holding_protection_advisor as _hpa
 
                 b = body or {}
@@ -52276,7 +52584,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 import holding_protection_advisor as _hpa
 
                 b = body or {}
@@ -52309,7 +52617,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 from lib import llm_consumption as _lc
                 from lib.consumption_run_manual import (
                     classify_manual_lane,
@@ -52911,7 +53219,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 # Video URL — existing logic
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 from youtube_transcript_ingest import ingest_video
 
                 result = ingest_video(url, added_by=b.get("added_by", "user"))
@@ -52963,7 +53271,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "text required"}
                 import sys as _sys, hashlib
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 from social_monitor import store_post
 
                 post_id = (
@@ -53270,7 +53578,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     }
                 import sys as _sys
 
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                _ensure_scripts_path()
                 from paper_trade_logger import create_manual_proposal
 
                 result = create_manual_proposal(
@@ -53379,7 +53687,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from lib import llm_deferral as _ld
 
             updates = (body or {}).get("updates")
@@ -53500,7 +53808,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             import secret_validators as _sv
 
             name = ((body or {}).get("name") or "").strip()
@@ -55894,7 +56202,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from rag_retrieval import get_rag_context
 
             rag_items = get_rag_context(symbol, limit=7)
@@ -56139,7 +56447,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from alpaca_paper_adapter import AlpacaPaperAdapter
 
             adapter = AlpacaPaperAdapter()
@@ -56206,7 +56514,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from brokers import approval_service, audit as br_audit
             from brokers.order_intent import OrderIntent
 
@@ -56224,7 +56532,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from brokers import approval_service
             from db_adapter import _get_conn as _gc
 
@@ -56283,7 +56591,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from brokers import approval_service
 
             b = body or {}
@@ -56957,7 +57265,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # ── AUDIT: Create audit attempt before any gates ──
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             try:
                 from phase6_approval_audit import (
                     create_approval_audit_attempt,
@@ -57431,7 +57739,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from simulate_paper_proposal_approval import simulate_proposal, get_conn as _sim_conn
 
             _sc = _sim_conn()
@@ -57522,7 +57830,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from paper_trade_logger import reject_proposal
 
             result = reject_proposal(int(pid), body.get("reason", "dashboard"))
@@ -57538,7 +57846,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from paper_trade_logger import requeue_proposal
 
             result = requeue_proposal(int(pid), actor=str(body.get("actor") or "operator"))
@@ -57590,7 +57898,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_research_packet_builder import build_research_packet
             from session13_db import get_conn
 
@@ -57619,7 +57927,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_agent_review import review_proposal
             from session13_db import get_conn
 
@@ -57646,7 +57954,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_backtest_engine import backtest_proposal
             from session13_db import get_conn
 
@@ -57675,7 +57983,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_technical_snapshot import generate_snapshot
             from proposal_backtest_engine import backtest_proposal
             from price_db_sync import ensure_price_history
@@ -57717,7 +58025,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_technical_snapshot import generate_snapshot
             from session13_db import get_conn
 
@@ -57837,7 +58145,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "Must confirm paper submission (confirmed=true)"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_paper_submitter import submit_paper
             from session13_db import get_conn
 
@@ -57861,7 +58169,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id or symbol required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from fib_swing_engine import process_symbol
             from session13_db import get_conn
 
@@ -57886,7 +58194,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id or symbol required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from opening_range_engine import process_symbol
             from session13_db import get_conn
 
@@ -57910,7 +58218,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_technical_snapshot import generate_snapshot
             from session13_db import get_conn
 
@@ -57931,7 +58239,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_paper_submitter import dry_run_bracket
             from session13_db import get_conn
 
@@ -57955,7 +58263,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "Must confirm bracket submission (confirmed=true)"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_paper_submitter import submit_paper_bracket
             from session13_db import get_conn
 
@@ -58003,7 +58311,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from strategy_config_loader import load_all_strategy_configs
 
             configs = load_all_strategy_configs()
@@ -58054,7 +58362,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 405, {"ok": False, "error": f"/{sid} requires POST method"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from strategy_config_loader import load_strategy_config, get_strategy_prompt_context
 
             config = load_strategy_config(sid)
@@ -58177,7 +58485,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             sym = base_path.split("/")[-1].upper()
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from market_quote_provider import get_best_quote
             from proposal_lifecycle import evaluate_lifecycle_status, get_timeframe_class
             from session13_db import get_conn
@@ -61050,7 +61358,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from paper_submit_readiness import check_readiness, get_db as _get_readiness_db
 
             conn = _get_readiness_db()
@@ -61070,7 +61378,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from proposal_paper_submitter import dry_run_bracket
             from session13_db import get_conn
 
@@ -61726,7 +62034,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from live_trading_gate import evaluate
 
             result = evaluate()
@@ -61930,7 +62238,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from open_trade_manager import execute_approved
 
             pid = base_path.split("/")[-2]
@@ -62102,7 +62410,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from paper_execution_revalidator import revalidate, get_pending_proposals, save_recheck
             from session13_db import get_conn as _rck_conn
 
@@ -62178,7 +62486,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from market_session import is_market_open, current_market_session
             from paper_execution_revalidator import check_safety
             import os
@@ -62222,7 +62530,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from market_session import get_status as _ms_status
 
             return 200, {"ok": True, "data": _ms_status()}
@@ -62234,7 +62542,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from learning_governance import get_learning_status, _get_conn as _lg_conn
 
             conn = _lg_conn()
@@ -62393,7 +62701,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             )
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from learning_governance import record_rollback_event, _get_conn as _lg_conn2
 
             conn2 = _lg_conn2()
@@ -67631,7 +67939,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from atm_config_manager import load_config
 
             cfg, h = load_config()
@@ -67643,7 +67951,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from atm_config_manager import save_config
 
             new_hash = save_config(body, body.get("_changed_by", "dashboard"))
@@ -67679,7 +67987,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from atm_classifier_health import get_health_detail
             from atm_config_manager import load_config, is_bucket2_excluded, is_same_day_skip, get_strategy_filter
 
@@ -67737,7 +68045,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from atm_config_manager import (
                 load_config,
                 get_enabled_accounts,
@@ -67901,7 +68209,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from self_improvement_summary import collect_status, _get_conn as _si_conn
 
             conn = _si_conn()
@@ -67961,7 +68269,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from self_improvement_summary import collect_status, _get_conn as _si_conn2
 
             conn = _si_conn2()
@@ -67977,7 +68285,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import sys as _sys
 
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            _ensure_scripts_path()
             from self_improvement_summary import collect_status, _get_conn as _si_conn3
 
             conn = _si_conn3()

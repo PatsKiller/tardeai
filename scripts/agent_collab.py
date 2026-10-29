@@ -16,15 +16,97 @@ Usage:
 
     # Check if escalation needed
     esc = check_escalation("V")
+
+Trust boundary (agent-controls audit 2026-09-18, "Prompt injection is PARTIAL"):
+every block below that carries another agent's words or third-party text
+(peer summaries, catalysts, critic reasoning, captured lessons) is returned
+fenced as UNTRUSTED_DATA by scripts/lib/agent_untrusted_data.py, which also
+neutralises fence-marker look-alikes and role / turn markers inside it. If that
+helper cannot be loaded or fails, the block is dropped (empty string, with a
+logged warning and a counter, see fence_drop_counts), never returned raw.
+Blocks of this system's own instructions (get_scalp_agent_instructions) and of
+numbers it computes itself (confluence, calibration) are not fenced.
+READ_ONLY_ADVISORY: nothing here sizes, orders, stops or writes to a broker.
 """
+
+import importlib
 import json
+import logging
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_log = logging.getLogger(__name__)
+
+_ROOT_SPELLING = "scripts.lib.agent_untrusted_data"
+_SCRIPTS_SPELLING = "lib.agent_untrusted_data"
+_FENCE_DROPS: dict[str, int] = {}
+
+
+def _untrusted_delimiter():
+    """The shared ``untrusted_delimiter``, or None when it cannot be loaded.
+
+    A copy already in sys.modules (either spelling) is reused. Otherwise ONE
+    spelling is imported, matched to how this module was itself imported:
+    ``scripts.agent_collab`` -> ``scripts.lib.X``; ``agent_collab`` (a
+    SCRIPTS_ONLY caller such as process_watchlist_agent_jobs) -> ``lib.X``. The
+    other spelling is tried only when that one cannot be imported at all, so
+    this function never creates a twin. A different module importing the other
+    spelling later still can (scripts/lib/__init__.py assert_single_import_identity);
+    this module defines no classes, so isinstance is unaffected.
+    """
+    for name in (_ROOT_SPELLING, _SCRIPTS_SPELLING):
+        fn = getattr(sys.modules.get(name), "untrusted_delimiter", None)
+        if fn is not None:
+            return fn
+    order = (
+        (_ROOT_SPELLING, _SCRIPTS_SPELLING) if __name__.startswith("scripts.") else (_SCRIPTS_SPELLING, _ROOT_SPELLING)
+    )
+    for name in order:
+        try:
+            return importlib.import_module(name).untrusted_delimiter
+        except ImportError:
+            continue
+        except Exception:  # noqa: BLE001 — a broken helper means "no fence"; the caller drops the block
+            return None
+    return None
+
+
+def _drop(content_type: str, reason: str) -> str:
+    """Record and log a dropped block. Returns '' (the fail-closed value)."""
+    key = f"{content_type}:{reason}"
+    n = _FENCE_DROPS[key] = _FENCE_DROPS.get(key, 0) + 1
+    if n == 1 or n % 100 == 0:
+        _log.warning("agent_collab: %s context dropped, not sent unfenced (%s; drop #%d)", content_type, reason, n)
+    return ""
+
+
+def fence_drop_counts() -> dict[str, int]:
+    """``{"<content_type>:<reason>": n}`` blocks dropped in this process."""
+    return dict(_FENCE_DROPS)
+
+
+def _fence(content_type: str, source: str, body: str) -> str:
+    """``body`` fenced as UNTRUSTED_DATA; '' when empty or the helper is missing.
+
+    Fail closed: peer / third-party text never reaches a prompt unfenced. This
+    function never raises (auto_research calls get_agent_context without a
+    try); the DB reads around it can, exactly as before.
+    """
+    if not body or not body.strip():
+        return ""
+    delimit = _untrusted_delimiter()
+    if delimit is None:
+        return _drop(content_type, "helper_unavailable")
+    try:
+        return delimit(content_type=content_type, source=source, content=body)
+    except Exception as exc:  # noqa: BLE001
+        return _drop(content_type, f"helper_error:{type(exc).__name__}")
 
 
 def _get_conn():
     import psycopg2
+
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith("DB_PASSWORD="):
@@ -35,25 +117,29 @@ def _get_conn():
 def get_latest_agent_result(symbol: str, agent: str) -> dict | None:
     """Get the most recent analysis from a specific agent for a symbol."""
     import psycopg2.extras
+
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT symbol, agent, recommendation, confidence, summary,
                next_action, reason_codes, created_at
         FROM watchlist_agent_results
         WHERE symbol = %s AND agent = %s
         ORDER BY created_at DESC LIMIT 1
-    """, (symbol.upper(), agent))
+    """,
+        (symbol.upper(), agent),
+    )
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def get_agent_context(symbol: str, requesting_agent: str = "Alex",
-                      agents: list = None) -> str:
+def get_agent_context(symbol: str, requesting_agent: str = "Alex", agents: list = None) -> str:
     """Pull latest analysis from other agents for a symbol.
 
-    Returns formatted text for LLM prompt injection.
+    Returns formatted text for LLM prompt injection, fenced as UNTRUSTED_DATA
+    ('' when no peer has a result, or when the fence helper is unavailable).
     Logs handoffs automatically.
     """
     if agents is None:
@@ -94,34 +180,32 @@ def get_agent_context(symbol: str, requesting_agent: str = "Alex",
     body = header + "\n" + "\n".join(lines)
     # Peer summaries are untrusted relative to the requesting agent's system
     # instructions (audit Phase 1 / Control 4 — lateral injection surface).
-    try:
-        from scripts.lib.agent_untrusted_data import untrusted_delimiter
-    except Exception:
-        try:
-            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
-        except Exception:
-            return body
-    return untrusted_delimiter(
-        content_type="peer_summary",
-        source="agent_collab.get_agent_context",
-        content=body,
-    )
+    # Fail closed: before 2026-10-27 a failed import returned ``body`` raw.
+    return _fence("peer_summary", "agent_collab.get_agent_context", body)
 
 
-def log_handoff(from_agent: str, to_agent: str, symbol: str = "",
-                intent: str = "", confidence: float = 0,
-                response_summary: str = "", escalated: bool = False):
+def log_handoff(
+    from_agent: str,
+    to_agent: str,
+    symbol: str = "",
+    intent: str = "",
+    confidence: float = 0,
+    response_summary: str = "",
+    escalated: bool = False,
+):
     """Log an agent-to-agent handoff for audit."""
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO agent_handoffs
                 (from_agent, to_agent, symbol, intent, confidence,
                  response_summary, escalated, status, user_message, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'completed', %s, NOW())
-        """, (from_agent, to_agent, symbol, intent, confidence,
-              response_summary, escalated, intent))
+        """,
+            (from_agent, to_agent, symbol, intent, confidence, response_summary, escalated, intent),
+        )
         conn.commit()
         conn.close()
     except Exception:
@@ -135,17 +219,21 @@ def check_escalation(symbol: str) -> dict:
         {"needs_escalation": bool, "reasons": [...], "agents": {...}}
     """
     import psycopg2.extras
+
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Get latest results from all agents for this symbol
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (agent)
             agent, recommendation, confidence, summary, created_at
         FROM watchlist_agent_results
         WHERE symbol = %s
         ORDER BY agent, created_at DESC
-    """, (symbol.upper(),))
+    """,
+        (symbol.upper(),),
+    )
     results = cur.fetchall()
     conn.close()
 
@@ -200,7 +288,7 @@ def check_escalation(symbol: str) -> dict:
     }
 
 
-def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
+def get_confluence_context(symbol: str, conn, profile: str = "swing") -> str:
     """Return formatted indicator confluence context for injection into agent prompts.
 
     Non-fatal — returns empty string if data unavailable.
@@ -208,7 +296,8 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT confluence_tier, confluence_score, strategy_badges,
                    key_levels, stop_price, target_price, atr, adx_regime,
                    entry_quality, computed_at
@@ -216,28 +305,32 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
             WHERE symbol = %s AND profile = %s
             AND computed_at > NOW() - INTERVAL '1 hour'
             ORDER BY computed_at DESC LIMIT 1
-        """, [symbol, profile])
+        """,
+            [symbol, profile],
+        )
         row = cur.fetchone()
 
         if not row:
             # Try live computation (non-fatal)
             try:
                 import sys as _sys
+
                 _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from indicator_engine import analyze_confluence
+
                 result = analyze_confluence(symbol, profile)
-                if not result or not result.get('confluence_tier'):
-                    return ''
-                tier = result.get('confluence_tier', 'NONE')
-                score = result.get('confluence_score', 0)
-                badges = result.get('strategy_badges', [])
-                levels = result.get('key_levels', {})
-                stop = result.get('stop_price')
-                target = result.get('target_price')
-                atr_val = result.get('atr')
-                regime = result.get('adx_regime', 'unknown')
+                if not result or not result.get("confluence_tier"):
+                    return ""
+                tier = result.get("confluence_tier", "NONE")
+                score = result.get("confluence_score", 0)
+                badges = result.get("strategy_badges", [])
+                levels = result.get("key_levels", {})
+                stop = result.get("stop_price")
+                target = result.get("target_price")
+                atr_val = result.get("atr")
+                regime = result.get("adx_regime", "unknown")
             except Exception:
-                return ''
+                return ""
         else:
             tier = row[0]
             score = row[1]
@@ -246,12 +339,12 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
             stop = row[4]
             target = row[5]
             atr_val = row[6]
-            regime = row[7] or 'unknown'
+            regime = row[7] or "unknown"
 
-        if tier == 'NONE' and score == 0:
+        if tier == "NONE" and score == 0:
             return f"\n[TECHNICAL CONFLUENCE: No significant signals for {symbol}]\n"
 
-        badge_str = ', '.join(badges) if badges else 'none'
+        badge_str = ", ".join(badges) if badges else "none"
 
         lines = [
             f"\n=== TECHNICAL CONFLUENCE ({profile.upper()}) ===",
@@ -271,24 +364,24 @@ def get_confluence_context(symbol: str, conn, profile: str = 'swing') -> str:
         # Key levels from JSONB
         if levels:
             level_parts = []
-            pivots = levels.get('pivots_weekly', {})
-            if pivots.get('s1'):
+            pivots = levels.get("pivots_weekly", {})
+            if pivots.get("s1"):
                 level_parts.append(f"S1: ${pivots['s1']:.2f}")
-            if pivots.get('r1'):
+            if pivots.get("r1"):
                 level_parts.append(f"R1: ${pivots['r1']:.2f}")
-            bb = levels.get('bollinger', {})
-            if bb.get('lower'):
+            bb = levels.get("bollinger", {})
+            if bb.get("lower"):
                 level_parts.append(f"BB lower: ${bb['lower']:.2f}")
-            if bb.get('squeeze'):
+            if bb.get("squeeze"):
                 level_parts.append("TTM SQUEEZE ACTIVE")
             if level_parts:
                 lines.append("Levels: " + " | ".join(level_parts))
 
         lines.append("=" * 40)
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     except Exception:
-        return ''
+        return ""
 
 
 def get_prospects_context(symbol: str, conn) -> str:
@@ -299,7 +392,8 @@ def get_prospects_context(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT score, decision, rvol, gap_pct, float_m,
                    social_reddit, social_stocktwits, social_score,
                    social_sentiment, mention_count, social_sources,
@@ -308,27 +402,42 @@ def get_prospects_context(symbol: str, conn) -> str:
             WHERE symbol = %s
             AND scanned_at > NOW() - INTERVAL '3 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
 
         if not row:
-            return ''
+            return ""
 
-        (score, decision, rvol, gap_pct, float_m,
-         reddit, stocktwits, social_score, social_sentiment,
-         mention_count, social_sources, source, screener_label,
-         catalyst, catalyst_verified) = row
+        (
+            score,
+            decision,
+            rvol,
+            gap_pct,
+            float_m,
+            reddit,
+            stocktwits,
+            social_score,
+            social_sentiment,
+            mention_count,
+            social_sources,
+            source,
+            screener_label,
+            catalyst,
+            catalyst_verified,
+        ) = row
 
-        lines = [f"\n=== PIPELINE CONTEXT ==="]
+        lines = ["\n=== PIPELINE CONTEXT ==="]
 
         # Source tags
         source_tags = []
-        if source and 'screener' in str(source):
+        if source and "screener" in str(source):
             label = "Finviz screener"
             if screener_label:
                 label += f" [{screener_label}]"
             source_tags.append(label)
-        if source and 'social' in str(source):
+        if source and "social" in str(source):
             parts = []
             if reddit and reddit > 0:
                 parts.append(f"{reddit} Reddit")
@@ -356,19 +465,21 @@ def get_prospects_context(symbol: str, conn) -> str:
 
         # Social signal
         if social_sentiment:
-            lines.append(f"Social sentiment: {social_sentiment}" +
-                        (f" (score: {social_score:.1f})" if social_score else ""))
+            lines.append(
+                f"Social sentiment: {social_sentiment}" + (f" (score: {social_score:.1f})" if social_score else "")
+            )
 
         # Catalyst
         if catalyst:
-            lines.append(f"Catalyst: {catalyst}" +
-                        (" [VERIFIED]" if catalyst_verified else " [unverified]"))
+            lines.append(f"Catalyst: {catalyst}" + (" [VERIFIED]" if catalyst_verified else " [unverified]"))
 
         lines.append("=" * 40)
-        return '\n'.join(lines)
+        # Catalyst / screener label / social sentiment are third-party text.
+        fenced = _fence("pipeline_context", "trade_ai_scans", "\n".join(lines).strip("\n"))
+        return "\n" + fenced if fenced else ""
 
     except Exception:
-        return ''
+        return ""
 
 
 def get_scan_intelligence(symbol: str, conn) -> str:
@@ -380,7 +491,8 @@ def get_scan_intelligence(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT symbol, score, decision, price, rvol, float_m,
                    gap_pct, change_pct, sector, industry,
                    catalyst, catalyst_verified, catalyst_confidence,
@@ -392,22 +504,49 @@ def get_scan_intelligence(symbol: str, conn) -> str:
             FROM trade_ai_scans
             WHERE symbol = %s AND scanned_at > NOW() - INTERVAL '7 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
         if not row:
-            return ''
+            return ""
 
-        (sym, score, decision, price, rvol, float_m, gap_pct, change_pct,
-         sector, industry, catalyst, catalyst_verified, catalyst_confidence,
-         catalyst_source, critic_verdict, critic_reasoning,
-         social_reddit, social_stocktwits, social_score,
-         social_sentiment, social_bullish_pct, mention_count,
-         source, screener_label, run_label,
-         ticker_perf_1m, sector_perf_1m, vs_sector_pct, scanned_at) = row
+        (
+            sym,
+            score,
+            decision,
+            price,
+            rvol,
+            float_m,
+            gap_pct,
+            change_pct,
+            sector,
+            industry,
+            catalyst,
+            catalyst_verified,
+            catalyst_confidence,
+            catalyst_source,
+            critic_verdict,
+            critic_reasoning,
+            social_reddit,
+            social_stocktwits,
+            social_score,
+            social_sentiment,
+            social_bullish_pct,
+            mention_count,
+            source,
+            screener_label,
+            run_label,
+            ticker_perf_1m,
+            sector_perf_1m,
+            vs_sector_pct,
+            scanned_at,
+        ) = row
 
         lines = [f"\n=== TRADE AI SCAN: {sym} ==="]
-        lines.append(f"{decision} | Score: {score}/65 | Price: ${price:.2f}"
-                     + (f" | Gap: {gap_pct:+.1f}%" if gap_pct else ""))
+        lines.append(
+            f"{decision} | Score: {score}/65 | Price: ${price:.2f}" + (f" | Gap: {gap_pct:+.1f}%" if gap_pct else "")
+        )
 
         parts = []
         if rvol:
@@ -431,8 +570,7 @@ def get_scan_intelligence(symbol: str, conn) -> str:
             lines.append("Catalyst: Not identified — pure technical/volume setup")
 
         if critic_verdict:
-            lines.append(f"Critic: {critic_verdict}" +
-                        (f" — {critic_reasoning[:120]}" if critic_reasoning else ""))
+            lines.append(f"Critic: {critic_verdict}" + (f" — {critic_reasoning[:120]}" if critic_reasoning else ""))
 
         social_parts = []
         if social_reddit and social_reddit > 0:
@@ -447,16 +585,21 @@ def get_scan_intelligence(symbol: str, conn) -> str:
         if sector:
             s = [sector]
             if vs_sector_pct:
-                s.append(f"{'outperforming' if vs_sector_pct > 0 else 'underperforming'} sector by {abs(vs_sector_pct):.1f}%")
+                s.append(
+                    f"{'outperforming' if vs_sector_pct > 0 else 'underperforming'} sector by {abs(vs_sector_pct):.1f}%"
+                )
             lines.append("Sector: " + " | ".join(s))
 
         if screener_label or run_label:
             lines.append(f"Discovered by: {screener_label or run_label or source}")
 
         lines.append("=" * 40)
-        return '\n'.join(lines) + '\n'
+        # Catalyst text, its source and the critic's reasoning are news / model
+        # output, not instructions.
+        fenced = _fence("scan_intelligence", "trade_ai_scans", "\n".join(lines).strip("\n"))
+        return "\n" + fenced + "\n" if fenced else ""
     except Exception:
-        return ''
+        return ""
 
 
 def get_scalp_agent_instructions(symbol: str, conn) -> str:
@@ -467,21 +610,24 @@ def get_scalp_agent_instructions(symbol: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT price, float_m, decision, rvol
             FROM trade_ai_scans
             WHERE symbol = %s AND decision IN ('GO','WAIT')
             AND scanned_at > NOW() - INTERVAL '7 days'
             ORDER BY scanned_at DESC LIMIT 1
-        """, [symbol])
+        """,
+            [symbol],
+        )
         row = cur.fetchone()
         if not row:
-            return ''
+            return ""
         price, float_m, decision, rvol = row
         if price and price > 100:
-            return ''
+            return ""
         if float_m and float_m > 200:
-            return ''
+            return ""
 
         return """
 === SCALP ANALYSIS CONTEXT ===
@@ -499,7 +645,7 @@ DO NOT analyze as portfolio position. No IRMAA/SSDI/retirement references for sc
 =================================
 """
     except Exception:
-        return ''
+        return ""
 
 
 def get_entity_intelligence(entity_id: str, conn) -> str:
@@ -511,7 +657,11 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
     """
     try:
         from scripts.intelligence_entity_manager import get_entity_context_for_prompt
-        return get_entity_context_for_prompt(conn, entity_id)
+
+        # The IER record carries catalyst text; fenced like get_prospects_context.
+        ier = get_entity_context_for_prompt(conn, entity_id)
+        fenced = _fence("entity_intelligence", "intelligence_entities", (ier or "").strip("\n"))
+        return "\n" + fenced if fenced else ""
     except Exception:
         # Fallback to old scatter-gather
         try:
@@ -519,7 +669,7 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
             ctx += get_prospects_context(entity_id, conn)
             return ctx
         except Exception:
-            return ''
+            return ""
 
 
 def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
@@ -529,11 +679,13 @@ def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
     Designed for LLM prompt injection so agents see recent history before recommending.
     """
     import os
-    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
-        return ''
+
+    if os.getenv("AGENT_HISTORY_CONTEXT_ENABLED", "true").lower() != "true":
+        return ""
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT entry_time, closed_at, strategy_id,
                    entry_price, exit_price, stop_loss,
                    pnl, outcome_verdict, exit_reason,
@@ -542,51 +694,67 @@ def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
             WHERE symbol = %s AND lifecycle_state = 'closed'
               AND closed_at > NOW() - (%s || ' days')::interval
             ORDER BY closed_at DESC LIMIT 5
-        """, [symbol, str(days)])
+        """,
+            [symbol, str(days)],
+        )
         rows = cur.fetchall()
         if not rows:
-            return ''
+            return ""
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT config, created_at FROM agent_intelligence_rules
             WHERE (rule_key ILIKE %s OR config::text ILIKE %s)
               AND created_at > NOW() - (%s || ' days')::interval
             ORDER BY created_at DESC LIMIT 3
-        """, ['%' + symbol + '%', '%' + symbol + '%', str(days)])
+        """,
+            ["%" + symbol + "%", "%" + symbol + "%", str(days)],
+        )
         lessons = cur.fetchall()
 
-        wins = sum(1 for r in rows if r[7] == 'WIN')
-        losses = sum(1 for r in rows if r[7] == 'LOSS')
-        lines = [f"=== PRIOR OUTCOMES FOR {symbol} (last {days} days) ===",
-                 f"Trades: {len(rows)} ({wins}W / {losses}L)", ""]
+        wins = sum(1 for r in rows if r[7] == "WIN")
+        losses = sum(1 for r in rows if r[7] == "LOSS")
+        lines = [
+            f"=== PRIOR OUTCOMES FOR {symbol} (last {days} days) ===",
+            f"Trades: {len(rows)} ({wins}W / {losses}L)",
+            "",
+        ]
         for entry_time, closed_at, strat, entry, exit_p, stop, pnl, verdict, exit_reason, hold_hr in rows:
             pnl_f = float(pnl) if pnl else 0
             pnl_str = f"+${pnl_f:.2f}" if pnl_f > 0 else f"-${abs(pnl_f):.2f}"
             exit_str = f"${float(exit_p):.2f}" if exit_p else "N/A"
             hold_str = f"{float(hold_hr):.1f}h" if hold_hr else "?"
-            lines.append(f"  {closed_at.strftime('%m-%d %H:%M')} {strat}: {verdict} {pnl_str} "
-                         f"(${float(entry):.2f}→{exit_str}, {hold_str}, {exit_reason})")
+            lines.append(
+                f"  {closed_at.strftime('%m-%d %H:%M')} {strat}: {verdict} {pnl_str} "
+                f"(${float(entry):.2f}→{exit_str}, {hold_str}, {exit_reason})"
+            )
         if lessons:
             lines.append("")
             lines.append("Captured lessons:")
             for config, _ in lessons:
-                lesson_str = config.get('text', '') if isinstance(config, dict) else str(config)[:200]
+                lesson_str = config.get("text", "") if isinstance(config, dict) else str(config)[:200]
                 if lesson_str:
                     lines.append(f"  - {lesson_str[:200]}")
-        lines.append("Consider this history when evaluating new proposals.")
-        return "\n".join(lines) + "\n"
+        # Captured lessons are other agents' words and exit_reason can be free text:
+        # the history is fenced as data; this module's own instruction stays outside.
+        fenced = _fence("trade_history", "paper_trades+agent_intelligence_rules", "\n".join(lines))
+        if not fenced:
+            return ""
+        return fenced + "\nConsider this history when evaluating new proposals.\n"
     except Exception:
-        return ''
+        return ""
 
 
 def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> str:
     """Return formatted strategy-level performance context for prompt injection."""
     import os
-    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
-        return ''
+
+    if os.getenv("AGENT_HISTORY_CONTEXT_ENABLED", "true").lower() != "true":
+        return ""
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FILTER (WHERE outcome_verdict = 'WIN') as wins,
                    COUNT(*) FILTER (WHERE outcome_verdict = 'LOSS') as losses,
                    SUM(pnl) FILTER (WHERE pnl > 0) as gross_profit,
@@ -595,10 +763,12 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
             FROM paper_trades
             WHERE strategy_id = %s AND lifecycle_state = 'closed'
               AND closed_at > NOW() - (%s || ' days')::interval
-        """, [strategy_id, str(days)])
+        """,
+            [strategy_id, str(days)],
+        )
         row = cur.fetchone()
         if not row or (row[0] or 0) + (row[1] or 0) == 0:
-            return ''
+            return ""
         wins, losses, gross_profit, gross_loss, avg_hold = row
         total = wins + losses
         win_rate = wins / total if total > 0 else 0
@@ -606,17 +776,22 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
         gl = float(gross_loss or 0)
         pf = gp / gl if gl > 0 else None
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT exit_reason, COUNT(*), AVG(pnl)::numeric(10,2)
             FROM paper_trades
             WHERE strategy_id = %s AND lifecycle_state = 'closed'
               AND outcome_verdict = 'LOSS' AND closed_at > NOW() - (%s || ' days')::interval
             GROUP BY exit_reason ORDER BY COUNT(*) DESC LIMIT 3
-        """, [strategy_id, str(days)])
+        """,
+            [strategy_id, str(days)],
+        )
         failures = cur.fetchall()
 
-        lines = [f"=== STRATEGY PERFORMANCE — {strategy_id} (last {days}d) ===",
-                 f"Trades: {total} ({wins}W/{losses}L) win rate {win_rate:.0%}"]
+        lines = [
+            f"=== STRATEGY PERFORMANCE — {strategy_id} (last {days}d) ===",
+            f"Trades: {total} ({wins}W/{losses}L) win rate {win_rate:.0%}",
+        ]
         if pf is not None:
             lines.append(f"Profit factor: {pf:.2f} (P${gp:.0f} / L${gl:.0f})")
         if avg_hold:
@@ -627,7 +802,7 @@ def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> 
                 lines.append(f"  {reason}: {cnt} losses, avg ${avg_pnl}")
         return "\n".join(lines) + "\n"
     except Exception:
-        return ''
+        return ""
 
 
 def get_calibration_context(agent_name: str, conn) -> str:
@@ -638,32 +813,40 @@ def get_calibration_context(agent_name: str, conn) -> str:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT config FROM agent_intelligence_rules
             WHERE rule_type = 'calibration_stats' AND rule_key = %s
             ORDER BY updated_at DESC LIMIT 1
-        """, [f"accuracy_{agent_name}"])
+        """,
+            [f"accuracy_{agent_name}"],
+        )
         row = cur.fetchone()
         if row and row[0]:
             data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-            text = data.get('text', '')
+            text = data.get("text", "")
             if text:
                 return f"\n{text}\n"
         # Fallback: direct query
-        cur.execute("""
+        cur.execute(
+            """
             SELECT accuracy_pct, correct_count, wrong_count,
                    total_recommendations, trending
             FROM agent_calibration
             WHERE agent_name = %s AND window_days = 90
             AND strategy_type IS NULL AND total_recommendations >= 3
-        """, [agent_name])
+        """,
+            [agent_name],
+        )
         row = cur.fetchone()
         if row and row[0]:
             acc, correct, wrong, total, trending = row
-            trend = {'IMPROVING': '↑', 'DECLINING': '↓', 'STABLE': '→'}.get(trending or '', '')
-            return (f"\n=== YOUR ACCURACY (90d) ===\n"
-                    f"Overall: {acc:.0f}% ({correct}/{total} correct) {trend}\n"
-                    f"Calibrate confidence accordingly.\n{'=' * 40}\n")
+            trend = {"IMPROVING": "↑", "DECLINING": "↓", "STABLE": "→"}.get(trending or "", "")
+            return (
+                f"\n=== YOUR ACCURACY (90d) ===\n"
+                f"Overall: {acc:.0f}% ({correct}/{total} correct) {trend}\n"
+                f"Calibrate confidence accordingly.\n{'=' * 40}\n"
+            )
 
         # No calibration data yet — show accumulating message
         try:
@@ -673,15 +856,19 @@ def get_calibration_context(agent_name: str, conn) -> str:
             total_outcomes = 0
 
         if total_outcomes > 0:
-            return (f"\n=== CALIBRATION STATUS ===\n"
-                    f"Accuracy tracking: {total_outcomes} trade outcome(s) scored.\n"
-                    f"Need 3+ per strategy type for meaningful accuracy data.\n"
-                    f"Continue analyzing — calibration improves with each closed trade.\n"
-                    f"{'=' * 40}\n")
+            return (
+                f"\n=== CALIBRATION STATUS ===\n"
+                f"Accuracy tracking: {total_outcomes} trade outcome(s) scored.\n"
+                f"Need 3+ per strategy type for meaningful accuracy data.\n"
+                f"Continue analyzing — calibration improves with each closed trade.\n"
+                f"{'=' * 40}\n"
+            )
         else:
-            return (f"\n=== CALIBRATION STATUS ===\n"
-                    f"No closed trades scored yet. "
-                    f"System will track your accuracy as trades close.\n"
-                    f"{'=' * 40}\n")
+            return (
+                f"\n=== CALIBRATION STATUS ===\n"
+                f"No closed trades scored yet. "
+                f"System will track your accuracy as trades close.\n"
+                f"{'=' * 40}\n"
+            )
     except Exception:
-        return ''
+        return ""

@@ -1,0 +1,13 @@
+# Deterministic incident watchers every 5 minutes: open/auto-resolve IncidentRecord@v1 rows; never sends.
+
+[Unit]
+Description=Trade AI incident watchers (deterministic, no model) timer
+
+[Timer]
+OnCalendar=*:0/5
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-incident-watchers.service
+
+[Install]
+WantedBy=timers.target

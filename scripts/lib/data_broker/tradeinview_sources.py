@@ -260,6 +260,7 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
     exact stored CUSIP identifier (identity registry or Schwab instrument record).
     """
     names: dict[str, dict] = {}
+    no_identifier: set[str] = set()
     for row in holdings.get("holdings") or []:
         sym = symbol(row.get("symbol")) if isinstance(row, dict) else ""
         if sym in symbols and sym not in names and isinstance(row.get("name"), str) and row["name"].strip():
@@ -269,8 +270,13 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
         sym = symbol(row.get("ticker")) if isinstance(row, dict) else ""
         if sym in symbols and sym not in names and isinstance(row.get("title"), str) and row["title"].strip():
             names[sym] = {"name": row["title"].strip(), "source": "SEC company tickers"}
-    instruments = (bounded_json(root / "data/runtime/schwab_instrument_evidence.json").get("document") or {}).get("instruments")
+    instrument_doc = (bounded_json(root / "data/runtime/schwab_instrument_evidence.json").get("document") or {})
+    instruments = instrument_doc.get("instruments")
     instruments = instruments if isinstance(instruments, dict) else {}
+    # `misses` are symbols the broker could not identify (broker_returned_no_identifier),
+    # typically delisted or unquoted names. They carry no description or cusip.
+    misses = instrument_doc.get("misses")
+    misses = misses if isinstance(misses, dict) else {}
     by_cusip: dict[str, str] = {}
     for sym, rec in instruments.items():
         if not isinstance(rec, dict):
@@ -281,6 +287,9 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
         cusip = symbol((rec.get("identifiers") or {}).get("cusip")) if isinstance(rec.get("identifiers"), dict) else ""
         if cusip:
             by_cusip.setdefault(cusip, sym)
+    for sym in misses:
+        if symbol(sym) in symbols:
+            no_identifier.add(symbol(sym))
     wanted = {s for s in symbols if cusip_like(s)}
     if wanted:
         try:
@@ -292,7 +301,8 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
                     by_cusip.setdefault(cusip, symbol(entity["ticker_alias"]))
         except Exception:  # noqa: BLE001 - an unreadable registry leaves the CUSIP unmapped, never guessed
             pass
-    return {"names": names, "cusip_tickers": {c: by_cusip[c] for c in sorted(wanted) if c in by_cusip}}
+    return {"names": names, "cusip_tickers": {c: by_cusip[c] for c in sorted(wanted) if c in by_cusip},
+            "no_identifier": sorted(no_identifier)}
 
 
 READ_ROWS = 25_000

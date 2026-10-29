@@ -1,0 +1,18 @@
+# One-tap PR merge digest (AGENTS.md §25.10; operator 2026-10-27). Install is operator-only (§17).
+# Lists READY PRs to main in ONE Telegram message with Approve all / Hold all; empty digest sends nothing.
+# Never merges, never promotes. See docs/ops/MERGIFY_DEPLOY_FOUNDATION.md.
+[Unit]
+Description=Trade AI — PR merge digest (one Telegram tap approves the batch)
+Documentation=docs/ops/AGENT_MERGIFY_HANDOFF.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%h/.config/tradeai/cio-telegram.env
+EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pr_merge_digest.py --apply --json
+Nice=10
+TimeoutStartSec=600

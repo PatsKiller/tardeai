@@ -1,5 +1,5 @@
 import {
-  doNowFrom, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -109,6 +109,55 @@ check('account evidence preserves action, risk and queue order', accountEvidence
 check('no evidence never infers an account from symbol', m.items[0].accounts.length === 0)
 const labelsOnly = doNowFrom({ ...ok, items: [{ ...ok.items[0], evidence: { account_labels: ['Schwab Individual'] } }] }, { nowMs: now }).items[0]
 check('safe server label remains available without a key', labelsOnly.accounts[0].label === 'Schwab Individual')
+
+// Operator restoration 2026-10-25: preserve categories, approval parity and fail-closed source gaps.
+const current = { positions: { source: 'fixture CIO', as_of: ok.as_of, unprotected_value_usd: 120,
+  rows: ['active', 'pending_activation', 'filled', 'none', 'planned', 'unknown'].map((category, i) => ({
+    symbol: `FAKE${i}`, account_id: 'demo_account', account_label: 'Example Account', market_value: 120,
+    stop_category: category, triggered: true, stop_price: null,
+  })) }, stops: { unprotected_count: 3, stale: false } }
+const corrected = homeWithCurrentTruth(m, current, { pending_approvals: 2, approvals_count: 98 })
+check('restoration: legacy below-stop/no-stop rows never override current categories',
+  !corrected.items.some(i => i.id === 'stop:SPCX' || i.title.includes('below its stop')))
+check('restoration: active resting stop never generates a false protect action', !corrected.items.some(i => i.title.startsWith('FAKE0')))
+check('restoration: pending and filled keep their categories', corrected.items.some(i => i.title.includes('pending activation'))
+  && corrected.items.some(i => i.title.includes('filled · awaiting holdings sync') && i.money === null))
+check('restoration: planned and unknown states never become no-stop claims',
+  corrected.items.find(i => i.title.startsWith('FAKE4'))?.title.includes('Planned level') === true
+  && corrected.items.find(i => i.title.startsWith('FAKE5'))?.title.includes('state not recorded') === true)
+check('restoration: approvals use exactly the header precedence', corrected.items.find(i => i.id === 'approvals:pending')?.title === '2 approvals waiting')
+check('restoration: source and categorized unprotected count preserved', corrected.numbers.unprotected === 3 && corrected.numbers.positionsSource === 'fixture CIO')
+check('restoration: source payload unchanged', current.positions.rows[0].stop_category === 'active' && m.items[0].id === 'stop:SPCX')
+check('restoration: account names only', corrected.items.filter(i => i.id.startsWith('protection:')).every(i => i.accounts[0].label === 'Example Account'))
+check('restoration: protection opens the exact Risk account+symbol sheet', corrected.items.find(i => i.title.startsWith('FAKE1'))?.where.includes('detail=position%3Ademo_account%3AFAKE1') === true)
+const missingCurrent = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), null, {})
+check('restoration: missing current categories and approvals never an all-clear or zero', missingCurrent.state === 'UNAVAILABLE'
+  && !missingCurrent.allSourcesAnswered && missingCurrent.numbers.unprotected === null && missingCurrent.unavailableSources.includes('approvals'))
+check('restoration: stale broker read keeps its gap', homeWithCurrentTruth(m, { ...current, stops: { ...current.stops, stale: true } }, { pending_approvals: 0 }).state === 'STALE')
+check('restoration: failed refresh cannot claim current categories', homeWithCurrentTruth(m, current, { pending_approvals: 0 }, 'timeout').numbers.unprotected === null)
+check('restoration: known zero approvals removes old approval actions', !homeWithCurrentTruth(m, current, { pending_approvals: 0 }).items.some(i => i.id.startsWith('approvals:')))
+
+
+// Retained HTTP 503 answers have stale=true/error=null in useApi. They keep their categories and count,
+// while the queue and source receipt must visibly lose their fresh state.
+const retainedPositions = homeWithCurrentTruth(m, current, { pending_approvals: 2 }, undefined, { positionsStale: true })
+check('restoration: retained positions make the queue, receipt and number stale', retainedPositions.state === 'STALE'
+  && retainedPositions.sources.find(s => s.name === 'cio_positions')?.stale === true
+  && retainedPositions.staleSources.includes('cio_positions') && retainedPositions.numbers.stale)
+check('restoration: retained positions preserve categories and the last categorized count', retainedPositions.numbers.unprotected === 3
+  && retainedPositions.items.some(i => i.title.includes('pending activation'))
+  && !retainedPositions.items.some(i => i.title.includes('below its stop')))
+const retainedApprovals = homeWithCurrentTruth(m, current, { pending_approvals: 2, approvals_count: 98 }, undefined, { approvalsStale: true })
+check('restoration: retained approvals preserve header parity and disclose stale receipt', retainedApprovals.state === 'STALE'
+  && retainedApprovals.items.find(i => i.id === 'approvals:pending')?.title === '2 approvals waiting'
+  && retainedApprovals.sources.find(s => s.name === 'approvals')?.stale === true)
+const sourceStale = doNowFrom({ ...ok, sources: { risk: { ...ok.sources.risk, stale: true } } }, { nowMs: now })
+check('restoration: a stale contributing source never presents a fresh queue',
+  homeWithCurrentTruth(sourceStale, current, { pending_approvals: 0 }).state === 'STALE')
+const emptyCurrent = { positions: { source: 'fixture CIO', rows: [] }, stops: { unprotected_count: 0 } }
+const retainedEmpty = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), emptyCurrent,
+  { pending_approvals: 0 }, undefined, { positionsStale: true })
+check('restoration: an empty retained answer is never a fresh all-clear', retainedEmpty.state === 'STALE')
 
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

@@ -6,12 +6,20 @@ import DeskPage, { type DeskDecision, type DeskSource } from './DeskPage'
  *  from config/lane_registry.json (via /api/v2/desk-sources), in-panel gaps and the Decisions band. Each page keeps
  *  its own URL-synced tabs and every panel it had (change control): the frame is added around them, nothing is
  *  removed. Lane ids are registry ids; a source whose update time the page does not supply says so. */
-export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs'
+export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs' | 'incidents'
 
 type SourceSpec = Omit<DeskSource, 'asOf' | 'gap'>
 type PageSpec = { title: string; purpose: string; sources: SourceSpec[] }
 
 const PAGES: Record<OpsPageKey, PageSpec> = {
+  incidents: {
+    title: 'Incidents',
+    purpose: 'What broke, who or what is fixing it, what was tried, and what fixed it — the coordinator’s log. Agents and watchers write it; you acknowledge or close as won’t fix.',
+    sources: [
+      { id: 'watchers', label: 'Incident watchers (host timer, 5 min)', laneIds: [] },
+      { id: 'supervisor', label: 'Incident supervisor (host timer, 10 min)', laneIds: [] },
+    ],
+  },
   jobs: {
     title: 'Jobs & health',
     purpose: 'Did each scheduled job actually run and succeed? Success is a run receipt with its exit code and output, never a log write time.',
@@ -56,10 +64,6 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     title: 'Releases & Schedules',
     purpose: 'What is released, what is scheduled to run, and whether scheduled jobs actually ran.',
     sources: [
-      // Host request timers for the policy's live windows (config/release_train_policy.json); each writes a LaneRunReceipt.
-      { id: 'train', label: 'Release train', laneIds: ['release-train-request-timer-1200', 'release-train-request-timer-1800',
-        'release-train-request-timer-0600', 'release-train-request-timer-0900', 'release-train-request-timer-1500',
-        'release-train-request-timer-2100', 'release-train-request-timer-0000', 'release-train-request-timer-0300'] },
       { id: 'n8n', label: 'n8n dispatch', laneIds: ['n8n-pilot-dispatch'] },
     ],
   },

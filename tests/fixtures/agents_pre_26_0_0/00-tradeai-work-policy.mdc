@@ -1,0 +1,73 @@
+---
+description: Trade AI — agent operating standard
+alwaysApply: true
+---
+
+Before editing, testing, committing, pushing, opening a PR, merging or deploying:
+
+**Read `/AGENTS.md`.** It is the single source of truth for agent behaviour — authority rails,
+evidence and citation standards, dry-run requirements, standing traps, validation, deploy protocol,
+model-lane policy and the operator-only list.
+
+**Read `/AI_WORK_POLICY.md`** for remote synchronization, the push budget, CI cost and the
+deployment boundary. Local-first development: local commits are checkpoints, pushes are expensive
+release-verification events. A local checkpoint is `git commit`, not `git push`. Remote sync
+requires `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus operator intent.
+
+This file contains no rules of its own. On conflict, the safer or more restrictive instruction wins.
+
+## The ten rules, verbatim from `AGENTS.md` §0
+
+These ten prevent irreversible harm, and rule 11 keeps work recoverable. They are repeated verbatim
+in every tool adapter, because an agent that reads fifteen lines and stops must still know them.
+
+1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
+   Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
+   the rail is an unconditional raise in code. See `AGENTS.md` §2.)
+2. **Broker code is buildable only under a per-task grant; broker authority never is.** With an
+   active operator-approved `execution-engineering` grant naming the files, purpose and expiry, an
+   agent may implement and test broker-adjacent code (A1/A2: mocks, fixtures, simulated broker,
+   replay). Without one, the broker execution subsystem is out of scope: do not modify, test
+   against or investigate it. No agent ever calls a live broker, reads a live credential, sets a
+   live flag, requests 2FA, calls `place_order`, or POSTs to an order route (AGENTS.md §22).
+   One operational exception, binding only once AGENTS.md 5.0.0 is ACTIVE: with an operator
+   `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that
+   broker-execution unit while markets are closed, and never touch its code, credentials, flags or
+   orders (AGENTS.md §24.10).
+   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator
+   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker
+   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order
+   route (AGENTS.md §24.11).
+3. **Never route around a permission denial.** Stop and report. No alternate remote, no
+   direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
+   budget. Never skip a hook: no `--no-verify`, no `core.hooksPath` or other hook-disabling override.
+   Never edit, stage or commit in the canonical checkout the host runs from; work in a worktree off
+   fresh `origin/main` (AGENTS.md §28.12 step 3). The deploy poller saves stray edits there to a patch
+   and alerts.
+4. **A checkpoint is `git commit`, not `git push`.** Remote sync requires
+   `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent — `AI_WORK_POLICY.md`.
+   An operator-approved plan or scope is that intent for fast-forward pushes of the agent's own
+   non-`main` branches within the push budget (AGENTS.md §28.15 item 8); `main` never.
+5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
+   and timestamps. A machine picking one can destroy the other.
+6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
+   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may
+   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,
+   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
+   A second exception, binding only once AGENTS.md 20.0.0 is ACTIVE: the host /tmp hygiene lanes
+   may remove the /tmp items their reviewed tmp.* rules select (scripts/tmp_hygiene_auto.py),
+   and nothing else (AGENTS.md §24.12).
+7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
+   money, or touches a scheduled job. Quote the dry run's output.
+8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
+   thing had not run.
+9. **Operator-only decisions: propose and stop.** The list is §17.
+10. **When a finding contradicts this file, the finding wins.** Report it once, continue, and open
+    an amendment PR (§20).
+11. **Claim, log, hand off.** Before editing, read the claim board and the active worklogs
+    (`scripts/agent_claim.py status`); claim your files; keep your worklog current (plan, changes,
+    decisions, blockers, handoff); when you stop for any reason, leave the exact next step. Work in
+    progress must be recoverable by any agent of any vendor: commit locally at least every hour,
+    record branch, worktree path and head SHA in the worklog, and push a draft PR, within the push
+    budget, for anything a cloud agent may need. Taking over a stale or abandoned claim is done with
+    `agent_claim.py takeover`, never by starting over. How to pick up work: AGENTS.md §28.3a.

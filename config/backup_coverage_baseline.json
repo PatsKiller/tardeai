@@ -64,6 +64,7 @@
   "store:supervisor_heartbeats": "NONE: stores_intelligence_schema (seeded 2026-10-09)",
   "store:supervisor_ladder_receipts": "NONE: stores_runtime_files (seeded 2026-10-09)",
   "store:supervisor_recoveries": "NONE: stores_runtime_files (seeded 2026-10-09)",
-  "store:web_search": "NONE: stores_runtime_files (seeded 2026-10-09)"
+  "store:web_search": "NONE: stores_runtime_files (seeded 2026-10-09)",
+  "store:anthropic_promotional_credit": "NONE: stores_runtime_files (2026-10-26, Anthropic promotional credit journal under data/runtime/provider_cost; rebuildable only by operator reconcile against provider usage; no automated purge; runtime/ excluded from data_offsite)"
  }
 }
