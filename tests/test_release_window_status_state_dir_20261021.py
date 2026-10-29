@@ -1,6 +1,6 @@
-"""Release train arming finding 4 (ANCHOR RELEASE_WINDOW_STATUS_STATE_DIR_20261021): ``release_window.py status``
-prints the ``state_dir`` it reads and where that path came from, so step G compares the runner's STOP latch
-directory with the CC's ``GET /stop`` ``state_dir`` from the status output itself.
+"""ANCHOR RELEASE_WINDOW_STATUS_STATE_DIR_20261021: ``release_window.py status`` prints the ``state_dir`` it reads and
+where that path came from, so the deploy STOP latch directory can be compared with the CC's ``GET /api/v2/ops/deploys/
+stop`` ``state_dir``. (The release-train arming step-G and packet pins were archived with the train 2026-10-27.)
 
 Hermetic: release_window is imported in a subprocess with a controlled environment and a tmp state dir. No network,
 DB, systemd or broker.
@@ -14,12 +14,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
-from tests.test_release_train_arming_20261021 import Sandbox  # noqa: E402
+
+# Firing coverage (tests/test_alarm_coverage.py): scripts/release_window.py has ONE send_telegram site, Host.notify.
+# Its firing test lived in the archived release-train suite until 2026-10-27; it is kept here.
+COVERS = ["scripts/release_window.py"]
 
 
 def _status(env_over: dict) -> dict:
@@ -66,34 +67,20 @@ def test_runner_status_with_an_explicit_root_says_argument(tmp_path):
     assert body["state_dir"] == str(tmp_path / "x") and body["state_dir_source"] == "argument"
 
 
-def test_train_status_names_the_state_dir_too(tmp_path):
-    from scripts import release_window as RW
-    from scripts.lib import release_train_controller as T
-
-    body = T.status(RW.State(tmp_path / "s"))
-    assert body["state_dir"] == str(tmp_path / "s") and body["state_dir_source"] == "argument"
-
-
-@pytest.fixture
-def sb(tmp_path):
-    return Sandbox(tmp_path)
-
-
-def test_step_g_reads_the_runner_dir_from_status(sb):
-    r = sb.run("G")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "release_window.py status state_dir (claimer env)" in r.stdout
-    line = next(x for x in r.stdout.splitlines() if "release_window.py status state_dir" in x)
-    assert str(sb.state_dir) in line and "[default]" in line and "verdict: MATCH" in r.stdout
-
-
-def test_packet_finding_4_is_marked_fixed():
-    text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("4. **`release_window.py status` reports no `state_dir`.**") :]
-    assert "**Status: FIXED**" in seg[:1200]
-
-
 def test_gate_file_registers_this_test():
     doc = json.loads((ROOT / "config/ci_gates/release_window_status_state_dir_20261021.json").read_text())
     assert doc["anchor"] == "RELEASE_WINDOW_STATUS_STATE_DIR_20261021"
     assert "tests/test_release_window_status_state_dir_20261021.py" in doc["files"]
+
+
+def test_host_notify_alarm_reaches_the_transport(monkeypatch):
+    # FIRING test: Host.notify is the runner's one alarm; it must reach telegram_alert.send_telegram unchanged.
+    import telegram_alert
+    from scripts import release_window as RW
+
+    sent = []
+    monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: sent.append((msg, k)) or True)
+    out = RW.Host.notify(object.__new__(RW.Host), "release window ROLLED_BACK abcdef123", "P1")
+    assert out == {"accepted": True, "priority": "P1"}
+    assert sent == [("release window ROLLED_BACK abcdef123", {"priority": "P1", "dedupe_minutes": 0,
+                                                              "producer": "release_window"})]

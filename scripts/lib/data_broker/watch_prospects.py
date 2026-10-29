@@ -33,8 +33,10 @@ Expired; a size cap per lane with the overflow named, never silently dropped; ex
 a ``cio_instrument_record.BEHAVIOR_FIELDS`` name (a test pins it). Changing what is ranked onto Watch is §17: this
 module orders rows by lane, then conviction, then the existing decision priority — the order the approved mockup shows.
 """
+
 from __future__ import annotations
 
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Optional
@@ -129,21 +131,77 @@ def _pct_away(price: Optional[float], level: Optional[float]) -> Optional[float]
 def conviction_block(opp: Optional[dict[str, Any]], *, now: datetime) -> dict[str, Any]:
     """Conviction 0–100 with its named components, from the CIO opportunity projection (interim source)."""
     if not opp or opp.get("conviction") is None:
-        return {"conviction": None, "components": [], "missing_components": [], "evidence_at": None,
-                "stale": False, "source": "cio_opportunity_projection",
-                "rank": None, "coverage": None}
+        return {
+            "conviction": None,
+            "components": [],
+            "missing_components": [],
+            "evidence_at": None,
+            "stale": False,
+            "source": "cio_opportunity_projection",
+            "rank": None,
+            "coverage": None,
+        }
     comps = []
     for key, fx in (opp.get("factors") or {}).items():
         if not isinstance(fx, dict):
             continue
-        comps.append({"key": key, "label": fx.get("label") or key, "value": _f(fx.get("score")),
-                      "weight": _f(fx.get("weight")), "detail": fx.get("detail"), "source": fx.get("source")})
+        comps.append(
+            {
+                "key": key,
+                "label": fx.get("label") or key,
+                "value": _f(fx.get("score")),
+                "weight": _f(fx.get("weight")),
+                "detail": fx.get("detail"),
+                "source": fx.get("source"),
+            }
+        )
     comps.sort(key=lambda c: -(c["weight"] or 0))
     at = _ts(opp.get("as_of"))
     stale = bool(at and (now - at) > timedelta(hours=CONVICTION_STALE_HOURS))
-    return {"conviction": round(float(opp["conviction"]), 1), "components": comps,
-            "missing_components": list(opp.get("factors_missing") or []), "evidence_at": _iso(at), "stale": stale,
-            "source": "cio_opportunity_projection", "rank": opp.get("rank"), "coverage": _f(opp.get("coverage"))}
+    return {
+        "conviction": round(float(opp["conviction"]), 1),
+        "components": comps,
+        "missing_components": list(opp.get("factors_missing") or []),
+        "evidence_at": _iso(at),
+        "stale": stale,
+        "source": "cio_opportunity_projection",
+        "rank": opp.get("rank"),
+        "coverage": _f(opp.get("coverage")),
+    }
+
+
+def conviction_block_cio(cio: dict[str, Any], *, fallback: dict[str, Any]) -> dict[str, Any]:
+    """Conviction block from a canonical ``cio_truth.stances_for_symbols`` entry (the CIO record, GUID-keyed).
+
+    The curator-only rank/coverage and the "factors not scored" list are different facts that belong to the
+    opportunity projection, so they are carried over from the fallback block rather than dropped.
+    """
+    comps = []
+    for fx in cio.get("material_inputs") or []:
+        if not isinstance(fx, dict):
+            continue
+        key = str(fx.get("source") or "factor")
+        comps.append(
+            {
+                "key": key,
+                "label": key.replace("_", " ").capitalize(),
+                "value": _f(fx.get("value")),
+                "weight": _f(fx.get("weight")),
+                "detail": None,
+                "source": fx.get("source"),
+            }
+        )
+    comps.sort(key=lambda c: -(c["weight"] or 0))
+    return {
+        "conviction": round(float(cio["conviction"]), 1),
+        "components": comps,
+        "missing_components": list(fallback.get("missing_components") or []),
+        "evidence_at": cio.get("inputs_as_of") or cio.get("as_of"),
+        "stale": bool(cio.get("stale")),
+        "source": "cio_prospect",
+        "rank": fallback.get("rank"),
+        "coverage": fallback.get("coverage"),
+    }
 
 
 # ── conflicts — shown, never resolved (AGENTS.md §26.5) ───────────────────────
@@ -154,8 +212,15 @@ def _side(value: Any, source: str, at: Any) -> dict[str, Any]:
     return {"value": value, "source": source, "at": _iso(t) if t else (str(at) if at else None)}
 
 
-def conflicts_for(*, symbol: str, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], held: bool,
-                  held_source: str, reentry: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+def conflicts_for(
+    *,
+    symbol: str,
+    card: Optional[dict[str, Any]],
+    opp: Optional[dict[str, Any]],
+    held: bool,
+    held_source: str,
+    reentry: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Every disagreement between two inputs about this security, both values, both sources, both times."""
     out: list[dict[str, Any]] = []
     card = card or {}
@@ -167,46 +232,71 @@ def conflicts_for(*, symbol: str, card: Optional[dict[str, Any]], opp: Optional[
     rev = card.get("cio_review") or {}
     verdict = _up(rev.get("verdict"))
     if stance_fam and family(verdict) and family(verdict) != stance_fam:
-        out.append({"kind": "stance_vs_review",
-                    "summary": f"CIO conviction says {stance}; the CIO watch review says {verdict}",
-                    "a": _side(stance, "cio_opportunity_projection", stance_at),
-                    "b": _side(verdict, "watchlist CIO review", rev.get("completed_at"))})
+        out.append(
+            {
+                "kind": "stance_vs_review",
+                "summary": f"CIO conviction says {stance}; the CIO watch review says {verdict}",
+                "a": _side(stance, "cio_opportunity_projection", stance_at),
+                "b": _side(verdict, "watchlist CIO review", rev.get("completed_at")),
+            }
+        )
     # 2. CIO stance vs the desk's final synthesis.
     syn = _up((dec.get("inputs") or {}).get("synthesis"))
     if stance_fam and family(syn) and family(syn) != stance_fam:
-        out.append({"kind": "stance_vs_synthesis",
-                    "summary": f"Today's desk synthesis says {syn}; conviction says {stance}",
-                    "a": _side(stance, "cio_opportunity_projection", stance_at),
-                    "b": _side(syn, "watchlist_final_synthesis", (dec.get("inputs") or {}).get("synthesis_at"))})
+        out.append(
+            {
+                "kind": "stance_vs_synthesis",
+                "summary": f"Today's desk synthesis says {syn}; conviction says {stance}",
+                "a": _side(stance, "cio_opportunity_projection", stance_at),
+                "b": _side(syn, "watchlist_final_synthesis", (dec.get("inputs") or {}).get("synthesis_at")),
+            }
+        )
     # 3. Ownership: the conviction record's position status vs the held reader.
     pos = str((opp or {}).get("position_status") or "")
     if opp and pos and (pos == "owned") != held:
-        out.append({"kind": "ownership",
-                    "summary": ("The conviction record treats it as owned; the broker-synced holdings say not held"
-                                if pos == "owned" else
-                                "Held per the broker-synced holdings; the conviction record treats it as not owned"),
-                    "a": _side(pos, "cio_opportunity_projection.position_status", stance_at),
-                    "b": _side("held" if held else "not held", held_source, None)})
+        out.append(
+            {
+                "kind": "ownership",
+                "summary": (
+                    "The conviction record treats it as owned; the broker-synced holdings say not held"
+                    if pos == "owned"
+                    else "Held per the broker-synced holdings; the conviction record treats it as not owned"
+                ),
+                "a": _side(pos, "cio_opportunity_projection.position_status", stance_at),
+                "b": _side("held" if held else "not held", held_source, None),
+            }
+        )
     # 4. A hard Trade AI check failed while the stance or the re-entry desk says go.
     ts = _up(card.get("trade_ai_state"))
     desk_state = _up((reentry or {}).get("state"))
-    if not held and ts in BLOCKING_TRADE_STATES and (
-            stance_fam == "positive" or desk_state in REENTRY_READY | REENTRY_NEAR):
+    if (
+        not held
+        and ts in BLOCKING_TRADE_STATES
+        and (stance_fam == "positive" or desk_state in REENTRY_READY | REENTRY_NEAR)
+    ):
         go = stance if stance_fam == "positive" else desk_state
-        out.append({"kind": "trade_ai_block",
-                    "summary": f"Trade AI {ts.replace('_', ' ').lower()} — not actionable until it passes "
-                               f"(the {'stance' if stance_fam == 'positive' else 're-entry desk'} says {go})",
-                    "a": _side(go, "cio_opportunity_projection" if stance_fam == "positive" else "reentry_decision_desk",
-                               stance_at if stance_fam == "positive" else (reentry or {}).get("price_as_of")),
-                    "b": _side(ts, "rockville decision_projection (Trade AI)", card.get("price_as_of"))})
+        out.append(
+            {
+                "kind": "trade_ai_block",
+                "summary": f"Trade AI {ts.replace('_', ' ').lower()} — not actionable until it passes "
+                f"(the {'stance' if stance_fam == 'positive' else 're-entry desk'} says {go})",
+                "a": _side(
+                    go,
+                    "cio_opportunity_projection" if stance_fam == "positive" else "reentry_decision_desk",
+                    stance_at if stance_fam == "positive" else (reentry or {}).get("price_as_of"),
+                ),
+                "b": _side(ts, "rockville decision_projection (Trade AI)", card.get("price_as_of")),
+            }
+        )
     return out
 
 
 # ── lanes ────────────────────────────────────────────────────────────────────
 
 
-def lane_for(*, card: Optional[dict[str, Any]], held: bool, reentry: Optional[dict[str, Any]],
-             now: datetime) -> tuple[str, str]:
+def lane_for(
+    *, card: Optional[dict[str, Any]], held: bool, reentry: Optional[dict[str, Any]], now: datetime
+) -> tuple[str, str]:
     """(lane, why) — the one lane this security belongs to. Order matters: held first, then expiry, then go."""
     dec = (card or {}).get("decision") or {}
     desk_state = _up((reentry or {}).get("state"))
@@ -235,8 +325,9 @@ def lane_for(*, card: Optional[dict[str, Any]], held: bool, reentry: Optional[di
 # ── the row ──────────────────────────────────────────────────────────────────
 
 
-def _levels(card: Optional[dict[str, Any]], reentry: Optional[dict[str, Any]],
-            opp: Optional[dict[str, Any]]) -> dict[str, Optional[float]]:
+def _levels(
+    card: Optional[dict[str, Any]], reentry: Optional[dict[str, Any]], opp: Optional[dict[str, Any]]
+) -> dict[str, Optional[float]]:
     """Reference levels (never orders) from the freshest source that has them: plan → re-entry desk → conviction."""
     pl = (((card or {}).get("decision") or {}).get("inputs") or {}).get("plan_levels") or {}
     re = reentry or {}
@@ -257,85 +348,174 @@ def _levels(card: Optional[dict[str, Any]], reentry: Optional[dict[str, Any]],
     }
 
 
-def next_trigger(lane: str, *, price: Optional[float], lv: dict[str, Optional[float]],
-                 reentry: Optional[dict[str, Any]]) -> dict[str, Any]:
+def next_trigger(
+    lane: str, *, price: Optional[float], lv: dict[str, Optional[float]], reentry: Optional[dict[str, Any]]
+) -> dict[str, Any]:
     """The observable level that moves the stage next — a reference, never an order."""
     lo, hi = lv["entry_low_ref"], lv["entry_high_ref"]
     if lane in ("actionable", "reentry", "forming") and lo is not None and hi is not None:
         inside = price is not None and lo <= price <= hi
         away = None if inside else _pct_away(price, hi if (price or 0) > hi else lo)
         src = "re-entry desk" if lane == "reentry" else "entry plan"
-        return {"label": f"zone {_money(lo)}–{_money(hi)}" + ("" if away is None else f" ({away:+.1f}%)"),
-                "level_ref": hi if (price or 0) > hi else lo, "inside": inside, "distance_pct": away,
-                "observed_by": src}
+        return {
+            "label": f"zone {_money(lo)}–{_money(hi)}" + ("" if away is None else f" ({away:+.1f}%)"),
+            "level_ref": hi if (price or 0) > hi else lo,
+            "inside": inside,
+            "distance_pct": away,
+            "observed_by": src,
+        }
     if lane == "reentry" and (reentry or {}).get("distance_pct") is not None:
-        return {"label": f"re-entry level ({float(reentry['distance_pct']):+.1f}%)", "level_ref": None,
-                "inside": False, "distance_pct": _f(reentry.get("distance_pct")), "observed_by": "re-entry desk"}
+        return {
+            "label": f"re-entry level ({float(reentry['distance_pct']):+.1f}%)",
+            "level_ref": None,
+            "inside": False,
+            "distance_pct": _f(reentry.get("distance_pct")),
+            "observed_by": "re-entry desk",
+        }
     if lane == "manage" and lv["support_ref"] is not None:
-        return {"label": f"support {_money(lv['support_ref'])}", "level_ref": lv["support_ref"], "inside": False,
-                "distance_pct": _pct_away(price, lv["support_ref"]), "observed_by": "watch card support"}
+        return {
+            "label": f"support {_money(lv['support_ref'])}",
+            "level_ref": lv["support_ref"],
+            "inside": False,
+            "distance_pct": _pct_away(price, lv["support_ref"]),
+            "observed_by": "watch card support",
+        }
     if lane == "forming" and lv["resistance_ref"] is not None:
-        return {"label": f"break above {_money(lv['resistance_ref'])}", "level_ref": lv["resistance_ref"],
-                "inside": False, "distance_pct": _pct_away(price, lv["resistance_ref"]),
-                "observed_by": "watch card resistance"}
+        return {
+            "label": f"break above {_money(lv['resistance_ref'])}",
+            "level_ref": lv["resistance_ref"],
+            "inside": False,
+            "distance_pct": _pct_away(price, lv["resistance_ref"]),
+            "observed_by": "watch card resistance",
+        }
     return {"label": "—", "level_ref": None, "inside": False, "distance_pct": None, "observed_by": None}
 
 
-def next_step(lane: str, *, symbol: str, conflicts: list[dict[str, Any]], stance: str, conviction: Optional[float],
-              decision: dict[str, Any], lv: dict[str, Optional[float]], price: Optional[float],
-              rsi: Optional[float]) -> dict[str, Any]:
+def next_step(
+    lane: str,
+    *,
+    symbol: str,
+    conflicts: list[dict[str, Any]],
+    stance: str,
+    conviction: Optional[float],
+    decision: dict[str, Any],
+    lv: dict[str, Optional[float]],
+    price: Optional[float],
+    rsi: Optional[float],
+) -> dict[str, Any]:
     """ONE next step. Protection comes first for a held name at risk; a conflict comes before any go action."""
     sym = symbol.upper()
     open_trades = f"/v3/trading?tab=Open+Trades&symbol={sym}"
     if lane == "expired":
-        return {"kind": "none", "label": "—", "reason": "Signal closed; it returns when new evidence arrives.",
-                "href": None}
+        return {
+            "kind": "none",
+            "label": "—",
+            "reason": "Signal closed; it returns when new evidence arrives.",
+            "href": None,
+        }
     if lane == "manage" and (decision.get("rule_id") in RISK_RULES or family(stance) == "negative"):
-        return {"kind": "protect", "label": "Protect first", "href": open_trades,
-                "reason": "A risk rule fired for this held name (a sell/trim synthesis or a Trade AI block). "
-                          "Open Trades shows its stop and protection."}
+        return {
+            "kind": "protect",
+            "label": "Protect first",
+            "href": open_trades,
+            "reason": "A risk rule fired for this held name (a sell/trim synthesis or a Trade AI block). "
+            "Open Trades shows its stop and protection.",
+        }
     if conflicts:
-        return {"kind": "resolve_conflict", "label": "Resolve conflict", "href": None,
-                "reason": "Two inputs disagree. The page shows both; ask the CIO to review rather than pick one."}
+        return {
+            "kind": "resolve_conflict",
+            "label": "Resolve conflict",
+            "href": None,
+            "reason": "Two inputs disagree. The page shows both; ask the CIO to review rather than pick one.",
+        }
     if lane == "actionable":
         seed = {"entry_ref": lv["entry_ref"], "stop_ref": lv["stop_ref"], "target_ref": lv["target_ref"]}
-        return {"kind": "propose", "label": "Propose", "href": None, "seed": seed,
-                "reason": "Opens the existing Propose form. You size it; it goes to Proposals for your approval."}
+        return {
+            "kind": "propose",
+            "label": "Propose",
+            "href": None,
+            "seed": seed,
+            "reason": "Opens the existing Propose form. You size it; it goes to Proposals for your approval.",
+        }
     if lane in ("forming", "reentry"):
-        seed = {"price": price, "rsi": rsi, "entry_low_ref": lv["entry_low_ref"],
-                "entry_high_ref": lv["entry_high_ref"] or lv["resistance_ref"]}
-        return {"kind": "set_alert", "label": "Set alert", "href": None, "seed": seed,
-                "reason": "Arms an advisory Watch alert at the trigger (price and RSI). Notifications only."}
+        seed = {
+            "price": price,
+            "rsi": rsi,
+            "entry_low_ref": lv["entry_low_ref"],
+            "entry_high_ref": lv["entry_high_ref"] or lv["resistance_ref"],
+        }
+        return {
+            "kind": "set_alert",
+            "label": "Set alert",
+            "href": None,
+            "seed": seed,
+            "reason": "Arms an advisory Watch alert at the trigger (price and RSI). Notifications only.",
+        }
     if lane == "manage" and family(stance) == "positive":
-        return {"kind": "review_add", "label": "Review add-on", "href": f"/v3/watch/intelligence/{sym}",
-                "reason": "The CIO stance on this held name is ADD; review the add-on idea or leave it."}
+        return {
+            "kind": "review_add",
+            "label": "Review add-on",
+            "href": f"/v3/watch/intelligence/{sym}",
+            "reason": "The CIO stance on this held name is ADD; review the add-on idea or leave it.",
+        }
     if lane == "manage" and conviction is not None and conviction < 50:
-        return {"kind": "decide", "label": "Decide hold/exit", "href": open_trades,
-                "reason": "Weak conviction on a held name: decide hold with a stop, hedge or exit on Open Trades."}
-    return {"kind": "open_position", "label": "View position", "href": open_trades,
-            "reason": "Held; nothing argues for a change today. Open Trades shows the position."}
+        return {
+            "kind": "decide",
+            "label": "Decide hold/exit",
+            "href": open_trades,
+            "reason": "Weak conviction on a held name: decide hold with a stop, hedge or exit on Open Trades.",
+        }
+    return {
+        "kind": "open_position",
+        "label": "View position",
+        "href": open_trades,
+        "reason": "Held; nothing argues for a change today. Open Trades shows the position.",
+    }
 
 
-def surfaces_for(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], held: bool,
-                 held_source: str, reentry: Optional[dict[str, Any]], interim: bool) -> list[dict[str, Any]]:
+def surfaces_for(
+    *,
+    card: Optional[dict[str, Any]],
+    opp: Optional[dict[str, Any]],
+    held: bool,
+    held_source: str,
+    reentry: Optional[dict[str, Any]],
+    interim: bool,
+) -> list[dict[str, Any]]:
     """What each surface shows for this security today. Interim: only the sources this adapter reads are joined;
     the rest say so instead of guessing."""
     ts = _up((card or {}).get("trade_ai_state"))
     rows = [
         {"surface": "Home", "value": NOT_JOINED, "source": None, "joined": False},
-        {"surface": "Trade AI", "value": ts.replace("_", " ") if ts else "—",
-         "source": "rockville decision_projection", "joined": bool(card)},
+        {
+            "surface": "Trade AI",
+            "value": ts.replace("_", " ") if ts else "—",
+            "source": "rockville decision_projection",
+            "joined": bool(card),
+        },
         {"surface": "Options", "value": NOT_JOINED, "source": None, "joined": False},
         {"surface": "Open Trades", "value": "held" if held else "not held", "source": held_source, "joined": True},
         {"surface": "Telegram", "value": NOT_JOINED, "source": None, "joined": False},
-        {"surface": "Opportunities (CIO curator)",
-         "value": (f"#{opp.get('rank')} · {float(opp['conviction']):.0f} · {_up(opp.get('stance'))}"
-                   if opp and opp.get("conviction") is not None and opp.get("rank") else
-                   (f"{float(opp['conviction']):.0f} · {_up(opp.get('stance'))} (unranked)"
-                    if opp and opp.get("conviction") is not None else "not in the curator universe")),
-         "source": "cio_opportunity_projection", "joined": True},
-        {"surface": "Re-entry desk", "value": (_up((reentry or {}).get("state")) or "—").title() if reentry else "—",
-         "source": "reentry_decision_desk", "joined": True},
+        {
+            "surface": "Opportunities (CIO curator)",
+            "value": (
+                f"#{opp.get('rank')} · {float(opp['conviction']):.0f} · {_up(opp.get('stance'))}"
+                if opp and opp.get("conviction") is not None and opp.get("rank")
+                else (
+                    f"{float(opp['conviction']):.0f} · {_up(opp.get('stance'))} (unranked)"
+                    if opp and opp.get("conviction") is not None
+                    else "not in the curator universe"
+                )
+            ),
+            "source": "cio_opportunity_projection",
+            "joined": True,
+        },
+        {
+            "surface": "Re-entry desk",
+            "value": (_up((reentry or {}).get("state")) or "—").title() if reentry else "—",
+            "source": "reentry_decision_desk",
+            "joined": True,
+        },
     ]
     if not interim:
         for r in rows:
@@ -343,8 +523,16 @@ def surfaces_for(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]
     return rows
 
 
-def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], conv: dict[str, Any],
-                  lv: dict[str, Optional[float]], lane: str, identity: dict[str, Any], mine: bool = False) -> list[str]:
+def whats_missing(
+    *,
+    card: Optional[dict[str, Any]],
+    opp: Optional[dict[str, Any]],
+    conv: dict[str, Any],
+    lv: dict[str, Optional[float]],
+    lane: str,
+    identity: dict[str, Any],
+    mine: bool = False,
+) -> list[str]:
     out: list[str] = []
     dec = (card or {}).get("decision") or {}
     if conv["conviction"] is None:
@@ -355,6 +543,8 @@ def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any
         out.append(f"{str(k).replace('_', ' ').capitalize()} factor not scored")
     if card is None and mine:
         out.append("No Watch card yet — quote, plan and Trade AI state not loaded for this name")
+    elif card is None and opp is not None:
+        out.append("Ranked research universe — Watch card not loaded for this name")
     elif card is None:
         out.append("Not on the Watch universe — seen only by the re-entry desk")
     elif dec.get("status") == "needs_data":
@@ -369,9 +559,20 @@ def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any
     return out
 
 
-def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], held: bool,
-              held_source: str, reentry: Optional[dict[str, Any]], identity: Optional[dict[str, Any]],
-              now: datetime, interim: bool = True, mine: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def build_row(
+    symbol: str,
+    *,
+    card: Optional[dict[str, Any]],
+    opp: Optional[dict[str, Any]],
+    held: bool,
+    held_source: str,
+    reentry: Optional[dict[str, Any]],
+    identity: Optional[dict[str, Any]],
+    now: datetime,
+    interim: bool = True,
+    mine: Optional[dict[str, Any]] = None,
+    cio_stances: Optional[dict[str, dict[str, Any]]] = None,
+) -> dict[str, Any]:
     """One prospect row. ``mine`` is the operator membership (watch_domains.membership_operator()["names"][SYM]) when
     the name is the operator's own: such a row is never put in Expired — expiry only suggests a review (operator
     2026-10-23: "My Watchlist ... never auto-dropped by caps or expiry")."""
@@ -385,15 +586,37 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         lane, why = "forming", f"{why} — yours, so it stays; review or remove"
     conv = conviction_block(opp, now=now)
     stance = _up((opp or {}).get("stance")) or None
+    cio_gap: Optional[dict[str, Any]] = None
+    cio = (cio_stances or {}).get(sym)
+    if cio is not None:
+        if cio.get("gap") is None:
+            # The CIO record is the canonical stance/conviction; the opportunity projection is only the fallback.
+            if cio.get("stance") is not None:
+                stance = _up(cio.get("stance")) or stance
+            if cio.get("conviction") is not None:
+                conv = conviction_block_cio(cio, fallback=conv)
+        else:
+            # Gap (e.g. GUID unresolved, or no stance/conviction recorded): keep the interim source, say so.
+            cio_gap = cio.get("gap") or {"reason": "CIO stance or conviction unavailable"}
     conflicts = conflicts_for(symbol=sym, card=card, opp=opp, held=held, held_source=held_source, reentry=reentry)
     price = _f((card or {}).get("last")) if card else _f((reentry or {}).get("price"))
     rsi = _f((card or {}).get("rsi")) if card else _f((reentry or {}).get("rsi"))
     lv = _levels(card, reentry, opp)
     trig = next_trigger(lane, price=price, lv=lv, reentry=reentry)
-    step = next_step(lane, symbol=sym, conflicts=conflicts, stance=stance or "", conviction=conv["conviction"],
-                     decision=dec, lv=lv, price=price, rsi=rsi)
-    evidence = [t for t in (_ts(dec.get("evidence_at")), _ts(conv["evidence_at"]),
-                            _ts((reentry or {}).get("price_as_of"))) if t]
+    step = next_step(
+        lane,
+        symbol=sym,
+        conflicts=conflicts,
+        stance=stance or "",
+        conviction=conv["conviction"],
+        decision=dec,
+        lv=lv,
+        price=price,
+        rsi=rsi,
+    )
+    evidence = [
+        t for t in (_ts(dec.get("evidence_at")), _ts(conv["evidence_at"]), _ts((reentry or {}).get("price_as_of"))) if t
+    ]
     exp = _ts(dec.get("expires_at"))
     if exp is None and reentry and not card:
         at = _ts(reentry.get("price_as_of"))
@@ -413,8 +636,13 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         "identity_status": identity.get("status"),
         "company": (card or {}).get("company") or (opp or {}).get("company") or (reentry or {}).get("company"),
         "lane": lane,
-        "stage": {"actionable": "actionable", "forming": "setup_forming", "reentry": "re_entry", "manage": "held",
-                  "expired": "expired"}[lane],
+        "stage": {
+            "actionable": "actionable",
+            "forming": "setup_forming",
+            "reentry": "re_entry",
+            "manage": "held",
+            "expired": "expired",
+        }[lane],
         "why": why,
         "summary": ". ".join(b.strip().rstrip(".") for b in reason_bits) + ".",
         "conviction": conv["conviction"],
@@ -427,8 +655,12 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         "conviction_stale": conv["stale"],
         "stance": stance,
         "stance_family": family(stance),
-        "whats_missing": whats_missing(card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity,
-                                       mine=bool(mine)),
+        "cio_stance_gap": cio_gap,
+        "whats_missing": [
+            *whats_missing(card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity, mine=bool(mine)),
+            *([f"CIO record unavailable ({str(cio_gap.get('reason'))}) — showing the interim opportunity stance"]
+              if cio_gap else []),
+        ],
         "conflicts": conflicts,
         "next_trigger": trig,
         "next_action": step,
@@ -438,11 +670,25 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         "rsi": rsi,
         "held": held,
         "trade_ai_state": _up((card or {}).get("trade_ai_state")) or None,
-        "decision": {k: dec.get(k) for k in ("rule_id", "category_label", "priority", "priority_score", "status",
-                                               "actionable", "actionable_blocked_by", "action_hint")} if dec else None,
+        "decision": {
+            k: dec.get(k)
+            for k in (
+                "rule_id",
+                "category_label",
+                "priority",
+                "priority_score",
+                "status",
+                "actionable",
+                "actionable_blocked_by",
+                "action_hint",
+            )
+        }
+        if dec
+        else None,
         "reentry_state": _up((reentry or {}).get("state")) or None,
-        "surfaces": surfaces_for(card=card, opp=opp, held=held, held_source=held_source, reentry=reentry,
-                                 interim=interim),
+        "surfaces": surfaces_for(
+            card=card, opp=opp, held=held, held_source=held_source, reentry=reentry, interim=interim
+        ),
         "evidence_at": _iso(max(evidence)) if evidence else None,
         "expires_at": _iso(exp),
         "stale": bool(exp and exp < now),
@@ -450,13 +696,17 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
     }
 
 
-def membership_fields(mine: Optional[dict[str, Any]], expiry_suggestion: Optional[dict[str, Any]] = None
-                      ) -> dict[str, Any]:
+def membership_fields(
+    mine: Optional[dict[str, Any]], expiry_suggestion: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """The operator-membership block every row carries (one shape for Prospects, My Watchlist and Suggests)."""
-    return {"mine": bool(mine), "starred": bool((mine or {}).get("starred")),
-            "starred_at": (mine or {}).get("starred_at"),
-            "membership": list((mine or {}).get("reasons") or []),
-            "expiry_suggestion": expiry_suggestion}
+    return {
+        "mine": bool(mine),
+        "starred": bool((mine or {}).get("starred")),
+        "starred_at": (mine or {}).get("starred_at"),
+        "membership": list((mine or {}).get("reasons") or []),
+        "expiry_suggestion": expiry_suggestion,
+    }
 
 
 # ── curation ─────────────────────────────────────────────────────────────────
@@ -493,20 +743,35 @@ def curate(rows: Iterable[dict[str, Any]], caps: Optional[dict[str, int]] = None
                 n_sys += 1
             else:
                 overflow.append(r["symbol"])
-        out[lane["id"]] = {**lane, "count": len(items), "cap": cap, "items": shown, "overflow": overflow,
-                           "mine": sum(1 for r in items if r.get("mine"))}
+        out[lane["id"]] = {
+            **lane,
+            "count": len(items),
+            "cap": cap,
+            "items": shown,
+            "overflow": overflow,
+            "mine": sum(1 for r in items if r.get("mine")),
+        }
     return out
 
 
 # ── compose ──────────────────────────────────────────────────────────────────
 
 
-def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[str, dict[str, Any]],
-                          reentry: dict[str, dict[str, Any]], held: set[str], held_source: str,
-                          identities: Optional[dict[str, dict[str, Any]]] = None,
-                          held_detail: Optional[dict[str, Any]] = None, opp_as_of: Any = None,
-                          now: Optional[datetime] = None, caps: Optional[dict[str, int]] = None,
-                          operator: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
+def build_watch_prospects(
+    *,
+    cards: list[dict[str, Any]],
+    opportunities: dict[str, dict[str, Any]],
+    reentry: dict[str, dict[str, Any]],
+    held: set[str],
+    held_source: str,
+    identities: Optional[dict[str, dict[str, Any]]] = None,
+    held_detail: Optional[dict[str, Any]] = None,
+    opp_as_of: Any = None,
+    now: Optional[datetime] = None,
+    caps: Optional[dict[str, int]] = None,
+    operator: Optional[dict[str, dict[str, Any]]] = None,
+    cio_stances: Optional[dict[str, dict[str, Any]]] = None,
+) -> dict[str, Any]:
     """Pure: today's sources → the WatchProspects@v1 payload (interim adapter). ``operator`` is
     watch_domains.membership_operator()["names"]: every operator name gets a row, uncapped, never Expired."""
     now = now or datetime.now(timezone.utc)
@@ -521,8 +786,12 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
     # Re-entry candidates outside the Watch universe still belong on the page (2026-10-22: 13 NEAR/READY desk names
     # were not Watch cards).
     for sym, r in reentry.items():
-        if sym not in by_sym and not r.get("held") and sym not in held and \
-                _up(r.get("state")) in REENTRY_READY | REENTRY_NEAR:
+        if (
+            sym not in by_sym
+            and not r.get("held")
+            and sym not in held
+            and _up(r.get("state")) in REENTRY_READY | REENTRY_NEAR
+        ):
             symbols.append(sym)
     # Every operator name belongs on the page, card or not (operator 2026-10-23).
     listed = set(symbols)
@@ -530,10 +799,22 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
         if sym not in listed:
             symbols.append(sym)
             listed.add(sym)
-    rows = [build_row(s, card=by_sym.get(s), opp=opportunities.get(s), held=s in held, held_source=held_source,
-                      reentry=reentry.get(s), identity=identities.get(s), now=now, interim=True,
-                      mine=operator.get(s))
-            for s in symbols]
+    rows = [
+        build_row(
+            s,
+            card=by_sym.get(s),
+            opp=opportunities.get(s),
+            held=s in held,
+            held_source=held_source,
+            reentry=reentry.get(s),
+            identity=identities.get(s),
+            now=now,
+            interim=True,
+            mine=operator.get(s),
+            cio_stances=cio_stances,
+        )
+        for s in symbols
+    ]
     lanes = curate(rows, caps)
     n_conf = sum(len(r["conflicts"]) for r in rows if r["lane"] != "expired")
     return {
@@ -544,22 +825,32 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
         "interim": True,
         "source_label": INTERIM_LABEL,
         "sources": {
-            "conviction": {"store": "data/cio/cio_opportunity_projection.json", "domain": "opportunity_assessment",
-                           "as_of": opp_as_of},
+            "conviction": {
+                "store": "data/cio/cio_opportunity_projection.json",
+                "domain": "opportunity_assessment",
+                "as_of": opp_as_of,
+            },
             "stage": {"projection": "watch_intelligence.compose_universe", "standards": "watch_decision.v1"},
             "trade_ai": {"projection": "rockville decision_projection"},
-            "held": {"reader": "watch_domains.held_positions(surface='watch')", "source": held_source,
-                     "as_of": (held_detail or {}).get("as_of"), "stale": (held_detail or {}).get("stale")},
+            "held": {
+                "reader": "watch_domains.held_positions(surface='watch')",
+                "source": held_source,
+                "as_of": (held_detail or {}).get("as_of"),
+                "stale": (held_detail or {}).get("stale"),
+            },
             "reentry": {"projection": "reentry_decision_desk", "rows": len(reentry)},
         },
-        "curation": {"one_membership": True, "caps": dict(caps or LANE_CAPS),
-                     "caps_apply_to": "system names only; your own names are always listed",
-                     "sort_order": "lane, then conviction (high first), then decision priority",
-                     "expiry": "a non-held name whose decision expired or was invalidated is Expired; held names "
-                               "stay in Manage; your own names never expire here (expiry only suggests a review)"},
+        "curation": {
+            "one_membership": True,
+            "caps": dict(caps or LANE_CAPS),
+            "caps_apply_to": "system names only; your own names are always listed",
+            "sort_order": "lane, then conviction (high first), then decision priority",
+            "expiry": "a non-held name whose decision expired or was invalidated is Expired; held names "
+            "stay in Manage; your own names never expire here (expiry only suggests a review)",
+        },
         "lanes": [lanes[k] for k in LANE_IDS],
-        "counts": {k: lanes[k]["count"] for k in LANE_IDS} | {"conflicts": n_conf, "total": len(rows),
-                                                               "mine": sum(1 for r in rows if r.get("mine"))},
+        "counts": {k: lanes[k]["count"] for k in LANE_IDS}
+        | {"conflicts": n_conf, "total": len(rows), "mine": sum(1 for r in rows if r.get("mine"))},
         "authority": "READ_ONLY_ADVISORY",
         "mbi_behavior": 0,
         "provider_calls": 0,
@@ -576,8 +867,15 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
 # evidence_at, detail}}, next_trigger {kind: reference_level | evidence, entry_zone, entry_ref, invalidation_level,
 # observed_by}. The ONE next step is derived with the same next_step() the interim adapter uses.
 
-_STAGE_TO_LANE = {"actionable": "actionable", "proposed": "actionable", "setup_forming": "forming",
-                  "watching": "forming", "re_entry": "reentry", "held": "manage", "exit": "manage"}
+_STAGE_TO_LANE = {
+    "actionable": "actionable",
+    "proposed": "actionable",
+    "setup_forming": "forming",
+    "watching": "forming",
+    "re_entry": "reentry",
+    "held": "manage",
+    "exit": "manage",
+}
 
 
 def _map_conflict(c: dict[str, Any]) -> dict[str, Any]:
@@ -587,11 +885,16 @@ def _map_conflict(c: dict[str, Any]) -> dict[str, Any]:
     vals = list(c.get("values") or []) + [{}, {}]
     a, b = vals[0] or {}, vals[1] or {}
     kind = str(c.get("field") or c.get("kind") or "conflict")
-    summary = c.get("summary") or (f"{kind.replace('_', ' ')}: {a.get('value')} ({a.get('source')}) vs "
-                                   f"{b.get('value')} ({b.get('source')})")
-    return {"kind": kind, "summary": str(summary), "note": c.get("note"),
-            "a": {"value": a.get("value"), "source": a.get("source"), "at": a.get("at")},
-            "b": {"value": b.get("value"), "source": b.get("source"), "at": b.get("at")}}
+    summary = c.get("summary") or (
+        f"{kind.replace('_', ' ')}: {a.get('value')} ({a.get('source')}) vs {b.get('value')} ({b.get('source')})"
+    )
+    return {
+        "kind": kind,
+        "summary": str(summary),
+        "note": c.get("note"),
+        "a": {"value": a.get("value"), "source": a.get("source"), "at": a.get("at")},
+        "b": {"value": b.get("value"), "source": b.get("source"), "at": b.get("at")},
+    }
 
 
 def _trigger_from_record(nt: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Optional[float]]]:
@@ -599,8 +902,15 @@ def _trigger_from_record(nt: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
     lo = _f(zone[0] if zone else None)
     hi = _f(zone[1] if len(zone) > 1 else None)
     inv = _f(nt.get("invalidation_level"))
-    lv = {"entry_low_ref": lo, "entry_high_ref": hi, "entry_ref": _f(nt.get("entry_ref")) or hi, "stop_ref": inv,
-          "target_ref": _f(nt.get("target_ref")), "support_ref": None, "resistance_ref": None}
+    lv = {
+        "entry_low_ref": lo,
+        "entry_high_ref": hi,
+        "entry_ref": _f(nt.get("entry_ref")) or hi,
+        "stop_ref": inv,
+        "target_ref": _f(nt.get("target_ref")),
+        "support_ref": None,
+        "resistance_ref": None,
+    }
     if lo is not None and hi is not None:
         label = f"zone {_money(min(lo, hi))}–{_money(max(lo, hi))}"
     elif nt.get("label"):
@@ -611,13 +921,25 @@ def _trigger_from_record(nt: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
         label = f"needs {nt['what']}"
     else:
         label = "—"
-    return ({"label": label, "level_ref": lo if lo is not None else inv, "inside": False, "distance_pct": None,
-             "observed_by": nt.get("observed_by")}, lv)
+    return (
+        {
+            "label": label,
+            "level_ref": lo if lo is not None else inv,
+            "inside": False,
+            "distance_pct": None,
+            "observed_by": nt.get("observed_by"),
+        },
+        lv,
+    )
 
 
-def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] = None,
-                      caps: Optional[dict[str, int]] = None,
-                      operator: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
+def from_cio_prospect(
+    records: list[dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+    caps: Optional[dict[str, int]] = None,
+    operator: Optional[dict[str, dict[str, Any]]] = None,
+) -> dict[str, Any]:
     """Map cio_prospect records (DATA_DICTIONARY.md "CIOProspect") to lanes. No judgment is added here: the lane
     comes from the record's stage (expired by its expires_at), the step from the same next_step() rules. An operator
     name with no record still gets a row that says so (operator 2026-10-23)."""
@@ -636,55 +958,112 @@ def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] 
         if lane != "manage" and exp and exp < now:
             lane = "expired"
             if mine:
-                lane, expiry_suggestion = "forming", {"reason": "Record expired",
-                                                      "suggest": "review: keep watching, or remove it from your list"}
+                lane, expiry_suggestion = (
+                    "forming",
+                    {"reason": "Record expired", "suggest": "review: keep watching, or remove it from your list"},
+                )
         comps = rec.get("conviction_components") or {}
         comp_rows = []
-        for k, v in (comps.items() if isinstance(comps, dict) else []):
+        for k, v in comps.items() if isinstance(comps, dict) else []:
             v = v if isinstance(v, dict) else {"value": v}
-            comp_rows.append({"key": k, "label": k.replace("_", " ").capitalize(), "value": _f(v.get("value")),
-                              "weight": _f(v.get("weight")), "detail": v.get("detail"), "source": v.get("source")})
+            comp_rows.append(
+                {
+                    "key": k,
+                    "label": k.replace("_", " ").capitalize(),
+                    "value": _f(v.get("value")),
+                    "weight": _f(v.get("weight")),
+                    "detail": v.get("detail"),
+                    "source": v.get("source"),
+                }
+            )
         comp_rows.sort(key=lambda c: -(c["weight"] or 0))
         conflicts = [_map_conflict(c) for c in (rec.get("conflicts") or []) if isinstance(c, dict)]
         stance = _up(rec.get("stance")) or None
         trig, lv = _trigger_from_record(rec.get("next_trigger") or {})
         held = stage in ("held", "exit") or bool((rec.get("position_ref") or {}).get("held"))
         conv = _f(rec.get("conviction"))
-        step = next_step(lane, symbol=sym, conflicts=conflicts, stance=stance or "", conviction=conv,
-                         decision={}, lv=lv, price=None, rsi=None)
+        step = next_step(
+            lane,
+            symbol=sym,
+            conflicts=conflicts,
+            stance=stance or "",
+            conviction=conv,
+            decision={},
+            lv=lv,
+            price=None,
+            rsi=None,
+        )
         na = rec.get("next_action") or {}
         why = str((rec.get("stage_evidence") or {}).get("state") or stage.replace("_", " "))
-        rows.append({
-            "schema": ROW_SCHEMA, "symbol": sym, "security_guid": rec.get("security_guid"),
-            "issuer_guid": rec.get("issuer_guid"), "identity_status": rec.get("identity_status") or "CONFIRMED",
-            "company": rec.get("company"), "lane": lane, "stage": stage, "why": why,
-            "summary": str(rec.get("cc_narrative") or (f"{na.get('who')}: {na.get('what')}" if na.get("what") else why)),
-            "conviction": conv, "conviction_rank": rec.get("shadow_rank"), "conviction_coverage": None,
-            "conviction_components": comp_rows, "conviction_missing": [], "conviction_source": "cio_prospect",
-            "conviction_as_of": rec.get("evidence_at"), "conviction_stale": bool(exp and exp < now),
-            "stance": stance, "stance_family": family(stance),
-            "whats_missing": [str(x) for x in (rec.get("whats_missing") or [])],
-            "conflicts": conflicts, "next_trigger": trig, "next_action": step, "levels_ref": lv,
-            "price": None, "price_as_of": None, "rsi": None, "held": held,
-            "trade_ai_state": None, "decision": None, "reentry_state": None,
-            "surfaces": [{"surface": s, "value": "same record", "source": "cio_prospect", "joined": True}
-                         for s in SURFACES],
-            "evidence_at": rec.get("evidence_at"), "expires_at": rec.get("expires_at"), "stale": bool(exp and exp < now),
-            **membership_fields(mine, expiry_suggestion),
-        })
+        rows.append(
+            {
+                "schema": ROW_SCHEMA,
+                "symbol": sym,
+                "security_guid": rec.get("security_guid"),
+                "issuer_guid": rec.get("issuer_guid"),
+                "identity_status": rec.get("identity_status") or "CONFIRMED",
+                "company": rec.get("company"),
+                "lane": lane,
+                "stage": stage,
+                "why": why,
+                "summary": str(
+                    rec.get("cc_narrative") or (f"{na.get('who')}: {na.get('what')}" if na.get("what") else why)
+                ),
+                "conviction": conv,
+                "conviction_rank": rec.get("shadow_rank"),
+                "conviction_coverage": None,
+                "conviction_components": comp_rows,
+                "conviction_missing": [],
+                "conviction_source": "cio_prospect",
+                "conviction_as_of": rec.get("evidence_at"),
+                "conviction_stale": bool(exp and exp < now),
+                "stance": stance,
+                "stance_family": family(stance),
+                "whats_missing": [str(x) for x in (rec.get("whats_missing") or [])],
+                "conflicts": conflicts,
+                "next_trigger": trig,
+                "next_action": step,
+                "levels_ref": lv,
+                "price": None,
+                "price_as_of": None,
+                "rsi": None,
+                "held": held,
+                "trade_ai_state": None,
+                "decision": None,
+                "reentry_state": None,
+                "surfaces": [
+                    {"surface": s, "value": "same record", "source": "cio_prospect", "joined": True} for s in SURFACES
+                ],
+                "evidence_at": rec.get("evidence_at"),
+                "expires_at": rec.get("expires_at"),
+                "stale": bool(exp and exp < now),
+                **membership_fields(mine, expiry_suggestion),
+            }
+        )
     have = {r["symbol"] for r in rows}
     for sym in sorted(set(operator) - have):
         rows.append(no_record_row(sym, mine=operator[sym]))
     lanes = curate(rows, caps)
     return {
-        "ok": True, "schema": SCHEMA, "generated_at": now.isoformat(), "source": "cio_prospect", "interim": False,
-        "source_label": CIO_LABEL, "sources": {"prospect": {"projection": "cio_prospect", "kind": "store"}},
-        "curation": {"one_membership": True, "caps": dict(caps or LANE_CAPS),
-                     "sort_order": "lane, then conviction (high first)", "expiry": "expires_at from the record"},
+        "ok": True,
+        "schema": SCHEMA,
+        "generated_at": now.isoformat(),
+        "source": "cio_prospect",
+        "interim": False,
+        "source_label": CIO_LABEL,
+        "sources": {"prospect": {"projection": "cio_prospect", "kind": "store"}},
+        "curation": {
+            "one_membership": True,
+            "caps": dict(caps or LANE_CAPS),
+            "sort_order": "lane, then conviction (high first)",
+            "expiry": "expires_at from the record",
+        },
         "lanes": [lanes[k] for k in LANE_IDS],
-        "counts": {k: lanes[k]["count"] for k in LANE_IDS} | {
-            "conflicts": sum(len(r["conflicts"]) for r in rows if r["lane"] != "expired"), "total": len(rows)},
-        "authority": "READ_ONLY_ADVISORY", "mbi_behavior": 0, "provider_calls": 0,
+        "counts": {k: lanes[k]["count"] for k in LANE_IDS}
+        | {"conflicts": sum(len(r["conflicts"]) for r in rows if r["lane"] != "expired"), "total": len(rows)},
+        "authority": "READ_ONLY_ADVISORY",
+        "mbi_behavior": 0,
+        "provider_calls": 0,
     }
 
 
@@ -692,19 +1071,48 @@ def no_record_row(symbol: str, *, mine: Optional[dict[str, Any]] = None) -> dict
     """A row for a name the CIO prospect store has no record for (said, never guessed)."""
     sym = symbol.upper()
     return {
-        "schema": ROW_SCHEMA, "symbol": sym, "security_guid": None, "issuer_guid": None, "identity_status": None,
-        "company": None, "lane": "forming", "stage": "watching", "why": "No CIO prospect record yet",
-        "summary": "No CIO prospect record yet.", "conviction": None, "conviction_rank": None,
-        "conviction_coverage": None, "conviction_components": [], "conviction_missing": [],
-        "conviction_source": "cio_prospect", "conviction_as_of": None, "conviction_stale": False, "stance": None,
-        "stance_family": None, "whats_missing": ["No CIO prospect record for this name yet"], "conflicts": [],
+        "schema": ROW_SCHEMA,
+        "symbol": sym,
+        "security_guid": None,
+        "issuer_guid": None,
+        "identity_status": None,
+        "company": None,
+        "lane": "forming",
+        "stage": "watching",
+        "why": "No CIO prospect record yet",
+        "summary": "No CIO prospect record yet.",
+        "conviction": None,
+        "conviction_rank": None,
+        "conviction_coverage": None,
+        "conviction_components": [],
+        "conviction_missing": [],
+        "conviction_source": "cio_prospect",
+        "conviction_as_of": None,
+        "conviction_stale": False,
+        "stance": None,
+        "stance_family": None,
+        "whats_missing": ["No CIO prospect record for this name yet"],
+        "conflicts": [],
         "next_trigger": {"label": "—", "level_ref": None, "inside": False, "distance_pct": None, "observed_by": None},
-        "next_action": {"kind": "none", "label": "—", "reason": "Nothing to act on until the CIO records it.",
-                        "href": None},
-        "levels_ref": {}, "price": None, "price_as_of": None, "rsi": None, "held": False, "trade_ai_state": None,
-        "decision": None, "reentry_state": None,
+        "next_action": {
+            "kind": "none",
+            "label": "—",
+            "reason": "Nothing to act on until the CIO records it.",
+            "href": None,
+        },
+        "levels_ref": {},
+        "price": None,
+        "price_as_of": None,
+        "rsi": None,
+        "held": False,
+        "trade_ai_state": None,
+        "decision": None,
+        "reentry_state": None,
         "surfaces": [{"surface": s, "value": "no record", "source": "cio_prospect", "joined": True} for s in SURFACES],
-        "evidence_at": None, "expires_at": None, "stale": False, **membership_fields(mine),
+        "evidence_at": None,
+        "expires_at": None,
+        "stale": False,
+        **membership_fields(mine),
     }
 
 
@@ -761,8 +1169,12 @@ def _identities(symbols: list[str]) -> dict[str, dict[str, Any]]:
         if not ent:
             continue
         st = str(ent.get("identity_status") or "")
-        out[s] = {"security_guid": ent.get("security_guid") or ent.get("subject_guid"),
-                  "issuer_guid": ent.get("issuer_guid"), "status": st or None, "confirmed": st == "CONFIRMED"}
+        out[s] = {
+            "security_guid": ent.get("security_guid") or ent.get("subject_guid"),
+            "issuer_guid": ent.get("issuer_guid"),
+            "status": st or None,
+            "confirmed": st == "CONFIRMED",
+        }
     return out
 
 
@@ -786,7 +1198,46 @@ def _curator_projection() -> dict[str, Any]:
         return {}
 
 
+def _canonical_stances_for(
+    symbols: Iterable[str], *, db_query=None, now: Optional[datetime] = None
+) -> dict[str, dict[str, Any]]:
+    """CIO record stance/conviction per symbol via ``cio_truth.stances_for_symbols`` (GUID-keyed; wraps
+    data_broker.cio_prospect with its store/shadow admission). Read-only. Any unavailable resolver or
+    exception returns ``{}`` so the caller falls back to the interim source and marks the gap — never a
+    silent drop and never a raised error on the Watch read path."""
+    try:
+        from lib import cio_truth
+    except Exception:  # noqa: BLE001
+        return {}
+    try:
+        return cio_truth.stances_for_symbols(
+            list(dict.fromkeys(str(s).upper() for s in symbols if str(s).strip())),
+            db_query=db_query,
+            now=now,
+        )
+    except Exception:  # noqa: BLE001 — the interim source still answers
+        return {}
+
+
+_GATHER_LOCK = threading.Lock()
+
+
 def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Single-flight front of ``_gather_build`` (perf + memory 2026-10-25): Watch curation, universe, prospects and
+    intelligence all compose through here; on a cold cache they used to each run the ~10 s, ~100 MB build side by
+    side. Now one builds and the others wait for its result (same 60 s cache, same payload)."""
+    fresh = str((query or {}).get("fresh") or "") in ("1", "true")
+    if not fresh and _CACHE["val"] is not None and time.monotonic() - _CACHE["at"] < CACHE_S:
+        return _CACHE["val"]
+    with _GATHER_LOCK:
+        if not fresh and _CACHE["val"] is not None and time.monotonic() - _CACHE["at"] < CACHE_S:
+            return _CACHE["val"]
+        return _gather_build(query, db_query=db_query, now=now)
+
+
+def _gather_build(
+    query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None
+) -> dict[str, Any]:
     """The ONE composition behind every Watch list (cached 60 s): Prospects lanes, My Watchlist and System Suggests
     read the same rows, so a symbol shows the same conviction, stance and stage on all three (operator 2026-10-23,
     "they don't even align"). Returns {payload (WatchProspects@v1), rows {SYM: row}, row_for(sym), opps, proj_meta,
@@ -801,8 +1252,13 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
     operator = opmem.get("names") or {}
     proj = _curator_projection()
     opps = {_up(k): v for k, v in (proj.get("items") or {}).items() if isinstance(v, dict)}
-    proj_meta = {"as_of": proj.get("as_of"), "run_id": proj.get("run_id"), "count": len(opps),
-                 "store": "data/cio/cio_opportunity_projection.json", "domain": "opportunity_assessment"}
+    proj_meta = {
+        "as_of": proj.get("as_of"),
+        "run_id": proj.get("run_id"),
+        "count": len(opps),
+        "store": "data/cio/cio_opportunity_projection.json",
+        "domain": "opportunity_assessment",
+    }
     if recs:
         out = from_cio_prospect(recs, now=now, operator=operator)
         from lib.data_broker.watch_domains import WATCH_SURFACE, held_positions, held_detail_public
@@ -827,28 +1283,58 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
                 cards[_up(c.get("symbol"))] = c
         desk = wd.reentry_rows()
         held, held_source, hd = set(composed["held"]), composed["held_source"], composed["held_detail"]
-        syms = list(cards) + list(desk) + list(operator)
+        syms = list(set(cards) | set(desk) | set(operator) | set(opps))
         idents = _identities(syms)
-        out = build_watch_prospects(cards=card_list, opportunities=opps, reentry=desk, held=held,
-                                    held_source=held_source, held_detail=hd, identities=idents,
-                                    opp_as_of=proj.get("as_of"), now=now, operator=operator)
+        cio_db_query = db_query if db_query is not None else _db_query()
+        cio_stances = _canonical_stances_for(syms, db_query=cio_db_query, now=now)
+        out = build_watch_prospects(
+            cards=card_list,
+            opportunities=opps,
+            reentry=desk,
+            held=held,
+            held_source=held_source,
+            held_detail=hd,
+            identities=idents,
+            opp_as_of=proj.get("as_of"),
+            now=now,
+            operator=operator,
+            cio_stances=cio_stances,
+        )
 
         def _row_for(sym: str) -> dict[str, Any]:
             s = _up(sym)
             ids = idents if s in idents else _identities([s])
-            return build_row(s, card=cards.get(s), opp=opps.get(s), held=s in held, held_source=held_source,
-                             reentry=desk.get(s), identity=ids.get(s), now=now, interim=True, mine=operator.get(s))
+            cs = cio_stances if s in cio_stances else _canonical_stances_for([s], db_query=cio_db_query, now=now)
+            return build_row(
+                s,
+                card=cards.get(s),
+                opp=opps.get(s),
+                held=s in held,
+                held_source=held_source,
+                reentry=desk.get(s),
+                identity=ids.get(s),
+                now=now,
+                interim=True,
+                mine=operator.get(s),
+                cio_stances=cs,
+            )
+
     out["cio_prospect_status"] = cp_status
     out["operator_sources"] = opmem.get("sources") or {}
-    out["data_broker"] = {"package": "scripts/lib/data_broker", "projection": "watch_prospects",
-                          "catalog": "/api/v3/data-broker", "read_only": True, "provider_calls": 0}
+    out["data_broker"] = {
+        "package": "scripts/lib/data_broker",
+        "projection": "watch_prospects",
+        "catalog": "/api/v3/data-broker",
+        "read_only": True,
+        "provider_calls": 0,
+    }
     rows = {r["symbol"]: r for lane in out["lanes"] for r in lane["items"]}
     # Stored evidence is fetched once for this shared cache. Request-time views
     # recompute freshness separately, without mutating cached decisions or quotes.
     from lib.data_broker.watch_market_facts import load_snapshot
 
     market_reader = db_query
-    if market_reader is None and operator:
+    if market_reader is None and (operator or opps):
         market_reader = _db_query()
     market_snapshot = load_snapshot(market_reader, operator, now=now, cards=cards)
     # Position facts on every row: held / formerly held / never held, the last round trip, the re-entry advice
@@ -856,8 +1342,9 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
     try:
         from lib.data_broker import watch_position_facts as wpf
 
-        pmeta = wpf.load(held=set(held), opps=opps,
-                         rsi={s: r.get("rsi") for s, r in rows.items() if r.get("rsi") is not None})
+        pmeta = wpf.load(
+            held=set(held), opps=opps, rsi={s: r.get("rsi") for s, r in rows.items() if r.get("rsi") is not None}
+        )
         facts_for = pmeta["facts_for"]
         out["position_facts"] = wpf.public(pmeta)
     except Exception as e:  # noqa: BLE001 — said on the payload, never a silent gap
@@ -865,6 +1352,7 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
         out["position_facts"] = {"status": f"error:{type(e).__name__}"}
 
     from lib.data_broker.cio_company_facts import load_snapshot as company_snapshot, for_security
+
     saved_company_facts = company_snapshot()
     out["company_facts_source"] = "CIO InstrumentRecord.research.company_facts"
 
@@ -891,9 +1379,22 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
             built[s] = _attach(_row_for(s))
         return built[s]
 
-    val = {"payload": out, "rows": rows, "row_for": row_for, "opps": opps, "proj_meta": proj_meta, "held": held,
-           "held_source": held_source, "held_detail": hd, "operator": operator, "cp_status": cp_status,
-           "now": now, "market_snapshot": market_snapshot}
+    val = {
+        "payload": out,
+        "rows": rows,
+        "row_for": row_for,
+        "opps": opps,
+        "proj_meta": proj_meta,
+        "held": held,
+        "held_source": held_source,
+        "held_detail": hd,
+        "operator": operator,
+        "cp_status": cp_status,
+        "now": now,
+        "market_snapshot": market_snapshot,
+        "market_reader": market_reader,
+        "cards": cards,
+    }
     _CACHE.update(at=now_m, val=val)
     return val
 
@@ -919,7 +1420,9 @@ def filter_payload(payload: dict[str, Any], q: dict[str, Any], *, now: Optional[
     out["position_filters"] = wpf.FILTERS
     out["filters"] = active
     out["filter_scope"] = "shown_lane_rows"
-    out["unevaluated_overflow"] = sum(max(0, int(lane.get("count") or 0) - len(lane.get("items") or [])) for lane in payload.get("lanes") or [])
+    out["unevaluated_overflow"] = sum(
+        max(0, int(lane.get("count") or 0) - len(lane.get("items") or [])) for lane in payload.get("lanes") or []
+    )
     sort = str(q.get("sort") or "")
     if not active and sort not in wpf.SORTS:
         return out
@@ -928,13 +1431,18 @@ def filter_payload(payload: dict[str, Any], q: dict[str, Any], *, now: Optional[
         keep = [r for r in lane.get("items") or [] if wpf.passes(r, active, now=now)]
         if sort in wpf.SORTS:
             keep.sort(key=lambda r: (*wpf.sort_key(sort, r, r.get("conviction")), r["symbol"]))
-        lanes.append({**lane, "items": keep, **({"count": len(keep),
-                      "unfiltered_count": lane.get("count")} if active else {})})
+        lanes.append(
+            {**lane, "items": keep, **({"count": len(keep), "unfiltered_count": lane.get("count")} if active else {})}
+        )
     out["lanes"] = lanes
     out["sort"] = sort if sort in wpf.SORTS else None
     if not active:
         return out  # Reordering the shown window does not remove the capped population.
-    out["counts"] = {**(payload.get("counts") or {}), **{lane["id"]: lane["count"] for lane in lanes},
-                     "total": sum(lane["count"] for lane in lanes), "filtered": True,
-                     "unevaluated_overflow": out["unevaluated_overflow"]}
+    out["counts"] = {
+        **(payload.get("counts") or {}),
+        **{lane["id"]: lane["count"] for lane in lanes},
+        "total": sum(lane["count"] for lane in lanes),
+        "filtered": True,
+        "unevaluated_overflow": out["unevaluated_overflow"],
+    }
     return out

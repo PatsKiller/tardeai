@@ -32,18 +32,15 @@ def fingerprint_key(raw: Optional[str], *, provider: str = "deepseek") -> Option
 
 
 def redacted_key_id(raw: Optional[str], *, provider: str = "deepseek") -> Optional[str]:
-    """Human-safe label: ds_…last4 plus fingerprint suffix. Never the secret."""
+    """Human-safe label: provider prefix plus the peppered fingerprint. Never any character of the secret
+    (the old ``ds_…last4`` form showed the key's last four characters; page audit 2026-10-25)."""
     if not raw:
         return None
     key = str(raw).strip()
-    if len(key) < 8:
-        tail = "xxxx"
-    else:
-        tail = key[-4:]
     fp = fingerprint_key(key, provider=provider) or "unknown"
-    short = fp.split(":")[-1][:4]
+    short = fp.split(":")[-1][:8]
     prefix = {"deepseek": "ds", "openai": "oa", "anthropic": "an"}.get(provider, "k")
-    return f"{prefix}_…{tail}/{short}"
+    return f"{prefix}_fp{short}"
 
 
 def looks_like_secret_name(name: str) -> bool:

@@ -29915,854 +29915,6 @@
     },
     {
       "schema": "N8nHealthContract@v1",
-      "id": "release-train-request-0000",
-      "kind": "lane",
-      "workflow_id": "tradeai-fabric-release-train",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Ask the host release controller to consider the 00:00 ET release-train window: append one TrainWindowRequest@v1 (or record a no-op when STOP is set/unreadable or the train is neither armed nor in shadow). REQUEST_ONLY: no merge, push, promote, rollback, capability, STOP write or send.",
-        "business_function": "platform-release",
-        "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75; scripts/release_train_window_request.py module docstring"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/release_train_window_request.py --window 0000",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/tradeai_release_train_request_0000.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
-        },
-        {
-          "name": "data/runtime/release-train-request-0000_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "<release-window state dir>/STOP.json (release STOP latch; read, fail closed)",
-          "kind": "store",
-          "direction": "read",
-          "source": "scripts/lib/release_train_view.read_stop"
-        },
-        {
-          "name": "config/release_train_policy.json, config/release_train_n8n.json, the standing delegation record",
-          "kind": "config",
-          "direction": "read",
-          "source": "scripts/lib/release_train_window.host_snapshot"
-        },
-        {
-          "name": "<release-window state dir>/train_requests/journal + pending (TrainWindowRequest@v1, --append only)",
-          "kind": "store",
-          "direction": "write",
-          "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75 spool"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 48.0 s (80% of timeout_s 60)"
-        },
-        {
-          "check": "one_record_per_tick",
-          "text": "every workflow tick for this slot ends in exactly one host record: a lane receipt (requested, no_op or duplicate) or, when n8n's own gate said no-op, a release_train_window_digest comms intent"
-        },
-        {
-          "check": "request_valid",
-          "text": "every appended request validates against TrainWindowRequest@v1 (scripts/lib/release_train_window.validate_request) and an off_window request is always shadow=true"
-        },
-        {
-          "check": "output_produced",
-          "text": "every live (--append) run writes LaneRunReceipt@v2 output fields: produced_count 1 when one request was appended, else 0 with empty_reason nothing_due (a no-op or a duplicate); a fatal skip (no_runner, dependency_unavailable, unconfigured) is RUN_FAILED"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 48.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "the readiness view reads queue_freshness UNAVAILABLE or the census STALE (the request is still made; the controller decides)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 72.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "request_invalid",
-          "text": "the lane refused to append (ContractError) or the controller answered INVALID_REQUEST for a request from this lane"
-        },
-        {
-          "check": "shadow_violation",
-          "text": "a request with tick off_window or shadow_reason set reached the controller as shadow=false (must be impossible; contract C3)"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run skipped for a fatal reason ['no_runner', 'dependency_unavailable', 'unconfigured'] -> RUN_FAILED empty_output, P2 (an empty run with empty_reason nothing_due is a no-op or a duplicate, which is allowed)"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 48.0,
-        "freshness_failed_after_h": 72.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 60,
-        "class": "pipeline",
-        "computed_on": "2026-10-21",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 48.0,
-        "p95_duration_bound_s": 48.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "lane_registry.json row severity",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/release-train-request-0000_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='release-train-request-0000' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:release-train-request-0000' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/release-train-request-0000_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
-      },
-      "review_by": "2026-11-04",
-      "review": {
-        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
-        "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
-        "reviewed_on": "2026-10-21"
-      },
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "train window request",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "window_h": null,
-        "produced_field": "produced_count",
-        "empty_allowed_reasons": [
-          "nothing_due"
-        ],
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable",
-          "unconfigured"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/release-train-request-0000_last.json produced_count (1 = one request appended; 0 with empty_reason nothing_due = a no-op or a duplicate); the file itself is <release-window state dir>/train_requests/journal/rtw-<date>-0000-*.json"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "release-train-request-0600",
-      "kind": "lane",
-      "workflow_id": "tradeai-fabric-release-train",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Ask the host release controller to consider the 06:00 ET release-train window: append one TrainWindowRequest@v1 (or record a no-op when STOP is set/unreadable or the train is neither armed nor in shadow). REQUEST_ONLY: no merge, push, promote, rollback, capability, STOP write or send.",
-        "business_function": "platform-release",
-        "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75; scripts/release_train_window_request.py module docstring"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/release_train_window_request.py --window 0600",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/tradeai_release_train_request_0600.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
-        },
-        {
-          "name": "data/runtime/release-train-request-0600_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "<release-window state dir>/STOP.json (release STOP latch; read, fail closed)",
-          "kind": "store",
-          "direction": "read",
-          "source": "scripts/lib/release_train_view.read_stop"
-        },
-        {
-          "name": "config/release_train_policy.json, config/release_train_n8n.json, the standing delegation record",
-          "kind": "config",
-          "direction": "read",
-          "source": "scripts/lib/release_train_window.host_snapshot"
-        },
-        {
-          "name": "<release-window state dir>/train_requests/journal + pending (TrainWindowRequest@v1, --append only)",
-          "kind": "store",
-          "direction": "write",
-          "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75 spool"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 48.0 s (80% of timeout_s 60)"
-        },
-        {
-          "check": "one_record_per_tick",
-          "text": "every workflow tick for this slot ends in exactly one host record: a lane receipt (requested, no_op or duplicate) or, when n8n's own gate said no-op, a release_train_window_digest comms intent"
-        },
-        {
-          "check": "request_valid",
-          "text": "every appended request validates against TrainWindowRequest@v1 (scripts/lib/release_train_window.validate_request) and an off_window request is always shadow=true"
-        },
-        {
-          "check": "output_produced",
-          "text": "every live (--append) run writes LaneRunReceipt@v2 output fields: produced_count 1 when one request was appended, else 0 with empty_reason nothing_due (a no-op or a duplicate); a fatal skip (no_runner, dependency_unavailable, unconfigured) is RUN_FAILED"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 48.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "the readiness view reads queue_freshness UNAVAILABLE or the census STALE (the request is still made; the controller decides)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 72.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "request_invalid",
-          "text": "the lane refused to append (ContractError) or the controller answered INVALID_REQUEST for a request from this lane"
-        },
-        {
-          "check": "shadow_violation",
-          "text": "a request with tick off_window or shadow_reason set reached the controller as shadow=false (must be impossible; contract C3)"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run skipped for a fatal reason ['no_runner', 'dependency_unavailable', 'unconfigured'] -> RUN_FAILED empty_output, P2 (an empty run with empty_reason nothing_due is a no-op or a duplicate, which is allowed)"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 48.0,
-        "freshness_failed_after_h": 72.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 60,
-        "class": "pipeline",
-        "computed_on": "2026-10-21",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 48.0,
-        "p95_duration_bound_s": 48.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "lane_registry.json row severity",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/release-train-request-0600_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='release-train-request-0600' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:release-train-request-0600' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/release-train-request-0600_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
-      },
-      "review_by": "2026-11-04",
-      "review": {
-        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
-        "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
-        "reviewed_on": "2026-10-21"
-      },
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "train window request",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "window_h": null,
-        "produced_field": "produced_count",
-        "empty_allowed_reasons": [
-          "nothing_due"
-        ],
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable",
-          "unconfigured"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/release-train-request-0600_last.json produced_count (1 = one request appended; 0 with empty_reason nothing_due = a no-op or a duplicate); the file itself is <release-window state dir>/train_requests/journal/rtw-<date>-0600-*.json"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "release-train-request-0800",
-      "kind": "lane",
-      "workflow_id": "tradeai-fabric-release-train",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Ask the host release controller to consider the 08:00 ET release-train window: append one TrainWindowRequest@v1 (or record a no-op when STOP is set/unreadable or the train is neither armed nor in shadow). REQUEST_ONLY: no merge, push, promote, rollback, capability, STOP write or send.",
-        "business_function": "platform-release",
-        "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75; scripts/release_train_window_request.py module docstring"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/release_train_window_request.py --window 0800",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/tradeai_release_train_request_0800.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
-        },
-        {
-          "name": "data/runtime/release-train-request-0800_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "<release-window state dir>/STOP.json (release STOP latch; read, fail closed)",
-          "kind": "store",
-          "direction": "read",
-          "source": "scripts/lib/release_train_view.read_stop"
-        },
-        {
-          "name": "config/release_train_policy.json, config/release_train_n8n.json, the standing delegation record",
-          "kind": "config",
-          "direction": "read",
-          "source": "scripts/lib/release_train_window.host_snapshot"
-        },
-        {
-          "name": "<release-window state dir>/train_requests/journal + pending (TrainWindowRequest@v1, --append only)",
-          "kind": "store",
-          "direction": "write",
-          "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75 spool"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 48.0 s (80% of timeout_s 60)"
-        },
-        {
-          "check": "one_record_per_tick",
-          "text": "every workflow tick for this slot ends in exactly one host record: a lane receipt (requested, no_op or duplicate) or, when n8n's own gate said no-op, a release_train_window_digest comms intent"
-        },
-        {
-          "check": "request_valid",
-          "text": "every appended request validates against TrainWindowRequest@v1 (scripts/lib/release_train_window.validate_request) and an off_window request is always shadow=true"
-        },
-        {
-          "check": "output_produced",
-          "text": "every live (--append) run writes LaneRunReceipt@v2 output fields: produced_count 1 when one request was appended, else 0 with empty_reason nothing_due (a no-op or a duplicate); a fatal skip (no_runner, dependency_unavailable, unconfigured) is RUN_FAILED"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 48.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "the readiness view reads queue_freshness UNAVAILABLE or the census STALE (the request is still made; the controller decides)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 72.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "request_invalid",
-          "text": "the lane refused to append (ContractError) or the controller answered INVALID_REQUEST for a request from this lane"
-        },
-        {
-          "check": "shadow_violation",
-          "text": "a request with tick off_window or shadow_reason set reached the controller as shadow=false (must be impossible; contract C3)"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run skipped for a fatal reason ['no_runner', 'dependency_unavailable', 'unconfigured'] -> RUN_FAILED empty_output, P2 (an empty run with empty_reason nothing_due is a no-op or a duplicate, which is allowed)"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 48.0,
-        "freshness_failed_after_h": 72.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 60,
-        "class": "pipeline",
-        "computed_on": "2026-10-21",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 48.0,
-        "p95_duration_bound_s": 48.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "lane_registry.json row severity",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/release-train-request-0800_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='release-train-request-0800' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:release-train-request-0800' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/release-train-request-0800_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
-      },
-      "review_by": "2026-11-04",
-      "review": {
-        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
-        "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
-        "reviewed_on": "2026-10-21"
-      },
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "train window request",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "window_h": null,
-        "produced_field": "produced_count",
-        "empty_allowed_reasons": [
-          "nothing_due"
-        ],
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable",
-          "unconfigured"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/release-train-request-0800_last.json produced_count (1 = one request appended; 0 with empty_reason nothing_due = a no-op or a duplicate); the file itself is <release-window state dir>/train_requests/journal/rtw-<date>-0800-*.json"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "release-train-request-1800",
-      "kind": "lane",
-      "workflow_id": "tradeai-fabric-release-train",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Ask the host release controller to consider the 18:00 ET release-train window: append one TrainWindowRequest@v1 (or record a no-op when STOP is set/unreadable or the train is neither armed nor in shadow). REQUEST_ONLY: no merge, push, promote, rollback, capability, STOP write or send.",
-        "business_function": "platform-release",
-        "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75; scripts/release_train_window_request.py module docstring"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/release_train_window_request.py --window 1800",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/tradeai_release_train_request_1800.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
-        },
-        {
-          "name": "data/runtime/release-train-request-1800_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "<release-window state dir>/STOP.json (release STOP latch; read, fail closed)",
-          "kind": "store",
-          "direction": "read",
-          "source": "scripts/lib/release_train_view.read_stop"
-        },
-        {
-          "name": "config/release_train_policy.json, config/release_train_n8n.json, the standing delegation record",
-          "kind": "config",
-          "direction": "read",
-          "source": "scripts/lib/release_train_window.host_snapshot"
-        },
-        {
-          "name": "<release-window state dir>/train_requests/journal + pending (TrainWindowRequest@v1, --append only)",
-          "kind": "store",
-          "direction": "write",
-          "source": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md \u00a75 spool"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 48.0 s (80% of timeout_s 60)"
-        },
-        {
-          "check": "one_record_per_tick",
-          "text": "every workflow tick for this slot ends in exactly one host record: a lane receipt (requested, no_op or duplicate) or, when n8n's own gate said no-op, a release_train_window_digest comms intent"
-        },
-        {
-          "check": "request_valid",
-          "text": "every appended request validates against TrainWindowRequest@v1 (scripts/lib/release_train_window.validate_request) and an off_window request is always shadow=true"
-        },
-        {
-          "check": "output_produced",
-          "text": "every live (--append) run writes LaneRunReceipt@v2 output fields: produced_count 1 when one request was appended, else 0 with empty_reason nothing_due (a no-op or a duplicate); a fatal skip (no_runner, dependency_unavailable, unconfigured) is RUN_FAILED"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 48.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "the readiness view reads queue_freshness UNAVAILABLE or the census STALE (the request is still made; the controller decides)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 72.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "request_invalid",
-          "text": "the lane refused to append (ContractError) or the controller answered INVALID_REQUEST for a request from this lane"
-        },
-        {
-          "check": "shadow_violation",
-          "text": "a request with tick off_window or shadow_reason set reached the controller as shadow=false (must be impossible; contract C3)"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run skipped for a fatal reason ['no_runner', 'dependency_unavailable', 'unconfigured'] -> RUN_FAILED empty_output, P2 (an empty run with empty_reason nothing_due is a no-op or a duplicate, which is allowed)"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 48.0,
-        "freshness_failed_after_h": 72.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 60,
-        "class": "pipeline",
-        "computed_on": "2026-10-21",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 48.0,
-        "p95_duration_bound_s": 48.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "lane_registry.json row severity",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/release-train-request-1800_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='release-train-request-1800' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:release-train-request-1800' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/release-train-request-1800_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
-      },
-      "review_by": "2026-11-04",
-      "review": {
-        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
-        "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
-        "reviewed_on": "2026-10-21"
-      },
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "train window request",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "window_h": null,
-        "produced_field": "produced_count",
-        "empty_allowed_reasons": [
-          "nothing_due"
-        ],
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable",
-          "unconfigured"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/release-train-request-1800_last.json produced_count (1 = one request appended; 0 with empty_reason nothing_due = a no-op or a duplicate); the file itself is <release-window state dir>/train_requests/journal/rtw-<date>-1800-*.json"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
       "id": "disk-usage-monitor",
       "kind": "lane",
       "workflow_id": "dispatcher",
@@ -32015,8 +31167,8 @@
       "kind": "lane",
       "workflow_id": "dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Daily at 05:05 ET (and on demand), build the macro-release calendar for the release train's 08:00 ET window: verify the mapped FRED release ids (GET /fred/releases), fetch scheduled release dates (GET /fred/releases/dates, include_release_dates_with_no_data=true), flag the 08:30 ET releases (jobs, CPI, PPI, retail sales, GDP, weekly claims, PCE, durable goods, housing starts), merge the FOMC dates and operator overrides from config/macro_calendar_overrides.json, and write data/runtime/macro_calendar.json (MacroCalendar@v1) atomically. The controller reads it through scripts/lib/macro_calendar.py and skips 08:00 on an 08:30 release day or when the calendar is missing, corrupt, older than 72 h or does not cover the day.",
         "business_function": "release-engineering",
@@ -32067,12 +31219,6 @@
           "source": "LaneRunReceipt / allowlist output_signal"
         },
         {
-          "name": "release-train controller (scripts/lib/macro_calendar.py ReleaseTrainCalendar.verdict / skip_0800)",
-          "kind": "consumer",
-          "direction": "read",
-          "source": "reads the calendar; fail closed"
-        },
-        {
           "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source macro_calendar)",
           "kind": "consumer",
           "direction": "read",
@@ -32082,11 +31228,11 @@
       "healthy": [
         {
           "check": "dry_run_writes_nothing",
-          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no calendar, no receipt"
+          "text": "a dry_run fire (relay not yet live for the lane, or a manual dry run) writes nothing: RUN_DONE mode dry_run, no calendar, no receipt"
         },
         {
           "check": "last_live_run_done",
-          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
         },
         {
           "check": "output_advanced",
@@ -32199,7 +31345,7 @@
         "reviewed_on": "2026-10-21"
       },
       "review_by": "2026-10-28",
-      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
+      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promoted to canary (dispatch live) 2026-10-26 on the operator decision (verbatim: \"1. macro-calendar job: switch it from test mode to live … yes.\"): allowlist live_arg []. Live fires need the lane in TRADEAI_N8N_RELAY_LIVE_LANES and FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "08:00 skip days in the calendar's coverage",
@@ -33489,6 +32635,239 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "yfinance-info-snapshot",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 05:40 ET (and on demand), refresh one raw yfinance .info payload per symbol the operator holds, watches (My Watchlist) or has a prospectus for, into yfinance_info_snapshot through its single writer, so the prospectus fund block (AUM, issuer, inception, index tracked, top holdings) and other consumers read the store through lib.data_broker.yfinance_info instead of calling Yahoo. Governed: due windows (20 h ok, 168 h negative cache), 300 fetches per run, 1 s pacing, stop on throttle.",
+        "business_function": "market-reference-data",
+        "source": "scripts/yfinance_info_snapshot_refresh.py; operator decision 2026-10-26 (Yahoo Finance feed switched on); CONSOLIDATION_PLAN.md §D.13"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/yfinance_info_snapshot_refresh.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_yfinance_info_snapshot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "Yahoo Finance via yfinance (Ticker.info, Ticker.funds_data)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "provider yfinance (config/data_source_authority.json providers.yfinance)"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json (lib.portfolio_positions.load_store)",
+          "kind": "store",
+          "direction": "read",
+          "source": "held universe"
+        },
+        {
+          "name": "operator_starred_symbols / watchlist_items / directives (lib.data_broker.watch_domains.membership_operator)",
+          "kind": "store",
+          "direction": "read",
+          "source": "My Watchlist universe"
+        },
+        {
+          "name": "data/prospectus/universe.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "prospectus universe (lib.prospectus.store.read_universe)"
+        },
+        {
+          "name": "yfinance_info_snapshot (Postgres)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "single writer lib/writers/yfinance_info_snapshot_writer.py; live runs only"
+        },
+        {
+          "name": "data/runtime/yfinance-info-snapshot_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "prospectus fund block (scripts/lib/prospectus/etf_profile.py yfinance_snapshot) and domains.r_yfinance",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "lib.data_broker.yfinance_info.get_info_batch"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no row, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/yfinance-info-snapshot_last.json ok_at advances on each live run and max(fetched_at) in yfinance_info_snapshot with it"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 72 h (weekday cadence; covers the weekend gap)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = snapshot rows written; 0 only with empty_reason nothing_due (every symbol fresh)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 72 h but younger than 96 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "rate_limited",
+          "text": "skipped_reasons.rate_limited > 0: Yahoo throttled the run; the rest waits for the next run"
+        },
+        {
+          "check": "over_run_cap",
+          "text": "skipped_reasons.over_run_cap > 0 on consecutive runs: the universe outgrew --max-symbols"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 96 h"
+        },
+        {
+          "check": "table_missing",
+          "text": "yfinance_info_snapshot absent (migration not applied) -> exit 1, failure_kind unconfigured"
+        },
+        {
+          "check": "provider_unavailable",
+          "text": "every due fetch throttled or failed, or the database is unreachable -> exit 1, failure_kind dependency_unavailable"
+        },
+        {
+          "check": "empty_universe",
+          "text": "no held, watch or prospectus symbol readable -> exit 1, failure_kind universe_empty_unexpected"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run wrote no row with an empty_reason other than nothing_due -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 72.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "weekday cadence: degraded beyond 72 h (a weekend), failed beyond 96 h",
+        "timeout_s": 1800,
+        "class": "ingest",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s; 300 fetches at 1 s pacing plus provider latency",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (reference data for the prospectus fund block; a stale snapshot degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A throttle heals on the next run; a missing table needs the operator's migration apply (docs/ops/YFINANCE_INFO_SNAPSHOT.md)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/yfinance-info-snapshot_last.json",
+        "verify": [
+          "python3 scripts/yfinance_info_snapshot_refresh.py --dry-run   # READ ONLY session; probes <= 3 symbols; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='yfinance-info-snapshot' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql -c \"SELECT status, count(*), max(fetched_at) FROM yfinance_info_snapshot GROUP BY 1\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/yfinance-info-snapshot_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger, the receipt and the table's fetched_at",
+        "expected_output_basis": "expected_output 2026-10-26 from scripts/yfinance_info_snapshot_refresh.py run(): produced = snapshot rows accepted by the writer; 0 is allowed only as nothing_due (every symbol inside its window). Fatal (exit 1): table missing = unconfigured; DB/provider unavailable = dependency_unavailable; empty universe = universe_empty_unexpected."
+      },
+      "review": {
+        "prepared_by": "agent draft (yfinance snapshot, feeds/yfinance-snapshot-20261026)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-26 (verbatim: \"Yahoo Finance feed \u2026 switched on: yes\"), relayed by the coordinator",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-09",
+      "state_note": "REVIEWED on the operator decision 2026-10-26 (Yahoo Finance feed switched on); agent-written 2026-10-26. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) needs the migration applied first (operator, docs/ops/YFINANCE_INFO_SNAPSHOT.md), then a registry PR.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "yfinance snapshot rows written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable",
+          "universe_empty_unexpected"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/yfinance-info-snapshot_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/yfinance-info-snapshot/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "yfinance_info_snapshot fetched_at"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "holdings-drift-monitor",
       "kind": "lane",
       "workflow_id": "dispatcher",
@@ -34517,6 +33896,688 @@
           {
             "kind": "file_artifact",
             "ref": "$CIO_ASK_ANSWERS_DIR/<request_id>.json (atomic replace in main())"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-lifecycle",
+      "kind": "lane",
+      "workflow_id": "tradeai-cio-ask-lifecycle-native",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "purpose": {
+        "text": "Check every monitored Ask thread on the hour, every day, and issue another advisory answer only after material change and cooldown admission.",
+        "business_function": "research",
+        "source": "DSN-20261026-ask-hourly; scripts/cio_ask_lifecycle.py"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "Native n8n Schedule Trigger",
+          "kind": "workflow",
+          "direction": "calls",
+          "source": "0 0 * * * * America/New_York, active false"
+        },
+        {
+          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        },
+        {
+          "name": "data/cio/cio_ask_events.jsonl",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
+        },
+        {
+          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
+        },
+        {
+          "name": "data/runtime/cio-ask-lifecycle_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt v2 includes CioAskLifecycleReceipt@v1 summary"
+        },
+        {
+          "name": "data/runtime/lane_attempts/cio-ask-lifecycle/<run_id>.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Immutable existing-executor attempt copy, bound to same lane/run"
+        },
+        {
+          "name": "CIO memory, canonical Ask consumer readback and delivery receipts",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Business proof, separate states; accepted send is not delivered"
+        },
+        {
+          "name": "scripts/lib/research_lane_health.py -> health_agent research heartbeat",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Registered collect_cio_ask_lifecycle_health, no model/send/write"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "trigger_host_binding",
+          "text": "Real live d: slot matches lane_id/run_id/mode on an immutable successful LaneRunReceipt@v2 attempt; n8n execution status or RUN_DONE alone is insufficient."
+        },
+        {
+          "check": "hourly_business_freshness",
+          "text": "Each monitoring_active thread has a canonical last_checked_at/last_check_outcome read back in the matching receipt; next check is hourly and <=15 minutes late. Six-hour answer cooldown never defers evidence checks."
+        },
+        {
+          "check": "memory_consumer_delivery",
+          "text": "memory_sync is verified/synced (or typed not_required), exact canonical Ask answer/check consumer readback is verified, and delivery is delivered/verified or typed not_required."
+        },
+        {
+          "check": "typed_empty",
+          "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        },
+        {
+          "check": "output_produced",
+          "text": "Measured LaneRunReceipt@v2 produced_count equals recorded canonical check outputs, or a typed zero-work reason records why no thread was due."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "hourly_late",
+          "text": "An eligible hourly check is more than 15 minutes past next_check_at or last_checked_at+one hour, whichever is sooner."
+        },
+        {
+          "check": "material_poll_late",
+          "text": "Material-feed schedule receipt is older than fifteen minutes (5 minute cadence + 10 minute grace)."
+        },
+        {
+          "check": "memory_pending",
+          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
+        },
+        {
+          "check": "cooldown_distinct",
+          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        },
+        {
+          "check": "slow",
+          "text": "Declared source bound, not a measured production p95: warn when host execution exceeds480s; executor maximum600s."
+        }
+      ],
+      "failed": [
+        {
+          "check": "business_unavailable",
+          "text": "Receipt schema, canonical thread lifecycle or matching immutable host attempt is missing/corrupt/old: UNAVAILABLE, never green."
+        },
+        {
+          "check": "host_or_source_failure",
+          "text": "Failed/refused/timed out attempt, nonempty source_errors, fatal skip, or mismatched run/check/answer identity."
+        },
+        {
+          "check": "dry_run_nonproof",
+          "text": "Dry-run RUN_DONE never advances business freshness; any dry-run store/receipt/memory/send write is a failure."
+        },
+        {
+          "check": "two_hourly_slots_missed",
+          "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        },
+        {
+          "check": "empty_output",
+          "text": "An exit-0 live run without canonical check output fails unless its zero-work reason is explicitly allowed; disabled, source failures and lock skips never count as healthy empty output."
+        }
+      ],
+      "baseline": {
+        "basis": "OPERATOR_SLO",
+        "source": "Approved plan: hourly on the hour every day, eligible check lateness >15 minutes warns; material feed polling every5min via separate same-lock schedule lane.",
+        "class": "llm",
+        "timeout_s": 600,
+        "duration_degraded_above_s": 480,
+        "freshness_degraded_after_h": 1.25,
+        "freshness_failed_after_h": 2.25,
+        "runs_considered": 0,
+        "business_volume_baseline": "NOT_MEASURED",
+        "p95_duration_bound_s": 600
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "Operator advisory question freshness; no execution authority.",
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing research-lane-health heartbeat and incident fan-in/notifier only; monitor sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "mode": "MONITOR_ONLY",
+        "note": "Read receipt+canonical thread; coordinator fixes integration; monitor never dispatches, resets or mutates."
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-lifecycle_last.json",
+        "monitor": "scripts/cio_ask_lifecycle_health.py",
+        "verify": [
+          "TRADE_AI_CI=1 pytest -q tests/test_cio_ask_lifecycle_health_20261026.py",
+          "Read-only --root <fixture-root> --dry-run --strict; exact source changed by root integration then repeat gate.",
+          "After reviewed admission: one shadow dry run, one bounded live canary, then first natural hourly/material slots with matching attempt+canonical check+memory/readback/delivery evidence."
+        ],
+        "acceptance": "SOURCE_AND_SYNTHETIC_ONLY; no live or natural-slot evidence",
+        "never": "RUN_DONE in dry_run, accepted /run, a file mtime, historical ok_at or process exit0 alone"
+      },
+      "review": {
+        "status": "REVIEWED_SOURCE_ONLY",
+        "prepared_by": "codex-ask-hourly-n8n-20261026",
+        "reviewed_by": "codex-ask-hourly-20261026 (CIO lane source owner)",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-02",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "canonical Ask per-thread evidence checks recorded",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_tracked_threads",
+          "no_new_events",
+          "no_due_threads"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-lifecycle_last.json summary.checked_count/threads; immutable per-attempt v2 binding; LaneRunReceipt@v2.produced_count"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/cio/cio_ask_events.jsonl exact thread lifecycle/check; memory_sync/consumer_readback/delivery"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-material-events",
+      "kind": "lane",
+      "workflow_id": "tradeai-cio-ask-lifecycle-native",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "purpose": {
+        "text": "Poll existing material feeds/cursors every five minutes, rechecking only new material events and retryable blockers.",
+        "business_function": "research",
+        "source": "DSN-20261026-ask-hourly; scripts/cio_ask_lifecycle.py"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "Native n8n Schedule Trigger",
+          "kind": "workflow",
+          "direction": "calls",
+          "source": "0 */5 * * * * America/New_York, active false"
+        },
+        {
+          "name": "Authenticated relay /due -> /run -> signed coordination gateway -> existing executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing dispatcher graph and tradeai-run-relay credential reference; no credential values"
+        },
+        {
+          "name": "data/cio/cio_ask_events.jsonl",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "Existing sole AskEventStore writer; material feeds read-only, existing cursor events appended through it"
+        },
+        {
+          "name": "cio-governed-bridge / cio_ask_reanswer, cio_ask_critique_deepseek, cio_ask_critique_grok, cio_ask_critique_chatgpt",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "All four automated process routes must be admitted as one executor-bound process_ids set. Existing caps and provider-pinned critic identities remain intact; never manual operator-intent header"
+        },
+        {
+          "name": "data/runtime/cio-ask-material-events_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt v2 includes CioAskLifecycleReceipt@v1 summary"
+        },
+        {
+          "name": "data/runtime/lane_attempts/cio-ask-material-events/<run_id>.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Immutable existing-executor attempt copy, bound to same lane/run"
+        },
+        {
+          "name": "CIO memory, canonical Ask consumer readback and delivery receipts",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Business proof, separate states; accepted send is not delivered"
+        },
+        {
+          "name": "scripts/lib/research_lane_health.py -> health_agent research heartbeat",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "Registered collect_cio_ask_lifecycle_health, no model/send/write"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "trigger_host_binding",
+          "text": "Real live d: slot matches lane_id/run_id/mode on an immutable successful LaneRunReceipt@v2 attempt; n8n execution status or RUN_DONE alone is insufficient."
+        },
+        {
+          "check": "hourly_business_freshness",
+          "text": "Each monitoring_active thread has a canonical last_checked_at/last_check_outcome read back in the matching receipt; next check is hourly and <=15 minutes late. Six-hour answer cooldown never defers evidence checks."
+        },
+        {
+          "check": "memory_consumer_delivery",
+          "text": "memory_sync is verified/synced (or typed not_required), exact canonical Ask answer/check consumer readback is verified, and delivery is delivered/verified or typed not_required."
+        },
+        {
+          "check": "typed_empty",
+          "text": "Zero answers is normal after no material change; zero checks only for a contract-listed typed empty reason, never disabled, source error or lock skip."
+        },
+        {
+          "check": "output_produced",
+          "text": "Measured LaneRunReceipt@v2 produced_count equals recorded canonical check outputs, or a typed zero-work reason records why no thread was due."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "hourly_late",
+          "text": "An eligible hourly check is more than 15 minutes past next_check_at or last_checked_at+one hour, whichever is sooner."
+        },
+        {
+          "check": "material_poll_late",
+          "text": "Material-feed schedule receipt is older than fifteen minutes (5 minute cadence + 10 minute grace)."
+        },
+        {
+          "check": "memory_pending",
+          "text": "A successful check/answer has pending or unverified memory sync, consumer readback, or delivery; show each independently."
+        },
+        {
+          "check": "cooldown_distinct",
+          "text": "Intentional answer cooldown is a separate deferred outcome, never an excuse for absent hourly checks or source_errors."
+        },
+        {
+          "check": "slow",
+          "text": "Declared source bound, not a measured production p95: warn when host execution exceeds480s; executor maximum600s."
+        }
+      ],
+      "failed": [
+        {
+          "check": "business_unavailable",
+          "text": "Receipt schema, canonical thread lifecycle or matching immutable host attempt is missing/corrupt/old: UNAVAILABLE, never green."
+        },
+        {
+          "check": "host_or_source_failure",
+          "text": "Failed/refused/timed out attempt, nonempty source_errors, fatal skip, or mismatched run/check/answer identity."
+        },
+        {
+          "check": "dry_run_nonproof",
+          "text": "Dry-run RUN_DONE never advances business freshness; any dry-run store/receipt/memory/send write is a failure."
+        },
+        {
+          "check": "two_hourly_slots_missed",
+          "text": "Business check or live receipt older than two hourly slots plus fifteen minute grace requires incident review."
+        },
+        {
+          "check": "empty_output",
+          "text": "An exit-0 live run without canonical check output fails unless its zero-work reason is explicitly allowed; disabled, source failures and lock skips never count as healthy empty output."
+        }
+      ],
+      "baseline": {
+        "basis": "OPERATOR_SLO",
+        "source": "Approved plan: hourly on the hour every day, eligible check lateness >15 minutes warns; material feed polling every5min via separate same-lock schedule lane.",
+        "class": "llm",
+        "timeout_s": 600,
+        "duration_degraded_above_s": 480,
+        "freshness_degraded_after_h": 0.25,
+        "freshness_failed_after_h": 0.5,
+        "runs_considered": 0,
+        "business_volume_baseline": "NOT_MEASURED",
+        "p95_duration_bound_s": 600
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "Operator advisory question freshness; no execution authority.",
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing research-lane-health heartbeat and incident fan-in/notifier only; monitor sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "mode": "MONITOR_ONLY",
+        "note": "Read receipt+canonical thread; coordinator fixes integration; monitor never dispatches, resets or mutates."
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-material-events_last.json",
+        "monitor": "scripts/cio_ask_lifecycle_health.py",
+        "verify": [
+          "TRADE_AI_CI=1 pytest -q tests/test_cio_ask_lifecycle_health_20261026.py",
+          "Read-only --root <fixture-root> --dry-run --strict; exact source changed by root integration then repeat gate.",
+          "After reviewed admission: one shadow dry run, one bounded live canary, then first natural hourly/material slots with matching attempt+canonical check+memory/readback/delivery evidence."
+        ],
+        "acceptance": "SOURCE_AND_SYNTHETIC_ONLY; no live or natural-slot evidence",
+        "never": "RUN_DONE in dry_run, accepted /run, a file mtime, historical ok_at or process exit0 alone"
+      },
+      "review": {
+        "status": "REVIEWED_SOURCE_ONLY",
+        "prepared_by": "codex-ask-hourly-n8n-20261026",
+        "reviewed_by": "codex-ask-hourly-20261026 (CIO lane source owner)",
+        "reviewed_on": "2026-10-26"
+      },
+      "review_by": "2026-11-02",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "canonical Ask per-thread evidence checks recorded",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_tracked_threads",
+          "no_new_events",
+          "no_due_threads"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-material-events_last.json summary.checked_count/threads; immutable per-attempt v2 binding; LaneRunReceipt@v2.produced_count"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/cio/cio_ask_events.jsonl exact thread lifecycle/check; memory_sync/consumer_readback/delivery"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "prospectus-build",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "operator_approved_shadow_20261026; contract reviewed against scripts/prospectus_window.py, scripts/lib/prospectus/{schedule,delivery,pipeline,batch}.py at the go-live PR (shadow; live_arg null).",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close for holdings + watch, 07:00 ET pre-market for holdings, weekdays) collect finished Watch batch results, enqueue what the cadence and triggers say is due, submit queued Watch rows to the Message Batches API and write holdings synchronously through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave one delivery outbox record per run for the host sender. At shadow a fire only plans (dry run).",
+        "business_function": "research",
+        "source": "scripts/prospectus_window.py module docstring; operator 2026-10-26 ('queued up and run a certain time of the day')"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/prospectus_window.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/prospectus_build.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/prospectus_build.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/prospectus-build_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 (lane_last_receipt.write_lane_receipt; live run only)"
+        },
+        {
+          "name": "position store, data-broker projections (daily bars, catalysts, CIO prospect, stops display), Finviz cache (read-only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/prospectus/inputs.py, domains.py, schedule.py"
+        },
+        {
+          "name": "governed LLM generation as prospectus_writer / prospectus_writer_premium (Anthropic credit only), synchronous for holdings and operator rewrites (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/pipeline.py run_queue -> generate.write / governed_generate"
+        },
+        {
+          "name": "Message Batches API via the governed credit path (batch.submit_due at a watch window, batch.collect at every window; process prospectus_writer, 50% price) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/batch.py governed_submit / governed_collect; config/prospectus.json run_windows.watch_batch"
+        },
+        {
+          "name": "data-quality gate (pre_write layers + governed AI check) and gap repair requests to the data-broker gap queue (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/lib/prospectus/quality_gate.py pre_write / request_repairs; pipeline.handle_blocked"
+        },
+        {
+          "name": "CIO memory (shared research spine): every stored version (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "pipeline.persist_doc -> scripts/lib/prospectus/cio_memory.record_version"
+        },
+        {
+          "name": "search_router caller prospectus_writer (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "generate.web_loop"
+        },
+        {
+          "name": "<state>/data/prospectus/{queue,index,universe,windows,batches}.json, batch_pending/, <SYMBOL>/<version>/**, delivery/outbox/*.json (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/prospectus/store.py, schedule.py, batch.py, delivery.write_outbox"
+        },
+        {
+          "name": "prospectus-deliver (host systemd timer) reads delivery/outbox; this lane sends nothing",
+          "kind": "service",
+          "direction": "write",
+          "source": "scripts/prospectus_deliver.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/prospectus-build_last.json (AGENTS.md §6)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "off-window fire <= 60 s; window fire <= 5760 s (80% of timeout_s 7200)"
+        },
+        {
+          "check": "window_ran_once",
+          "text": "once live: data/prospectus/windows.json has one run per enabled window per weekday (key <date>:<window id>) with a finished_at inside start + catch_up_minutes"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: a window that had due work writes >= 1 version (synchronous or collected from a batch) and one delivery/outbox record; produced_count = reports written this fire, else a typed empty_reason (no_new_input, deferred_to_batch, credit_cap_reached, data_blocked)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 30 min (2x the 15 min cadence) once live"
+        },
+        {
+          "check": "slow",
+          "text": "window fire above 5760 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "credit_stop",
+          "text": "a window stopped early on the credit cap (receipt stopped_reason set, empty_reason credit_cap_reached when nothing was written) with rows left queued"
+        },
+        {
+          "check": "data_blocked",
+          "text": "a window wrote nothing because every due row hit a data-quality HARD_FAIL (empty_reason data_blocked; repairs filed)"
+        },
+        {
+          "check": "batch_requeued",
+          "text": "receipt summary.batch shows requeued or collect_failed entries (an errored, expired or invalid batch result)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 2 h once the lane runs live"
+        },
+        {
+          "check": "window_missed",
+          "text": "once live: a weekday passes with an enabled window absent from windows.json (not machine-checked yet)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0 reports with no typed empty_reason (it failed every report it tried: receipt failed non-empty) -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 2.0,
+        "freshness_rule": "the lane fires every 15 min around the clock and writes its receipt on every live fire, windows or not",
+        "timeout_s": 7200,
+        "class": "report",
+        "computed_on": "2026-10-26",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled. A window is bounded by max_reports (12 post-close, 6 pre-market) synchronous reports at <= prospectus timeout_s 900 each plus up to watch_batch.max_submit (20) gate + web planning turns; the worst case can exceed timeout_s 7200 (RUN_TIMEOUT, rows stay queued), the expected case is far below. Measure at canary.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 5760.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; advisory research answers for the operator, nothing applied by code",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/prospectus-build_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='prospectus-build' ORDER BY requested_at DESC LIMIT 5\"",
+          "jq '.runs | to_entries | .[-5:]' $STATE_ROOT/data/prospectus/windows.json",
+          "ls $STATE_ROOT/data/prospectus/delivery/outbox $STATE_ROOT/data/prospectus/delivery/sent",
+          "jq '{ok_at, produced_count, summary}' $STATE_ROOT/data/runtime/prospectus-build_last.json",
+          "jq '.items | to_entries | map(select(.value.state==\"pending\")) | length' $STATE_ROOT/data/prospectus/batches.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "derived 2026-10-26 from scripts/prospectus_window.py write_receipt() / empty_reason_for(): produced_count = reports written this fire (synchronous + collected batch results); 0 with a typed empty_reason when nothing was due, the work went to the batch, the credit cap stopped the window or the gate blocked every row; 0 with failures and no reason is a violation."
+      },
+      "review_by": "2026-11-06",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "claude prospectus-schedule-delivery 2026-10-26 (PR #2207)",
+        "reviewed_by": "claude-coordinator 2026-10-26",
+        "reviewed_on": "2026-10-26",
+        "note": "Reviewed against the code at the go-live PR (supersedes #2193/#2207): purpose, connections (window runner, governed credit sync + batch, quality gate, CIO memory, stores, outbox; no sender in the lane), healthy/degraded/failed, timeout, evidence and expected output. Fixed in review: expected_output rule min_produced -> empty_allowed (a 15-min lane produces 0 on most fires) with typed reasons; batch connections added. Stage stays shadow (live_arg null)."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "Ticker Prospectus versions written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input",
+          "deferred_to_batch",
+          "credit_cap_reached",
+          "data_blocked"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/prospectus-build_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/prospectus-build/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "$STATE_ROOT/data/prospectus/delivery/outbox/<run_key>.json (one per run that wrote or failed a report; moved to delivery/sent/ once delivered)"
           }
         ],
         "on_violation": {

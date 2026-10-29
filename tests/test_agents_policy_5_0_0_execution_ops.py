@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402  (26.0.0 rewrote §0 rules 2, 4 and 6)
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
@@ -226,7 +227,7 @@ def test_23_14_is_byte_identical():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_carry_rule_2_and_at_most_the_exact_sentence(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_26(adapter)  # the 5.0.0 sentence as ratified; 26.0.0 dropped its "binding only once" clause
     assert "Without one, the broker execution subsystem is out of scope" in text
     if "execution-ops" in text:
         assert RULE_2_EXCEPTION_5_0_0 in text, f"{adapter} paraphrases the 5.0.0 sentence instead of repeating it"

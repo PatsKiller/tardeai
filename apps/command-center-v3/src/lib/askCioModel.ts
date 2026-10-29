@@ -80,6 +80,7 @@ export interface Thread {
   turns: Turn[]
   entities: TrackedEntity[]
   reanswers: number
+  lifecycle?: unknown
 }
 
 export interface ThreadSummary {
@@ -92,6 +93,7 @@ export interface ThreadSummary {
   reanswers: number
   entities: { key: string; name?: string; symbol?: string | null; kind?: string; tracking?: string | null }[]
   last_answer_excerpt: string
+  lifecycle?: unknown
 }
 
 export const STATUS_LABEL: Record<AskStatus, string> = {
@@ -229,6 +231,59 @@ export function unwrap<T>(res: unknown): T | null {
   const o = res as { ok?: boolean; data?: unknown }
   if (o.ok === false) return null
   return ((o.data ?? res) as T) ?? null
+}
+
+
+export const RESEARCH_STATES = ['not_checked', 'checking', 'current', 'partial', 'blocked', 'failed', 'overdue', 'deferred'] as const
+export type ResearchState = typeof RESEARCH_STATES[number] | 'not_measured'
+export interface ResearchReceipt { state: string | null; reason: string | null }
+export interface ResearchEvidence { label: string; state: string | null; reason: string | null; as_of: string | null }
+export interface ResearchLifecycle {
+  state: ResearchState; last_checked_at: string | null; last_answer_at: string | null
+  next_check_at: string | null; next_eligible_at: string | null; last_check_outcome: string | null
+  reason: string | null; monitoring_active: boolean | null
+  memory_sync: ResearchReceipt; delivery: ResearchReceipt; sources: ResearchEvidence[]; providers: ResearchEvidence[]
+}
+const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null
+const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+const clock = (value: unknown): string | null => { const s = text(value); return s && Number.isFinite(Date.parse(s)) ? s : null }
+const receipt = (value: unknown): ResearchReceipt => { const r = record(value); return { state: text(r.state), reason: text(r.reason) } }
+function evidence(value: unknown): ResearchEvidence[] {
+  return (Array.isArray(value) ? value : []).map(item => {
+    const r = record(item)
+    return { label: text(item) ?? ([r.name ?? r.provider ?? r.title ?? r.source ?? r.id, r.model, r.role].map(text).filter(Boolean).join(' · ') || 'Evidence source not named'),
+      state: text(r.state ?? r.status), reason: text(r.reason), as_of: clock(r.as_of ?? r.at) }
+  })
+}
+/** Missing measurements never inherit the answer clock or become a fresh/zero receipt. */
+export function researchLifecycle(raw: unknown): ResearchLifecycle {
+  const r = record(raw), checked = clock(r.last_checked_at)
+  let state: ResearchState = (RESEARCH_STATES as readonly unknown[]).includes(r.state) ? r.state as ResearchState : 'not_measured'
+  if (state === 'current' && !checked) state = 'not_measured'
+  return { state, last_checked_at: checked, last_answer_at: clock(r.last_answer_at), next_check_at: clock(r.next_check_at),
+    next_eligible_at: clock(r.next_eligible_at), last_check_outcome: text(r.last_check_outcome),
+    reason: text(r.blocker) ?? text(record(r.blocker).reason) ?? text(r.reason),
+    monitoring_active: typeof r.monitoring_active === 'boolean' ? r.monitoring_active : null,
+    memory_sync: receipt(r.memory_sync), delivery: receipt(r.delivery), sources: evidence(r.sources), providers: evidence(r.providers) }
+}
+export function researchStatus(lifecycle: ResearchLifecycle): string {
+  if (lifecycle.last_checked_at && lifecycle.last_check_outcome === 'no_change' && lifecycle.state === 'current') return 'Checked — no material change'
+  const labels: Record<ResearchState, string> = { not_measured: 'Research status: not measured', not_checked: 'Not checked yet',
+    checking: 'Checking research…', current: 'Research current', partial: 'Research partial', blocked: 'Research blocked',
+    failed: 'Research check failed', overdue: 'Research check overdue', deferred: 'Research check deferred' }
+  return labels[lifecycle.state]
+}
+export interface ResearchRefreshResult { status?: string; request_id?: string; reason?: string | null; blocker?: unknown; lifecycle?: unknown }
+export function researchRefreshText(result: ResearchRefreshResult): string {
+  const lifecycle = researchLifecycle(result.lifecycle), status = result.status?.toLowerCase()
+  const reason = text(result.blocker) ?? text(record(result.blocker).reason) ?? text(result.reason) ?? lifecycle.reason
+  const label = status === 'blocked' || status === 'capped' ? 'Research blocked'
+    : status === 'failed' ? 'Research refresh failed'
+    : ['pending', 'queued', 'scheduled', 'running', 'checking', 'deep_pending'].includes(status ?? '') ? 'Research pending'
+    : lifecycle.state !== 'not_measured' ? researchStatus(lifecycle)
+    : ['deep', 'complete', 'completed', 'current', 'reanswer'].includes(status ?? '') ? 'Research refresh completed'
+    : 'Refresh result not measured'
+  return label + (reason ? ` — ${reason}` : '')
 }
 
 export const TOOLTIPS = {

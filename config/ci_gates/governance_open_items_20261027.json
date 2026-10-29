@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "governance_open_items_20261027",
+  "files": [
+    "tests/test_governance_open_items_20261027.py"
+  ],
+  "anchor": "GOVERNANCE_OPEN_ITEMS",
+  "comment": [
+    "ANCHOR: GOVERNANCE_OPEN_ITEMS — AGENTS.md 26.0.0: every known gap lives in docs/governance/OPEN_ITEMS.md with",
+    "a unique id, severity, owner from the allowed set, review date, action and status (scripts/check_open_items.py).",
+    "Hermetic; the overdue report (--overdue) is informational and never fails CI."
+  ]
+}

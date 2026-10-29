@@ -1,0 +1,758 @@
+# Trade AI — AI Engineering & Remote-Cost Policy
+
+Status: MANDATORY
+Scope: ALL human and AI development tools working in this repository.
+
+This policy applies regardless of client or model, including but not limited to:
+
+- OpenAI Codex
+- ChatGPT coding agents
+- Grok Code
+- Grok Build
+- Claude Code
+- Cursor
+- GitHub Copilot
+- VS Code agents
+- terminal agents
+- future coding agents
+
+If a tool-specific instruction conflicts with this file, the safer and
+more restrictive rule wins.
+
+The environment flag that unlocks a single remote synchronization event is:
+
+    TRADEAI_REMOTE_PUSH_AUTHORIZED=1
+
+That is the namespaced form of `REMOTE_PUSH_AUTHORIZED`. A general instruction
+to continue, implement, test, mature, or finish does **not** set this flag.
+
+---
+
+# 1. CORE DEVELOPMENT MODEL
+
+GitHub is a RELEASE AND INDEPENDENT VERIFICATION BOUNDARY.
+
+GitHub is NOT the normal development/test loop.
+
+The default lifecycle is:
+
+LOCAL WORK
+→ LOCAL COMMIT
+→ LOCAL TEST
+→ LOCAL ITERATION
+→ LOCAL COMMIT
+→ LOCAL REGRESSION
+→ LOCAL RELEASE-EQUIVALENT
+→ ONE REMOTE PUSH
+→ ONE GITHUB CI
+→ MERGE
+→ DEPLOY
+
+Do NOT use:
+
+edit
+→ push
+→ wait for CI
+→ edit
+→ push
+→ wait for CI
+
+as the normal development process.
+
+---
+
+# 2. LOCAL COMMITS ARE THE CHECKPOINT MECHANISM
+
+A development checkpoint means:
+
+    git commit
+
+It does NOT mean:
+
+    git push
+
+Agents may create as many useful LOCAL commits as necessary.
+
+Examples:
+
+- implementation checkpoint
+- test checkpoint
+- refactor checkpoint
+- evidence checkpoint
+- documentation checkpoint
+- fault-test checkpoint
+
+These commits remain local until the tranche is ready for remote verification.
+
+---
+
+# 3. REMOTE PUSH BUDGET
+
+Default budget per coherent development tranche:
+
+    target pushes: 1
+    target GitHub CI cycles: 1
+    maximum pushes without explicit operator approval: 2
+
+The second push exists only for a failure that could not reasonably have been
+caught in the local acceptance process.
+
+A third push requires explicit operator authorization.
+
+Program exception (operator decision 3, 2026-10-09; AGENTS.md 4.1.0 §23.13;
+status ACTIVE with AGENTS.md 4.1.0, ratified 2026-10-09): a branch whose name starts with exactly
+`n8nmat/` (case-sensitive, at least one character after the slash) has a budget
+of 4 authorized pushes instead of 2, until 2026-10-12T23:59:59-04:00. After that
+instant, and for every other branch, the budget is 2. The pre-push hook enforces
+it from the `PROGRAM_WINDOWS` table in `scripts/lib/tradeai_push_budget.py`; the
+hook change takes effect only when merged, which happens only after
+AGENTS.md 4.1.0 is ratified. Renaming or re-creating a branch under `n8nmat/` to
+gain budget is routing around a denial (AGENTS.md §0 rail 3) and is forbidden.
+
+Hands-off delivery (AGENTS.md 21.0.0 §28.15 item 1; binding (21.0.0 ACTIVE),
+enforced once the hook change in `scripts/lib/tradeai_push_budget.py`
+is merged; until then the budget above is 2): the per-branch budget is 5
+authorized pushes. Past 5, only the coordinator session (the session keeping
+the day's coordinator worklog, AGENTS.md §28.3, by its AGENT_CLAIM_SESSION) may
+push with `TRADEAI_REMOTE_PUSH_OVERRIDE=1`, and only for a PR linked to an
+operator-approved scope: a claim-board plan carrying an operator approval
+reference, or a PR body line `Operator-approval: <quote or reference>`. Each
+override is logged with that reference (`TRADEAI_REMOTE_PUSH_OVERRIDE_REF`, and
+`agent_claim.py note` in the coordinator worklog). An approval relayed between
+agents never counts (AGENTS.md §28.4). An operator-approved scope, plan or
+execution request is the explicit operator intent of section 16 for the pushes
+that deliver it. Force-push stays forbidden, and renaming or re-creating a branch
+to reset a budget is still routing around a denial (AGENTS.md §0 rail 3).
+
+The following are NOT valid reasons to push:
+
+- "see whether CI passes"
+- save a checkpoint
+- show progress
+- update a test count
+- update evidence
+- update closeout wording
+- let another agent inspect the branch
+- poll a partially finished implementation
+- obtain a GitHub SHA
+- verify code that can be verified locally
+
+---
+
+# 4. NO INTERMEDIATE REMOTE CHECKPOINTS
+
+Do NOT:
+
+- push after every feature
+- push after every bug fix
+- push after every test addition
+- create remote checkpoint commits
+- create evidence-only PRs during active implementation
+- repeatedly amend/open/update a PR while development is unfinished
+- poll GitHub CI as a substitute for local testing
+
+Accumulate the completed tranche locally.
+
+---
+
+# 5. REQUIRED LOCAL GATES BEFORE FIRST PUSH
+
+Before the first remote push of a tranche, all applicable gates must be true:
+
+    LOCAL_TARGETED_GREEN=true
+    LOCAL_REGRESSION_GREEN=true
+    LOCAL_RELEASE_EQUIVALENT_GREEN=true
+    LOCAL_AUTHORITY_AUDIT_GREEN=true
+    LOCAL_DIFF_REVIEWED=true
+
+At minimum use repository-native local validation.
+
+Examples where applicable:
+
+    python3 scripts/run_release_ci_equivalent.py --source-only
+
+    python3 scripts/run_cio_hardening_ci.py
+
+    python3 scripts/run_cio_adversarial_suite.py
+
+plus relevant:
+
+    pytest
+    frontend/type checks
+    builds
+    schema tests
+    authority tests
+    security tests
+
+Do not push unfinished code merely to outsource validation to GitHub Actions.
+
+The wrapper `scripts/ai_local_acceptance.sh` is the default command. It may skip
+heavy suites when the tranche diff is policy/docs/hooks only.
+
+While iterating, `scripts/fast_check.sh` checks only the changed files and the
+tests that import them (read-only; under 60 s for most diffs). Before requesting
+sync, `ai_local_acceptance.sh` runs every registered gate in parallel (`--full`:
+one at a time). See `docs/ops/CI_FAST_CORE_20260925.md`.
+
+---
+
+# 6. TEST-FIRST / LOCAL-FIRST ITERATION
+
+During development:
+
+1. identify the smallest relevant subsystem;
+2. add or strengthen the test;
+3. run targeted local tests;
+4. implement;
+5. rerun targeted tests;
+6. commit locally;
+7. proceed to next local iteration.
+
+Do NOT rerun the entire repository after every small edit.
+
+Use:
+
+targeted tests during iteration
+
+then:
+
+full relevant regression near tranche completion.
+
+---
+
+# 7. GITHUB CI IS THE FINAL INDEPENDENT CHECK
+
+GitHub CI should validate an already locally-green candidate.
+
+Expected sequence:
+
+LOCAL ACCEPTANCE GREEN
+→ PUSH
+→ CI
+→ MERGE
+
+If GitHub CI fails:
+
+1. identify the remote/local difference;
+2. reproduce the issue locally;
+3. fix all known related failures locally;
+4. rerun complete local acceptance;
+5. create local commit(s);
+6. make ONE corrective push.
+
+Do not perform trial-and-error through remote pushes.
+
+---
+
+# 8. NATURAL / LIVE EVIDENCE STAYS LOCAL UNTIL MILESTONE
+
+Natural timer evidence, soak evidence and live operational receipts do NOT
+need to be pushed individually.
+
+Examples:
+
+- material-scan receipts
+- free-first receipts
+- natural event observations
+- checkpoint outcomes
+- model-performance observations
+- longitudinal results
+- service restart evidence
+- watcher results
+- natural no-change cycles
+
+Keep them locally during the observation window.
+
+Commit/push them when they form a meaningful milestone or closeout.
+
+---
+
+# 9. WATCHERS MUST NOT DRIVE REMOTE ACTIVITY
+
+A watcher may:
+
+- observe timers
+- inspect local state
+- inspect CURRENT
+- collect receipts
+- append local evidence
+
+A watcher must NOT automatically:
+
+- push commits
+- update PRs
+- trigger CI
+- create evidence-only PRs
+- merge
+- deploy
+
+unless the operator has explicitly requested that action.
+
+---
+
+# 10. EVIDENCE BATCHING
+
+During a tranche, accumulate locally:
+
+    tests
+    JSON evidence
+    receipts
+    markdown closeouts
+    maturity matrices
+    fault results
+    screenshots/metadata
+    manifests
+
+Push the completed evidence set together with the tranche.
+
+Avoid:
+
+implementation push
+→ evidence push
+→ closeout push
+→ typo push
+→ maturity push
+
+Prefer one coherent remote candidate.
+
+---
+
+# 11. PR POLICY
+
+Do not open a PR merely because development started.
+
+Preferred:
+
+local branch
+→ complete work
+→ local acceptance
+→ push
+→ open PR
+
+Once the PR exists:
+
+avoid further pushes unless CI identifies a genuine unresolved problem.
+
+PR descriptions may summarize the complete local validation result.
+
+Merge authority: an agent does not merge without operator approval, except
+under a standing approval written into AGENTS.md. AGENTS.md 4.1.0 §23.13
+(PROPOSED) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
+all three hold:
+
+1. Agent A's review verdict for the exact head is recorded on the program
+   board (a GitHub review comment by Agent A on a PR it merges is blocked as
+   self-approval);
+2. the required checks `agent-governance`, `cio-hardening` and
+   `release-readiness` are green on the exact head SHA being merged;
+3. nothing goes live until main CI is green on the exact merged SHA (the
+   promote gate).
+
+There is no merge queue (the repository is user-owned) and strict up-to-date
+protection is off, so main CI on the merged SHA is the check that a green PR
+still works on the `main` it merged into.
+
+It expires at the `Expires-At` timestamp stated in §23.13 (never later than
+2026-10-12T23:59:59-04:00) and does not cover the PR classes §23.13 excludes.
+
+---
+
+# 12. DOCS-ONLY WORK
+
+Documentation/evidence-only changes should normally be batched.
+
+Do not run an expensive code CI fleet repeatedly for documentation iteration.
+
+When workflow design permits, docs-only changes should use lightweight checks.
+
+---
+
+# 13. REMOTE-COST AWARENESS
+
+Before any push, ask:
+
+    Is there useful validation that can still be performed locally?
+
+If yes:
+
+DO NOT PUSH YET.
+
+Also ask:
+
+    Does the remote repository need this state right now?
+
+If no:
+
+DO NOT PUSH YET.
+
+## 13.1 REPOSITORY VISIBILITY IS NOT A COST LEVER
+
+`tardeai` is PUBLIC and stays PUBLIC.
+
+Public repositories get unlimited free GitHub-hosted Actions minutes. A private
+repository on a personal account gets 2,000 minutes/month, and this repo's 14
+workflows exhaust that in one busy merge day.
+
+Making the repo private does not save CI cost. It converts free CI into metered
+CI, and when the meter runs out every job fails with `conclusion: failure`, zero
+steps, no runner assigned, and an empty log — indistinguishable from a broken
+test unless you know the signature.
+
+- NEVER flip visibility to private, and never as a session-close or cleanup step.
+- If it must ever go private, set a non-zero Actions spending limit FIRST.
+- Cost control in this repository is achieved by pushing less (sections 3, 4, 17),
+  not by changing repository visibility.
+
+Incident of record: `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`
+(68 min outage, 65 rejected runs, 13 PRs misdiagnosed as failing tests).
+
+---
+
+# 14. AGENT HANDOFFS ARE LOCAL
+
+Switching from:
+
+Codex → Claude Code
+Grok → Cursor
+Cursor → Codex
+Claude → Grok
+
+does NOT require a GitHub push.
+
+Agents should inspect the same local repository/worktree.
+
+Use local:
+
+git log
+git status
+git diff
+commits
+evidence
+
+for handoffs.
+
+GitHub is not an inter-agent message bus.
+
+---
+
+# 15. BRANCH / COMMIT BEHAVIOR
+
+Agents may create coherent local commits freely.
+
+Do not rewrite protected main.
+
+Do not force-push protected branches.
+
+Do not push directly to main unless the repository's explicit release policy
+allows it.
+
+Before remote synchronization:
+
+    git status
+    git diff origin/main...HEAD
+    git log origin/main..HEAD
+
+must be reviewed.
+
+---
+
+# 16. REMOTE PUSH AUTHORIZATION
+
+Automated agents should treat remote pushes as a gated operation.
+
+Default:
+
+    REMOTE_PUSH_AUTHORIZED=false
+    TRADEAI_REMOTE_PUSH_AUTHORIZED unset or not equal to 1
+
+An explicit operator instruction such as:
+
+    "push this tranche"
+    "sync the branch"
+    "open the PR"
+    "run GitHub CI"
+
+authorizes that remote synchronization event.
+
+A general instruction to "continue", "implement", "test", "mature", or "finish"
+does NOT by itself authorize repeated remote pushes.
+
+The git pre-push hook enforces this independently of which agent wrote the code:
+
+    TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+Do not set that flag merely to bypass this policy.
+
+---
+
+# 17. MAXIMUM TWO-PUSH RULE
+
+Per development tranche:
+
+Push 1:
+    final locally-green candidate
+
+Push 2:
+    one corrective candidate if remote CI reveals a genuine issue
+
+After Push 2:
+
+STOP before another push and request operator approval.
+
+A local, gitignored counter lives in the repository's git COMMON dir,
+`$(git rev-parse --git-common-dir)/tradeai-push-budget.v2.json`, keyed on that
+common dir plus the pushed branch, so every worktree of the repository shares it
+and neither a new worktree nor a branch switch resets it (2026-10-21; the older
+per-worktree `tradeai-push-budget.json` files are read as floors and never
+rewritten). It is NOT source-controlled.
+
+The pre-push hook:
+
+- charges each push to the branch(es) it writes, read from git's pre-push
+  stdin refs, not to HEAD;
+- increments only after an authorized push has passed the budget decision and
+  the secrets scan, and consumes a guard `git-push` use (from the exact grant
+  that authorized it) only at that point; a refused push costs no use;
+- allows pushes 1 and 2 for each branch;
+- blocks push 3+ unless a separate override is set. An active guard `git-push`
+  grant authorizes the push but lifts the per-branch cap only when its reason
+  says "override".
+
+Program exception (ACTIVE with AGENTS.md 4.1.0, §23.13; see §3): on a branch
+named `n8nmat/<something>` the hook allows pushes 1 through 4 and blocks push 5+
+unless the override is set, until 2026-10-12T23:59:59-04:00; after that the
+two-push rule above applies to those branches too. The block message prints the
+effective budget. Renaming a branch to gain budget is routing around a denial
+(AGENTS.md §0 rail 3).
+
+Hands-off delivery (AGENTS.md 21.0.0 §28.15; binding (21.0.0 ACTIVE),
+enforced once the hook change is merged; see section 3): the hook allows pushes 1 through 5 on
+every branch, and the override below is the coordinator session's alone, on a PR
+linked to an operator-approved scope, logged with its approval reference.
+Force-push is never allowed. Under an operator-approved plan or scope (a claim
+plan with an `Operator-approval:` reference, or a coordinator-assigned task file
+under data/coordination/handoffs/), an agent's fast-forward push of its own
+feature branch needs no guard `git-push` grant; the guard records it. Pushes to
+`main` or release branches, force pushes, resets, filter-branch and remote
+branch deletion still need the operator (AGENTS.md §28.15 item 8).
+
+Override (not the normal path; requires explicit operator approval):
+
+    TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+This is not cryptographic security. An agent with shell access can edit local
+files. It exists to make accidental push loops fail closed.
+
+---
+
+# 18. CI WORKFLOW DESIGN POLICY
+
+GitHub workflows should themselves minimize billed runner time.
+
+Prefer:
+
+- path-aware execution
+- one aggregate required gate
+- conditional expensive jobs
+- concurrency cancellation
+- local CI-equivalent scripts
+- caching where safe
+- avoiding duplicate test suites across jobs
+- avoiding repeated dependency installation
+- docs-only fast paths
+- self-hosted runners where appropriate and separately configured
+
+Expensive jobs should not run merely to report a required status if a lightweight
+coordinator can safely report the aggregate result.
+
+This file does not itself rewrite GitHub workflows. That is a separate tranche.
+
+---
+
+# 19. CONCURRENCY
+
+Expensive GitHub Actions workflows should use an equivalent of:
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
+when doing so does not compromise required release evidence.
+
+New pushes should not leave superseded expensive runs executing unnecessarily.
+
+---
+
+# 20. TRADE AI SAFETY BOUNDARIES
+
+This cost-control policy never weakens Trade AI's existing safety controls.
+
+Continue to preserve all applicable authority constraints, including:
+
+    READ_ONLY_ADVISORY
+    MEMORY_BEHAVIOR_INFLUENCE=0
+
+unless a separately governed change explicitly says otherwise.
+
+Do not infer financial authority from permission to develop software.
+
+---
+
+# 21. DEPLOYMENT IS DISTINCT FROM PUSH
+
+A git push does not imply deployment authorization.
+
+A merged PR does not imply deployment authorization.
+
+Deployment follows the repository's canonical release process and its own
+authorization boundary.
+
+---
+
+# 22. TOOL-SPECIFIC RULE
+
+Every coding assistant must read this file before making changes.
+
+If the assistant cannot automatically discover this file, its adapter instruction
+must direct it here.
+
+If an assistant cannot comply with these rules, it must stop rather than silently
+falling back to repeated remote experimentation.
+
+---
+
+# 23. DEFAULT STATUS REPORT
+
+At the end of a local development session report:
+
+    local_branch:
+    local_commits_ahead:
+    targeted_tests:
+    regression_tests:
+    release_equivalent:
+    remote_pushes_this_tranche:
+    github_ci_cycles_this_tranche:
+    ready_to_sync:
+    remaining_local_work:
+
+Do not push merely to produce this report.
+
+---
+
+# 24. GOLDEN RULE
+
+LOCAL COMPUTE IS THE DEVELOPMENT LOOP.
+
+GITHUB COMPUTE IS THE FINAL INDEPENDENT VERIFICATION LOOP.
+
+Never push merely to ask GitHub whether unfinished code works.
+
+---
+
+# 25. ENFORCEMENT HIERARCHY
+
+No single instruction-file name is guaranteed across every AI coding product.
+
+Therefore enforcement is layered:
+
+1. `AI_WORK_POLICY.md` — canonical human-readable policy
+2. `AGENTS.md` — canonical agent-behaviour standard, read by every tool
+3. tool adapter instruction files (`CLAUDE.md`, Cursor rules, Copilot) — pointers only
+4. Git pre-push hook — tool-independent enforcement
+5. `scripts/ai_local_acceptance.sh` — one local command before requesting sync
+6. `scripts/ai_work_status.sh` — read-only local status; never contacts GitHub
+7. GitHub CI — final independent validation only
+
+If an assistant ignores its adapter, Git still blocks casual `git push`.
+
+---
+
+# 26. LOCAL STATUS
+
+Before requesting sync, agents should run:
+
+    bash scripts/ai_work_status.sh
+    bash scripts/ai_local_acceptance.sh
+
+Do not push merely to produce this report.
+
+---
+
+# 27. DEPLOYMENT REMAINS SEPARATE
+
+`TRADEAI_REMOTE_PUSH_AUTHORIZED=1` authorizes one git push.
+
+It does **not** authorize:
+
+- merge
+- deploy
+- broker/risk/2FA/cash/canary/registry changes
+- `MEMORY_BEHAVIOR_INFLUENCE` other than 0
+
+---
+
+# 28. AUTOMATED MERGE AND DEPLOY (AGENTS.md 24.0.0 ACTIVE)
+
+**Binding (AGENTS.md 24.0.0 ACTIVE, §25.10).** This section governs. The 17.0.0 train-push
+exception below is historical only.
+
+- **Mergify** may merge eligible PRs into `main` when required checks are green and its
+  `.mergify.yml` schedule/queue rules allow. That merge is not an agent push and does not
+  draw on an agent's push budget (section 3).
+- The host **`deploy_on_main` poller** may promote CURRENT to the new `origin/main` SHA
+  under STOP clear, GlobalReleaseLock, and the standing **deploy** (promote-only)
+  delegation. It never merges and never pushes remotes.
+- **Emergency promote** is operator host CLI only (`scripts/emergency_manual_promote.sh`)
+  with `release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. Agents never
+  set that env or run that script.
+- Coding agents keep every rule above: local commit is the checkpoint; one authorized
+  push per tranche; a PR is their last remote act. An agent never pushes `main` or
+  `train/*`, never merges, and never promotes.
+
+A deploy STOP (AGENTS.md §25.4 / §25.10) halts the poller at the next mutation boundary.
+Clearing it, arming the deploy delegation, and Mergify App custody are operator-only.
+
+---
+
+## 28.HISTORICAL — RELEASE TRAIN PUSHES (AGENTS.md 17.0.0; retired — 24.0.0 ACTIVE)
+
+AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914). Binding only once the
+operator has also armed the standing release delegation at the host. Until then,
+sections 1-27 govern alone and nothing below authorizes anything.
+
+The release train is the only automated remote synchronization in this
+repository. Concretely, the host release service — not a coding agent, not a
+lane script, not an n8n workflow — may:
+
+- push `refs/heads/train/<train_id>` for the train it is running
+- open that train's batch PR
+- merge that batch PR into `main` once its qualifying checks are green
+
+and only while it holds a reservation of a single-train, single-phase
+ReleaseCapability@v1 issued on this host, using a GitHub App installation
+token minted for that reservation (it expires within one hour).
+
+These train pushes:
+
+- are not counted against any agent's push budget (section 3), because no
+  agent makes them
+- satisfy section 9 only because the operator's standing delegation is the
+  explicit request for exactly these actions, and for nothing else
+- never deploy by themselves; promotion stays behind the release boundary of
+  sections 21 and 27
+
+Coding agents keep every rule above: a local commit is the checkpoint, one
+authorized push per tranche, and a PR as their last remote act. An agent
+never pushes `main` or any `train/*` ref, never merges, and never sets
+`TRADEAI_REMOTE_PUSH_AUTHORIZED=1` on the release service's behalf.
+
+Binding (AGENTS.md 21.0.0 ACTIVE, §28.15 items 2, 3 and 7): the
+train also carries solo trains, one PR alone in a window, under the standing
+delegation's `solo` class. Train-self, guard, hook and CI-enforcement PRs ride
+one only with two adversarial reviews and a veto window of at least 3 h, and
+never when they weaken §0, §2 or §17 enforcement. Agents still never merge,
+push `main` or `train/*`, or release.
+
+A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
+next mutation boundary. Clearing it, resuming, widening the train's scope and
+custody of the GitHub App are operator-only.

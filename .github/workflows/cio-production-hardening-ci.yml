@@ -61,7 +61,7 @@ jobs:
   # Supersedes #1943 (push-only split). Draft PRs run none of these (push policy v2, #2032).
   cio-shard:
     name: hardening shard ${{ matrix.shard }}
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -115,7 +115,7 @@ jobs:
 
   cio-serial:
     name: hardening shard serial
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -162,7 +162,7 @@ jobs:
 
   cio-pg:
     name: hardening shard pg
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -233,7 +233,7 @@ jobs:
   # and candidate release manifest) and the report smokes -- in parallel with the shards.
   cio-integrity:
     name: hardening integrity rails
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -424,7 +424,7 @@ jobs:
     if: >-
       (github.event_name != 'pull_request' && github.event_name != 'schedule' && always()) ||
       (github.event_name == 'pull_request' && !cancelled() &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false))
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

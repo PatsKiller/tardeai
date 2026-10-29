@@ -9,6 +9,22 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 Approval:    operator 2026-10-22 ("perfect approved"), mockup gate3 Pipeline.dc.html
 ```
 
+## 2026-10-27: release-train sections removed (operator directive)
+
+The operator directed "Remove everything about the old train ... from the Command Center and from the code"
+(2026-10-27). Mergify merges and the host `deploy_on_main` poller promotes (AGENTS.md §25.10). This page changed:
+
+- The **Release train** tab is now **Deploys** (`?tab=` absent; serving, main HEAD, release history, release errors).
+- The `windows` and `queue` sections (and the `next_window` KPI) are gone from the response and the page; the
+  read model no longer imports `release_train_view` / `release_train_window` (both archived under
+  `archive/release_train_20261026/`). `run_probes`, `field` and `read_stop` are local to
+  `scripts/lib/releases_schedules_view.py`.
+- The deploy STOP lives on Home → **Deploys** (`components/home/DeploysPanel.tsx`, `components/DeployStopControl.tsx`,
+  `GET /api/v2/ops/deploys`, `GET|POST /api/v2/ops/deploys/stop`) and Ops → Controls. This page stays read-only.
+- Open PRs waiting to merge are on the Mergify dashboard; the PR-hygiene census lane (`pr-hygiene-audit`) is unchanged.
+
+Sections below are history.
+
 ## What it is
 
 One page, **System → Releases & schedules** (`/v3/system/releases`, NavRail Ops → "Releases & Schedules"), answering:

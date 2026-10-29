@@ -16,6 +16,21 @@ from lib.data_broker.trade_calendar import one
 
 SCHEMA = "HoldingHistory@v1"
 
+_CASH_EQUIV = frozenset({"CASH", "SPAXX", "FDRXX"})
+
+
+def _is_cash_or_placeholder(sym: str) -> bool:
+    """Cash rows and non-identifier placeholders (an em-dash, a bare dash) are not held names."""
+    sym = src.symbol(sym)
+    if not sym or sym in _CASH_EQUIV:
+        return True
+    return not any(ch.isalnum() for ch in sym)
+
+
+def _is_legacy_account(account_id: str | None) -> bool:
+    """Fidelity accounts are retired (operator, 2026-10-29): historical only, never a live holding state."""
+    return bool(account_id) and account_id.startswith("fidelity")
+
 
 def _file_gap(snapshot, name):
     row = (snapshot.get("files") or {}).get(name) or {}
@@ -67,25 +82,68 @@ def history_trips(snapshot):
                                 "writer": "stored journal export; original writer not declared"}]}
         src._hold_days(trip)
         trips.append(trip)
-    # Overlapping, unlinked source windows cannot be silently counted twice.
-    # Keep the source rows available, but qualify totals until exact identities
-    # establish whether they are separate fills or copies.
-    by_key = defaultdict(list)
+    # The frozen legacy journal and the authoritative broker round trips describe
+    # the same closed trades. Legacy carries no broker trade id; when it shares
+    # (symbol, account, exit date) with a broker-verified round trip, the round
+    # trip is authoritative (the operator retired the legacy FIFO journal on
+    # 2026-07-21). Drop the legacy duplicate and record the link, never double-count.
+    # The retired CSV also attributed some fills to two accounts; when the legacy
+    # account differs but the shares and sell price match a broker-verified trip on
+    # the same exit date, the legacy row is that same fill mis-attributed, and is
+    # dropped too (recorded separately so the correction is visible).
+    broker = [t for t in trips if not t["source"].startswith("legacy_journal")]
+    broker_by_date = defaultdict(list)
+    broker_account_dates = set()
+    for t in broker:
+        if t.get("exit_date"):
+            broker_by_date[(t["symbol"], t.get("exit_date"))].append(t)
+            broker_account_dates.add((t["symbol"], t.get("account_id"), t.get("exit_date")))
+
+    def _same_fill(legacy_trip, broker_trip) -> bool:
+        lq, bq = legacy_trip.get("shares"), broker_trip.get("shares")
+        if lq is None or bq is None or abs(lq - bq) > 0.01:
+            return False
+        lp, bp = legacy_trip.get("exit_price"), broker_trip.get("exit_price")
+        if lp is None or bp is None:
+            return False
+        if lp == 0 and bp == 0:
+            return True
+        return abs(lp - bp) / max(abs(lp), abs(bp), 1e-9) <= 0.005 or abs(lp - bp) <= 0.05
+
+    deduped, same_account, cross_account = [], 0, 0
+    used_broker = set()
     for trip in trips:
-        if trip.get("exit_date"):
-            by_key[(trip["symbol"], trip.get("account_id"), trip["exit_date"])].append(trip)
-    for (sym, account, day), group in by_key.items():
-        if any(r["source"].startswith("legacy_journal") for r in group) and any(
-                not r["source"].startswith("legacy_journal") for r in group):
-            gaps.append({"source": "closed trips", "symbol": sym, "account_id": account,
-                         "reason": "journal and ledger overlap without an explicit trade link", "date": day})
-    return trips, gaps
+        if not trip["source"].startswith("legacy_journal") or not trip.get("exit_date"):
+            deduped.append(trip)
+            continue
+        key = (trip["symbol"], trip.get("account_id"), trip.get("exit_date"))
+        if key in broker_account_dates:
+            same_account += 1
+            continue
+        matched = None
+        for b in broker_by_date.get((trip["symbol"], trip.get("exit_date")), ()):
+            if id(b) in used_broker or b.get("account_id") == trip.get("account_id"):
+                continue
+            if _same_fill(trip, b):
+                matched = b
+                break
+        if matched is not None:
+            used_broker.add(id(matched))
+            cross_account += 1
+            continue
+        deduped.append(trip)
+    if same_account:
+        gaps.append({"source": "closed trips",
+                     "reason": f"{same_account} legacy journal row(s) superseded by broker-verified round trips on the same exit date (deduped, never double-counted)"})
+    if cross_account:
+        gaps.append({"source": "closed trips",
+                     "reason": f"{cross_account} legacy journal row(s) dropped as probable double-records (identical shares and sell price to a broker-verified fill in another account on the same exit date)"})
+    return deduped, gaps
 
 
 def _holding_rows(snapshot):
     return [r for r in src.file_document(snapshot, "holdings").get("holdings") or []
-            if isinstance(r, dict) and not r.get("is_cash") and src.symbol(r.get("symbol")) not in
-            ("CASH", "SPAXX", "FDRXX")]
+            if isinstance(r, dict) and not r.get("is_cash") and not _is_cash_or_placeholder(r.get("symbol"))]
 
 
 def _accounts(snapshot, trips):
@@ -96,20 +154,20 @@ def _accounts(snapshot, trips):
     for row in [*trips, *_holding_rows(snapshot), *src.source_rows(snapshot, "trade_transactions"), *embedded]:
         sym = src.symbol(row.get("symbol"))
         acct = row.get("account_id") if "account_label" in row else src.account(row.get("account") or row.get("account_id"))["account_id"]
-        if sym and acct:
+        if sym and acct and not _is_cash_or_placeholder(sym):
             result[sym].add(acct)
     for row in src.source_rows(snapshot, "position_transfer_history"):
         sym = src.symbol(row.get("symbol"))
         for name in ("from_account", "to_account"):
             acct = src.account(row.get(name))["account_id"]
-            if sym and acct:
+            if sym and acct and not _is_cash_or_placeholder(sym):
                 result[sym].add(acct)
     for lots in src.file_document(snapshot, "tax_lots").values():
         if not isinstance(lots, list):
             continue
         for row in lots:
             sym, acct = src.symbol(row.get("symbol")), src.account(row.get("account"))["account_id"]
-            if sym and acct:
+            if sym and acct and not _is_cash_or_placeholder(sym):
                 result[sym].add(acct)
     return result
 
@@ -149,24 +207,15 @@ def _observed_segments(trips, holdings, accounts, now):
     return groups
 
 
-def _stats(trips, coverage, gaps, symbol):
-    ambiguous = any(g.get("symbol") == symbol and g.get("reason") ==
-                    "journal and ledger overlap without an explicit trade link" for g in gaps)
-    value = src.trip_stats(trips, complete=coverage["status"] == "COMPLETE" and not ambiguous)
+def _stats(trips, coverage, symbol):
+    value = src.trip_stats(trips, complete=coverage["status"] == "COMPLETE")
     value["observed_trip_rows"] = len(trips)
-    if ambiguous:
-        # These amounts exist, but their distinctness is not established. Their
-        # sum cannot be advertised as a known realized-profit subtotal either.
-        value["known_realized_pl"] = None
-        value["known_trade_count"] = None
-    _known_trip_stats(trips, value, ambiguous)
-    value["coverage"] = {**coverage, "status": "PARTIAL" if ambiguous else coverage["status"],
-                         "reasons": [*coverage["reasons"], *(
-                             ["journal and ledger overlap without an explicit trade link"] if ambiguous else [])]}
+    _known_trip_stats(trips, value)
+    value["coverage"] = coverage
     return value
 
 
-def _known_trip_stats(trips, value, ambiguous):
+def _known_trip_stats(trips, value):
     """Per-trip figures over the trips that carry both ends. Excluded rows are counted, not hidden.
 
     The complete-coverage fields stay null when any trip lacks basis; these
@@ -186,23 +235,23 @@ def _known_trip_stats(trips, value, ambiguous):
         "known_priced_trip_count": len(priced), "known_return_trip_count": len(returns),
         "known_timed_trip_count": len(timed),
         "excluded_basis_unknown_count": sum(1 for r in trips if r.get("basis_unknown")),
-        "known_stats_basis": "trips with recorded entry and exit; basis-unknown trips excluded"
-            + ("; journal and ledger overlap unresolved, a copied trip may count twice" if ambiguous else ""),
+        "known_stats_basis": "trips with recorded entry and exit; basis-unknown trips excluded",
     })
     return value
 
 
-def _history_checks(snapshot, holdings):
+def _history_checks(snapshot, holdings, accounts):
     """Disclose stored-source discrepancies; never repair quantities or basis."""
     gaps = []
     mapping = snapshot.get("mapping") or {}
     if mapping.get("snaptrade_accounts_present") is not True:
         gaps.append({"source": "release account mapping", "reason": "Fidelity mapping presence not established in captured release"})
-    fidelity = [r for r in holdings if (src.account(r.get("account") or r.get("account_id"))["account_id"] or "").startswith("fidelity")]
-    observed = [str(r.get("provider_observed_at") or r.get("broker_position_as_of") or "") for r in fidelity]
-    latest = max((v for v in observed if src.day(v)), default=None)
-    gaps.append({"source": "Fidelity sync", "reason": "successful sync receipt not collected; position observations are not sync-success proof",
-                 "latest_position_observed_at": latest})
+    fidelity_accounts = sorted({acct for members in accounts.values() for acct in members
+                                if _is_legacy_account(acct)})
+    if fidelity_accounts:
+        gaps.append({"source": "Fidelity accounts",
+                     "reason": "legacy account(s) " + ", ".join(fidelity_accounts) +
+                               " — retired; historical observations only, no live sync is expected"})
     lots = defaultdict(list)
     for value in src.file_document(snapshot, "tax_lots").values():
         for row in value if isinstance(value, list) else []:
@@ -260,6 +309,8 @@ def _display_name(snapshot, sym):
     if not name and isinstance(names.get(lookup), dict):
         name, source = names[lookup].get("name"), names[lookup].get("source")
     reason = None if name or label else "company name not recorded in CIO memory or stored instrument names"
+    if not name and not label and lookup in (fallback.get("no_identifier") or []):
+        reason = "delisted or no longer quoted — broker returned no identifier"
     return {"company_name": name, "company_missing_reason": reason,
             "company_name_source": source, "identifier_label": label}
 
@@ -295,7 +346,7 @@ def build_history(snapshot, query, *, now=None):
         stored_pairs.add((src.symbol(row.get("symbol")), acct))
         if acct and when and str(when) > str(observed_at.get(acct) or ""):
             observed_at[acct] = str(when)
-    gaps += _history_checks(snapshot, holding_rows)
+    gaps += _history_checks(snapshot, holding_rows, accounts)
     for name in ("holdings", "tax_lots", "legacy_journal"):
         if gap := _file_gap(snapshot, name):
             if gap not in gaps:
@@ -325,24 +376,28 @@ def build_history(snapshot, query, *, now=None):
             qty = sum(quantities) if rows and all(n is not None for n in quantities) else None
             # Cash rows are stored but are not holdings here; their absence from rows is not a zero.
             absent = not rows and acct in observed_at and (sym, acct) not in stored_pairs
+            legacy = _is_legacy_account(acct)
             observed_accounts.append({**src.account(acct), "held_quantity": 0.0 if absent else qty,
                 "as_of": observed_at[acct] if absent else
                     next((src.iso(r.get("provider_observed_at") or r.get("updated_at")) for r in rows), None),
                 "quantity_basis": "absent from this account's stored broker positions" if absent else
                     ("stored broker position" if qty is not None else None),
+                "legacy": legacy,
                 "missing_reason": None if absent or qty is not None else
-                    ("cash balance is not a holding row" if (sym, acct) in stored_pairs and not rows else
+                    ("legacy account — no live broker sync" if legacy and not rows else
+                     "cash balance is not a holding row" if (sym, acct) in stored_pairs and not rows else
                      "account has no stored broker positions" if not rows else "stored position quantity missing")})
-        stats = _stats(group, trip_coverage, gaps, sym)
+        stats = _stats(group, trip_coverage, sym)
         naming = _display_name(snapshot, sym)
-        sym_gaps = [g for g in gaps if g.get("symbol") in (None, sym)]
+        sym_gaps = [g for g in gaps if g.get("symbol") == sym]
+        active_accounts = [r for r in observed_accounts if not r.get("legacy")]
         symbols.append({"symbol": sym, **naming,
             "account_count": len(accounts[sym]), "accounts": observed_accounts,
             "round_trip_count": stats["round_trip_count"], "known_trip_count": stats["known_trade_count"],
             "observed_trip_rows": len(group),
             "realized_pl": stats["realized_pl"], "known_realized_pl": stats["known_realized_pl"],
-            "held_now": True if any((r["held_quantity"] or 0) > 0 for r in observed_accounts) else
-                (False if all(r["held_quantity"] is not None for r in observed_accounts) else None),
+            "held_now": True if any((r["held_quantity"] or 0) > 0 for r in active_accounts) else
+                (False if active_accounts and all(r["held_quantity"] is not None for r in active_accounts) else None),
             "basis_unknown": any(r["basis_unknown"] for r in group), "gaps": sym_gaps})
     sort_key = {"round_trips": "known_trip_count", "realized": "known_realized_pl", "held_now": "held_now"}[order]
     symbols.sort(key=lambda r: (r[sort_key] is None, -(r[sort_key] or 0), r["symbol"]))
@@ -351,7 +406,7 @@ def build_history(snapshot, query, *, now=None):
         row = next((r for r in symbols if r["symbol"] == requested), None)
         if row is not None:
             group = [r for r in trips if r["symbol"] == requested]
-            stats = _stats(group, trip_coverage, gaps, requested)
+            stats = _stats(group, trip_coverage, requested)
             held = [r for r in holding_rows if src.symbol(r.get("symbol")) == requested]
             reason = "distinct holding stretches need quantity transitions with a proven opening balance; lot matches are not holding counts"
             detail = {"symbol": requested, "company_name": row["company_name"],

@@ -10,13 +10,8 @@ process for urgent fixes." Packet: docs/ops/packets/release-windows-20261016/REA
   status                                      STOP latch + last receipt
   clear-stop --reason TEXT                    operator: archive the STOP latch (never deleted)
 
-  train-plan | train-run [--live]             release train (Release Train v2 Phase 3, scripts/lib/
-  train-status | train-reconcile [--live]     release_train_controller.py): select -> freeze -> integrate ->
-  train-quarantine-resolve ... [--live]       local test -> qualify -> merge -> promote -> verify. Dry run is the
-  train-claim [--apply]                       (n8n window requests: shadow = simulate only; lists unless --apply)
-  train-shadow-tick [--window W] [--apply]    Phase 5 forced shadow tick per window (dry run unless --apply)
-                                              default; --live is refused while the controller is BUILD_ONLY. The
-                                              commands above (plan/run/status/clear-stop) are unchanged.
+  (The release train's train-* subcommands were removed 2026-10-27 with the retired train; Mergify merges and the
+  host deploy_on_main poller promotes, AGENTS.md §25.10. clear-stop stays the host way to clear the deploy STOP.)
 
 One window, one candidate (release train, operator plan approved 2026-10-21):
   * the candidate is the origin/main head at the window when every push/main workflow on that exact SHA is
@@ -104,8 +99,6 @@ MIN_GRANT_REMAINING_S = 15 * 60
 # Policy switches. A grant naming more than one window (a daily or standing grant) is outside AGENTS §24.8
 # ("one grant per release") until the amendment in the packet is ratified; flipping this is that PR's job.
 MULTI_WINDOW_GRANT_STATUS = "PROPOSED"
-#: Release-train window slots (== scripts/lib/release_train_window_view.SLOTS; pinned by tests/test_release_train_n8n_20261021.py).
-TRAIN_SLOTS = ("1800", "0000", "0600", "0800", "1200", "0300", "0900", "1500", "2100")
 
 # Environment that would weaken a deploy gate. Value set = values allowed (empty = must be unset).
 GUARDED_ENV: dict[str, frozenset[str]] = {
@@ -924,60 +917,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub.add_parser("status")
     c = sub.add_parser("clear-stop")
     c.add_argument("--reason", required=True)
-    # Release train (Release Train v2 Phase 3): scripts/lib/release_train_controller.py. Every train command is a
-    # dry run unless --live, and --live is refused while TRAIN_CONTROLLER_STATUS is BUILD_ONLY.
-    for name in ("train-plan", "train-run"):
-        t = sub.add_parser(name, help="release train: " + ("read-only plan" if name == "train-plan"
-                                                           else "dry run (default) or --live"))
-        t.add_argument("--now", help="dry run only: ISO time to evaluate; naive = America/New_York")
-        t.add_argument("--json", action="store_true", help="print the full run record")
-        t.add_argument("--integrate", action="store_true",
-                       help="dry run: really integrate in a scratch worktree (fetches PR refs into the checkout)")
-        t.add_argument("--local-test", action="store_true", help="dry run with --integrate: run the local tests")
-        t.add_argument("--simulate-classifier", choices=["allow"],
-                       help="dry run only: preview the pipeline past the classifier")
-        if name == "train-run":
-            t.add_argument("--live", action="store_true")
-            t.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
-                           help="dry run only: simulate one failure and record how the controller behaved "
-                                "(refused with --live)")
-            # Arming finding 8: an operator-forced off-window CANARY run. Host CLI only (TTY + typed phrase when
-            # --live); needs the delegation phase "canary" and the policy canary flag; overrides only the timing.
-            t.add_argument("--force-window", choices=list(TRAIN_SLOTS), default=None)
-            t.add_argument("--operator-forced", action="store_true")
-            t.add_argument("--operator-ref", default=None)
-            t.add_argument("--forced-n", type=int, default=None)
-    sub.add_parser("train-status")
-    r = sub.add_parser("train-reconcile")
-    r.add_argument("--live", action="store_true")
-    q = sub.add_parser("train-quarantine-resolve")
-    q.add_argument("--sha", required=True)
-    q.add_argument("--reason", required=True)
-    q.add_argument("--evidence", required=True)
-    q.add_argument("--live", action="store_true")
-    k = sub.add_parser("train-claim", help="answer n8n TrainWindowRequest@v1 files (docs/ops/RELEASE_TRAIN_N8N_"
-                                           "CONTRACT.md); lists only, unless --apply")
-    k.add_argument("--apply", action="store_true", help="claim by rename and write receipts (shadow = simulate)")
-    k.add_argument("--orphan-after-min", type=float, default=None,
-                   help="orphan watchdog age (default: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN, else 2x the 3 h max run)")
-    st = sub.add_parser("train-shadow-tick", help="Phase 5: force one SHADOW tick per window through the request "
-                                                  "lane's code and wait for the installed claimer's receipts; dry run "
-                                                  "unless --apply; never live")
-    st.add_argument("--window", choices=["all", *TRAIN_SLOTS], default="all")
-    st.add_argument("--apply", action="store_true", help="append the shadow request(s) and wait for the receipt(s)")
-    st.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
-                    help="one simulated failure per request (shadow only), recorded in injected_failures")
-    st.add_argument("--wait-s", type=float, default=900.0, help="per window: how long to wait for the receipt")
-    st.add_argument("--json", action="store_true")
-    o = sub.add_parser("train-orphan-resolve", help="close an orphaned claim (after train-reconcile); dry run unless "
-                                                    "--apply; never re-runs the request")
-    o.add_argument("--request-id", required=True)
-    o.add_argument("--reason", required=True)
-    o.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
-    if args.cmd.startswith("train-"):
-        from scripts.lib import release_train_controller as T
-        return T.cli(args)
     runner = Runner(Host(), State())
     if args.cmd == "plan":
         code, body = runner.plan(args.window, _parse_now(args.now))

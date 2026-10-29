@@ -48,6 +48,14 @@ export type ReviewState = {
   last_attempt?: { status: string; at: string; block_reason?: string | null; reason?: string; remaining_gaps?: string[] } | null
   conflict_key?: string | null
   request_id?: string | null
+  updated_at?: string | null
+  next_run?: string | null
+  publication_verified?: boolean
+  research_link_verified?: boolean
+  answered_at?: string | null
+  answer_age_hours?: number | null
+  answer_summary?: string | null
+  research_id?: string | null
 }
 export type SurfaceRow = { surface: string; value: string; source: string | null; joined: boolean }
 export type ProspectRow = {
@@ -389,4 +397,17 @@ export function cioReviewNote(r: Pick<ProspectRow, 'conflicts' | 'next_action'>)
   if (flags.length) return `Watch conflict: ${flags.join(' | ')}`.slice(0, 240)
   if (r.next_action?.kind === 'cio_missing') return `Watch: no CIO view — ${r.next_action.gap?.reason || r.next_action.reason}`.slice(0, 240)
   return `Watch: ${r.next_action?.reason || 'review requested'}`.slice(0, 240)
+}
+
+export type CioMemoryState = { tone: 'success' | 'info' | 'warning' | 'neutral'; label: string } | null
+
+/** Whether this symbol's CIO review is linked into the canonical CIO memory. Read-only: describes
+ *  the record's linkage state (from scripts/lib/data_broker/watch_review_status.presentation_state),
+ *  never writes, re-runs, or calls the broker. */
+export function cioMemoryState(s: ReviewState | null | undefined): CioMemoryState {
+  if (!s || s.status === 'none') return null
+  if (s.publication_verified) return { tone: 'success', label: 'tracked in CIO memory' }
+  if (s.research_link_verified) return { tone: 'info', label: 'research recorded · CIO decision pending' }
+  if (s.status === 'answered') return { tone: 'warning', label: 'research published · CIO linkage pending' }
+  return { tone: 'neutral', label: 'not yet linked to CIO memory' }
 }

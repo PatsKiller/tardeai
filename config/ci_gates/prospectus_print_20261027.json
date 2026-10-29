@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_print_20261027",
+  "files": [
+    "tests/test_prospectus_print_render_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_PRINT_20261027",
+  "comment": [
+    "ANCHOR: PROSPECTUS_PRINT_20261027 — PDF and Word downloads made from the same HTML report (operator 2026-10-27: \"the PDF and the Word document doesn't [look great] … so the Word document and the PDF look identical\"): headless Chromium print-to-PDF with a print stylesheet, LibreOffice HTML->DOCX from a Word-oriented variant with Chromium-rasterised charts, python-docx header/footer/fonts, no citations in either download, logged fallback to WeasyPrint / python-docx. Synthetic fixture; Chromium/LibreOffice renders skip when absent (CI)."
+  ]
+}

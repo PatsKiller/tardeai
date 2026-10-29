@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ConflictLine from './conflicts/ConflictLine'
+import AnthropicCreditPanel from './AnthropicCreditPanel'
 import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import CountTile from './CountTile'
@@ -33,6 +34,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
   const conflict = useConflictSheet()
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const { data, loading, error } = useApi<JobsHealthWire>(`/api/v2/jobs-health?filter=${filter}&offset=${offset}&limit=50`, 60_000, { enabled })
+  const consumption = useApi<any>('/api/v2/consumption/overview', 90_000, { enabled })
   const dataErrors = data?.data_errors
   const conflictUnavailable = dataErrors?.unavailable_reason || (data && !dataErrors?.section ? 'The canonical data error section is unavailable.' : null)
   const inList = data?.rows.find(row => row.lane_id === selectedId)
@@ -49,6 +51,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
     ['failed', 'Failed', 'danger'], ['missed', 'Missed', 'warning'],
   ] as const
   return <section aria-label="Jobs and health" data-testid="jobs-health" style={{ display: 'grid', gap: 12, color: TOKENS.text[0], fontFamily: FONT.sans, minWidth: 0 }}>
+    <AnthropicCreditPanel status={(consumption.data?.overview ?? consumption.data)?.anthropic} />
     <style>{`.jobs-health-row{display:grid;grid-template-columns:minmax(180px,1.3fr) 90px 130px 110px 130px minmax(200px,2fr);gap:10px;align-items:start}.jobs-health-mobile-label{display:none}@media(max-width:800px){.jobs-health-head{display:none}.jobs-health-row{grid-template-columns:1fr 1fr}.jobs-health-job,.jobs-health-cause{grid-column:1/-1}.jobs-health-mobile-label{display:block;font-size:11px;color:var(--text-2);margin-bottom:3px}}`}</style>
     <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
       <h2 style={{ margin: 0, fontSize: TYPE.lg }}>Jobs &amp; health</h2>

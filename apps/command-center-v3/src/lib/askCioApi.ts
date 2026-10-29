@@ -2,10 +2,10 @@
  * Ask the CIO — POST helper. Same-origin JSON (cc_auth CSRF: Origin / Sec-Fetch-Site are sent by the browser;
  * Content-Type: application/json is required). Errors carry the server's typed code.
  */
-import { ASK_PATHS, buildAskBody, newRequestId, unwrap } from './askCioModel'
-import type { Thread } from './askCioModel'
-import { publishAskUpdate } from './askCioPresentation'
-import { regroupPath } from './askCioGroups'
+import { ASK_PATHS, buildAskBody, newRequestId, unwrap } from './askCioModel.ts'
+import type { Thread, ResearchRefreshResult } from './askCioModel.ts'
+import { publishAskUpdate } from './askCioPresentation.ts'
+import { regroupPath } from './askCioGroups.ts'
 
 export class AskApiError extends Error {
   code: string
@@ -25,8 +25,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   })
   let j: unknown = null
   try { j = await r.json() } catch { /* empty body */ }
-  const o = (j ?? {}) as { ok?: boolean; error?: string; detail?: string }
-  if (!r.ok || o.ok === false) throw new AskApiError(o.error || `HTTP_${r.status}`, r.status, o.detail)
+  const o = (j ?? {}) as { ok?: boolean; error?: string; detail?: string; reason?: string; blocker?: string | { reason?: string } }
+  const reason = o.detail ?? o.reason ?? (typeof o.blocker === 'string' ? o.blocker : o.blocker?.reason)
+  if (!r.ok || o.ok === false) throw new AskApiError(o.error || `HTTP_${r.status}`, r.status, reason)
   return (unwrap<T>(j) ?? ({} as T))
 }
 
@@ -38,10 +39,19 @@ export async function askCio(question: string, opts: { deep?: boolean; threadId?
   return result
 }
 
-export async function requestDeep(threadId: string, askId?: string): Promise<{ status: string }> {
-  const result = await post<{ status: string }>(ASK_PATHS.deep(threadId), askId ? { ask_id: askId } : {})
-  publishAskUpdate({ threadId, source: 'mutation' })
-  return result
+// One in-flight refresh per thread across groups, navigation and repeated clicks. The request id
+// stays fixed for that request; an intentional later refresh gets a new id.
+const deepRequests = new Map<string, Promise<ResearchRefreshResult>>()
+export function requestDeep(threadId: string, askId?: string, requestId?: string): Promise<ResearchRefreshResult> {
+  const active = deepRequests.get(threadId)
+  if (active) return active
+  const body = { request_id: requestId ?? newRequestId(), ...(askId ? { ask_id: askId } : {}) }
+  const request = post<ResearchRefreshResult>(ASK_PATHS.deep(threadId), body).then(result => {
+    publishAskUpdate({ threadId, source: 'mutation' })
+    return result
+  }).finally(() => { deepRequests.delete(threadId) })
+  deepRequests.set(threadId, request)
+  return request
 }
 
 export function untrackEntity(threadId: string, entityKey: string): Promise<{ ok: boolean }> {

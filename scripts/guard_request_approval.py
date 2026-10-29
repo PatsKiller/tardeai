@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """guard_request_approval.py — ask the operator, by Telegram, to open a guard scope.
 
+RETIRED (operator-ratified on PR #2185,
+``APPROVE_AGENTS_POLICY_23_0_0 2185 c366dd8d165c7eedf286d18604af8b0a11fe85db``):
+Telegram may never issue a guard grant. While
+``guard_remote_approval.TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"`` this exits 2
+with the retirement message and mints and sends nothing; ``--dry-run`` says so.
+The operator grants at the host keyboard (``bin/guard grant``) or on
+Ops → Controls (passkey). What follows describes the legacy mechanics, which
+tests still exercise under ``LEGACY_TEST``.
+
 Agent-callable. Grants nothing. It mints a PENDING request, sends the operator a
 message describing exactly what is being asked for, and exits.
 
@@ -48,14 +57,14 @@ def _tailnet_base() -> str:
     """Public base for operator links — Tailscale HTTPS when available."""
     try:
         from notification_url_builder import get_public_base_url
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         try:
             from scripts.notification_url_builder import get_public_base_url  # type: ignore
         except ImportError:
             return ""
     try:
         return get_public_base_url().rstrip("/")
-    except Exception:                                     # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return ""
 
 
@@ -129,13 +138,13 @@ def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str, li
     try:
         _ta.reset_last_message_ids()
         ok = _ta.send_telegram(message, bypass_router=True, reply_markup=reply_markup)
-    except Exception as exc:                              # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__}: {exc}", []
     if not ok:
         return False, "send_telegram returned falsey — not accepted", []
     try:
         ids = [str(i) for i in (_ta.last_message_ids() or []) if i is not None]
-    except Exception:                                     # noqa: BLE001
+    except Exception:  # noqa: BLE001
         ids = []
     # Truthy means ACCEPTED, which is a weaker claim than delivered. Only a
     # provider message id upgrades it; without one, say the weaker thing.
@@ -145,24 +154,28 @@ def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str, li
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("scope", help="guard scope, e.g. git-push")
-    ap.add_argument("--for", dest="window", default="30m",
-                    help="grant window if approved (default 30m)")
+    ap.add_argument("--for", dest="window", default="30m", help="grant window if approved (default 30m)")
     ap.add_argument("--uses", type=int, default=10, help="uses if approved (default 10)")
     ap.add_argument("--reason", required=True, help="what the grant is for — the operator reads this")
-    ap.add_argument("--ttl", default="4h",
-                    help="how long the operator has to answer (default 4h; max 12h). "
-                         "15m was the old default and it expired unanswered overnight "
-                         "on work the operator had explicitly asked for.")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="show what would be asked; mints nothing, sends nothing")
+    ap.add_argument(
+        "--ttl",
+        default="4h",
+        help="how long the operator has to answer (default 4h; max 12h). "
+        "15m was the old default and it expired unanswered overnight "
+        "on work the operator had explicitly asked for.",
+    )
+    ap.add_argument("--dry-run", action="store_true", help="show what would be asked; mints nothing, sends nothing")
     args = ap.parse_args()
 
     seconds = parse_duration(args.window)
     ttl = parse_duration(args.ttl)
 
+    if args.dry_run and gra.telegram_remote_grants_retired():
+        print(f"WOULD REFUSE   scope={args.scope}  (Telegram remote grants are retired)")
+        print(f"               {gra.RETIRED_MSG}")
+        return 0
     if args.dry_run:
         print(f"WOULD REQUEST  scope={args.scope}  window={seconds}s  uses={args.uses}")
         print(f"               reason={args.reason}")
@@ -172,8 +185,7 @@ def main() -> int:
         return 0
 
     try:
-        req = gra.mint_request(args.scope, seconds=seconds, uses=args.uses,
-                               reason=args.reason, ttl=ttl)
+        req = gra.mint_request(args.scope, seconds=seconds, uses=args.uses, reason=args.reason, ttl=ttl)
     except (ValueError, RuntimeError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
@@ -197,16 +209,23 @@ def main() -> int:
     # The code is NOT printed. An agent running this must not be able to read it
     # out of its own stdout — that is the property that keeps the approval the
     # operator's to give.
-    print(f"request_id={req['request_id']} scope={req['scope']} "
-          f"window={seconds}s uses={args.uses} telegram={detail if ok else 'FAILED'}")
+    print(
+        f"request_id={req['request_id']} scope={req['scope']} "
+        f"window={seconds}s uses={args.uses} telegram={detail if ok else 'FAILED'}"
+    )
     if ok and not message_ids:
-        print("WARNING: the prompt was accepted but no Telegram message id came back, so delivery is "
-              "unconfirmed. If the operator does not see it, ask again or tell them out of band.",
-              file=sys.stderr)
+        print(
+            "WARNING: the prompt was accepted but no Telegram message id came back, so delivery is "
+            "unconfirmed. If the operator does not see it, ask again or tell them out of band.",
+            file=sys.stderr,
+        )
     if not ok:
         print(f"TELEGRAM SEND FAILED: {detail}", file=sys.stderr)
-        print("The request is minted but the operator was not notified. "
-              "Nothing is approved. Tell the operator out of band.", file=sys.stderr)
+        print(
+            "The request is minted but the operator was not notified. "
+            "Nothing is approved. Tell the operator out of band.",
+            file=sys.stderr,
+        )
         return 3
     return 0
 

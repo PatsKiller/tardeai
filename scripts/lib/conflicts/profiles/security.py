@@ -125,8 +125,14 @@ class SecurityStanceProfile:
         for item in facts:
             state = normalize(item.value)
             if item.role == "fact" and item.metadata.get("mismatch"):
-                finding("DATA_ERROR", "T1", f"{item.source}: facts disagree", "the authoritative producer repairs the fact",
-                        [item], owner="source owner", never=True, suffix=item.source)
+                if item.metadata.get("ownership"):
+                    # R12: a stance or position that disagrees with a recorded fill is an ownership DATA_ERROR.
+                    finding("DATA_ERROR", "R12", f"Ownership disagrees with a recorded fill: {item.detail or item.source}",
+                            "positions, the fill and the CIO record reconcile to one ownership state", [item],
+                            action="notify_operator", owner="positions owner", never=True, suffix=item.source)
+                else:
+                    finding("DATA_ERROR", "T1", f"{item.source}: facts disagree", "the authoritative producer repairs the fact",
+                            [item], owner="source owner", never=True, suffix=item.source)
                 freeze = True
             if held and item.role == "protection" and state in {"AWAITING_FILL", "FILLED", "PENDING_ACTIVATION", "NONE", "UNKNOWN"}:
                 finding("DATA_ERROR" if state in {"AWAITING_FILL", "FILLED"} else "NEEDS_OPERATOR", "R12",
@@ -134,7 +140,7 @@ class SecurityStanceProfile:
                         [item], action="notify_operator", owner="operator", never=True, suffix=f"{item.source}:{item.account or ''}")
                 freeze = freeze or state in {"AWAITING_FILL", "FILLED"}
         if freeze:
-            if not any(f.rule == "R12" for f in output):
+            if ctx.get("pending_fill") or not any(f.rule == "R12" for f in output):
                 finding("DATA_ERROR", "R12", "Pending fill — stance evaluation frozen", "positions and the pending fill reconcile",
                         facts, owner="positions owner", never=True)
             return output
