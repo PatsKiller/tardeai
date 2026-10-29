@@ -561,7 +561,7 @@
       "section": "AGENTS.md §0 rule 3, §17 (the operator grants; an agent never widens its own scope)",
       "action": "deny",
       "enabled": true,
-      "reason": "An agent must not issue itself a grant or write the approval ledger. Ask with 'bin/guard request'.",
+      "reason": "An agent must not issue itself a grant or write the approval ledger. Hand the operator the exact 'bin/guard grant ...' command for the keyboard, or ask for it on Ops → Controls (Telegram grants are retired).",
       "ledger_dir_regex": "\\.cursor/approvals"
     },
     {

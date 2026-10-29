@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_lifecycle_health_20261026",
+  "files": [
+    "tests/test_cio_ask_lifecycle_health_20261026.py"
+  ],
+  "anchor": "CIO_ASK_LIFECYCLE_HEALTH_20261026",
+  "comment": [
+    "ANCHOR: CIO_ASK_LIFECYCLE_HEALTH_20261026 — Ask hourly business health: signed schedule slot to immutable host attempt, canonical per-thread check/output, memory sync, exact consumer readback and delivery; hourly lateness >15 minutes, answer cooldown distinct; no model/send/write; native n8n hourly and material-feed polling packet stays inactive pending shared-config admission."
+  ]
+}

@@ -5,8 +5,12 @@ are rows with kind cron, scheduler.expression = the 5 cron fields and scheduler.
 Agent A installs under a `cron` grant (packet ops-crons-install.md). Until the install they are PAUSED ("approved, pending install"): the one
 state that is green before AND after the line appears, and that arms neither the lane monitor, the
 supervisor breaches nor the fan-in's governance liveness. After the install the row flips to ACTIVE.
+2026-10-27: n8n-workflow-drift-check left this set. Its cron line was never installed (cron freeze 2026-10-09) and
+it is now the systemd user timer tradeai-n8n-drift-watch.timer (scripts/n8n_drift_watch.py --live, P1 on drift),
+pinned by tests/test_n8n_drift_check_schedule_20261027.py. Here it is only checked to stay non-dispatchable.
 Hermetic: repo files only, no crontab, no systemctl, tmp roots.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,13 +37,23 @@ ROWS = {r["lane_id"]: r for r in REG["lanes"]}
 ALLOW = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
 LANES = {
     # lane_id: (schedule, script + mode, lock, log, cadence hours)
-    "incident-notifier": ("*/5 * * * *", "scripts/incident_notifier.py --live", "/tmp/tradeai_incident_notifier.lock",
-                          "logs/incident_notifier.log", 0.1),
-    "n8n-activation-grants": ("*/30 * * * *", "scripts/check_n8n_activation_grants.py --write",
-                              "/tmp/tradeai_n8n_activation_attribution.lock", "logs/n8n_activation_grants.log", 0.5),
-    "n8n-workflow-drift-check": ("7 * * * *", "scripts/check_n8n_workflow_drift.py --write",
-                                 "/tmp/tradeai_n8n_workflow_drift.lock", "logs/n8n_workflow_drift.log", 1.0),
+    "incident-notifier": (
+        "*/5 * * * *",
+        "scripts/incident_notifier.py --live",
+        "/tmp/tradeai_incident_notifier.lock",
+        "logs/incident_notifier.log",
+        0.1,
+    ),
+    "n8n-activation-grants": (
+        "*/30 * * * *",
+        "scripts/check_n8n_activation_grants.py --write",
+        "/tmp/tradeai_n8n_activation_attribution.lock",
+        "logs/n8n_activation_grants.log",
+        0.5,
+    ),
 }
+#: 2026-10-27: moved from a (never installed) cron line to a systemd user timer; see the module docstring.
+MOVED_TO_SYSTEMD = "n8n-workflow-drift-check"
 LINES = [ROWS[lid]["scheduler"]["install_line"] for lid in LANES]
 #: 2026-10-10 registry-drift: rows whose install_line is on the host crontab and that flipped to ACTIVE.
 #: incident-notifier: crontab -l L1052 == install_line (cron grant 2db296cd0e9e6a10, installed 2026-10-09 23:34 ET).
@@ -66,7 +80,7 @@ def test_row_is_paused_pending_install_with_the_exact_line(lane_id):
     assert f"bash $PROJ/scripts/safe_flock.sh {lock} timeout " in line
     assert "TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state " in line
     assert f" >> {log} 2>&1  # TRADEAI_LANE {lane_id}" in line and line.endswith(f"# TRADEAI_LANE {lane_id}")
-    assert "/home/" not in line and "%" not in line          # no host path; no cron-escaped char
+    assert "/home/" not in line and "%" not in line  # no host path; no cron-escaped char
     assert row["expected_cadence_hours"] == cadence
     assert R.cron_cadence_hours(sched) <= cadence
     assert row["output_signal"]["kind"] == "file_mtime" and row["output_signal"]["path"].startswith("data/runtime/")
@@ -77,15 +91,15 @@ def test_p16_p18_lines_match_the_governance_packet_and_the_notifier_line_is_a_sy
         "*/30 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash "
         "$PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_activation_attribution.lock timeout 300 $PY "
         "scripts/check_n8n_activation_grants.py --write >> logs/n8n_activation_grants.log 2>&1  "
-        "# TRADEAI_LANE n8n-activation-grants")
-    assert ROWS["n8n-workflow-drift-check"]["scheduler"]["install_line"] == (
-        "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash "
-        "$PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY "
-        "scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  "
-        "# TRADEAI_LANE n8n-workflow-drift-check")
+        "# TRADEAI_LANE n8n-activation-grants"
+    )
+    # P18 has no crontab line any more (cron freeze): its scheduler is the drift-watch user timer.
+    p18 = ROWS[MOVED_TO_SYSTEMD]["scheduler"]
+    assert "install_line" not in p18
+    assert p18["kind"] == "systemd" and p18["expression"] == "tradeai-n8n-drift-watch.timer"
     line = ROWS["incident-notifier"]["scheduler"]["install_line"]
-    assert "set -a && . ./.env && set +a && " in line            # ops bot env, same as the other cron senders
-    assert "SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 " in line   # as tradeai-autonomy-watchdog.service
+    assert "set -a && . ./.env && set +a && " in line  # ops bot env, same as the other cron senders
+    assert "SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 " in line  # as tradeai-autonomy-watchdog.service
     assert "--dry-run" not in line and "timeout 120 $PY scripts/incident_notifier.py --live" in line
 
 
@@ -93,7 +107,7 @@ def test_none_of_the_three_can_be_dispatched_or_allowlisted():
     allow_ids = {e["lane_id"] for e in ALLOW["lanes"]}
     assert "incident-notifier" not in allow_ids and "n8n-activation-grants" not in allow_ids
     assert "grant" in ALLOW["blocked_reasons"]["n8n-activation-grants"]
-    for lid in LANES:
+    for lid in (*LANES, MOVED_TO_SYSTEMD):
         row = ROWS[lid]
         assert row["recommendation"] == "KEEP_ON_CRON" and not row.get("dispatch")
         assert dispatch_eligible(row, cutover_policy=LD.EMPTY_CUTOVER_POLICY) == (False, "keep_on_cron")
@@ -104,7 +118,7 @@ def test_none_of_the_three_can_be_dispatched_or_allowlisted():
 
 def test_each_installed_line_maps_to_exactly_one_row_and_nothing_is_undeclared():
     found = {"cron": LR.discover_cron("\n".join(LINES) + "\n")}
-    assert len(found["cron"]) == 3
+    assert len(found["cron"]) == len(LANES) == 2
     assert LR.find_undeclared(REG, found, n8n_known_ids=[]) == []
     mapping = R.line_mapping(REG, [c["expression"] for c in found["cron"]])
     assert sorted(ids[0] for ids in mapping.values() if len(ids) == 1) == sorted(LANES)
@@ -150,14 +164,15 @@ def test_paused_rows_are_expected_silent_for_the_lane_monitor(tmp_path):
 
 def test_fanin_governance_liveness_stays_quiet_until_the_flip(tmp_path, monkeypatch):
     from scripts import n8n_incident_fanin as fanin
+
     monkeypatch.delenv("TRADEAI_FANIN_GOVERNANCE", raising=False)
     now = datetime(2026, 10, 9, 23, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(fanin, "_governance_lane", lambda lane_id: ROWS.get(lane_id))
-    assert fanin._governance_findings(tmp_path, now, prev={}) == []          # PAUSED: no receipt is not a finding
+    assert fanin._governance_findings(tmp_path, now, prev={}) == []  # PAUSED: no receipt is not a finding
     active = {lid: dict(ROWS[lid], state="ACTIVE") for lid in ("n8n-activation-grants", "n8n-workflow-drift-check")}
     monkeypatch.setattr(fanin, "_governance_lane", lambda lane_id: active.get(lane_id))
     items = sorted(f["item"] for f in fanin._governance_findings(tmp_path, now, prev={}))
-    assert items == ["receipt:missing", "receipt:missing"]                  # after the flip the check is armed
+    assert items == ["receipt:missing", "receipt:missing"]  # after the flip the check is armed
 
 
 # ============================================================================ breach triage (same PR)
@@ -168,7 +183,10 @@ SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
 # retention step runs after n8n's outcome_grader; the effect slot stays the manifest minute (T1050).
 # hermes tune cutover (2026-10-17, packet docs/ops/packets/hermes-tune-cutover-20261017/ step c2): the tune stage line
 # runs at 17:20 so n8n's 17:00 fire claims the effect first; the effect slot stays the manifest minute (T1700).
-MOVED_SINCE_SNAPSHOT = {"hermes-learning-pipeline-learn": {"20 11 * * *"}, "hermes-learning-pipeline-tune": {"20 17 * * *"}}
+MOVED_SINCE_SNAPSHOT = {
+    "hermes-learning-pipeline-learn": {"20 11 * * *"},
+    "hermes-learning-pipeline-tune": {"20 17 * * *"},
+}
 
 
 def _parts(expr):
@@ -185,9 +203,9 @@ def test_no_active_cron_row_carries_command_text_in_its_expression():
             assert part.startswith("@") or len(part.split()) == 5, (r["lane_id"], s["expression"])
         if " + " in s["expression"]:
             assert s.get("schedules") == _parts(s["expression"]), r["lane_id"]
-        assert s.get("match"), r["lane_id"]          # identity lives in match once the expression is bare
+        assert s.get("match"), r["lane_id"]  # identity lives in match once the expression is bare
         if r.get("scheduler_note"):
-            assert s.get("command_text"), r["lane_id"]   # still scanned by the dispatch forbidden-token rule
+            assert s.get("command_text"), r["lane_id"]  # still scanned by the dispatch forbidden-token rule
 
 
 def test_stripped_hand_rows_keep_their_live_schedules():
@@ -202,9 +220,10 @@ def test_stripped_hand_rows_keep_their_live_schedules():
 
 
 def test_snapshot_carries_the_post_install_crontab():
-    # ops-crons L1051-L1053 stay contiguous; siem-active-flip 2026-10-11 appends L1060+L1063 after them;
-    # tmp-scratch-cleanup 2026-10-14 appends L1065 last
-    assert SNAP_LINES[-6:-3] == LINES
+    # ops-crons L1051-L1052 stay contiguous (L1053, the drift check, was withdrawn 2026-10-27: it is a user timer);
+    # siem-active-flip 2026-10-11 appends L1060+L1063 after them; tmp-scratch-cleanup 2026-10-14 appends L1065 last
+    assert SNAP_LINES[-5:-3] == LINES
+    assert not any("check_n8n_workflow_drift.py" in ln for ln in SNAP_LINES)
     assert SNAP_LINES[-3:-1] == [
         ROWS["n8n-siem-bridge"]["scheduler"]["install_line"],
         ROWS["n8n-failure-diagnosis"]["scheduler"]["install_line"],
@@ -224,10 +243,17 @@ SIGNALS = {
     "finviz-momentum-scalp-early-lane": {"kind": "file_mtime", "path": "logs/finviz_momentum_scalp_scan.log"},
     # Refactor shard 01 (train 3, 2026-10-11): the script now writes a LaneRunReceipt on every run (ok_at only on
     # success), so the row reads that receipt instead of the log mtime (tests/test_refactor_shard_01_20261011.py).
-    "resolve-due-checkpoints": {"kind": "json_key", "path": "data/runtime/resolve-due-checkpoints_last.json",
-                                "key": "ok_at"},
+    "resolve-due-checkpoints": {
+        "kind": "json_key",
+        "path": "data/runtime/resolve-due-checkpoints_last.json",
+        "key": "ok_at",
+    },
     # Refactor shard 05 (train 4, 2026-10-11): same LaneRunReceipt pattern for the commitment sweep.
-    "commitment-outcome-sweep": {"kind": "json_key", "path": "data/runtime/commitment-outcome-sweep_last.json", "key": "ok_at"},
+    "commitment-outcome-sweep": {
+        "kind": "json_key",
+        "path": "data/runtime/commitment-outcome-sweep_last.json",
+        "key": "ok_at",
+    },
 }
 
 
@@ -236,11 +262,16 @@ def test_signal_wrong_lanes_point_at_an_artifact_written_every_run():
         assert ROWS[lid]["output_signal"] == sig, lid
     sd = ROWS["schwab-stream-daemon"]["output_signal"]
     assert (sd["kind"], sd["table"], sd["column"]) == ("db_max", "schwab_stream_quotes", "captured_at")
-    for lid, log in (("run-protection-pipeline-at-x-30-9-16", "protection_pipeline.log"),
-                     ("run-protection-pipeline-at-30-20", "protection_pipeline.log"),
-                     ("run-governed-symbol-thesis-acquisition", "symbol_thesis_acquisition.log")):
+    for lid, log in (
+        ("run-protection-pipeline-at-x-30-9-16", "protection_pipeline.log"),
+        ("run-protection-pipeline-at-30-20", "protection_pipeline.log"),
+        ("run-governed-symbol-thesis-acquisition", "symbol_thesis_acquisition.log"),
+    ):
         sig = ROWS[lid]["output_signal"]
-        assert sig["path"] == f"~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/{log}" and sig["evidence"] == "SCRIPT_RECEIPT"
+        assert (
+            sig["path"] == f"~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/{log}"
+            and sig["evidence"] == "SCRIPT_RECEIPT"
+        )
     for lid in ("prewarm-finviz-strip-map", "prewarm-trade-ai"):
         r = ROWS[lid]
         assert r["output_signal"]["kind"] == "none" and r["output_signal"]["reason"] == "NO_DURABLE_OUTPUT"
@@ -249,7 +280,7 @@ def test_signal_wrong_lanes_point_at_an_artifact_written_every_run():
 
 def test_declared_no_output_needs_written_evidence_and_wins_over_the_log_redirect():
     assert R.declared_no_output(None) is None
-    assert R.declared_no_output({"declared_no_output": {"reason": "NO_DURABLE_OUTPUT"}}) is None   # no evidence
+    assert R.declared_no_output({"declared_no_output": {"reason": "NO_DURABLE_OUTPUT"}}) is None  # no evidence
     sig, flags = R.declared_no_output({"declared_no_output": {"evidence": "curl -o /dev/null /home/someone/x"}})
     assert sig["kind"] == "none" and sig["reason"] == "NO_DURABLE_OUTPUT" and flags == ["NO_DURABLE_OUTPUT"]
     assert "/home/someone" not in sig["detail"]
@@ -264,6 +295,7 @@ def test_declared_no_output_needs_written_evidence_and_wins_over_the_log_redirec
 
 def _sbd():
     from scripts import supervisor_breach_detector as SBD
+
     return SBD
 
 
@@ -272,39 +304,53 @@ def test_premarket_due_window_is_a_subset_of_the_live_line():
     assert s["expression"] == "*/5 6-9 * * 1-5"
     assert s["due_schedules"] == ["*/5 6-8 * * 1-5", "0-25/5 9 * * 1-5"]
     SBD = _sbd()
-    now = datetime(2026, 10, 9, 13, 50, tzinfo=timezone.utc)            # 09:50 EDT, Friday
+    now = datetime(2026, 10, 9, 13, 50, tzinfo=timezone.utc)  # 09:50 EDT, Friday
     lane = {"scheduler": {"kind": "cron", "expression": s["expression"]}, "expected_cadence_hours": 0.084}
     assert SBD._expected_since(lane, now, 240)[0] == datetime(2026, 10, 9, 13, 45, tzinfo=timezone.utc)
     lane["scheduler"]["due_schedules"] = s["due_schedules"]
     assert SBD._expected_since(lane, now, 240)[0] == datetime(2026, 10, 9, 13, 25, tzinfo=timezone.utc)  # 09:25
     assert SBD._expected_since(lane, datetime(2026, 10, 9, 11, 0, tzinfo=timezone.utc), 240)[0] == datetime(
-        2026, 10, 9, 10, 55, tzinfo=timezone.utc)                          # 06:55 EDT, inside the window
+        2026, 10, 9, 10, 55, tzinfo=timezone.utc
+    )  # 06:55 EDT, inside the window
 
 
 def test_sla_max_silence_follows_the_real_cadence():
     from scripts import seed_supervisor_sla as SEED
+
     assert SEED.max_silence_s(0.05) == 900
     assert SEED.max_silence_s(1.0) == 3 * 3600
     assert SEED.max_silence_s(16.0) == 48 * 3600
-    assert SEED.max_silence_s(24.0) == 48 * 3600                 # daily unchanged
+    assert SEED.max_silence_s(24.0) == 48 * 3600  # daily unchanged
     assert SEED.max_silence_s(72.0) == 108 * 3600
-    assert SEED.max_silence_s(168.0) == 252 * 3600               # weekly maturity-remeasure: no SILENT on day 3
+    assert SEED.max_silence_s(168.0) == 252 * 3600  # weekly maturity-remeasure: no SILENT on day 3
     row = SEED.sla_row(ROWS["maturity-remeasure"])
     assert row["max_silence_s"] > 7 * 24 * 3600
 
 
 def test_timers_are_not_judged_before_their_first_fire():
     SBD = _sbd()
-    for lid, first in (("platform-maintenance-weekly", "2026-10-11T04:00:00-04:00"),
-                       ("platform-maintenance-monthly", "2026-11-01T07:00:00-05:00")):
+    for lid, first in (
+        ("platform-maintenance-weekly", "2026-10-11T04:00:00-04:00"),
+        ("platform-maintenance-monthly", "2026-11-01T07:00:00-05:00"),
+    ):
         lane = ROWS[lid]
         assert lane["first_due"] == first
-        never = lambda sig: {"last_output_at": None, "readable": True}          # noqa: E731
+        never = lambda sig: {"last_output_at": None, "readable": True}  # noqa: E731
         sla = {lid: {"max_run_s": 900}}
-        before = SBD.detect(lanes=[lane], sla_by_lane=sla, heartbeats={}, observe=never,
-                            now=datetime.fromisoformat(first) - timedelta(minutes=1))
-        after = SBD.detect(lanes=[lane], sla_by_lane=sla, heartbeats={}, observe=never,
-                           now=datetime.fromisoformat(first) + timedelta(minutes=1))
+        before = SBD.detect(
+            lanes=[lane],
+            sla_by_lane=sla,
+            heartbeats={},
+            observe=never,
+            now=datetime.fromisoformat(first) - timedelta(minutes=1),
+        )
+        after = SBD.detect(
+            lanes=[lane],
+            sla_by_lane=sla,
+            heartbeats={},
+            observe=never,
+            now=datetime.fromisoformat(first) + timedelta(minutes=1),
+        )
         assert before == [] and [r["kind"] for r in after] == ["NO_OUTPUT"]
 
 

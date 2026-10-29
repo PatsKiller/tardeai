@@ -595,10 +595,18 @@ def rule_desk_truth(p: Any, now: datetime) -> list[dict]:
     missing = [lane for lane in DESK_TRUTH_LANES if (p.get(lane) or {}).get("status") == "NO_RECEIPT"]
     out: list[dict] = []
     if missing:
-        out.append(item("P3", f"Desk truth monitors have no receipt yet ({len(missing)} of {len(DESK_TRUTH_LANES)})",
-                        "At shadow the n8n lanes run --dry-run and write nothing; run `python3 scripts/"
-                        "desk_truth_monitor.py --check <name>` for a read-only view.", R_DESK_TRUTH, "desk_truth",
-                        None, {"lanes": missing}))
+        out.append(
+            item(
+                "P3",
+                f"Desk truth monitors have no receipt yet ({len(missing)} of {len(DESK_TRUTH_LANES)})",
+                "At shadow the n8n lanes run --dry-run and write nothing; run `python3 scripts/"
+                "desk_truth_monitor.py --check <name>` for a read-only view.",
+                R_DESK_TRUTH,
+                "desk_truth",
+                None,
+                {"lanes": missing},
+            )
+        )
     for lane in DESK_TRUTH_LANES:
         r = p.get(lane)
         if not isinstance(r, dict) or r.get("status") == "NO_RECEIPT":
@@ -606,30 +614,71 @@ def rule_desk_truth(p: Any, now: datetime) -> list[dict]:
         if r.get("lane_id") != lane:
             raise SourceUnavailable(f"desk truth receipt for {lane} names another lane")
         if r.get("status") != "ok":
-            out.append(item("P2", f"{lane} failed", str(r.get("error") or "the last run failed")[:240], R_DESK_TRUTH,
-                            "desk_truth", r.get("finished_at"), {"ok_at": r.get("ok_at")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{lane} failed",
+                    str(r.get("error") or "the last run failed")[:240],
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    r.get("finished_at"),
+                    {"ok_at": r.get("ok_at")},
+                )
+            )
         ok_at = _parse(r.get("ok_at"))
         if ok_at is None or (now - ok_at).total_seconds() / 3600.0 > DESK_TRUTH_STALE_H:
-            out.append(item("P2", f"{lane} is stale", f"No completed run in {DESK_TRUTH_STALE_H:g} h; the check it "
-                            "makes is not being made.", R_DESK_TRUTH, "desk_truth", r.get("ok_at"),
-                            {"ok_at": r.get("ok_at")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{lane} is stale",
+                    f"No completed run in {DESK_TRUTH_STALE_H:g} h; the check it makes is not being made.",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    r.get("ok_at"),
+                    {"ok_at": r.get("ok_at")},
+                )
+            )
         summary = r.get("summary") if isinstance(r.get("summary"), dict) else {}
         findings = [f for f in summary.get("findings") or [] if isinstance(f, dict)]
         alerted = [f for f in findings if f.get("alert")]
         since = summary.get("as_of") or r.get("finished_at")
         for f in alerted[:DESK_TRUTH_ITEMS_MAX]:
-            out.append(item("P2", f"{f.get('code')}: {str(f.get('detail'))[:140]}",
-                            f"{lane} (read-only). It never repairs; the owner of the store or the operator acts.",
-                            R_DESK_TRUTH, "desk_truth", since, {"lane": lane, "key": f.get("key")}))
+            out.append(
+                item(
+                    "P2",
+                    f"{f.get('code')}: {str(f.get('detail'))[:140]}",
+                    f"{lane} (read-only). It never repairs; the owner of the store or the operator acts.",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "key": f.get("key")},
+                )
+            )
         if len(alerted) > DESK_TRUTH_ITEMS_MAX:
-            out.append(item("P2", f"{len(alerted) - DESK_TRUTH_ITEMS_MAX} more {lane} findings",
-                            f"See the {lane} receipt (summary.findings).", R_DESK_TRUTH, "desk_truth", since,
-                            {"lane": lane, "total": len(alerted)}))
+            out.append(
+                item(
+                    "P2",
+                    f"{len(alerted) - DESK_TRUTH_ITEMS_MAX} more {lane} findings",
+                    f"See the {lane} receipt (summary.findings).",
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "total": len(alerted)},
+                )
+            )
         quiet = [f for f in findings if not f.get("alert")]
         if quiet:
-            out.append(item("P3", f"{lane}: {len(quiet)} finding(s) not measured as alerts",
-                            "; ".join(str(f.get("detail"))[:80] for f in quiet[:3]), R_DESK_TRUTH, "desk_truth",
-                            since, {"lane": lane, "count": len(quiet)}))
+            out.append(
+                item(
+                    "P3",
+                    f"{lane}: {len(quiet)} finding(s) not measured as alerts",
+                    "; ".join(str(f.get("detail"))[:80] for f in quiet[:3]),
+                    R_DESK_TRUTH,
+                    "desk_truth",
+                    since,
+                    {"lane": lane, "count": len(quiet)},
+                )
+            )
     return out
 
 
@@ -690,8 +739,9 @@ RELEASE_WINDOW_SEVERITY = {
 
 
 def read_release_window_state(root: Any = None) -> dict:
-    """The release-window runner's STOP latch and last receipt (scripts/release_window.py; release train
-    2026-10-21). A runner that never ran has neither file: that is an empty state, not an unavailable source."""
+    """The deploy STOP latch and the release-window runner's last receipt (scripts/release_window.py state dir).
+    The host deploy_on_main poller and the emergency promote refuse while this latch is set (AGENTS.md §25.10).
+    A runner that never ran has neither file: that is an empty state, not an unavailable source."""
     import json
     import os
     from pathlib import Path
@@ -714,24 +764,9 @@ def read_release_window_state(root: Any = None) -> dict:
     last = root / "last.json"
     if last.exists():
         out["last"] = json.loads(last.read_text(encoding="utf-8"))  # unreadable -> raises -> source unavailable
-    # Release-train claims the claimer's watchdog moved to orphaned/ (arming finding 6) and nobody has closed yet
-    # (train-orphan-resolve writes a terminal receipt). Never deleted: a resolved orphan just stops being an item.
-    orphaned: list[dict] = []
-    spool = root / "train_requests"
-    try:
-        names = sorted(n for n in os.listdir(spool / "orphaned") if n.endswith(".json"))
-    except OSError:
-        names = []
-    for n in names[:50]:
-        rid = n[:-5]
-        try:
-            rec = json.loads((spool / "receipts" / n).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            rec = {}
-        state = rec.get("state") if isinstance(rec, dict) else None
-        if state not in ("COMPLETED", "REFUSED", "EXPIRED", "FAILED"):
-            orphaned.append({"request_id": rid, "receipt_state": state})
-    out["orphaned"] = orphaned
+    # The retired release train's orphaned-request scan (train_requests/orphaned, closed by the removed
+    # train-reconcile / train-orphan-resolve subcommands) was removed 2026-10-27 (operator directive): nothing in the
+    # tree writes that spool any more, and the item named commands that no longer exist.
     return out
 
 
@@ -743,9 +778,10 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
         items.append(
             item(
                 "P1",
-                "Release windows halted: STOP latch unreadable",
-                f"STOP.json exists but cannot be read ({latch['unreadable']}); every window refuses "
-                "(REFUSED_STOP_UNREADABLE) until the operator inspects it and runs clear-stop",
+                "Deploys halted: STOP latch unreadable",
+                f"STOP.json exists but cannot be read ({latch['unreadable']}); the host deploy_on_main poller and "
+                "the emergency promote refuse until the operator inspects it and runs "
+                "scripts/release_window.py clear-stop",
                 R_SYSTEM_JOBS,
                 "release_window",
                 None,
@@ -753,13 +789,19 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
             )
         )
     elif isinstance(latch, dict):
+        if latch.get("window_id"):
+            why = (
+                f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
+                f"{str(latch.get('candidate') or '')[:9]}"
+            )
+        else:
+            why = f"STOP latched ({str(latch.get('reason') or latch.get('outcome') or 'no reason recorded')[:120]})"
         items.append(
             item(
                 "P1",
-                "Release windows halted: STOP latched",
-                f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
-                f"{str(latch.get('candidate') or '')[:9]}; every later window refuses until the operator "
-                "reviews the receipt and runs scripts/release_window.py clear-stop",
+                "Deploys halted: STOP latched",
+                f"{why}; the host deploy_on_main poller and the emergency promote refuse until the operator "
+                "reviews it and clears it (Ops → Controls deploy resume, or scripts/release_window.py clear-stop)",
                 R_SYSTEM_JOBS,
                 "release_window",
                 latch.get("latched_at"),
@@ -784,31 +826,18 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
                     {"window_id": last.get("window_id"), "outcome": last.get("outcome")},
                 )
             )
-    for o in p.get("orphaned") or []:
-        items.append(
-            item(
-                "P2",
-                f"Release train request {o.get('request_id')} orphaned",
-                "its claimer died after claiming it (receipt "
-                f"{o.get('receipt_state') or 'absent'}); it is never re-run automatically. Run "
-                "scripts/release_window.py train-reconcile, then train-orphan-resolve",
-                R_SYSTEM_JOBS,
-                "release_window",
-                None,
-                o,
-            )
-        )
     return items
 
 
-# Macro calendar (operator ruling 2026-10-21: FRED + a yearly overrides file, lane macro-calendar-refresh). The release
-# train skips its 08:00 ET window when the calendar is missing, corrupt, stale (> 72 h) or does not cover the day
-# (scripts/lib/macro_calendar.py, fail closed); this source says so. An 08:30 release day is an expected skip, no item.
+# Macro calendar (operator ruling 2026-10-21: FRED + a yearly overrides file, lane macro-calendar-refresh). CIO and
+# prospectus readers use it; a missing, corrupt, stale (> 72 h) or non-covering calendar is reported here as
+# information (scripts/lib/macro_calendar.py, fail closed). The retired release train's 08:00-window gating was
+# removed 2026-10-27 (operator directive), so this is P3 only.
 MACRO_CALENDAR_LANE = "macro-calendar-refresh"
 
 
 def next_0800_day(now: datetime) -> Any:
-    """The ET date of the next 08:00 ET window at or after ``now`` (weekdays; after 08:00 ET it is the next one)."""
+    """The ET date of the next 08:00 ET weekday morning at or after ``now`` (after 08:00 ET it is the next one)."""
     from zoneinfo import ZoneInfo
 
     et = now.astimezone(ZoneInfo("America/New_York"))
@@ -818,49 +847,9 @@ def next_0800_day(now: datetime) -> Any:
     return d
 
 
-def release_train_0800_scope(delegation_path: Any = None, state_dir: Any = None) -> dict:
-    """Is the 08:00 window live-able? ``enabled_0800``: the standing delegation is ACTIVE (authorized) and its 0800
-    slot is enabled; ``armed``: the release control is armed (RUNNING or PAUSE_REQUESTED). Read-only; never raises:
-    anything unreadable reads as not enabled / not armed (the train then refuses 08:00 anyway)."""
-    import os
-    from pathlib import Path
-
-    out: dict[str, Any] = {"enabled_0800": False, "armed": False, "detail": []}
-    try:
-        try:
-            from lib import release_delegation as RD
-        except ImportError:  # pragma: no cover
-            from scripts.lib import release_delegation as RD  # type: ignore[no-redef]
-        dv = RD.load(Path(delegation_path) if delegation_path is not None else None)
-        slots = ((dv.delegation or {}).get("windows") or {}).get("slots") or []
-        en = any(str(s.get("window_id")) == "0800" and s.get("enabled") is True for s in slots if isinstance(s, dict))
-        out["enabled_0800"] = bool(dv.authorized and en)
-        out["detail"].append(f"delegation {dv.code}; 0800 {'enabled' if en else 'disabled'}")
-    except Exception as exc:  # noqa: BLE001
-        out["detail"].append(f"delegation unreadable: {type(exc).__name__}")
-    try:
-        try:
-            from lib import release_control as RC
-        except ImportError:  # pragma: no cover
-            from scripts.lib import release_control as RC  # type: ignore[no-redef]
-        if state_dir is None:
-            root = os.environ.get("TRADEAI_STATE_ROOT", str(Path.home() / "trade-ai-releases" / "persistent-state"))
-            state_dir = os.environ.get(
-                "TRADEAI_RELEASE_WINDOW_STATE_DIR", str(Path(root) / "data" / "runtime" / "release_window")
-            )
-        mode = RC.ReleaseControl(Path(state_dir)).view().mode
-        out["armed"] = mode in (RC.RUNNING, RC.PAUSE_REQUESTED)
-        out["detail"].append(f"control {mode}")
-    except Exception as exc:  # noqa: BLE001
-        out["detail"].append(f"control unreadable: {type(exc).__name__}")
-    out["detail"] = "; ".join(out["detail"])
-    return out
-
-
-def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None, *, scope: Any = None) -> dict:
-    """The macro calendar's verdict for the next 08:00 ET window (read-only, no network), plus whether that window is
-    live-able (``scope``: a dict, a callable returning one, or None for the host's delegation + control). Never
-    raises on a bad file: a missing / corrupt / stale calendar is the finding, returned as its verdict."""
+def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None) -> dict:
+    """The macro calendar's verdict for the next weekday morning (read-only, no network). Never raises on a bad file:
+    a missing / corrupt / stale calendar is the finding, returned as its verdict."""
     try:
         from lib.macro_calendar import verdict
     except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
@@ -868,43 +857,71 @@ def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None, *, sc
     now = now or datetime.now(timezone.utc)
     day = next_0800_day(now)
     v, why = verdict(day, now, path=path)
-    sc = scope() if callable(scope) else scope if isinstance(scope, dict) else release_train_0800_scope()
-    return {"day": day.isoformat(), "verdict": v, "reason": why, "scope": sc}
+    return {"day": day.isoformat(), "verdict": v, "reason": why}
 
 
 def rule_macro_calendar(p: Any, now: datetime) -> list[dict]:
-    """STALE / UNAVAILABLE -> one "08:00 release window skipped: calendar stale|missing" item; CLEAR / MACRO_DAY ->
-    none. P2 only when the 08:00 window is live-able (enabled in the ACTIVE delegation's scope AND the train is armed);
-    otherwise P3 (information: a skipped window that could not have run is not something to act on yet)."""
+    """STALE / UNAVAILABLE -> one P3 "macro calendar stale|missing" item; CLEAR / MACRO_DAY -> none."""
     if not isinstance(p, dict) or "verdict" not in p:
         raise SourceUnavailable("macro calendar probe answered no verdict")
     v = p.get("verdict")
     if v in ("CLEAR", "MACRO_DAY"):
         return []
-    sc = p.get("scope") if isinstance(p.get("scope"), dict) else {}
-    live = sc.get("enabled_0800") is True and sc.get("armed") is True
     what = "stale" if v == "STALE" else "missing"
-    gate = (
-        "08:00 is enabled and the train is armed"
-        if live
-        else f"08:00 is not live yet ({sc.get('detail') or 'scope unknown'}), so this is information only"
-    )
     return [
         item(
-            "P2" if live else "P3",
-            f"08:00 release window skipped: calendar {what}",
-            f"{p.get('reason')}. The release train fails closed and skips the 08:00 ET window on {p.get('day')} "
-            f"until the {MACRO_CALENDAR_LANE} lane writes a fresh calendar "
-            f"(python3 scripts/macro_calendar_refresh.py --dry-run shows what it would write). {gate}.",
+            "P3",
+            f"Macro calendar {what}",
+            f"{p.get('reason')}. Readers of the macro-release calendar see no fresh dates for {p.get('day')} until "
+            f"the {MACRO_CALENDAR_LANE} lane writes a fresh calendar "
+            f"(python3 scripts/macro_calendar_refresh.py --dry-run shows what it would write).",
             R_SYSTEM_JOBS,
             "macro_calendar",
             None,
-            {"day": p.get("day"), "verdict": v, "lane": MACRO_CALENDAR_LANE, "live_0800": live},
+            {"day": p.get("day"), "verdict": v, "lane": MACRO_CALENDAR_LANE},
         )
     ]
 
 
+def probe_anthropic(root: Any = None) -> dict:
+    from .anthropic_monitoring import snapshot
+    from .anthropic_routing import state_root
+
+    return snapshot(root or state_root())
+
+
+def rule_anthropic(payload: Any, now: datetime) -> list[dict]:
+    if not isinstance(payload, dict) or not payload.get("status") or payload["status"] == "UNAVAILABLE":
+        raise SourceUnavailable("Anthropic provider/accounting observation unavailable")
+    if payload.get("p1_continuous_failure"):
+        return [
+            item(
+                "P1",
+                "Anthropic first choice failing",
+                payload.get("digest_line") or "Review provider evidence",
+                "/v3/consumption",
+                "anthropic",
+                payload.get("as_of"),
+                {"status": payload["status"]},
+            )
+        ]
+    if payload["status"] in {"DEGRADED", "PAUSED_TODAY", "EXHAUSTED"}:
+        return [
+            item(
+                "P2",
+                f"Anthropic {payload['status'].lower().replace('_', ' ')}",
+                payload.get("digest_line") or "Review provider credit and fallback evidence",
+                "/v3/consumption",
+                "anthropic",
+                payload.get("as_of"),
+                {"status": payload["status"]},
+            )
+        ]
+    return []
+
+
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
+    "anthropic": rule_anthropic,
     "health": rule_health,
     "systemd": rule_systemd,
     "n8n": rule_n8n,
@@ -997,6 +1014,7 @@ def aggregate(
 def _source_where(name: str) -> str:
     return {
         "health": R_HEALTH,
+        "anthropic": "/v3/consumption",
         "systemd": R_SYSTEM_JOBS,
         "n8n": R_COORD,
         "approvals": R_COORD,

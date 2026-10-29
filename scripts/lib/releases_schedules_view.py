@@ -1,7 +1,7 @@
 """Releases & Schedules — read-only Command Center projection (operator-approved 2026-10-22).
 
 Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedules page). Contract:
-``docs/ops/RELEASES_SCHEDULES_PAGE.md``. One response, nine sections, each a Field envelope
+``docs/ops/RELEASES_SCHEDULES_PAGE.md``. One response, seven sections, each a Field envelope
 (``value``, ``as_of``, ``freshness`` OK|STALE|UNAVAILABLE, ``source``, ``reason``, ``age_s``):
 
   serving        CURRENT symlink + its BUILD_SHA pins (exact_release_receipt.observed_identity), the
@@ -11,12 +11,6 @@ Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedule
                  (scripts/main_ci_watch.py: SUCCESS | FAILURE | PENDING with its age), else from
                  post_merge_ci.json, each only when it names the same SHA. GitHub is never called from the
                  request path.
-  windows        the release-train windows (release_train_view.upcoming_windows) with the host gate's
-                 state and reason (release_train_window.readiness_view + decide), and the merge freeze
-                 (release_train_freeze.host_verdict: frozen or not, why, until when, the next freeze).
-  queue          the release-train queue store and the PR-hygiene census (release_train_view.build_queue). When
-                 the census is not OK, ``census.alert`` says so loudly: why, the lane's last ledger attempt
-                 (any mode) and its next scheduled fire, so "0 queued" is never read as "nothing is waiting".
   history        release pin receipts (apply / rollback) + the deploy receipt, PRs per release from git.
   release_errors refused / stopped release-window receipts, rollbacks, a failed deploy receipt, the STOP
                  latch, non-success checks in post_merge_ci.json, and FAILURE workflows in the main-ci-watch
@@ -28,8 +22,9 @@ Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedule
                  stage, relay live list names only), merged and sorted.
   kpis           derived from the above; a KPI over an UNAVAILABLE section is null, never 0 or green.
 
-Pattern: scripts/lib/release_train_view.py. Every source is read off the request thread in a worker with its
-own deadline; a source that misses it or fails is UNAVAILABLE with a reason. Cached 30 s.
+The retired release train's windows and queue sections were removed 2026-10-27 (operator directive); Mergify merges
+and the host deploy_on_main poller promotes (AGENTS.md §25.10). Every source is read off the request thread in a
+worker with its own deadline; a source that misses it or fails is UNAVAILABLE with a reason. Cached 30 s.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. Nothing here writes, merges, releases, arms, sends or calls a
 broker. The only subprocesses are ``git`` (rev-parse / log on the local canonical checkout) and ``crontab -l``.
@@ -49,11 +44,6 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 from zoneinfo import ZoneInfo
 
-try:
-    from lib import release_train_view as RTV
-except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
-    from scripts.lib import release_train_view as RTV  # type: ignore[no-redef]
-
 SCHEMA = "ReleasesSchedules@v1"
 ROUTE = "/api/v2/ops/releases-schedules"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -66,7 +56,6 @@ MAX_ERRORS = 50
 COLLAPSE_AFTER = 4  # a schedule firing more often than this in the horizon becomes one "every N min" row
 FETCH_STALE_AFTER_S = 6 * 3600
 MAIN_CI_STALE_AFTER_S = 2 * 3600
-CENSUS_LANE = "pr-hygiene-audit"
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
@@ -75,20 +64,8 @@ ERROR_RUN_STATES = ("RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED")
 OK_WINDOW_OUTCOMES = ("RELEASED", "NO_CHANGE")
 PAUSED_RE = re.compile(r"^\s*#\s*PAUSED\s+(\d{4}-\d{2}-\d{2})\s*(.*)$")
 CRON5_RE = re.compile(r"(?:^|\s)((?:@\w+)|(?:[\d*/,\-a-zA-Z]+\s+){4}[\d*/,\-a-zA-Z]+)\s+(\S.*)$")
-BUCKET_WHY = {
-    "train_internal": "the train's own branch",
-    "queued": "in the release queue",
-    "draft": "draft",
-    "held": "held (a hold label or marker)",
-    "stacked": "stacked on another branch, not main",
-    "conflicting": "merge conflict with main",
-    "mergeability_unknown": "GitHub has not computed mergeability",
-    "checks_failing": "required checks failing",
-    "checks_pending": "required checks still running",
-    "checks_unknown": "required checks unknown",
-    "unqueued_clean": "clean but not queued",
-}
-
+LATCH_STATES = ("ABSENT", "SET", "UNREADABLE")
+STOP_NOTE = "Deploy STOP only. The trading kill switch is separate."
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
 _EXECUTOR_LOCK = threading.Lock()
 _CACHE: dict[str, tuple[float, dict]] = {}
@@ -125,10 +102,35 @@ def _mtime_iso(path: Path) -> Optional[str]:
         return None
 
 
+def run_probes(probes: Mapping[str, Callable[[], Any]], timeout_s: float = DEFAULT_TIMEOUT_S,
+               executor: Optional[cf.Executor] = None) -> dict[str, dict[str, Any]]:
+    """Run every probe concurrently off the request thread; each gets what is left of ``timeout_s``.
+    Returns {name: {"status": "OK"|"TIMEOUT"|"ERROR", "value", "error", "ms"}}. Never raises."""
+    ex = executor or _executor()
+    started = time.monotonic()
+    futs = {name: ex.submit(fn) for name, fn in probes.items()}
+    out: dict[str, dict[str, Any]] = {}
+    for name, fut in futs.items():
+        remaining = max(0.0, timeout_s - (time.monotonic() - started))
+        t0 = time.monotonic()
+        try:
+            out[name] = {"status": "OK", "value": fut.result(timeout=remaining), "error": None}
+        except cf.TimeoutError:
+            fut.cancel()
+            out[name] = {"status": "TIMEOUT", "value": None, "error": "timeout"}
+        except Exception as exc:  # noqa: BLE001 - the error is the evidence
+            out[name] = {"status": "ERROR", "value": None, "error": f"error:{type(exc).__name__}"}
+        out[name]["ms"] = int((time.monotonic() - t0) * 1000)
+    return out
+
+
 def field(value: Any, as_of: Optional[str], freshness: str, source: str, reason: Optional[str] = None,
           *, now: Optional[datetime] = None) -> dict[str, Any]:
-    """release_train_view.field plus ``age_s`` (seconds since ``as_of`` at ``now``; null when unknown)."""
-    out = RTV.field(value, as_of, freshness, source, reason)
+    """The Field envelope plus ``age_s`` (seconds since ``as_of`` at ``now``; null when unknown). UNAVAILABLE always
+    carries value None."""
+    if freshness == "UNAVAILABLE":
+        value = None
+    out = {"value": value, "as_of": as_of, "freshness": freshness, "source": source, "reason": reason}
     ts = _parse(as_of)
     out["age_s"] = max(0, int((now - ts).total_seconds())) if (ts and now) else None
     return out
@@ -530,63 +532,35 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
                  _iso(now), "OK", src, None, now=now)
 
 
-def _window_state(snapshot: Mapping[str, Any]) -> tuple[str, Optional[str]]:
+def read_latch_file(latch: Path) -> tuple[str, Optional[dict]]:
+    """Same semantics as release_window.State.read_latch: ("ABSENT", None) only when no path exists; ("SET", body)
+    for a readable JSON object; ("UNREADABLE", {"error"}) otherwise. Fail closed."""
     try:
-        from lib import release_train_window as RTW
-    except ImportError:  # pragma: no cover
-        from scripts.lib import release_train_window as RTW  # type: ignore[no-redef]
-    d = RTW.decide(snapshot, "on_window", shadow_only=False)
-    if d["disposition"] == "no_op":
-        if d["no_op_reason"] in ("stop_set", "stop_unreadable"):
-            return "STOPPED", "release STOP latch " + ("set" if d["no_op_reason"] == "stop_set" else "unreadable")
-        return "OFF", "train not armed and shadow disabled"
-    if d["shadow"]:
-        why = {"train_not_armed": "train not armed (simulate only)",
-               "delegation_not_active": f"delegation {snapshot.get('delegation_state')} (simulate only)",
-               "window_not_enabled": "window not enabled in the policy (simulate only)"}
-        return "SHADOW", why.get(d["shadow_reason"], str(d["shadow_reason"]))
-    return "LIVE", None
+        os.lstat(latch)   # lstat: a dangling symlink exists, so it is UNREADABLE (a STOP), never ABSENT
+    except FileNotFoundError:
+        return "ABSENT", None
+    except OSError as exc:
+        return "UNREADABLE", {"error": f"stat: {type(exc).__name__}"}
+    try:
+        body = json.loads(Path(latch).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return "UNREADABLE", {"error": type(exc).__name__}
+    if not isinstance(body, dict):
+        return "UNREADABLE", {"error": "latch is not a JSON object"}
+    return "SET", body
 
 
-def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping[str, Any]] = None,
-                 readiness: Optional[Callable[[], Mapping[str, Any]]] = None) -> dict[str, Any]:
-    src = "config/release_train_policy.json + release_train_window.readiness_view (STOP, delegation, shadow)"
-    policy, perr = RTV._load_policy()
-    if policy is None:
-        return _unavailable(src, perr or "policy_unreadable", now)
-    if readiness is None:
-        try:
-            from lib import release_train_window as RTW
-        except ImportError:  # pragma: no cover
-            from scripts.lib import release_train_window as RTW  # type: ignore[no-redef]
-        rd = RTW.readiness_view(now, stop_dir=rw_state_dir)
-    else:
-        rd = readiness()
-    if not isinstance(rd, Mapping) or rd.get("state") != "OK":
-        return _unavailable(src, "readiness " + str((rd or {}).get("reason") or "unavailable"), now)
-    stop = rd.get("stop") or {}
-    deleg = (rd.get("delegation") or {}).get("state")
-    coverage = {c.get("slot"): c for c in rd.get("shadow_coverage") or [] if isinstance(c, Mapping)}
-    out = []
-    for w in RTV.upcoming_windows(policy, now):
-        slot = str(w["local_time"]).replace(":", "")
-        snap = {"stop_state": stop.get("state"), "armed": rd.get("armed") is True,
-                "shadow_enabled": rd.get("shadow_enabled") is True, "delegation_state": deleg,
-                "window_enabled": bool(w.get("enabled"))}
-        state, reason = _window_state(snap)
-        cov = coverage.get(slot) or {}
-        out.append({**w, "slot": slot, "state": state, "reason": reason,
-                    "last_shadow_request_at": cov.get("last_requested_at"),
-                    "last_shadow_receipt_state": cov.get("receipt_state"),
-                    "last_shadow": {k: cov.get(k) for k in ("request_id", "outcome", "reason", "queue_open",
-                                                            "queue_complete", "riding", "candidate_sha", "train_id",
-                                                            "has_report")} if cov.get("request_id") else None})
-    value = {"windows": out, "armed": rd.get("armed"), "shadow_enabled": rd.get("shadow_enabled"),
-             "delegation": rd.get("delegation"), "stop": stop, "policy_version": rd.get("policy_version"),
-             "merge_freeze": read_merge_freeze(now, rw_state_dir),
-             "manual_path": "Until the train is armed, releases are manual: scripts/release_window.py 12:00 / 17:30 "
-                            "ET windows under a release-write grant naming the SHA (AGENTS.md §25.1, §24.8)."}
-    return field(value, rd.get("as_of") or _iso(now), "OK", src, None, now=now)
+def read_stop(state_dir: Path) -> dict[str, Any]:
+    """The deploy STOP latch (``<state_dir>/STOP.json``) in release_window.State.read_latch's vocabulary."""
+    path = Path(state_dir) / "STOP.json"
+    st, body = read_latch_file(path)
+    st = str(st) if str(st) in LATCH_STATES else "UNREADABLE"  # an unknown verdict is a STOP
+    body = body if isinstance(body, dict) else {}
+    is_set = st == "SET"
+    return {"state": st, "effective_stop": st != "ABSENT",
+            "latched_at": body.get("latched_at") if is_set else None,
+            "latch_reason": (body.get("reason") or body.get("outcome")) if is_set else body.get("error"),
+            "path": str(path), "note": STOP_NOTE}
 
 
 MERGE_FREEZE_KEYS = ("frozen", "summary", "reasons", "next_freeze", "warnings", "stale", "receipts", "stop",
@@ -595,7 +569,9 @@ MERGE_FREEZE_KEYS = ("frozen", "summary", "reasons", "next_freeze", "warnings", 
 
 def read_merge_freeze(now: datetime, rw_state_dir: Path) -> dict[str, Any]:
     """The Release Train merge freeze as the host sees it (scripts/lib/release_train_freeze.py, AGENTS.md §25.3):
-    frozen or not, why, until when, the next freeze. ``frozen`` is null (never false) when it cannot be computed."""
+    frozen or not, why, until when, the next freeze. ``frozen`` is null (never false) when it cannot be computed.
+    Kept after the windows/queue sections were retired 2026-10-27 (CONFLICT-RESOLVED-20261029): read-only projection
+    with no caller in this view; retained for the merge-freeze projection and its tests."""
     try:
         try:
             from lib import release_train_freeze as RTF
@@ -606,108 +582,6 @@ def read_merge_freeze(now: datetime, rw_state_dir: Path) -> dict[str, Any]:
         return {"frozen": None, "summary": f"merge freeze unavailable ({type(exc).__name__})", "reasons": [],
                 "next_freeze": None, "warnings": [], "receipts": None}
     return {k: v.get(k) for k in MERGE_FREEZE_KEYS}
-
-
-def census_attempt(ledger: Optional[Path], registry: Optional[Path], now: datetime) -> dict[str, Any]:
-    """The census lane's last ledger attempt (any mode, any day) and its next scheduled fire. Read-only; every
-    failure is a reason string, never an exception."""
-    out: dict[str, Any] = {"lane_id": CENSUS_LANE, "last_attempt": None, "last_attempt_reason": None,
-                           "last_live_attempt": None, "dispatch_mode": None, "stage": None, "next_fire_at": None}
-    if ledger is not None:
-        try:
-            conn = _connect_ro(Path(ledger))
-            try:
-                rows = conn.execute("SELECT run_id, mode, state, requested_at, finished_at, exit_code FROM runs "
-                                    "WHERE lane_id = ? ORDER BY requested_at DESC LIMIT 20", (CENSUS_LANE,)).fetchall()
-            finally:
-                conn.close()
-            def row(r):
-                return {"run_id": r[0], "mode": r[1], "state": r[2], "requested_at": r[3], "finished_at": r[4],
-                        "exit_code": r[5]}
-            out["last_attempt"] = row(rows[0]) if rows else None
-            out["last_live_attempt"] = next((row(r) for r in rows if r[1] == "live"), None)
-            if not rows:
-                out["last_attempt_reason"] = "no run of this lane in the coordination ledger"
-        except (OSError, sqlite3.Error) as exc:
-            out["last_attempt_reason"] = f"ledger unreadable: {type(exc).__name__}"
-    if registry is not None:
-        try:
-            reg = json.loads(Path(registry).read_text(encoding="utf-8"))
-            lane = next((r for r in reg.get("lanes") or [] if isinstance(r, dict) and r.get("lane_id") == CENSUS_LANE),
-                        None)
-        except (OSError, ValueError):
-            lane = None
-        if lane:
-            d = lane.get("dispatch") if isinstance(lane.get("dispatch"), dict) else {}
-            out["dispatch_mode"] = d.get("mode")
-            out["stage"] = (lane.get("scheduler") or {}).get("stage")
-            fires = []
-            for expr in d.get("cron") or []:
-                f = _fires(str(expr), now, now + timedelta(hours=48), tz=str(d.get("tz") or "America/New_York"))
-                fires.extend(f or [])
-            out["next_fire_at"] = _iso(min(fires)) if fires else None
-    return out
-
-
-def _et_text(ts: Any) -> str:
-    d = _parse(ts)
-    return d.astimezone(ET).strftime("%m/%d %H:%M ET") if d else str(ts or "?")
-
-
-def census_alert(census: Mapping[str, Any], attempt: Mapping[str, Any]) -> Optional[str]:
-    """One loud sentence when the census is not OK; None when it is."""
-    if census.get("freshness") == "OK":
-        return None
-    why = {"no_receipt": "pr-hygiene-audit has never written a receipt",
-           "last_run_failed": "pr-hygiene-audit's last run failed",
-           "receipt_unreadable": "the pr-hygiene-audit receipt is unreadable"}.get(
-        str(census.get("reason")), f"census {census.get('freshness') or 'UNAVAILABLE'}: {census.get('reason')}")
-    la = attempt.get("last_attempt")
-    if la:
-        last = f"last attempt {_et_text(la.get('requested_at'))} {la.get('mode')} {la.get('state')}"
-        if la.get("mode") == "dry_run":
-            last += " (a dry run writes no receipt)"
-    else:
-        last = attempt.get("last_attempt_reason") or "last attempt unknown"
-    nxt = (f"next fire {_et_text(attempt['next_fire_at'])} ({attempt.get('dispatch_mode')})"
-           if attempt.get("next_fire_at")
-           else "no scheduled fire found in the registry")
-    label = "MISSING" if census.get("freshness") == "UNAVAILABLE" else "STALE"
-    prs = ("Open PRs are UNKNOWN" if label == "MISSING" else "The open-PR list is from the last good census")
-    return (f"PR census {label} — {why}; {last}; {nxt}. {prs}: the queue store's count is only PRs explicitly "
-            f"queued for the train, not what is waiting.")
-
-
-def read_queue(db_query, now: datetime, *, ledger: Optional[Path] = None,
-               registry: Optional[Path] = None) -> dict[str, Any]:
-    src = "postgres:release_queue + receipt:pr-hygiene-audit (release_train_view.build_queue)"
-    q = RTV.build_queue(db_query, {})
-    census = q.get("census") or {}
-    attempt = census_attempt(ledger, registry, now) if census.get("freshness") != "OK" else None
-    alert = census_alert(census, attempt) if attempt is not None else None
-    titles = RTV._receipt_titles(None)
-    open_prs = []
-    for b in ((census.get("value") or {}).get("buckets") or []):
-        for n in b.get("prs") or []:
-            open_prs.append({"pr": n, "title": titles.get(n), "bucket": b.get("name"),
-                             "why_not_riding": BUCKET_WHY.get(b.get("name"), b.get("name")),
-                             "riding": b.get("name") == "queued"})
-    value = {"store": {"freshness": q.get("freshness"), "reason": q.get("reason"), "as_of": q.get("as_of"),
-                       "total": q.get("total"), "rows": q.get("rows")},
-             "census": {"freshness": census.get("freshness"), "reason": census.get("reason"),
-                        "as_of": census.get("as_of"),
-                        "open_prs": (census.get("value") or {}).get("open_prs"),
-                        "status": (census.get("value") or {}).get("status"),
-                        "attempt": attempt, "alert": alert},
-             "open_prs": open_prs}
-    if q.get("freshness") != "OK" and census.get("freshness") == "UNAVAILABLE":
-        return field(value, None, "UNAVAILABLE", src,
-                     alert or f"queue store: {q.get('reason')}; census: {census.get('reason')}", now=now)
-    fresh = "OK" if q.get("freshness") == "OK" and census.get("freshness") == "OK" else "STALE"
-    reasons = [f"queue store {q.get('freshness')}: {q.get('reason')}" if q.get("freshness") != "OK" else None,
-               f"census {census.get('freshness')}: {census.get('reason')}" if census.get("freshness") != "OK" else None]
-    return field(value, census.get("as_of") or q.get("as_of"), fresh, src,
-                 "; ".join(r for r in [alert, *reasons] if r) or None, now=now)
 
 
 # ── n8n side ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -995,9 +869,7 @@ def _kpi(key: str, label: str, value: Any, detail: Optional[str], tone: str, sec
 def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     sv = sections["serving"].get("value") or {}
     nx = sections["next_release"].get("value") or {}
-    wn = sections["windows"].get("value") or {}
     td = sections["n8n_today"].get("value") or {}
-    nxt = next(iter(wn.get("windows") or []), None)
     ci = (nx.get("ci") or {})
     nx_detail = None
     if nx:
@@ -1014,9 +886,6 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
                                                      "danger" if ci.get("state") in ("FAILURE", "NOT_GREEN") else
                                                      "warning"),
              sections["next_release"]),
-        _kpi("next_window", "Next train window", nxt.get("local_time") if nxt else None,
-             (f"{nxt.get('role')} · {nxt.get('state')}" + (f" · {nxt.get('reason')}" if nxt.get("reason") else ""))
-             if nxt else None, "info" if nxt and nxt.get("state") == "SHADOW" else "neutral", sections["windows"]),
         _kpi("n8n_runs", "n8n runs today", td.get("total"),
              ", ".join(f"{v} {k}" for k, v in sorted(by_mode.items())) or None, "neutral", sections["n8n_today"]),
         _kpi("n8n_errors", "n8n errors · skips",
@@ -1028,26 +897,23 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[str, Path]] = None,
           timeout_s: float = DEFAULT_TIMEOUT_S, git: Optional[Callable[[list[str]], tuple[int, str]]] = None,
-          crontab_reader=None, readiness=None, executor: Optional[cf.Executor] = None) -> dict[str, Any]:
+          crontab_reader=None, executor: Optional[cf.Executor] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     p = {**default_paths(), **(paths or {})}
     g = git or git_runner(p["canonical_source"])
     ex = executor or _executor()
-    res = RTV.run_probes({
+    res = run_probes({
         "serving": lambda: read_serving(p["releases_base"], p["deploy_state_dir"], now),
         "history": lambda: read_history(p["releases_base"], p["deploy_state_dir"], now, git=g),
-        "windows": lambda: read_windows(now, rw_state_dir=p["release_window_state_dir"], readiness=readiness),
-        "queue": lambda: read_queue(db_query, now, ledger=p["ledger"], registry=p["registry"]),
         "n8n_today": lambda: read_ledger_today(p["ledger"], now),
-        "stop": lambda: RTV.read_stop(p["release_window_state_dir"]),
+        "stop": lambda: read_stop(p["release_window_state_dir"]),
     }, timeout_s, executor=ex)
     sources = {
         "serving": "CURRENT symlink + BUILD_SHA pins", "history": "release_pins + deploy_receipt.json",
-        "windows": "config/release_train_policy.json + readiness", "queue": "postgres:release_queue + census",
         "n8n_today": "sqlite:n8n_coordination_ledger", "stop": "file:release_window/STOP.json",
     }
     sec: dict[str, Any] = {}
-    for k in ("serving", "history", "windows", "queue", "n8n_today"):
+    for k in ("serving", "history", "n8n_today"):
         r = res[k]
         sec[k] = r["value"] if r["status"] == "OK" else _unavailable(sources[k], r["error"], now)
     stop = res["stop"]["value"] if res["stop"]["status"] == "OK" else {
@@ -1055,7 +921,7 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
     serving_sha = (sec["serving"].get("value") or {}).get("sha")
     ledger_last = (sec["n8n_today"].get("value") or {}).get("last_run_by_lane")
     remaining = max(0.5, timeout_s - 0.5)
-    res2 = RTV.run_probes({
+    res2 = run_probes({
         "next_release": lambda: read_next_release(p["canonical_source"], p["deploy_state_dir"], serving_sha, now,
                                                   git=g, main_ci_receipt=p.get("main_ci_receipt")),
         "release_errors": lambda: read_release_errors(p["deploy_state_dir"], p["release_window_state_dir"], now,
@@ -1101,7 +967,5 @@ def clear_cache() -> None:
 
 
 __all__ = ["SCHEMA", "ROUTE", "build", "handle", "clear_cache", "parse_crontab", "read_serving", "read_next_release",
-           "read_history", "read_release_errors", "read_windows", "read_merge_freeze", "read_queue",
-           "read_ledger_today", "read_timeline",
-           "main_ci_from_receipt", "census_attempt", "census_alert",
-           "kpis", "default_paths"]
+           "read_history", "read_release_errors", "read_ledger_today", "read_timeline",
+           "main_ci_from_receipt", "read_merge_freeze", "read_stop", "run_probes", "kpis", "default_paths"]

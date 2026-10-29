@@ -3,14 +3,14 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, freezeChip, queueStoreText, kpiDisplay, lastRunText, prList, sectionView, shadowLine, verifyLabel, windowTone, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, freezeChip, kpiDisplay, lastRunText, prList, sectionView, SECTION_KEYS, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
   schema: 'ReleasesSchedules@v1', generated_at: '2026-10-22T19:00:00Z', status: 'DEGRADED',
   serving: { value: { sha: 'b'.repeat(40), short_sha: 'bbbbbbbbb', release_name: 'r', since: null, since_basis: null, pins_agree: true, pins: {}, deploy_receipt: null },
     as_of: '2026-10-22T18:58:00Z', freshness: 'OK', source: 'CURRENT', reason: null },
-  queue: { value: null, as_of: null, freshness: 'UNAVAILABLE', source: 'postgres', reason: 'db_unavailable' },
+  history: { value: null, as_of: null, freshness: 'UNAVAILABLE', source: 'release_pins', reason: 'git_failed' },
   n8n_today: { value: { day: '2026-10-22', total: 0, by_mode: {}, by_state: {}, errors_total: 0, skips_total: 0, errors: [], lock_skips: [], busiest: [], dead_letters: { available: false, unreleased: null, recent: null } },
     as_of: '2026-10-22T18:59:00Z', freshness: 'OK', source: 'ledger', reason: null },
 }
@@ -19,8 +19,10 @@ const wire: ReleasesSchedulesWire = {
 const sv = sectionView(wire, 'serving', { nowMs: NOW })
 assert.equal(sv.state, 'OK'); assert.equal(sv.ageS, 120); assert.match(sv.label, /OK · 2m ago · CURRENT/)
 // UNAVAILABLE section: null value, reason in the label, never zero.
-const q = sectionView(wire, 'queue', { nowMs: NOW })
-assert.equal(q.state, 'UNAVAILABLE'); assert.equal(q.value, null); assert.match(q.label, /UNAVAILABLE · db_unavailable/)
+const q = sectionView(wire, 'history', { nowMs: NOW })
+assert.equal(q.state, 'UNAVAILABLE'); assert.equal(q.value, null); assert.match(q.label, /UNAVAILABLE · git_failed/)
+// The retired release train's windows / queue sections are gone (2026-10-27).
+assert.ok(!(SECTION_KEYS as readonly string[]).includes('windows') && !(SECTION_KEYS as readonly string[]).includes('queue'))
 // A real zero from an OK source stays zero (it was measured).
 const td = sectionView<{ total: number }>(wire, 'n8n_today', { nowMs: NOW })
 assert.equal(td.value?.total, 0)
@@ -47,10 +49,10 @@ assert.equal(prList([1, 2, 3], null, 2), '#1, #2 +1 more')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: true, readback_errors: [] }, verify_reason: null, serving: true }).text, 'LIVE · VERIFIED')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: false }, verify_reason: null }).tone, 'danger')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'rollback', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: null, prs_reason: null, verify: null, verify_reason: null }).text, 'ROLLBACK')
-assert.equal(windowTone('STOPPED'), 'danger'); assert.equal(windowTone('nonsense'), 'warning')
 const row = (o: Partial<TimelineRow>): TimelineRow => ({ at: '2026-10-22T20:33:00Z', lane: 'l', lane_id: 'l', runner: 'cron', schedule: '', stage: 'LIVE', n8n_stage: null, fires_in_horizon: 1, cadence_label: null, paused_since: null, paused_note: null, last_run: null, ...o })
 assert.match(lastRunText(row({ stage: 'PAUSED', paused_since: '2026-10-14', paused_note: 'schwab' })), /paused since 2026-10-14 · schwab/)
 assert.match(lastRunText(row({ runner: 'n8n' })), /no ledger run today/)
+console.log('releasesSchedules: OK/STALE/UNAVAILABLE sections, KPI never-zero, PR/verify/stage labels passed')
 
 // Main-HEAD CI: state + age from the main-ci-watch receipt; tone never green unless SUCCESS/OK.
 assert.equal(ciLabel({ state: 'PENDING', reason: null, age_s: 720 }), 'PENDING · 12m ago')
@@ -58,22 +60,11 @@ assert.equal(ciLabel({ state: 'SUCCESS', reason: null, age_s: 9000, stale: true 
 assert.equal(ciLabel({ state: 'UNAVAILABLE', reason: 'no receipt' }), 'UNAVAILABLE')
 assert.equal(ciTone('FAILURE'), 'danger'); assert.equal(ciTone('PENDING'), 'info'); assert.equal(ciTone('UNAVAILABLE'), 'warning')
 assert.equal(ciTone('SUCCESS'), 'success')
-// Queue store chip: a missing census turns "0 queued" into an explicit UNKNOWN for open PRs.
-const qMissing = { store: { freshness: 'OK', total: 0 }, census: { freshness: 'UNAVAILABLE', reason: 'no_receipt', alert: 'PR census MISSING' }, open_prs: [] }
-assert.match(queueStoreText(qMissing), /0 queued \(explicit train queue only\) · open PRs UNKNOWN/)
-assert.equal(queueStoreText({ ...qMissing, census: { freshness: 'OK' } }), 'queue store 0 queued')
-// Shadow tick line (Phase 5): outcome, reason, queue seen, riding, candidate; unknown counts are "?" never 0.
-const shadowFull = { request_id: 'rtw-20261023-1800-f2fb974', outcome: 'NO_OP', reason: 'DRY_RUN_COMPLETE', queue_open: 49, queue_complete: true,
-  riding: 3, candidate_sha: 'abcdef1234567890', train_id: 'rt-20261023-1800-316c4b', has_report: true }
-assert.equal(shadowLine(shadowFull), 'shadow: NO_OP · DRY_RUN_COMPLETE · queue 49 open · 3 riding · candidate abcdef123')
-assert.equal(shadowLine({ ...shadowFull, queue_open: null, riding: null, queue_complete: false, candidate_sha: null }),
-  'shadow: NO_OP · DRY_RUN_COMPLETE · queue ? open (INCOMPLETE) · ? riding')
-assert.equal(shadowLine({ ...shadowFull, has_report: false, reason: null, outcome: null, candidate_sha: null }), 'shadow: no receipt')
 
 // Merge freeze chip: frozen is danger; unknown is a warning, never "open"; open names the next freeze start in ET.
+// (Kept as a standalone helper after the release-train windows section was retired 2026-10-27.)
 assert.equal(freezeChip({ frozen: true, summary: 'Merge freeze: Sun 18:00 ET release window', reasons: [{ code: 'PRE_WINDOW' }], warnings: [], receipts: 'OK', next_freeze: null }).tone, 'danger')
 assert.equal(freezeChip(null).text, 'merge freeze UNKNOWN')
 assert.equal(freezeChip({ frozen: null, summary: 'x', reasons: [], warnings: [], receipts: null, next_freeze: null }).tone, 'warning')
 assert.equal(freezeChip({ frozen: false, summary: 'No merge freeze', reasons: [], warnings: [], receipts: 'OK',
   next_freeze: { window_id: 'w', slot: '1800', starts_at: '2026-10-25T22:00:00Z', freeze_from: '2026-10-25T21:30:00Z', in_seconds: 60 } }).text, 'merge freeze from 17:30 ET')
-console.log('releasesSchedules: OK/STALE/UNAVAILABLE sections, KPI never-zero, PR/verify/stage labels, merge-freeze chip passed')

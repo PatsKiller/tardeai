@@ -86,7 +86,10 @@ export type OpsControlsState = {
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
   // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only
   data_approvals: Section & Omit<DataApprovals, 'state' | 'reason'>
-  release_train: Section & { mode?: string; epoch?: number | null; latch?: string; stop_phase?: string | null; stop_reason?: string | null }
+  /** The deploy STOP latch + release control (scripts/lib/ops_controls_api.deploy_view). */
+  deploy: Section & {
+    mode?: string; epoch?: number | null; latch?: string; stop_phase?: string | null; stop_reason?: string | null
+  }
   passkeys: Passkey[]
   audit: Section & { rows?: AuditRow[] }
   requests: OpsRequest[]

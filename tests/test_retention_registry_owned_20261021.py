@@ -16,6 +16,8 @@ retention". One test (or a small group) per ruling:
   D5.4  self-tune: hermes_external_research purge gone.
   D8.1  rotate_runtime_logs.sh archives the head (verified, tripwire) before truncating.
   D8.3  disk_hygiene_enforcer archives release-local data CURRENT does not hold before removing a release.
+        (2026-10-27, AGENTS.md §24.12: the enforcer removes no release and archives nothing; the dry-run
+        count stays, apply is refused -- so D8.3 holds vacuously there.)
   D8.4  portfolio news history / weekly / monthly reports archive-then-unlink.
   D8.5  scalp_cycle_receipt.prune archives first; a failed archive removes nothing.
   D8.6  file_prune row ingestion_summaries removed.
@@ -168,7 +170,12 @@ def test_d1_archive_cap_and_budget_and_market_quotes_stays_hard_delete():
 
 def test_d3_1_options_chain_snapshots_is_archive_then_delete_45d():
     r = POL["options_chain_snapshots"]
-    assert (r["class"], r["window_days"], r["archive"], r["ts_column"]) == ("ARCHIVE_THEN_DELETE", 45, True, "captured_at")
+    assert (r["class"], r["window_days"], r["archive"], r["ts_column"]) == (
+        "ARCHIVE_THEN_DELETE",
+        45,
+        True,
+        "captured_at",
+    )
 
 
 def test_d4_3_market_movers_has_a_registry_row_archive_first():
@@ -287,7 +294,10 @@ def test_d3_3_news_symbol_guard_archives_children_first_and_never_bare_deletes(m
     assert out == {"symbol": "MRLN", "news_removed": 1, "catalyst_removed": 1}
     assert not [s for s in conn.cur.sql if s.upper().startswith("DELETE")]
     assert [(c["table"], c["params"][0]) for c in calls] == [
-        ("news_articles", [11]), ("catalyst_symbol_impact", [7, 8]), ("catalyst_events", [42])]
+        ("news_articles", [11]),
+        ("catalyst_symbol_impact", [7, 8]),
+        ("catalyst_events", [42]),
+    ]
     assert all(c["archive"] is True and c["apply"] is True and c["where_sql"] == "t.id = ANY(%s)" for c in calls)
     calls.clear()
     g.purge_mismatched_for_symbol(_GuardConn(), "MRLN", apply=False)
@@ -330,8 +340,10 @@ def test_d3_5_reports_portal_purge_archives_every_table_first(monkeypatch, tmp_p
     assert out["ok"] and out["deleted"]["notification_log"] == 4
     assert not _bare_deletes(t)
     assert len(_row_archive(tmp_path, "notification_log")) == 4
-    tw = [json.loads(x) for x in (tmp_path / "state/archive/db_retention/notification_log/TRIPWIRE.jsonl")
-          .read_text().splitlines()]
+    tw = [
+        json.loads(x)
+        for x in (tmp_path / "state/archive/db_retention/notification_log/TRIPWIRE.jsonl").read_text().splitlines()
+    ]
     assert {x["writer"] for x in tw} == {"reports_portal"}
 
 
@@ -356,8 +368,15 @@ def test_d4_1_health_agent_persist_deletes_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(ha, "STATE_DIR", tmp_path)
     monkeypatch.setattr(ha, "STATUS_FILE", tmp_path / "s.json")
     monkeypatch.setattr(ha, "AUDIT_JSONL", tmp_path / "a.jsonl")
-    snap = {"overall_score": 90, "status": "ok", "category_scores": {}, "findings": [], "mode": "x",
-            "captured_at": "2026-10-21T00:00:00Z", "trends": {}}
+    snap = {
+        "overall_score": 90,
+        "status": "ok",
+        "category_scores": {},
+        "findings": [],
+        "mode": "x",
+        "captured_at": "2026-10-21T00:00:00Z",
+        "trends": {},
+    }
     ha.persist(snap, {"history": {"retention_days": 90}})
     assert sql and sql[0].startswith("INSERT INTO health_agent_snapshots")
     assert not [s for s in sql if s.upper().startswith("DELETE")]
@@ -404,8 +423,14 @@ def test_d5_1_siem_alert_events_follow_the_registry_30d(monkeypatch):
     assert sp.table_days("alert_events", 14) == POL["alert_events"]["window_days"] == 30
     assert sp.table_days("system_health_events", 14) == 14
     seen = []
-    monkeypatch.setattr(ra, "managed_purge", lambda conn, **kw: seen.append((kw["table"], kw["params"])) or
-                        {"table": kw["table"], "eligible": 0, "deleted": 0, "archived": 0, "archive": True})
+    monkeypatch.setattr(
+        ra,
+        "managed_purge",
+        lambda conn, **kw: (
+            seen.append((kw["table"], kw["params"]))
+            or {"table": kw["table"], "eligible": 0, "deleted": 0, "archived": 0, "archive": True}
+        ),
+    )
     out = sp.purge(_Conn(_Table()), 14, apply=False)
     assert dict(seen) == {"system_health_events": (14,), "alert_events": (30,)}
     assert {r["table"]: r["days"] for r in out} == {"system_health_events": 14, "alert_events": 30}
@@ -420,8 +445,11 @@ def test_d5_2_research_critique_archived_research_is_180d_by_created_at(monkeypa
     lib = yaml.safe_load((ROOT / "config" / "hermes_librarian_policy.yaml").read_text(encoding="utf-8"))
     assert rcp.RETENTION_RESEARCH_DAYS == lib["hermes_research_intelligence"]["archived_purge_days"] == 180
     seen = {}
-    monkeypatch.setattr(ra, "managed_purge", lambda conn, **kw: seen.setdefault(kw["table"], kw) and None
-                        or {"deleted": 0, "eligible": 0})
+    monkeypatch.setattr(
+        ra,
+        "managed_purge",
+        lambda conn, **kw: seen.setdefault(kw["table"], kw) and None or {"deleted": 0, "eligible": 0},
+    )
     rcp.retention_purge(_Conn(_Table()), apply=False)
     hri = seen["hermes_research_intelligence"]
     assert "t.created_at <" in hri["where_sql"] and "updated_at" not in hri["where_sql"]
@@ -430,10 +458,17 @@ def test_d5_2_research_critique_archived_research_is_180d_by_created_at(monkeypa
 
 # ── D8.1: rotate_runtime_logs.sh ──────────────────────────────────────────────────────────────────
 def _run_rotate(tmp_path: Path, **env) -> subprocess.CompletedProcess:
-    e = {**os.environ, "ROTATE_LOG_DIR": str(tmp_path / "logs"), "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
-         "ROTATE_LIMIT_MB": "1", "ROTATE_TAIL_MB": "1", **env}
-    return subprocess.run(["bash", str(ROOT / "scripts" / "rotate_runtime_logs.sh")], env=e,
-                          capture_output=True, text=True, timeout=60)
+    e = {
+        **os.environ,
+        "ROTATE_LOG_DIR": str(tmp_path / "logs"),
+        "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
+        "ROTATE_LIMIT_MB": "1",
+        "ROTATE_TAIL_MB": "1",
+        **env,
+    }
+    return subprocess.run(
+        ["bash", str(ROOT / "scripts" / "rotate_runtime_logs.sh")], env=e, capture_output=True, text=True, timeout=60
+    )
 
 
 @pytest.mark.skipif(shutil.which("gzip") is None, reason="needs gzip")
@@ -497,31 +532,48 @@ def _hygiene():
     return hy
 
 
-def test_d8_3_release_local_data_not_in_current_is_archived_before_the_release_goes(tmp_path):
+def test_d8_3_release_local_data_is_counted_and_never_lost_because_apply_is_refused(tmp_path):
+    """Was ..._is_archived_before_the_release_goes. Since 2026-10-27 (AGENTS.md §24.12) the enforcer removes no
+    release, so no release-local file can die with one: the dry run still counts them, apply is refused, the
+    release and its files stay, and no archive is written."""
     hy = _hygiene()
     root = tmp_path / "portfolio-server"
-    old = _release(root, "000aaa-main-exact-phase2-20261001-000000",
-                   {"data/portfolios/reports/r.html": "same", "data/raw/x.csv": "only-old",
-                    "state/hermes.release-local/s.json": "old-state", "code.py": "c"}, 1_700_000_000)
+    old = _release(
+        root,
+        "000aaa-main-exact-phase2-20261001-000000",
+        {
+            "data/portfolios/reports/r.html": "same",
+            "data/raw/x.csv": "only-old",
+            "state/hermes.release-local/s.json": "old-state",
+            "code.py": "c",
+        },
+        1_700_000_000,
+    )
     _release(root, "0a0a0a-main-exact-phase2-20261010-000000", {"code.py": "c"}, 1_700_000_050)
-    cur = _release(root, "111bbb-main-exact-phase2-20261021-000000",
-                   {"data/portfolios/reports/r.html": "same", "data/raw/x.csv": "newer"}, 1_700_000_100)
+    cur = _release(
+        root,
+        "111bbb-main-exact-phase2-20261021-000000",
+        {"data/portfolios/reports/r.html": "same", "data/raw/x.csv": "newer"},
+        1_700_000_100,
+    )
     (root / "CURRENT").symlink_to(cur)
     plan = hy.plan_releases({"root": str(root), "glob": "*-main-exact-*", "keep_n": 1, "protect_symlinks": ["CURRENT"]})
     assert plan["delete"] == [str(old)] and plan["reference"] == str(cur)
     dry = hy.apply_release_deletes(plan, dry_run=True)
     assert dry["deleted"][0]["release_local"]["files"] == 2 and old.exists()
     res = hy.apply_release_deletes(plan, dry_run=False)
-    assert res["ok"] and not old.exists() and cur.exists()
-    (tar,) = list((tmp_path / "state/archive/file_prune/release_local_data").glob("*.tar.gz"))
-    with tarfile.open(tar) as tf:
-        names = sorted(tf.getnames())
-        assert names == ["data/raw/x.csv", "state/hermes.release-local/s.json"]
-        assert tf.extractfile("data/raw/x.csv").read() == b"only-old"
-    assert (tar.parent / "TRIPWIRE.jsonl").is_file()
+    assert res["ok"] and res["refused"] and res["status"] == hy.REFUSED_STATUS
+    assert res["deleted"] == [] and [i["path"] for i in res["refused_items"]] == [str(old)]
+    assert res["refused_items"][0]["release_local"]["files"] == 2
+    assert old.exists() and cur.exists()
+    assert (old / "data/raw/x.csv").read_text() == "only-old"
+    assert (old / "state/hermes.release-local/s.json").read_text() == "old-state"
+    assert not (tmp_path / "state/archive/file_prune/release_local_data").exists()
 
 
-def test_d8_3_failed_archive_keeps_the_release(tmp_path, monkeypatch):
+def test_d8_3_apply_never_reaches_the_archive_helper(tmp_path, monkeypatch):
+    """Was ..._failed_archive_keeps_the_release. The archive-then-unlink step existed only to precede a removal;
+    with removal refused (2026-10-27) it is never called -- a helper that raises proves it."""
     hy = _hygiene()
     root = tmp_path / "portfolio-server"
     old = _release(root, "000aaa-main-exact-phase2-20261001-000000", {"data/raw/x.csv": "only-old"}, 1_700_000_000)
@@ -535,8 +587,8 @@ def test_d8_3_failed_archive_keeps_the_release(tmp_path, monkeypatch):
     monkeypatch.setattr(ra, "archive_files_then_unlink", boom)
     plan = hy.plan_releases({"root": str(root), "glob": "*-main-exact-*", "keep_n": 1, "protect_symlinks": ["CURRENT"]})
     res = hy.apply_release_deletes(plan, dry_run=False)
-    assert not res["ok"] and old.exists() and (old / "data/raw/x.csv").read_text() == "only-old"
-    assert "release kept" in res["errors"][0]
+    assert res["ok"] and res["refused"] and res["errors"] == []
+    assert old.exists() and (old / "data/raw/x.csv").read_text() == "only-old"
 
 
 # ── D8.4: portfolio report rotation ───────────────────────────────────────────────────────────────
@@ -554,9 +606,14 @@ def test_d8_4_portfolio_news_history_is_archived_then_unlinked(tmp_path):
     assert Path(res["archive"]).parent.name == "portfolio_news_history"
 
 
-@pytest.mark.parametrize("mod,label", [("portfolio_weekly_report", "portfolio_weekly_reports"),
-                                       ("portfolio_monthly_report", "portfolio_monthly_reports"),
-                                       ("portfolio_monthly_synthesis", "portfolio_monthly_synthesis")])
+@pytest.mark.parametrize(
+    "mod,label",
+    [
+        ("portfolio_weekly_report", "portfolio_weekly_reports"),
+        ("portfolio_monthly_report", "portfolio_monthly_reports"),
+        ("portfolio_monthly_synthesis", "portfolio_monthly_synthesis"),
+    ],
+)
 def test_d8_4_report_rotation_archives_and_never_bare_unlinks(mod, label, tmp_path):
     import importlib
 
@@ -622,8 +679,14 @@ def test_gate_committed_registry_is_clean_including_retired_owners():
     assert crp.unregistered_deleters(REG) == []
     assert crp.retired_still_deleting(REG) == []
     retired = {e["id"] for e in REG["purge_paths"] if e["state"] == "RETIRED"}
-    assert retired == {"options_chain_snapshot_prune", "health_agent_snapshot_prune", "finviz_market_movers_prune",
-                       "hermes_score_history_retention"}
+    assert retired == {
+        "options_chain_snapshot_prune",
+        "health_agent_snapshot_prune",
+        "finviz_market_movers_prune",
+        "hermes_score_history_retention",
+        # 2026-10-27, AGENTS.md §24.12: the enforcer + weekly bundle remove nothing (apply refused; plan only)
+        "disk_hygiene_enforcer",
+    }
 
 
 def test_gate_fails_a_retired_owner_whose_script_still_deletes(tmp_path):
@@ -631,12 +694,15 @@ def test_gate_fails_a_retired_owner_whose_script_still_deletes(tmp_path):
     (tmp_path / "scripts" / "old_owner.py").write_text('cur.execute("DELETE FROM foo WHERE x")\n')
     (tmp_path / "scripts" / "shared.py").write_text("managed_purge(conn, table='t')\n")
     (tmp_path / "scripts" / "files.py").write_text("archive_prune(files, base_dir=d, label='l', writer='w')\n")
-    doc = {"purge_paths": [
-        {"id": "old", "state": "RETIRED", "scripts": ["scripts/old_owner.py"]},
-        {"id": "shared_retired", "state": "RETIRED", "scripts": ["scripts/shared.py"]},
-        {"id": "shared_live", "state": "MANAGED", "scripts": ["scripts/shared.py"]},
-    ]}
+    doc = {
+        "purge_paths": [
+            {"id": "old", "state": "RETIRED", "scripts": ["scripts/old_owner.py"]},
+            {"id": "shared_retired", "state": "RETIRED", "scripts": ["scripts/shared.py"]},
+            {"id": "shared_live", "state": "MANAGED", "scripts": ["scripts/shared.py"]},
+        ]
+    }
     errs = crp.retired_still_deleting(doc, root=tmp_path)
     assert len(errs) == 1 and "old_owner.py" in errs[0]
     assert crp.unregistered_deleters(doc, root=tmp_path) == [
-        "scripts/files.py: deletes/purges data but no purge_paths entry names it (register owner + class)"]
+        "scripts/files.py: deletes/purges data but no purge_paths entry names it (register owner + class)"
+    ]

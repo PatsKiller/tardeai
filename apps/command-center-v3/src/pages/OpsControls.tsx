@@ -1,13 +1,15 @@
 // Ops → Controls (feat/ops-controls-20261022): change how the system runs without touching files.
 // Builds against docs/ops/OPS_CONTROLS_API.md (GET/POST /api/v2/ops/controls/*). Operator-only: the server refuses
 // agent callers on every route. The server decides each change kind's direction:
-//   safe  (release-train STOP/pause, kill-switch engage) — one click: POST /requests {one_click:true}, poll to terminal;
+//   safe  (deploy STOP, kill-switch engage) — one click: POST /requests {one_click:true}, poll to terminal;
 //   risky (everything else) — 3 steps: (1) preview (dry run) → (2) passkey (WebAuthn) + typed phrase → (3) approve, poll.
 // Telegram is notification only; nothing here waits on it. While AGENTS.md 19.0.0 is not ACTIVE every action is
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
-import { useSearchParams } from 'react-router-dom'
+import CountTile from '../components/CountTile'
+import { dataApprovalTiles } from '../lib/measuredCount'
+import { Link, useSearchParams } from 'react-router-dom'
 import JobsHealth from '../components/JobsHealth'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
@@ -314,27 +316,30 @@ const count = (sec: { state?: string } | undefined, n: number | undefined) => (s
 
 function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [reason, setReason] = useState('')
-  const rt = d?.release_train
+  const rt = d?.deploy
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
   const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
-    <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
+    <Panel title="Deploys & kill switch">
+      <p style={muted} data-testid="ops-deploys-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Engage kill switch): one click, no passkey. Resume (clear the deploy STOP): passkey and the typed phrase. Emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
-      <Table label="Release train and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
-        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
-          <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
-            <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
-          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+      <Table label="Deploys and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
+        ['Deploys', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
+          <ChipRow><ActionButton state={d} kind="deploy.stop" text="STOP" params={safeParams} title="STOP host promote (deploy STOP)" run={run} /></ChipRow>,
+          <ChipRow><ActionButton state={d} kind="deploy.resume" text="Resume" params={relParams} title="Clear the deploy STOP / resume promote" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
+      <p style={muted} data-testid="ops-deploys-help">
+        Serving pin and last promote receipt:{' '}
+        <Link to="/system/releases" data-testid="ops-coord-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>System → Releases &amp; schedules</Link>
+        . Mergify queue lives on the Mergify dashboard. Emergency promote: host CLI under release-write naming the SHA.
+      </p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>
@@ -694,16 +699,6 @@ function FlagsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
 // Each row is one data-dictionary domain (config/data_source_authority.json). The server
 // (scripts/lib/data_domain_readiness.py) promotes each proposed row in memory with today's ceilings and runs the real
 // gates on it; src/lib/opsControlsData.ts turns that into words. Read-only: nothing on this tab approves a row.
-function Stat({ label: l, value, tone, tip, testId }: { label: string; value: ReactNode; tone: Tone; tip: string; testId: string }) {
-  const t = toneVars(tone)
-  return <Tooltip content={tip} as="div">
-    <div data-testid={testId} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '8px 12px', minWidth: 120, cursor: 'help' }}>
-      <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{l}</div>
-      <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: FONT.mono }}>{value}</div>
-    </div>
-  </Tooltip>
-}
-
 function FileListView({ fl, empty }: { fl?: FileList | null; empty: string }) {
   if (!fl || !fl.count) return <span style={{ color: TOKENS.text[2] }}>{empty}</span>
   return <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
@@ -769,6 +764,7 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
   const da = d?.data_approvals
   const rows = sortRows(da?.rows as DataRow[] | undefined)
   const sum = summarize(rows)
+  const tiles = dataApprovalTiles(rows, sum, da?.scan)
   const [filter, setFilter] = useState<DataFilter>('all')
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -780,10 +776,10 @@ function DataTab({ d }: { d: OpsControlsState | null }) {
       <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-data-explainer">{EXPLAINER} Hover or tap any underlined heading, number or badge for its meaning.</p>
       {legacy ? <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>This server sends only domain names and status; readiness needs the newer server.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }} role="group" aria-label="Data approvals summary">
-        <Stat testId="ops-data-approved" label="Approved" value={sum.approved} tone="success" tip={SUMMARY_TIP.approved} />
-        <Stat testId="ops-data-ready" label="Ready to approve" value={sum.ready} tone="info" tip={SUMMARY_TIP.ready} />
-        <Stat testId="ops-data-not-ready" label="Not ready" value={sum.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} />
-        <Stat testId="ops-data-findings" label="Findings" value={sum.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} />
+        <CountTile size="lg" testId="ops-data-approved" label="Approved" count={tiles.approved} tone="success" tip={SUMMARY_TIP.approved} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-ready" label="Ready to approve" count={tiles.ready} tone="info" tip={SUMMARY_TIP.ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-not-ready" label="Not ready" count={tiles.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} style={{ minWidth: 120 }} />
+        <CountTile size="lg" testId="ops-data-findings" label="Findings" count={tiles.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} style={{ minWidth: 120 }} />
       </div>
       {sum.pendingPr.length ? <p style={muted}>Operator-approved, waiting for its promotion PR: <span style={mono}>{sum.pendingPr.join(', ')}</span>. It binds only once that PR merges.</p> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter domains">

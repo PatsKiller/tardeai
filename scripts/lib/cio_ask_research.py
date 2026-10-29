@@ -33,6 +33,7 @@ Rails
 from __future__ import annotations
 
 import concurrent.futures as cf
+from contextvars import copy_context
 import hashlib
 import json
 import math
@@ -466,6 +467,7 @@ def normalize_request(
         "question": q,
         "asked_at": _iso(request.get("asked_at")) or _iso(_now()),
         "channel": str(request.get("channel") or "unknown"),
+        "thread_id": request.get("thread_id"),
         "mode": "fast" if depth in ("fast", "quick") else "deep",
         "subjects": subjects,
         "named_quantities": named,
@@ -481,6 +483,14 @@ class ResearchContext:
     env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
     now: datetime = field(default_factory=_now)
     state_root: Path | str | None = None
+
+
+class SourceFacts(list):
+    """A legacy-compatible fact list retaining a source's observed routing outcome."""
+
+    def __init__(self, facts=(), *, outcome=None):
+        super().__init__(facts)
+        self.outcome = dict(outcome or {})
 
 
 SourceFn = Callable[[Entity, ResearchContext], list[Fact]]
@@ -534,7 +544,9 @@ def gather_facts(
                 ent, spec, _ = pending.pop(fut)
                 elapsed = round(time.monotonic() - started, 3)
                 try:
-                    produced = list(fut.result() or [])
+                    raw = fut.result()
+                    outcome = dict(getattr(raw, "outcome", {}) or {})
+                    produced = list(raw or [])
                 except FactRejected as exc:
                     gaps.append(
                         {"subject": ent.label, "source": spec.name, "reason": "FACT_REJECTED", "detail": str(exc)[:200]}
@@ -551,6 +563,27 @@ def gather_facts(
                         }
                     )
                     runs.append({"source": spec.name, "subject": ent.label, "status": "error", "elapsed_s": elapsed})
+                    continue
+                if outcome and outcome.get("ok") is not True:
+                    reason = str(outcome.get("reason") or "SOURCE_REFUSED")
+                    gaps.append(
+                        {
+                            "subject": ent.label,
+                            "source": spec.name,
+                            "reason": reason,
+                            "provider": outcome.get("provider"),
+                            "receipt": outcome.get("receipt"),
+                        }
+                    )
+                    runs.append(
+                        {
+                            "source": spec.name,
+                            "subject": ent.label,
+                            "status": "disabled" if reason.upper() == "ENGINE_DISABLED" else "refused",
+                            "elapsed_s": elapsed,
+                            **outcome,
+                        }
+                    )
                     continue
                 kept = 0
                 for f in produced:
@@ -569,7 +602,14 @@ def gather_facts(
                 if not kept:
                     gaps.append({"subject": ent.label, "source": spec.name, "reason": "NO_DATA"})
                 runs.append(
-                    {"source": spec.name, "subject": ent.label, "status": "ok", "facts": kept, "elapsed_s": elapsed}
+                    {
+                        "source": spec.name,
+                        "subject": ent.label,
+                        "status": "no_data" if outcome and not kept else "ok",
+                        "facts": kept,
+                        "elapsed_s": elapsed,
+                        **outcome,
+                    }
                 )
             now_m = time.monotonic()
             for fut in [f for f, (_, _, d) in pending.items() if d <= now_m]:
@@ -611,11 +651,15 @@ def _db(ctx: ResearchContext) -> Callable[..., Any]:
 def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     """Saved shared CIO facts; source timestamps are never replaced by cache/write time."""
     from scripts.lib.data_broker.cio_company_facts import load_snapshot, for_security
+
     saved = for_security(load_snapshot(ctx.state_root), ent.symbol or "", ent.security_guid, now=ctx.now)
     facts = saved["company_facts"]
     out = []
-    citation = {"store": "cio_instrument_records", "field": "research.company_facts",
-                "security_guid": ent.security_guid}
+    citation = {
+        "store": "cio_instrument_records",
+        "field": "research.company_facts",
+        "security_guid": ent.security_guid,
+    }
     for key in ("company", "description", "sector", "industry", "catalyst"):
         value = facts.get(key) or {}
         text = value.get("headline") if key == "catalyst" else value.get("value")
@@ -626,21 +670,48 @@ def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
         claim = f"CIO stored {key}: {text or 'unavailable'}; source {value.get('source') or 'not on file'}"
         if reason or not at:
             claim += f"; gap {reason or 'source_observation_time_unavailable'}"
-        out.append(make_fact(source="internal.cio_record_research", family="internal", kind="company_evidence",
-                             subject_key=ent.subject_key, symbol=ent.symbol, claim=claim,
-                             as_of=at or ctx.now, citation={**citation, "source_url": value.get("url"),
-                             "source_observed_at": at, "clock_kind": value.get("clock_kind")
-                             or ("published_at" if value.get("published_at") else "observed_at"), "as_of_basis": "source_clock" if at else "availability_check"},
-                             field=key))
+        out.append(
+            make_fact(
+                source="internal.cio_record_research",
+                family="internal",
+                kind="company_evidence",
+                subject_key=ent.subject_key,
+                symbol=ent.symbol,
+                claim=claim,
+                as_of=at or ctx.now,
+                citation={
+                    **citation,
+                    "source_url": value.get("url"),
+                    "source_observed_at": at,
+                    "clock_kind": value.get("clock_kind")
+                    or ("published_at" if value.get("published_at") else "observed_at"),
+                    "as_of_basis": "source_clock" if at else "availability_check",
+                },
+                field=key,
+            )
+        )
     review = saved["review_lifecycle"]
-    out.append(make_fact(source="internal.cio_record_research", family="internal", kind="review_lifecycle",
-                         subject_key=ent.subject_key, symbol=ent.symbol,
-                         claim="CIO review lifecycle: " + json.dumps(review, sort_keys=True, default=str),
-                         as_of=review.get("conflict_resolved_at") or review.get("updated_at") or review.get("answered_at")
-                         or review.get("completed_at") or review.get("researching_at") or review.get("started_at")
-                         or review.get("requested_at") or review.get("created_at") or ctx.now,
-                         citation={"store": "cio_instrument_records", "field": "research.review_lifecycle",
-                                   "security_guid": ent.security_guid}))
+    review_at = (review.get("conflict_resolved_at") or review.get("updated_at")
+                 or review.get("answered_at") or review.get("completed_at")
+                 or review.get("researching_at") or review.get("started_at")
+                 or review.get("requested_at") or review.get("created_at"))
+    out.append(
+        make_fact(
+            source="internal.cio_record_research",
+            family="internal",
+            kind="review_lifecycle",
+            subject_key=ent.subject_key,
+            symbol=ent.symbol,
+            claim="CIO review lifecycle: " + json.dumps(review, sort_keys=True, default=str),
+            as_of=review_at or ctx.now,
+            citation={
+                "store": "cio_instrument_records",
+                "field": "research.review_lifecycle",
+                "security_guid": ent.security_guid,
+                "as_of_basis": "source_clock" if review_at else "availability_check",
+            },
+        )
+    )
     return out
 
 
@@ -1005,8 +1076,11 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     mod = _imp("lib.search_router", "scripts.lib.search_router")
     q = f"{ent.symbol or ent.label} {ctx.question}"[:240]
     resp = mod.route_query(q, caller="web_research", symbol=ent.symbol, kind="web", count=5, dry_run=ctx.dry_run)
-    out = []
-    for r in getattr(resp, "results", None) or []:
+    outcome = {
+        key: getattr(resp, key, None) for key in ("ok", "reason", "provider", "cache_hit", "reservation_id", "receipt")
+    }
+    out = SourceFacts(outcome=outcome)
+    for r in (getattr(resp, "results", None) or []) if outcome["ok"] is True else []:
         url = r.get("url")
         published = _iso(r.get("published_at"))
         out.append(
@@ -1021,19 +1095,30 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
                 citation={
                     "url": url,
                     "as_of_basis": "published_at" if published else "retrieved_at",
-                    "receipt": (getattr(resp, "receipt", None) or {}).get("receipt_id")
-                    if isinstance(getattr(resp, "receipt", None), dict)
-                    else None,
+                    "search_outcome": outcome,
+                    "receipt": outcome["receipt"],
                 },
             )
         )
     return out
 
 
+def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """The latest Ticker Prospectus from the CIO memory (security_research_spine.latest_prospectus)."""
+    from dataclasses import replace
+
+    mod = _imp("lib.prospectus.cio_memory", "scripts.lib.prospectus.cio_memory")
+    # Stored prospectuses mix public analysis with personal position/plan prose.
+    # Keep their full cited facts available locally, but do not forward this
+    # unpartitioned source to any panel provider (AGENTS §2A).
+    return [replace(f, egress="local_only") for f in mod.ask_facts(ent, ctx)]
+
+
 def default_sources() -> list[SourceSpec]:
     return [
         SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
+        SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
         SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
         SourceSpec("internal.thesis", "internal", _src_thesis, 6.0),
         SourceSpec("internal.catalysts", "internal", _src_catalysts, 6.0),
@@ -1259,7 +1344,9 @@ class CostGovernor:
         with self._lock:
             reason = "ADMITTED"
             ok = True
-            if not self._registered():
+            if _num(est_usd) is None or est_usd < 0 or _num(self.per_question_usd) is None or self.per_question_usd < 0:
+                ok, reason = False, "COST_CONFIGURATION_INVALID"
+            elif not self._registered():
                 ok, reason = False, "PROCESS_NOT_REGISTERED"
             elif self.admitted_usd + est_usd > self.per_question_usd + 1e-9:
                 ok, reason = False, "PER_QUESTION_CAP_EXCEEDED"
@@ -1291,33 +1378,64 @@ class PanelMember:
     call: Callable[[str], str]
     est_usd: float = 0.02
     timeout_s: float = 90.0
+    role: str = "reviewer"
+    process_id: str | None = None
 
 
-def default_panel() -> list[PanelMember]:
-    """DeepSeek (metered), Grok and ChatGPT (OAuth) through the existing governed generation helper, as the one
-    process ``PROCESS_ID``. With TRADEAI_LLM_VIA_BRIDGE on, the bridge walks the registry route instead. There is
-    no governed Claude process for this path, so Claude oversight is recorded as unavailable, not improvised."""
+def default_panel(
+    *, manual_trigger: bool = False, process_id: str | None = None, question_cap_usd: float = DEFAULT_PER_QUESTION_USD
+) -> list[PanelMember]:
+    """Opus primary plus separately registered, pinned independent critics.
 
-    def _lane(lane: str) -> Callable[[str], str]:
-        def call(prompt: str) -> str:
-            mod = _imp("lib.governed_cloud_generation", "scripts.lib.governed_cloud_generation")
-            text, _ = mod.generate_cloud(
+    Each paid role forwards a narrowing per-call ceiling. The question governor
+    admits their SUM before dispatch; native process/global caps still apply.
+    """
+    from . import cio_ask_provider_routes as routes
+
+    selected = process_id or (routes.MANUAL_PROCESS if manual_trigger else routes.SCHEDULED_PROCESS)
+    cap = max(0.0, float(question_cap_usd))
+    primary_ceiling = min(cap * 0.8, 0.25)  # unchanged standard promotional per-call ceiling
+    critique_ceiling = cap - primary_ceiling
+
+    def caller(role: str, pid: str, ceiling: float):
+        def call(prompt: str):
+            return routes.call_role(
                 prompt,
-                process_id=PROCESS_ID,
-                task_summary="ask_the_cio_research_panel",
-                lanes=(lane,),
+                role=role,
+                process_id=pid,
+                manual_trigger=manual_trigger if role == "primary" else False,
+                ceiling_usd=ceiling,
                 max_tokens=1500,
-                response_json=True,
-                timeout=90,
             )
-            return text
 
         return call
 
     return [
-        PanelMember("deepseek", _lane("deepseek-flash"), est_usd=0.01),
-        PanelMember("grok", _lane("grok"), est_usd=0.0),
-        PanelMember("chatgpt", _lane("chatgpt"), est_usd=0.0),
+        PanelMember(
+            "opus_primary",
+            caller("primary", selected, primary_ceiling),
+            primary_ceiling,
+            role="primary",
+            process_id=selected,
+        ),
+        PanelMember(
+            "deepseek",
+            caller("deepseek", routes.CRITIQUE_PROCESSES["deepseek"], critique_ceiling),
+            critique_ceiling,
+            process_id=routes.CRITIQUE_PROCESSES["deepseek"],
+        ),
+        PanelMember(
+            "grok",
+            caller("grok", routes.CRITIQUE_PROCESSES["grok"], 0.0),
+            0.0,
+            process_id=routes.CRITIQUE_PROCESSES["grok"],
+        ),
+        PanelMember(
+            "chatgpt",
+            caller("chatgpt", routes.CRITIQUE_PROCESSES["chatgpt"], 0.0),
+            0.0,
+            process_id=routes.CRITIQUE_PROCESSES["chatgpt"],
+        ),
     ]
 
 
@@ -1397,17 +1515,35 @@ def run_panel(
         if ok:
             admitted.append(m)
         else:
-            opinions.append({"member": m.name, "ok": False, "refusal": reason, "prompt_sha": prompt_sha})
+            opinions.append(
+                {
+                    "member": m.name,
+                    "role": m.role,
+                    "ok": False,
+                    "refusal": reason,
+                    "prompt_sha": prompt_sha,
+                    "evidence": {"actual_cost_usd": 0.0, "cost_usage_known": True, "request_sent": False},
+                }
+            )
     if not admitted:
         return opinions
     pool = cf.ThreadPoolExecutor(max_workers=len(admitted), thread_name_prefix="ask-panel")
-    futs = {pool.submit(m.call, prompt): m for m in admitted}
+    futs = {pool.submit(copy_context().run, m.call, prompt): m for m in admitted}
     try:
         deadline = time.monotonic() + max(m.timeout_s for m in admitted)
         done, not_done = cf.wait(list(futs), timeout=max(0.0, deadline - time.monotonic()))
         for fut in not_done:
             fut.cancel()
-            opinions.append({"member": futs[fut].name, "ok": False, "refusal": "TIMEOUT", "prompt_sha": prompt_sha})
+            opinions.append(
+                {
+                    "member": futs[fut].name,
+                    "role": futs[fut].role,
+                    "ok": False,
+                    "refusal": "TIMEOUT",
+                    "prompt_sha": prompt_sha,
+                    "evidence": {"actual_cost_usd": None, "cost_usage_known": False},
+                }
+            )
         for fut in done:
             m = futs[fut]
             try:
@@ -1416,20 +1552,44 @@ def run_panel(
                 opinions.append(
                     {
                         "member": m.name,
+                        "role": m.role,
                         "ok": False,
-                        "refusal": f"MODEL_ERROR:{type(exc).__name__}:{str(exc)[:120]}",
+                        "refusal": getattr(exc, "code", None) or f"MODEL_ERROR:{type(exc).__name__}",
                         "prompt_sha": prompt_sha,
+                        "evidence": getattr(exc, "evidence", {"actual_cost_usd": None, "cost_usage_known": False}),
                     }
                 )
                 continue
+            evidence = dict(getattr(raw, "evidence", {}) or {})
+            raw = getattr(raw, "text", raw)
+            if not evidence:
+                evidence = {"actual_cost_usd": None, "cost_usage_known": False, "legacy_unattributed": True}
             parsed = _parse_json(raw)
             if parsed is None:
                 # unparseable prose is still scanned so a sizing sentence is logged, never shown
                 strip_behavior_text(str(raw or ""), where=f"panel.{m.name}.raw", log=mbi_log)
-                opinions.append({"member": m.name, "ok": False, "refusal": "SCHEMA_INVALID", "prompt_sha": prompt_sha})
+                opinions.append(
+                    {
+                        "member": m.name,
+                        "role": m.role,
+                        "ok": False,
+                        "refusal": "SCHEMA_INVALID",
+                        "prompt_sha": prompt_sha,
+                        "evidence": evidence,
+                    }
+                )
                 continue
             clean = strip_behavior(parsed, where=f"panel.{m.name}", log=mbi_log)
-            opinions.append({"member": m.name, "ok": True, "prompt_sha": prompt_sha, "output": clean})
+            opinions.append(
+                {
+                    "member": m.name,
+                    "role": m.role,
+                    "ok": True,
+                    "prompt_sha": prompt_sha,
+                    "output": clean,
+                    "evidence": evidence,
+                }
+            )
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
     opinions.sort(key=lambda o: o["member"])
@@ -1689,7 +1849,16 @@ def synthesize(
             summ = ground_text(
                 str(subj.get("summary") or ""), values, where=f"panel.{op['member']}.summary", log=ground_log
             )
-            views.append({"member": op["member"], "stance": st or None, "summary": summ})
+            views.append(
+                {
+                    "member": op["member"],
+                    "role": op.get("role"),
+                    "stance": st or None,
+                    "summary": summ,
+                    "provider": (op.get("evidence") or {}).get("provider"),
+                    "model": (op.get("evidence") or {}).get("model"),
+                }
+            )
             for r in subj.get("risks") or []:
                 if isinstance(r, dict):
                     txt = ground_text(
@@ -1737,7 +1906,11 @@ def synthesize(
             }
         )
     model_refusals = [{"member": o["member"], "reason": o.get("refusal")} for o in opinions if not o.get("ok")]
-    partial = bool(model_refusals or refusals or any(g.get("reason") == "TIMEOUT" for g in gaps))
+    partial = bool(
+        model_refusals
+        or refusals
+        or any(g.get("reason") not in {"NO_DATA", "NOT_APPLICABLE_PRIVATE_ENTITY"} for g in gaps)
+    )
     sources = {}
     for f in facts:
         key = json.dumps(f.citation, sort_keys=True, default=str)
@@ -1762,12 +1935,23 @@ def synthesize(
         "facts": [f.to_dict() for f in facts],
         "gaps": list(gaps),
         "panel": [
-            {"member": o["member"], "ok": o.get("ok"), "refusal": o.get("refusal"), "prompt_sha": o.get("prompt_sha")}
+            {
+                "member": o["member"],
+                "role": o.get("role"),
+                "ok": o.get("ok"),
+                "refusal": o.get("refusal"),
+                "prompt_sha": o.get("prompt_sha"),
+                "evidence": o.get("evidence") or {},
+            }
             for o in opinions
         ],
         "mbi_strip_log": list(mbi_log),
         "ungrounded_log": ground_log,
-        "cost": governor.summary() if governor else None,
+        "cost": {
+            **(governor.summary() if governor else {}),
+            "actual_cost_usd": sum(float((o.get("evidence") or {}).get("actual_cost_usd") or 0) for o in opinions),
+            "cost_usage_known": all((o.get("evidence") or {}).get("cost_usage_known") is True for o in opinions),
+        },
         "source_runs": list(runs),
     }
     return answer
@@ -1832,16 +2016,32 @@ class MemoryAppender:
         if key in self._seen:
             receipt["skipped_duplicate"] += 1
             return
+        receipt["planned_count"] += 1
         try:
-            (self._sink or self._default_sink)(envelope)
-        except Exception as exc:  # noqa: BLE001 - a refused envelope is reported, never retried blindly
+            result = (self._sink or self._default_sink)(envelope)
+        except Exception as exc:  # noqa: BLE001
             receipt["refused"].append({"event_key": key, "reason": f"{type(exc).__name__}: {str(exc)[:160]}"})
             return
-        receipt["appended"] += 1
-        if not (self.apply or self._sink is not None):
-            # integrator dry run: nothing was written, so nothing is recorded as appended (a later apply must write)
+        if not self.apply:
             receipt["dry_run"] = True
             return
+        acknowledged = (
+            isinstance(result, Mapping)
+            and not result.get("error")
+            and result.get("dry_run") is not True
+            and result.get("ok") is not False
+            and result.get("accepted") is not False
+            and (
+                result.get("ok") is True
+                or result.get("accepted") is True
+                or (result.get("schema") == "CIOEnvelopeIntegration@v1" and bool(result.get("memory_version_id")))
+            )
+        )
+        if not acknowledged:
+            receipt["refused"].append({"event_key": key, "reason": "MEMORY_ACKNOWLEDGEMENT_MISSING"})
+            return
+        receipt["applied_count"] += 1
+        receipt["appended"] = receipt["applied_count"]  # compatibility: appended always means applied
         self._seen.add(key)
         if self.ledger_path:
             self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1870,6 +2070,9 @@ class MemoryAppender:
         receipt: dict[str, Any] = {
             "schema": MEMORY_SCHEMA,
             "appended": 0,
+            "planned_count": 0,
+            "applied_count": 0,
+            "dry_run": not self.apply,
             "skipped_duplicate": 0,
             "refused": [],
             "apply": self.apply,
@@ -1965,6 +2168,92 @@ class MemoryAppender:
         return obj
 
 
+def evidence_fingerprint(facts: Sequence[Fact], source_runs: Sequence[Mapping[str, Any]]) -> str:
+    rows = []
+    for fact in facts:
+        citation = fact.citation
+        observed = None if citation.get("as_of_basis") in {"retrieved_at", "availability_check"} else fact.as_of
+        rows.append(
+            [
+                fact.subject_key,
+                fact.source,
+                fact.kind,
+                fact.field,
+                fact.claim,
+                fact.value,
+                fact.unit,
+                observed,
+                citation.get("url"),
+                citation.get("store"),
+            ]
+        )
+    states = [
+        [
+            r.get("source"),
+            r.get("subject"),
+            r.get("status"),
+            r.get("reason") if r.get("status") not in {"ok", "no_data", "empty"} else None,
+        ]
+        for r in source_runs
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            {"facts": sorted(rows, key=str), "sources": sorted(states, key=str)},
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode()
+    ).hexdigest()
+
+
+def _evidence_binding(request: Mapping[str, Any], entities: Sequence[Entity], thread_id: str | None = None) -> dict:
+    return {
+        "question": " ".join(str(request.get("question") or "").split()).casefold(),
+        "thread_id": thread_id or request.get("thread_id"),
+        "entities": sorted((e.kind, e.subject_key or e.label.casefold()) for e in entities),
+    }
+
+
+def collect_current_evidence(
+    request: Mapping[str, Any],
+    *,
+    db_query=None,
+    sources=None,
+    identity_fn=default_identity_fn,
+    name_fn=default_name_fn,
+    issuer_guid_fn=default_issuer_guid_fn,
+    known_symbol=None,
+    now: datetime | None = None,
+    state_root=None,
+    thread_id: str | None = None,
+) -> dict[str, Any]:
+    """Gather evidence without panel/memory writes; the selected sources keep their governed read/search contract."""
+    if hasattr(request, "to_dict"):
+        request = request.to_dict()
+    req = normalize_request(request, known_symbol=known_symbol)
+    entities = [
+        resolve_entity(s, identity_fn=identity_fn, name_fn=name_fn, issuer_guid_fn=issuer_guid_fn)
+        for s in req["subjects"]
+    ]
+    chosen = list(default_sources() if sources is None else sources)
+    if req["mode"] == "fast":
+        chosen = [s for s in chosen if s.family in {"internal", "market", "street"}]
+    gathered = gather_facts(
+        entities,
+        chosen,
+        ResearchContext(question=req["question"], db_query=db_query, now=now or _now(), state_root=state_root),
+    )
+    return {
+        "request": req,
+        "binding": _evidence_binding(req, entities, thread_id),
+        "entities": entities,
+        "facts": gathered["facts"],
+        "gaps": gathered["gaps"],
+        "source_runs": gathered["runs"],
+        "fingerprint": evidence_fingerprint(gathered["facts"], gathered["runs"]),
+    }
+
+
 # --------------------------------------------------------------------------------------------------- orchestrator
 def run_research(
     request: Mapping[str, Any],
@@ -1977,6 +2266,10 @@ def run_research(
     origin: str = "in_process",
     include_answer_in_memory: bool = True,
     dry_run: bool = False,
+    manual_trigger: bool = False,
+    process_id: str = PROCESS_ID,
+    prepared_evidence: Mapping[str, Any] | None = None,
+    thread_id: str | None = None,
     identity_fn: Callable[[str], Mapping[str, Any]] = default_identity_fn,
     name_fn: Callable[[str], Optional[Mapping[str, Any]]] = default_name_fn,
     issuer_guid_fn: Callable[[str], Optional[str]] = default_issuer_guid_fn,
@@ -2005,8 +2298,18 @@ def run_research(
     srcs = list(sources if sources is not None else default_sources())
     if req["mode"] == "fast":
         srcs = [s for s in srcs if s.family in ("internal", "market", "street")]
-    members = list(panel if panel is not None else ([] if req["mode"] == "fast" else default_panel()))
-    governor = governor or CostGovernor()
+    governor = governor or CostGovernor(process_id=process_id)
+    members = list(
+        panel
+        if panel is not None
+        else (
+            []
+            if req["mode"] == "fast"
+            else default_panel(
+                manual_trigger=manual_trigger, process_id=process_id, question_cap_usd=governor.per_question_usd
+            )
+        )
+    )
     if dry_run:
         return {
             "schema": RUN_SCHEMA,
@@ -2022,8 +2325,21 @@ def run_research(
             },
             "would_write": ["AskAnswer (caller-owned output)", "CIO memory events (integrator)"],
         }
-    ctx = ResearchContext(question=req["question"], db_query=db_query, dry_run=False)
-    g = gather_facts(entities, srcs, ctx)
+    if prepared_evidence is not None:
+        prepared_binding = prepared_evidence.get("binding") or _evidence_binding(
+            prepared_evidence.get("request") or {}, prepared_evidence["entities"]
+        )
+        if prepared_binding != _evidence_binding(req, entities, thread_id):
+            raise ValueError("PREPARED_EVIDENCE_REQUEST_MISMATCH")
+        entities = list(prepared_evidence["entities"])
+        g = {
+            "facts": list(prepared_evidence["facts"]),
+            "gaps": list(prepared_evidence["gaps"]),
+            "runs": list(prepared_evidence["source_runs"]),
+        }
+    else:
+        ctx = ResearchContext(question=req["question"], db_query=db_query, dry_run=False)
+        g = gather_facts(entities, srcs, ctx)
     mbi_log: list[dict[str, Any]] = []
     opinions: list[dict[str, Any]] = []
     if members and any(e.subject_key for e in entities):
@@ -2034,7 +2350,8 @@ def run_research(
     )
     answer["entities"] = [e.to_dict() for e in entities]
     answer["origin"] = origin
-    answer["claude_oversight"] = "NOT_AVAILABLE: no governed Claude process for this path (not improvised)"
+    answer["claude_oversight"] = next((o.get("evidence") for o in opinions if o.get("role") == "primary"), None)
+    answer["evidence_fingerprint"] = evidence_fingerprint(g["facts"], g["runs"])
     if memory is not None:
         answer["memory_receipt"] = memory.append(
             entities, g["facts"], answer, origin=origin, include_answer=include_answer_in_memory
@@ -2150,7 +2467,14 @@ def _contract_prospectus(p: Mapping[str, Any], ent: Entity, facts: Sequence[Mapp
     if not changes:
         changes = [f"No sourced view-changer yet: the model panel did not answer ({refusals or 'no panel'})."]
     stances = [v.get("stance") for v in p.get("panel_views") or [] if v.get("stance") in STANCES]
-    stance = _STANCE_TO_CONTRACT.get(max(set(stances), key=stances.count)) if stances else None
+    primary = next(
+        (v for v in p.get("panel_views") or [] if v.get("role") == "primary" and v.get("stance") in STANCES), None
+    )
+    stance = (
+        _STANCE_TO_CONTRACT.get(primary["stance"] if primary else max(set(stances), key=stances.count))
+        if stances
+        else None
+    )
     sub_asof = [f["as_of"] for f in facts if f.get("subject_key") == ent.subject_key]
     return C.SecurityProspectus(
         entity=_contract_entity(ent),
@@ -2177,12 +2501,22 @@ def _contract_dissent(internal: Mapping[str, Any]) -> list[Any]:
             for member, st in sorted(pos.items()):
                 if tie or st != majority:
                     summ = (views.get(member) or {}).get("summary") or ""
-                    out.append(C.ModelDissent(model=member, view=f"{st}: {summ}".strip(": "), differs_on="stance"))
+                    out.append(
+                        C.ModelDissent(
+                            model=(views.get(member) or {}).get("model") or member,
+                            provider=(views.get(member) or {}).get("provider"),
+                            role=(views.get(member) or {}).get("role"),
+                            view=f"{st}: {summ}".strip(": "),
+                            differs_on="stance",
+                        )
+                    )
         else:
             for member, val in sorted(pos.items()):
                 out.append(
                     C.ModelDissent(
-                        model=member,
+                        model=(views.get(member) or {}).get("model") or member,
+                        provider=(views.get(member) or {}).get("provider"),
+                        role=(views.get(member) or {}).get("role"),
                         view=f"anchor {val}" if val is not None else "no sourced anchor",
                         differs_on=f"{d.get('horizon')} {d.get('case')} price anchor",
                     )
@@ -2267,7 +2601,14 @@ def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
     for o in internal.get("panel") or []:
         if o.get("ok"):
             sources.append(
-                C.Source(title=f"model panel: {o['member']}", kind="model", as_of=internal.get("answered_at"))
+                C.Source(
+                    title=f"model panel: {o['member']}",
+                    kind="model",
+                    as_of=internal.get("answered_at"),
+                    provider=(o.get("evidence") or {}).get("provider"),
+                    model=(o.get("evidence") or {}).get("model"),
+                    request_id=(o.get("evidence") or {}).get("request_id"),
+                )
             )
     mbi = list(internal.get("mbi_strip_log") or [])
     street_mean = {
@@ -2292,10 +2633,26 @@ def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
         ),
         model_dissent=_contract_dissent(internal),
         mbi_guard={"stripped": len(mbi), "findings": mbi},
-        cost_usd=float((internal.get("cost") or {}).get("admitted_projected_usd") or 0.0),
+        cost_usd=float((internal.get("cost") or {}).get("actual_cost_usd") or 0.0),
         produced_by="cio_ask_research",
         provenance={
             "phase": 9,
+            "evidence_fingerprint": internal.get("evidence_fingerprint"),
+            "cost_usage_known": (internal.get("cost") or {}).get("cost_usage_known") is True,
+            "cost_receipt": internal.get("cost"),
+            "native_request_count": len(
+                {
+                    str((o.get("evidence") or {}).get("reservation_id"))
+                    for o in internal.get("panel") or []
+                    if (o.get("evidence") or {}).get("reservation_id")
+                    and (o.get("evidence") or {}).get("request_sent") is not False
+                }
+            ),
+            "native_request_count_known": all(
+                (o.get("evidence") or {}).get("reservation_id")
+                or ((o.get("evidence") or {}).get("request_sent") is False)
+                for o in internal.get("panel") or []
+            ),
             "partial": internal.get("partial"),
             "refusals": internal.get("refusals"),
             "gaps": gaps,
@@ -2314,40 +2671,131 @@ def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
             "source_runs": internal.get("source_runs"),
             "claude_oversight": internal.get("claude_oversight"),
             "memory_receipt": internal.get("memory_receipt"),
+            # Canonical local ledger replay only. The shared egress contract
+            # removes this entire key before any future model context.
+            "memory_retry_payload": {
+                "entities": internal.get("entities") or [],
+                "facts": facts,
+                "request_id": internal.get("request_id"),
+            },
             "house_facts_keys": sorted((getattr(ctx, "house_facts", None) or {}).keys()),
         },
     )
     return answer
 
 
-def _default_deep_memory() -> Optional[MemoryAppender]:
-    """CIO memory for the deep path: integrator dry run unless CIO_ASK_MEMORY_APPLY=1 (operator, §26.6)."""
-    apply = os.environ.get("CIO_ASK_MEMORY_APPLY", "").strip() == "1"
+def _default_deep_memory(*, memory_apply: bool = False) -> Optional[MemoryAppender]:
+    """Default to a planned memory write; the approved caller supplies explicit apply intent."""
+    apply = memory_apply is True
     root = Path(os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT") or Path(__file__).resolve().parents[2])
     ledger = os.environ.get("CIO_ASK_MEMORY_LEDGER") or str(root / "data" / "cio" / "cio_ask_memory_ledger.jsonl")
     return MemoryAppender(ledger_path=ledger, apply=apply)
 
 
-def run_deep_research(ctx: Any, **kw: Any):
+def retry_research_memory(answer_or_payload: Any, *, apply: bool = False) -> dict[str, Any]:
+    """Replay the canonical fact envelopes only; never gather evidence or call a model.
+
+    Missing/corrupt replay data stays pending. Confirmed events use the same
+    memory ledger as the original attempt, so a partial retry skips prior writes.
+    """
+    if hasattr(answer_or_payload, "provenance"):
+        payload = (answer_or_payload.provenance or {}).get("memory_retry_payload")
+    elif isinstance(answer_or_payload, Mapping):
+        payload = (answer_or_payload.get("provenance") or {}).get("memory_retry_payload") or answer_or_payload.get(
+            "memory_retry_payload"
+        )
+        if payload is None and "entities" in answer_or_payload and "facts" in answer_or_payload:
+            payload = answer_or_payload
+    else:
+        payload = None
+    if not isinstance(payload, Mapping) or not all(k in payload for k in ("entities", "facts", "request_id")):
+        return {
+            "status": "pending",
+            "ok": False,
+            "not_measured": True,
+            "reason": "MEMORY_REPLAY_PAYLOAD_MISSING",
+            "planned_count": 0,
+            "applied_count": 0,
+            "appended": 0,
+        }
+    try:
+        if not isinstance(payload["request_id"], str) or not payload["request_id"].strip():
+            raise ValueError("request id missing")
+        entities = [_entity_from_dict(e) for e in payload["entities"]]
+        fields = set(Fact.__dataclass_fields__)
+        facts = [make_fact(**{k: v for k, v in f.items() if k in fields}) for f in payload["facts"]]
+        keys = {e.subject_key for e in entities if e.subject_key}
+        if any(f.subject_key not in keys for f in facts):
+            raise ValueError("fact has no resolved entity")
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        return {
+            "status": "pending",
+            "ok": False,
+            "not_measured": True,
+            "reason": "MEMORY_REPLAY_PAYLOAD_INVALID",
+            "error_type": type(exc).__name__,
+            "planned_count": 0,
+            "applied_count": 0,
+            "appended": 0,
+        }
+    try:
+        memory = _default_deep_memory(memory_apply=apply is True)
+        receipt = memory.append(
+            entities, facts, {"request_id": payload["request_id"]}, include_answer=False, origin="memory_retry"
+        )
+    except Exception as exc:  # noqa: BLE001 -- persistence failure keeps sync pending
+        return {
+            "status": "pending",
+            "ok": False,
+            "not_measured": True,
+            "reason": "MEMORY_WRITER_UNAVAILABLE",
+            "error_type": type(exc).__name__,
+            "planned_count": len(facts),
+            "applied_count": 0,
+            "appended": 0,
+        }
+    complete = not receipt["refused"] and receipt["applied_count"] + receipt["skipped_duplicate"] == len(facts)
+    receipt.update(
+        status="applied" if apply and complete else "pending" if apply else "planned",
+        ok=apply is True and complete,
+        not_measured=False,
+        expected_count=len(facts),
+    )
+    return receipt
+
+
+def run_deep_research(
+    ctx: Any, *, manual_trigger: bool = False, process_id: str | None = None, memory_apply: bool = False, **kw: Any
+):
     """The contract entry point (``DEEP_RESEARCH_ENTRYPOINT``): ``AskResearchContext`` -> ``AskAnswer@v1``.
 
     The per-question cap is ``ctx.budget.max_usd`` under ``ctx.budget.process_id``. Sourced facts are appended to
     CIO memory as ``ask.source``; the core appends ``ask.answer_version`` itself (no duplicate). Test seams
     (sources, panel, governor, memory, identity_fn, ...) pass through ``kw`` to ``run_research``.
     """
+    from scripts.lib.cio_ask_provider_routes import native_route_admission
+
     C = _require_contract()
     req = ctx.request
     budget = getattr(ctx, "budget", None)
+    selected_process = (
+        process_id or getattr(ctx, "provider_process_id", None) or str(getattr(budget, "process_id", "") or PROCESS_ID)
+    )
+    kw.setdefault("manual_trigger", manual_trigger is True)
+    kw.setdefault("thread_id", ctx.thread_id)
+    kw.setdefault("process_id", selected_process)
     kw.setdefault(
         "governor",
         CostGovernor(
             per_question_usd=float(getattr(budget, "max_usd", 0.0) or 0.0),
-            process_id=str(getattr(budget, "process_id", "") or PROCESS_ID),
+            process_id=selected_process,
+            check_fn=native_route_admission,
         ),
     )
     if "memory" not in kw:
-        kw["memory"] = _default_deep_memory()
-    internal = run_research(req.to_dict(), origin="in_process", include_answer_in_memory=False, **kw)
+        kw["memory"] = _default_deep_memory(memory_apply=memory_apply)
+    kw.setdefault("origin", "in_process")
+    internal = run_research(req.to_dict(), include_answer_in_memory=False, **kw)
     answer = to_contract_answer(internal, ctx)
     problems = C.validate_answer(answer)
     if problems:
@@ -2370,6 +2818,9 @@ __all__ = [
     "ResearchContext",
     "SourceSpec",
     "gather_facts",
+    "SourceFacts",
+    "collect_current_evidence",
+    "evidence_fingerprint",
     "default_sources",
     "strip_behavior",
     "strip_behavior_text",
@@ -2388,4 +2839,5 @@ __all__ = [
     "private_entity_guid",
     "to_contract_answer",
     "run_deep_research",
+    "retry_research_memory",
 ]

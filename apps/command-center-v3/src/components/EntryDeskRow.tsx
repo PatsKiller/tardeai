@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { deriveTradeAiRating, ratingLabel } from '../lib/manualTosRating'
 import { exitLadder as ladderCalc, planWarnings as warningsCalc, MONITOR_RULES } from '../lib/exitLadder'
 import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
+import { protectiveStopLine } from '../lib/draftOrderView'
 import EntryDeskDiligenceStrip from './EntryDeskDiligenceStrip'
 import type { SetupRow, SourceKind } from '../pages/ManualTosDesk'
 import { desk } from '../lib/proposalDeskTheme'
@@ -48,6 +49,8 @@ function decisionText(r: SetupRow) {
   return r.source === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION PENDING'
 }
 function setupLine(r: SetupRow) {
+  // a protective stop draft reads as what it is: SELL … STOP … (side/type from the draft, lib/draftOrderView)
+  if (r.protective) return protectiveStopLine({ side: r.side, qty: r.qty, symbol: r.symbol, orderType: r.entryType, price: r.entryPrice, tif: r.tif, trailPct: r.trailPct })
   const price = r.entryPrice != null ? ` ${r.entryPrice.toFixed(2)}` : ''
   const exits = [
     r.stop != null ? `STOP ${r.stop.toFixed(2)}` : null,
@@ -100,7 +103,8 @@ export default function EntryDeskRow({
   const rating = deriveTradeAiRating(r)
   const sz = sizing(r, account)
   const ladder = ladderCalc(r.entryPrice, r.stop, r.targets?.[0]?.price ? Number(r.targets[0].price) : null, streetTarget)
-  const warns = warningsCalc({
+  // Entry-plan warnings ("NO STOP — risk undefined", R:R, ATR) describe a BUY plan; a protective stop draft IS the stop.
+  const warns = r.protective ? [] : warningsCalc({
     entry: r.entryPrice, stop: r.stop,
     planTarget: r.targets?.[0]?.price ? Number(r.targets[0].price) : null,
     rr: sz.rr, pctCash: sz.pctCash, streetTarget,
@@ -210,7 +214,9 @@ export default function EntryDeskRow({
           {r.reason && <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.reason).slice(0, 200)}</div>}
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>
-            {r.entryPrice != null && <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>}
+            {r.entryPrice != null && (r.protective
+              ? <span data-testid="entry-desk-protective" style={{ color: C.red }}>protective {r.side} {r.entryType.replace(/_/g, ' ')} {r.trailPct != null ? `trail ${r.trailPct}%` : r.entryPrice.toFixed(2)}</span>
+              : <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>)}
             {r.stop != null && <span style={{ color: C.red }}>stop {r.stop.toFixed(2)}</span>}
             {r.targets.map((t: any, i: number) => (
               <span key={i} style={{ color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>
@@ -280,6 +286,8 @@ export default function EntryDeskRow({
           <button
             title="Copy Schwab ticket drafts — no API submit"
             onClick={() => {
+              // A protective stop draft copies its own SELL line, never the BUY-entry ladder tickets.
+              if (r.protective) { doCopy(`# ${setupLine(r)}\n# copy only: this desk sends nothing\n`, 'schwab_tickets'); return }
               const tk = schwabTicketsFromLadder({ symbol: r.symbol, qty: r.qty, entry: r.entryPrice, stop: r.stop, ladder })
               if (tk.length) doCopy(ticketsText(tk), 'schwab_tickets')
             }}

@@ -2153,7 +2153,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
   return (
     <DeskPage title="CIO Desk" purpose="One status from one evaluation. Capital: every dollar counted once." sources={[
-      { id: 'cio-status', label: 'CIO evaluations', asOf: pageTruth?.cio_status?.as_of, laneIds: ['cio-decision-engine'], gap: pageTruth?.cio_status?.gap?.reason },
+      // Projected on request from stored evidence; cio-decision-engine is PAUSED since 2026-08-08 and is not its producer.
+      { id: 'cio-status', label: 'CIO evaluations', asOf: pageTruth?.cio_status?.as_of, gap: pageTruth?.cio_status?.gap?.reason },
       { id: 'holdings', label: 'Holdings', asOf: pageTruth?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: pageTruth?.portfolio?.gap?.reason },
     ]} decisionGap="Review decisions on the Decisions tab.">
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">

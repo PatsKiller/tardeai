@@ -24,17 +24,10 @@ export type MainCi = { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'OK' | 'NOT_GR
   checked_at?: string | null; age_s?: number | null; stale?: boolean; checks?: number; success?: number
   not_success?: Array<{ name?: string; conclusion?: string | null }>
   workflows?: Array<{ name?: string; state?: string; url?: string | null; updated_at?: string | null }> }
-export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds: number; role: string | null; enabled: boolean; note: string | null
-  slot: string; state: 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null; last_shadow_request_at: string | null; last_shadow_receipt_state: string | null
-  last_shadow?: LastShadow | null }
-// The newest shadow tick's ShadowTrainReport@v1 summary (release_train_window_view.shadow_coverage). Absent values
-// stay null: a missing count is never shown as 0.
-export type LastShadow = { request_id: string | null; outcome: string | null; reason: string | null; queue_open: number | null
-  queue_complete: boolean | null; riding: number | null; candidate_sha: string | null; train_id: string | null; has_report: boolean }
-export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
-  stop: { state?: string; effective_stop?: boolean } | null; policy_version: string | null; manual_path: string; merge_freeze?: MergeFreeze | null }
 // The Release Train merge freeze (scripts/lib/release_train_freeze.py, AGENTS.md §25.3): from 30 min before a window
 // until its train is terminal only the train merges to main. frozen null = could not be computed (never shown as open).
+// Kept as a standalone helper after the release-train windows section was retired 2026-10-27 (CONFLICT-RESOLVED-20261029:
+// freezeChip and its types are the merge-freeze projection; the windows/queue sections they once attached to are gone).
 export type MergeFreezeReason = { code: string; detail?: string | null; window_id?: string | null; starts_at?: string | null
   freeze_from?: string | null; train_id?: string | null; stale?: boolean }
 export type MergeFreeze = { frozen: boolean | null; summary: string; reasons: MergeFreezeReason[]; warnings: string[]; receipts: string | null
@@ -47,12 +40,6 @@ export function freezeChip(f: MergeFreeze | null | undefined): { text: string; t
   if (f.next_freeze) return { text: `merge freeze from ${etTime(f.next_freeze.freeze_from)} ET`, tone: 'neutral' }
   return { text: 'no merge freeze scheduled', tone: 'neutral' }
 }
-export type QueueRow = { pr_number?: number; title?: string | null; state?: string; class?: string | null; census_bucket?: string | null; [k: string]: unknown }
-export type OpenPr = { pr: number; title: string | null; bucket: string; why_not_riding: string; riding: boolean }
-export type Queue = { store: { freshness?: string; reason?: string | null; as_of?: string | null; total?: number | null; rows?: QueueRow[] | null }
-  census: { freshness?: string; reason?: string | null; as_of?: string | null; open_prs?: number | null; status?: string | null
-    alert?: string | null; attempt?: { last_attempt?: { requested_at?: string | null; mode?: string; state?: string } | null; next_fire_at?: string | null } | null }
-  open_prs: OpenPr[] }
 export type ReleaseRow = { receipt: string; mode: string | null; at: string | null; sha: string | null; short_sha?: string | null; sha_basis: string; release_name?: string | null
   serving?: boolean; prs: number[] | null; prs_reason: string | null; verify: { ok?: boolean; health?: string; rolled_back?: boolean; readback_errors?: string[] } | null
   verify_reason: string | null; error?: string }
@@ -70,12 +57,12 @@ export type Timeline = { horizon_hours: number; from: string; to: string; rows: 
 
 export type ReleasesSchedulesWire = {
   schema?: string; generated_at?: string; status?: string; kpis?: Kpi[]
-  serving?: Section<Serving>; next_release?: Section<NextRelease>; windows?: Section<Windows>; queue?: Section<Queue>; history?: Section<{ releases: ReleaseRow[]; receipts_total: number }>
+  serving?: Section<Serving>; next_release?: Section<NextRelease>; history?: Section<{ releases: ReleaseRow[]; receipts_total: number }>
   release_errors?: Section<{ rows: ReleaseError[]; window_hours: number; not_covered: string }>; n8n_today?: Section<LedgerToday>; timeline?: Section<Timeline>
   stop?: { state?: string; effective_stop?: boolean; latched_at?: string | null; reason?: string | null }
 }
 
-export const SECTION_KEYS = ['serving', 'next_release', 'windows', 'queue', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
+export const SECTION_KEYS = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
 export type SectionKey = (typeof SECTION_KEYS)[number]
 
 export function ageText(seconds: number | null | undefined): string {
@@ -138,10 +125,8 @@ export function kpiDisplay(k: Kpi | undefined, current: boolean): { value: strin
   return { value, detail: k.detail ?? '', tone: k.freshness === 'STALE' ? 'warning' : k.tone }
 }
 
-export const WINDOW_TONE: Record<string, Tone> = { LIVE: 'success', SHADOW: 'info', OFF: 'neutral', STOPPED: 'danger' }
 export const STAGE_TONE: Record<string, Tone> = { LIVE: 'success', CUTOVER: 'success', CANARY: 'info', SHADOW: 'ai', PAUSED: 'warning', 'NOT LIVE': 'neutral', UNKNOWN: 'warning' }
 export function stageTone(stage: string | null | undefined): Tone { return STAGE_TONE[String(stage ?? 'UNKNOWN')] ?? 'neutral' }
-export function windowTone(state: string | null | undefined): Tone { return WINDOW_TONE[String(state ?? '')] ?? 'warning' }
 
 export function prList(prs: number[] | null | undefined, reason: string | null | undefined, max = 12): string {
   if (!Array.isArray(prs)) return reason ? `UNAVAILABLE · ${reason}` : 'UNAVAILABLE'
@@ -180,24 +165,4 @@ export function ciLabel(ci: MainCi | null | undefined): string {
   if (!ci) return 'UNAVAILABLE'
   if (ci.state === 'UNAVAILABLE' || ci.age_s == null) return ci.state
   return `${ci.state} · ${ageText(ci.age_s)}${ci.stale ? ' (stale)' : ''}`
-}
-
-/** The queue-store chip. While the census is not OK its count must not read as "nothing is waiting". */
-export function queueStoreText(q: Queue): string {
-  if (q.store.freshness !== 'OK') return `queue store UNAVAILABLE · ${q.store.reason ?? ''}`
-  const n = `${countOrUnavailable(q.store.total)} queued`
-  return q.census.freshness === 'OK' ? `queue store ${n}` : `queue store ${n} (explicit train queue only) · open PRs UNKNOWN`
-}
-
-// One line for a window card: what the newest shadow train decided, on how much of the queue, and what it built.
-// e.g. "shadow: NO_OP · NOTHING_ELIGIBLE · queue 49 open · 0 riding". Unknown counts read "?" (never 0).
-export function shadowLine(x: LastShadow): string {
-  const parts = [`shadow: ${x.outcome ?? 'no receipt'}`]
-  if (x.reason) parts.push(x.reason)
-  if (x.has_report) {
-    parts.push(`queue ${x.queue_open ?? '?'} open${x.queue_complete === false ? ' (INCOMPLETE)' : ''}`)
-    parts.push(`${x.riding ?? '?'} riding`)
-  }
-  if (x.candidate_sha) parts.push(`candidate ${x.candidate_sha.slice(0, 9)}`)
-  return parts.join(' · ')
 }

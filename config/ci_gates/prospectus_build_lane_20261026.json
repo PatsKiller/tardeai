@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_build_lane_20261026",
+  "files": [
+    "tests/test_prospectus_build_lane_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_BUILD_LANE_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_BUILD_LANE_20261026 — n8n-native lane prospectus-build at SHADOW (dispatch dry_run, allowlist live_arg null, flock, no broker env), health contract awaiting owner review, import closure free of sender / broker / order."
+  ]
+}

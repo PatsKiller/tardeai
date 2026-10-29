@@ -58,3 +58,28 @@ the captured card inputs plus W1's confirmed identity/holdings snapshot.
 PR 2 owns ledger, lifecycle, operator API authentication, CIO memory/context and
 review-completion integration. W8 owns the separate inactive lane declaration;
 W9/W7/W4 own 412/390 actual-tap fixture proofs. This backend PR changes no UI.
+
+<!-- moved from AGENTS.md 25.0.1 lines 6185-6203 -->
+## Moved from AGENTS.md (25.0.1 lines 6185-6203)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **One engine decides what is a conflict.** Any disagreement between two inputs about one subject (a security, a metric, a job, a
+  position) is evaluated only by the conflict engine (`scripts/lib/conflicts`) under the operator-approved rulebook
+  (`config/conflict_rulebook.json`). No page, endpoint, agent or sender computes or announces its own conflicts. *Cause (§20):
+  2026-10-24, 15 Watch flags of which 9 were noise and none could ever clear; three portfolio totals; operator, "a durable conflict
+  resolution engine … used in other parts of the site".*
+- **Agreement and superseded inputs never flag.** Inputs that call for the same action under the subject's profile, or that are
+  older than the canonical value by more than their source's limit, are shown as agreeing or superseded, never as conflicts.
+  *Cause (§20): WATCH vs AVOID on names not held, and 52–79-day-old reviews, were shown as conflicts.*
+- **Gates are not conflicts.** A hard check (Trade AI deterministic checks, wash-sale in taxable accounts, earnings blackout) is
+  shown as "Blocked: <check>" and clears itself when the check passes. *Cause (§20): FATN/ANET/SMCI were flagged as conflicts.*
+- **The owner decides real conflicts, with a recorded reason.** The CIO decides stance conflicts (its review writes a
+  ConflictDecision and its new stance); the operator decides protection (stop awaiting fill, pending, none), policy breaches,
+  money mismatches between pages, data errors and flapping conflicts. An agent never picks a side itself.
+  *Cause (§20): the "Resolve conflict" button queued reviews whose completions never cleared anything.*
+- **The CIO is always informed.** Every conflict state change about a security is written to CIO memory (one contribution per
+  change), and open conflicts are inputs to the CIO's reviews, briefs, Ask answers and conviction steps. *Cause (§20): operator
+  2026-10-24, "is the CIO notified … baked into this?"*
+- **Safety, protection and policy findings are never resolved automatically.** Kill switch, AUTO BLOCKED, stop states and policy
+  limits are only ever shown and routed to the operator. *Cause (§20): §0 rule 1 and the 2026-10-14 SPCX stop incident.*

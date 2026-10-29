@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_cio_memory_20261026",
+  "files": [
+    "tests/test_prospectus_cio_memory_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_CIO_MEMORY_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_CIO_MEMORY_20261026 — every finished Ticker Prospectus version (ready or partial) lands in the CIO-owned SecurityResearchSpine through upsert_research_memory (registry GUID required, thesis tip untouched) plus a research_write_path SHADOW receipt; idempotent by (symbol, version); newer versions supersede, history kept; surfaced by Ask the CIO (internal.prospectus facts), the CIO desk subject dossier and the thesis overlay; backfill dry-run by default. Synthetic tickers; identity registry stubbed; temp state root only."
+  ]
+}

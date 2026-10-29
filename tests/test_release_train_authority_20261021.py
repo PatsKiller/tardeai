@@ -1023,6 +1023,31 @@ def test_libraries_are_wired_into_nothing():
         # 19.0.0). It never builds a HostCliProof and never calls change_scope / revoke (still NOT_SUPPORTED).
         "scripts/lib/ops_controls_core.py",
         "scripts/lib/ops_controls_api.py",
+        # Ops → Controls Run now (feat/train-run-now-incubator-wt; AGENTS.md 22.0.0 PROPOSED §25.3):
+        # release_train_run_now sets TrainConfig.forced_confirmed after a passkey + phrase proof, then
+        # runs the controller. Read/write of control + capability only through existing libraries;
+        # POLICY_NOT_ACTIVE until 22.0.0 is ratified. Never arms, merges or promotes on its own.
+        "scripts/lib/release_train_run_now.py",
+        # Mergify cutover soft-add (AGENTS 24.0.0 PROPOSED): deploy-on-main reuses the STOP latch and
+        # GlobalReleaseLock from release_control only — never capability, delegation, or train merge.
+        "scripts/lib/deploy_on_main.py",
+        # deploy-on-main autonomy (2026-10-27): the poller's deploy-delegation binding reads the STOP latch and the
+        # GlobalReleaseLock name (read-only) to verify the poller holds the lock — never capability or train merge.
+        "scripts/lib/deploy_delegation_binding.py",
+        "scripts/emergency_manual_promote.sh",
+        "scripts/deploy_on_main_poll.py",
+        "config/systemd/user/tradeai-deploy-on-main.service",
+        "config/systemd/user/tradeai-deploy-on-main.timer",
+        # Merge hold list (AGENTS.md §25.10 held classes, 2026-10-27): names release_control.py as a held path so a
+        # change to the STOP latch merges only by the operator. A path in a hold list is not a caller.
+        "config/merge_hold_paths.json",
+        # CI gate registration for the resume-settle tests (fix/release-stop-settle-20261028): names the test
+        # file, which names release_control. A gate list is not a caller.
+        "config/ci_gates/release_control_resume_settle_20261028.json",
+        # Shard duration hints (generated from the green full-suite run's cio-timings artifact): its keys are
+        # test-file paths, so a test named test_release_control_resume_settle_20261028.py appears as a key. A
+        # filename in a generated timing map is not a caller or a wire-in; the test file itself is allowed below.
+        "config/ci_shard_duration_hints.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
