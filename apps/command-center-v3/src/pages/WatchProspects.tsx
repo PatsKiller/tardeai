@@ -19,7 +19,7 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
-import { CioReviewPanel, ReviewStateChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
+import { CioReviewPanel, ReviewStateChip, CioMemoryChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
 import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
@@ -223,6 +223,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       </div>}
       <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
       <ReviewStateChip state={currentReviewState(r, cio)} testId="watch-row-review-state" compact />
+      <CioMemoryChip state={currentReviewState(r, cio)} testId="watch-row-cio-memory" />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
     market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}

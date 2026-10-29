@@ -375,3 +375,16 @@ export function cioReviewNote(r: Pick<ProspectRow, 'conflicts' | 'next_action'>)
   if (r.next_action?.kind === 'cio_missing') return `Watch: no CIO view — ${r.next_action.gap?.reason || r.next_action.reason}`.slice(0, 240)
   return `Watch: ${r.next_action?.reason || 'review requested'}`.slice(0, 240)
 }
+
+export type CioMemoryState = { tone: 'success' | 'info' | 'warning' | 'neutral'; label: string } | null
+
+/** Whether this symbol's CIO review is linked into the canonical CIO memory. Read-only: describes
+ *  the record's linkage state (from scripts/lib/data_broker/watch_review_status.presentation_state),
+ *  never writes, re-runs, or calls the broker. */
+export function cioMemoryState(s: ReviewState | null | undefined): CioMemoryState {
+  if (!s || s.status === 'none') return null
+  if (s.publication_verified) return { tone: 'success', label: 'tracked in CIO memory' }
+  if (s.research_link_verified) return { tone: 'info', label: 'research recorded · CIO decision pending' }
+  if (s.status === 'answered') return { tone: 'warning', label: 'research published · CIO linkage pending' }
+  return { tone: 'neutral', label: 'not yet linked to CIO memory' }
+}
