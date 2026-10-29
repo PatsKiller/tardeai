@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_control_resume_settle_20261028",
+  "files": [
+    "tests/test_release_control_resume_settle_20261028.py"
+  ],
+  "comment": [
+    "2026-10-28: the release-train controller that settled a STOP was retired 2026-10-27, so release_control_cli.py resume",
+    "refused STOP_NOT_SETTLED after every stop. resume(settle_if_idle=True) settles as the verified operator only while it",
+    "holds the GlobalReleaseLock the deploy_on_main poller holds for a whole deploy; a held lock keeps the refusal."
+  ]
+}

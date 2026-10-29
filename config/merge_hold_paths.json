@@ -53,12 +53,15 @@
     {
       "id": "agents_policy",
       "source": "AGENTS.md §20, §25.10 exclusions",
-      "reason": "Agent policy text and adapters are operator-ratified",
+      "reason": "Agent policy text and every tool adapter (operator-ratified; §0 is byte-identical in the adapters)",
       "globs": [
         "**/AGENTS.md",
         "AI_WORK_POLICY.md",
         "CLAUDE.md",
-        "GEMINI.md"
+        "GEMINI.md",
+        ".cursor/rules/**",
+        ".github/copilot-instructions.md",
+        ".goosehints"
       ]
     },
     {
@@ -71,13 +74,17 @@
         "scripts/hooks/**",
         "bin/guard",
         "scripts/lib/guard*",
-        "scripts/guard_*"
+        "scripts/guard_*",
+        "install-guardrails.sh",
+        "scripts/install_ai_work_policy.sh",
+        "scripts/agent_claim_precommit.sh",
+        "scripts/lib/tradeai_push_budget.py"
       ]
     },
     {
       "id": "merge_deploy_control",
       "source": "AGENTS.md §25.10 (Mergify + deploy_on_main + emergency), §17",
-      "reason": "The merge go-signal, the Mergify config, the promote poller and the release grant binding",
+      "reason": "The merge go-signal, the Mergify config, CI workflows and repo settings under .github/, the promote poller, the STOP/lock latch (release_control) and the release grant binding",
       "globs": [
         ".mergify.yml",
         "config/merge_hold_paths.json",
@@ -97,7 +104,9 @@
         "scripts/lib/deploy_delegation_binding.py",
         "scripts/release_grant_preflight.py",
         "config/systemd/user/tradeai-deploy-on-main.*",
-        "config/systemd/user/tradeai-pr-merge-*"
+        "config/systemd/user/tradeai-pr-merge-*",
+        ".github/**",
+        "scripts/lib/release_control.py"
       ]
     }
   ],

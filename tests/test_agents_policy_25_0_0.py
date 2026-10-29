@@ -20,10 +20,28 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-AIWP = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
-ADAPTERS = [ROOT / "CLAUDE.md", ROOT / ".cursor/rules/00-tradeai-work-policy.mdc",
-            ROOT / ".github/copilot-instructions.md", ROOT / ".goosehints"]
+sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402
+
+# 26.0.0 consolidated AGENTS.md again (version tags dropped from headings, §0 rules 2, 4 and 6 rewritten in every
+# adapter, AI_WORK_POLICY.md aligned): from 26.0.0 on these pins read the frozen 25.0.1 copies, and the 26.0.0 pins
+# live in tests/test_agents_policy_26_0_0.py.
+AGENTS = read_pre_26("AGENTS.md")
+AIWP = read_pre_26("AI_WORK_POLICY.md")
+
+
+class _Frozen:
+    """An adapter as 25.x knew it (``name`` and ``read_text`` like the Path it replaces)."""
+
+    def __init__(self, rel: str) -> None:
+        self.rel, self.name = rel, Path(rel).name
+
+    def read_text(self, encoding: str = "utf-8") -> str:
+        return read_pre_26(self.rel)
+
+
+ADAPTERS = [_Frozen("CLAUDE.md"), _Frozen(".cursor/rules/00-tradeai-work-policy.mdc"),
+            _Frozen(".github/copilot-instructions.md"), _Frozen(".goosehints")]
 VH = AGENTS.index("\n# Version history")
 BINDING = AGENTS[:VH]
 
@@ -55,8 +73,9 @@ def _checker():
 # ---------------------------------------------------------------------------------------------- header / layout
 def test_header_is_25_0_0_proposed_or_active():
     cb = _control()
-    assert cb["Policy-Version"] == "25.0.0"
-    assert cb["Supersedes"] == "24.0.0"
+    # 25.0.x PATCHes (e.g. 25.0.1, the generated §7A table refresh) keep the 25.0.0 rules.
+    assert re.fullmatch(r"25\.0\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
+    assert cb["Supersedes"] in {"24.0.0"} | {f"25.0.{n}" for n in range(int(cb["Policy-Version"].rsplit(".", 1)[1]))}
     assert cb["Last-Reviewed"].startswith("2026-10-27")
     row = re.search(r"^\| 25\.0\.0 \| 2026-10-2\d \| (PROPOSED|ACTIVE)[^|]*\| MAJOR \|(.*)$", AGENTS, re.M)
     assert row, "no 25.0.0 MAJOR history row"
@@ -213,7 +232,7 @@ def test_rulebook_projection_renders_every_numbered_section():
     from scripts.lib import operator_approvals as core
 
     proj = core.policy_projection(AGENTS, source_sha="0" * 40)
-    assert proj["policy_version"] == "25.0.0"
+    assert re.fullmatch(r"25\.0\.\d+", proj["policy_version"])
     headings = [ln[2:].strip() for ln in BINDING.splitlines()
                 if re.match(r"^# (\d+[A-Z]? ·|Document version policy|Multi-Agent SOP)", ln)]
     missing = [h for h in headings if h not in proj["section_counts"]]

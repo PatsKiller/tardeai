@@ -186,10 +186,8 @@ def test_migration_applied_as_trade_ai_still_works(cluster):
     assert rc != 0 and "append-only" in out
 
 
-def test_packet_finding_12_is_marked_fixed():
-    text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("12. **The migration owner.**") :]
-    assert "**Status: FIXED**" in seg[:1600]
+# test_packet_finding_12_is_marked_fixed was removed 2026-10-27: its packet was archived with the retired release
+# train (reading an archived path trips the archive tripwire, AGENTS.md §0 rule 6).
 
 
 def test_gate_file_registers_this_test():

@@ -1,0 +1,58 @@
+--- a/.cursor/hooks/guard-lib.sh
++++ b/.cursor/hooks/guard-lib.sh
+@@ -30,6 +30,7 @@
+     frozen-v2)     echo "Edits under command-center-v2 / v2 paths. v2 is frozen; v3 is canonical." ;;
+     guard-config)  echo "Edits to .cursor/hooks/* or .cursor/*.json — the guardrails themselves." ;;
+     file-delete)   echo "Deleting files." ;;
++    approvals)     echo "Self-grant or ledger tamper: an agent may never grant itself authority or write .cursor/approvals. Operator only; never grantable." ;;
+     *)             echo "Unknown tier: $1" ;;
+   esac
+ }
+@@ -41,7 +42,21 @@
+   # Operator grants come from a real terminal, which never passes through this
+   # hook. Reading the ledger (show/scopes/log) and tightening it (revoke) stay
+   # unguarded; only widening it is blocked.
+-  [[ "$cmd" =~ (^|[[:space:];&|/])guard[[:space:]]+(grant|plan)([[:space:]]|$) ]] && { echo approvals; return; }
++  # OI-132: quote-aware self-grant guard. Strip quoted spans first, so "guard grant"
++  # inside an argument (e.g. `agent_claim.py note --next "... guard grant ..."`) cannot
++  # classify the command; then re-scan the RAW command when a code-executing builtin
++  # (bash/sh/... -c, python -c, node -e, perl -e, eval, exec) is present, because there
++  # the quoted string IS code. A real guard invocation always blocks.
++  local _deq="${cmd//\"[^\"]*\"/}"
++  local _sq=\'
++  _deq="${_deq//$_sq[^$_sq]*$_sq/}"
++  local _execw=0
++  [[ "$cmd" =~ (^|[[:space:];&|/])(bash|sh|zsh|dash|ksh|python3?|node|perl)[[:space:]]+-[ce]([[:space:]]|$) ]] && _execw=1
++  [[ "$cmd" =~ (^|[[:space:];&|/])(eval|exec)([[:space:]]|$) ]] && _execw=1
++  if [[ "$_deq" =~ (^|[[:space:];&|/])guard[[:space:]]+(grant|plan)([[:space:]]|$) ]] || \
++     { [[ "$_execw" -eq 1 ]] && [[ "$cmd" =~ guard[[:space:]]+(grant|plan) ]]; }; then
++    echo approvals; return
++  fi
+   [[ "$cmd" =~ (\>|\>\>|tee|sed[[:space:]]+-i|mv|cp|rm|truncate|install|dd)[^|]*\.cursor/approvals ]] && { echo approvals; return; }
+   [[ "$cmd" =~ (cat|less|more|head|tail|strings|grep|awk|sed|cp|scp|rsync|base64|xxd|env|printenv|source|\.)[[:space:]].*\.env ]] && { echo secret; return; }
+   [[ "$cmd" =~ (id_ed25519|id_rsa|authorized_keys|\.ssh/|\.pgpass|credentials) ]] && { echo secret; return; }
+@@ -54,7 +69,23 @@
+   [[ "$cmd" =~ scripts/ops/broker_read_sync(_child)?\.(sh|py) ]] && \
+     ! [[ "$cmd" =~ broker_read_sync\.(sh|py)[[:space:]]+--plan([[:space:]]*$) ]] && { echo broker-read; return; }
+   [[ "$cmd" =~ (^|[[:space:];&|])crontab([[:space:]]|$) ]] && { echo cron; return; }
+-  [[ "$cmd" =~ git[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
++  # History rewrite is never an agent action (AGENTS.md §0 rule 4): keep it gated as git-push.
++  [[ "$cmd" =~ git[[:space:]]+(reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
++  if [[ "$cmd" =~ git[[:space:]]+push([[:space:]]|$) ]]; then
++    # Force-push, branch deletion and pushes naming main/master/release/* are never agent actions.
++    if [[ "$cmd" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)|--delete|[[:space:]]\+|[[:space:]]:) ]] || \
++       [[ "$cmd" =~ (refs/heads/(main|master)|(^|[[:space:]])main([[:space:]]|$)|(^|[[:space:]])master([[:space:]]|$)|release/) ]]; then
++      echo git-push; return
++    fi
++    # OI-133 (AGENTS.md 26.1.0 §0 rule 4 / §28.15 item 8): an operator-approved scope is the push
++    # authorization for a fast-forward push of the agent's own non-main branch. The shell guard does
++    # not require a git-push grant when the push wrapper attests the scope; the pre-push hook still
++    # enforces TRADEAI_REMOTE_PUSH_AUTHORIZED and the per-branch budget. NOT yet wired end-to-end.
++    if [[ -n "${TRADEAI_APPROVED_SCOPE_REF:-}" ]]; then
++      echo none; return
++    fi
++    echo git-push; return
++  fi
+   [[ "$cmd" =~ (psql|psycopg2|sqlalchemy|pg_restore) ]] && [[ "$U" =~ (INSERT|UPDATE|DELETE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE) ]] && { echo db-write; return; }
+   [[ "$cmd" =~ (openclaw|clawhub) ]] && { echo openclaw; return; }
+   [[ "$cmd" =~ api\.telegram\.org ]] && { echo telegram; return; }

@@ -4,8 +4,9 @@ Promote-only: if origin/main tip ≠ CURRENT pin, STOP is absent, GlobalReleaseL
 and the standing deploy delegation is armed, run cio_phase2_exact_main_deploy.sh prepare+promote
 for that SHA, then post_release_tester, and write DeployOnMainReceipt@v1 (path=poller).
 
-Never merges PRs or pushes remotes; local source advances only by exact-main fast-forward. Soft-add: live until 24.0.0 is ACTIVE stays the release train;
-this module is the target path.
+Never merges PRs or pushes remotes; local source advances only by exact-main fast-forward. This is the
+live promote path; the release train it replaced was retired 2026-10-27 (operator directive). From
+scripts/lib/release_control.py it uses only the STOP latch reader and GlobalReleaseLock.
 """
 
 from __future__ import annotations
@@ -373,16 +374,28 @@ def preserve_dirty_checkout(repo: Path, sha: str) -> dict[str, Any]:
     patch = out_dir / f"{tag}.patch"
     tracked = _git(repo, "diff", "--binary", "HEAD")
     untracked = _git(repo, "ls-files", "--others", "--exclude-standard")
-    body = [f"# {tag}", f"# repo: {repo}", f"# head: {_git(repo, 'rev-parse', 'HEAD').stdout.strip()}",
-            "# paths:", *[f"#   {p}" for p in paths], "", tracked.stdout or ""]
+    body = [
+        f"# {tag}",
+        f"# repo: {repo}",
+        f"# head: {_git(repo, 'rev-parse', 'HEAD').stdout.strip()}",
+        "# paths:",
+        *[f"#   {p}" for p in paths],
+        "",
+        tracked.stdout or "",
+    ]
     for rel in [u for u in (untracked.stdout or "").splitlines() if u.strip()]:
         nd = _git(repo, "diff", "--binary", "--no-index", "/dev/null", rel)
         body.append(nd.stdout or f"# untracked (unreadable as diff): {rel}\n")
     patch.write_text("\n".join(body), encoding="utf-8")
     stash = _git(repo, "stash", "push", "--include-untracked", "-m", tag)
     if stash.returncode != 0:
-        return {"ok": False, "tag": tag, "patch": str(patch), "paths": paths,
-                "error": (stash.stderr or stash.stdout or "stash failed")[:300]}
+        return {
+            "ok": False,
+            "tag": tag,
+            "patch": str(patch),
+            "paths": paths,
+            "error": (stash.stderr or stash.stdout or "stash failed")[:300],
+        }
     top = _git(repo, "rev-parse", "--verify", "-q", "refs/stash")
     stash_sha = top.stdout.strip()
     msg = _git(repo, "log", "-1", "--format=%s", stash_sha).stdout if stash_sha else ""
@@ -390,8 +403,14 @@ def preserve_dirty_checkout(repo: Path, sha: str) -> dict[str, Any]:
         return {"ok": False, "tag": tag, "patch": str(patch), "paths": paths, "error": "stash_not_recorded"}
     _git(repo, "update-ref", f"refs/deploy-on-main/autostash/{tag}", stash_sha)
     if dirty_paths(repo):
-        return {"ok": False, "tag": tag, "patch": str(patch), "paths": paths, "stash_sha": stash_sha,
-                "error": "still_dirty_after_stash"}
+        return {
+            "ok": False,
+            "tag": tag,
+            "patch": str(patch),
+            "paths": paths,
+            "stash_sha": stash_sha,
+            "error": "still_dirty_after_stash",
+        }
     return {"ok": True, "tag": tag, "patch": str(patch), "paths": paths, "stash_sha": stash_sha}
 
 
@@ -411,12 +430,16 @@ def checkout_hygiene(repo: Path, sha: str) -> tuple[bool, dict[str, Any]]:
         ok = False
     shown = ", ".join(paths[:8]) + (f" (+{len(paths) - 8} more)" if len(paths) > 8 else "")
     if ok:
-        msg = (f"deploy_on_main: canonical checkout {repo} was dirty before deploying main {sha[:12]} — "
-               f"preserved and proceeding. Paths: {shown}. Patch: {info.get('patch')}; "
-               f"stash '{info.get('tag')}' (ref refs/deploy-on-main/autostash/{info.get('tag')}).")
+        msg = (
+            f"deploy_on_main: canonical checkout {repo} was dirty before deploying main {sha[:12]} — "
+            f"preserved and proceeding. Paths: {shown}. Patch: {info.get('patch')}; "
+            f"stash '{info.get('tag')}' (ref refs/deploy-on-main/autostash/{info.get('tag')})."
+        )
     else:
-        msg = (f"deploy_on_main: canonical checkout {repo} is dirty — deploy of main {sha[:12]} BLOCKED "
-               f"({info.get('error') or info.get('preserve')}). Paths: {shown}. Clean or stash it on the host.")
+        msg = (
+            f"deploy_on_main: canonical checkout {repo} is dirty — deploy of main {sha[:12]} BLOCKED "
+            f"({info.get('error') or info.get('preserve')}). Paths: {shown}. Clean or stash it on the host."
+        )
     if _dedupe_ok("dirty", sha, window_s=3600):
         _alert(msg, kind="deploy_on_main_dirty_checkout", detail=info)
     return ok, info
@@ -431,8 +454,14 @@ def main_checks_status(repo: Path, sha: str) -> tuple[str, list[str]]:
     if not pre.is_file():
         return "unavailable", ["preflight_absent"]
     try:
-        r = subprocess.run([os.environ.get("TRADEAI_PY") or sys.executable, str(pre), "--ci-only", "--sha", sha],
-                           cwd=str(repo), capture_output=True, text=True, check=False, timeout=180)
+        r = subprocess.run(
+            [os.environ.get("TRADEAI_PY") or sys.executable, str(pre), "--ci-only", "--sha", sha],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         return "unavailable", [f"ci_read:{type(exc).__name__}"]
     try:
@@ -444,8 +473,11 @@ def main_checks_status(repo: Path, sha: str) -> tuple[str, list[str]]:
         return "green", []
     if any(e.startswith("checks_unavailable") for e in errors):
         return "unavailable", errors[:10]
-    red = [c for c in (ev.get("checks") or [])
-           if c.get("status") == "completed" and c.get("conclusion") not in ("success", None)]
+    red = [
+        c
+        for c in (ev.get("checks") or [])
+        if c.get("status") == "completed" and c.get("conclusion") not in ("success", None)
+    ]
     return ("red" if red else "pending"), errors[:10]
 
 
@@ -554,8 +586,9 @@ def poll_once(
         return result
 
 
-def _deploy_under_lock(repo: Path, decision: PollDecision, result: dict[str, Any], sd: Path, *,
-                       dry_run: bool) -> dict[str, Any]:
+def _deploy_under_lock(
+    repo: Path, decision: PollDecision, result: dict[str, Any], sd: Path, *, dry_run: bool
+) -> dict[str, Any]:
     """Called only while GlobalReleaseLock is held, STOP is absent and the delegation is armed."""
     from scripts.lib import deploy_delegation_binding as DDB
 
@@ -572,8 +605,12 @@ def _deploy_under_lock(repo: Path, decision: PollDecision, result: dict[str, Any
             current_sha_before=decision.current_sha,
             current_sha_after=after,
             reason=reason,
-            detail={**detail, "reason_line": line, "log_tail": log[-1500:],
-                    "elapsed_s": round(time.monotonic() - t0, 1)},
+            detail={
+                **detail,
+                "reason_line": line,
+                "log_tail": log[-1500:],
+                "elapsed_s": round(time.monotonic() - t0, 1),
+            },
         )
         result.update(outcome="deploy_failed", rc=rc, failure=line)
         track_outcome("failed", sha, reason_line=line, repo=repo, current=decision.current_sha)
@@ -586,14 +623,20 @@ def _deploy_under_lock(repo: Path, decision: PollDecision, result: dict[str, Any
         detail["main_checks"] = ci
         if ci in ("pending", "unavailable"):
             # Not a failure: Mergify just merged and push/main CI is still running (or GitHub is unreachable).
-            write_receipt(path_kind=PATH_POLLER, outcome="waiting_ci", main_sha=sha,
-                          current_sha_before=decision.current_sha, reason=f"main_checks_{ci}",
-                          detail={"errors": errors})
+            write_receipt(
+                path_kind=PATH_POLLER,
+                outcome="waiting_ci",
+                main_sha=sha,
+                current_sha_before=decision.current_sha,
+                reason=f"main_checks_{ci}",
+                detail={"errors": errors},
+            )
             result.update(outcome="waiting_ci", reason=f"main_checks_{ci}")
             return result
         if ci == "red":
-            return failed(3, "main_checks_red", "ERROR: main required checks are red for this SHA: "
-                          + "; ".join(errors[:5]))
+            return failed(
+                3, "main_checks_red", "ERROR: main required checks are red for this SHA: " + "; ".join(errors[:5])
+            )
         clean, hygiene = checkout_hygiene(repo, sha)
         if hygiene:
             detail["dirty_checkout"] = hygiene
@@ -610,7 +653,9 @@ def _deploy_under_lock(repo: Path, decision: PollDecision, result: dict[str, Any
     if bindings:
         detail["bindings"] = bindings
         vals = set(bindings.values())
-        detail["matched_by"] = vals.pop() if len(vals) == 1 else ",".join(f"{k}={v}" for k, v in sorted(bindings.items()))
+        detail["matched_by"] = (
+            vals.pop() if len(vals) == 1 else ",".join(f"{k}={v}" for k, v in sorted(bindings.items()))
+        )
         result["matched_by"] = detail["matched_by"]
     after = current_pin_sha()
     if rc != 0:
@@ -625,16 +670,18 @@ def _deploy_under_lock(repo: Path, decision: PollDecision, result: dict[str, Any
         current_sha_before=decision.current_sha,
         current_sha_after=after,
         reason=decision.reason,
-        detail={**detail, "verify_rc": vrc, "verify_tail": vlog[-800:],
-                "elapsed_s": round(time.monotonic() - t0, 1)},
+        detail={**detail, "verify_rc": vrc, "verify_tail": vlog[-800:], "elapsed_s": round(time.monotonic() - t0, 1)},
     )
     result["outcome"] = outcome
     result["current_sha_after"] = after
     if dry_run:
         return result
     if vrc != 0:
-        _alert(f"deploy_on_main: promoted main {sha[:12]} ({commit_subject(repo, sha)}) but post-release "
-               f"verify FAILED (rc={vrc}): {failure_reason_line(vlog)}", kind="deploy_on_main_verify")
+        _alert(
+            f"deploy_on_main: promoted main {sha[:12]} ({commit_subject(repo, sha)}) but post-release "
+            f"verify FAILED (rc={vrc}): {failure_reason_line(vlog)}",
+            kind="deploy_on_main_verify",
+        )
     track_outcome("served", sha, repo=repo)
     return result
 
@@ -685,8 +732,9 @@ def commit_subject(repo: Path, sha: str) -> str:
     return (r.stdout or "").strip()[:120] if r.returncode == 0 else ""
 
 
-def track_outcome(kind: str, sha: str, *, reason_line: str = "", repo: Optional[Path] = None,
-                  current: str = "") -> Optional[str]:
+def track_outcome(
+    kind: str, sha: str, *, reason_line: str = "", repo: Optional[Path] = None, current: str = ""
+) -> Optional[str]:
     """kind: failed | served. Returns the alert kind sent ("p1" | "ok") or None.
 
     deploy_failed for the same SHA FAIL_STREAK_ALERT times in a row → one P1 naming the reason; a later
@@ -704,20 +752,27 @@ def track_outcome(kind: str, sha: str, *, reason_line: str = "", repo: Optional[
         streak["last_at"] = _utc_now()
         if streak["count"] >= FAIL_STREAK_ALERT and not streak.get("alerted"):
             subject = commit_subject(repo, sha) if repo else ""
-            _alert(f"deploy_on_main: main {sha[:12]} ({subject or 'no subject'}) has failed to deploy "
-                   f"{streak['count']} times in a row since {streak['first_at']}. CURRENT is still "
-                   f"{current[:12] or 'unknown'}. Reason: {reason_line or 'see receipt'}. "
-                   f"Receipts: data/runtime/deploy_on_main/latest.json",
-                   kind="deploy_on_main", detail={"sha": sha, "count": streak["count"]})
+            _alert(
+                f"deploy_on_main: main {sha[:12]} ({subject or 'no subject'}) has failed to deploy "
+                f"{streak['count']} times in a row since {streak['first_at']}. CURRENT is still "
+                f"{current[:12] or 'unknown'}. Reason: {reason_line or 'see receipt'}. "
+                f"Receipts: data/runtime/deploy_on_main/latest.json",
+                kind="deploy_on_main",
+                detail={"sha": sha, "count": streak["count"]},
+            )
             streak["alerted"] = True
             sent = "p1"
         state["fail_streak"] = streak
     elif kind == "served":
         if streak.get("alerted"):
             subject = commit_subject(repo, sha) if repo else ""
-            _alert(f"deploy_on_main OK: main {sha[:12]} ({subject or 'no subject'}) is now served; the deploy "
-                   f"failure streak for {str(streak.get('sha'))[:12]} ({streak.get('count')} failures) has cleared.",
-                   kind="deploy_on_main_recovered", priority="P2", resolving=True)
+            _alert(
+                f"deploy_on_main OK: main {sha[:12]} ({subject or 'no subject'}) is now served; the deploy "
+                f"failure streak for {str(streak.get('sha'))[:12]} ({streak.get('count')} failures) has cleared.",
+                kind="deploy_on_main_recovered",
+                priority="P2",
+                resolving=True,
+            )
             sent = "ok"
         if streak:
             state["fail_streak"] = {}
@@ -727,8 +782,9 @@ def track_outcome(kind: str, sha: str, *, reason_line: str = "", repo: Optional[
     return sent
 
 
-def _alert(message: str, *, kind: str, detail: Optional[dict[str, Any]] = None, priority: str = "P1",
-           resolving: bool = False) -> None:
+def _alert(
+    message: str, *, kind: str, detail: Optional[dict[str, Any]] = None, priority: str = "P1", resolving: bool = False
+) -> None:
     try:
         from scripts.delivery_failure_alerts import page_p1  # type: ignore
 

@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_drift_check_schedule_20261027",
+  "files": [
+    "tests/test_n8n_drift_check_schedule_20261027.py"
+  ],
+  "anchor": "N8N_DRIFT_CHECK_SCHEDULE_20261027",
+  "comment": [
+    "ANCHOR: N8N_DRIFT_CHECK_SCHEDULE_20261027 — operator 2026-10-27 \"I want all of your recommendations done\":",
+    "AGENTS 23.23 (2) drift pages P1 and 23.24 Logging (5) the check runs on a schedule outside n8n. Lane",
+    "n8n-workflow-drift-check moves from a never-installed cron line (cron freeze 2026-10-09) to the systemd user timer",
+    "tradeai-n8n-drift-watch.timer (config/systemd/user, the reviewed FW-P3 packet units, directives identical),",
+    "running scripts/n8n_drift_watch.py --live every 15 min with P1 through send_system. Pins the units, the PAUSED",
+    "registry row, state drift before/after install, undeclared discovery, fan-in arming at 45 min, the maturity P18",
+    "scheduled check and backup coverage. Hermetic: repo files and tmp_path only; no systemctl, crontab, docker or send."
+  ]
+}

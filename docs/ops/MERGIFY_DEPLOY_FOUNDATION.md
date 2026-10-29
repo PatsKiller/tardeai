@@ -18,15 +18,15 @@ Operator 2026-10-27, verbatim: "I only want to be able to approve something once
 
 | Actor | May | Must not |
 |---|---|---|
-| Coding agents | Open ready PRs, push feature branches under push budget, apply `solo`/`shared-infra`, then stop (the digest finds the PR) | Merge, push `main`/`train/*`, promote, release, Approve on GitHub, add `operator-merge` by hand |
+| Coding agents | Open ready PRs, push feature branches under push budget, apply `shared-infra` when it applies (AGENTS.md §25.10, §28.15 item 2), then stop (the digest finds the PR) | Merge, push `main`, promote, release, Approve on GitHub, add `operator-merge` by hand, apply `solo` (the `solo` class was retired with the release train, AGENTS.md §28.15 item 7) |
 | Mergify | Merge eligible PRs when `label=operator-merge` + required checks green + not draft + schedule allows | Deploy, hold credentials beyond GitHub App merge, place broker/order work |
 | Host `deploy_on_main` poller | Promote CURRENT to the new `origin/main` SHA when STOP is clear and deploy delegation is armed | Merge, push remotes, run without STOP/lock checks |
-| Operator (phone) | One digest tap: **Approve all** / **Hold all** / per-item Hold (or reply `hold #N`); merge held-path PRs; emergency promote; STOP/resume; arm deploy delegation; install Mergify and the digest timers | Delegate live broker authority |
+| Operator (phone) | One digest tap: **Approve all** / **Hold all** / per-item Hold (or reply `hold #N`); per-PR **Approve #N (held)** on a held-path PR; emergency promote; STOP/resume; arm deploy delegation; install Mergify and the digest timers | Delegate live broker authority |
 
 ## Normal path
 
 ```
-Ready PR opened (not draft; solo/shared-infra labels if needed)
+Ready PR opened (not draft; shared-infra label if it applies)
          → CI green (cio-hardening, agent-governance, release-readiness, ci-gate)
          → Agent stops (no per-PR request)
          → Digest timer (weekdays 08:00 / 12:00 / 16:30 ET, weekends every 3h) lists every READY PR in ONE message
@@ -49,11 +49,15 @@ Go signal in `.mergify.yml`: `label=operator-merge` + `draft=false`. Not GitHub 
 
 | Bucket | Rule | In the digest |
 |---|---|---|
-| Ready | Open to `main`, not draft, the four required checks `SUCCESS` on the current head, no hold label, no held path, no `operator-merge` yet | Listed with number, title, class (normal / shared-infra / solo), files changed, risk notes (shared infra / config / migrations), head short SHA, one-line summary; covered by **Approve all** |
-| Needs operator merge | Label `held` / `broker` / `broker_active_trader`, or any path in `config/merge_hold_paths.json` (broker / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, merge + deploy control plane) | Listed, **no Approve**; Mergify's hold rule (generated from the same config) labels it `held` |
+| Ready | Open to `main`, not draft, the four required checks `SUCCESS` on the current head, no hold label, no held path, no `operator-merge` yet | Listed with number, title, class (normal / shared-infra; a PR still carrying a legacy `solo` label shows as solo), files changed, risk notes (shared infra / config / migrations), head short SHA, one-line summary; covered by **Approve all** |
+| Needs operator merge | Label `held` / `broker` / `broker_active_trader`, or any path in `config/merge_hold_paths.json` (broker / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, merge + deploy control plane) | Listed with a per-PR **Approve #N (held)** button, never in **Approve all**; Mergify's hold rule (generated from the same config) labels it `held` |
 | Skipped | Draft, checks not green, already approved | Not listed; reappears when ready |
 
-- Shared-infra / solo PRs approved in a digest queue on the one-at-a-time `solo` queue (the tap is the operator's approval); normal PRs on `default`. Both `batch_size: 1`.
+- A held PR is approved per-PR only: its "Approve #N (held)" tap writes the same `PrMergeDigestApproval@v1` record
+  (digest id, chat, operator id, time, [(PR, head SHA)]) and adds `operator-merge` — never inside "Approve all", so
+  broker/secret/policy/guard changes still need explicit per-PR operator intent. The §28.15 item 3 reviews (two
+  independent `Adversarial-review: MERGE` receipts) stay required before the tap for guard/hook/merge-tooling.
+- Shared-infra PRs approved in a digest queue on the one-at-a-time queue (named `solo` in `.mergify.yml`; the name only orders merges and is unrelated to the retired `solo` delegation class) (the tap is the operator's approval); normal PRs on `default`. Both `batch_size: 1`. Agents do not apply the `solo` label.
 - No ready PRs and no change in the needs-operator list → no message. An identical pending digest is not re-sent (`--now` forces).
 - A newer digest supersedes the older one; a superseded or expired digest cannot be approved.
 - The `config/merge_hold_paths.json` list is the single source: `.mergify.yml`'s hold rule must equal `scripts/lib/merge_hold_paths.py --print-mergify`, and `tests/test_pr_merge_digest_20261027.py` fails on drift, on an uncovered §0 / §25.10 path class, or on an order-placing module outside the hold.
@@ -152,6 +156,10 @@ When required checks cannot run (Actions outage), Mergify will not merge. The op
 No agent, n8n job, or Mergify rule may set that env or consume that grant.
 
 ## What this retires
+
+All of the train items below were also removed from the code and the Command Center on 2026-10-27 (operator
+directive; PR #2240, archived under `archive/release_train_20261026/`). The deploy STOP is Home → Deploys and Ops → Controls
+`deploy.stop` / `deploy.resume`.
 
 - Custom train controller live merge/push of `train/*`
 - Release-train GitHub App as merge actor (Mergify’s App replaces it for merge)

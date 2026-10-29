@@ -1931,7 +1931,7 @@ def walk_routes(
             except Exception as exc:
                 if funding is None:
                     raise
-                funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
                 receipts.append(_receipt(cand, "transport_unavailable", detail=type(exc).__name__))
                 last_error = exc
                 continue
@@ -1979,7 +1979,7 @@ def walk_routes(
                 response = transport.generate(messages, cand.get("model_id"), **kwargs)
             except Exception as exc:  # noqa: BLE001 -- every failure becomes a receipt, then the next lane
                 if provider == "anthropic" and funding is not None:
-                    funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                    funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
                 kind, status, retry_after = _attempt_failure_kind(exc)
                 sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
                 billable = provider not in oauth_transport.OAUTH_PROVIDERS and provider != "anthropic" and sent

@@ -207,9 +207,7 @@ def test_dry_run_mint_and_notify(store, monkeypatch):
 
 def test_guard_reason_roundtrip(store):
     pmt = store
-    reason = pmt.guard_reason(
-        pr_number=2208, request_id="abc123def", head_sha="abcdef012345"
-    )
+    reason = pmt.guard_reason(pr_number=2208, request_id="abc123def", head_sha="abcdef012345")
     assert pmt.GUARD_REASON_MARKER in reason
     parsed = pmt.parse_guard_reason(reason)
     assert parsed == {"pr": "2208", "rid": "abc123def", "head": "abcdef012"}
@@ -245,6 +243,11 @@ def test_wait_guard_and_apply_on_approve(store, monkeypatch):
     fake_mod = types.ModuleType("scripts.lib.guard_remote_approval")
     fake_mod._load = FakeGra._load
     monkeypatch.setitem(sys.modules, "scripts.lib.guard_remote_approval", fake_mod)
+    # `from scripts.lib import guard_remote_approval` returns the package ATTRIBUTE once the real module has been
+    # imported by an earlier test, bypassing sys.modules; patch the attribute too (order-independent).
+    import scripts.lib as _scripts_lib
+
+    monkeypatch.setattr(_scripts_lib, "guard_remote_approval", fake_mod, raising=False)
     fake_lib = types.ModuleType("lib.guard_remote_approval")
     fake_lib._load = FakeGra._load
     monkeypatch.setitem(sys.modules, "lib.guard_remote_approval", fake_lib)
@@ -253,8 +256,7 @@ def test_wait_guard_and_apply_on_approve(store, monkeypatch):
     monkeypatch.setattr(
         pmt,
         "add_operator_merge_label",
-        lambda pr, *, repo="PatsKiller/tardeai": labeled.append(pr)
-        or {"ok": True, "action": "add"},
+        lambda pr, *, repo="PatsKiller/tardeai": labeled.append(pr) or {"ok": True, "action": "add"},
     )
     monkeypatch.setattr(pmt, "comment_on_pr", lambda *a, **k: {"ok": True})
 
