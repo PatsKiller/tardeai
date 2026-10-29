@@ -13,11 +13,14 @@ phases:
         title: Backend open-PR projection (state · mergeable · CI · why held) + frontend in-flight table + ⓘ tooltips
         status: PROPOSED
   - id: DSN-20261029-deploy-console-P2
-    title: Approve / Hold / Refresh-hints write path
+    title: Approve / Hold / Push / Refresh-hints write path
     status: PROPOSED
     tasks:
       - id: DSN-20261029-deploy-console-P2-T1
         title: Operator-session, CSRF-protected POST that adds/removes operator-merge (same authority as the Telegram tap) + refresh-shard-hints
+        status: PROPOSED
+      - id: DSN-20261029-deploy-console-P2-T2
+        title: Push button — operator-session POST that issues a bound git-push grant (branch + head SHA + reason) and executes the fast-forward push, replacing `bin/guard grant git-push` + the command line
         status: PROPOSED
   - id: DSN-20261029-deploy-console-P3
     title: Force promote / rollback (passkey-gated)
@@ -42,6 +45,7 @@ it validates CI, computes the exact head SHA, stages the label/receipt — and t
 | Button | Action | Authority | LLM role |
 |---|---|---|---|
 | Approve | add `operator-merge` bound to head SHA → Mergify queues | operator tap (== today's Telegram Approve) | validate CI green + compute SHA |
+| **Push** | issue a bound git-push grant (branch + head SHA + reason) and fast-forward push the already-green local branch | operator tap (replaces `bin/guard grant git-push` + CLI) | stage the exact branch/head/reason; never force-push |
 | Hold | remove label / set held | operator tap | prepare |
 | Refresh hints | re-run `ci_shard_duration_hints` refresh from the green ci-gate artifact | operator tap | stage command |
 | Resolve conflict | open both-sides sheet; operator picks, LLM writes | operator decides, LLM writes (coordinator path) | diff + propose |
