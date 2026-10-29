@@ -58,7 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"action={out.get('action')} ready={out.get('ready')} needs_operator={out.get('needs_operator')} "
               f"digest={out.get('digest_id')} apply={apply}")
-        if out.get("message") and not apply:
+        if out.get("messages") and not apply:
+            for i, part in enumerate(out["messages"], 1):
+                print(f"--- Message {i}/{len(out['messages'])} ---\n" + part["message"])
+        elif out.get("message") and not apply:
             print("---\n" + out["message"])
     return 0 if out.get("ok") else 1
 
