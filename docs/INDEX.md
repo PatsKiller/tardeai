@@ -1047,6 +1047,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261025-anthropic-first.md` | DSN-20261025 Anthropic-first governed routing |
 | `docs/designs/DSN-20261026-ask-hourly.md` | Hourly Ask lifecycle |
 | `docs/designs/DSN-20261028-cio-review-transparency.md` | CIO review transparency — design of record (folded into W8) |
+| `docs/designs/DSN-20261028-conflict-resolver-broker-free.md` | conflict-resolver broker-free re-route |
 | `docs/designs/DSN-20261028-designed-work-lifecycle.md` | Designed work never gets lost |
 | `docs/designs/DSN-20261028-ops-watchdogs.md` | Ops watchdogs — arm the three designed-but-unwired guards |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
