@@ -104,6 +104,53 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
+# Evidence-gap codes from cron_outage_watchdog.collect → operator words. A code is never shown verbatim: some carry
+# a file path (``census_source_unreadable:scripts/secrets/…``) or a lane id (page audit 2026-10-25).
+_GAP_WORDS = {
+    "census_source_unreadable": "a schedule source file could not be read",
+    "crontab_snapshot_stale": "the host crontab snapshot is out of date",
+    "refusal_acks_malformed_line": "the refusal acknowledgement log has an unreadable line",
+    "journal_malformed_line": "the run journal has an unreadable line",
+    "journal_history_window_truncated": "the run journal history is cut short",
+    "journal_unavailable": "the run journal could not be read",
+}
+_LANE_GAP_WORDS = {
+    "receipt_unavailable": "run receipt unavailable",
+    "receipt_path_not_admitted": "run receipt kept in a location the monitor does not read",
+    "fallback_log_unavailable": "fallback run log unavailable",
+}
+
+
+def plain_collection_gaps(collection_gaps: list) -> list[str]:
+    """Collection-gap codes in plain words, grouped and counted; never a path, lane id or raw code."""
+    out: list[str] = []
+    per_lane: dict[str, int] = {}
+    sources = 0
+    for raw in collection_gaps or []:
+        code = str(raw or "").strip()
+        head, _, tail = code.partition(":")
+        if head == "census_source_unreadable":
+            sources += 1
+            continue
+        if tail and tail in _LANE_GAP_WORDS:  # "<lane id>:<code>"
+            per_lane[tail] = per_lane.get(tail, 0) + 1
+            continue
+        if code in _GAP_WORDS:
+            words = _GAP_WORDS[code]
+        elif code and " " in code and "/" not in code and ":" not in code:
+            words = code  # already a sentence from an in-process reader (e.g. "run ledger unavailable")
+        else:
+            words = "another evidence source could not be read"
+        if words not in out:
+            out.append(words)
+    if sources:
+        out.insert(0, _GAP_WORDS["census_source_unreadable"] if sources == 1
+                   else f"{sources} schedule source files could not be read")
+    for code, n in per_lane.items():
+        out.append(f"{_LANE_GAP_WORDS[code]} for {n} job{'s' if n != 1 else ''}")
+    return out
+
+
 def _measurement(unknown: int, collection_gaps: list) -> dict:
     """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
 
@@ -116,7 +163,7 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
         reasons.append(f"{unknown} job{'s' if unknown != 1 else ''} not measured (no run receipt or no measurable "
                        "schedule), so missed runs among them cannot be counted")
     if collection_gaps:
-        reasons.append("execution evidence incomplete: " + "; ".join(str(g) for g in collection_gaps[:3]))
+        reasons.append("execution evidence incomplete: " + "; ".join(plain_collection_gaps(collection_gaps)[:3]))
     return {"not_measured": unknown, "missed_measured": not reasons,
             "gap_reasons": {"missed": " · ".join(reasons) or None,
                             "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
@@ -214,7 +261,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
         "monitor": monitor, "incidents": incidents, "incident_count": len(incidents),
-        "coverage_gaps": captured.get("collection_gaps") or [],
+        # plain words only: the raw codes can carry a file path or lane id (page audit 2026-10-25)
+        "coverage_gaps": plain_collection_gaps(captured.get("collection_gaps") or []),
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
 
 
