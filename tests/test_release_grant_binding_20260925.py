@@ -122,7 +122,7 @@ TRAIN_GRANT = {"grant_id": "g-train", "tier": "release-write", "expires": NOW + 
                "reason": f"PR #1567 sha {TRAIN_SHA}: prepare + promote (and rollback) exact-main release — "
                          "AGENTS 3.0.0 ratified (#1552), governance P16-P20 (#1554), bridge P4-P6/P21 (#1555), "
                          "health_unknown (#1562), de-flake (#1559), sharded CI (#1556), rollup fix (#1566) "
-                         "[remote_request_id=c73b122335aa11ff chat=8797974247 via=button]"}
+                         "[remote_request_id=c73b122335aa11ff chat=8797974247 via=button]"}  # hardcode-ok: routing fixture, not a credential
 LIVE_CAMPAIGN_GRANT = {"grant_id": "g-campaign", "tier": "release-write", "expires": NOW + 3600, "uses": 1992,
                        "reason": "campaign n8n-maturity-20261009 (N8N Maturity program, 72h keyboard approval 10-09). "
                                  "Agent A runs prepare/promote, program installs/restarts/cutovers; every action "
@@ -155,7 +155,7 @@ def test_request_and_chat_ids_are_not_mistaken_for_a_named_sha():
 
     pr_only = {**TRAIN_GRANT, "grant_id": "g-pr-only",
                "reason": "PR #1553 (+ merged #1549 #1550): deploy the merge of #1553 on main "
-                         "[remote_request_id=0e7f8366ad8150ff chat=8797974247 via=button]"}
+                         "[remote_request_id=0e7f8366ad8150ff chat=8797974247 via=button]"}  # hardcode-ok: routing fixture, not a credential
     assert named_shas(pr_only["reason"]) == []
     # A grant that names no SHA keeps the PR binding (unchanged behaviour).
     v = decide(_act("a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0", 1553), grants=[pr_only])
