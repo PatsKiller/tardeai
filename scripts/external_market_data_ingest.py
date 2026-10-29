@@ -700,6 +700,14 @@ FRED_SERIES = {
     "VIXCLS": "VIX Closing Value",
     "MORTGAGE30US": "30-Year Mortgage Rate",
     "SP500": "S&P 500 Index",
+    # Prospectus macro block (accuracy audit 2026-10-26): without the 10-year yield every prospectus printed
+    # "rate beta n/a"; the others are named in scripts/lib/prospectus/domains.py FRED and were never ingested.
+    "DGS10": "10-Year Treasury Constant Maturity Yield",
+    "BAMLH0A0HYM2": "ICE BofA US High Yield OAS",
+    "DCOILWTICO": "WTI Crude Oil Spot Price",
+    "DTWEXBGS": "Nominal Broad US Dollar Index",
+    "PCEPILFE": "Core PCE Price Index",
+    "PAYEMS": "Nonfarm Payrolls (thousands)",
 }
 
 

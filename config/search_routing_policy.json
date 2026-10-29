@@ -196,7 +196,8 @@
     "gap_resolver": "gap_fill",
     "research_quality_escalate": "quality_escalation",
     "aegis_social_sentiment": "social_discovery",
-    "aegis_transcript_discovery": "transcript_discovery"
+    "aegis_transcript_discovery": "transcript_discovery",
+    "prospectus_writer": "research"
   },
   "_callers_why": "A caller names itself; the policy names its class. A caller with a symbol that the scalp-priority classifier marks about-to-fire is promoted to scalp_priority (promotable_to_priority below). A caller absent from this map is refused UNKNOWN_CALLER - no default class, so a new caller cannot spend by accident.",
   "promotable_to_priority": ["scalp_hot_tier", "hermes_scalp_catalyst", "hermes_momentum_catalyst", "catalyst_momentum_engine", "catalyst_intelligence"],

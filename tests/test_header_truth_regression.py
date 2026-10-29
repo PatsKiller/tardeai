@@ -529,3 +529,24 @@ def test_a_funded_account_that_does_not_report_still_breaks_completeness(clocks:
     assert partial["complete"] is False
     assert partial["missing_accounts"] == ["schwab_roth"]
     assert "MISSING schwab_roth" in partial["coverage_reason"]
+
+
+def test_unknown_day_is_missing_and_aliases_resolve(clocks: dict) -> None:
+    """2026-10-26: None counted as flat and schwab_roth missed schwab_roth_ira."""
+    fn = _today_pnl()
+    out = fn(
+        clocks["holdings_envelope"],
+        today_by_account={
+            "schwab_rollover_ira": {"change": None},
+            "schwab_roth_ira": {"change": -1.25},
+            "schwab_taxable": {"change": 2.5},
+            "alpaca_taxable_live": {"change": 0.0},
+        },
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
+        total_change=1.25,
+    )
+    assert out["missing_accounts"] == ["schwab_rollover_ira"]
+    assert "schwab_roth" in out["contributing_accounts"]
+    assert "schwab_rollover_ira" not in out["zero_change_accounts"]
+    assert out["complete"] is False

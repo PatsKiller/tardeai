@@ -1,0 +1,95 @@
+{
+  "schema": "IncidentRunbookActions@v1",
+  "_why": "The ONLY actions the incident supervisor (scripts/incident_supervisor.py) may perform on its own. The model proposes {class, action, params}; the harness runs an action only when it is listed here, enabled, applies to the incident's watcher, every param matches its regex, and the incident is outside the refused scopes. Each argv is an EXISTING tool's own CLI. Nothing here merges, pushes, promotes, deletes, orders, stops, sizes, writes a broker or reads a secret (AGENTS.md section 0 rules 1-2 and 6, section 28.14 items 2-4). A model answer naming anything else is recorded and ignored.",
+  "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+  "canonical_repo": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "env_passthrough": ["HOME", "PATH", "LANG", "TZ", "TRADEAI_STATE_ROOT", "TRADEAI_PERSISTENT_STATE_ROOT", "PROJ"],
+  "policy": {
+    "max_attempts_per_incident": 3,
+    "model_cooldown_minutes": 30,
+    "escalate_after_minutes": 60,
+    "max_model_calls_per_day": 40,
+    "max_incidents_per_cycle": 5,
+    "process_id": "incident_supervisor",
+    "never_providers": ["deepseek"],
+    "act_on_providers": ["anthropic"],
+    "_act_on_providers_why": "A fallback (OAuth grok/chatgpt) answer is read-only triage: recorded on the incident, never executed; the 60-minute time box still escalates.",
+    "refused_scope_regex": "(?i)(schwab|alpaca|moomoo|broker|place_order|\\borders?\\b|\\bstops?\\b|stop[-_ ]loss|sizing|\\bsize\\b|weight|mbi|active[-_ ]?trader|execution|2fa|credential|secret|\\.env\\b|api[-_ ]?key|token|agents\\.md|guard|\\.githooks|mergify)",
+    "_refused_why": "section 0 classes (orders/stops/sizing, broker writes, secrets) plus the section 28.14 item 4 refused scopes (guard, policy, hooks, AGENTS.md, credentials). A match forces needs_operator; no runbook action and no fixer dispatch.",
+    "fixer": {
+      "script": "scripts/self_heal_fixer.py",
+      "timeout_s": 3600,
+      "lane_prefix": "incident-",
+      "_why": "code_defect -> the section 28.14 Claude Code fixer: one N8nCodeDefect@v1-shaped request file per incident (consumer claude_code_iterative_fix), run as `self_heal_fixer.py --cycle --incident <file>`. The fixer keeps its own arming, budget, diff guard, worktree isolation and refused paths; it opens a PR and never merges, releases or deploys. Dispatched once per incident."
+    },
+    "runbook_docs": {
+      "deploy_failures": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md", "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md"],
+      "deploy_stuck": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md"],
+      "health_tick": ["docs/ops/INCIDENT_LEDGER.md"],
+      "expected_services": ["docs/ops/INCIDENT_LEDGER.md"],
+      "lane_health": ["docs/ops/n8n_self_healing.md"],
+      "main_ci": ["docs/ops/self_heal_claude_fixer.md"],
+      "prospectus_queue": ["docs/ops/INCIDENT_LEDGER.md"],
+      "llm_backlog": ["docs/ops/INCIDENT_LEDGER.md"],
+      "cap_hits": ["docs/ops/INCIDENT_LEDGER.md"],
+      "dirty_checkout": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md"],
+      "*": ["docs/ops/INCIDENT_LEDGER.md"]
+    }
+  },
+  "actions": {
+    "health_tick_step_once": {
+      "enabled": true,
+      "description": "Retry one health-tick step through the health tick's own CLI (`health_tick.py --once --step <id>`).",
+      "applies_to": ["health_tick"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/health_tick.py", "--once", "--step", "{step}"],
+      "params": {"step": "^[a-z0-9][a-z0-9_-]{1,63}$"},
+      "timeout_s": 600
+    },
+    "cron_self_heal": {
+      "enabled": true,
+      "description": "Run the existing cron self-heal pass (`cron_self_heal.py --apply`): reruns a STALE lane's reviewed remediate_cmd only.",
+      "applies_to": ["lane_health", "expected_services", "health_tick"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/cron_self_heal.py", "--apply"],
+      "params": {},
+      "timeout_s": 900
+    },
+    "deploy_on_main_dry_run": {
+      "enabled": true,
+      "description": "Re-run the deploy_on_main decision as a dry run (never promotes) so the receipt states the current blocker.",
+      "applies_to": ["deploy_failures", "deploy_stuck"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/deploy_on_main_poll.py", "--repo", "{canonical_repo}", "--dry-run", "--json"],
+      "params": {},
+      "timeout_s": 300
+    },
+    "preserve_dirty_checkout": {
+      "enabled": true,
+      "description": "Preserve a dirty canonical checkout with the deploy tool's own preserve (patch in persistent-state + tagged stash + refs/deploy-on-main/autostash ref; never discards). Needs deploy_on_main.preserve_dirty_checkout (PR #2232); refused when absent.",
+      "applies_to": ["dirty_checkout"],
+      "precondition": {"dirty_paths_idle_minutes": 60, "_why": "never stash a tree a session is still editing"},
+      "cwd": "release",
+      "argv": ["{python}", "-c", "import sys,json; sys.path.insert(0,'.'); from scripts.lib import deploy_on_main as d; f=getattr(d,'preserve_dirty_checkout',None); r=f(__import__('pathlib').Path(sys.argv[1]),'incident-supervisor') if f else {'ok':False,'error':'preserve_dirty_checkout absent (needs #2232)'}; print(json.dumps(r)); sys.exit(0 if r.get('ok') else 3)", "{canonical_repo}"],
+      "params": {},
+      "timeout_s": 120
+    },
+    "stale_lock_reconcile": {
+      "enabled": false,
+      "description": "Clear a stale lock older than N minutes via the existing tool.",
+      "disabled_reason": "No existing tool clears a lock: scripts/cleanup_stale_locks.sh only reports, and the release-train reconcile is being retired (train removal 2026-10-27). Enable when a reviewed clear-stale-lock CLI exists.",
+      "applies_to": [],
+      "argv": [],
+      "params": {}
+    },
+    "stale_lock_report": {
+      "enabled": true,
+      "description": "Report stale locks with the existing report-only tool (scripts/cleanup_stale_locks.sh); evidence for a person, deletes nothing.",
+      "applies_to": ["*"],
+      "cwd": "release",
+      "argv": ["bash", "scripts/cleanup_stale_locks.sh"],
+      "params": {},
+      "timeout_s": 120
+    }
+  }
+}

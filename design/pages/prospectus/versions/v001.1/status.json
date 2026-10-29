@@ -1,0 +1,29 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "prospectus",
+  "version": "v001.1",
+  "state": "PROPOSED",
+  "title": "Prospectus: presentation polish of v001 (footnotes, fund structure, compact gaps, coverage, charts, tiles)",
+  "created": "2026-10-26",
+  "base": "v001",
+  "request": {
+    "by": "operator",
+    "at": "2026-10-26",
+    "quote": "what are these F with the numbers all over the pages? … internal pointers. Do those really need to be shown? Is there any way we can polish this any more?",
+    "relayed_by": "coordinator"
+  },
+  "approval": null,
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/coordination/handoffs/prospectus-20261026/shots/polish",
+    "note": "Private, never committed: before/after captures of real reports rendered from temp copies."
+  },
+  "prs": [],
+  "history": [
+    {
+      "state": "PROPOSED",
+      "at": "2026-10-26",
+      "by": "agent"
+    }
+  ]
+}

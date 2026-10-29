@@ -1,7 +1,8 @@
 # Agent operating standards v1 (companion to AGENTS.md)
 
 ```
-Version:   1.0.0 (PROPOSED with AGENTS.md 1.3.0; sections A-G are MINOR operating rules)
+Version:   1.0.0 (ACTIVE with AGENTS.md 1.3.0, ratified 2026-09-27; sections A-G are MINOR operating rules)
+Note:      2026-10-27 — merge and deploy rows updated for AGENTS.md §25.10; AGENTS.md 26.0.0 governs where they differ.
 Base-SHA:  1c60ecb4264ba4dcc6a38106e76fae0d96a26787
 Scope:     how agents work — not language-specific style (that is the engineering standard,
            owned by the architecture/standards workstream; linked below)
@@ -59,7 +60,7 @@ via [`docs/architecture/ARCHITECTURE_INDEX.md`](../../architecture/ARCHITECTURE_
 | A PR states base and head SHAs, owned files/stores, authority class, contract changes, migrations, negative tests, proof artifacts, rollback, and the served-release verification plan. | PARTIAL — `.github/pull_request_template.md` (added here); a mechanical check is a follow-up |
 | Exact-head CI must pass after the final amendment; a PR whose base moved is re-verified, not assumed. | PARTIAL — `main` requires `cio-hardening` with `strict: true`; other jobs are not required (see admin actions) |
 | Sensitive paths need an independent reviewer who is not the author. | **NOT ENFORCED** — `.github/CODEOWNERS` added here, but `require_code_owner_reviews` is false and `required_approving_review_count` is 0 (measured 2026-09-25) |
-| Push, merge, deploy and broker authority are separate grants (AI_WORK_POLICY §16, §21, §27; amendment §3). | PARTIAL — push: pre-push hook (+ guard grant scope check, warn by default). **Merge: UNENFORCED** (0 required reviews). Deploy: release script grant check. Broker: `TradingSessionGrant@v1` (not wired until ratified) |
+| Push, merge, deploy and broker authority are separate grants (AI_WORK_POLICY §16, §21, §27; amendment §3). | PARTIAL — push: pre-push hook (+ guard grant scope check, enforced by default). Merge: Mergify after operator approval; held classes by the operator's own merge (AGENTS.md §25.10). Deploy: the host poller under the operator-armed deploy delegation; no agent promotes. Broker: `TradingSessionGrant@v1` built, not yet wired (OPEN_ITEMS) |
 | Force-pushing a pushed PR branch is refused; restack with merge commits. | ENFORCED — tool permission deny (observed 2026-09-24) |
 | GitHub is never a shared working directory; checkpoints are local commits (AGENTS.md §0 rule 4). | ENFORCED — pre-push hook + push budget counter |
 
@@ -113,7 +114,7 @@ PR/head SHA, environment, expiry, maximum uses, reason, approver and audit id. I
   `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` (`tests/test_guard_push_scope_20260925.py`). Refusing by
   default is an operator decision — **made 2026-10-09** ("enable push scope enforce too"): unscoped
   grants are now refused and not consumed; `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0` restores warn-only.
-- **Merge is not separately enforced.** `main` needs 0 approving reviews and code-owner review is off
+- **Merge (superseded 2026-10-27 by AGENTS.md §25.10 — Mergify after operator approval; held classes by the operator's own merge).** Previously: merge was not separately enforced. `main` needs 0 approving reviews and code-owner review is off
   (`enforce_admins` is on and `agent-governance` is required since 2026-09-25). **UNENFORCED** until an administrator acts
   (`REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`).
 - The shell classifier (`.cursor/hooks/guard-lib.sh`) matches command text and paths

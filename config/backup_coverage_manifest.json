@@ -265,7 +265,8 @@
     "store:research_write_path_receipts",
     "store:sec_filing_events",
     "store:finviz_enrichment",
-    "store:cio_asks"
+    "store:cio_asks",
+    "store:operator_decisions"
    ]
   },
   {
@@ -308,7 +309,8 @@
     "store:model_chooser_receipts",
     "store:supervisor_ladder_receipts",
     "store:supervisor_recoveries",
-    "store:web_search"
+    "store:web_search",
+    "store:anthropic_promotional_credit"
    ]
   },
   {
@@ -472,6 +474,12 @@
     "unit:tradeai-data-plausibility.timer",
     "unit:tradeai-data-source-health.service",
     "unit:tradeai-data-source-health.timer",
+    "unit:tradeai-deploy-on-main.service",
+    "unit:tradeai-deploy-on-main.timer",
+    "unit:tradeai-pr-merge-digest.service",
+    "unit:tradeai-pr-merge-digest.timer",
+    "unit:tradeai-pr-merge-reconcile.service",
+    "unit:tradeai-pr-merge-reconcile.timer",
     "unit:tradeai-edge-fanout-consumer.service",
     "unit:tradeai-edge-fanout-consumer.timer",
     "unit:tradeai-eod-consolidated-close.service",
@@ -498,6 +506,8 @@
     "unit:tradeai-memory-consolidator-shadow.service",
     "unit:tradeai-memory-shadow-project.service",
     "unit:tradeai-n8n-coordination-gateway.service",
+    "unit:tradeai-n8n-drift-watch.service",
+    "unit:tradeai-n8n-drift-watch.timer",
     "unit:tradeai-n8n-lab-watchdog.service",
     "unit:tradeai-n8n-lab-watchdog.timer",
     "unit:tradeai-n8n-run-executor.service",
@@ -521,6 +531,10 @@
     "unit:tradeai-portfolio-report-ms.timer",
     "unit:tradeai-portfolio-weekly-cadence.service",
     "unit:tradeai-portfolio-weekly-cadence.timer",
+    "unit:tradeai-pr-merge-notify.service",
+    "unit:tradeai-pr-merge-notify.timer",
+    "unit:tradeai-prospectus-deliver.service",
+    "unit:tradeai-prospectus-deliver.timer",
     "unit:tradeai-provider-cost-reconcile.service",
     "unit:tradeai-provider-cost-reconcile.timer",
     "unit:tradeai-research-lane-health.service",

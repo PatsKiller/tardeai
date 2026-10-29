@@ -469,7 +469,37 @@ def build_live_symbol(symbol: str) -> dict[str, Any]:
             "symbol": symbol.upper(),
             "detail": (res.get("errors") or [{}])[0],
         }
-    card = cards[0]
+    return _live_symbol_view(cards[0])
+
+
+def build_live_symbols(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """``build_live_symbol`` for many symbols with ONE identity query and ONE quote query.
+
+    Perf (2026-10-25): the Watch list called ``build_live_symbol`` once per row — 268 single-symbol quote
+    queries (~13 ms each, 3.4 s of the cold watch-curation build). Every card depends only on its own symbol,
+    so the batched result is the same per symbol as the single-symbol call.
+    """
+    syms = list(dict.fromkeys(str(s).upper() for s in symbols if s))
+    if not syms:
+        return {}
+    res = build_live_cards(syms, include_held=False)
+    by_sym: dict[str, dict] = {}
+    for card in res.get("cards") or []:
+        by_sym.setdefault(str(card.get("symbol") or "").upper(), card)
+    errs: dict[str, dict] = {}
+    for err in res.get("errors") or []:
+        errs.setdefault(str((err or {}).get("symbol") or "").upper(), err)
+    out: dict[str, dict[str, Any]] = {}
+    for sym in syms:
+        card = by_sym.get(sym)
+        if card is None:
+            out[sym] = {"ok": False, "error": "symbol_not_available", "symbol": sym, "detail": errs.get(sym, {})}
+        else:
+            out[sym] = _live_symbol_view(card)
+    return out
+
+
+def _live_symbol_view(card: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "symbol": card["symbol"],

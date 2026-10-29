@@ -19,8 +19,8 @@ that does not parse is listed on the board as an error; it never hides the other
 **Tasks are what agents claim.** Put a design task on the task board, then take it:
 
 ```bash
-python3 scripts/agent_claim.py task add --id DSN-20261021-release-train-P5-T1 --title "..." --kind build --areas <globs> --acceptance "..."
-python3 scripts/agent_claim.py take DSN-20261021-release-train-P5-T1      # refused if its files overlap a live claim
+python3 scripts/agent_claim.py task add --id DSN-20261023-ask-the-cio-P1-T1 --title "..." --kind build --areas <globs> --acceptance "..."
+python3 scripts/agent_claim.py take DSN-20261023-ask-the-cio-P1-T1      # refused if its files overlap a live claim
 ```
 
 Carry the id through the claim, the worklog, the branch name, the PR title and the commit trailer
@@ -35,7 +35,9 @@ and an `operator/...` pseudo-area on the task board; finished work is a board ta
 |---|---|---|
 | DB retention / Iris | IN_PROGRESS | `DSN-20261010-db-retention-iris.md` |
 | Releases and integration batches (manual path, 2026-10-21..23) | IN_PROGRESS | `DSN-20261021-release-batches.md` |
-| Release Train v2 | IN_PROGRESS | `DSN-20261021-release-train.md` |
+
+Release Train v2 (`DSN-20261021-release-train.md`) was archived to `archive/release_train_20261026/docs/designs/` on
+2026-10-27 when the operator directed the retired train removed; Mergify + host `deploy_on_main` replace it (AGENTS.md §25.10).
 | CIO prospect store (one record per security) + no-silos wiring | IN_PROGRESS | `DSN-20261022-cio-prospect-store.md` |
 | Data domain approvals (17 proposed domains) | PROPOSED | `DSN-20261022-data-domains.md` |
 | Dependency upgrades (approval M) | APPROVED | `DSN-20261022-dependency-upgrades.md` |

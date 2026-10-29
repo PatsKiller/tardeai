@@ -1,4 +1,5 @@
 """Weekly disk cleanup notify — summary formatting (offline)."""
+
 from __future__ import annotations
 
 import scripts.weekly_disk_cleanup_notify as w

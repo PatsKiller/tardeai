@@ -706,6 +706,21 @@ def probe_wrapper_watchdog(deps: Deps) -> list[dict]:
 # ── collection ───────────────────────────────────────────────────────────────
 
 #: (probe, the item specs it owns — used to emit UNKNOWN rows when the probe itself times out or raises).
+ANTHROPIC_SPEC = ("providers.anthropic", "providers", "Anthropic promotional API", "AnthropicProviderStatus@v1")
+
+
+def probe_anthropic(deps: Deps) -> list[dict]:
+    from scripts.lib.anthropic_monitoring import snapshot
+    reader = deps.extra.get("anthropic_reader") or snapshot
+    report = reader(deps.state_root or _default_state_root(), now=deps.now())
+    value = report.get("status")
+    if not value or value == "UNAVAILABLE":
+        return [_unknown(ANTHROPIC_SPEC, "Anthropic accounting evidence unavailable", report.get("as_of"))]
+    severity = "CRIT" if report.get("p1_continuous_failure") else "WARN" if value in {"DEGRADED", "PAUSED_TODAY", "EXHAUSTED"} else "OK"
+    return [_item(*ANTHROPIC_SPEC, severity, value, report.get("digest_line") if severity != "OK" else None,
+                  report.get("as_of"), {"provider_status": report, "href": "/consumption"})]
+
+
 PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_n8n_containers, [_container_spec(n) for n in N8N_CONTAINERS]),
     (probe_n8n_healthz, [HEALTHZ_SPEC]),
@@ -722,6 +737,7 @@ PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_postgres, [PG_SPEC]),
     (probe_wrapper_watchdog, [WRAPPER_WATCHDOG_SPEC]),
     (probe_job_execution, [JOB_EXECUTION_SPEC]),
+    (probe_anthropic, [ANTHROPIC_SPEC]),
 ]
 
 _POOL = ThreadPoolExecutor(max_workers=len(PROBES), thread_name_prefix="platform-health")

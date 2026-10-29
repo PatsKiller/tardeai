@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BB, T } from '../../lib/watchTokens'
+import ReadableTime from '../ReadableTime'
 
 // v1.2 P12 — TradeInView COSTS tab. Three cost classes, NEVER silently merged:
 // actual cash charges (broker-posted) · embedded fund-cost ESTIMATE (paid
@@ -47,7 +48,7 @@ export default function CostsPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-        data freshness: {summary?.freshness?.latest_event_at || 'no events'} · {summary?.freshness?.total_events ?? 0} events
+        data freshness: <ReadableTime value={summary?.freshness?.latest_event_at} fallback="no events" /> · {summary?.freshness?.total_events ?? 0} events
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         {Object.keys(CLASS_LABEL).map(k => (
