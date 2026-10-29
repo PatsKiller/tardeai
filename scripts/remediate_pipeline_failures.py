@@ -438,86 +438,16 @@ def _rewrite_cmd(cmd: str) -> str:
 
 
 def _spawn_detached(cmd: str) -> dict:
-    """Start long pipeline under flock without blocking the health cycle.
+    """Hand off the existing orchestrator recipe to its independent service.
 
-    Uses flock -n so a second spawn becomes contention (exit 1) instead of stacking.
-    stdout/stderr append to the same log path as the recipe.
+    nohup / setsid cannot escape a systemd cgroup. Never spawn a background
+    pipeline inside the health tick, and never execute caller shell text here.
     """
-    root = _root()
-    full = _rewrite_cmd(cmd)
-    try:
-        # If recipe already redirects, keep it; else attach a default log
-        if ">>" not in full and "2>&1" not in full:
-            full = full + " >> logs/screener_pm.log 2>&1"
-        # nohup + start_new_session so health_agent timeout cannot kill the pipeline
-        wrapped = f"nohup bash -c {json.dumps(full)} >/dev/null 2>&1 & echo $!"
-        proc = subprocess.run(
-            wrapped,
-            shell=True,
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        pid_s = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
-        pid = int(pid_s) if pid_s.isdigit() else None
-        # Brief settle: if flock -n lost immediately, child exits 1 quickly
-        time.sleep(1.5)
-        still = False
-        if pid:
-            try:
-                os.kill(pid, 0)
-                still = True
-            except OSError:
-                still = False
-        # Detect peer lock vs hard fail
-        lock_held = False
-        try:
-            import fcntl
+    from lib.pipeline_repair_handoff import request_repair
 
-            lf = open("/tmp/screener_pm.lock", "a+")
-            try:
-                fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
-            except BlockingIOError:
-                lock_held = True
-            finally:
-                lf.close()
-        except Exception:
-            pass
-        if still:
-            return {
-                "ok": True,
-                "spawned": True,
-                "pid": pid,
-                "still_running": True,
-                "exit_code": 0,
-                "cmd": full[:300],
-                "note": f"spawned orchestrator pid={pid}",
-            }
-        if lock_held:
-            return {
-                "ok": True,
-                "spawned": False,
-                "flock_contention": True,
-                "pid": pid,
-                "still_running": False,
-                "exit_code": 1,
-                "cmd": full[:300],
-                "note": "flock held by peer orchestrator — wait next cycle",
-            }
-        return {
-            "ok": False,
-            "spawned": False,
-            "pid": pid,
-            "still_running": False,
-            "exit_code": 1,
-            "cmd": full[:300],
-            "note": "spawn exited immediately (not flock-held) — check orchestrator args/log",
-            "error": "spawn_exited_immediately",
-        }
-    except Exception as e:
-        return {"ok": False, "exit_code": -2, "error": str(e)[:200], "cmd": full[:300]}
+    if "scripts/trade_ai_orchestrator.py" not in cmd:
+        return {"ok": False, "exit_code": 2, "error": "unsupported repair recipe"}
+    return request_repair("orchestrator")
 
 
 def _run_cmd(cmd: str, timeout: int = 600) -> dict:
@@ -796,8 +726,7 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         except Exception:
             pass
 
-    # Orchestrator is multi-stage (15–30m). Spawn detached under flock so the health
-    # daemon cycle (≤1200s) is not blocked; next cycles see flock contention or success.
+    # Long work belongs to its own service cgroup, never the health tick.
     if "trade_ai_orchestrator" in cmd and "flock" in cmd:
         run_res = _spawn_detached(cmd)
     else:
@@ -805,7 +734,7 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         run_res = _run_cmd(cmd, timeout=timeout)
     result["run"] = {
         k: run_res.get(k)
-        for k in ("ok", "exit_code", "error", "cmd", "partial", "flock_contention", "note", "spawned", "pid")
+        for k in ("ok", "exit_code", "error", "cmd", "partial", "flock_contention", "note", "spawned", "pid", "accepted", "outcome", "unit", "recovered")
         if run_res.get(k) is not None or k in run_res
     }
 
@@ -815,6 +744,12 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
     flocked = bool(run_res.get("flock_contention"))
     spawned = bool(run_res.get("spawned"))
 
+    if run_res.get("accepted"):
+        # Accepted is not completed: do not record a successful strategy or
+        # reset its failure history. The next diagnostic checks real outputs.
+        result.update(ok=False, accepted=True, outcome="PENDING", recovered=False,
+                      note=run_res.get("note"))
+        return result
     if flocked or spawned:
         # Do not burn the strategy ladder while a peer/background run is in flight
         rcmem.record_outcome(
@@ -870,7 +805,7 @@ def main():
     print(json.dumps(out, indent=2, default=str))
     # A typed hold is a handled outcome: callers must inspect outcome/held before
     # treating process status as failure or scheduling an automatic follow-up.
-    sys.exit(0 if out.get("ok") or out.get("outcome") == "HELD" else 1)
+    sys.exit(0 if out.get("ok") or out.get("outcome") in {"HELD", "PENDING"} else 1)
 
 
 if __name__ == "__main__":
