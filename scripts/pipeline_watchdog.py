@@ -15,7 +15,7 @@ from pathlib import Path
 import psycopg2
 
 log = logging.getLogger(__name__)
-PROJECT_ROOT = os.environ.get("TRADEAI_DEV_ROOT") or "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+PROJECT_ROOT = os.environ.get("TRADEAI_DEV_ROOT") or str(Path(__file__).resolve().parents[1])
 MAX_RETRIES = 3
 # Enrichment attempts per entity per week before backing off to weekly.
 MAX_ENRICH_ATTEMPTS = int(os.getenv("WATCHDOG_MAX_ENRICH_ATTEMPTS", "6"))
@@ -27,8 +27,8 @@ MAX_ENRICH_ATTEMPTS = int(os.getenv("WATCHDOG_MAX_ENRICH_ATTEMPTS", "6"))
 # 2026-10-08 the tick reaped these children after orphan_wait_s=30: 224 failed
 # / 1 succeeded in the 36h to 2026-10-22, every failure at 29-33s.
 #
-# The watchdog now owns its children (own sessions, so health_tick's orphan
-# reaper never sees them) and waits for them. The batch is bounded by
+# The independent enrichment service owns its children and waits for them.
+# The health tick only requests that service; nohup/setsid cannot escape a cgroup. The batch is bounded by
 # ENRICHMENT_BATCH_TIMEOUT_S (240s = measured p95) AND by what the health tick
 # left this step (HEALTH_TICK_STEP_TIMEOUT_S, exported by health_tick.run_step)
 # minus ENRICHMENT_RESERVE_S, so the watchdog terminates, reaps and records its
@@ -178,7 +178,8 @@ def _load_env():
                 os.environ[k.strip()] = v.strip()
 
 
-_load_env()
+if "--dry-run" not in sys.argv:
+    _load_env()
 
 DB_CONFIG = dict(host="127.0.0.1", port=5432, dbname="trade_ai", user="trade_ai", password=os.getenv("DB_PASSWORD", ""))
 
@@ -324,13 +325,24 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
 
         cur = conn.cursor()
         cur.execute(
-            "SELECT COUNT(*) FROM pipeline_runs WHERE pipeline_key=%s AND run_label LIKE 'retry%%' AND started_at>NOW()-INTERVAL '24 hours'",
-            [script],
+            "SELECT (SELECT COUNT(*) FROM pipeline_runs WHERE pipeline_key=%s "
+            "AND run_label LIKE 'retry%%' AND started_at>NOW()-INTERVAL '24 hours') + "
+            "(SELECT COUNT(*) FROM watchdog_actions WHERE action_type='retry_handoff' "
+            "AND target=%s AND created_at>NOW()-INTERVAL '24 hours')",
+            [script, script],
         )
         retries_today = cur.fetchone()[0] or 0
 
         if retries_today < MAX_RETRIES and issue.get("command"):
             log.info(f"[watchdog] Retrying {script} (attempt {retries_today + 1})")
+            if "scripts/trade_ai_orchestrator.py" in str(issue["command"]):
+                from lib.pipeline_repair_handoff import request_repair
+                handoff = request_repair("orchestrator")
+                log_action(conn, "retry_handoff", script, issue["issue"], False,
+                           json.dumps(handoff))
+                if not handoff.get("accepted"):
+                    log.error("[watchdog] orchestrator handoff failed: %s", handoff)
+                continue
             rid = None
             run_fail = None
             try:
@@ -420,7 +432,9 @@ def check_go_coverage(conn):
 # ── FUNCTION 3: IER Action Engine ──
 
 
-def run_ier_engine(conn):
+def run_ier_engine(conn, report=None):
+    report = report if report is not None else {}
+    report.update(completed=0, failed=0, deferred=0)
     cur = conn.cursor()
     cur.execute(
         """
@@ -434,16 +448,11 @@ def run_ier_engine(conn):
         -- does not necessarily RAISE the score: an entity stuck at 7.0 stays
         -- below 25 forever and was re-triggered every 4h indefinitely (61 times
         -- in 14 days for the worst case, 2752 entities permanently eligible).
-        -- After MAX_ENRICH_ATTEMPTS tries with no improvement, back off to one
-        -- attempt per week so genuinely recoverable entities still retry while
-        -- un-enrichable ones stop burning the queue.
-        AND (
-              (SELECT count(*) FROM watchdog_actions w
-                WHERE w.action_type='trigger_enrichment' AND w.target=e.entity_id
-                  AND w.created_at > NOW()-INTERVAL '7 days') < %s
-              OR e.last_enriched IS NULL
-              OR e.last_enriched < NOW()-INTERVAL '7 days'
-            )
+        -- Keep the rolling weekly attempt cap even when a failed child releases
+        -- its freshness claim. NULL/old freshness must not bypass that cap.
+        AND (SELECT count(*) FROM watchdog_actions w
+              WHERE w.action_type='trigger_enrichment' AND w.target=e.entity_id
+                AND w.created_at > NOW()-INTERVAL '7 days') < %s
         ORDER BY e.intelligence_score NULLS FIRST LIMIT 15
     """,
         [MAX_ENRICH_ATTEMPTS],
@@ -452,77 +461,87 @@ def run_ier_engine(conn):
     enrichments = []
     children = []
     enrichment_outcomes = {}
-    with _supervise_enrichment_batch(children, outcomes=enrichment_outcomes):
-        for eid, etype, score, freshness, decision in cur.fetchall():
-            if was_alerted_recently(conn, f"ier_{eid}", hours=4):
-                continue
+    claim_times = {}
+    interrupted = None
+    try:
+        with _supervise_enrichment_batch(children, outcomes=enrichment_outcomes):
+            for eid, etype, score, freshness, decision in cur.fetchall():
+                if was_alerted_recently(conn, f"ier_{eid}", hours=4):
+                    report["deferred"] += 1
+                    continue
 
-            if etype == "market":
-                # Claim the four-hour slot atomically before spawning. Two
-                # watchdog invocations may have read the same stale row; only
-                # one can update it from stale to current and launch a writer.
-                claim_time = None
-                try:
-                    cur.execute(
-                        """UPDATE intelligence_entities SET last_enriched=NOW()
-                        WHERE entity_id=%s
-                          AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
-                        RETURNING last_enriched""",
-                        [eid],
-                    )
-                    claim = cur.fetchone()
-                    if not claim:
-                        conn.commit()
-                        continue
-                    claim_time = claim[0]
-                    conn.commit()
-                    proc = subprocess.Popen(
-                        [sys.executable, "scripts/symbol_enrichment.py", eid, str(int(score or 0))],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        cwd=PROJECT_ROOT,
-                        start_new_session=True,
-                    )
-                    children.append((eid, proc))
-                    enrichments.append((eid, score, freshness, proc))
-                except Exception as exc:
-                    log.warning("[watchdog] could not start enrichment for %s: %s", eid, type(exc).__name__)
-                    if claim_time is not None:
-                        try:
-                            conn.rollback()
-                            cur.execute(
-                                """UPDATE intelligence_entities SET last_enriched=NULL
-                                WHERE entity_id=%s AND last_enriched=%s""",
-                                [eid, claim_time],
-                            )
+                if etype == "market":
+                    # Claim the four-hour slot atomically before spawning. Two
+                    # watchdog invocations may have read the same stale row; only
+                    # one can update it from stale to current and launch a writer.
+                    claim_time = None
+                    try:
+                        cur.execute(
+                            """UPDATE intelligence_entities SET last_enriched=NOW()
+                            WHERE entity_id=%s
+                              AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
+                            RETURNING last_enriched""",
+                            [eid],
+                        )
+                        claim = cur.fetchone()
+                        if not claim:
+                            report["deferred"] += 1
                             conn.commit()
-                        except Exception as reset_exc:
-                            log.error(
-                                "[watchdog] could not release enrichment claim for %s: %s",
-                                eid,
-                                type(reset_exc).__name__,
-                            )
-                        finally:
-                            del claim_time
-                    log_action(
-                        conn,
-                        "trigger_enrichment",
-                        eid,
-                        f"score={score} fresh={freshness}",
-                        False,
-                        f"spawn failed: {type(exc).__name__}",
-                    )
-            elif etype == "subject" and freshness == "CRITICAL":
-                try:
-                    cur.execute(
-                        """INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
-                        VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""",
-                        [eid],
-                    )
-                    conn.commit()
-                    actions += 1
-                except Exception:
-                    pass
+                            continue
+                        claim_time = claim[0]
+                        conn.commit()
+                        proc = subprocess.Popen(
+                            [sys.executable, "scripts/symbol_enrichment.py", eid, str(int(score or 0))],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            cwd=PROJECT_ROOT,
+                            start_new_session=True,
+                        )
+                        claim_times[eid] = claim_time
+                        children.append((eid, proc))
+                        enrichments.append((eid, score, freshness, proc))
+                    except Exception as exc:
+                        log.warning("[watchdog] could not start enrichment for %s: %s", eid, type(exc).__name__)
+                        if claim_time is not None:
+                            try:
+                                conn.rollback()
+                                cur.execute(
+                                    """UPDATE intelligence_entities SET last_enriched=NULL
+                                    WHERE entity_id=%s AND last_enriched=%s""",
+                                    [eid, claim_time],
+                                )
+                                conn.commit()
+                            except Exception as reset_exc:
+                                log.error(
+                                    "[watchdog] could not release enrichment claim for %s: %s",
+                                    eid,
+                                    type(reset_exc).__name__,
+                                )
+                            finally:
+                                del claim_time
+                        log_action(
+                            conn,
+                            "trigger_enrichment",
+                            eid,
+                            f"score={score} fresh={freshness}",
+                            False,
+                            f"spawn failed: {type(exc).__name__}",
+                        )
+                        report["failed"] += 1
+                elif etype == "subject" and freshness == "CRITICAL":
+                    try:
+                        cur.execute(
+                            """INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
+                            VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""",
+                            [eid],
+                        )
+                        conn.commit()
+                        actions += 1
+                    except Exception:
+                        pass
+    except _EnrichmentInterrupted as exc:
+        interrupted = exc
+        enrichment_outcomes.update({eid: "parent_interrupted" for eid, _ in children})
 
     # No fire-and-forget children: this step returns only after every child has
     # completed, or its bounded supervisor has terminated and reaped it.
@@ -537,10 +556,19 @@ def run_ier_engine(conn):
                 "child exit=0; may be a safe no-op because another session owns the symbol lock",
             )
             actions += 1
+            report["completed"] += 1
         else:
+            report["failed"] += 1
+            # A failed batch must not hold its four-hour freshness claim. Only
+            # release our own timestamp; a later successful writer wins.
+            cur.execute("UPDATE intelligence_entities SET last_enriched=NULL "
+                        "WHERE entity_id=%s AND last_enriched=%s", [eid, claim_times[eid]])
+            conn.commit()
             detail = enrichment_outcomes.get(eid, f"exit={proc.returncode}")
             log.warning("[watchdog] symbol enrichment for %s ended with %s", eid, detail)
             log_action(conn, "trigger_enrichment", eid, f"score={score} fresh={freshness}", False, detail)
+    if interrupted is not None:
+        raise interrupted
     return actions
 
 
@@ -553,11 +581,34 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-telegram", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--enrichment-only", action="store_true",
+                        help="independent repair service only; never run in health tick")
     args = parser.parse_args()
 
+    if args.dry_run:
+        # Truly offline; no DB, environment file, provider, labels or services.
+        from lib.pipeline_repair_handoff import request_repair
+        print(json.dumps(request_repair("enrichment", dry_run=True)))
+        return 0
+    from lib.pipeline_repair_handoff import independently_owned
+    if args.enrichment_only and (os.getenv("TRADEAI_PIPELINE_REPAIR_KIND") != "enrichment"
+                                 or os.getenv("HEALTH_TICK_STEP_TIMEOUT_S") or not independently_owned("enrichment")):
+        log.error("enrichment requires independent repair service")
+        return 2
     conn = psycopg2.connect(**DB_CONFIG)
     conn.autocommit = True  # Prevent transaction state issues between functions
     try:
+        if args.enrichment_only:
+            report = {}
+            run_ier_engine(conn, report=report)
+            print(json.dumps(report))
+            log.info("[watchdog] enrichment result %s", json.dumps(report))
+            return 1 if report.get("failed") else 0
+        # Queue independent enrichment before potentially slow monitoring retries.
+        # Otherwise a retry that exhausts the tick could still starve enrichment.
+        from lib.pipeline_repair_handoff import request_repair
+        handoff = request_repair("enrichment")
+        log.info("[watchdog] enrichment handoff %s", json.dumps(handoff))
         # Function 1: Pipeline monitoring
         issues = check_pipeline_execution(conn)
         if issues and not args.dry_run:
@@ -572,11 +623,7 @@ def main():
             if fixed:
                 log.info(f"[watchdog] GO coverage: fixed {fixed}")
 
-        # Function 3: IER engine
-        if not args.dry_run:
-            actions = run_ier_engine(conn)
-            if actions:
-                log.info(f"[watchdog] IER: {actions} actions")
+        return 0 if handoff.get("accepted") else 1
 
     finally:
         conn.close()
@@ -587,8 +634,9 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         handlers=[
-            logging.FileHandler(os.path.join(PROJECT_ROOT, "logs/pipeline_watchdog.log")),
+            *([] if "--dry-run" in sys.argv else
+              [logging.FileHandler(os.path.join(PROJECT_ROOT, "logs/pipeline_watchdog.log"))]),
             logging.StreamHandler(),
         ],
     )
-    main()
+    raise SystemExit(main())
