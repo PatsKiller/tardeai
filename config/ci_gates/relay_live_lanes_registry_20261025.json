@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "relay_live_lanes_registry_20261025",
+  "files": [
+    "tests/test_n8n_relay_live_lanes_registry_20261025.py"
+  ],
+  "anchor": "RELAY_LIVE_LANES_REGISTRY_20261025",
+  "comment": [
+    "ANCHOR: RELAY_LIVE_LANES_REGISTRY_20261025 — AGENTS.md 20.4.0 hands-off delivery: the n8n relay live-lane list is rendered at deploy from config/lane_registry.json + config/n8n_run_allowlist.json; host file and ops-controls override are pause-only; inert (host-file list unchanged) until 20.4.0 is ACTIVE; missing/stale render falls back to the host list, corrupt pause file fails closed."
+  ]
+}
