@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pipeline_supervision_20261029",
+  "files": [
+    "tests/test_pipeline_repair_handoff_20261029.py",
+    "tests/test_watchlist_deadline_20261029.py",
+    "tests/test_finviz_deadline_resume_20261029.py",
+    "tests/test_orchestrator_admission_20261029.py"
+  ],
+  "anchor": "PIPELINE_SUPERVISION_20261029",
+  "comment": [
+    "PIPELINE_SUPERVISION_20261029 — independent repair ownership, cross-launcher admission, cooperative deadlines and resumable Finviz refresh. Hermetic: no production services, credentials, DB or providers."
+  ]
+}
