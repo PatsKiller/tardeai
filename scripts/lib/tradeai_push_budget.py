@@ -15,6 +15,23 @@ fresh worktree -- or a branch switch -- therefore started at 0 pushes. v2:
   another worktree keeps counting;
 * a guard git-push grant no longer lifts the cap by itself: only a grant whose reason says
   "override" (or the operator's TRADEAI_REMOTE_PUSH_OVERRIDE=1) does (grant_overrides_budget).
+
+Hands-off delivery (AGENTS.md 20.4.0, 2026-10-25; inert until 20.4.0 is ACTIVE on origin/main):
+
+* budget 2 -> HANDS_OFF_BUDGET (5) per branch, read from ``origin/main:AGENTS.md`` through
+  ``scripts/lib/hands_off_policy.py`` (never the pushing branch's own AGENTS.md, no env switch);
+* TRADEAI_REMOTE_PUSH_OVERRIDE=1 past that budget is accepted WITHOUT a fresh interactive operator
+  approval only for the coordinator (``coordinator_override``): TRADEAI_COORDINATOR_SESSION names a
+  LIVE coordinator claim on the claim board (path ``coordination/COORDINATOR``), equals
+  AGENT_CLAIM_SESSION when that is set, and the pushed branch carries an operator approval reference
+  (an ``Operator-approval:`` line in its open PR's body, or in the note / worklog plan of the
+  coordinator's own live claim on that branch). Otherwise the env override means what it meant
+  before: the operator's explicit, interactive approval (AI_WORK_POLICY.md §3);
+* every override that is USED (count at or past the budget) is appended to
+  ``<git common dir>/tradeai-push-overrides.jsonl`` (``log_override``), with its source;
+* a push that is not a fast-forward of the remote branch (a force push) or deletes a remote branch is
+  refused whenever an override is used or 20.4.0 is ACTIVE (``force_push_refusals``) -- no override,
+  coordinator or not, ever authorizes one.
 """
 from __future__ import annotations
 
@@ -29,6 +46,9 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 MAX_WITHOUT_OVERRIDE = 2
+HANDS_OFF_BUDGET = 5  # AGENTS.md 20.4.0 (hands-off delivery); only while 20.4.0 is ACTIVE on origin/main
+OVERRIDE_LOG_NAME = "tradeai-push-overrides.jsonl"
+OVERRIDE_LOG_SCHEMA = "TradeAIPushOverride@v1"
 STATE_NAME = "tradeai-push-budget.json"          # v1 name: read-only legacy floor
 STATE_NAME_V2 = "tradeai-push-budget.v2.json"
 LOCK_NAME_V2 = "tradeai-push-budget.v2.lock"
@@ -272,10 +292,14 @@ def _now(now: datetime | None) -> datetime:
     return now
 
 
-def budget_for(branch: str | None, now: datetime | None = None) -> int:
-    """Authorized pushes allowed for `branch` at `now` before an override is needed."""
+def budget_for(branch: str | None, now: datetime | None = None, *, hands_off: bool = False) -> int:
+    """Authorized pushes allowed for `branch` at `now` before an override is needed.
+
+    ``hands_off`` (AGENTS.md 20.4.0 ACTIVE on origin/main) raises the default to HANDS_OFF_BUDGET; a larger
+    program window still wins."""
+    floor = HANDS_OFF_BUDGET if hands_off else MAX_WITHOUT_OVERRIDE
     if not branch:
-        return MAX_WITHOUT_OVERRIDE
+        return floor
     at = _now(now)
     for window in PROGRAM_WINDOWS:
         prefix = str(window["prefix"])
@@ -283,12 +307,12 @@ def budget_for(branch: str | None, now: datetime | None = None) -> int:
             continue
         if at > datetime.fromisoformat(str(window["ends_at"])):
             continue
-        return int(window["budget"])
-    return MAX_WITHOUT_OVERRIDE
+        return max(int(window["budget"]), floor)
+    return floor
 
 
-def remaining(count: int, *, branch: str | None = None, now: datetime | None = None) -> int:
-    left = budget_for(branch, now) - int(count or 0)
+def remaining(count: int, *, branch: str | None = None, now: datetime | None = None, hands_off: bool = False) -> int:
+    left = budget_for(branch, now, hands_off=hands_off) - int(count or 0)
     return left if left > 0 else 0
 
 
@@ -304,14 +328,15 @@ def decide(
     count: int,
     branch: str | None = None,
     now: datetime | None = None,
+    hands_off: bool = False,
 ) -> dict[str, Any]:
-    budget = budget_for(branch, now)
+    budget = budget_for(branch, now, hands_off=hands_off)
     if not authorized:
         return {
             "allow": False,
             "reason": "UNAUTHORIZED",
             "count": count,
-            "remaining": remaining(count, branch=branch, now=now),
+            "remaining": remaining(count, branch=branch, now=now, hands_off=hands_off),
             "budget": budget,
         }
     if count >= budget and not override:
@@ -326,7 +351,7 @@ def decide(
         "allow": True,
         "reason": "OVERRIDE" if (count >= budget and override) else "AUTHORIZED",
         "count": count,
-        "remaining": remaining(count, branch=branch, now=now) if count < budget else 0,
+        "remaining": remaining(count, branch=branch, now=now, hands_off=hands_off) if count < budget else 0,
         "budget": budget,
     }
 
@@ -338,17 +363,217 @@ def decide_push(
     env_override: bool,
     grant_reason: str | None = None,
     now: datetime | None = None,
+    hands_off: bool = False,
+    coordinator: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The hook's decision over every pushed branch: all must be allowed."""
+    """The hook's decision over every pushed branch: all must be allowed.
+
+    ``coordinator`` is ``coordinator_override(...)``'s verdict: when it is ``ok`` and the env override is
+    set, the override is the coordinator's (no fresh interactive approval needed under 20.4.0)."""
     override = bool(env_override) or grant_overrides_budget(grant_reason)
+    if env_override:
+        source = "coordinator" if (hands_off and coordinator and coordinator.get("ok")) else "env"
+    else:
+        source = "grant_reason"
     per = []
     for b in branches:
         c = count_for(b)
-        per.append({**decide(authorized=authorized, override=override, count=c, branch=b, now=now),
+        per.append({**decide(authorized=authorized, override=override, count=c, branch=b, now=now,
+                             hands_off=hands_off),
                     "branch": b, "state_count": c, "counter_key": counter_key(b)})
     blocked = next((d for d in per if not d["allow"]), None)
-    head = blocked or (per[0] if per else decide(authorized=authorized, override=override, count=0))
+    head = blocked or (per[0] if per else decide(authorized=authorized, override=override, count=0,
+                                                 hands_off=hands_off))
     return {"allow": blocked is None and bool(per), "reason": head["reason"], "branch": head.get("branch"),
             "state_count": head.get("state_count", 0), "budget": head["budget"], "override": override,
-            "override_source": ("env" if env_override else "grant_reason") if override else None,
-            "branches": per}
+            "override_source": source if override else None,
+            "override_used": any(d["reason"] == "OVERRIDE" for d in per),
+            "hands_off": bool(hands_off), "branches": per}
+
+
+# --------------------------------------------------------------------------- hands-off delivery (AGENTS.md 20.4.0)
+
+
+def _hands_off_module():
+    """scripts/lib/hands_off_policy.py, or None (a checkout without it is simply not hands-off)."""
+    try:
+        from scripts.lib import hands_off_policy as H  # type: ignore
+    except ImportError:
+        try:
+            from lib import hands_off_policy as H  # type: ignore[no-redef]
+        except ImportError:
+            return None
+    return H
+
+
+def hands_off_state(ref: str = "origin/main") -> dict[str, Any]:
+    """20.4.0 state from ``<ref>:AGENTS.md`` (main's ratified text, never this branch's own edit)."""
+    H = _hands_off_module()
+    if H is None:
+        return {"active": False, "state": "UNAVAILABLE", "detail": "scripts/lib/hands_off_policy.py not present"}
+    try:
+        return H.policy_state_from_git(ref)
+    except Exception as exc:  # fail closed: pre-20.4.0 behaviour
+        return {"active": False, "state": "UNREADABLE", "detail": type(exc).__name__}
+
+
+def _is_ancestor(old: str, new: str, runner=subprocess.run) -> bool | None:
+    """True/False when git can tell; None when an object is missing (not fetched) or git fails."""
+    try:
+        cp = runner(["git", "merge-base", "--is-ancestor", old, new], capture_output=True, text=True,
+                    timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode == 0:
+        return True
+    if cp.returncode == 1:
+        return False
+    return None
+
+
+def force_push_refusals(refs: Iterable[dict[str, Any]], *, is_ancestor=_is_ancestor) -> list[dict[str, str]]:
+    """Refs this push would rewrite or delete: a remote branch deletion, or a non-fast-forward update
+    (the remote tip is not an ancestor of the pushed tip, or cannot be proven to be -- fetch first)."""
+    out = []
+    for r in refs:
+        branch = str(r.get("branch") or "")
+        if r.get("delete"):
+            out.append({"branch": branch, "why": "deletes the remote branch"})
+            continue
+        remote = str(r.get("remote_sha") or "")
+        if not remote or remote == ZERO_SHA:
+            continue  # a new remote branch
+        verdict = is_ancestor(remote, str(r.get("local_sha") or ""))
+        if verdict is False:
+            out.append({"branch": branch, "why": f"not a fast-forward of the remote tip {remote[:9]} (force push)"})
+        elif verdict is None:
+            out.append({"branch": branch,
+                        "why": f"cannot prove a fast-forward of the remote tip {remote[:9]} (git fetch first)"})
+    return out
+
+
+def _gh_pr_bodies(branch: str, runner=subprocess.run) -> list[dict[str, Any]] | None:
+    """Open PRs whose head is ``branch`` (GET only), or None when GitHub could not be read."""
+    try:
+        cp = runner(["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "number,body,headRefName",
+                     "--limit", "5"], capture_output=True, text=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    try:
+        rows = json.loads(cp.stdout or "[]")
+    except ValueError:
+        return None
+    return [r for r in rows if isinstance(r, dict) and r.get("headRefName") == branch]
+
+
+def coordinator_override(
+    branches: Iterable[str],
+    *,
+    env: dict[str, str] | None = None,
+    claim_rows: list[dict[str, Any]] | None = None,
+    pr_reader=_gh_pr_bodies,
+    worklog_reader=None,
+) -> dict[str, Any]:
+    """May TRADEAI_REMOTE_PUSH_OVERRIDE stand without a fresh interactive operator approval? (20.4.0)
+
+    ok only when ALL hold: TRADEAI_COORDINATOR_SESSION is set and names a LIVE coordinator claim on the claim
+    board; AGENT_CLAIM_SESSION, when set, is that same session (the pushing session IS the coordinator); and EVERY
+    pushed branch carries an operator approval reference -- an ``Operator-approval:`` line in its open PR's body,
+    or in the note / worklog plan of the coordinator's own live claim on that branch."""
+    env = dict(os.environ if env is None else env)
+    H = _hands_off_module()
+    session = (env.get("TRADEAI_COORDINATOR_SESSION") or "").strip()
+    base: dict[str, Any] = {"ok": False, "session": session or None, "approvals": {}}
+    if H is None:
+        return {**base, "why": "hands_off_policy unavailable"}
+    if not session:
+        return {**base, "why": "TRADEAI_COORDINATOR_SESSION is not set"}
+    pushing = (env.get("AGENT_CLAIM_SESSION") or "").strip()
+    if pushing and pushing != session:
+        return {**base, "why": f"AGENT_CLAIM_SESSION {pushing!r} is not the coordinator session"}
+    if claim_rows is None:
+        try:
+            claim_rows = H._claim_rows(env.get("TRADEAI_AGENT_CLAIMS_DIR") or None)
+        except Exception as exc:
+            return {**base, "why": f"claim board unreadable ({type(exc).__name__})"}
+    claim = H.coordinator_session_ok(session, claim_rows, live_only=True)
+    if not claim:
+        return {**base, "why": f"no LIVE coordinator claim ({H.COORDINATOR_CLAIM_PATH}) held by session {session!r}"}
+    base["coordinator_claim"] = claim.get("claim_id")
+    if worklog_reader is None:
+        worklog_reader = H.default_worklog_reader(None)
+    approvals: dict[str, dict[str, Any]] = {}
+    for b in branches:
+        ref, source = None, None
+        prs = pr_reader(b)
+        for pr in prs or []:
+            ref = H.approval_ref(str(pr.get("body") or ""))
+            if ref:
+                source = f"pr#{pr.get('number')} body"
+                break
+        if not ref:
+            ref = H.claim_plan_approval(claim_rows, session=session, branch=b, worklog_reader=worklog_reader)
+            source = "claim plan" if ref else None
+        if not ref:
+            why = "GitHub unreadable and " if prs is None else ""
+            return {**base, "approvals": approvals,
+                    "why": f"branch {b!r}: {why}no Operator-approval: reference in its PR body or the coordinator's claim plan"}
+        approvals[b] = {"ref": ref, "source": source}
+    return {**base, "ok": True, "approvals": approvals, "why": "coordinator with operator approval reference"}
+
+
+def override_log_path() -> Path:
+    override = os.environ.get("TRADEAI_PUSH_OVERRIDE_LOG")
+    if override:
+        return Path(override)
+    return state_path().parent / OVERRIDE_LOG_NAME
+
+
+def log_override(record: dict[str, Any]) -> dict[str, Any]:
+    """Append one TradeAIPushOverride@v1 line (fsynced, under the budget lock). Append-only; never rewritten."""
+    path = override_log_path()
+    row = {"schema": OVERRIDE_LOG_SCHEMA, "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+           **record}
+    with _locked(state_path()):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, (json.dumps(row, sort_keys=True, default=str) + "\n").encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    return row
+
+
+def hook_decision(
+    push_refs_text: str | None,
+    *,
+    authorized: bool,
+    env_override: bool,
+    grant_reason: str | None = None,
+    env: dict[str, str] | None = None,
+    hands_off: dict[str, Any] | None = None,
+    coordinator_fn=coordinator_override,
+    force_fn=force_push_refusals,
+) -> dict[str, Any]:
+    """Everything the pre-push hook decides, in one place (the hook only prints and exits)."""
+    env = dict(os.environ if env is None else env)
+    state = hands_off if hands_off is not None else hands_off_state()
+    active = bool(state.get("active"))
+    branches = pushed_branches(push_refs_text)
+    first = decide_push(branches, authorized=authorized, env_override=env_override, grant_reason=grant_reason,
+                        hands_off=active)
+    coord: dict[str, Any] | None = None
+    if active and env_override and first.get("override_used"):
+        coord = coordinator_fn(branches, env=env)
+    d = decide_push(branches, authorized=authorized, env_override=env_override, grant_reason=grant_reason,
+                    hands_off=active, coordinator=coord) if coord is not None else first
+    d = {**d, "hands_off_state": {k: state.get(k) for k in ("state", "detail", "version", "source")},
+         "coordinator": coord}
+    if d["allow"] and (d.get("override_used") or active):
+        refused = force_fn(parse_push_refs(push_refs_text))
+        if refused:
+            d = {**d, "allow": False, "reason": "FORCE_PUSH_REFUSED", "force": refused}
+    return d
