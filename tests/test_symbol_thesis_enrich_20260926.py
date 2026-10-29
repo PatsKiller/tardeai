@@ -278,9 +278,11 @@ def test_enriches_respects_cooldown(tmp_path: Path):
     first = _accept(tmp_path, _result("CONFIRMS", answers=[
         _answer("q_invalidation", "Net deposits turn negative for two months.")]))
     assert first["enriched"] is True
-    catalyst_only = _result("CONFIRMS", answers=[_answer("q_catalyst_map", "Q3 earnings on 2026-10-29.")])
     # published_ts is wall clock; evaluate "now" relative to it
     ts = datetime.fromisoformat(_store(tmp_path).get_current("symbol_hood")["published_ts"])
+    # Keep the event future at +25h, including runs that cross a UTC date boundary.
+    event_date = (ts + timedelta(days=7)).date().isoformat()
+    catalyst_only = _result("CONFIRMS", answers=[_answer("q_catalyst_map", f"Upcoming earnings on {event_date}.")])
     blocked = _accept(tmp_path, catalyst_only, research_id="res_hood_2", now=ts + timedelta(hours=1))
     assert blocked["version_published"] is False
     assert blocked["publish_suppressed_reason"] == "enrich_cooldown"
