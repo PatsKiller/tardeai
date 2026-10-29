@@ -74,6 +74,7 @@ from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
 from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
 from scripts.lib.n8n_due import LIVE_LANES_ENV, RelayLiveLanesMissing, parse_relay_live_lanes  # noqa: E402
+from scripts.lib import n8n_relay_live_lanes as _relay_live_lanes  # noqa: E402
 from scripts.lib.n8n_relay_env import enforce as enforce_relay_env  # noqa: E402
 from scripts.n8n_coordination_gateway import (  # noqa: E402
     BLOCKED_PORTS,
@@ -397,6 +398,14 @@ class Relay:
         except RelayLiveLanesMissing:
             self.live_lanes = frozenset()
             self.live_lanes_missing = True
+        # AGENTS.md 20.4.0: which layer produced the list (host_env_legacy before ratification; registry_render or
+        # host_env_fallback after). Lane ids and layer names only (scripts/lib/n8n_relay_live_lanes.py).
+        try:
+            _res = _relay_live_lanes.resolve(self.environ)
+            self.live_lanes_source = {"source": _res.get("source"), "paused": _res.get("paused") or [],
+                                      "detail": _res.get("detail")}
+        except Exception as exc:  # status only; the list above already decided
+            self.live_lanes_source = {"source": "unknown", "paused": [], "detail": type(exc).__name__}
         self.gateway_url = self.environ.get("TRADEAI_N8N_GATEWAY_URL", DEFAULT_GATEWAY).rstrip("/")
         self.clock = clock
         self.transport = transport or self._transport
@@ -476,6 +485,7 @@ class Relay:
             "allowlist_version": getattr(self.allowlist, "version", None),
             "allowlist_error": getattr(self.allowlist, "error", None),
             "live_lanes": sorted(self.live_lanes),
+            "live_lanes_source": self.live_lanes_source,
             "gateway_url": self.gateway_url,
             "counts": dict(self.counts),
             "last": self.last,

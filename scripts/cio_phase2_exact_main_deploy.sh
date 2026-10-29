@@ -166,6 +166,28 @@ run_integrity_hook() {
   log "integrity manifest OK"
 }
 
+render_relay_live_lanes() {
+  # AGENTS.md 20.4.0 (hands-off delivery): the n8n relay live-lane list is rendered from THIS release's
+  # config/lane_registry.json + config/n8n_run_allowlist.json into ${dir}/N8N_RELAY_LIVE_LANES.json, stamped
+  # with both files' sha256. Read by scripts/lib/n8n_relay_live_lanes.py only while 20.4.0 is ACTIVE.
+  # Never fatal: a missing or stale render makes the relay fall back to the host-file list (yesterday's
+  # behavior), never a wider one. tradeai-n8n-run-relay.service is a bound unit (restart_root_frozen_units),
+  # so promote restarts it onto this render.
+  local dir="$1"
+  local script="${dir}/scripts/render_n8n_relay_live_lanes.py"
+  if [[ ! -f "$script" ]]; then
+    log "relay live-lane render skipped (script not present)"
+    return 0
+  fi
+  local py="$VENV_PYTHON"
+  [[ -x "$py" ]] || py="python3"
+  if (cd "$dir" && "$py" "$script" --root "$dir"); then
+    log "relay live-lane render OK → ${dir}/N8N_RELAY_LIVE_LANES.json"
+  else
+    log "WARN relay live-lane render failed — relay keeps the host-file list (fallback)"
+  fi
+}
+
 health_check() {
   local label="${1:-health}"
   local ok=0
@@ -729,6 +751,7 @@ cmd_prepare() {
   build_frontend "$ROOT" "$NEW_RELEASE"
   stamp_build "$NEW_RELEASE" "$CONTENT_SHA"
   run_pin_check "$NEW_RELEASE"
+  render_relay_live_lanes "$NEW_RELEASE"
   run_integrity_hook "$NEW_RELEASE"
   local venv_paths=()
   if [[ "${TRADEAI_RELEASE_VENV_MODE:-link}" == "off" ]]; then
