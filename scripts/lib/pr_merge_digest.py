@@ -8,7 +8,7 @@ Flow
 1. ``run_digest`` (host timer, weekdays 08:00 / 12:00 / 16:30 ET, weekends every 3h; ``--now``
    for the coordinator) lists open PRs to ``main`` that are READY: not draft, the four required
    checks ``SUCCESS`` on the current head, no hold label, no path in ``config/merge_hold_paths.json``,
-   no ``operator-merge`` yet. It sends ONE message through ``telegram_alert`` with
+   no ``operator-merge`` yet. It sends one card group through ``telegram_alert`` with
    "Approve all (N)" / "Hold all" and per-item hold toggles (``prdall:`` / ``prdhold:`` /
    ``prdx:<id>:<pr>``); "hold #N" typed in the chat does the same. Held-path PRs are listed as
    "needs operator merge" with a per-PR "Approve #N" tap (``prdheld:<id>:<pr>``) — never in
@@ -30,6 +30,7 @@ No merge, no promote, no broker path. ``MBI_BEHAVIOR = 0``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -41,9 +42,11 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
 try:
+    from scripts import check_pr_plain_english as plain
     from scripts.lib import merge_hold_paths as mhp
     from scripts.lib import pr_merge_telegram as pmt
 except ImportError:  # pragma: no cover — run from scripts/
+    import check_pr_plain_english as plain  # type: ignore
     from lib import merge_hold_paths as mhp  # type: ignore
     from lib import pr_merge_telegram as pmt  # type: ignore
 
@@ -264,15 +267,18 @@ def classify_pr(pr: dict[str, Any], *, repo: str, cfg: dict[str, Any]) -> dict[s
             files = pr_all_files(repo, number) or files
         except RuntimeError:
             pass
+    answers = plain.fields(str(pr.get("body") or ""))
     item: dict[str, Any] = {
         "pr": number,
-        "title": str(pr.get("title") or "")[:200],
+        "title": str(pr.get("title") or ""),
         "url": str(pr.get("url") or ""),
         "head_sha": head,
         "class": pr_class(pr),
         "files_count": changed,
         "risk": risk_notes(files, cfg),
-        "summary": summary_line(pr.get("body"), int(cfg.get("summary_chars") or 140)),
+        "plain_english": answers,
+        "summary": answers.get("What changes", ""),
+        "body_excerpt": _trim(str(pr.get("body") or ""), 140),
     }
     if str(pr.get("baseRefName") or "main") != "main":
         return {**item, "status": "skip", "reason": "base_not_main"}
@@ -284,6 +290,13 @@ def classify_pr(pr: dict[str, Any], *, repo: str, cfg: dict[str, Any]) -> dict[s
     item["checks"] = statuses
     held_labels = sorted(labels & mhp.hold_labels())
     held_paths = mhp.held_classes(files)
+    errors = plain.check(item["title"], str(pr.get("body") or ""))
+    if not errors and any(not item["plain_english"].get(label) or (
+        item["plain_english"][label].startswith("<") and item["plain_english"][label].endswith(">")
+    ) for label in plain.LABELS):
+        errors = ["plain-English answers are empty or still placeholders"]
+    if errors:
+        return {**item, "status": "not_described", "reason": "plain_english_required", "description_errors": errors}
     if held_labels or held_paths:
         item["hold"] = {"labels": held_labels, "classes": sorted(held_paths)}
         return {**item, "status": "needs_operator", "reason": "held"}
@@ -298,13 +311,13 @@ def classify_pr(pr: dict[str, Any], *, repo: str, cfg: dict[str, Any]) -> dict[s
 
 def build_digest(repo: str, cfg: dict[str, Any]) -> dict[str, Any]:
     prs = list_open_prs(repo, int(cfg.get("pr_list_limit") or 100))
-    ready, needs, skipped = [], [], []
+    ready, needs, skipped, undescribed = [], [], [], []
     for pr in sorted(prs, key=lambda p: int(p["number"])):
         it = classify_pr(pr, repo=repo, cfg=cfg)
-        {"ready": ready, "needs_operator": needs}.get(it["status"], skipped).append(it)
-    cap = int(cfg.get("max_items") or 12)
+        {"ready": ready, "needs_operator": needs, "not_described": undescribed}.get(it["status"], skipped).append(it)
+    cap = max(1, int(cfg.get("max_ready_per_digest") or 8))
     return {"ready": ready[:cap], "overflow": ready[cap:], "needs_operator": needs, "skipped": skipped,
-            "scanned": len(prs)}
+            "not_described": undescribed, "scanned": len(prs)}
 
 
 # ── message ──────────────────────────────────────────────────────────────────
@@ -315,52 +328,115 @@ def _esc(text: str) -> str:
     return re.sub(r"([_*`\[])", r"\\\1", str(text or ""))
 
 
-MAX_MESSAGE_CHARS = 3800  # one Telegram message (4096 UTF-16 cap) so the buttons stay attached
+MAX_MESSAGE_CHARS = 3800  # headroom below Telegram's 4096 UTF-16-unit limit
+
+
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _trim(text: str, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    prefix = text[: max(0, limit - 1)]
+    if " " in prefix:
+        prefix = prefix.rsplit(" ", 1)[0]
+    return prefix.rstrip() + "…"
+
+
+def headline(title: str) -> str:
+    text = " ".join(str(title or "").split())
+    pattern = r"^(?:\[(?:shared-infra|held)\]\s*|(?:feat|fix|chore|ci|docs|refactor|test|perf|build|style)(?:\([^)]*\))?!?\s*:\s*|DSN-\d{8}-[^:]+:\s*)"
+    while True:
+        stripped = re.sub(pattern, "", text, count=1, flags=re.I)
+        if stripped == text:
+            return text
+        text = stripped
+
+
+def _card(item: dict[str, Any], cfg: dict[str, Any], excluded: set[int]) -> str:
+    values = item.get("plain_english") or {}
+    limit = max(1, int(cfg.get("plain_field_chars") or 160))
+    mark = "⏸ HELD " if int(item["pr"]) in excluded else ""
+    lines = [f"{mark}*#{item['pr']}* — {_esc(headline(item['title']))}"]
+    for label, field in (("What", "What changes"), ("Why", "Why"), ("Affects", "Who / what it affects"),
+                         ("When", "When it takes effect"), ("Fallback", "Risk and fallback")):
+        lines.append(f"{label}: {_esc(_trim(values[field], limit))}")
+    hold = item.get("hold") or {}
+    if "files_unverified" in (hold.get("classes") or []):
+        approval = "unavailable until all changed files are verified"
+    elif hold:
+        approval = "individual operator approval required; never Approve all"
+    else:
+        approval = _trim(values["Approval"], limit)
+    lines.append(f"Approval: {_esc(approval)}")
+    words = cfg.get("hold_class_words") or {}
+    risk = list(item.get("risk") or [])
+    for hold in (item.get("hold") or {}).get("classes") or []:
+        risk.append(words.get(hold) or ("changed files could not be verified" if hold == "files_unverified" else "requires operator review"))
+    if (item.get("hold") or {}).get("labels") and not (item.get("hold") or {}).get("classes"):
+        risk.append("requires individual operator approval")
+    risk_text = "; ".join(dict.fromkeys(risk)) or "no specific risks flagged"
+    lines.append(f"Risk: {_esc(risk_text)} · {item['files_count']} files · head `{str(item['head_sha'])[:9]}`")
+    return "\n".join(lines)
+
+
+def format_digest_messages(d: dict[str, Any], cfg: dict[str, Any] | None = None) -> list[str]:
+    """Pack complete cards; never suppress their descriptions to fit a message."""
+    cfg = cfg or load_config()
+    ready = d.get("ready") or []
+    excluded = {int(x) for x in d.get("excluded") or []}
+    did = str(d.get("digest_id") or "preview")
+    header = f"📦 *PR merge digest* — {len(ready)} ready (`{_esc(did)}`)"
+    pages = []
+
+    def pack(blocks, heading, card_limit=3):
+        prefix = header + "\n\n" + heading
+        page, count = prefix, 0
+        for block in blocks:
+            if _units(prefix + "\n\n" + block) > MAX_MESSAGE_CHARS:
+                raise ValueError("PR card exceeds Telegram limit; reduce plain_field_chars")
+            candidate = page + "\n\n" + block
+            if count and (_units(candidate) > MAX_MESSAGE_CHARS or (card_limit is not None and count >= card_limit)):
+                pages.append(page)
+                page, count = prefix, 0
+            page += "\n\n" + block
+            count += 1
+        pages.append(page)
+
+    if d.get("not_described"):
+        info = []
+        for item in d["not_described"]:
+            info.append(f"*#{item['pr']}* — {_esc(headline(item['title']))}\n{_esc(item['body_excerpt'])}")
+        pack(info, "⚠️ *Not described — cannot approve until rewritten*", card_limit=None)
+    if d.get("needs_operator"):
+        pack([_card(item, cfg, excluded) for item in d["needs_operator"]],
+             "🔒 *Needs operator merge* — individual approval only; never Approve all")
+    if not pages:
+        pack([], "Review the described ready cards in the following messages.")
+    if ready:
+        cards = [_card(item, cfg, excluded) for item in ready]
+        if d.get("overflow"):
+            cards[-1] += f"\n\n+{len(d['overflow'])} more ready — next digest."
+        cards[-1] += "\n\nApprove all → label `operator-merge` on each described ready PR; Mergify merges in its ET window and the host deploys. Hold one with its button or reply `hold #N`. A changed head needs a new approval."
+        pack(cards, "*Ready for your approval*")
+    return pages
 
 
 def format_digest(d: dict[str, Any]) -> str:
-    text = _format_digest(d, summaries=True, needs_cap=None)
-    if len(text) > MAX_MESSAGE_CHARS:
-        text = _format_digest(d, summaries=False, needs_cap=None)
-    if len(text) > MAX_MESSAGE_CHARS:
-        text = _format_digest(d, summaries=False, needs_cap=5)
-    return text[:MAX_MESSAGE_CHARS]
+    """Complete text preview; sending uses the bounded messages individually."""
+    return "\n\n".join(format_digest_messages(d))
 
 
-def _format_digest(d: dict[str, Any], *, summaries: bool, needs_cap: Optional[int]) -> str:
-    ready = d.get("ready") or []
-    excluded = set(int(x) for x in d.get("excluded") or [])
-    lines = [f"\U0001f4e6 *PR merge digest* — {len(ready)} ready"]
-    if d.get("digest_id"):
-        lines[0] += f" (`{d['digest_id']}`)"
-    lines.append("")
-    for it in ready:
-        mark = "⏸ HELD " if int(it["pr"]) in excluded else ""
-        risk = f" ⚠️ {', '.join(it['risk'])}" if it.get("risk") else ""
-        lines.append(
-            f"{mark}*#{it['pr']}* {_esc(it['title'][:90])}\n"
-            f"   {it['class']} · {it['files_count']} files · `{str(it['head_sha'])[:9]}`{risk}"
-        )
-        if summaries and it.get("summary"):
-            lines.append(f"   \u21b3 {_esc(it['summary'])}")
-    if d.get("overflow"):
-        lines.append(f"\n+{len(d['overflow'])} more ready — next digest.")
-    needs = d.get("needs_operator") or []
-    if needs:
-        lines.append("\n\U0001f512 *Needs operator merge* (per-PR Approve only — never in Approve all):")
-        shown = needs if needs_cap is None else needs[:needs_cap]
-        for it in shown:
-            why = ", ".join((it.get("hold") or {}).get("labels", []) + (it.get("hold") or {}).get("classes", []))
-            lines.append(f"• #{it['pr']} {_esc(it['title'][:70])} — {_esc(why)}")
-        if len(shown) < len(needs):
-            lines.append(f"• +{len(needs) - len(shown)} more")
-    if ready:
-        lines.append(
-            "\nApprove all → label `operator-merge` on each; Mergify merges in its ET window "
-            "(not Mon–Fri 09:30–16:15); host promotes. Exclude one: tap its Hold button or reply `hold #N`. "
-            "A PR whose head changes after approval drops out and returns to the next digest."
-        )
-    return "\n".join(lines)
+def _preview(d: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any]:
+    parts = format_digest_messages(d, cfg)
+    markup = keyboard(d, cfg)
+    return {
+        "message": "\n\n".join(parts), "reply_markup": markup,
+        "messages": [{"digest_id": d["digest_id"], "message": text,
+                      "reply_markup": markup if i == len(parts) - 1 else None} for i, text in enumerate(parts)],
+    }
 
 
 def keyboard(d: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any] | None:
@@ -437,7 +513,7 @@ def run_digest(*, repo: str = pmt.DEFAULT_REPO, apply: bool = False, force: bool
     out = _run_digest(repo=repo, apply=apply, force=force, cfg=cfg or load_config())
     if apply:  # durable per-run receipt (lane output_signal), even when nothing was sent
         _write_json(_store() / "digest_last_run.json",
-                    {k: v for k, v in out.items() if k not in ("message", "reply_markup")} | {"at": _now_iso()})
+                    {k: v for k, v in out.items() if k not in ("message", "messages", "reply_markup")} | {"at": _now_iso()})
     return out
 
 
@@ -447,22 +523,29 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
         "ok": True, "apply": apply, "scanned": d["scanned"],
         "ready": [i["pr"] for i in d["ready"]], "needs_operator": [i["pr"] for i in d["needs_operator"]],
         "overflow": [i["pr"] for i in d["overflow"]],
+        "not_described": [i["pr"] for i in d["not_described"]],
         "skipped": [{"pr": i["pr"], "reason": i.get("reason")} for i in d["skipped"]],
     }
-    if not d["ready"] and not d["needs_operator"]:
+    if not d["ready"] and not d["needs_operator"] and not d["not_described"]:
         out["action"] = "empty_no_message"
         return out
     rows = load_digests()
     prev = latest_pending(rows)
     sig = _signature(d)
+    # Rendering changes replace old prompts without changing approval SHA binding.
+    display = hashlib.sha256("\n".join(format_digest_messages({**d, "digest_id": "preview"}, cfg)).encode()).hexdigest()
     last_sent = rows[-1] if rows else None
     if not force:
-        if prev and prev.get("signature") == sig:
+        if prev and prev.get("signature") == sig and prev.get("display_fingerprint") == display:
             out["action"] = "unchanged_pending_digest"
             out["digest_id"] = prev["digest_id"]
+            if not apply:
+                out.update(_preview({**d, "digest_id": prev["digest_id"], "excluded": prev.get("excluded") or []}, cfg))
             return out
-        if not d["ready"] and last_sent and [s for s in (last_sent.get("signature") or []) if s[0] == "n"] == sig:
+        if not d["ready"] and last_sent and last_sent.get("delivery", {}).get("accepted") is True and last_sent.get("display_fingerprint") == display and [s for s in (last_sent.get("signature") or []) if s[0] == "n"] == sig:
             out["action"] = "needs_operator_unchanged"
+            if not apply:
+                out.update(_preview({**d, "digest_id": last_sent["digest_id"], "excluded": []}, cfg))
             return out
     digest_id = secrets.token_hex(6)
     now = time.time()
@@ -470,23 +553,35 @@ def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> 
         "schema": DIGEST_SCHEMA, "digest_id": digest_id, "repo": repo, "status": "PENDING",
         "created_at": now, "expires_at": now + int(cfg.get("ttl_seconds") or 43200),
         "ready": d["ready"], "needs_operator": d["needs_operator"], "overflow": d["overflow"],
-        "excluded": [], "signature": sig, "message_ids": [],
+        "not_described": d["not_described"],
+        "excluded": [], "signature": sig, "display_fingerprint": display, "message_ids": [],
     }
-    text = format_digest(rec)
-    markup = keyboard(rec, cfg)
-    out.update({"digest_id": digest_id, "message": text, "reply_markup": markup})
+    preview = _preview(rec, cfg)
+    markup, messages = preview["reply_markup"], preview["messages"]
+    out.update({"digest_id": digest_id, **preview})
     if not apply:
         out["action"] = "would_send"
         return out
-    ok, ids, detail = _send(text, priority=str(cfg.get("digest_priority") or "P1"), reply_markup=markup)
+    ids, details, ok = [], [], True
+    for message in messages:
+        accepted, delivered, detail = _send(message["message"], priority=str(cfg.get("digest_priority") or "P1"),
+                                            reply_markup=message["reply_markup"])
+        ids.extend(delivered)
+        details.append(detail)
+        if not accepted or not delivered:
+            ok = False  # Never offer approval after a missing/queued detail page.
+            break
+    detail = "; ".join(details)
     for r in rows:
         if r.get("status") == "PENDING":
             r["status"] = "SUPERSEDED"
             r["superseded_by"] = digest_id
     rec["message_ids"] = ids
     rec["delivery"] = {"accepted": ok, "detail": detail, "at": now}
-    if not markup:
-        rec["status"] = "INFO"  # nothing to approve: only "needs operator merge" lines
+    if not ok:
+        rec["status"] = "DELIVERY_FAILED"
+    elif not markup:
+        rec["status"] = "INFO"  # no described ready or verified held PR has an approval button
     rows.append(rec)
     save_digests(rows)
     out.update({"action": "sent" if ok else "send_failed", "ok": ok, "telegram": detail, "message_ids": ids})

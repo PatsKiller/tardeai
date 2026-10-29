@@ -55,6 +55,29 @@ def _block(body: str) -> str | None:
     return None
 
 
+def _field_match(block: str, label: str, *, heading: bool = False):
+    prefix = r"^[ \t]*(?:[-*+]\s+)?" if heading else ""
+    following = r"\n[ \t]*(?:[-*+]\s+)?\*\*[^*\n]+:\*\*" if heading else r"\n\*\*[^*\n]+:\*\*"
+    return re.search(prefix + r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=" + following + r"|\Z)", block, re.S | re.M)
+
+
+def fields(body: str) -> dict[str, str]:
+    """Extract the six answers, including bodies using Markdown list bullets.
+
+    Validation retains its original acceptance rules. Structured extraction
+    matches actual heading lines, not a literal label mentioned inside an answer.
+    """
+    block = _block(body or "")
+    if block is None:
+        return {}
+    out = {}
+    for label in LABELS:
+        match = _field_match(block, label, heading=True)
+        if match:
+            out[label] = " ".join(match.group(1).split())
+    return out
+
+
 def check(title: str, body: str) -> list[str]:
     errors: list[str] = []
     words = re.sub(r"^(\s*\[[^\]]*\]\s*)+", "", title or "").split()
@@ -70,7 +93,7 @@ def check(title: str, body: str) -> list[str]:
     if tech != -1 and tech < body.find(HEADING):
         errors.append(f"'{HEADING}' must come before '## Technical detail'")
     for label in LABELS:
-        m = re.search(r"\*\*" + re.escape(label) + r":\*\*(.*?)(?=\n\*\*[^*\n]+:\*\*|\Z)", block, re.S)
+        m = _field_match(block, label)
         if not m:
             errors.append(f"missing **{label}:**")
             continue

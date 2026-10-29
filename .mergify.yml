@@ -84,11 +84,7 @@ pull_request_rules:
           - held
       comment:
         message: >
-          Held: this PR touches a path Mergify never merges except on the operator's own per-PR tap
-          (broker / Active Trader / MBI / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, or
-          the merge + deploy control plane; config/merge_hold_paths.json; AGENTS.md §0 rules 1-2, §25.10).
-          The Telegram digest lists it as "needs operator merge" with a per-PR "Approve #N (held)" button —
-          never in "Approve all".
+          Held: this PR touches a path Mergify never merges except on the operator's own per-PR tap (broker / Active Trader / MBI / orders, secrets, AGENTS.md / AI_WORK_POLICY, hooks / guard, or the merge + deploy control plane; config/merge_hold_paths.json; AGENTS.md §0 rules 1-2, §25.10). The Telegram digest lists it as "needs operator merge" with a per-PR "Approve #N (held)" button — never in "Approve all".
 
   - name: Queue default when CI green and operator-merge (Telegram Approve)
     conditions:
@@ -128,6 +124,12 @@ pull_request_rules:
     actions:
       queue:
         name: solo
+  - name: Keep PRs up to date
+    conditions:
+      - -draft
+      - "#commits-behind >= 1"
+    actions:
+      update: null
 
 queue_rules:
   - name: default
