@@ -411,6 +411,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-26 yfinance-info-snapshot: n8n-native ingest dispatcher row at shadow, weekdays 05:40 dry_run
         # (no host line; tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
+        # 2026-10-28 conflict-resolver: n8n-native learn dispatcher row at shadow (W8; no host line). Dry-run
+        # evaluates the conflict engine and writes only its receipt; no host scheduler is flipped.
+        "conflict-resolver",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     ask_native={"cio-ask-lifecycle": "0 * * * *", "cio-ask-material-events": "*/5 * * * *"}

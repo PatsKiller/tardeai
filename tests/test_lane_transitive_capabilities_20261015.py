@@ -69,6 +69,13 @@ PROSPECTUS_BUILD_20261026 = frozenset({"prospectus-build"})
 #: broker call, no direct_sender. Reviewed addition, not a ruling widening.
 YFINANCE_SNAPSHOT_20261026 = frozenset({"yfinance-info-snapshot"})
 
+#: 2026-10-28 conflict-resolver admission (operator baseline approval in-session): the entry
+#: scripts/conflict_resolver.py reaches broker_module / order_placement only through the SAME lazy chain as
+#: yfinance-info-snapshot (watch_intelligence -> watch_domains -> positions_sync -> schwab_transport). The dry run
+#: is read-only evaluation of the conflict engine over canonical projections; no broker call, no direct_sender.
+#: Operator-approved baseline justification, not a ruling widening.
+CONFLICT_RESOLVER_20261028 = frozenset({"conflict-resolver"})
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -145,7 +152,8 @@ FROZEN_20261015 = {
     | OPERATOR_RULING_DD01_20261015
     | DATA_INTEGRITY_MONITORS_20261018
     | PROSPECTUS_BUILD_20261026
-    | YFINANCE_SNAPSHOT_20261026,
+    | YFINANCE_SNAPSHOT_20261026
+    | CONFLICT_RESOLVER_20261028,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -223,7 +231,8 @@ FROZEN_20261015 = {
     | OPERATOR_RULING_DD01_20261015
     | DATA_INTEGRITY_MONITORS_20261018
     | PROSPECTUS_BUILD_20261026
-    | YFINANCE_SNAPSHOT_20261026,
+    | YFINANCE_SNAPSHOT_20261026
+    | CONFLICT_RESOLVER_20261028,
 }
 
 
