@@ -270,8 +270,13 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
         sym = symbol(row.get("ticker")) if isinstance(row, dict) else ""
         if sym in symbols and sym not in names and isinstance(row.get("title"), str) and row["title"].strip():
             names[sym] = {"name": row["title"].strip(), "source": "SEC company tickers"}
-    instruments = (bounded_json(root / "data/runtime/schwab_instrument_evidence.json").get("document") or {}).get("instruments")
+    instrument_doc = (bounded_json(root / "data/runtime/schwab_instrument_evidence.json").get("document") or {})
+    instruments = instrument_doc.get("instruments")
     instruments = instruments if isinstance(instruments, dict) else {}
+    # `misses` are symbols the broker could not identify (broker_returned_no_identifier),
+    # typically delisted or unquoted names. They carry no description or cusip.
+    misses = instrument_doc.get("misses")
+    misses = misses if isinstance(misses, dict) else {}
     by_cusip: dict[str, str] = {}
     for sym, rec in instruments.items():
         if not isinstance(rec, dict):
@@ -279,11 +284,12 @@ def name_fallbacks(symbols: set[str], root: Path, holdings: dict) -> dict[str, A
         sym = symbol(sym)
         if sym in symbols and sym not in names and isinstance(rec.get("description"), str) and rec["description"].strip():
             names[sym] = {"name": rec["description"].strip(), "source": "Schwab instrument description"}
-        if sym in symbols and rec.get("reason") == "broker_returned_no_identifier":
-            no_identifier.add(sym)
         cusip = symbol((rec.get("identifiers") or {}).get("cusip")) if isinstance(rec.get("identifiers"), dict) else ""
         if cusip:
             by_cusip.setdefault(cusip, sym)
+    for sym in misses:
+        if symbol(sym) in symbols:
+            no_identifier.add(symbol(sym))
     wanted = {s for s in symbols if cusip_like(s)}
     if wanted:
         try:
