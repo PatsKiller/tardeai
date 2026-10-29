@@ -1,6 +1,6 @@
 /** Stored source facts only; no fetch, policy change, level derivation, record write or action. */
 import type { WatchMarketFacts as Facts, WatchMarketField } from '../../lib/watchListsModel'
-import { levelSourceTag, levelText, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from '../../lib/watchMarketFactsPresentation'
+import { levelSourceTag, levelText, levelTimeLabel, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from '../../lib/watchMarketFactsPresentation'
 import { FONT, TOKENS, TYPE, numStyle } from '../../lib/designTokens'
 import { levelPercent } from '../../lib/watchRecordCardModel'
 import WatchLevelLadder from './WatchLevelLadder'
@@ -33,6 +33,7 @@ export default function WatchMarketFacts({ facts, retained = false, now = new Da
   const relationUnknown = levels.some(field => field.value != null && field.compatibility === 'UNKNOWN')
   const source = Array.from(new Set(levels.filter(f => f.value != null).map(levelSourceTag))).join(' / ') || 'No reference'
   const unknownTime = levelTimeUnknown(levels)
+  const timeLabel = levelTimeLabel(levels)
   const times = Array.from(new Set(levels.filter(f => f.value != null).map(f => f.as_of).filter(Boolean))).join(' / ')
   const zoneText = zone[0] != null && zone[1] != null ? `${marketAmount(zone[0])}–${marketAmount(zone[1])}` : '—'
   const renderLevel = (kind: 'support' | 'resistance') => {
@@ -62,7 +63,7 @@ export default function WatchMarketFacts({ facts, retained = false, now = new Da
     </div>
     <div className="watch-card-phone-zone" style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Zone <span style={{ fontFamily: FONT.mono, color: TOKENS.info }}>{zoneText}</span>{ownership && <> · {ownership}</>}</div>
     <div className="watch-market-level-notes" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], marginTop: 8 }}>
-      levels: {source} · {unknownTime ? <span data-testid="watch-market-time-unknown">time unknown</span> : times || 'not measured'}
+      levels: {source} · {unknownTime ? <span data-testid="watch-market-time-unknown">{timeLabel}</span> : times || 'not measured'}
       {relationUnknown && <span>Price unavailable; nearest relation unknown</span>}
       {retained && <span>Last snapshot</span>}
     </div>
