@@ -49480,6 +49480,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Deploy console P1 (DSN-20261029-deploy-console, read-only): the "not live / in flight" open-PR board.
+    # scripts/lib/deploy_in_flight.py — lists open PRs to main through `gh pr list` (GitHub IS called here, unlike
+    # the releases-schedules request path). No label write, no merge, no push, no promote, no schedule. GET only.
+    if base_path.rstrip("/") == "/api/v2/ops/in-flight":
+        try:
+            try:
+                from lib import deploy_in_flight as _dif
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploy_in_flight as _dif
+            _dif_out = _dif.handle(base_path, method, query or {}, _db_query)
+            if _dif_out is not None:
+                return _dif_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Ops → Incidents (operator 2026-10-27): IncidentRecord@v1 ledger (data/coordination/incidents) — GET list/detail;
     # POST <id>/ack | <id>/close (operator decision first, scripts/lib/operator_approvals.py). docs/ops/INCIDENT_LEDGER.md.
     if base_path.rstrip("/") == "/api/v2/ops/incidents" or base_path.startswith("/api/v2/ops/incidents/"):
