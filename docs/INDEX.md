@@ -2061,6 +2061,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) |
+| `docs/ops/PIPELINE_SUPERVISION_20261029.md` | Pipeline supervisor failures — 2026-10-29 |
 | `docs/ops/PIPELINE_TIME_SETTINGS.md` | Pipeline time settings — measured, pinned, and why |
 | `docs/ops/POLICY_ENFORCEMENT_AUDIT_20261024.md` | Policy enforcement audit — source proposal, 2026-10-24 |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
@@ -2121,6 +2122,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md` | portfolio-server memory spikes after release 7 (2026-10-23) |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
 | `docs/ops/SETUP_READINESS_SHARED_VERDICT_2026-10-23.md` | SetupReadiness@v1 — one "driven by / ready / missing" verdict (2026-10-23) |
+| `docs/ops/SHARD_HINTS_REFRESH_RUNBOOK.md` | Shard duration hints — refresh runbook (unblocks every PR) |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
 | `docs/ops/SITE_FIX_W1_20261024.md` | W1 CIO truth and consistency |
 | `docs/ops/SITE_FIX_W2_20261024.md` | W2: payload budgets, paging and lazy reads |
