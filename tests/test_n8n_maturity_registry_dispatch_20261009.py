@@ -517,9 +517,6 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
         # (tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
-        # Approved source registration only: two native inactive Ask proposals, never host cron or live mode.
-        "cio-ask-lifecycle",
-        "cio-ask-material-events",
         # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 15 min (windows 17:45 / 07:00 ET) dry_run
         # (tests/test_prospectus_build_lane_20261026.py).
         "prospectus-build",
@@ -547,9 +544,6 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
         # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
-        # 2026-10-28 conflict-resolver shadow admission (W8): n8n-native learn-class dispatcher row, write-free
-        # dry-run at shadow (docs/designs/DSN-20261028-cio-review-transparency.md; PR #2266).
-        "conflict-resolver",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
@@ -578,6 +572,14 @@ N8N_NATIVE_CANARY = frozenset(
         *_CPC.LIVE,
         # 2026-10-26 operator "switch it from test mode to live": macro-calendar-refresh shadow -> canary, live_arg [].
         *_MCC.LIVE,
+        # 2026-10-29 Ask lifecycle + material-events shadow -> canary (DSN-20261026-ask-hourly P1-T4): live_arg [] (the
+        # --once / --once --events-only script default is the live run). Prerequisites code-complete; the verified
+        # per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.
+        "cio-ask-lifecycle",
+        "cio-ask-material-events",
+        # 2026-10-29 conflict-resolver shadow -> canary (W8 live flip; docs/designs/DSN-20261028-cio-review-transparency.md
+        # §5 gate 4): the ledger-writing --shadow mode runs live, live_arg --shadow --state-root $STATE_ROOT.
+        "conflict-resolver",
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
@@ -591,8 +593,16 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
+    # 2026-10-29 conflict-resolver canary live_arg: the ledger-writing --shadow mode (the runner has no notification
+    # mode; the comparison report the operator reviews lives at data/conflicts/reports/<sha256(run_id)>.json).
+    "conflict-resolver": ["--shadow", "--state-root", "$STATE_ROOT"],
     **_CPC.LIVE_ARG,
     **_MCC.LIVE_ARG,
+}
+
+#: n8n-native canary lanes whose dry_run_arg is not the bare ["--dry-run"] (their runner requires --state-root).
+N8N_NATIVE_CANARY_DRY_RUN_ARG = {
+    "conflict-resolver": ["--dry-run", "--state-root", "$STATE_ROOT"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
@@ -629,7 +639,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live.
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
-            assert allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            assert allow[lane]["dry_run_arg"] == N8N_NATIVE_CANARY_DRY_RUN_ARG.get(lane, ["--dry-run"]), lane
             if lane in N8N_NATIVE_CANARY_LIVE_ARG:
                 assert allow[lane]["live_arg"] == N8N_NATIVE_CANARY_LIVE_ARG[lane], lane
             else:
@@ -678,9 +688,6 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
-            if lane in {"cio-ask-lifecycle", "cio-ask-material-events"}:
-                assert row["state"]=="NEVER_SCHEDULED" and allow[lane]["live_arg"] is None, lane
-                assert LD.r1_class_admission(row, allow[lane])==(True, "r1_admitted:llm"), lane
         elif lane in SYSTEMD_TIMER_SHADOW:
             assert sched["kind"] == "systemd" and sched.get("stage") == "shadow", lane
             assert sched["expression"].endswith(".timer"), lane
