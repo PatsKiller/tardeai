@@ -397,6 +397,11 @@ def test_platform_health_reads_the_install_receipt(tmp_path):
     assert any(fn is PH.probe_staged_units for fn, _ in PH.PROBES)
 
 
+@pytest.mark.skip(
+    reason="Release Train v2 retired 2026-10-27 (operator directive #2240); release_train_controller is archived "
+           "under archive/release_train_20261026/, so the train's protected-surface and glob assertions no longer "
+           "apply (the train can never change these files)."
+)
 def test_installer_and_unit_sources_are_refused_by_the_train():
     from scripts.lib import release_train_controller as RTC
 
