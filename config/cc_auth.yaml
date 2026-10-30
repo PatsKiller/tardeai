@@ -139,6 +139,14 @@ cc_auth:
       - action: prospectus_command
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v2/prospectus(/.*)?
+      # Deploy console P2 (2026-10-29): POST .../in-flight/action performs Approve/Hold/Refresh-hints/Push
+      # — the operator-merge label write and a single git-push grant, the same rails the Telegram tap and
+      # bin/guard use. Same-origin enforced here even in report_only; the handler re-checks it
+      # (cc_auth.command_csrf_check) and answers only the operator's tailnet identity on serve_proxy. No new
+      # authority: force-push stays refused and the pre-push hook still scope-checks the grant.
+      - action: deploy_console_command
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/ops/in-flight(/.*)?
     # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
     # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
     # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).
