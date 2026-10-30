@@ -46,8 +46,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
-| Site-wide conflict lifecycle | **conflict_ledger** | PROPOSED | `data/conflicts/conflict_events.jsonl` (file) | `scripts/lib/conflicts/ledger.py` | n8n_shadow_then_live: conflict-resolver | 30 min while scheduled; no produced evidence means a gap | Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest |
-| AI-proposed conflict rules and operator-approved rulebook amendments | **conflict_rule_proposals** | PROPOSED | `data/conflicts/rule_proposals.jsonl` (file) | `scripts/lib/conflicts/proposals.py` | n8n_shadow_then_live: conflict-rule-proposals | a pending proposal is announced once (grouped P2); no produced evidence means a gap | Conflict rules page, Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision), GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook) |
 
 ## Entity by entity
 
@@ -396,40 +394,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
 
-### Conflict ledger and decisions — `conflict_ledger` (PROPOSED)
-
-**Operator decision (§17):** Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts.
-
-- **Facts:** finding, lifecycle, owner decision, source supersession
-- **Store of record:** `data/conflicts/conflict_events.jsonl` (file)
-- **Single writer:** `scripts/lib/conflicts/ledger.py`
-- **Cadence:** event changes; conflict-resolver shadow cadence separately owned by W8 · stale after 0.5 h
-- **Freshness SLA:** 30 min while scheduled; no produced evidence means a gap
-- **Refresh lane:** n8n_shadow_then_live: conflict-resolver — W8 owns inactive declaration/admission; no live flip by W10
-- **Read path (projection):** `scripts.lib.conflicts.api.records_section`
-- **Readers:** Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest
-
-| Copy | Role | How | Page/API files reading it (measured) |
-|---|---|---|---|
-| `conflict_events` (table) | derived | gated PG dual write only after operator migration; immutable event_id idempotency | — |
-
-### Conflict rule proposals and rulebook amendments — `conflict_rule_proposals` (PROPOSED)
-
-**Operator decision (§17):** Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts.
-
-- **Facts:** unmatched conflict pattern, AI rule proposal, operator proposal decision, rulebook amendment
-- **Store of record:** `data/conflicts/rule_proposals.jsonl` (file)
-- **Single writer:** `scripts/lib/conflicts/proposals.py`
-- **Cadence:** conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions · stale after 24 h
-- **Freshness SLA:** a pending proposal is announced once (grouped P2); no produced evidence means a gap
-- **Refresh lane:** n8n_shadow_then_live: conflict-rule-proposals — schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)
-- **Read path (projection):** `scripts.lib.conflicts.proposals.collection`
-- **Readers:** Conflict rules page, Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision), GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook)
-
-| Copy | Role | How | Page/API files reading it (measured) |
-|---|---|---|---|
-| `data/conflicts/rulebook_amendments.jsonl` (file) | derived | hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten | — |
-
 ## Field level
 
 ### `CIOProspect` — domain `cio_prospect`; InstrumentRecord@v1 (AGENTS.md §13.4; extended, not cloned, per §13.5)
@@ -496,7 +460,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 These carry no dictionary block yet; their store, writer and read path are in [`docs/SOURCE_OF_TRUTH.md`](../SOURCE_OF_TRUTH.md). A domain marked superseded becomes a derived copy when the superseding row is granted.
 
-`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`, `operator_decisions`
+`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`, `operator_decisions`, `conflict_ledger`, `conflict_rule_proposals`
 
 ## Surfaces scanned for copy reads
 
