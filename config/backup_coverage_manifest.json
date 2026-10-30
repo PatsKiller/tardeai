@@ -326,6 +326,17 @@
    ]
   },
   {
+   "id": "stores_conflicts_files",
+   "description": "Conflict-engine append-only ledgers under data/conflicts (conflict_events.jsonl, rule_proposals.jsonl)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "data/conflicts is resolved by resolve_durable_dir to persistent-state/data/conflicts, which is neither symlinked from the dev-tree data/ that data_offsite tars nor in PERSISTENT_TREES, so no backup reaches these ledgers. ConflictRecord is rebuilt from ConflictEvent rows and rule proposals are recomputable from the rulebook + unmatched observations, but the append history (and any operator decisions) is lost on disk loss.",
+   "covers": [
+    "store:conflict_ledger",
+    "store:conflict_rule_proposals"
+   ]
+  },
+  {
    "id": "stores_intelligence_schema",
    "description": "Authority stores whose table is in the intelligence schema (some also write a runtime/governance file)",
    "mechanism": "NONE",
