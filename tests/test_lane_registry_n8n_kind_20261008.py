@@ -359,7 +359,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
         # (no host line; tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
-        # Hourly Ask/source polling proposals remain native, shadow and inactive; no host schedule is retired.
+        # Hourly Ask/source polling lanes: n8n-native, no host schedule is retired. 2026-10-29 live flip: shadow ->
+        # canary, dispatch live, live_arg [] (the --once / --once --events-only script default is the live run).
         "cio-ask-lifecycle",
         "cio-ask-material-events",
         # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 15 min (windows 17:45 / 07:00 ET) dry_run
@@ -420,10 +421,10 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     allow={entry["lane_id"]: entry for entry in json.loads((ROOT/"config/n8n_run_allowlist.json").read_text())["lanes"]}
     for lane,cadence in ask_native.items():
         row=native[lane]
-        assert row["state"]=="NEVER_SCHEDULED" and row["scheduler"]["stage"]=="shadow"
+        assert row["state"]=="ACTIVE" and row["scheduler"]["stage"]=="canary"
         assert row["scheduler"]["workflow_id"]=="tradeai-cio-ask-lifecycle-native"
         assert row["scheduler"]["cadence"]==cadence and row["dispatch"]["cron"]==[cadence]
-        assert row["dispatch"]["mode"]=="dry_run" and allow[lane]["live_arg"] is None
+        assert row["dispatch"]["mode"]=="live" and allow[lane]["live_arg"] == []
         assert row["scheduler"]["match"]=="scripts/cio_ask_lifecycle.py --once"+ (" --events-only" if lane.endswith("material-events") else "")
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it runs live (2026-10-19: the five HL.LIVE steps are ACTIVE); `match` names the process step, so no
