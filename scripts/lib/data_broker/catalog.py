@@ -699,6 +699,37 @@ PROJECTIONS: list[dict[str, Any]] = [
         "envelope": "BrokerReadEnvelope@v1",
         "consumers": [],
     },
+    # 2026-10-29 conflict-engine read paths (operator in-session grant). Read-only exposure of the
+    # existing scripts/lib/conflicts read functions through the broker catalog so the two conflict
+    # domains can declare a catalog projection id instead of a module path (AGENTS.md §7A rule 3).
+    {
+        "id": "conflict_records",
+        "module": "lib.conflicts.api",
+        "entrypoints": ["records_section", "sections_for_guids"],
+        "http": ["GET /api/v3/conflicts"],
+        "domain": "conflict_ledger",
+        "authority_domain": "conflict_ledger",
+        "description": "Conflict ledger findings from data/conflicts/conflict_events.jsonl "
+        "(records_section for Watch/Home/Ops; sections_for_guids for per-security Watch rows). "
+        "Read-only; never resolves or writes a conflict.",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch", "Home", "Ops"],
+    },
+    {
+        "id": "conflict_proposals",
+        "module": "lib.conflicts.proposals",
+        "entrypoints": ["collection"],
+        "http": ["GET /api/v3/conflicts/proposals"],
+        "domain": "conflict_rule_proposals",
+        "authority_domain": "conflict_rule_proposals",
+        "description": "AI-proposed conflict rules and rulebook amendments (RuleProposalCollection@v1) from "
+        "data/conflicts/rule_proposals.jsonl + rulebook_amendments.jsonl. Read-only; operator decisions "
+        "stay on the conflict rules page.",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Conflict rules page", "Approvals Center"],
+    },
 ]
 
 
