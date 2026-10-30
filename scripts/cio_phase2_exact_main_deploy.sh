@@ -9,6 +9,8 @@
 # pins     — DRY RUN: list user units pinned to a release other than [dir] (default CURRENT); writes nothing
 # venv-plan — DRY RUN: the shared release venv prepare would build or reuse for [dir] (default: this
 #            checkout); writes nothing. See scripts/lib/release_venv.sh.
+# units    — DRY RUN: the staged user units (config/staged_user_units.json) promote would install for [dir]
+#            (default CURRENT); writes nothing. promote installs them (install_staged_units.py apply).
 # stamp    — (re)stamp provenance artifacts for a release dir: SOURCE_COMMIT, BUILD_SHA,
 #            GIT_SHA, BUILD_STAMP.json, and build-meta.json (no npm/network/systemd)
 #
@@ -821,6 +823,51 @@ PYWRAPPER
   fi
 }
 
+# Staged user units (2026-10-25, operator: "turn on everything... It shouldn't need me to turn on anything").
+# A reviewed unit listed in the release's config/staged_user_units.json is installed by the release itself:
+# scripts/install_staged_units.py validates each unit file, checks the group's admission config (enabled +
+# REVIEWED), runs its --dry-run first (AGENTS rule 7; a failed dry-run installs nothing), runs one-time steps
+# (preview, then apply), ARCHIVES a replaced copy (never deletes), daemon-reloads, enable --now, starts the first
+# run and reads back is-active and the unit's receipt. No TTY acknowledgement. Never fatal: the release is already
+# live; a failed group is logged FAIL, sends one deduplicated P1 (host chokepoint) and is recorded in
+# data/runtime/staged_units_install_latest.json (needs-action + platform-health read it).
+# TRADEAI_STAGED_UNITS_MODE=apply (default) | plan (writes nothing, loud) | off.
+# Rollback: the release being rolled AWAY retires its groups the target's manifest lacks (their ExecStart would
+# name scripts absent from the target), then the target's own manifest is applied.
+staged_units_run() {
+  local release="$1"; shift
+  local tool="${release}/scripts/install_staged_units.py" out rc=0
+  out="$(cd "$release" && "$VENV_PYTHON" "$tool" "$@" --release "$release" 2>&1)" || rc=$?
+  while IFS= read -r line; do log "  units: $line"; done <<<"$out"
+  if (( rc != 0 )); then
+    log "FAIL staged unit $1 rc=${rc} — see units: lines; receipt data/runtime/staged_units_install_latest.json"
+  fi
+  return 0
+}
+
+staged_units_step() {
+  local action="$1" dir="$2" from="${3:-}"
+  local mode="${TRADEAI_STAGED_UNITS_MODE:-apply}" verb="apply"
+  if [[ "$mode" == "off" ]]; then
+    log "WARN staged unit install OFF (TRADEAI_STAGED_UNITS_MODE=off) — admitted units NOT installed"
+    return 0
+  fi
+  [[ "$mode" == "plan" ]] && verb="plan"
+  if [[ "$action" == "rollback" && -n "$from" && -f "${from}/scripts/install_staged_units.py" ]]; then
+    if [[ "$verb" == "plan" ]]; then
+      log "staged units (plan): would retire groups of ${from} absent from ${dir}"
+    else
+      staged_units_run "$from" retire --target "$dir"
+    fi
+  fi
+  if [[ ! -f "${dir}/scripts/install_staged_units.py" ]]; then
+    log "staged units: ${dir}/scripts/install_staged_units.py absent (pre-feature release) — nothing installed"
+    return 0
+  fi
+  staged_units_run "$dir" "$verb"
+  return 0
+}
+
 cmd_promote() {
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
@@ -868,6 +915,7 @@ cmd_promote() {
   fi
   release_pin_step apply "$dir"
   restart_root_frozen_units "$dir"
+  staged_units_step promote "$dir"
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "$promote_note"
   log "PROMOTE OK live=$sha"
@@ -1001,6 +1049,7 @@ cmd_rollback() {
   # Pins written by the promote being undone are restored from its receipt (archived drop-ins moved back).
   release_pin_step rollback "$target" "$rolled_from"
   restart_root_frozen_units "$target"
+  staged_units_step rollback "$target" "$rolled_from"
   write_expected_release_pin "$target"
   write_deploy_receipt true rollback ok true "rollback_ok" "$target" "$sha" "$target" "$sha" "$rolled_from"
   log "ROLLBACK OK → $target"
@@ -1021,13 +1070,14 @@ case "$MODE" in
   rollback) cmd_rollback "${2:-}" ;;
   status)   cmd_status ;;
   pins)     release_pin_step plan "${2:-$(current_release)}" ;;
+  units)    TRADEAI_STAGED_UNITS_MODE=plan staged_units_step promote "${2:-$(current_release)}" ;;
   venv-plan) release_venv_plan "${2:-$ROOT}" || die "release venv plan failed" ;;
   stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
             stamp_build "$2" "$3"
             write_build_meta "$2" "$3"
             log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status|pins|venv-plan|stamp} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|pins|units|venv-plan|stamp} [path]"
     exit 2
     ;;
 esac
