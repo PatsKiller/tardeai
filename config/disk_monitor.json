@@ -1,0 +1,72 @@
+{
+  "schema": "DiskMonitorConfig@v1",
+  "_why": "Host-resident disk GROWTH monitor (scripts/disk_monitor.py), complementary to the n8n band monitor (scripts/disk_usage_monitor.py, config/disk_hygiene_rules.json monitor block). The band monitor fires only at >=80% used and is gated behind the n8n relay; it has no baseline, so a store growing 63 MB/day (research_call_accounting) or a cache that doubles between polls is invisible until the band trips. This monitor measures df on the mount AND du of the known hotspots, compares each against a persisted baseline (per-path delta) and a rolling 24h window (growth rate), and alerts ONLY on a TRANSITION into warn/critical via telegram_alert (deduped by alert_condition_state). It NEVER deletes: it reports what the reviewed disk_hygiene rules would reclaim (from the latest manifest, or a quoted `disk_hygiene.py --dry-run` when --with-hygiene) and prints the operator-gated purge command. Changing this file is a reviewed PR; the purge targets themselves (worktrees/caches/logs/jsonl) live in config/disk_hygiene_rules.json, which is operator-only (§24.12).",
+  "home": "~",
+  "state_name": "disk_monitor_baseline.json",
+  "producer": "disk_monitor",
+  "mounts": [
+    "/"
+  ],
+  "warn_pct": 80.0,
+  "critical_pct": 90.0,
+  "grow_warn_bytes": 21474836480,
+  "grow_critical_bytes": 53687091200,
+  "growth_window_hours": 24,
+  "samples_to_keep": 8,
+  "hotspot_growth_min_bytes": 1073741824,
+  "hotspot_growth_ratio": 1.5,
+  "du_timeout_s": 120,
+  "realert_minutes": 360,
+  "hygiene_manifest_rel": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json",
+  "hygiene_rules_rel": "config/disk_hygiene_rules.json",
+  "purge_command": "TRADEAI_DISK_HYGIENE_GRANT=<grant> {py} scripts/disk_hygiene.py --apply --manifest data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json",
+  "hotspots": [
+    {
+      "id": "cache",
+      "path": "~/.cache",
+      "purge": "rule C (caches) + report_only; operator enables"
+    },
+    {
+      "id": "npm",
+      "path": "~/.npm",
+      "purge": "rule C (caches) + report_only; operator enables"
+    },
+    {
+      "id": "codex",
+      "path": "~/.codex",
+      "purge": "OPERATOR_SIGNOFF (codex sessions/cache; no reviewed rule)"
+    },
+    {
+      "id": "hermes_state_db",
+      "path": "~/.hermes/state.db",
+      "purge": "OPERATOR_SIGNOFF (live DB, never auto)"
+    },
+    {
+      "id": "logs",
+      "path": "~/logs",
+      "purge": "rotated-log rule PROPOSED (operator sign-off)"
+    },
+    {
+      "id": "worktrees_home",
+      "path": "~/worktrees",
+      "purge": "rule G (git)"
+    },
+    {
+      "id": "wt_home",
+      "path": "~/wt",
+      "purge": "rule G (git)"
+    },
+    {
+      "id": "wt_glob",
+      "path": "~/wt-*",
+      "glob": true,
+      "purge": "rule G (git)"
+    },
+    {
+      "id": "tradeai_wt_glob",
+      "path": "~/tradeai-wt-*",
+      "glob": true,
+      "purge": "rule G (git)"
+    }
+  ]
+}
