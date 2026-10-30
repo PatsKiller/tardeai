@@ -81,7 +81,7 @@ try {
     await expect(first.locator('.watch-market-level-notes')).toContainText('Closed session')
     await expect(first.getByTestId('watch-market-resistance')).toHaveAttribute('title', /ui_prefs:portfolio\.reentry\.resistance\.v1/)
     await expect(first.getByTestId('watch-market-time-unknown')).toHaveCount(1)
-    assert.equal((await first.innerText()).match(/time unknown/g)?.length, 1)
+    assert.equal((await first.innerText()).match(/not timestamped by source/g)?.length, 1)
     await expect(page.locator('[data-symbol="BBB"][data-testid="mine-row"]').getByTestId('watch-market-price').locator('[data-state]')).toHaveText('Stale')
     await expect(page.locator('[data-symbol="BBB"][data-testid="mine-row"]').getByTestId('watch-market-resistance')).toContainText('none above price')
     await expect(page.locator('[data-symbol="CCC"][data-testid="mine-row"]').getByTestId('watch-market-support')).toContainText('none below price')
