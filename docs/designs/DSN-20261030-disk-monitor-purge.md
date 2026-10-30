@@ -42,7 +42,7 @@ usage % and per-path growth against a persisted baseline, and alerts on the **tr
 with the exact paths, sizes and the operator-gated purge command. It deletes nothing.
 
 > **Overlap note (AGENTS.md §11):** a sibling `DSN-20261030-disk-recovery` is in flight in worktree
-> `/home/johnclaw/tradeai-wt-disk-root-cleanup-20261030`, modifying `scripts/disk_hygiene.py` and
+> `~/tradeai-wt-disk-root-cleanup-20261030`, modifying `scripts/disk_hygiene.py` and
 > `scripts/disk_usage_monitor.py` (backup-byte reporting, disk category sizes, backup receipts during fill). This
 > design **reads** those scripts (the manifest / `--dry-run`) but modifies neither; the file sets are disjoint.
 

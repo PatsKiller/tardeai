@@ -1052,6 +1052,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261028-designed-work-lifecycle.md` | Designed work never gets lost |
 | `docs/designs/DSN-20261028-ops-watchdogs.md` | Ops watchdogs — arm the three designed-but-unwired guards |
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
+| `docs/designs/DSN-20261030-disk-monitor-purge.md` | Disk-space growth monitor + reviewed purge mapping |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
