@@ -4,8 +4,8 @@
 Policy-Version:      27.0.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
+Status:              ACTIVE
+Effective-Date:      2026-10-30
 Last-Reviewed:       2026-10-30T17:15:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
@@ -13,8 +13,8 @@ Supersedes:          26.2.2
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**27.0.1 is PROPOSED (MAJOR) — agents delete their own `agent-tmp` scratch; rule T reclaims the rest; worktrees
-are never hand-deleted.** Awaiting `APPROVE_AGENTS_POLICY_27_0_1 <pr> <head_sha>` (§20). Replaces unratified 27.0.0
+**27.0.1 is ACTIVE (MAJOR) — agents delete their own `agent-tmp` scratch; rule T reclaims the rest; worktrees
+are never hand-deleted.** Ratified by the operator (`APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b65f3828ca4a2119ae41369c417c28ac1`). Replaces unratified 27.0.0
 (#2303; findings: `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md`). §0 rule 6 (c), §24.12, §24.13, §17.
 **Why MAJOR:** adds an agent delete authority and a reclaimable kind; `MBI_BEHAVIOR = 0`.
 
@@ -2603,7 +2603,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 27.0.1 | 2026-10-30 | PROPOSED | MAJOR | Replaces unratified 27.0.0 (#2303). §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>`: the owning agent deletes it after its proofs, rule T reclaims the rest; worktree hand-deletion removed (rule W owns worktrees). §24.12 names the exception and adds kind (d); §24.13 states what rule T checks in code; §17 keeps rule T's threshold, pattern and enablement operator-only. |
+| 27.0.1 | 2026-10-30 | ACTIVE | MAJOR | Replaces unratified 27.0.0 (#2303). §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>`: the owning agent deletes it after its proofs, rule T reclaims the rest; worktree hand-deletion removed (rule W owns worktrees). §24.12 names the exception and adds kind (d); §24.13 states what rule T checks in code; §17 keeps rule T's threshold, pattern and enablement operator-only. |
 | 27.0.0 | 2026-10-30 | WITHDRAWN (replaced by 27.0.1, never ratified) | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | PENDING — `APPROVE_AGENTS_POLICY_27_0_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |
 | 26.2.1 | 2026-10-29 | ACTIVE | PATCH | Ratifying edit only: 26.2.0 was merged to main as PROPOSED (the ratifying commit was not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and history row with no rule-text change. §25.10.1/§25.10.2 content is exactly as in 26.2.0. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` |
