@@ -5,7 +5,7 @@ import { FIXTURE as FIX } from '../fixtures/watchProspects.fixture.ts'
 import {
   LANE_ORDER, alertIntel, allRows, conflictCount, convictionTone, drawers, headerChips, laneById, orphanWhy,
   proposeSeed, stanceTone, stepTone, tieAlerts, TOOLTIPS, unwrap, type ProspectRow,
-  asksCio, cioReviewNote, reviewStateText, reviewStateTone, cioMemoryState,
+  asksCio, cioReviewNote, detailNextLine, etStamp, reviewStateText, reviewStateTone, cioMemoryState,
 } from './watchProspectsModel.ts'
 
 let failed = 0
@@ -111,7 +111,19 @@ const blocked = { status: 'blocked', label: 'Blocked: waiting for evidence — n
   queued_at: '2026-10-24T04:54:05+00:00', expires_at: '2026-10-31T04:54:05+00:00',
   last_attempt: { status: 'BLOCKED', at: '2026-10-25T08:25:03+00:00', block_reason: 'BLOCKED_PENDING_ACQUISITION_AND_CURATION' } }
 eq('blocked reads plainly with its times', reviewStateText(blocked),
-  'Blocked: waiting for evidence — no contradicting evidence on file yet · asked 2026-10-24 04:54 UTC · expires 2026-10-31 04:54 UTC · last run 2026-10-25 08:25 UTC')
+  'Blocked: waiting for evidence — no contradicting evidence on file yet · asked Oct 24, 12:54 AM ET · expires Oct 31, 12:54 AM ET · last run Oct 25, 4:25 AM ET')
+eq('an unzoned request time is not labeled UTC', reviewStateText({ ...blocked, queued_at: '2026-10-24 04:54', expires_at: '2026-10-31 04:54',
+  last_attempt: { ...blocked.last_attempt, at: '2026-10-25 08:25' } }),
+  'Blocked: waiting for evidence — no contradicting evidence on file yet · asked timezone unavailable · expires timezone unavailable · last run timezone unavailable')
+eq('a zoned instant is Eastern Time', etStamp('2026-10-24T04:54:05+00:00'), 'Oct 24, 12:54 AM ET')
+eq('unavailable conflict check is not a resolve step', detailNextLine(
+  { kind: 'resolve_conflict', label: 'Resolve conflict', reason: 'flags disagree' },
+  { headline: null, findings: [], gap: { reason: 'engine result not supplied for this security' } }),
+  'Conflict check unavailable — engine result not supplied for this security')
+eq('a recorded finding keeps its next step', detailNextLine(
+  { kind: 'resolve_conflict', label: 'Resolve conflict', reason: 'flags disagree' },
+  { headline: 'One finding', findings: [{}], gap: null }),
+  'Resolve conflict — flags disagree')
 eq('blocked tone', reviewStateTone(blocked), 'warning')
 eq('queued tone', reviewStateTone({ status: 'queued', label: 'Queued for the CIO', open: true }), 'info')
 eq('note carries the gap', cioReviewNote({ conflicts: [], next_action: { kind: 'cio_missing', label: 'x', reason: 'r', gap: { reason: 'CIO stance missing' } } }),

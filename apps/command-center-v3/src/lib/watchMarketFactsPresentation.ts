@@ -70,6 +70,28 @@ export function levelTimeUnknown(fields: WatchMarketField[]): boolean {
   return fields.some(field => (field.value != null || field.broken_reference != null) && !knownLevelTime(field))
 }
 
+function footnoteInstant(value: string | null | undefined): string | null {
+  if (!value) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const at = instant(value)
+  if (!at) return null
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(at) + ' ET'
+}
+
+/** Footnote clock. A stored as_of is shown even when its basis is not one of the two recognized labels. */
+export function levelFootnoteTime(fields: WatchMarketField[]): string {
+  const known: string[] = []
+  for (const field of fields) {
+    if (field.value == null && field.broken_reference == null) continue
+    const text = footnoteInstant(field.as_of)
+    if (text) known.push(text)
+  }
+  const unique = Array.from(new Set(known))
+  return unique.length ? unique.join(' / ') : 'time unknown'
+}
+
 /** The observation time for the stored levels, or the honest reason it is absent. The master source
  *  exposes no per-level timestamp, so a master level is "not timestamped by source" — never presented
  *  as a generic "time unknown" bug when the truth is that the source never carried one. */

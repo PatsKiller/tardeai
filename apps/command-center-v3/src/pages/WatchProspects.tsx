@@ -7,8 +7,8 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *
  *  Actions reuse existing operator flows only: Propose → WatchlistProposeModal (POST /api/v2/watchlist/:sym/propose,
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
- *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
- *  Nothing here sizes, orders or stops on its own. */
+ *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v2/cio/ask, then the thesis queue
+ *  as a secondary note. Nothing here sizes, orders or stops on its own. */
 import ProspectusLink from '../components/prospectus/ProspectusLink'
 import './WatchLayout.css'
 import './W9Mobile.css'
@@ -19,7 +19,7 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
-import { CioReviewPanel, ReviewStateChip, CioMemoryChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
+import { AskPhaseStatus, CioMemoryChip, CioReviewPanel, ReviewStateChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
 import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
@@ -29,7 +29,7 @@ import { useApi } from '../hooks/useApi'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
-  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, drawers, headerChips, laneById,
+  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, detailNextLine, drawers, etStamp, headerChips, laneById,
   proposeSeed, stanceLabel, stanceTone, stepTone, tieAlerts, unwrap,
   type LaneId, type ProspectRow, type ProspectsPayload, type TiedAlerts,
 } from '../lib/watchProspectsModel'
@@ -82,7 +82,7 @@ export function legacyConflicts(row: ProspectRow) {
 function LegacyConflictFlags({ r, cio }: { r: ProspectRow; cio: CioReviewController }) {
   const flags = legacyConflicts(r)
   if (!flags.length) return null
-  const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
+  const when = (at: string | null) => etStamp(at) || 'time unknown'
   return <div data-testid="watch-detail-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
     <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>
     {flags.map((c, i) => <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
@@ -223,6 +223,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       </div>}
       <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
       <ReviewStateChip state={currentReviewState(r, cio)} testId="watch-row-review-state" compact />
+      {cio?.entries[r.symbol] && <AskPhaseStatus entry={cio.entries[r.symbol]} testId="watch-row-ask-phase" />}
       <CioMemoryChip state={currentReviewState(r, cio)} testId="watch-row-cio-memory" />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
@@ -292,7 +293,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         </div>
       )}
       <div data-testid="watch-detail-next" style={{ display: 'grid', gap: 8, fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
-        <span><b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}</span>
+        <span><b>Next:</b> {detailNextLine(r.next_action, conflictSection(r))}</span>
         {/* Never a dead end: a step that asks the CIO always carries the button (the flags block carries it when shown). */}
         {(asksCio(r.next_action.kind) || currentReviewState(r, cio)?.publication_verified) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
         {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}

@@ -4801,6 +4801,33 @@
       }
     },
     {
+      "lane_id": "cron-outage-watchdog",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cron-outage-watchdog.timer",
+        "timezone": "America/New_York",
+        "cadence": "* * * * *"
+      },
+      "expected_cadence_hours": 0.05,
+      "state": "ACTIVE",
+      "state_since": "2026-10-25",
+      "state_reason": "Independent wrapper-refusal and missed-success monitor (packet docs/ops/packets/cron-outage-prevention-20261024 §6). Admitted 2026-10-25 under the operator directive \"turn on everything... It shouldn't need me to turn on anything\" (relayed by the coordinator). Installed and enabled by scripts/install_staged_units.py during cio_phase2_exact_main_deploy.sh promote of the release carrying this row (manifest config/staged_user_units.json): dry-run first, then the one-time rl3 refusal ack, then enable --now. Host systemd timer by design, NOT n8n: the alert path must not depend on what it watches. Bypasses safe_flock, incident_notifier and n8n; sends only through the host P1 Telegram chokepoint (telegram_alert.send_telegram_outcome).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cron_outage_watchdog_latest.json",
+        "key": "observed_at"
+      },
+      "severity": "High",
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "post_snapshot_install": {
+        "installed_on": "2026-10-25",
+        "evidence": "installed by scripts/install_staged_units.py --apply at promote (config/staged_user_units.json); receipt data/runtime/staged_units_install_latest.json records the dry-run, the ack, enable and is-active readback"
+      },
+      "note": "CronOutageWatchdog@v1 receipt every minute; platform_health probe_wrapper_watchdog treats a receipt older than 180 s, a future one or a dry-run as UNKNOWN. observed_at is the observation clock written only by --run (mode monitor). Reads declared nonsecret receipts and the safe_flock journal; never queries a broker, DB, provider, crontab or systemctl. Rollback: scripts/install_staged_units.py --rollback."
+    },
+    {
       "lane_id": "agent-worktree-retention",
       "owner": "platform",
       "scheduler": {
