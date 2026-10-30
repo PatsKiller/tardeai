@@ -727,6 +727,49 @@ def probe_pr_hygiene(path: Any = None) -> dict:
     return doc
 
 
+# Staged host units (2026-10-25, PR #2134): the deploy installs reviewed user units with
+# scripts/install_staged_units.py and writes StagedUnitsInstall@v1; a failed install is one P1 inbox item.
+STAGED_UNITS_RECEIPT = "data/runtime/staged_units_install_latest.json"
+STAGED_UNITS_SCHEMA = "StagedUnitsInstall@v1"
+STAGED_UNITS_GOOD = ("UNCHANGED", "INSTALLED", "PENDING_ADMISSION", "WOULD_INSTALL", "ROLLED_BACK", "NOTHING_INSTALLED")
+
+
+def probe_staged_units(root: Any = None) -> dict:
+    """Read the staged-unit install receipt (read-only). Missing -> {"status": "NO_RECEIPT"}; unreadable -> raises."""
+    import json
+    from pathlib import Path
+
+    if root is None:
+        try:
+            from lib.lane_registry import state_root
+        except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
+            from scripts.lib.lane_registry import state_root  # type: ignore[no-redef]
+        root = state_root()
+    p = Path(root) / STAGED_UNITS_RECEIPT
+    if not p.exists():
+        return {"status": "NO_RECEIPT", "path": str(p)}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SourceUnavailable(f"staged unit receipt unreadable: {type(exc).__name__}") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != STAGED_UNITS_SCHEMA:
+        raise SourceUnavailable("staged unit receipt has an unknown schema")
+    return doc
+
+
+def rule_staged_units(p: Any, now: datetime) -> list[dict]:
+    """A failed staged-unit install (any group not OK) is ONE P1; no receipt yet is not an item (pre-feature)."""
+    if not isinstance(p, dict) or p.get("status") == "NO_RECEIPT" or p.get("ok") is True:
+        return []
+    bad = [g for g in p.get("groups") or [] if isinstance(g, dict) and g.get("status") not in STAGED_UNITS_GOOD]
+    why = "; ".join(f"{g.get('id')}: {g.get('status')}" + (f" ({str(g.get('reason'))[:120]})" if g.get("reason") else "")
+                    for g in bad[:4]) or "install receipt says ok=false"
+    return [item("P1", "Staged host unit install failed", why + ". The release stays live; the unit is not running "
+                 "as reviewed. Inspect: scripts/install_staged_units.py plan --release <CURRENT>.", R_SYSTEM_JOBS,
+                 "staged_units", p.get("at"), {"release": p.get("release"), "groups": [g.get("id") for g in bad],
+                                               "notification": p.get("notification")})]
+
+
 RELEASE_WINDOW_RECENT_H = 36.0
 # Mirrors scripts/release_window.py ALERT_PRIORITY (a failed window; routine stops are not items).
 RELEASE_WINDOW_SEVERITY = {
@@ -935,6 +978,7 @@ RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
     "desk_truth": rule_desk_truth,
     "release_window": rule_release_window,
     "macro_calendar": rule_macro_calendar,
+    "staged_units": rule_staged_units,
 }
 
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
@@ -1026,6 +1070,7 @@ def _source_where(name: str) -> str:
         "pr_hygiene": R_PR_HYGIENE,
         "desk_truth": R_DESK_TRUTH,
         "macro_calendar": R_SYSTEM_JOBS,
+        "staged_units": R_SYSTEM_JOBS,
     }.get(name, "/v3/system")
 
 
