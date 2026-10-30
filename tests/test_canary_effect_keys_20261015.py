@@ -158,6 +158,10 @@ def _scope() -> set[str]:
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 
+#: 2026-10-29 conflict-resolver canary (W8 live flip): n8n-native learn lane that appends the conflict ledger via
+#: --shadow (read-only evaluation, no LLM, no send). Not overwrite-only, so it joins STAGED with an effect key.
+CONFLICT_RESOLVER_CANARY_20261029 = frozenset({"conflict-resolver"})
+
 STAGED = sorted(_scope() - set(NOT_KEYED_OVERWRITE_ONLY))
 
 
@@ -171,8 +175,10 @@ def test_scope_is_the_68_lanes_and_partition_is_complete():
     # + 1 / + 1: 2026-10-21 hermes-watchlist-scorer cron canary (operator waiver "push live now";
     # tests/support/hermes_scorer_canary.py). It appends hermes_score_history rows, so it stays IN scope with a
     # STAGED key (cron_claim false, n8n_claim false) that its cutover arms: 69 lanes, 51 staged.
-    assert len(scope) == 68 + len(HSC.LIVE) and len(STAGED) == 50 + len(HSC.LIVE)
+    assert len(scope) == 68 + len(HSC.LIVE) + len(CONFLICT_RESOLVER_CANARY_20261029)
+    assert len(STAGED) == 50 + len(HSC.LIVE) + len(CONFLICT_RESOLVER_CANARY_20261029)
     assert set(HSC.LIVE) <= set(STAGED)
+    assert set(CONFLICT_RESOLVER_CANARY_20261029) <= set(STAGED)
 
 
 @pytest.mark.parametrize("lane", STAGED)
