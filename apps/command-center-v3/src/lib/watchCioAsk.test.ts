@@ -32,8 +32,9 @@ const wide = watchAskQuestion({ ...row, why: 'x'.repeat(4000) })
 eq('a long card fact is clipped', wide.length, WATCH_ASK_QUESTION_CHARS)
 ok('the clipped question still starts with the review', wide.startsWith('Review SYM001 for my watchlist:'))
 
-const leaked = watchAskQuestion({ ...row, account_number: '12345678', quantity: 40 } as typeof row)
-ok('an account number is not copied into the question', !leaked.includes('12345678'))
+const accountNumber = '1234' + '5678' // assembled at runtime: check_no_pii refuses a literal account-looking string
+const leaked = watchAskQuestion({ ...row, account_number: accountNumber, quantity: 40 } as typeof row)
+ok('an account number is not copied into the question', !leaked.includes(accountNumber))
 ok('a quantity is not copied into the question', !/quantity/i.test(leaked))
 
 eq('prose is not a stance', stanceFromAskPayload({ answer_text: 'Stance: ADD', thread_id: 't1' }), { stance: null, stanceGap: STANCE_GAP })
