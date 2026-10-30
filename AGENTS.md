@@ -1,17 +1,25 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.2.2
+Policy-Version:      26.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-29
-Last-Reviewed:       2026-10-30T10:10:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-30T10:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          26.1.0
+Supersedes:          26.2.2
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**26.3.0 is PROPOSED (MINOR) — Mergify queue ownership: an agent is not done until its PR is Mergify-merged, and a
+Dequeued PR is classified and requeued, never left idle.** Awaiting `APPROVE_AGENTS_POLICY_26_3_0 <pr> <head_sha>`
+(§20). Adds two §25.10 bullets: "Not done until Mergify-merged" (an agent that requested Telegram Approve, or whose
+PR is in a digest, keeps the claim alive and stays until the PR is merged, denied or abandoned with a recorded next
+step) and "Dequeued is not a dead end — classify, fix, resubmit" (draft-skip false fail / real CI fail / Conflicts →
+auto-queue, wake the owner, or rebase+queue). No rail is weakened: §0, §2, §2A, §7A, §17, §22, §23.14 and the
+broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`.
 
 **26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
 `conflict_ledger` and `conflict_rule_proposals` were granted by the operator (§7A/§26.6, in-session 2026-10-29) and the
@@ -2216,6 +2224,24 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **"Approve all" in the digest is the operator's merge approval.** It approves exactly the PRs listed, each bound to
   the head SHA the digest showed; a changed head returns in the next digest. A GitHub Approve, an LGTM, an agent
   label, a guard grant or a relayed approval never counts. *Cause: 2026-10-27 — one-tap merges (LESSONS L25-02).*
+- **`# CONFLICT-RESOLVED-20261029`:** the two bullets immediately below were carried over from
+  `feat/mergify-ops-windows-20261026` (PR #2220) and are **not** part of the ACTIVE 26.0.0 text — held for operator
+  review before they bind.
+- **Not done until Mergify-merged.** An agent that requested Telegram Approve (or whose PR is in a digest) does **not**
+  stop at "Approve sent", "queued", or "Dequeued". The work is finished only when the PR is **merged to `main`**
+  (or the operator denies / the claim is abandoned with a recorded next step). While the PR is open with
+  `operator-merge` or in Mergify Dequeued, the owning agent (or the claim takeover) keeps the claim alive: fix the
+  block, push, `@mergifyio queue` / refresh, and stay until merged. *Cause (§20): operator 2026-10-27 — agents stopped
+  at submit; Dequeued sat with Checks Failed / Conflicts and nothing resubmitted.*
+- **Dequeued is not a dead end — classify, fix, resubmit.** `scripts/mergify_queue_monitor.py` (lib
+  `scripts/lib/mergify_queue_monitor.py`) watches open `operator-merge` PRs. On Dequeued it classifies:
+  (1) **draft-skip false fail** (checks failed on a `mergify/merge-queue/*` speculative draft while the real head is
+  green) → once the skip-tolerant `.mergify.yml` + `mergify/*` CI gates are on `main`, auto `@mergifyio queue`;
+  (2) **real CI fail** → wake the claim owner with the red checks and "do not stop until merged";
+  (3) **Conflicts** → wake the claim owner to rebase onto `origin/main`, push, then `@mergifyio queue`.
+  Never leave a Dequeued row idle. Default dry-run; `--apply` comments / requeues / pages P1. *Cause (§20): operator
+  2026-10-27 Dequeued screenshot — "Make sure none of those forms arrive, because resubmit it in error process for
+  resubmitting."*
 - **Held classes are never in "Approve all".** Held classes are per-PR approval only: each held PR gets its own
   "Approve #N (held)" tap in the digest, bound to the head SHA the digest showed, and the operator's per-PR tap merges
   it too (SHA-bound, provenance recorded as `PrMergeDigestApproval@v1`); the operator never merges on GitHub. The
@@ -2569,6 +2595,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 26.3.0 | 2026-10-30 | PROPOSED | MINOR | §25.10 Mergify queue ownership: an agent is not done until its PR is Mergify-merged (not at "Approve sent", queued or Dequeued), and a Dequeued PR is classified (draft-skip false fail / real CI fail / Conflicts) and requeued, never left idle. Held for operator review. No rail weakened; `MBI_BEHAVIOR = 0`. | PENDING — `APPROVE_AGENTS_POLICY_26_3_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |
 | 26.2.1 | 2026-10-29 | ACTIVE | PATCH | Ratifying edit only: 26.2.0 was merged to main as PROPOSED (the ratifying commit was not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and history row with no rule-text change. §25.10.1/§25.10.2 content is exactly as in 26.2.0. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` |
 | 26.2.0 | 2026-10-29 | SUPERSEDED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` (ratified as 26.2.1) |
