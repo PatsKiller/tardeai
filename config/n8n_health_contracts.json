@@ -34595,14 +34595,14 @@
     "workflow_id": "tradeai-dispatcher",
     "status": "REVIEWED",
     "operative": true,
-    "activation_allowed": false,
-    "target_reason": "stage:shadow",
-    "stage": "shadow",
+    "activation_allowed": true,
+    "target_reason": "stage:canary",
+    "stage": "canary",
     "owner": "cio",
     "reviewer": "cursor-independent-review-20261028",
     "reviewed_at": "2026-10-28T20:00:00Z",
     "purpose": {
-      "text": "Evaluate the W10 conflict engine over canonical W1 truth and the unchanged rulebook at shadow: a write-free dry run that computes ConflictResolverReceipt@v1 and writes a LaneRunReceipt (ok_at); the conflict ledger is never written at shadow.",
+      "text": "Evaluate the W10 conflict engine over canonical W1 truth and the unchanged rulebook at canary: the ledger-writing --shadow mode reconciles the conflict ledger (data/conflicts/conflict_events.jsonl), writes CIO memory and emits a ConflictResolverReceipt@v1 comparison report plus the LaneRunReceipt (ok_at); it never sends a notification.",
       "business_function": "learning",
       "source": "scripts/conflict_resolver.py main/_run; docs/ops/W8_WRITERS_20261024.md; docs/ops/CONFLICT_LEDGER.md"
     },
@@ -34614,10 +34614,10 @@
         "source": "AGENTS.md §23.3"
       },
       {
-        "name": "$PY scripts/conflict_resolver.py --dry-run --state-root $STATE_ROOT",
+        "name": "$PY scripts/conflict_resolver.py --shadow --state-root $STATE_ROOT",
         "kind": "runner",
         "direction": "calls",
-        "source": "config/n8n_run_allowlist.json dry_run_arg"
+        "source": "config/n8n_run_allowlist.json live_arg"
       },
       {
         "name": "data/runtime/conflict-resolver_last.json",
@@ -34646,8 +34646,8 @@
     ],
     "healthy": [
       {
-        "check": "dry_run_receipt_ok_at_advances",
-        "text": "every dispatcher fire ends RUN_DONE in mode dry_run and the LaneRunReceipt data/runtime/conflict-resolver_last.json ok_at advances (the proposed edit makes --dry-run write the receipt)."
+        "check": "live_ledger_reconciles",
+        "text": "every dispatcher fire ends RUN_DONE in mode live, the LaneRunReceipt data/runtime/conflict-resolver_last.json ok_at advances, and the ConflictResolverReceipt@v1 comparison report (data/conflicts/reports/<run>.json) is written with a ledger reconcile; notifications == 0."
       }
     ],
     "degraded": [
@@ -34701,7 +34701,7 @@
         "coordination ledger: SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='conflict-resolver' ORDER BY requested_at DESC LIMIT 10",
         "jq '.ok_at' data/runtime/conflict-resolver_last.json"
       ],
-      "expected_output_basis": "The shadow dry run computes ConflictResolverReceipt@v1 (findings_count) and writes a LaneRunReceipt with ok_at; the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow."
+      "expected_output_basis": "The canary live run (--shadow) reconciles the conflict ledger, writes CIO memory and a ConflictResolverReceipt@v1 comparison report, and writes a LaneRunReceipt with ok_at; it sends no notification."
     },
     "review": {
       "status": "REVIEWED",

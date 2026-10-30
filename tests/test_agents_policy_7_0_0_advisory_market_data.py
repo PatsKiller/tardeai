@@ -78,9 +78,9 @@ BASELINE = {
     "scalp-hot-list": "shared entry script reaches the early-lane proposal handoff (path-insensitive scan)",
     # conflict-resolver (W8 learn-class, operator baseline approval 2026-10-28): the data-broker read path
     # (watch_intelligence -> watch_domains -> positions_sync -> api_v2) transitively reaches api_v2 place_order /
-    # cancel_order and momentum_alerts send_telegram. The lane is dry-run/shadow only, writes no conflict ledger at
-    # shadow, calls no broker or sender; the reach is import-only (at_import=false). Fix the reach or drop from the
-    # wave; keep the entry script read-only.
+    # cancel_order and momentum_alerts send_telegram. The lane is read-only evaluation (2026-10-29 live flip to canary:
+    # --shadow writes the conflict ledger + comparison report, never a notification); it calls no broker or sender and
+    # the reach is import-only (at_import=false). Fix the reach or drop from the wave; keep the entry script read-only.
     "conflict-resolver": "data-broker read path reaches api_v2 order verbs + momentum_alerts send_telegram (import-only)",
 }
 NAMED_SENDER_EXCEPTIONS = frozenset({"trade-ai-scalp-live"})
