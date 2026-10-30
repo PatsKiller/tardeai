@@ -159,7 +159,7 @@ def test_no_other_shadow_row_gained_a_live_argv():
     assert canary == sorted(({"heartbeat-watch", *CANARY_WAVE_20261014} | {
         lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"}
         | set(HL.LIVE) | set(CIL.LIVE) | set(DHN.LIVE) | set(DIM.LIVE) | set(ATMW.LIVE) | set(RRT.LIVE) | set(HSC.LIVE) | set(PHA.LIVE) | set(CPC.LIVE) | set(MCC.LIVE)
-        | {"conflict-resolver"}) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2
+        | {"cio-ask-lifecycle", "cio-ask-material-events", "conflict-resolver"}) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2
     # (tests/support/hermes_learning_cutover.py) + comms-intent consumer live 2026-10-17
     # (tests/support/comms_intent_consumer_live.py) + disk hygiene / disk-usage monitor 2026-10-18
     # (tests/support/disk_hygiene_n8n.py; operator approval 2026-10-18: "a script with rules that's repeatable, n8n
