@@ -384,6 +384,12 @@
     },
     "operator_decisions": {
       "excluded": "operator governance decisions (approvals, merge decisions, rule feedback); not ticker research"
+    },
+    "conflict_ledger": {
+      "excluded": "conflict-engine lifecycle ledger (site-wide conflict lifecycle); not per-security research content"
+    },
+    "conflict_rule_proposals": {
+      "excluded": "AI-proposed conflict rule and rulebook amendments (site-wide); not per-security research content"
     }
   },
   "registry_domains_note": "Every domain in config/data_source_authority.json must appear here: read (reader / covered_by) or excluded with a reason. tests/test_prospectus_domains_20261026.py enforces it.",

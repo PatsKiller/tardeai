@@ -1,17 +1,21 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.2.1
+Policy-Version:      26.2.2
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-29
-Last-Reviewed:       2026-10-29T23:05:00-04:00
+Last-Reviewed:       2026-10-30T10:10:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          26.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
+`conflict_ledger` and `conflict_rule_proposals` were granted by the operator (§7A/§26.6, in-session 2026-10-29) and the
+generated source-of-truth table in §7A now lists them as active; no rule-text change. Supersedes 26.2.1.
 
 **26.2.1 is ACTIVE (PATCH) — ratification of 26.2.0 (operator-delegated promote).** 26.2.0 was merged as
 PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge, LESSONS L0-01/L0-02);
@@ -824,6 +828,8 @@ either by hand. *Cause: 2026-09-13 — three incidents in one week, none declare
 | **cio_asks** | native | `data/cio/cio_ask_events.jsonl` | `scripts/lib/cio_ask_store.py` | event-driven (operator ask on CC or Telegram; material-change re-answer) | 168h | — | internal | — | — | `say_so` | operator 2026-10-24 |
 | **anthropic_promotional_credit** | native | `runtime/provider_cost/anthropic_credit.jsonl` | `scripts/lib/anthropic_credit.py` | before each governed promotional request; settle after usage; existing llm-provider-health observations | 0.25h | — | — | durable promotion caps also enforced in existing public.llm_cost_reservations under its advisory lock | — | `Refuse promotional dispatch on corrupt/unavailable journal or cap persistence; retain ambiguous holds; governed free fallbacks remain available` | operator 2026-10-25 |
 | **operator_decisions** | native | `governance/operator_decisions.jsonl` | `scripts/lib/operator_approvals.py` | event-driven authenticated operator review and separately governed audit proposals | 720h | — | native | — | — | `say_so` | operator 2026-10-27 |
+| **conflict_ledger** | derived | `data/conflicts/conflict_events.jsonl` | `scripts/lib/conflicts/ledger.py` | event changes; conflict-resolver shadow cadence separately owned by W8 | 0.5h | `conflict_records` | — | — | — | `say_so` | operator 2026-10-29 |
+| **conflict_rule_proposals** | derived | `data/conflicts/rule_proposals.jsonl` | `scripts/lib/conflicts/proposals.py` | conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions | 24h | `conflict_proposals` | — | — | — | `say_so` | operator 2026-10-29 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 ## Positions, cost basis and portfolio value — the source of truth
@@ -2563,6 +2569,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |
 | 26.2.1 | 2026-10-29 | ACTIVE | PATCH | Ratifying edit only: 26.2.0 was merged to main as PROPOSED (the ratifying commit was not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and history row with no rule-text change. §25.10.1/§25.10.2 content is exactly as in 26.2.0. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` |
 | 26.2.0 | 2026-10-29 | SUPERSEDED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` (ratified as 26.2.1) |
 | 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
