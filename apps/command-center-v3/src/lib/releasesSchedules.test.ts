@@ -21,8 +21,8 @@ assert.equal(sv.state, 'OK'); assert.equal(sv.ageS, 120); assert.match(sv.label,
 // UNAVAILABLE section: null value, reason in the label, never zero.
 const q = sectionView(wire, 'history', { nowMs: NOW })
 assert.equal(q.state, 'UNAVAILABLE'); assert.equal(q.value, null); assert.match(q.label, /UNAVAILABLE · git_failed/)
-// The retired release train's windows / queue sections are gone (2026-10-27).
-assert.ok(!(SECTION_KEYS as readonly string[]).includes('windows') && !(SECTION_KEYS as readonly string[]).includes('queue'))
+// The retired release train's queue section is gone (2026-10-27); 'windows' returned as Mergify ET windows (PR #2220).
+assert.ok(!(SECTION_KEYS as readonly string[]).includes('queue'))
 // A real zero from an OK source stays zero (it was measured).
 const td = sectionView<{ total: number }>(wire, 'n8n_today', { nowMs: NOW })
 assert.equal(td.value?.total, 0)

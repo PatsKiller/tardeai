@@ -1,17 +1,25 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.1.0
+Policy-Version:      26.2.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-10-28T17:40:00-04:00
+Last-Reviewed:       2026-10-29T21:23:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          26.0.0
+Supersedes:          26.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**26.2.0 is PROPOSED (MINOR) — Mergify queue ownership: an agent is not done until its PR is Mergify-merged, and a
+Dequeued PR is classified and requeued, never left idle.** Awaiting `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`
+(§20). Adds two §25.10 bullets: "Not done until Mergify-merged" (an agent that requested Telegram Approve, or whose
+PR is in a digest, keeps the claim alive and stays until the PR is merged, denied or abandoned with a recorded next
+step) and "Dequeued is not a dead end — classify, fix, resubmit" (draft-skip false fail / real CI fail / Conflicts →
+auto-queue, wake the owner, or rebase+queue). No rail is weakened: §0, §2, §2A, §7A, §17, §22, §23.14 and the
+broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`.
 
 **26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
 Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
@@ -2517,6 +2525,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 26.2.0 | 2026-10-29 | PROPOSED | MINOR | §25.10 Mergify queue ownership: an agent is not done until its PR is Mergify-merged (not at "Approve sent", queued or Dequeued), and a Dequeued PR is classified (draft-skip false fail / real CI fail / Conflicts) and requeued, never left idle. Held for operator review. No rail weakened; `MBI_BEHAVIOR = 0`. | PENDING — `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
