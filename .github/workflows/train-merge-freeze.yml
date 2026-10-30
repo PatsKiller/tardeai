@@ -29,7 +29,11 @@ concurrency:
 
 jobs:
   merge-freeze-evaluate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # Retired with the Release Train v2 (operator directive #2240, 2026-10-27): the train was replaced by
+    # AGENTS.md §25.10 (Mergify + the host deploy-on-main poller), and its modules were archived under
+    # archive/release_train_20261026/. This job checks out the base commit, which no longer carries
+    # scripts/release_train_freeze.py, so it can no longer run. Disabled rather than deleted (AGENTS.md §6).
+    if: false && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

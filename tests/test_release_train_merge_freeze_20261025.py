@@ -28,6 +28,16 @@ from zoneinfo import ZoneInfo
 import pytest
 import yaml
 
+# The Release Train v2 (and its merge freeze) was retired 2026-10-27 by operator directive #2240 and replaced by
+# AGENTS.md §25.10 (Mergify + the host deploy-on-main poller). Its modules (release_train_window_view,
+# release_train_controller) were archived under archive/release_train_20261026/, so this suite can no longer be
+# imported. Skip the whole module with a clear reason rather than silently deleting it (AGENTS.md §6).
+pytest.importorskip(
+    "scripts.lib.release_train_window_view",
+    reason="Release Train v2 retired 2026-10-27 (operator directive #2240); train modules archived under "
+           "archive/release_train_20261026/",
+)
+
 from scripts import release_train_freeze as CLI
 from scripts.lib import merge_freeze_context as MFC
 from scripts.lib import release_train_freeze as F
