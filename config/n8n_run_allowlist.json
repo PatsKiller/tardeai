@@ -4514,6 +4514,37 @@
       "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
     },
     {
+      "lane_id": "conflict-rule-proposals",
+      "env_names": [
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_GOVERNED_BRIDGE_URL",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "conflict_rule_proposals.py -> lib/conflicts/proposals.py (rulebook + config reads), n8n_model_job.bridge_governed_call (TRADEAI_GOVERNED_BRIDGE_URL, intelligence_context), lib/deepseek_offpeak (LLM_DEFER_OFFPEAK is a base child-env name, no DB), host_comms_intents (coordination ledger path). report until intelligence_context's closure is inventoried.",
+      "env_report_reason": "intelligence_context (read by n8n_model_job.bridge_governed_call for the context header) and the rulebook profile imports are not yet inventoried as literal reads; report until that closure is bounded.",
+      "source": "PROPOSED 2026-10-25 (PR #2103 + this [shared-infra] PR): no cron line, no unit, no workflow imported; registry row PAUSED without dispatch until the operator activates it after conflict-resolver shadow. --dry-run prints due patterns and prompt sizes (no model call, no write); --apply calls the governed bridge within caps and appends proposals.",
+      "command": [
+        "$PY",
+        "scripts/conflict_rule_proposals.py",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "lock": "/tmp/tradeai_conflict_rule_proposals.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/conflict-rule-proposals_last.json"
+    },
+    {
       "lane_id": "prospectus-build",
       "command": [
         "$PY",
