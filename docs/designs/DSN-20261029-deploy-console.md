@@ -7,18 +7,18 @@ source: operator 2026-10-29 — "actionable buttons that can be driven by LLM �
 phases:
   - id: DSN-20261029-deploy-console-P1
     title: In-flight board + tooltips (read-only)
-    status: MERGED
+    status: DONE
     tasks:
       - id: DSN-20261029-deploy-console-P1-T1
         title: Backend open-PR projection (state · mergeable · CI · why held) + frontend in-flight table + ⓘ tooltips
-        status: MERGED
+        status: DONE
   - id: DSN-20261029-deploy-console-P2
     title: Approve / Hold / Push / Refresh-hints write path
-    status: PARTIAL
+    status: IN_PROGRESS
     tasks:
       - id: DSN-20261029-deploy-console-P2-T1
         title: Operator-session, CSRF-protected POST that adds/removes operator-merge (same authority as the Telegram tap) + refresh-shard-hints
-        status: IN_FLIGHT
+        status: IN_PROGRESS
       - id: DSN-20261029-deploy-console-P2-T2
         title: Push button — operator-session POST that issues a bound git-push grant (branch + head SHA + reason) and executes the fast-forward push, replacing `bin/guard grant git-push` + the command line
         status: PROPOSED
