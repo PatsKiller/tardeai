@@ -76,6 +76,15 @@ YFINANCE_SNAPSHOT_20261026 = frozenset({"yfinance-info-snapshot"})
 #: Operator-approved baseline justification, not a ruling widening.
 CONFLICT_RESOLVER_20261028 = frozenset({"conflict-resolver"})
 
+#: 2026-10-29 conflict-rule-proposals admission (operator baseline approval in-session, Option A): the lane
+#: scripts/conflict_rule_proposals.py reaches broker_module / order_placement only through the SAME lazy chain as
+#: conflict-resolver, but via conflicts/producers.py's default query (from db_adapter import _execute, function-level
+#: lazy import) -> db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport. The lane is PAUSED
+#: (scheduler kind none, nothing fires) and, once activated, is READ_ONLY_ADVISORY: it proposes conflict rules for
+#: the operator's approval, never calls a broker, never sends. No direct_sender. The trading lock refuses every
+#: order placement regardless of caller. Operator-approved baseline justification (Option A), not a ruling widening.
+CONFLICT_RULE_PROPOSALS_20261029 = frozenset({"conflict-rule-proposals"})
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -153,7 +162,8 @@ FROZEN_20261015 = {
     | DATA_INTEGRITY_MONITORS_20261018
     | PROSPECTUS_BUILD_20261026
     | YFINANCE_SNAPSHOT_20261026
-    | CONFLICT_RESOLVER_20261028,
+    | CONFLICT_RESOLVER_20261028
+    | CONFLICT_RULE_PROPOSALS_20261029,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -232,7 +242,8 @@ FROZEN_20261015 = {
     | DATA_INTEGRITY_MONITORS_20261018
     | PROSPECTUS_BUILD_20261026
     | YFINANCE_SNAPSHOT_20261026
-    | CONFLICT_RESOLVER_20261028,
+    | CONFLICT_RESOLVER_20261028
+    | CONFLICT_RULE_PROPOSALS_20261029,
 }
 
 
