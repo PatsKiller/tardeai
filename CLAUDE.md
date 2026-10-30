@@ -52,10 +52,13 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
 6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
-   Two exceptions, and nothing else: the n8n lane `disk-hygiene` may remove the reclaimable items
-   its reviewed rules select (scripts/disk_hygiene.py, config/disk_hygiene_rules.json), and the
-   host /tmp hygiene lanes may remove the /tmp items their reviewed tmp.* rules select
-   (scripts/tmp_hygiene_auto.py) (AGENTS.md §24.12).
+   Three exceptions, and nothing else: (a) the n8n lane `disk-hygiene` may remove the reclaimable
+   items its reviewed rules select (scripts/disk_hygiene.py, config/disk_hygiene_rules.json);
+   (b) the host /tmp hygiene lanes may remove the /tmp items their reviewed tmp.* rules select
+   (scripts/tmp_hygiene_auto.py); and (c) an agent may delete only scratch it created, in a
+   declared scratch namespace, after proving its branch/PR merged or abandoned and that no running
+   process or claim references it — never a live store, DB, holdings, identity, lineage, the
+   InstrumentRecord store, or another agent's active work (AGENTS.md §24.12, §24.13).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
