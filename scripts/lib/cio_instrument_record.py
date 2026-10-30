@@ -1232,6 +1232,33 @@ def is_fact_only_record(record: Optional[dict[str, Any]]) -> bool:
     return bool(record) and record.get("record_kind") == "FACTS_ONLY" and not is_prospect_record(record)
 
 
+def select_canonical_record(records: list[dict[str, Any]]) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """The canonical InstrumentRecord for one security_guid, on a READ path.
+
+    One security_guid legitimately spans multiple subject_key records: a judged
+    prospect (``prospect_schema == CIOProspect@v1-ext``, e.g. HELD/WATCH) plus a
+    fact-only record (kind SECURITY, ``record_kind == FACTS_ONLY``) that holds
+    ``research.company_facts``. Prefer the single judged prospect; flag only when
+    MORE than one judged prospect exists (AGENTS.md §26.1: one row per security_guid).
+
+    Returns ``(record, reason)``:
+    * ``(record, None)`` — one canonical record (the prospect, or the lone non-prospect).
+    * ``(None, "multiple_cio_records_for_guid")`` — more than one judged prospect, or
+      more than one non-prospect record with none judged.
+    * ``(None, None)`` — no records (the caller reports the missing case).
+    """
+    prospects = [r for r in records if is_prospect_record(r)]
+    if len(prospects) > 1:
+        return None, "multiple_cio_records_for_guid"
+    if len(prospects) == 1:
+        return prospects[0], None
+    if len(records) == 1:
+        return records[0], None
+    if not records:
+        return None, None
+    return None, "multiple_cio_records_for_guid"
+
+
 def _validate_fact_only(rec: dict[str, Any]) -> None:
     if not is_fact_only_record(rec) or rec.get("schema") != SCHEMA:
         raise ProspectInvalid("expected a fact-only InstrumentRecord, never a prospect")

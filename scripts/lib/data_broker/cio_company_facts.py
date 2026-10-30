@@ -14,14 +14,49 @@ def load_snapshot(root: Path | str | None = None, *, records: list[dict] | None 
     if records is None:
         from scripts.lib.cio_instrument_record import _store_for_root
         records = _store_for_root(root).all()
+    from scripts.lib.cio_instrument_record import select_canonical_record
     grouped: dict[str, list[dict]] = {}
     for r in records:
         if r.get("security_guid"):
             grouped.setdefault(str(r["security_guid"]), []).append(r)
-    return {guid: public_research(rs[0], guid) if len(rs) == 1 else {
-        "company_facts": missing("", guid, "multiple_cio_records_for_guid"),
-        "review_lifecycle": {"status": "MISSING", "missing_reason": "multiple_cio_records_for_guid"}}
-            for guid, rs in grouped.items()}
+    out: dict[str, dict] = {}
+    for guid, rs in grouped.items():
+        canonical, violation = select_canonical_record(rs)
+        if violation:
+            out[guid] = {
+                "company_facts": missing("", guid, violation),
+                "review_lifecycle": {"status": "MISSING", "missing_reason": violation},
+            }
+            continue
+        out[guid] = public_research(_with_facts_fallback(canonical, rs, guid), guid)
+    return out
+
+
+def _with_facts_fallback(canonical: dict, records: list[dict], guid: str) -> dict:
+    """Render company facts even when the canonical (judged prospect) record lacks them.
+
+    The fact-only SECURITY record is the designed home of ``research.company_facts``
+    (2026-10-24 design). If the canonical record carries no facts but a sibling fact-only
+    record does, surface the sibling's facts instead of silently dropping them.
+    """
+    if _public_facts_status(public_research(canonical, guid)) != "MISSING":
+        return canonical
+    for r in records:
+        if r is canonical:
+            continue
+        sibling = public_research(r, guid)
+        if _public_facts_status(sibling) != "MISSING":
+            merged = dict(canonical)
+            merged["research"] = {
+                **(canonical.get("research") or {}),
+                "company_facts": sibling["company_facts"],
+            }
+            return merged
+    return canonical
+
+
+def _public_facts_status(rendered: dict) -> str | None:
+    return ((rendered or {}).get("company_facts") or {}).get("status")
 
 
 def for_security(snapshot: dict, symbol: str, security_guid: str | None, *, now=None) -> dict:
