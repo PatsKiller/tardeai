@@ -81,6 +81,40 @@ if ledger_is_corrupt; then
   emit deny "BLOCKED — APPROVAL_LEDGER_CORRUPT ($(ledger_state)). Guarded command refused." \
             "The approval ledger is corrupt. The operator must recover it; do not treat this as authorized."
 fi
+# AGENTS.md 21.0.0 §28.15 item 8 (a): the ONLY grant-free push is "bin/agent-push <branch>" — one strict argument,
+# the invoked wrapper byte-identical to this guard tree's bin/agent-push, and this tree's guard_push_free.py check
+# passing (policy, canonical remote, fast-forward, approved plan, budget, broker paths). A raw git push, or any other
+# agent-push form, falls through to the grant path below, unchanged. The wrapper re-checks and pushes itself.
+GRANT_FREE_REASON=""
+_ap_re='^[[:space:]]*(([A-Za-z0-9._/-]*/)?bin/agent-push)[[:space:]]+([a-z][a-z0-9-]{1,19}/[A-Za-z0-9][A-Za-z0-9._-]{2,120})[[:space:]]*$'
+if [[ "$tier" == "git-push" && "$cmd" =~ $_ap_re ]]; then
+  STAGE=grantfree
+  _w="${BASH_REMATCH[1]}"; _b="${BASH_REMATCH[3]}"
+  _cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+  [[ "$_w" == /* ]] || _w="${_cwd:+$_cwd/}$_w"
+  _trusted="$(cd "$HERE/../.." 2>/dev/null && pwd)/bin/agent-push"
+  if [[ "$_w" != /* ]]; then
+    GRANT_FREE_REASON="the hook payload carried no cwd to resolve $_w"
+  elif ! cmp -s -- "$_w" "$_trusted"; then
+    GRANT_FREE_REASON="$_w is not byte-identical to the guard tree's bin/agent-push"
+  elif ! _top=$(env -i PATH=/usr/bin:/bin /usr/bin/git -C "$(dirname "$_w")" rev-parse --show-toplevel 2>/dev/null); then
+    GRANT_FREE_REASON="$_w is not inside a git work tree"
+  else
+    _home=$(getent passwd "$(id -u)" | cut -d: -f6)
+    _gf=$(timeout "${GUARD_PUSH_FREE_TIMEOUT:-8}" env -i PATH=/usr/bin:/bin HOME="$_home" LANG=C.UTF-8 \
+          /usr/bin/python3 -I "$HERE/guard_push_free.py" check --repo "$_top" --branch "$_b" \
+          ${GUARD_PUSH_FREE_TEST_CONFIG:+--test-config "$GUARD_PUSH_FREE_TEST_CONFIG"} 2>/dev/null | tail -1)
+    if [[ "$(printf '%s' "$_gf" | jq -r '.allow // false' 2>/dev/null)" == "true" ]]; then
+      _r=$(printf '%s' "$_gf" | jq -r '.approval_ref')
+      emit allow "GRANT-FREE PUSH admitted: $_b under $_r (AGENTS.md §28.15 item 8). bin/agent-push re-checks, pushes and records it." \
+        "Grant-free fast-forward push of your approved feature branch. Never force, never main/release/train; raw git push still needs a grant."
+    fi
+    GRANT_FREE_REASON=$(printf '%s' "$_gf" | jq -r '.reason // empty' 2>/dev/null)
+    [[ -n "$GRANT_FREE_REASON" ]] || GRANT_FREE_REASON="checker failed or timed out"
+  fi
+  STAGE=grant
+fi
+
 grant_consume "$tier"
 _gc=$?
 if [[ "$_gc" -eq 2 ]]; then
@@ -108,4 +142,4 @@ WHAT THIS SCOPE COVERS:
 TO ALLOW IT, in a terminal on ms01:
   bin/guard grant $tier --for 30m --uses 10 --reason \"...\"
 then ask the agent to retry. Auto-expires; revoke: bin/guard revoke $tier" \
-"Blocked for want of a grant in scope '$tier'. Tell the operator exactly what you intend to change, why, and how to reverse it, then wait. Do not rephrase the command to fall into a different scope."
+"Blocked for want of a grant in scope '$tier'.${GRANT_FREE_REASON:+ Grant-free push (AGENTS.md §28.15 item 8) refused: $GRANT_FREE_REASON.} Tell the operator exactly what you intend to change, why, and how to reverse it, then wait. Do not rephrase the command to fall into a different scope."
