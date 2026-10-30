@@ -1,17 +1,27 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.1.0
+Policy-Version:      26.2.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-10-28T17:40:00-04:00
+Last-Reviewed:       2026-10-29T21:12:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          26.0.0
+Supersedes:          26.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**26.2.0 is PROPOSED (MAJOR) — operator-delegated promote.** Awaiting `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`
+(§20). Adds §25.10.1: an agent hands the operator the exact deploy commands (already the rule, §28.4 — stated
+explicitly, not new), and may run the promote (`scripts/emergency_manual_promote.sh` or
+`scripts/cio_phase2_exact_main_deploy.sh` `prepare`+`promote`) on the operator's behalf after it presents the exact
+command, the full 40-hex SHA and the dry-run output, and the operator types an explicit approval in that agent's own
+session (§28.4). **Why MAJOR:** widens deploy (promote) authority and touches §17. §0 rules 1–2 and §24.7 are never
+overridable, even by the operator; the delegation never extends to pushing `main`/`release/*`, merging,
+broker/order/stop/sizing/secret actions, arming/disarming the delegation, or clearing STOP; `ReleaseGrantBinding@v1`,
+the STOP latch, `GlobalReleaseLock` and operator-set `TRADEAI_EMERGENCY_RELEASE_SHA` are unchanged.
 
 **26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
 Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
@@ -1543,7 +1553,8 @@ the operator's own merge (§28.4) — never relayed by another agent, and never 
   re-permissioning the Mergify GitHub App; changing `config/merge_hold_paths.json` to hold less (§25.10).
 - Arming, pausing or revoking the standing **deploy** (promote-only) delegation; clearing a deploy STOP or resuming
   the poller; running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA` (a
-  coordinator may run it only on the operator's own instruction in its session, §25.10).
+  coordinator may run the promote only on the operator's own instruction in its session, §25.10, or the
+  operator-delegated promote §25.10.1; `TRADEAI_EMERGENCY_RELEASE_SHA` is always set by the operator).
 - **Initiating an emergency merge or merge-and-deploy** that bypasses Mergify (§25.10 "Emergency merge and deploy"):
   operator-originated and SHA-bound from Telegram or the digest, never a relayed or inferred approval; broker, order,
   stop, Schwab `read_only`, trading locks and kill switches are never bypassed by it.
@@ -2235,6 +2246,28 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   operator: "in an emergency … merge and push live … commenced through Telegram … use a digest if necessary … bypass
   Mergify" (LESSONS L25-07).*
 
+### 25.10.1 Operator-delegated promote
+
+- **Handing the operator the exact deploy commands is already the rule, not a new grant.** An agent presents the
+  exact promote command, the full 40-hex SHA and the `--dry-run` output and stops (§28.4); it never runs `prepare` or
+  `promote` without the operator. This subsection states that explicitly and adds only the narrow delegation below.
+- **The delegation.** After the agent has presented the exact command, the full 40-hex SHA and the `--dry-run` output,
+  and the operator has typed an explicit approval **in that agent's own session** (§28.4), that agent may run the
+  promote on the operator's behalf: `scripts/emergency_manual_promote.sh`, or
+  `scripts/cio_phase2_exact_main_deploy.sh` `prepare` then `promote`. The approval is quoted verbatim in the receipt.
+  The delegation binds that agent and that session only; it never transfers to another agent or session.
+- **Never overridable, even by the operator.** §0 rule 1 (`MBI_BEHAVIOR = 0` — never order, stop or size), §0 rule 2
+  (broker writes) and §24.7 (secrets) are not waived by any delegation here.
+- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging (Mergify / operator merge
+  only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy delegation,
+  clearing a STOP, or any §17 item not explicitly named in this subsection.
+- **`ReleaseGrantBinding@v1`, the STOP latch and `GlobalReleaseLock` apply unchanged;** `TRADEAI_EMERGENCY_RELEASE_SHA`
+  is still set by the operator, never by the agent (§24.8).
+- **Approval provenance is §28.4:** given in that agent's own session, verbatim, and recorded in the receipt; never
+  relayed, never inferred, and never Telegram `/approve` (retired, §8). *Cause: 2026-10-29 — operator directive
+  (verbatim in the PR body): "explicitly allow agents to hand the operator the exact deploy commands … and run the
+  promote on the operator's behalf after the operator types an explicit approval in that agent's own session".*
+
 ---
 
 # 26 · Data foundation — one store, one writer, the CIO as integrator
@@ -2351,6 +2384,9 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **An approval counts only when the operator gives it in that agent's own session;** relayed approvals never count.
   Hand over commands that run as written: no placeholder, no `!` outside the Claude Code prompt. *Cause: 2026-10-22 —
   relayed approvals (LESSONS L28-07).*
+- **The operator-delegated promote (§25.10.1) follows the same provenance rule:** the operator's approval to run the
+  promote is given in that agent's own session, verbatim, and recorded in the receipt; it is never relayed, never
+  inferred, and never Telegram `/approve` (retired).
 
 ## 28.5 The Ops → Controls sudo window
 
@@ -2499,6 +2535,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 26.2.0 | 2026-10-29 | PROPOSED | MAJOR | §25.10.1 "Operator-delegated promote" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote (`scripts/emergency_manual_promote.sh` or `scripts/cio_phase2_exact_main_deploy.sh` prepare+promote) on the operator's behalf after it presents the exact command, the full 40-hex SHA and the dry-run output, and the operator types an explicit approval in that agent's own session. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
