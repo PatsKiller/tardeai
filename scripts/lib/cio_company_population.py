@@ -217,10 +217,10 @@ def populate(root: Path, capture: dict, *, apply=False, now=None, backend=None, 
             continue  # one canonical record per security, aliases are not duplicate facts
         seen.add(guid)
         matches = [r for r in records if r.get("security_guid") == guid]
-        if len(matches) > 1:
-            result["gaps"].append({"symbol": sym, "security_guid": guid, "reason": "multiple_cio_records_for_guid"})
+        prior, violation = ir.select_canonical_record(matches)
+        if violation:
+            result["gaps"].append({"symbol": sym, "security_guid": guid, "reason": violation})
             continue
-        prior = matches[0] if matches else None
         if prior and ident.get("issuer_guid") and prior.get("issuer_guid") not in (None, ident["issuer_guid"]):
             result["gaps"].append({"symbol": sym, "reason": "canonical_issuer_conflict"})
             continue
