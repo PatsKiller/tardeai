@@ -4585,7 +4585,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "scripts/conflict_resolver.py --dry-run --state-root reads canonical W1 truth (cio_truth.resolve / stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe and watch_decision.reentry_rows -> db_adapter._execute; cio_prospect shadow JSON). DB names from db_adapter.py. The LaneRunReceipt writes through lane_last_receipt to <state-root>/data/runtime/conflict-resolver_last.json (state root passed explicitly as --state-root $STATE_ROOT).",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (compose_universe/reentry_rows -> db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
-      "source": "SHADOW-stage dispatcher-row proposal (W10 conflict engine, docs/ops/W8_WRITERS_20261024.md). No cron line: the dispatcher fires the write-free dry run only. SHADOW ONLY: live_arg null (no live mode admitted yet); registry dispatch.mode dry_run, scheduler.stage shadow. dry_run_arg runs --dry-run --state-root $STATE_ROOT, which computes the report and writes a LaneRunReceipt (ok_at) but never writes the conflict ledger. lock = /tmp/conflict_resolver.lock (the allowlist requires /tmp/ locks; the runner's own internal fcntl.flock is data/conflicts/conflict_resolver.lock, state-root-relative — a W10 handoff to align that internal lock to /tmp before canary); at shadow the executor takes <lock>.dryrun (disjoint).",
+      "source": "CANARY-stage live flip (W10 conflict engine; docs/designs/DSN-20261028-cio-review-transparency.md §5 gate 4, docs/ops/W8_WRITERS_20261024.md §Conflict-resolver addendum). No cron line: the dispatcher fires the ledger-writing --shadow mode live (live_arg), which writes the conflict ledger, CIO memory and the ConflictResolverReceipt@v1 comparison report; the runner has no notification mode. dry_run_arg runs --dry-run --state-root $STATE_ROOT (write-free). lock = /tmp/conflict_resolver.lock (allowlist /tmp lock; the runner's own internal fcntl.flock is state-root-relative data/conflicts/conflict_resolver.lock — the W10 lock-alignment handoff remains open, so canary lock coverage is the executor's /tmp lock while the runner's internal shadow lock is a separate path). MBI_BEHAVIOR=0: no broker, order, stop, sender or secret.",
       "command": [
         "$PY",
         "scripts/conflict_resolver.py"
@@ -4598,7 +4598,11 @@
         "--state-root",
         "$STATE_ROOT"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--shadow",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/conflict-resolver_last.json",
       "output_receipt": "v2"
