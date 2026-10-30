@@ -18537,9 +18537,9 @@
     {
       "lane_id": "cio-ask-lifecycle",
       "owner": "cio",
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-26",
-      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "state_reason": "Canary-stage live admission (AGENTS.md §23.12 wave ladder shadow → canary → cutover). The operator's digest approval of this reviewed registry-row PR is the §17/§23.11 stage-change decision. Code prerequisites are complete: the governed bridge processes cio_ask_reanswer + cio_ask_critique_deepseek/grok/chatgpt are registered (config/llm_process_registry.json, default_mode automated), and the Ask writer (scripts/lib/cio_ask_store.py, cio_asks domain) holds operator approval 2026-10-24. The verified per-thread check + memory/readback/delivery is runtime evidence from the canary live run and its first natural slots, operator-reviewed before cutover.",
       "scheduler": {
         "kind": "n8n",
         "expression": "dispatcher",
@@ -18547,7 +18547,7 @@
         "match": "scripts/cio_ask_lifecycle.py --once",
         "cadence": "0 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 1,
@@ -18568,7 +18568,7 @@
       "value_class": "Operationally Important",
       "severity": "Medium",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 * * * *"
         ],
@@ -18578,7 +18578,7 @@
         "retry_policy": "llm-transient",
         "wave": "W5"
       },
-      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation prerequisites: cio_ask_reanswer + cio_ask_critique_deepseek/grok/chatgpt (code-complete), Ask writer authority (code-complete, operator 2026-10-24), and the verified per-thread check + memory/readback/delivery (operator-gated runtime evidence). live_arg [] — the script default is the live run.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": [
         "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."
@@ -18587,9 +18587,9 @@
     {
       "lane_id": "cio-ask-material-events",
       "owner": "cio",
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-26",
-      "state_reason": "Source registered with reviewed engineering contract; no workflow installation, activation or natural-slot evidence. Admission remains inactive.",
+      "state_reason": "Canary-stage live admission (AGENTS.md §23.12 wave ladder shadow → canary → cutover). The operator's digest approval of this reviewed registry-row PR is the §17/§23.11 stage-change decision. Code prerequisites are complete: the governed bridge processes cio_ask_reanswer + cio_ask_critique_deepseek/grok/chatgpt are registered (config/llm_process_registry.json, default_mode automated), and the Ask writer (scripts/lib/cio_ask_store.py, cio_asks domain) holds operator approval 2026-10-24. The verified per-thread check + memory/readback/delivery is runtime evidence from the canary live run and its first natural slots, operator-reviewed before cutover.",
       "scheduler": {
         "kind": "n8n",
         "expression": "dispatcher",
@@ -18597,7 +18597,7 @@
         "match": "scripts/cio_ask_lifecycle.py --once --events-only",
         "cadence": "*/5 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.08333333333333333,
@@ -18618,7 +18618,7 @@
       "value_class": "Operationally Important",
       "severity": "Medium",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 * * * *"
         ],
@@ -18628,7 +18628,7 @@
         "retry_policy": "llm-transient",
         "wave": "W5"
       },
-      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation requires admission of cio_ask_reanswer plus cio_ask_critique_deepseek/grok/chatgpt, and Ask writer authority and verified per-thread check, memory/readback/delivery.",
+      "note": "Native schedule proposal, all seven days. Same lock and canonical Ask ledger; material lane polls only new material feed events/retries. No host cron. Dry-run RUN_DONE proves transport only. Live activation prerequisites: cio_ask_reanswer + cio_ask_critique_deepseek/grok/chatgpt (code-complete), Ask writer authority (code-complete, operator 2026-10-24), and the verified per-thread check + memory/readback/delivery (operator-gated runtime evidence). live_arg [] — the script default is the live run.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": [
         "Source registration only: config/n8n_health_contracts.json; native workflow candidate and synthetic proofs in docs/ops/packets/ask-hourly-20261026/n8n. No workflow installed or live output claimed."

@@ -960,6 +960,36 @@
       "cron_claim": false,
       "n8n_claim": false
     },
+    "cio-ask-lifecycle": {
+      "process": "cio-ask-lifecycle",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:deterministic event_id (cio_ask_store) dedupes; re-answer per-thread cooldown",
+      "wave": "W5",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "cio-ask-material-events": {
+      "process": "cio-ask-material-events",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:deterministic event_id (cio_ask_store) dedupes; material-event re-answer per-thread cooldown",
+      "wave": "W5",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
     "conflict-resolver": {
       "process": "conflict-resolver",
       "input_version": "v1",
