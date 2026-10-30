@@ -1025,3 +1025,25 @@ def test_unknown_document_in_claims_dir_still_fails_closed(world, extra):
     src = _collect_with_extra_claim(world, extra)
     assert not src["complete"]
     assert "claim_unreadable" in src["detail"]
+
+
+def test_future_fixture_mtime_counts_at_its_real_change_time(tmp_path):
+    f = tmp_path / "nested" / "stamped.txt"
+    f.parent.mkdir()
+    f.write_text("fixture")
+    real = f.lstat().st_ctime
+    now = real + 10 * 86400
+    ahead = now + 100 * 86400  # a test stamped this file far past "now"
+    os.utime(f, (ahead, ahead))
+    newest, why = SR.activity(f.parent, now=now)
+    assert why is None and newest < now - 9 * 86400
+    assert SR.activity(f.parent)[0] == ahead  # without now, behaviour is unchanged
+
+
+def test_past_mtime_is_still_trusted_with_now(tmp_path):
+    f = tmp_path / "old.txt"
+    f.write_text("fixture")
+    past = f.lstat().st_ctime - 30 * 86400
+    os.utime(f, (past, past))
+    os.utime(tmp_path, (past, past))
+    assert SR.activity(tmp_path, now=past + 60 * 86400)[0] == past

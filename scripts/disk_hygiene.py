@@ -1048,7 +1048,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item = row(path, "S", "rtc_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
-            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
+            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)),
+                                        now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
             if activity is None or ctx["now"].timestamp() - activity <= 7 * 86400:
@@ -1073,7 +1074,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
                 item["reasons"].append("not_scratch_directory")
             if not entry_re.fullmatch(path.name):
                 item["reasons"].append("scratch_name_not_declared")
-            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
+            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)),
+                                        now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
             if activity is None or ctx["now"].timestamp() - activity <= idle_days * 86400:
