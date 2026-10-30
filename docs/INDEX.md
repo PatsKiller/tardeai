@@ -752,6 +752,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log |
+| `docs/audits/DB_RETENTION_IRIS_P6T1_2026-10-30.md` | DB retention / Iris — P6-T1 audit: D1–D5/D8 rulings vs `config/data_retention_policy.json` |
 | `docs/audits/DISK_HYGIENE_FIRST_APPLY_REVIEW_2026-10-28.md` | Disk-hygiene first-apply review — operator decision package |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
@@ -2269,6 +2270,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/anthropic-first-20261025/BUILD_REPORT.md` | Anthropic-first review correction |
 | `docs/ops/packets/anthropic-first-20261025/OWNER_HANDOFF.md` | Anthropic review handoff |
 | `docs/ops/packets/anthropic-first-20261025/dry-run-table.md` | dry-run-table.md |
+| `docs/ops/packets/archive-offbox-20261021/OPERATOR_APPROVAL.md` | Operator-approval packet — archive off-box sync to Google Drive (D9 / P5) |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
 | `docs/ops/packets/ask-hourly-20261026/providers/README.md` | Ask hourly provider slice — source handoff |
 | `docs/ops/packets/c1-company-catalyst-20261024/REMAINING_CATALYST_GAPS.md` | Remaining catalyst gaps |
@@ -2332,8 +2334,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
 | `docs/ops/packets/tradeinview-redesign-20261024/README.md` | WP-22 TradeInView A source packet |
 | `docs/ops/packets/w8-writers-20261024/README.md` | W8 source packet |
-| `docs/ops/page-repair/watch.md` | Watch page repair |
 | `docs/ops/page-repair/home.md` | Home page repair — Board 14 |
+| `docs/ops/page-repair/watch.md` | Watch page repair |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
