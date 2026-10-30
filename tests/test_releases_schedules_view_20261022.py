@@ -170,14 +170,31 @@ def test_kpis_and_n8n_today_from_ledger(host):
     k = {x["key"]: x for x in d["kpis"]}
     assert k["serving"]["value"] == SHA_B[:9] and k["n8n_runs"]["value"] == 4
     assert k["n8n_errors"]["value"] == "1 · 1"
-    assert "next_window" not in k  # the retired release train's windows were removed 2026-10-27
+    # NOW is 15:00 ET Thu = market freeze; next Mergify open is 16:15 after-hours.
+    assert k["next_window"]["value"] == "16:15"
+    assert "NEXT" in k["next_window"]["detail"] or "mergify" in (k["next_window"]["detail"] or "")
+    assert k["next_window"]["tone"] == "warning"  # market_freeze
 
 
-def test_retired_train_sections_are_gone(host):
+def test_windows_mergify_after_hours_not_train_shadow(host):
+    """Mergify windows replace train SHADOW/OFF; the retired queue section stays removed."""
     d = _build(host)
-    assert "windows" not in d and "queue" not in d
-    assert not hasattr(R, "read_windows") and not hasattr(R, "read_queue")
-    assert d["stop"]["state"] == "ABSENT" and d["stop"]["effective_stop"] is False
+    assert "queue" not in d
+    w = d["windows"]["value"]
+    assert w["preset"] == "after_hours"
+    assert w["open_now"] is False and w["market_freeze"] is True
+    assert w["windows"][0]["local_time"] == "16:15"
+    assert w["windows"][0]["state"] == "NEXT"
+    assert all(x["state"] in ("OPEN", "NEXT") for x in w["windows"])
+    assert "Mergify" in (w["manual_path"] or "")
+    assert "SHADOW" not in {x["state"] for x in w["windows"]}
+    # Latch file is still read; window cards stay OPEN/NEXT (not STOPPED/OFF).
+    (host["rw"] / "STOP.json").write_text(
+        json.dumps({"latched_at": NOW.isoformat(), "reason": "test"}), encoding="utf-8"
+    )
+    w2 = R.read_windows(NOW, rw_state_dir=host["rw"])["value"]
+    assert w2["windows"][0]["state"] == "NEXT"
+    assert w2["stop"].get("state") in ("SET", "ABSENT", "UNREADABLE") or "effective_stop" in w2["stop"]
 
 
 def test_timeline_merges_cron_paused_and_n8n(host):

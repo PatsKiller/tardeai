@@ -1,0 +1,39 @@
+{
+  "schema": "MergifyWindows@v1",
+  "_comment": "Mergify merge windows (America/New_York). Source of truth for Ops Controls display and for regenerating .mergify.yml schedule conditions via scripts/lib/mergify_windows.py. Market freeze Mon–Fri 09:30–16:15 ET is hard — presets must never open that band. Changed by reviewed PR (or Ops Controls preset → regenerate → PR).",
+  "timezone": "America/New_York",
+  "preset": "after_hours",
+  "market_freeze": {
+    "days": ["mon", "tue", "wed", "thu", "fri"],
+    "start": "09:30",
+    "end": "16:15"
+  },
+  "presets": {
+    "after_hours": {
+      "label": "After hours (trial)",
+      "description": "Any time outside market hours Mon–Fri 09:30–16:15 ET, plus all weekend. For the Mergify trial.",
+      "schedules": [
+        "Mon-Fri 16:15-23:59[America/New_York]",
+        "Mon-Fri 00:00-09:30[America/New_York]",
+        "Sat-Sun 00:00-23:59[America/New_York]"
+      ]
+    },
+    "narrow_four": {
+      "label": "Narrow (four slots)",
+      "description": "Legacy four short windows (evening, midnight, morning, pre-open).",
+      "schedules": [
+        "Mon-Fri 18:00-19:00[America/New_York]",
+        "Tue-Sat 00:00-01:00[America/New_York]",
+        "Mon-Fri 06:00-07:00[America/New_York]",
+        "Mon-Fri 08:00-08:45[America/New_York]"
+      ]
+    },
+    "weekends_only": {
+      "label": "Weekends only",
+      "description": "Sat–Sun all day; no weekday merges.",
+      "schedules": [
+        "Sat-Sun 00:00-23:59[America/New_York]"
+      ]
+    }
+  }
+}

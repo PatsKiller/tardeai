@@ -24,6 +24,21 @@ export type MainCi = { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'OK' | 'NOT_GR
   checked_at?: string | null; age_s?: number | null; stale?: boolean; checks?: number; success?: number
   not_success?: Array<{ name?: string; conclusion?: string | null }>
   workflows?: Array<{ name?: string; state?: string; url?: string | null; updated_at?: string | null }> }
+// Mergify ET windows (scripts/lib/mergify_windows.py) — the release train's SHADOW/OFF slots were retired and these
+// OPEN/NEXT cards replace them (CONFLICT-RESOLVED-20261029). Mergify never merges Mon–Fri 09:30–16:15 ET.
+export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds?: number; role: string | null; enabled: boolean; note: string | null
+  slot: string; state: 'OPEN' | 'NEXT' | 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null
+  ends_local?: string | null; ends_at?: string | null; schedule?: string | null
+  last_shadow_request_at?: string | null; last_shadow_receipt_state?: string | null
+  last_shadow?: LastShadow | null }
+// Legacy shadow tick summary (release train). Mergify windows leave these null.
+export type LastShadow = { request_id: string | null; outcome: string | null; reason: string | null; queue_open: number | null
+  queue_complete: boolean | null; riding: number | null; candidate_sha: string | null; train_id: string | null; has_report: boolean }
+export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
+  stop: { state?: string; effective_stop?: boolean } | null; policy_version?: string | null; manual_path: string
+  preset?: string | null; preset_label?: string | null; open_now?: boolean | null; market_freeze?: boolean | null
+  schedules?: string[]; setting_key?: string | null
+  presets_available?: Array<{ id: string; label?: string; description?: string | null }> }
 export type ReleaseRow = { receipt: string; mode: string | null; at: string | null; sha: string | null; short_sha?: string | null; sha_basis: string; release_name?: string | null
   serving?: boolean; prs: number[] | null; prs_reason: string | null; verify: { ok?: boolean; health?: string; rolled_back?: boolean; readback_errors?: string[] } | null
   verify_reason: string | null; error?: string }
@@ -41,12 +56,12 @@ export type Timeline = { horizon_hours: number; from: string; to: string; rows: 
 
 export type ReleasesSchedulesWire = {
   schema?: string; generated_at?: string; status?: string; kpis?: Kpi[]
-  serving?: Section<Serving>; next_release?: Section<NextRelease>; history?: Section<{ releases: ReleaseRow[]; receipts_total: number }>
+  serving?: Section<Serving>; next_release?: Section<NextRelease>; windows?: Section<Windows>; history?: Section<{ releases: ReleaseRow[]; receipts_total: number }>
   release_errors?: Section<{ rows: ReleaseError[]; window_hours: number; not_covered: string }>; n8n_today?: Section<LedgerToday>; timeline?: Section<Timeline>
   stop?: { state?: string; effective_stop?: boolean; latched_at?: string | null; reason?: string | null }
 }
 
-export const SECTION_KEYS = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
+export const SECTION_KEYS = ['serving', 'next_release', 'windows', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
 export type SectionKey = (typeof SECTION_KEYS)[number]
 
 export function ageText(seconds: number | null | undefined): string {
@@ -111,6 +126,9 @@ export function kpiDisplay(k: Kpi | undefined, current: boolean): { value: strin
 
 export const STAGE_TONE: Record<string, Tone> = { LIVE: 'success', CUTOVER: 'success', CANARY: 'info', SHADOW: 'ai', PAUSED: 'warning', 'NOT LIVE': 'neutral', UNKNOWN: 'warning' }
 export function stageTone(stage: string | null | undefined): Tone { return STAGE_TONE[String(stage ?? 'UNKNOWN')] ?? 'neutral' }
+
+export const WINDOW_TONE: Record<string, Tone> = { OPEN: 'success', NEXT: 'info', LIVE: 'success', SHADOW: 'info', OFF: 'neutral', STOPPED: 'danger' }
+export function windowTone(state: string | null | undefined): Tone { return WINDOW_TONE[String(state ?? '')] ?? 'warning' }
 
 export function prList(prs: number[] | null | undefined, reason: string | null | undefined, max = 12): string {
   if (!Array.isArray(prs)) return reason ? `UNAVAILABLE · ${reason}` : 'UNAVAILABLE'

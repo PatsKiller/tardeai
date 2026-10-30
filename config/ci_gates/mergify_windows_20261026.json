@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "mergify_windows_20261026",
+  "files": [
+    "tests/test_mergify_windows_20261026.py"
+  ],
+  "comment": [
+    "2026-10-26 (PR #2220): Mergify ET windows on Ops Controls — after-hours merge schedules never overlap market hours; the schedule preset is rewritten into .mergify.yml with valid indentation; the ops view shows market-freeze vs open and next/OPEN window states; the preset setter persists to config/mergify_windows.json. Hermetic: no network, no live Mergify."
+  ]
+}

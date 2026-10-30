@@ -563,6 +563,46 @@ def read_stop(state_dir: Path) -> dict[str, Any]:
             "path": str(path), "note": STOP_NOTE}
 
 
+def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping[str, Any]] = None,
+                 readiness: Optional[Callable[[], Mapping[str, Any]]] = None) -> dict[str, Any]:
+    """Mergify ET windows for the Releases page (train windows retired after Mergify cutover).
+
+    ``rw_state_dir`` / ``readiness`` are kept for call-site compatibility; the deploy STOP latch is
+    still surfaced from the release-window state dir when readable (CONFLICT-RESOLVED-20261029: uses
+    this view's ``read_stop``, not the archived ``release_train_view.read_stop``).
+    """
+    src = "config/mergify_windows.json + .mergify.yml schedules (America/New_York)"
+    try:
+        try:
+            from lib import mergify_windows as MW
+        except ImportError:  # pragma: no cover
+            from scripts.lib import mergify_windows as MW  # type: ignore[no-redef]
+        view = MW.view_for_ops(now)
+    except Exception as exc:  # noqa: BLE001 — surface as UNAVAILABLE, never raise
+        return _unavailable(src, f"mergify_windows: {exc}", now)
+    stop: dict[str, Any] = {"state": "ABSENT", "effective_stop": False}
+    try:
+        stop = read_stop(rw_state_dir) or stop
+    except Exception:  # noqa: BLE001
+        stop = {"state": "UNREADABLE", "effective_stop": True}
+    value = {
+        "windows": view.get("windows") or [],
+        "armed": None,
+        "shadow_enabled": None,
+        "delegation": None,
+        "stop": stop,
+        "preset": view.get("preset"),
+        "preset_label": view.get("preset_label"),
+        "open_now": view.get("open_now"),
+        "market_freeze": view.get("market_freeze"),
+        "schedules": view.get("schedules") or [],
+        "setting_key": view.get("setting_key"),
+        "presets_available": view.get("presets_available") or [],
+        "manual_path": view.get("manual_path"),
+    }
+    return field(value, view.get("as_of") or _iso(now), "OK", src, None, now=now)
+
+
 # ── n8n side ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -849,6 +889,8 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     sv = sections["serving"].get("value") or {}
     nx = sections["next_release"].get("value") or {}
     td = sections["n8n_today"].get("value") or {}
+    wn = sections.get("windows", {}).get("value") or {}
+    nxt = next(iter(wn.get("windows") or []), None)
     ci = (nx.get("ci") or {})
     nx_detail = None
     if nx:
@@ -865,6 +907,12 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
                                                      "danger" if ci.get("state") in ("FAILURE", "NOT_GREEN") else
                                                      "warning"),
              sections["next_release"]),
+        _kpi("next_window", "Next Mergify window", nxt.get("local_time") if nxt else None,
+             (f"{nxt.get('role') or 'mergify'} · {nxt.get('state')}"
+              + (f" · {nxt.get('reason')}" if nxt.get("reason") else ""))
+             if nxt else ("open now" if (wn.get("open_now") is True) else None),
+             "success" if wn.get("open_now") else ("warning" if wn.get("market_freeze") else "neutral"),
+             sections["windows"]),
         _kpi("n8n_runs", "n8n runs today", td.get("total"),
              ", ".join(f"{v} {k}" for k, v in sorted(by_mode.items())) or None, "neutral", sections["n8n_today"]),
         _kpi("n8n_errors", "n8n errors · skips",
@@ -884,15 +932,17 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
     res = run_probes({
         "serving": lambda: read_serving(p["releases_base"], p["deploy_state_dir"], now),
         "history": lambda: read_history(p["releases_base"], p["deploy_state_dir"], now, git=g),
+        "windows": lambda: read_windows(now, rw_state_dir=p["release_window_state_dir"]),
         "n8n_today": lambda: read_ledger_today(p["ledger"], now),
         "stop": lambda: read_stop(p["release_window_state_dir"]),
     }, timeout_s, executor=ex)
     sources = {
         "serving": "CURRENT symlink + BUILD_SHA pins", "history": "release_pins + deploy_receipt.json",
+        "windows": "config/mergify_windows.json",
         "n8n_today": "sqlite:n8n_coordination_ledger", "stop": "file:release_window/STOP.json",
     }
     sec: dict[str, Any] = {}
-    for k in ("serving", "history", "n8n_today"):
+    for k in ("serving", "history", "windows", "n8n_today"):
         r = res[k]
         sec[k] = r["value"] if r["status"] == "OK" else _unavailable(sources[k], r["error"], now)
     stop = res["stop"]["value"] if res["stop"]["status"] == "OK" else {
@@ -946,5 +996,5 @@ def clear_cache() -> None:
 
 
 __all__ = ["SCHEMA", "ROUTE", "build", "handle", "clear_cache", "parse_crontab", "read_serving", "read_next_release",
-           "read_history", "read_release_errors", "read_ledger_today", "read_timeline",
+           "read_history", "read_release_errors", "read_windows", "read_ledger_today", "read_timeline",
            "main_ci_from_receipt", "read_stop", "run_probes", "kpis", "default_paths"]

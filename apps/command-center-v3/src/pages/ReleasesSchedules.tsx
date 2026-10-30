@@ -3,7 +3,8 @@
 // GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py; contract docs/ops/RELEASES_SCHEDULES_PAGE.md).
 // Every section shows its own freshness (state · age · source); UNAVAILABLE renders with its reason, never 0 or green.
 // There is no control here: the deploy STOP is on Home → Deploys and Ops → Controls (components/DeployStopControl).
-// The retired release train's windows and queue sections and its tab were removed 2026-10-27 (operator directive).
+// The retired release train's windows and queue sections and its tab were removed 2026-10-27 (operator directive);
+// the Mergify ET windows tab (OPEN/NEXT) replaces the release-train shadow slots (CONFLICT-RESOLVED-20261029).
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -14,9 +15,9 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, stageTone, verifyLabel,
+  sectionView, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
-  type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
+  type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -25,7 +26,7 @@ const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const cell: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm }
-const TABS = [['deploys', 'Deploys'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
+const TABS = [['deploys', 'Deploys'], ['train', 'Mergify windows'], ['n8n', 'n8n & schedules'], ['jobs', 'Jobs']] as const
 type TabKey = (typeof TABS)[number][0]
 
 function useNow(ms: number): number {
@@ -65,6 +66,31 @@ function Table({ label, heads, rows, empty }: { label: string; heads: string[]; 
 
 function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
+}
+
+function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
+  // Mergify ET windows (OPEN/NEXT) replace the retired release-train shadow slots (CONFLICT-RESOLVED-20261029).
+  const w = s.windows.value as Windows | null
+  const stop = w?.stop
+  return <div style={{ display: 'grid', gap: 12 }}>
+    <Section title="Mergify merge windows (ET)" testId="rs-windows" v={s.windows}
+      sub={w ? `preset ${w.preset_label ?? w.preset ?? '—'} · ${w.open_now ? 'OPEN now' : w.market_freeze ? 'market freeze' : 'closed'} · deploy STOP ${stop?.state ?? 'UNAVAILABLE'}` : undefined}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+        {(w?.windows ?? []).map((x, i) => (
+          <div key={x.window_id} data-testid={`rs-window-${x.slot}`} style={{ background: TOKENS.bg[2], border: `1px solid ${i === 0 ? toneVars(windowTone(x.state)).border : TOKENS.border}`, borderRadius: RADIUS.sm, padding: '10px 12px', display: 'grid', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ ...mono, fontSize: TYPE.lg, fontWeight: 700, color: TOKENS.text[0] }}>{x.local_time}{x.ends_local ? `–${x.ends_local}` : ''}</span>
+              <Pill tone={windowTone(x.state)}>{x.state}</Pill>
+            </div>
+            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Mergify · {etDateTime(x.starts_at)}</span>
+            <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{x.reason ?? (x.enabled ? 'enabled' : 'not enabled')}{x.note ? ` · ${x.note}` : ''}</span>
+          </div>
+        ))}
+      </div>
+      {w?.schedules?.length ? <p style={{ ...muted, ...mono }} data-testid="rs-mergify-schedules">{(w.schedules).join(' · ')}</p> : null}
+      {w ? <p style={muted}>{w.manual_path}</p> : null}
+    </Section>
+  </div>
 }
 
 function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
@@ -169,15 +195,15 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
   const [params, setParams] = useSearchParams()
-  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
+  const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : params.get('tab') === 'train' ? 'train' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
-  const keys: SectionKey[] = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline']
+  const keys: SectionKey[] = ['serving', 'next_release', 'windows', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
   const current = !api.error && !api.stale && keys.some(k => s[k].state === 'OK')
   const kpis = api.data?.schema === 'ReleasesSchedules@v1' ? api.data.kpis ?? [] : []
-  const kpiKeys = ['serving', 'next_release', 'n8n_runs', 'n8n_errors']
-  const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
+  const kpiKeys = ['serving', 'next_release', 'next_window', 'n8n_runs', 'n8n_errors']
+  const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', next_window: 'Next Mergify window', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases">
@@ -211,7 +237,7 @@ export default function ReleasesSchedules() {
         style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
-    {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'train' ? <TrainTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
   </OpsDeskFrame>
 }

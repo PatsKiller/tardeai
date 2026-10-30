@@ -101,6 +101,16 @@
       "default_source": "scripts/lib/ops_controls_sudo.py DEFAULT_MINUTES (hard ceiling HARD_MAX_MINUTES = 120)",
       "consumer": "scripts/lib/ops_controls_sudo.py",
       "wired": true
+    },
+    {
+      "key": "mergify.windows_preset",
+      "label": "Mergify: merge windows preset (ET; never opens market hours)",
+      "type": "enum",
+      "choices": ["after_hours", "narrow_four", "weekends_only"],
+      "default": "after_hours",
+      "default_source": "config/mergify_windows.json preset (after_hours trial 2026-10-26)",
+      "consumer": "scripts/lib/mergify_windows.py · scripts/render_mergify_windows.py — setting records the operator choice; a PR must rewrite .mergify.yml on main before Mergify honors it",
+      "wired": true
     }
   ]
 }

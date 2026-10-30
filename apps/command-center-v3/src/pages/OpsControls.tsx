@@ -322,6 +322,14 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
+    <Panel title="Mergify merge windows (ET)">
+      <p style={muted} data-testid="ops-mergify-windows-explainer">
+        Mergify only merges outside market hours (never Mon–Fri 09:30–16:15 ET). Preset today defaults to after_hours (any non-market time + weekends). Change the preset under{' '}
+        <Link to="/system/ops-controls?tab=flags" data-testid="ops-mergify-flags-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Flags → Mergify: merge windows preset</Link>
+        . That records the choice; a reviewed PR that runs <code style={mono}>scripts/render_mergify_windows.py</code> must land on main before Mergify honors new schedules. Live open/next cards:{' '}
+        <Link to="/system/releases?tab=train" data-testid="ops-mergify-releases-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>Releases → Mergify windows</Link>.
+      </p>
+    </Panel>
     <Panel title="Deploys & kill switch">
       <p style={muted} data-testid="ops-deploys-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Engage kill switch): one click, no passkey. Resume (clear the deploy STOP): passkey and the typed phrase. Emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
