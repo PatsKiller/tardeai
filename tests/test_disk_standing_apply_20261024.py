@@ -39,7 +39,8 @@ def world(tmp_path, monkeypatch):
     cfg["standing_apply"] = {"enabled": True, "rules": ["A", "S", "W"], "manifest_max_age_hours": 2,
                              "max_bytes_per_run": SR.MAX_BYTES, "max_gb_per_run": 40, "byte_unit": "GiB",
                              "approved_by": "SYNTHETIC_TEST_ONLY", "archive": {"path": "~/db_backups/archive"},
-                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()}}
+                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()},
+                             "agent_scratch": dict(cfg["standing_apply"]["agent_scratch"])}
     rules_path = tmp_path / "rules.json"
     rules_path.write_text(json.dumps(cfg))
     rules = DH.load_rules(rules_path, home=home)
@@ -924,3 +925,103 @@ def test_plan_bound_opaque_evidence_refuses_apply_before_remover(world, monkeypa
     report = DH.apply(path, world[1], NOW, grant=None, run_id="fixture", standing=True, evidence=doc,
                       manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     assert report["refused"] == "evidence_opaque_processes" and not calls
+
+
+def _scratch_dirs(home, names, days=10):
+    scratch = home / ".cache" / "agent-tmp"
+    out = []
+    for name in names:
+        p = scratch / name
+        (p / "nested").mkdir(parents=True)
+        f = p / "nested" / "evidence.txt"
+        f.write_text("fixture")
+        for child in (f, f.parent, p):
+            old(child, days)
+        out.append(p)
+    return out
+
+
+def test_agent_scratch_idle_threshold_and_entry_pattern_come_from_config(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    rules["standing_apply"]["agent_scratch"].update(idle_days=5, entry_regex=r"^task-[a-z0-9-]+$")
+    (four,) = _scratch_dirs(home, ("task-four",), days=4)
+    six, odd = _scratch_dirs(home, ("task-six", "Odd_Name"), days=6)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert {r["path"] for r in result["items"]} == {str(six)}
+    reasons = {r["path"]: " ".join(r["reasons"]) for r in result["excluded"]}
+    assert "scratch_not_older_than_5_days" in reasons[str(four)]
+    assert "scratch_name_not_declared" in reasons[str(odd)]
+
+
+def test_agent_scratch_is_plan_only_until_rule_t_is_listed(world):
+    home, rules, _, _ = world
+    (path,) = _scratch_dirs(home, ("idle-task",))
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(path) not in {r["path"] for r in result["items"]}
+    assert any("rule_plan_only_not_authorized:T" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(path))
+
+
+def test_agent_scratch_never_takes_a_worktree(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    (path,) = _scratch_dirs(home, ("task-with-worktree",))
+    (path / "wt").mkdir()
+    (path / "wt" / ".git").write_text("gitdir: /fixture")
+    for child in (path / "wt" / ".git", path / "wt", path):
+        old(child)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(path) not in {r["path"] for r in result["items"]}
+
+
+@pytest.mark.parametrize("patch, error", [
+    ({"path": "~/.cache"}, "agent_scratch_scope"),
+    ({"idle_days": 0}, "agent_scratch_idle_days"),
+    ({"idle_days": "2"}, "agent_scratch_idle_days"),
+    ({"entry_regex": "("}, "agent_scratch_entry_regex"),
+    ({"require_claim_absent": False}, "agent_scratch_shape"),
+    ({"require_process_absent": False}, "agent_scratch_shape"),
+])
+def test_rule_t_config_is_validated_fail_closed(world, tmp_path, patch, error):
+    _, _, rules_path, cfg = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["agent_scratch"].update(patch)
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match=error):
+        DH.load_rules(bad, home=world[0])
+
+
+def test_rule_t_listed_without_its_config_refuses(world, tmp_path):
+    _, _, rules_path, _ = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    del doc["standing_apply"]["agent_scratch"]
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match="agent_scratch_scope"):
+        DH.load_rules(bad, home=world[0])
+
+
+def _collect_with_extra_claim(world, extra):
+    rules = collector_fixture(world)
+    base = world[0] / "trade-ai-releases" / "persistent-state" / "data" / "coordination"
+    (base / "claims" / "extra.json").write_text(json.dumps(extra))
+    reader = FixtureGithub([])
+    runner = lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": ""})()
+    return COLLECT(rules, NOW, runner=runner, github=reader)["sources"]["coordination"]
+
+
+def test_policy_broadcast_state_in_claims_dir_is_not_a_claim(world):
+    held = str(world[0] / ".cache" / "agent-tmp" / "named-in-broadcast")
+    src = _collect_with_extra_claim(world, {"schema": "PolicyBroadcastState@v1", "note": held})
+    assert src["complete"], src
+    assert [c["claim_id"] for c in src["data"]["live_claims"]] == ["fixture"]
+    assert held in src["data"]["references"]  # its paths still hold
+
+
+@pytest.mark.parametrize("extra", [{"schema": "SomethingElse@v1"}, {"no_schema": True}, ["not", "a", "dict"]])
+def test_unknown_document_in_claims_dir_still_fails_closed(world, extra):
+    src = _collect_with_extra_claim(world, extra)
+    assert not src["complete"]
+    assert "claim_unreadable" in src["detail"]

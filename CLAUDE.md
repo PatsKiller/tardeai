@@ -55,10 +55,12 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
    Three exceptions, and nothing else: (a) the n8n lane `disk-hygiene` may remove the reclaimable
    items its reviewed rules select (scripts/disk_hygiene.py, config/disk_hygiene_rules.json);
    (b) the host /tmp hygiene lanes may remove the /tmp items their reviewed tmp.* rules select
-   (scripts/tmp_hygiene_auto.py); and (c) an agent may delete only scratch it created, in a
-   declared scratch namespace, after proving its branch/PR merged or abandoned and that no running
-   process or claim references it — never a live store, DB, holdings, identity, lineage, the
-   InstrumentRecord store, or another agent's active work (AGENTS.md §24.12, §24.13).
+   (scripts/tmp_hygiene_auto.py); and (c) agent scratch under `~/.cache/agent-tmp/<task-id>`: the
+   agent that created it may delete it once its branch/PR is merged or recorded abandoned and no
+   running process, live claim or active worklog references it, and `disk-hygiene` rule T reclaims
+   what agents leave behind. A worktree is never hand-deleted (rule W reclaims it); none of these
+   ever touches a live store, DB, holdings, identity, lineage, the InstrumentRecord store, a served
+   release, `persistent-state`, a credential, or another agent's work (AGENTS.md §24.12, §24.13).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the

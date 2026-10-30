@@ -89,6 +89,8 @@ GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
 DOT_GIT = ".git"
+#: Known board-state documents that live in coordination/claims/ but are not claims (exact names, never a pattern).
+NON_CLAIM_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 
 
 class RulesError(ValueError):
@@ -159,6 +161,21 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
             raise RulesError("standing_rules_shape")
         if standing["approval"].get("status") == "APPROVED" and SR.aware(standing["approval"].get("approved_at")) is None:
             raise RulesError("standing_approval_timestamp")
+        scratch = standing.get("agent_scratch")
+        if scratch is not None or "T" in standing["rules"]:
+            # Rule T: the reviewed config must name exactly this root, a real idle threshold and a compilable entry
+            # pattern, and keep both reference checks on; no configurable bypass.
+            if not isinstance(scratch, dict) or scratch.get("path") != "~/.cache/agent-tmp":
+                raise RulesError("agent_scratch_scope")
+            idle = scratch.get("idle_days")
+            if type(idle) not in (int, float) or not idle >= 1:
+                raise RulesError("agent_scratch_idle_days")
+            try:
+                re.compile(str(scratch.get("entry_regex")))
+            except re.error as exc:
+                raise RulesError("agent_scratch_entry_regex") from exc
+            if not isinstance(scratch.get("entry_regex"), str) or scratch.get("require_claim_absent") is not True or scratch.get("require_process_absent") is not True:
+                raise RulesError("agent_scratch_shape")
     return doc
 
 
@@ -894,7 +911,11 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
             refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
             if path.parent == claims_dir and path.suffix == ".json":
                 claim = json.loads(text)
-                if not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1":
+                if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
+                    raise ValueError("claim_unreadable")
+                if claim["schema"] in NON_CLAIM_SCHEMAS:
+                    continue  # its paths are already in refs; it is board state, not a claim
+                if claim["schema"] != "AgentClaim@v1":
                     raise ValueError("claim_unreadable")
                 if claim.get("status") == "active":
                     live.append(claim)
@@ -1035,23 +1056,29 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item["fingerprint"] = {"activity": activity, "kind": "rtc_scratch"}
             results.append(item)
 
+    t_cfg = cfg.get("agent_scratch")  # validated in load_rules; rule T is plan-only unless listed in cfg["rules"]
     agent_tmp = rules["_home"] / ".cache" / "agent-tmp"
-    if agent_tmp.exists():
+    if t_cfg is not None and agent_tmp.exists():
         if agent_tmp.is_symlink():
             raise RulesError("agent_tmp_root_symlink")
         try:
             paths = sorted(agent_tmp.iterdir())
         except OSError as exc:
             raise RulesError("agent_tmp_unreadable") from exc
+        idle_days = float(t_cfg["idle_days"])
+        entry_re = re.compile(t_cfg["entry_regex"])
         for path in paths:
             item = row(path, "T", "agent_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
+            if not entry_re.fullmatch(path.name):
+                item["reasons"].append("scratch_name_not_declared")
             activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
             if why:
                 item["reasons"].append(why)
-            if activity is None or ctx["now"].timestamp() - activity <= 2 * 86400:
-                item["reasons"].append("scratch_not_older_than_2_days")
+            if activity is None or ctx["now"].timestamp() - activity <= idle_days * 86400:
+                item["reasons"].append(f"scratch_not_older_than_{idle_days:g}_days")
+            item["evidence"]["idle_days"] = round((ctx["now"].timestamp() - activity) / 86400.0, 2) if activity else None
             item["fingerprint"] = {"activity": activity, "kind": "agent_scratch"}
             results.append(item)
 

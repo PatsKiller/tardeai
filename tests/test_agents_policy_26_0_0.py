@@ -70,7 +70,7 @@ def test_header_is_26_0_x_proposed_or_active():
         assert cb["Supersedes"] == "25.0.1"
     elif cb["Policy-Version"] == "26.1.0":
         assert cb["Supersedes"] == "26.0.0"
-    elif cb["Policy-Version"] == "27.0.0":
+    elif cb["Policy-Version"] in ("27.0.0", "27.0.1"):  # 27.0.0 was never ratified; 27.0.1 replaces it
         assert cb["Supersedes"] == "26.2.2"
     assert cb["Approval-Class"] == "OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY"
     assert cb["Status"] in {"PROPOSED", "ACTIVE"}
