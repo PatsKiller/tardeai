@@ -127,6 +127,13 @@
       "tier": "DIGEST",
       "runbook_id": "disk-standing-hygiene",
       "producer": "disk_usage_monitor"
+    },
+    {
+      "domain": "data",
+      "kind": "rule_proposals_pending",
+      "tier": "DIGEST",
+      "runbook_id": "conflict-rule-proposals",
+      "producer": "conflict_rule_proposals"
     }
   ],
   "_comment_20261022_desk_truth": "2026-10-22 (operator: \"fix all of these n8n first for scheduling and monitoring\"): scripts/desk_truth_monitor.py (lanes holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor) queues ONE intent per run only when that check's alertable finding set GAINED a finding (state data/runtime/<lane>_alert_state.json, on top of the store dedupe); all DIGEST -> P2, never a sender (the #1899 direct intent-store pattern, through check_registry_runtime_truth.queue_host_intent). Runbook docs/ops/DESK_TRUTH_MONITORS.md.",

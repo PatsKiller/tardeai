@@ -18738,6 +18738,67 @@
       "note": "Every 10 min: sends pending prospectus run outboxes (data/prospectus/delivery/outbox) through telegram_alert.send_telegram / send_telegram_document (P2 intents; summary + PDF + Word) and email_notifier.send_email (gog Gmail run audit + holdings PDF/Word attachments, <= 20 MB per email, the rest linked). Idempotent per SYMBOL@version (delivery/ledger.json). Cadence 24h: an idle healthy sender writes its receipt every fire, but outboxes appear at most a few times a day. Lock /tmp/prospectus_deliver.lock."
     },
     {
+      "lane_id": "conflict-rule-proposals",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "PAUSED",
+      "state_since": "2026-10-25",
+      "state_reason": "APPROVED BUILD, PENDING ACTIVATION (operator 2026-10-25: 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'). Declared PAUSED with scheduler kind none so nothing fires and no n8n contract is armed yet: it reads the UNMATCHED patterns the conflict-resolver shadow run records, so it activates after conflict-resolver is in shadow. Activation PR (operator grant): scheduler {kind n8n, expression dispatcher, match scripts/conflict_rule_proposals.py, cadence '40 7,12,16 * * 1-5', stage shadow} + dispatch {cron ['40 7,12,16 * * 1-5'], tz America/New_York} + its N8nHealthContract + state ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/conflict-rule-proposals_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_conflict_rule_proposals.py (PR #2103); docs/ops/CONFLICT_RULE_PROPOSALS.md; CLI --dry-run on a temp state root: 2 patterns due, 0 model calls, store unchanged.",
+      "review_by": "2026-11-01",
+      "severity": "Low",
+      "remediation": "No proposals: check the receipt's skipped reasons (caps, offpeak_deferred) and proposal_failed rows in data/conflicts/rule_proposals.jsonl (governance_refused = bridge process not registered; provider_outage = bridge down). Unmatched conflicts still show on the card as DATA_ERROR without a proposal.",
+      "note": "Process conflict_rule_proposal via the governed bridge (grok OAuth -> chatgpt OAuth -> DeepSeek FAST; $0.05/call, $0.25/day, 10 proposals/day, config/conflict_rule_proposals.json). Writes only data/conflicts/rule_proposals.jsonl and its receipt; queues ONE grouped P2 comms intent (conflicts/rule_proposals_pending); never a send, broker, order or stop."
+    },
+    {
+      "lane_id": "conflict-resolver",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/conflict_resolver.py",
+        "cadence": "*/15 9-15 * * 1-5",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 63.2,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-28",
+      "state_reason": "Proposed shadow-stage dispatcher row (AGENTS.md §23.11 registry-row PR; learn class, r1_class_admission). The operator's digest approval of the reviewed PR is the §17/§23.11 admission decision; this is a PROPOSE, no live flip. At shadow the dispatcher fires only the write-free --dry-run (AGENTS.md §6: a dry run never writes, so ok_at is not established until a live run's executor writes the LaneRunReceipt); the conflict ledger (data/conflicts/conflict_events.jsonl) is never written at shadow, and the ledger-only/no-notification shadow and the operator-controlled live flip are separate later acts (docs/ops/W8_WRITERS_20261024.md; docs/ops/BATCH27_OPS_FRAME_AND_RESOLVE_20261025.md).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/conflict-resolver_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/ops/W8_WRITERS_20261024.md ('conflict-resolver ... every 15 minutes in the market session plus 07:30 and 16:20 ET, receipt data/runtime/conflict-resolver_last.json, write-free dry run, ledger-only/no-notification shadow'). Output is not established: the lane is NEVER_SCHEDULED at shadow and the write-free dry run cannot advance ok_at, so the receipt is written only by the executor on a live run (do not treat as covered).",
+      "note": "The W10 conflict engine host runner, proposed for n8n dispatcher admission (learn class). Read-only evaluation over canonical W1 truth (cio_truth.resolve, stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe, watch_decision.reentry_rows, cio_prospect shadow) plus the unchanged rulebook (config/conflict_rulebook.json). Writes only the comparison report (shadow) and the LaneRunReceipt. MBI_BEHAVIOR=0: no sizing, order, stop, broker, sender or secret. dry_run_arg runs --dry-run --state-root $STATE_ROOT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 9-15 * * 1-5",
+          "30 7 * * 1-5",
+          "20 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_on": "2026-10-28",
+      "adopted_reason": "SHADOW-stage dispatcher-row proposal (AGENTS.md §23.11): a hand-maintained row carrying a reviewed dispatch block; reconcile_lane_registry.py re-derives generated rows and would drop the block, so this row carries no generated_by. New lane (no prior cron line); the operator's digest approval is the admission decision."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
