@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "staged_units_install_20261025",
+  "files": [
+    "tests/test_staged_units_install_20261025.py"
+  ],
+  "anchor": "STAGED_UNITS_INSTALL_20261025",
+  "comment": [
+    "ANCHOR: STAGED_UNITS_INSTALL_20261025 — the release installs reviewed staged host user units (config/staged_user_units.json): admission, dry-run first, one-time steps, archive-on-replace, enable, first run + readback. Fixture-only: fake systemctl, temp unit dir and state root."
+  ]
+}

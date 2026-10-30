@@ -317,12 +317,15 @@ def test_scripts_never_delete_and_never_touch_crontab():
 # ── registry rows + docs + gate ──────────────────────────────────────────────────────────────────────────────
 
 
-def test_lane_registry_rows_declare_the_eight_timers_at_shadow():
+def test_lane_registry_rows_declare_the_installed_timers_active():
+    """2026-10-25: the operator installed both packets' timers; the rows moved NEVER_SCHEDULED -> ACTIVE (the
+    follow-up registry PR this test used to wait for). All nine policy slots, request + census, systemd kind."""
     from scripts.lib import lane_registry as LRG
 
     reg = json.loads((ROOT / "config/lane_registry.json").read_text())
     rows = {r["lane_id"]: r for r in reg["lanes"]}
-    for slot in SLOTS:
+    canary = ROOT / "docs/ops/packets/release-train-canary-arm-20261025"
+    for slot in ("1800", "1200", "0000", "0300", "0600", "0800", "0900", "1500", "2100"):
         for lane, timer in (
             (f"release-train-request-timer-{slot}", f"tradeai-release-train-request@{slot}.timer"),
             (f"pr-census-timer-{slot}", f"tradeai-pr-census@{slot}.timer"),
@@ -330,13 +333,16 @@ def test_lane_registry_rows_declare_the_eight_timers_at_shadow():
             row = rows[lane]
             assert LRG.validate_row(row) == []
             assert row["scheduler"]["kind"] == "systemd" and row["scheduler"]["expression"] == timer
-            assert row["rollout_stage"] == "shadow" and "stage" not in row["scheduler"]
-            assert row["state"] == "NEVER_SCHEDULED"  # until the operator installs; then ACTIVE by a follow-up PR
-            assert (PACKET / f"{timer}.proposed").exists()
-        assert rows[f"release-train-request-timer-{slot}"]["output_signal"]["path"] == (
-            f"data/runtime/release-train-request-{slot}_last.json"
-        )
+            assert "stage" not in row["scheduler"] and row["state"] == "ACTIVE"
+            assert row["post_snapshot_install"]["evidence"]
+            assert (PACKET / f"{timer}.proposed").exists() or (canary / f"{timer}.proposed").exists()
+        assert rows[f"release-train-request-timer-{slot}"]["output_signal"] == {
+            "kind": "json_key", "path": f"data/runtime/release-train-request-{slot}_last.json", "key": "ok_at"}
         assert rows[f"pr-census-timer-{slot}"]["output_signal"]["path"] == "data/runtime/pr-hygiene-audit_last.json"
+        # The n8n twin stays NEVER_SCHEDULED: tradeai-fabric-release-train is still not imported.
+        if f"release-train-request-{slot}" in rows:
+            assert rows[f"release-train-request-{slot}"]["state"] == "NEVER_SCHEDULED"
+    assert rows["release-train-request-timer-0800"]["rollout_stage"] == "shadow"
 
 
 def test_readme_names_the_operator_commands_and_the_proof():
