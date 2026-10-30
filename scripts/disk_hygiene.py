@@ -1035,6 +1035,26 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item["fingerprint"] = {"activity": activity, "kind": "rtc_scratch"}
             results.append(item)
 
+    agent_tmp = rules["_home"] / ".cache" / "agent-tmp"
+    if agent_tmp.exists():
+        if agent_tmp.is_symlink():
+            raise RulesError("agent_tmp_root_symlink")
+        try:
+            paths = sorted(agent_tmp.iterdir())
+        except OSError as exc:
+            raise RulesError("agent_tmp_unreadable") from exc
+        for path in paths:
+            item = row(path, "T", "agent_scratch")
+            if not path.is_dir() or path.is_symlink():
+                item["reasons"].append("not_scratch_directory")
+            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
+            if why:
+                item["reasons"].append(why)
+            if activity is None or ctx["now"].timestamp() - activity <= 2 * 86400:
+                item["reasons"].append("scratch_not_older_than_2_days")
+            item["fingerprint"] = {"activity": activity, "kind": "agent_scratch"}
+            results.append(item)
+
     for path in discover_git_dirs(rules):
         lay = git_layout(path)
         if not lay or lay["kind"] != "git_worktree":
@@ -1318,7 +1338,7 @@ def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
             return False, f"git_worktree_remove_rc:{rc}"
         prune_rc, _ = _git(Path(item["main_repo"]), "worktree", "prune", timeout=60)
         return True, "git worktree remove" + ("; prune_failed" if prune_rc else "; prune")
-    if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch"):
+    if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch", "agent_scratch"):
         if p.is_symlink() or not p.is_dir():
             return False, "not_a_dir"
         shutil.rmtree(p)
