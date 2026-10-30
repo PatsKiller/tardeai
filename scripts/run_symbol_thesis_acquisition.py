@@ -644,6 +644,8 @@ def run(
                     "authority": AUTHORITY,
                     "financial_action": False,
                 }
+                if request.get("identity_binding"):
+                    rec["identity_binding"] = request["identity_binding"]
                 _append_ledger(root, rec)
                 results.append(rec)
                 continue
@@ -666,6 +668,8 @@ def run(
         if apply:
             if request:
                 rec["request_id"], rec["security_guid"] = request.get("request_id"), request.get("security_guid")
+                if request.get("identity_binding"):
+                    rec["identity_binding"] = request["identity_binding"]
                 if rec.get("status") in {"PUBLISHED", "SYNTHESIZED_NO_MATERIAL_CHANGE"}:
                     from scripts.lib.watch_review_publication import link_publication
 

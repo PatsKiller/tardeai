@@ -22,7 +22,7 @@ export type CompanyFacts = {
 export type LaneId = 'actionable' | 'forming' | 'reentry' | 'manage' | 'expired'
 
 export type Side = { value: unknown; source: string | null; at: string | null }
-export type Conflict = { kind: string; summary: string; a: Side; b: Side }
+export type Conflict = { kind: string; summary: string; a: Side; b: Side; resolved?: boolean }
 export type Component = { key: string; label: string; value: number | null; weight: number | null; detail?: string | null; source?: string | null }
 export type NextAction = {
   kind: 'propose' | 'set_alert' | 'protect' | 'resolve_conflict' | 'cio_missing' | 'review_add' | 'decide' | 'open_position' | 'none' | string
@@ -75,6 +75,17 @@ export type ProspectRow = {
   conviction_source: string
   conviction_as_of: string | null
   conviction_stale: boolean
+  conviction_components_scope?: 'lower_source_factors' | string
+  source_signal?: {
+    stance?: string | null
+    conviction?: number | null
+    source?: string | null
+    as_of?: string | null
+    lane?: string | null
+    stage?: string | null
+    why?: string | null
+    summary?: string | null
+  }
   stance: string | null
   whats_missing: string[]
   conflicts: Conflict[]
@@ -105,6 +116,7 @@ export type ProspectsPayload = {
   lanes: Lane[]
   counts: Record<string, number>
   lane_membership?: Record<string, LaneId>
+  lane_membership_unverified?: Record<string, string[]>
   conflict_count?: number | null
   conflict_count_scope?: string
 }
@@ -370,7 +382,7 @@ export function reviewStateText(s: ReviewState | null | undefined): string | nul
 
 /** The note sent with a request: the flags or the gap, so the CIO sees why it was asked. */
 export function cioReviewNote(r: Pick<ProspectRow, 'conflicts' | 'next_action'>): string {
-  const flags = (r.conflicts || []).map(c => c.summary).filter(Boolean)
+  const flags = (r.conflicts || []).filter(c => c.resolved !== true).map(c => c.summary).filter(Boolean)
   if (flags.length) return `Watch conflict: ${flags.join(' | ')}`.slice(0, 240)
   if (r.next_action?.kind === 'cio_missing') return `Watch: no CIO view — ${r.next_action.gap?.reason || r.next_action.reason}`.slice(0, 240)
   return `Watch: ${r.next_action?.reason || 'review requested'}`.slice(0, 240)

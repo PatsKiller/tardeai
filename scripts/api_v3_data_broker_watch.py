@@ -86,7 +86,8 @@ def get_prospects(query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker.watch_prospects import list_watch_prospects
     from lib.site_payload_reads import prospects_page
 
-    out = prospects_page(list_watch_prospects(query or {}), query or {})
+    # The adapter composes the canonical view before applying user filters.
+    out = prospects_page(list_watch_prospects({}), query or {})
     if out.get("status") == "unavailable" and out.get("payload_gap"):
         raise ValueError("Prospect payload unavailable: " + out["payload_gap"]["reason"])
     return out
