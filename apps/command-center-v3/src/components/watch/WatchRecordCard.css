@@ -31,6 +31,8 @@
 .watch-card-block { display: flex; align-items: center; gap: 8px; }
 .watch-card-block svg { flex-shrink: 0; }
 .watch-card-sort { background: transparent; border: none; padding: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; text-align: left; }
+.watch-card-list-viewport { display: flex; flex-direction: row; align-items: flex-start; gap: 12px; min-width: 0; }
+.watch-card-list-viewport > .watch-record-panel { flex: 1 1 auto; min-width: 0; }
 .watch-card-detail { position: fixed; top: 80px; right: 12px; bottom: 12px; overflow-y: auto; width: 380px; max-width: calc(100vw - 24px); z-index: 950; padding: 12px; box-sizing: border-box; }
 @media (min-width: 821px) and (max-width: 1180px) {
   .watch-card-list-viewport { overflow-x: auto; }
@@ -63,4 +65,10 @@
   .watch-card-level-strip { padding: 10px; border-radius: var(--radius-md); background: var(--bg-2); }
   .watch-card-phone-zone { margin-top: 8px; }
   .watch-card-phone-zone .watch-mobile-facts, .watch-card-phone-zone .watch-mobile-facts > span { display: inline; }
+}
+@media (min-width: 821px) {
+  .watch-card-list-viewport .watch-card-detail {
+    position: sticky; top: 12px; right: auto; bottom: auto; flex: 0 0 380px; width: 380px;
+    max-height: calc(100dvh - 24px); z-index: 1;
+  }
 }
