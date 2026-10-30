@@ -109,6 +109,10 @@ LLM = {
     "news-to-catalyst",
     "advisory-desk-run-now",
     "analyst-prospectus-generate",
+    # 2026-10-29 Ask lifecycle + material-events canary (DSN-20261026-ask-hourly P1-T4): both call the governed
+    # bridge (cio_ask_reanswer + critiques) and append the Ask ledger.
+    "cio-ask-lifecycle",
+    "cio-ask-material-events",
 }
 ON_DEMAND = {"advisory-desk-run-now", "analyst-prospectus-generate"}
 
@@ -158,6 +162,13 @@ def _scope() -> set[str]:
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 
+#: 2026-10-29 Ask lifecycle + material-events canary (DSN-20261026-ask-hourly P1-T4): n8n-native llm lanes that
+#: append the Ask ledger and call the governed bridge. Not overwrite-only, so they join STAGED with an effect key.
+ASK_LANES_CANARY_20261029 = frozenset({"cio-ask-lifecycle", "cio-ask-material-events"})
+#: 2026-10-29 conflict-resolver canary (W8 live flip): n8n-native learn lane that appends the conflict ledger via
+#: --shadow (read-only evaluation, no LLM, no send). Not overwrite-only, so it joins STAGED with an effect key.
+CONFLICT_RESOLVER_CANARY_20261029 = frozenset({"conflict-resolver"})
+
 STAGED = sorted(_scope() - set(NOT_KEYED_OVERWRITE_ONLY))
 
 
@@ -171,8 +182,11 @@ def test_scope_is_the_68_lanes_and_partition_is_complete():
     # + 1 / + 1: 2026-10-21 hermes-watchlist-scorer cron canary (operator waiver "push live now";
     # tests/support/hermes_scorer_canary.py). It appends hermes_score_history rows, so it stays IN scope with a
     # STAGED key (cron_claim false, n8n_claim false) that its cutover arms: 69 lanes, 51 staged.
-    assert len(scope) == 68 + len(HSC.LIVE) and len(STAGED) == 50 + len(HSC.LIVE)
+    assert len(scope) == 68 + len(HSC.LIVE) + len(ASK_LANES_CANARY_20261029) + len(CONFLICT_RESOLVER_CANARY_20261029)
+    assert len(STAGED) == 50 + len(HSC.LIVE) + len(ASK_LANES_CANARY_20261029) + len(CONFLICT_RESOLVER_CANARY_20261029)
     assert set(HSC.LIVE) <= set(STAGED)
+    assert set(ASK_LANES_CANARY_20261029) <= set(STAGED)
+    assert set(CONFLICT_RESOLVER_CANARY_20261029) <= set(STAGED)
 
 
 @pytest.mark.parametrize("lane", STAGED)
