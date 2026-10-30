@@ -3808,7 +3808,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-29",
-        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live)",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)",
         "scope": "conflict ledger writer (scripts/lib/conflicts/ledger.py)"
       },
       "entity": "Site-wide conflict lifecycle",
@@ -3832,7 +3832,7 @@
         "lane": "conflict-resolver",
         "note": "W8 owns inactive declaration/admission; no live flip by W10"
       },
-      "projection": "scripts.lib.conflicts.api.records_section",
+      "projection": "conflict_records",
       "readers": [
         "Watch",
         "Home",
@@ -3870,7 +3870,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-29",
-        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live)",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)",
         "scope": "conflict rule proposals writer (scripts/lib/conflicts/proposals.py)"
       },
       "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
@@ -3894,7 +3894,7 @@
         "lane": "conflict-rule-proposals",
         "note": "schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)"
       },
-      "projection": "scripts.lib.conflicts.proposals.collection",
+      "projection": "conflict_proposals",
       "readers": [
         "Conflict rules page",
         "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
