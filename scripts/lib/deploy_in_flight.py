@@ -35,12 +35,13 @@ DEFAULT_REPO = os.environ.get("TRADEAI_GITHUB_REPO", "PatsKiller/tardeai")
 CACHE_TTL_S = 60.0
 PR_LIMIT = 100
 DEFAULT_TIMEOUT_S = 30.0
-PR_FIELDS = "number,title,url,headRefOid,isDraft,labels,mergeable,mergeStateStatus"
+PR_FIELDS = "number,title,url,headRefOid,headRefName,isDraft,labels,mergeable,mergeStateStatus"
 
 # The label vocabulary the board reasons about (matches scripts/lib/pr_merge_digest.py / pr_merge_telegram.py).
 HOLD_LABELS = frozenset({"held", "broker", "broker_active_trader"})
 SHARED_INFRA_LABELS = frozenset({"shared-infra"})
 SOLO_LABELS = frozenset({"solo"})
+MERGE_LABEL = "operator-merge"
 
 _CACHE: dict[str, tuple[float, dict]] = {}
 _CACHE_LOCK = threading.Lock()
@@ -144,6 +145,8 @@ def project_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "url": str(pr.get("url") or ""),
         "head_sha": head,
         "head_sha_short": head[:9],
+        "branch": str(pr.get("headRefName") or ""),
+        "has_operator_merge": MERGE_LABEL in label_set(pr),
         "mergeable": normalize_mergeable(pr.get("mergeable")),
         "merge_state": str(pr.get("mergeStateStatus") or "").upper() or "UNKNOWN",
         "is_draft": bool(pr.get("isDraft")),
