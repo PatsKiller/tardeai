@@ -65,6 +65,8 @@
   "store:supervisor_ladder_receipts": "NONE: stores_runtime_files (seeded 2026-10-09)",
   "store:supervisor_recoveries": "NONE: stores_runtime_files (seeded 2026-10-09)",
   "store:web_search": "NONE: stores_runtime_files (seeded 2026-10-09)",
-  "store:anthropic_promotional_credit": "NONE: stores_runtime_files (2026-10-26, Anthropic promotional credit journal under data/runtime/provider_cost; rebuildable only by operator reconcile against provider usage; no automated purge; runtime/ excluded from data_offsite)"
+  "store:anthropic_promotional_credit": "NONE: stores_runtime_files (2026-10-26, Anthropic promotional credit journal under data/runtime/provider_cost; rebuildable only by operator reconcile against provider usage; no automated purge; runtime/ excluded from data_offsite)",
+  "store:conflict_ledger": "NONE: stores_conflicts_files (2026-10-29, conflict-store grant PR; append-only lifecycle ledger under data/conflicts; ConflictRecord rebuilds from ConflictEvent rows, but append history is lost on disk loss)",
+  "store:conflict_rule_proposals": "NONE: stores_conflicts_files (2026-10-29, conflict-store grant PR; rule proposals recomputable from the rulebook + unmatched observations, but append history and operator decisions are lost on disk loss)"
  }
 }
