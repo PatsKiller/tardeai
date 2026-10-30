@@ -485,6 +485,7 @@ def persist_company_facts(
         DEFAULT_PATH,
         apply_prospect,
         is_prospect_record,
+        select_canonical_record,
         ProspectInvalid,
         BehaviorWriteRefused,
     )
@@ -509,17 +510,28 @@ def persist_company_facts(
             result["gaps"].append({"symbol": p.get("symbol"), "reason": "invalid_fact_identity"})
             continue
         matches = by_guid.get(guid) or []
-        # Never mint a second canonical record or choose among contradictory heads.
-        if len(matches) != 1:
+        # A judged prospect plus its fact-only sibling is one canonical record, not
+        # two heads. Never mint a second canonical record or choose among >1 prospects.
+        rec, violation = select_canonical_record(matches)
+        if violation:
             result["gaps"].append(
                 {
                     "symbol": p.get("symbol"),
                     "security_guid": guid,
-                    "reason": "cio_record_missing" if not matches else "multiple_cio_records_for_guid",
+                    "reason": violation,
                 }
             )
             continue
-        rec = deepcopy(matches[0])
+        if rec is None:
+            result["gaps"].append(
+                {
+                    "symbol": p.get("symbol"),
+                    "security_guid": guid,
+                    "reason": "cio_record_missing",
+                }
+            )
+            continue
+        rec = deepcopy(rec)
         if not is_prospect_record(rec):
             result["gaps"].append(
                 {"symbol": p.get("symbol"), "security_guid": guid, "reason": "legacy_record_needs_cio_promotion"}
