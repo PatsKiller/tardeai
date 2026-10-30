@@ -102,7 +102,7 @@ def test_perform_refuses_without_operator_identity(tmp_path):
 
 def test_perform_refuses_without_csrf(tmp_path):
     code, body = A.perform({"action": "hold", "pr_number": 1, "head_sha": SHA},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=False,
+                           actor="tailnet:operator", csrf_ok=False,
                            csrf_reason="csrf: no request context", repo_root=tmp_path)
     assert code == 403 and body["refusal"] == "CSRF"
 
@@ -124,7 +124,7 @@ def test_perform_approve_adds_label_bound_to_head(tmp_path):
         return {"ok": True}
 
     code, body = A.perform({"action": "approve", "pr_number": 2211, "head_sha": SHA},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path,
+                           actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path,
                            pr_view=fake_view, add_label=fake_add, comment=fake_comment)
     assert code == 200 and body["ok"] and body["outcome"] == "LABEL_ADDED"
     assert calls["added"] == 2211 and calls["comment"] == 2211
@@ -135,7 +135,7 @@ def test_perform_approve_refuses_head_changed(tmp_path):
         return {"state": "OPEN", "headRefOid": "f" * 40, "isDraft": False}
 
     code, body = A.perform({"action": "approve", "pr_number": 2211, "head_sha": SHA},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path,
+                           actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path,
                            pr_view=fake_view, add_label=lambda pr_number, *, repo: {"ok": True})
     assert code == 409 and body["refusal"] == "HEAD_CHANGED"
 
@@ -151,7 +151,7 @@ def test_perform_hold_removes_label(tmp_path):
         return {"ok": True, "rc": 0}
 
     code, body = A.perform({"action": "hold", "pr_number": 2211, "head_sha": SHA},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path,
+                           actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path,
                            pr_view=fake_view, remove_label=fake_remove)
     assert code == 200 and body["outcome"] == "LABEL_REMOVED" and removed == [2211]
 
@@ -174,7 +174,7 @@ def test_perform_push_writes_bound_grant_and_pushes(tmp_path):
                 "fast_forward_only": True}
 
     code, body = A.perform({"action": "push", "branch": BRANCH, "head_sha": SHA, "override": False},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path,
+                           actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path,
                            write_grant=fake_grant, git_push=fake_push)
     assert code == 200 and body["ok"] and body["outcome"] == "PUSHED"
     assert pushed["branch"] == BRANCH and pushed["head_sha"] == SHA
@@ -184,7 +184,7 @@ def test_perform_push_writes_bound_grant_and_pushes(tmp_path):
 
 def test_perform_push_refuses_force_even_with_operator(tmp_path):
     code, body = A.perform({"action": "push", "branch": BRANCH, "head_sha": SHA, "force": True},
-                           actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path)
+                           actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path)
     assert code == 400 and body["refusal"] == "FORCE_PUSH_REFUSED"
 
 
@@ -199,7 +199,7 @@ def test_perform_push_override_flows_into_reason(tmp_path):
         return {"ok": True, "rc": 0, "argv": [], "stdout": "", "stderr": "", "fast_forward_only": True}
 
     A.perform({"action": "push", "branch": BRANCH, "head_sha": SHA, "override": True},
-              actor="tailnet:john@jwwhiting.com", csrf_ok=True, repo_root=tmp_path,
+              actor="tailnet:operator", csrf_ok=True, repo_root=tmp_path,
               write_grant=fake_grant, git_push=fake_push)
     assert "override" in grant_reason["reason"]
 

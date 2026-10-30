@@ -49512,8 +49512,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _dca_csrf_ok, _dca_csrf_why = _dca_auth.command_csrf_check(_dca_auth.load_config(), method, base_path)
             _dca_body = body if isinstance(body, dict) else {}
             try:
-                return _dca.perform(_dca_body, actor=_dca_actor, csrf_ok=_dca_csrf_ok,
-                                    csrf_reason=_dca_csrf_why)
+                return _dca.perform(_dca_body, actor=_dca_actor, csrf_ok=_dca_csrf_ok, csrf_reason=_dca_csrf_why)
             except Exception as e:
                 return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
         except Exception as e:
