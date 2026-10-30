@@ -482,6 +482,8 @@
       "entry_regex": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
       "require_claim_absent": true,
       "require_process_absent": true,
+      "reference_repo": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "bundle_dir": "~/trade-ai-releases/persistent-state/data/runtime/disk_hygiene/bundles",
       "never": "symlink, or an entry equal to / inside / containing a never-touch or protected path"
     },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",

@@ -967,7 +967,9 @@ def test_agent_scratch_never_takes_a_worktree(world):
     rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
     (path,) = _scratch_dirs(home, ("task-with-worktree",))
     (path / "wt").mkdir()
-    (path / "wt" / ".git").write_text("gitdir: /fixture")
+    admin = home / "fixture-repo" / ".git" / "worktrees" / "wt"
+    admin.mkdir(parents=True)
+    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it: rule W's, never T's
     for child in (path / "wt" / ".git", path / "wt", path):
         old(child)
     result = DH.standing_plan(rules, NOW, evidence())
@@ -1047,3 +1049,90 @@ def test_past_mtime_is_still_trusted_with_now(tmp_path):
     os.utime(f, (past, past))
     os.utime(tmp_path, (past, past))
     assert SR.activity(tmp_path, now=past + 60 * 86400)[0] == past
+
+
+def _git_fixture(repo, *args):
+    import subprocess
+    env = dict(os.environ, GIT_AUTHOR_NAME="f", GIT_AUTHOR_EMAIL="f@x", GIT_COMMITTER_NAME="f", GIT_COMMITTER_EMAIL="f@x",
+               GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+
+def _nested_world(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    ref = home / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+    ref.mkdir(parents=True)
+    _git_fixture(ref, "init", "-q")
+    (ref / "a.txt").write_text("shared")
+    _git_fixture(ref, "add", "a.txt")
+    _git_fixture(ref, "commit", "-q", "-m", "shared")
+    return home, rules, ref
+
+
+def _age_tree(root, days=10):
+    for dp, dns, fns in os.walk(root):
+        for n in fns + dns:
+            old(Path(dp) / n, days)
+    old(root, days)
+
+
+def test_nested_clone_with_only_known_commits_is_reclaimable(world):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-known",))
+    _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == []
+
+
+def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-unique",))
+    repo = scratch / "work"
+    repo.mkdir()
+    _git_fixture(repo, "init", "-q")
+    (repo / "b.txt").write_text("only here")
+    _git_fixture(repo, "add", "b.txt")
+    _git_fixture(repo, "commit", "-q", "-m", "unique")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["work"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and "bundled 1" in how and not scratch.exists()
+    bundle = Path(item["bundle_dir"]) / "proof-unique" / "work.bundle"
+    assert bundle.is_file()
+    restored = home / "restored"
+    _git_fixture(home, "clone", "-q", str(bundle), str(restored))
+    assert (restored / "b.txt").read_text() == "only here"
+
+
+@pytest.mark.parametrize("make, reason", [
+    ("dirty", "nested_repo_dirty"),
+    ("registered_worktree", "nested_worktree_registered"),
+])
+def test_nested_repo_holds(world, make, reason):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-" + make.replace("_", "-"),))
+    if make == "dirty":
+        _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+        (scratch / "clone" / "a.txt").write_text("edited")
+    else:
+        _git_fixture(ref, "worktree", "add", "-q", str(scratch / "wt"))
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) not in {r["path"] for r in result["items"]}
+    assert any(reason in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(scratch))
+
+
+def test_orphan_worktree_pointer_is_plain_files(world):
+    home, rules, _ = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("orphan",))
+    (scratch / "wt").mkdir()
+    (scratch / "wt" / ".git").write_text("gitdir: /nonexistent/fixture/.git/worktrees/wt")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) in {r["path"] for r in result["items"]}
