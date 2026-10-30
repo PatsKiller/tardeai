@@ -751,7 +751,7 @@ def test_g6_test_config_refused_in_installed_tree(E):
 def test_handoff_writes_are_guarded():
     assert _classify("echo x > ~/trade-ai-releases/persistent-state/data/coordination/handoffs/T.md") == "release-write"
     assert _classify("cp a.md data/coordination/handoffs/T.md") == "release-write"
-    assert _classify_path("/home/u/repo/data/coordination/handoffs/T.md") == "release-write"
+    assert _classify_path("/srv/repo/data/coordination/handoffs/T.md") == "release-write"
 
 
 # =========================================================================== (b) deps classification
