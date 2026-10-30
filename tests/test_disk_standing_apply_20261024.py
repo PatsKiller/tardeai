@@ -177,6 +177,30 @@ def test_rtc_historical_coordination_reference_and_deep_activity_hold(world):
     assert any("scratch_not_older" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[2]))
 
 
+def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    scratch = home / ".cache" / "agent-tmp"
+    scratch.mkdir(parents=True)
+    paths = []
+    for name in ("unused", "referenced", "recent"):
+        p = scratch / name
+        (p / "nested").mkdir(parents=True)
+        f = p / "nested" / "evidence.txt"
+        f.write_text("fixture")
+        for child in (f, f.parent, p):
+            old(child)
+        paths.append(p)
+    fresh = paths[2] / "nested" / "evidence.txt"
+    os.utime(fresh, (NOW.timestamp(), NOW.timestamp()))
+    doc = evidence()
+    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[1] / "body.md")}], "live_claims": [], "live_worklogs": []})
+    result = DH.standing_plan(rules, NOW, doc)
+    assert {r["path"] for r in result["items"]} == {str(paths[0])}
+    assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
+    assert any("scratch_not_older" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[2]))
+
+
 def test_recursive_activity_limit_fails_closed(tmp_path):
     (tmp_path / "nested").mkdir()
     assert SR.activity(tmp_path, max_entries=1)[1] == "activity_scan_limit"
@@ -229,7 +253,7 @@ def test_apply_simulated_only_binds_rules_manifest_and_all_three_rule_totals(wor
     report = do_apply(path, world[1], doc)
     assert report["refused"] is None and calls
     assert report["per_rule"]["A"]["applied_bytes"] == sum(r["size_bytes"] for r in manifest["items"])
-    assert set(report["per_rule"]) == {"A", "S", "W"}
+    assert set(report["per_rule"]) == {"A", "S", "T", "W"}
     assert "planned/applied" in report["operator_digest"]
     assert all(Path(r["path"]).exists() for r in calls)  # no real unlink/remove/rmtree happened
 
