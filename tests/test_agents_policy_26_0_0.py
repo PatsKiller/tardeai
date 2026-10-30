@@ -83,7 +83,9 @@ def test_header_is_26_0_x_proposed_or_active():
 def test_banner_matches_header_and_section_0_comes_first():
     status = _control()["Status"]
     ver = _control()["Policy-Version"]
-    assert f"**{ver} is {status} (MAJOR)" in AGENTS[:6000]
+    # The banner names version + status + change class; the class is whatever the current version's
+    # row declares (MAJOR for 26.0.x/26.1.0, PATCH for a 26.2.1 ratification), never a hardcoded MAJOR.
+    assert f"**{ver} is {status} (" in AGENTS[:6000]
     s0 = AGENTS.index("# 0 · If you read nothing else")
     assert s0 < 6000
     assert s0 < AGENTS.index("# Document version policy") < AGENTS.index("# 1 · Identity and responsibilities")
