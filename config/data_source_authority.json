@@ -3855,6 +3855,20 @@
         }
       ],
       "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 4,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
       "proposal": {
         "proposed_by": "W10",
         "proposed_on": "2026-10-24",
@@ -3911,6 +3925,20 @@
         }
       ],
       "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 4,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
       "proposal": {
         "proposed_by": "claude-conflict-proposals-20261025",
         "proposed_on": "2026-10-25",
