@@ -18,7 +18,9 @@ Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 explicitly, not new), and may run the promote (`scripts/emergency_manual_promote.sh` or
 `scripts/cio_phase2_exact_main_deploy.sh` `prepare`+`promote`) on the operator's behalf after it presents the exact
 command, the full 40-hex SHA and the dry-run output, and the operator types an explicit approval in that agent's own
-session (§28.4). **Why MAJOR:** widens deploy (promote) authority and touches §17. §0 rules 1–2 and §24.7 are never
+session (§28.4). Adds §25.10.2: a lane, scheduled job or dispatcher row an agent built may be turned on live and
+tested on the operator's in-session approval. **Why MAJOR:** widens deploy (promote) and §17 scheduling authority.
+§0 rules 1–2 and §24.7 are never
 overridable, even by the operator; the delegation never extends to pushing `main`/`release/*`, merging,
 broker/order/stop/sizing/secret actions, arming/disarming the delegation, or clearing STOP; `ReleaseGrantBinding@v1`,
 the STOP latch, `GlobalReleaseLock` and operator-set `TRADEAI_EMERGENCY_RELEASE_SHA` are unchanged.
@@ -1534,7 +1536,9 @@ the operator's own merge (§28.4) — never relayed by another agent, and never 
   Trade AI lane (a `cron` grant naming the workflow id, including the six generic workflows of §23.11); adding,
   re-staging or removing a dispatcher row; changing the n8n relay live list. For a cron, systemd, n8n or registry
   change, the operator's digest approval of the reviewed PR is the decision (§28.15 item 2); adding a lane to the
-  host relay override `TRADEAI_N8N_RELAY_LIVE_LANES` stays per act.
+  host relay override `TRADEAI_N8N_RELAY_LIVE_LANES` stays per act. The one delegated exception is
+  §25.10.2: a lane, scheduled job or dispatcher row an agent built may be turned on live and tested on the operator's
+  in-session approval.
 - Disabling a failed unit's timer (a schedule change); moving, changing or retiring another application's host
   crontab, systemd or compose job; installing or editing the Postgres sudoers drop-in or the watchdog user unit; a
   lower `keep_n` release reclaim (§8, §24).
@@ -2268,6 +2272,24 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   (verbatim in the PR body): "explicitly allow agents to hand the operator the exact deploy commands … and run the
   promote on the operator's behalf after the operator types an explicit approval in that agent's own session".*
 
+### 25.10.2 Operator-delegated lane activation and live testing
+
+- **A lane, scheduled job or dispatcher row an agent built may be turned on live and tested** — the registry-row
+  flip, the n8n workflow install, or the dispatcher admission (§23.11, §23.12) — but only after the agent presents
+  the exact activation command(s), the `--dry-run` output, and the exact lane ids, cadence and stage, and the operator
+  types an explicit approval **in that agent's own session** (§28.4). The approval is quoted verbatim in the receipt.
+  Same provenance rule as §25.10.1.
+- **Never overridable, even by the operator.** §0 rule 1 (`MBI_BEHAVIOR = 0` — never order, stop or size), §0 rule 2
+  (broker writes) and §24.7 (secrets) are not waived by any delegation here.
+- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging (Mergify / operator merge
+  only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy delegation,
+  clearing a STOP, or any §17 item not explicitly named in this subsection. §23.14's never-dispatcher-eligible lanes
+  (broker, order, secret and daemon lanes) are unchanged by this.
+- **Approval provenance is §28.4:** given in that agent's own session, verbatim, and recorded in the receipt; never
+  relayed, never inferred, and never Telegram `/approve` (retired, §8). *Cause: 2026-10-29 — operator directive
+  (verbatim in the PR body): "anything that a agent builds, they can ask permission to turn it on live and test it,
+  and I will approve it. Also, same process."*
+
 ---
 
 # 26 · Data foundation — one store, one writer, the CIO as integrator
@@ -2387,6 +2409,9 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **The operator-delegated promote (§25.10.1) follows the same provenance rule:** the operator's approval to run the
   promote is given in that agent's own session, verbatim, and recorded in the receipt; it is never relayed, never
   inferred, and never Telegram `/approve` (retired).
+- **The operator-delegated lane activation (§25.10.2) follows the same provenance rule:** the operator's approval to
+  turn a built lane live and test it is given in that agent's own session, verbatim, and recorded in the receipt; it
+  is never relayed, never inferred, and never Telegram `/approve` (retired).
 
 ## 28.5 The Ops → Controls sudo window
 
@@ -2535,7 +2560,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 26.2.0 | 2026-10-29 | PROPOSED | MAJOR | §25.10.1 "Operator-delegated promote" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote (`scripts/emergency_manual_promote.sh` or `scripts/cio_phase2_exact_main_deploy.sh` prepare+promote) on the operator's behalf after it presents the exact command, the full 40-hex SHA and the dry-run output, and the operator types an explicit approval in that agent's own session. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
+| 26.2.0 | 2026-10-29 | PROPOSED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
