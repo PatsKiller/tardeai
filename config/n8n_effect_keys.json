@@ -959,6 +959,36 @@
       "wave": "HS-20261021",
       "cron_claim": false,
       "n8n_claim": false
+    },
+    "cio-ask-lifecycle": {
+      "process": "cio-ask-lifecycle",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:deterministic event_id (cio_ask_store) dedupes; re-answer per-thread cooldown",
+      "wave": "W5",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "cio-ask-material-events": {
+      "process": "cio-ask-material-events",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:deterministic event_id (cio_ask_store) dedupes; material-event re-answer per-thread cooldown",
+      "wave": "W5",
+      "cron_claim": false,
+      "n8n_claim": false
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",
