@@ -3801,6 +3801,124 @@
       },
       "backup_gap": "Existing stores_governance_files coverage is NONE. Local hash chaining is integrity evidence, not an off-box backup. Operator must choose and prove a backup path before enabling decisions.",
       "projection_note": "No broker-catalog projection: read through the approved accessor scripts/lib/operator_approvals_api.py::queue_summary (Approvals Center API), not the data broker."
+    },
+    {
+      "domain": "conflict_ledger",
+      "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-29",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live)",
+        "scope": "conflict ledger writer (scripts/lib/conflicts/ledger.py)"
+      },
+      "entity": "Site-wide conflict lifecycle",
+      "title": "Conflict ledger and decisions",
+      "class": "derived",
+      "store": {
+        "file": "data/conflicts/conflict_events.jsonl"
+      },
+      "writer": "scripts/lib/conflicts/ledger.py",
+      "facts": [
+        "finding",
+        "lifecycle",
+        "owner decision",
+        "source supersession"
+      ],
+      "cadence": "event changes; conflict-resolver shadow cadence separately owned by W8",
+      "stale_after_hours": 0.5,
+      "freshness_sla": "30 min while scheduled; no produced evidence means a gap",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "conflict-resolver",
+        "note": "W8 owns inactive declaration/admission; no live flip by W10"
+      },
+      "projection": "scripts.lib.conflicts.api.records_section",
+      "readers": [
+        "Watch",
+        "Home",
+        "CIO",
+        "Risk",
+        "Advisory",
+        "Ops Jobs and health",
+        "Approvals",
+        "CIO brief",
+        "Ask the CIO",
+        "Telegram digest"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "conflict_events"
+          },
+          "role": "derived",
+          "how": "gated PG dual write only after operator migration; immutable event_id idempotency"
+        }
+      ],
+      "no_coverage": "say_so",
+      "proposal": {
+        "proposed_by": "W10",
+        "proposed_on": "2026-10-24",
+        "reference": "conflict-engine-build.md; DESIGN sections7/12; EXCEPTIONS_MATRIX R4",
+        "decision": "Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts."
+      },
+      "retention_days": 400,
+      "retention_mode": "archive_then_tripwire; no deletion by this module"
+    },
+    {
+      "domain": "conflict_rule_proposals",
+      "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-29",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live)",
+        "scope": "conflict rule proposals writer (scripts/lib/conflicts/proposals.py)"
+      },
+      "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
+      "title": "Conflict rule proposals and rulebook amendments",
+      "class": "derived",
+      "store": {
+        "file": "data/conflicts/rule_proposals.jsonl"
+      },
+      "writer": "scripts/lib/conflicts/proposals.py",
+      "facts": [
+        "unmatched conflict pattern",
+        "AI rule proposal",
+        "operator proposal decision",
+        "rulebook amendment"
+      ],
+      "cadence": "conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions",
+      "stale_after_hours": 24,
+      "freshness_sla": "a pending proposal is announced once (grouped P2); no produced evidence means a gap",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "conflict-rule-proposals",
+        "note": "schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)"
+      },
+      "projection": "scripts.lib.conflicts.proposals.collection",
+      "readers": [
+        "Conflict rules page",
+        "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
+        "GET /api/v3/conflicts/proposals",
+        "conflict-resolver (effective rulebook)"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "data/conflicts/rulebook_amendments.jsonl"
+          },
+          "role": "derived",
+          "how": "hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten"
+        }
+      ],
+      "no_coverage": "say_so",
+      "proposal": {
+        "proposed_by": "claude-conflict-proposals-20261025",
+        "proposed_on": "2026-10-25",
+        "reference": "operator 2026-10-25 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'; docs/ops/CONFLICT_RULE_PROPOSALS.md",
+        "decision": "Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts."
+      },
+      "retention_days": 400,
+      "retention_mode": "archive_then_tripwire; no deletion by this module"
     }
   ],
   "proposed_domains": [
@@ -5270,114 +5388,6 @@
         "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
         "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
       }
-    },
-    {
-      "domain": "conflict_ledger",
-      "status": "proposed",
-      "approval": null,
-      "entity": "Site-wide conflict lifecycle",
-      "title": "Conflict ledger and decisions",
-      "class": "derived",
-      "store": {
-        "file": "data/conflicts/conflict_events.jsonl"
-      },
-      "writer": "scripts/lib/conflicts/ledger.py",
-      "facts": [
-        "finding",
-        "lifecycle",
-        "owner decision",
-        "source supersession"
-      ],
-      "cadence": "event changes; conflict-resolver shadow cadence separately owned by W8",
-      "stale_after_hours": 0.5,
-      "freshness_sla": "30 min while scheduled; no produced evidence means a gap",
-      "refresh_lane": {
-        "runner": "n8n_shadow_then_live",
-        "lane": "conflict-resolver",
-        "note": "W8 owns inactive declaration/admission; no live flip by W10"
-      },
-      "projection": "scripts.lib.conflicts.api.records_section",
-      "readers": [
-        "Watch",
-        "Home",
-        "CIO",
-        "Risk",
-        "Advisory",
-        "Ops Jobs and health",
-        "Approvals",
-        "CIO brief",
-        "Ask the CIO",
-        "Telegram digest"
-      ],
-      "derived_copies": [
-        {
-          "store": {
-            "table": "conflict_events"
-          },
-          "role": "derived",
-          "how": "gated PG dual write only after operator migration; immutable event_id idempotency"
-        }
-      ],
-      "no_coverage": "say_so",
-      "proposal": {
-        "proposed_by": "W10",
-        "proposed_on": "2026-10-24",
-        "reference": "conflict-engine-build.md; DESIGN sections7/12; EXCEPTIONS_MATRIX R4",
-        "decision": "Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts."
-      },
-      "retention_days": 400,
-      "retention_mode": "archive_then_tripwire; no deletion by this module"
-    },
-    {
-      "domain": "conflict_rule_proposals",
-      "status": "proposed",
-      "approval": null,
-      "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
-      "title": "Conflict rule proposals and rulebook amendments",
-      "class": "derived",
-      "store": {
-        "file": "data/conflicts/rule_proposals.jsonl"
-      },
-      "writer": "scripts/lib/conflicts/proposals.py",
-      "facts": [
-        "unmatched conflict pattern",
-        "AI rule proposal",
-        "operator proposal decision",
-        "rulebook amendment"
-      ],
-      "cadence": "conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions",
-      "stale_after_hours": 24,
-      "freshness_sla": "a pending proposal is announced once (grouped P2); no produced evidence means a gap",
-      "refresh_lane": {
-        "runner": "n8n_shadow_then_live",
-        "lane": "conflict-rule-proposals",
-        "note": "schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)"
-      },
-      "projection": "scripts.lib.conflicts.proposals.collection",
-      "readers": [
-        "Conflict rules page",
-        "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
-        "GET /api/v3/conflicts/proposals",
-        "conflict-resolver (effective rulebook)"
-      ],
-      "derived_copies": [
-        {
-          "store": {
-            "file": "data/conflicts/rulebook_amendments.jsonl"
-          },
-          "role": "derived",
-          "how": "hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten"
-        }
-      ],
-      "no_coverage": "say_so",
-      "proposal": {
-        "proposed_by": "claude-conflict-proposals-20261025",
-        "proposed_on": "2026-10-25",
-        "reference": "operator 2026-10-25 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'; docs/ops/CONFLICT_RULE_PROPOSALS.md",
-        "decision": "Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts."
-      },
-      "retention_days": 400,
-      "retention_mode": "archive_then_tripwire; no deletion by this module"
     }
   ],
   "data_dictionary": {
