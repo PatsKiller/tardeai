@@ -85,6 +85,8 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         "ops_summary": "n8n_ops_summary_draft",
         # 2026-10-10 (REMEDIATION_PLAN §6): lane failure diagnosis, $0.05/call ceiling, grok -> chatgpt -> deepseek.
         "lane_failure_diagnosis": "n8n_lane_failure_diagnosis",
+        # 2026-10-25 (operator: unmatched conflicts -> AI-proposed rule for approval): $0.05/call, grok -> chatgpt -> deepseek.
+        "conflict_rule_proposal": "conflict_rule_proposal",
     },
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
