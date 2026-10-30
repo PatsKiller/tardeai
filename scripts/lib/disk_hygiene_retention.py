@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 SCHEMA = "DiskHygieneEvidence@v1"
 SOURCES = ("cron", "units", "processes", "coordination", "prs", "pointers")
-RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "W": "git_worktree"}
+RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree"}
 MAX_BYTES = 40 * 1024**3
 MAX_AGE_SECONDS = 2 * 3600
 
@@ -119,7 +119,7 @@ def record_refs(ctx: Mapping, kind: str) -> list[tuple[str, str]]:
     co = data["coordination"]
     refs = list(ctx["refs"])
     refs += [("processes", json.dumps(data["processes"])), ("open_pr", json.dumps(data["prs"]))]
-    fields = ("references", "live_claims", "live_worklogs") if kind == "rtc_scratch" else ("live_claims", "live_worklogs")
+    fields = ("references", "live_claims", "live_worklogs") if kind in ("rtc_scratch", "agent_scratch") else ("live_claims", "live_worklogs")
     refs += [("coordination:" + k, json.dumps(co[k])) for k in fields]
     return refs
 
