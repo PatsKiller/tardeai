@@ -49497,6 +49497,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Deploy console P2 (DSN-20261029-deploy-console, write path): POST /api/v2/ops/in-flight/action carries the four
+    # operator actions (approve / hold / refresh_hints / push). Actor = the authenticated cc_auth principal (never the
+    # body); same-origin CSRF re-checked here (cc_auth.command_csrf_check) and enforced even in report_only by the
+    # config/cc_auth.yaml csrf.hard_routes entry. Reuses existing authority: the operator-merge label write (the
+    # Telegram-tap side-effect) and the git-push guard ledger (bin/guard grant git-push). No new authority, no broker.
+    if base_path.rstrip("/") == "/api/v2/ops/in-flight/action":
+        try:
+            try:
+                from lib import deploy_console_actions as _dca
+                from lib import cc_auth as _dca_auth
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploy_console_actions as _dca
+                from scripts.lib import cc_auth as _dca_auth
+            _dca_actor = _dca_auth.current_principal()
+            _dca_csrf_ok, _dca_csrf_why = _dca_auth.command_csrf_check(_dca_auth.load_config(), method, base_path)
+            _dca_body = body if isinstance(body, dict) else {}
+            try:
+                return _dca.perform(_dca_body, actor=_dca_actor, csrf_ok=_dca_csrf_ok, csrf_reason=_dca_csrf_why)
+            except Exception as e:
+                return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Ops → Incidents (operator 2026-10-27): IncidentRecord@v1 ledger (data/coordination/incidents) — GET list/detail;
     # POST <id>/ack | <id>/close (operator decision first, scripts/lib/operator_approvals.py). docs/ops/INCIDENT_LEDGER.md.
     if base_path.rstrip("/") == "/api/v2/ops/incidents" or base_path.startswith("/api/v2/ops/incidents/"):
