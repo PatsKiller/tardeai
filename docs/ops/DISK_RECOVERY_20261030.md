@@ -46,7 +46,8 @@ families predate the 48-hour window; the 36.38 GiB model blob store predates Oct
    That move releases no blocks on the same filesystem. The cap excludes the archive and recovery holds.
 4. The disk monitor silently dropped timed-out category measurements and refreshed categories only
    on a threshold-band change. A large unmeasurable cache could disappear from the alert while the
-   server stayed critical. Unknown must be reported as unknown, with a timestamp.
+   server stayed critical. A nonzero `du` exit also cannot establish a complete measurement even
+   when it prints a partial byte count. Unknown must be reported as unknown, with a timestamp.
 5. Two backup-current JSON writers truncated their destination before publication. An ENOSPC failure
    could erase the last good receipt. They must use the existing atomic JSON writer and propagate failure.
 

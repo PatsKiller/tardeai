@@ -16,6 +16,7 @@ phases:
     status: IN_PROGRESS
     areas:
     - scripts/disk_usage_monitor.py
+    - scripts/disk_hygiene.py
     - tests/test_disk_hygiene_20261018.py
   - id: DSN-20261030-disk-recovery-P1-T2
     title: Show backup archive usage and honor the existing live-dump size cap
