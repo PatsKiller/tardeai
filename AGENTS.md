@@ -1,17 +1,21 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      27.0.1
+Policy-Version:      28.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-30
-Last-Reviewed:       2026-10-30T17:15:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-30T18:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          26.2.2
+Supersedes:          27.0.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**28.0.0 is PROPOSED (MAJOR) — rule T may reclaim scratch holding nested git repos, after bundling any unique
+commits.** Awaiting `APPROVE_AGENTS_POLICY_28_0_0 <pr> <head_sha>` (§20). §24.13 only. **Why MAJOR:** widens what a
+deleting rule may take; `MBI_BEHAVIOR = 0`.
 
 **27.0.1 is ACTIVE (MAJOR) — agents delete their own `agent-tmp` scratch; rule T reclaims the rest; worktrees
 are never hand-deleted.** Ratified by the operator (`APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b65f3828ca4a2119ae41369c417c28ac1`). Replaces unratified 27.0.0
@@ -47,21 +51,7 @@ bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy authority. §2
 broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`. Details: LESSONS L28-29/L28-30/L25-07; named
 debt OI-131/133/134.
 
-**26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
-(`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
- Every rule that was true in 25.0.1 is kept, stated once. History,
-incident narratives, measurements and open gaps moved out to `docs/governance/` (AGENTS_HISTORY.md,
-LESSONS_LEARNED.md, OPEN_ITEMS.md); reference material moved to the document that owns its subject. Contradictions
-were settled in favour of what the code does and what the operator ratified (the 2026-10-27 governance review).
-**Why MAJOR:** it rewrites §0 rules 2, 4 and 6 (conditions on versions long ACTIVE removed; the push rule matched to
-the hook), consolidates §17, aligns §2B and §22 with §25.10, and records the operator's 2026-10-26 ratification of
-23.0.0 (Telegram remote grants retired). It also adds the operator's 2026-10-27 mandate that every PR explains
-itself in plain English (§28.12). No rail is weakened: §0 rules 2 and 6 lose only dead conditions, rule 3 changes only a citation, rules 1, 5 and
-7–11 are unchanged, and §2, §2A's "never leaves this
-box" list, §7A, §23.14 and the broker, order, stop, sizing and secret rails keep their meaning; `MBI_BEHAVIOR = 0`.
-Operator instruction, 2026-10-27, verbatim: "I want all of your recommendations done … I need to make sure that all
-of the other documents are also in line." The complete 25.0.1 text is preserved byte-exact at
-`tests/fixtures/agents_pre_26_0_0/AGENTS.md`; `docs/governance/AGENTS_HISTORY.md` maps every passage that left.
+Older banners (26.0.0 and before): `docs/governance/AGENTS_HISTORY.md`.
 
 ---
 
@@ -2225,7 +2215,9 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **What rule T checks, in code** (`scripts/disk_hygiene.py`, `config/disk_hygiene_rules.json`
   `standing_apply.agent_scratch`): the entry is a real directory directly under exactly `~/.cache/agent-tmp`, its
   name matches `entry_regex`, its newest mtime (bounded scan, symlinks never followed) is older than `idle_days`, it
-  holds no `.git` entry (a worktree is rule W's) and no never-touch path, and its path appears in no coordination
+  holds no registered worktree (rule W's), no nested repo with changes or untracked files, and no never-touch path;
+  a nested repo whose commits the reference repo lacks is `git bundle`d and verified into `bundle_dir` before
+  removal, or the entry stays. Its path also appears in no coordination
   document, live claim or worklog, open PR, or running process's cwd or open fd. Any check it cannot evaluate holds
   the entry. Rule T does **not** map a directory to a PR; the board reference is the hold.
 - **Never removable by any rule or agent:** a live store, the DB, holdings, identity, lineage, the InstrumentRecord
@@ -2603,6 +2595,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 28.0.0 | 2026-10-30 | PROPOSED | MAJOR | §24.13: rule T no longer holds every dir with a nested `.git`; registered worktrees and dirty nested repos still hold, unique nested commits are bundled (verified) into `standing_apply.agent_scratch.bundle_dir` before removal. 26.0.0 banner moved to AGENTS_HISTORY.md. |
 | 27.0.1 | 2026-10-30 | ACTIVE | MAJOR | Replaces unratified 27.0.0 (#2303). §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>`: the owning agent deletes it after its proofs, rule T reclaims the rest; worktree hand-deletion removed (rule W owns worktrees). §24.12 names the exception and adds kind (d); §24.13 states what rule T checks in code; §17 keeps rule T's threshold, pattern and enablement operator-only. |
 | 27.0.0 | 2026-10-30 | WITHDRAWN (replaced by 27.0.1, never ratified) | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | PENDING — `APPROVE_AGENTS_POLICY_27_0_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |

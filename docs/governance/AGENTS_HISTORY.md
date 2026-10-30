@@ -88,6 +88,22 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+**26.0.0 is ACTIVE (MAJOR) — consolidation.** Ratified 2026-10-28 by the operator
+(`APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da`).
+ Every rule that was true in 25.0.1 is kept, stated once. History,
+incident narratives, measurements and open gaps moved out to `docs/governance/` (AGENTS_HISTORY.md,
+LESSONS_LEARNED.md, OPEN_ITEMS.md); reference material moved to the document that owns its subject. Contradictions
+were settled in favour of what the code does and what the operator ratified (the 2026-10-27 governance review).
+**Why MAJOR:** it rewrites §0 rules 2, 4 and 6 (conditions on versions long ACTIVE removed; the push rule matched to
+the hook), consolidates §17, aligns §2B and §22 with §25.10, and records the operator's 2026-10-26 ratification of
+23.0.0 (Telegram remote grants retired). It also adds the operator's 2026-10-27 mandate that every PR explains
+itself in plain English (§28.12). No rail is weakened: §0 rules 2 and 6 lose only dead conditions, rule 3 changes only a citation, rules 1, 5 and
+7–11 are unchanged, and §2, §2A's "never leaves this
+box" list, §7A, §23.14 and the broker, order, stop, sizing and secret rails keep their meaning; `MBI_BEHAVIOR = 0`.
+Operator instruction, 2026-10-27, verbatim: "I want all of your recommendations done … I need to make sure that all
+of the other documents are also in line." The complete 25.0.1 text is preserved byte-exact at
+`tests/fixtures/agents_pre_26_0_0/AGENTS.md`; `docs/governance/AGENTS_HISTORY.md` maps every passage that left. *(moved here by 28.0.0)*
+
 The 17.0.0 and 22.0.0 banners are not kept: the release train was retired 2026-10-27 by the operator and replaced by
 §25.10. Their history rows remain above.
 
