@@ -33911,8 +33911,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-cio-ask-lifecycle-native",
       "status": "REVIEWED",
-      "stage": "shadow",
-      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "stage": "canary",
+      "target_reason": "stage:canary (2026-10-29): code prerequisites complete (governed bridge processes cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} registered; Ask writer authority operator-approved 2026-10-24); the verified per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.",
       "purpose": {
         "text": "Check every monitored Ask thread on the hour, every day, and issue another advisory answer only after material change and cooldown admission.",
         "business_function": "research",
@@ -34124,8 +34124,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-cio-ask-lifecycle-native",
       "status": "REVIEWED",
-      "stage": "shadow",
-      "target_reason": "CIO lane source review completed against the integrated engine, native binding and synthetic health proofs; no workflow import, activation or natural-slot evidence.",
+      "stage": "canary",
+      "target_reason": "stage:canary (2026-10-29): code prerequisites complete (governed bridge processes cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} registered; Ask writer authority operator-approved 2026-10-24); the verified per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.",
       "purpose": {
         "text": "Poll existing material feeds/cursors every five minutes, rechecking only new material events and retryable blockers.",
         "business_function": "research",
