@@ -1,25 +1,28 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      26.2.0
+Policy-Version:      26.2.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
-Last-Reviewed:       2026-10-29T21:12:00-04:00
+Status:              ACTIVE
+Effective-Date:      2026-10-29
+Last-Reviewed:       2026-10-29T23:05:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          26.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**26.2.0 is PROPOSED (MAJOR) — operator-delegated promote.** Awaiting `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`
-(§20). Adds §25.10.1: an agent hands the operator the exact deploy commands (already the rule, §28.4 — stated
+**26.2.1 is ACTIVE (PATCH) — ratification of 26.2.0 (operator-delegated promote).** 26.2.0 was merged as
+PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge, LESSONS L0-01/L0-02);
+this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and
+history row — with **no rule-text change**. Ratified by the operator
+(`APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7`), superseding 26.1.0. Adds §25.10.1: an agent hands the operator the exact deploy commands (already the rule, §28.4 — stated
 explicitly, not new), and may run the promote (`scripts/emergency_manual_promote.sh` or
 `scripts/cio_phase2_exact_main_deploy.sh` `prepare`+`promote`) on the operator's behalf after it presents the exact
 command, the full 40-hex SHA and the dry-run output, and the operator types an explicit approval in that agent's own
 session (§28.4). Adds §25.10.2: a lane, scheduled job or dispatcher row an agent built may be turned on live and
-tested on the operator's in-session approval. **Why MAJOR:** widens deploy (promote) and §17 scheduling authority.
+tested on the operator's in-session approval. **Why MAJOR (for 26.2.0):** widens deploy (promote) and §17 scheduling authority.
 §0 rules 1–2 and §24.7 are never
 overridable, even by the operator; the delegation never extends to pushing `main`/`release/*`, merging,
 broker/order/stop/sizing/secret actions, arming/disarming the delegation, or clearing STOP; `ReleaseGrantBinding@v1`,
@@ -2560,7 +2563,8 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 26.2.0 | 2026-10-29 | PROPOSED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | PENDING — `APPROVE_AGENTS_POLICY_26_2_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
+| 26.2.1 | 2026-10-29 | ACTIVE | PATCH | Ratifying edit only: 26.2.0 was merged to main as PROPOSED (the ratifying commit was not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and history row with no rule-text change. §25.10.1/§25.10.2 content is exactly as in 26.2.0. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` |
+| 26.2.0 | 2026-10-29 | SUPERSEDED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` (ratified as 26.2.1) |
 | 26.1.0 | 2026-10-28 | PROPOSED | MAJOR | §0 rule 4 + §28.15 item 8: operator-approved scope is the push authorization — a guard hook must not require a `git-push` grant for an approved-scope fast-forward push of the agent's own non-`main` branch (budget + never-`main`/`release/*` still bind). §28.3b: "designed = a task id on the board". §25.10 + §17: operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound, broker rails never bypassed. §2, §2A, §7A, §23.14 and role authority unchanged; §0 rule 4 edited (propagated to the four adapters). | PENDING — `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
 | 26.0.0 | 2026-10-27 | ACTIVE | MAJOR | Consolidation: every true rule stated once; history, lessons and open gaps moved to `docs/governance/`; §0 rules 2, 4, 6 de-conditioned and matched to the hook; §17 made the one complete list; §2B/§22 aligned with §25.10; 23.0.0 (Telegram remote grants retired) folded in; every PR explains itself in plain English (§28.12, operator 2026-10-27). | `APPROVE_AGENTS_POLICY_26_0_0 2256 266f936f70b58db890ceccef2a413a22470200da` |
 | 25.0.1 | 2026-10-27 | ACTIVE | PATCH | Generated §7A table refreshed by `scripts/render_source_of_truth.py`: the `operator_decisions` domain moves from proposed to granted (operator 2026-10-27, coordinator ses… | PATCH — operator merge of this held-class PR (§20, §25.10).… |
