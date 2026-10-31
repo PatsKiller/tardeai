@@ -468,7 +468,7 @@ def test_leadership_memories_carry_the_no_edge_caveat():
 
 
 def test_price_text_is_refused_on_every_memory_path(monkeypatch, tmp_path):
-    bad = "ZZEX closed at $134.20 after the stop at 137"
+    bad = "X closed at $134.20 after the stop at 137"
     assert F.text_refusal(bad)
     assert F.text_refusal("stop at 137") and F.text_refusal("down 4%") and F.text_refusal("buy 100 shares")
     assert F.text_refusal("ZZEX exited on 2026-10-30 during a SECTOR selloff; 3 of 5 conditions") is None
