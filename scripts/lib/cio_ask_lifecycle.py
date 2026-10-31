@@ -829,8 +829,15 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
 
         collect = collect_current_evidence
     slot = stamp(now.replace(minute=0, second=0, microsecond=0))
+    from scripts.lib.poison_quarantine import Quarantine
+
+    lane_id = "cio-ask-material-events" if events_only else "cio-ask-lifecycle"
+    quarantine = Quarantine.for_lane(lane_id, dry_run=dry_run, now=now)
     for snapshot in tracked:
         tid = snapshot["thread_id"]
+        if quarantine.is_quarantined(tid):  # a poison item: skipped so the lane serves every other thread
+            report.setdefault("quarantined_skipped", []).append(tid)
+            continue
         with store.thread_lock(tid) as acquired:
             if not acquired:
                 report["deferred_count"] += 1
@@ -1068,5 +1075,31 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 report["threads"].append(
                     {"thread_id": tid, "lifecycle": life, "consumer_readback": {"state": "not_measured"}}
                 )
+    _apply_quarantine(quarantine, report)
     report["ok"] = not report["source_errors"] and report["failed_count"] == 0
     return report
+
+
+def _apply_quarantine(quarantine, report: dict) -> None:
+    """Record this run's per-thread outcome; a thread that just reached the poison threshold is quarantined and its
+    failure no longer fails the run (the lane carries on; the quarantine receipt and P2 carry the failure)."""
+    failed = {str(e).split(":", 1)[0] for e in report["source_errors"]} | {
+        t["thread_id"] for t in report["threads"] if (t.get("lifecycle") or {}).get("state") == "failed"
+    }
+    seen = {t["thread_id"] for t in report["threads"]} | failed
+    reasons = {str(e).split(":", 1)[0]: str(e).split(":", 1)[-1] for e in report["source_errors"]}
+    newly = quarantine.record_run({tid: tid in failed for tid in seen}, reasons=reasons)
+    for rec in newly:
+        tid = rec["item"]
+        before = len(report["source_errors"])
+        report["source_errors"] = [e for e in report["source_errors"] if not str(e).startswith(tid + ":")]
+        dropped = before - len(report["source_errors"])
+        thread_failed = any(
+            t["thread_id"] == tid and (t.get("lifecycle") or {}).get("state") == "failed" for t in report["threads"]
+        )
+        report["failed_count"] = max(0, report["failed_count"] - max(dropped, int(thread_failed)))
+    if newly:
+        report["quarantined_now"] = [r["item"] for r in newly]
+    errs = quarantine.save()
+    if errs:
+        report.setdefault("quarantine_errors", []).extend(errs)

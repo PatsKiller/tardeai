@@ -1,0 +1,11 @@
+{
+  "schema": "PoisonQuarantine@v1",
+  "as_of": "2026-10-31",
+  "_why": "One bad item can fail a whole lane run after run: Ask-the-CIO thread thr_b00c8806cf63a6bf failed cio-ask-lifecycle three hours running on 2026-10-30, opened its n8n breaker, and stopped every other thread's hourly check for a day. When the same item fails a lane in `threshold` consecutive runs it is quarantined: skipped with a receipt and one P2, while the lane carries on with every other item. Release = remove the item from the store (or `release` in scripts/poison_quarantine.py). Coordinator 2026-10-31; operator: \"validate all stuck agents and processes fix montior and make auto healings with claude code\". Default off (§25.10.2).",
+  "enabled": false,
+  "threshold": 3,
+  "store_rel": "data/runtime/poison_quarantine.json",
+  "receipts_rel": "data/runtime/poison_quarantine_receipts.jsonl",
+  "producer": "poison_quarantine",
+  "alert_priority": "P2"
+}
