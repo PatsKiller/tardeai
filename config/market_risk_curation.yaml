@@ -1,0 +1,37 @@
+# Market Risk Engine — LLM curation of the "why" sentence (DSN-20261031-market-risk-engine §5.10, P3-T3).
+# Operator 2026-10-31: "you can have normalization and alerts curated by LLM." The deterministic card is built first and
+# is always sendable; the model may only rephrase its one "Why:" sentence. Every number the model writes must already be
+# in the card or the assessment, no behaviour wording is allowed, and a failure, refusal or timeout sends the
+# deterministic card unchanged. scripts/lib/market_risk/curation.py reads this file; nothing here is hardcoded there.
+schema: MarketRiskCuration@v1
+as_of: 2026-10-31
+enabled: true
+process_id: market_risk_alert_curation   # config/llm_process_registry.json row (free OAuth lanes only)
+lane: grok                               # first lane; llm_fallback walks grok -> chatgpt
+allow_paid: false                        # never a metered lane for alert prose
+why_prefix: "Why: "
+max_why_chars: 280
+max_tokens: 200
+timeout_s:                               # wall-clock budget per tier; on expiry the deterministic card is sent
+  RED: 6
+  ORANGE: 10
+  YELLOW: 15
+  BLUE: 15
+  GREEN: 15
+  default: 10
+skip_tiers: [ORANGE, RED]                # the highest-stakes cards are always the deterministic text (review of #2362, B3)
+behaviour_patterns:                      # case-insensitive regexes on NFKC-normalised prose; any match rejects the curation
+  - '\b(buy|sell|short|cover|trim|reduce|add to|scale (in|out)|exit|liquidate|hedge with)\b'
+  - '\b(lighten|unload|dump|offload|shed|shrink|pare|cut|rotate|de-?risk)\b'
+  - '\btake (some )?profits?\b'
+  - '\b(raise|go to|move to|build|hold more) cash\b'
+  - '\bget out\b|\bstep aside\b|\bhold off\b|\bavoid new\b|\bnew (entries|positions?)\b'
+  - '\b(puts|calls|protective put|collars?|hedges?|hedged)\b'
+  - '\b\d[\d,.]*\s*(shares?|contracts?|lots?|sh)\b'
+  - '\b(one|two|three|four|five|ten|twenty|fifty|a|one )?hundred\s+(shares?|sh)\b|\bhalf\b'
+  - '\bstops?\s+(at|to|of|near|under|below|above|level)\b|\bstop[- ]level\b'
+  - '\b(limit|market|stop)[- ]orders?\b'
+  - '\b(position[- ]?siz\w*|allocat\w*|weight(ing)? (to|of)|slice of|% of (the|your) (book|portfolio))\b'
+  - '\b(should|ought to|consider|recommend\w*|suggest\w*|you (may|might|could) want|it is (wise|prudent))\b'
+  - '\b(lower|raise|increase|decrease|reduce|trim|cut)\s+(your\s+)?(exposure|position|holdings?|stake)\b|\bexposure should\b'
+  - '[$€£¥]\s?\d|\d\s?(usd|eur|dollars?|bucks)\b'
