@@ -426,6 +426,88 @@ def _intent_accepted() -> bool:
     return bool(_LAST_INTENT_ROUTE.get("accepted"))
 
 
+_OVERRIDE_CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "legacy_critical_override.json")
+
+
+def _override_config() -> dict:
+    import json
+
+    try:
+        with open(_OVERRIDE_CONFIG, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"[telegram] legacy critical override config unreadable ({type(exc).__name__}); override off")
+        return {}
+    return cfg if cfg.get("schema") == "LegacyCriticalOverride@v1" and cfg.get("enabled") else {}
+
+
+def _comms_critical_override(message: str, level: str, router=None) -> dict | None:
+    """The override plan when the legacy router digested a comms-critical POSITION alert by classification; else None.
+
+    2026-10-31 audit: in 48 h the legacy router (cron senders run with the comms gateway OFF) digested 13 messages the
+    comms classifier rated critical, including the 10-30 11:07 ET "[holdings-change] … protective-stop band recheck
+    recommended" alerts. Rules, all in config/legacy_critical_override.json: only the configured comms rules and
+    first-line shapes; never a health-repeat message; never a rate-limit or budget suppression (those are not
+    classification levels); and at most once per subject per window (the review found a self-reversing flap)."""
+    cfg = _override_config()
+    if not cfg or level not in set(cfg.get("classification_levels") or ()):
+        return None
+    import re as _re
+
+    head = (message or "").strip().splitlines()[0] if (message or "").strip() else ""
+    if not _re.search(cfg.get("require_first_line_match") or r"(?!x)x", head, _re.IGNORECASE):
+        return None
+    if cfg.get("never_match") and _re.search(cfg["never_match"], message, _re.IGNORECASE):
+        return None
+    if router is not None and router._HEALTH_PATTERN.search(message):
+        return None  # health-repeat throttling is never overridden
+    try:
+        try:
+            from scripts.lib.comms.classify import classify as _comms_classify
+        except ImportError:
+            from lib.comms.classify import classify as _comms_classify  # type: ignore[no-redef]
+        c = _comms_classify(body=message)
+    except Exception as exc:  # the classifier itself broke: say so through the receipted intent path, keep the hold
+        _intent_send(
+            f"⚠️ *COMMS CLASSIFIER DOWN* — {type(exc).__name__}: {str(exc)[:120]}\n"
+            "Legacy-routed alerts cannot be checked for critical stop/position content; they follow the router.",
+            "P2",
+            lambda: _raw_send_telegram_result(
+                f"⚠️ COMMS CLASSIFIER DOWN — {type(exc).__name__}", _chat_ids()
+            ).get("ok"),
+            dedupe_minutes=1440,
+            producer="legacy_critical_override",
+        )
+        return None
+    if str(c.get("priority") or "").lower() != "critical" or c.get("rule_id") not in set(cfg.get("comms_rule_ids") or ()):
+        return None
+    m = _re.search(cfg.get("subject_pattern") or r"(?!x)x", head)
+    subject_core = m.group(1) if m else _re.sub(r"[0-9][0-9.,:%$+→-]*", "#", head.lower())
+    subject = f"legacy_critical_subject:{c.get('rule_id')}:{subject_core}"
+    window_s = float(cfg.get("subject_window_minutes") or 0) * 60
+    if router is not None and window_s and router._durable_recently_sent(subject, window_s):
+        print(f"[telegram] comms-critical {subject_core} already paged within {cfg.get('subject_window_minutes')}m; held")
+        return None
+    # Burst cap across subjects: one 10-30 holdings sync paged five names in four seconds. Take one of
+    # burst_max_pages durable slots that has not been used inside burst_window_seconds; none free -> digest.
+    burst_slot = None
+    burst_max = int(cfg.get("burst_max_pages") or 0)
+    burst_window = float(cfg.get("burst_window_seconds") or 0)
+    if router is not None and burst_max > 0 and burst_window > 0:
+        for i in range(burst_max):
+            key = f"legacy_critical_burst:{i}"
+            if not router._durable_recently_sent(key, burst_window):
+                burst_slot = key
+                break
+        if burst_slot is None:
+            print(f"[telegram] comms-critical {subject_core} held: {burst_max} pages already in the last {burst_window:g}s")
+            return None
+    return {"subject": subject, "priority": str(cfg.get("intent_priority") or "P1"),
+            "dedupe_minutes": int(cfg.get("dedupe_minutes") or 240),
+            "producer": str(cfg.get("producer") or "legacy_critical_override"),
+            "burst_slot": burst_slot}
+
+
 def _legacy_send(
     message: str,
     bypass_router: bool,
@@ -462,6 +544,35 @@ def _legacy_send(
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
             if not should_send_telegram(message):
                 level = classify_alert(message)
+                import telegram_alert_router as _router_mod
+
+                plan = _comms_critical_override(message, level, router=_router_mod)
+                if plan:
+                    print(f"[telegram] Router level {level} overridden: comms-critical position alert sent as "
+                          f"{plan['priority']} intent: {message[:60]}...")
+                    delivered = _intent_send(
+                        message,
+                        plan["priority"],
+                        lambda: _raw_send_telegram_result(
+                            message, targets, reply_markup=reply_markup, thread_id=thread_id,
+                            link_preview_options=link_preview_options,
+                            **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
+                        ).get("ok"),
+                        dedupe_minutes=plan["dedupe_minutes"],
+                        producer=plan["producer"],
+                    )
+                    if delivered:
+                        _router_mod.durable_mark_sent(plan["subject"], meta={"producer": plan["producer"]})
+                        if plan.get("burst_slot"):
+                            _router_mod.durable_mark_sent(plan["burst_slot"], meta={"producer": plan["producer"]})
+                        return delivered
+                    # Deduped or not delivered: keep it in the digest rather than losing it from both phone and digest.
+                    try:
+                        from report_capture import archive_message
+                        archive_message(message, suppressed=True, reason=f"{level}:override_not_delivered")
+                    except Exception as archive_exc:
+                        print(f"[telegram] override not delivered and archive failed: {type(archive_exc).__name__}: {archive_exc}")
+                    return False
                 print(f"[telegram] Suppressed ({level}): {message[:60]}...")
                 try:
                     from report_capture import archive_message
