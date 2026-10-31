@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_fill_repurchase_20261031",
+  "files": [
+    "tests/test_stop_fill_repurchase_20261031.py"
+  ],
+  "anchor": "STOP_FILL_REPURCHASE_20261031",
+  "comment": [
+    "ANCHOR: STOP_FILL_REPURCHASE_20261031 — a FILLED broker stop observation is settled by the trade ledger (its",
+    "order id in trade_transactions.description): fill -> re-buy or a later holdings refresh is history, never",
+    "'awaiting holdings sync'; an unsettled fill says what it waits for and since when; a working order outranks a",
+    "filled one on the same read. Operator 2026-10-31 (V stopped and re-bought). Synthetic tickers; no DB/network."
+  ]
+}
