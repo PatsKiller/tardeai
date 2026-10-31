@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_context_prev_close_20261031",
+  "files": [
+    "tests/test_market_context_prev_close_20261031.py"
+  ],
+  "anchor": "MARKET_CONTEXT_PREV_CLOSE_20261031",
+  "comment": [
+    "ANCHOR: MARKET_CONTEXT_PREV_CLOSE_20261031 — the market header's previous close comes from Yahoo's daily bars,",
+    "never meta.chartPreviousClose (the close before the requested range: two sessions back with range=2d). Live",
+    "2026-10-31: SPY showed prev close 772.31 vs the real 755.72; -2.15% vs Yahoo -1.773%. Hermetic: stubbed requests."
+  ]
+}
