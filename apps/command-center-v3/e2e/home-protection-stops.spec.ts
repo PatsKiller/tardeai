@@ -19,3 +19,19 @@ for (const width of [1440, 412, 390]) {
     expect(writes).toEqual([])
   })
 }
+
+// 2026-10-31 (V stopped and re-bought): Home shows the server's dated note, never a stale bare "awaiting sync".
+for (const width of [1440, 390]) {
+  test(`Home filled stop shows the dated server note ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    const note = 'stop filled Tue Mar 4 10:21 ET · waiting for the holdings sync (holdings last updated Mon Mar 3 20:00 ET)'
+    const writes = await homeFixtures(page, { filledReason: note })
+    await page.goto('/v3/')
+    const line = page.getByTestId('home-filled-awaiting-sync')
+    await expect(line).toContainText(`DEMOC: ${note}`)
+    await expect(line).not.toContainText('awaiting holdings sync')
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+    expect(writes).toEqual([])
+  })
+}
