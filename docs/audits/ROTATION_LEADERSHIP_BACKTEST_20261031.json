@@ -1,0 +1,142 @@
+{
+  "fixture": "tests/fixtures/market_risk_scenarios/bars.csv.gz",
+  "horizons": [
+    20,
+    60,
+    120
+  ],
+  "note": "evaluation every 20 sessions; forward windows overlap for horizons longer than the step, so n overstates independent observations. Relative return = group return minus SPY return over the horizon.",
+  "periods": {
+    "holdout_2026": {
+      "baseline_top3_rs60": {
+        "20": {
+          "hit_rate": 0.567,
+          "mean_rel": 0.0108,
+          "n": 30
+        },
+        "60": {
+          "hit_rate": 0.542,
+          "mean_rel": 0.0414,
+          "n": 24
+        },
+        "120": {
+          "hit_rate": 0.467,
+          "mean_rel": 0.0667,
+          "n": 15
+        }
+      },
+      "class_counts": {
+        "BOUNCE_ONLY": 19,
+        "LEADERSHIP_CONFIRMED": 24,
+        "LEADERSHIP_EMERGING": 19,
+        "LEADERSHIP_FADING": 19,
+        "NEUTRAL": 62
+      },
+      "detector": {
+        "20": {
+          "hit_rate": 0.545,
+          "mean_rel": 0.0064,
+          "n": 22
+        },
+        "60": {
+          "hit_rate": 0.35,
+          "mean_rel": 0.015,
+          "n": 20
+        },
+        "120": {
+          "hit_rate": 0.389,
+          "mean_rel": 0.0321,
+          "n": 18
+        }
+      },
+      "detector_strategic": {
+        "20": {
+          "hit_rate": 0.429,
+          "mean_rel": -0.0104,
+          "n": 7
+        },
+        "60": {
+          "hit_rate": 0.0,
+          "mean_rel": -0.0561,
+          "n": 6
+        },
+        "120": {
+          "hit_rate": 0.167,
+          "mean_rel": -0.0742,
+          "n": 6
+        }
+      },
+      "false_confirmation_rate": 0.65
+    },
+    "in_sample": {
+      "baseline_top3_rs60": {
+        "20": {
+          "hit_rate": 0.473,
+          "mean_rel": 0.0022,
+          "n": 336
+        },
+        "60": {
+          "hit_rate": 0.548,
+          "mean_rel": 0.018,
+          "n": 330
+        },
+        "120": {
+          "hit_rate": 0.536,
+          "mean_rel": 0.0342,
+          "n": 321
+        }
+      },
+      "class_counts": {
+        "BOUNCE_ONLY": 161,
+        "LEADERSHIP_CONFIRMED": 303,
+        "LEADERSHIP_EMERGING": 182,
+        "LEADERSHIP_FADING": 126,
+        "NEUTRAL": 673,
+        "UNKNOWN": 24
+      },
+      "detector": {
+        "20": {
+          "hit_rate": 0.51,
+          "mean_rel": 0.0031,
+          "n": 300
+        },
+        "60": {
+          "hit_rate": 0.558,
+          "mean_rel": 0.0164,
+          "n": 294
+        },
+        "120": {
+          "hit_rate": 0.53,
+          "mean_rel": 0.0205,
+          "n": 283
+        }
+      },
+      "detector_strategic": {
+        "20": {
+          "hit_rate": 0.452,
+          "mean_rel": -0.002,
+          "n": 168
+        },
+        "60": {
+          "hit_rate": 0.568,
+          "mean_rel": 0.0189,
+          "n": 162
+        },
+        "120": {
+          "hit_rate": 0.529,
+          "mean_rel": 0.0246,
+          "n": 155
+        }
+      },
+      "false_confirmation_rate": 0.442
+    }
+  },
+  "step": 20,
+  "summary": {
+    "baseline_hit_60": 0.548,
+    "confirmed_hit_60": 0.558,
+    "confirmed_n_60": 294,
+    "false_confirmation_rate": 0.442,
+    "verdict": "no demonstrated edge over top-3 relative-strength momentum"
+  }
+}
