@@ -381,12 +381,21 @@ class CIOWakeJobStore:
             if not removed and kept == raw:
                 return {"ok": True, "removed": 0, "reason": "clean"}
             quarantine = self.event_store_path.with_suffix(
-                self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
+                # ns + pid: unique per call, so a cleanup can never remove an earlier trim's copy (two trims
+                # inside one second used to share a name; 2026-10-31 round-3 review).
+                self.event_store_path.suffix + f".corrupt-tail-{time.time_ns()}-{os.getpid()}"
             )
+            base_name = quarantine.name
+            bump = 0
+            while quarantine.exists():  # never overwrite an earlier trim's copy, even on a frozen clock
+                bump += 1
+                quarantine = quarantine.with_name(f"{base_name}-{bump}")
             tmp = self.event_store_path.with_suffix(".tmp")
             replaced = False
+            quarantine_created = False
             try:
                 if removed:
+                    quarantine_created = not quarantine.exists()
                     _write_fsync(quarantine, b"\n".join(reversed(removed)))
                 _write_fsync(tmp, kept)
                 os.replace(tmp, self.event_store_path)
@@ -395,7 +404,7 @@ class CIOWakeJobStore:
                 if not replaced:
                     # ENOSPC mid-write: never leave a partial .tmp (up to the store size) or a quarantine copy
                     # of a trim that did not happen on a nearly full disk; the caller sees the original error.
-                    for leftover in (tmp, quarantine):
+                    for leftover in (tmp, quarantine) if quarantine_created else (tmp,):
                         try:
                             leftover.unlink(missing_ok=True)
                         except OSError as cleanup_exc:
