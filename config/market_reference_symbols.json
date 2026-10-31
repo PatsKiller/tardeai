@@ -1,0 +1,12 @@
+{
+  "schema": "MarketReferenceSymbols@v1",
+  "as_of": "2026-10-31",
+  "_comment": "Index, sector, rates, credit, dollar, commodity and volatility ETFs the Market Risk Engine reads from market_quotes (DSN-20261031-market-risk-engine §5.1). They are always quoted, whether or not anyone holds or watches them. Builder H's read-only data audit (PR #2341) found HYG, UUP and VIXY absent from the quote universe on 2026-10-31. Operator approved design §11 item 1 in session 2026-10-31: \"I approve and agree to everything one through eight…\". Adding a symbol here adds one quote per refresh; nothing else changes.",
+  "symbols": [
+    "SPY", "QQQ", "IWM", "DIA", "RSP",
+    "SMH", "SOXX", "XLK",
+    "TLT", "HYG", "JNK", "LQD",
+    "UUP", "USO", "GLD",
+    "VIXY", "UVXY"
+  ]
+}
