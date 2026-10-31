@@ -73,7 +73,14 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     sec_line = _sectors.card_line(a.get("sectors"))
     if sec_line:
         lines.append(sec_line)
-    flagged = [p for p in (a.get("positions") or {}).values() if p.get("stance") not in (None, "HOLD")]
+    flagged = [
+        p
+        for k, p in (a.get("positions") or {}).items()
+        if not str(k).startswith("_") and isinstance(p, dict) and p.get("stance") not in (None, "HOLD")
+    ]
+    meta = (a.get("positions") or {}).get("_book") or {}
+    if meta.get("residuals_ignored"):
+        lines.append(f"residuals ignored: {meta['residuals_ignored']}")
     for p in flagged[:6]:
         lines.append(f"{p['symbol']}: CIO {p['label']} — {'; '.join(p.get('reasons') or [])[:160]}")
     up = a.get("uplift") or None

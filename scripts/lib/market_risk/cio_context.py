@@ -181,10 +181,15 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             }
             if isinstance(mr.get("sectors"), dict)
             else None,
+            "reentry_watch": {
+                s: {k: w.get(k) for k in ("status", "headline", "met", "of", "conditions", "base_rate", "as_of")}
+                for s, w in (mr.get("reentry_watch") or {}).items()
+                if isinstance(w, dict) and not str(s).startswith("_")
+            },
             "position_stances": {
                 s: {k: p.get(k) for k in ("stance", "label", "reasons", "re_enter_if", "as_of")}
                 for s, p in (mr.get("positions") or {}).items()
-                if isinstance(p, dict)
+                if isinstance(p, dict) and not str(s).startswith("_")
             },
         }
     )

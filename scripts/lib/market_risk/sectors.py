@@ -147,12 +147,18 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
         def _le(a: float | None, t: float) -> bool:
             return a is not None and a <= t
 
-        if (_le(z5, float(cfg.get("stress_z", -1.5))) and _le(zrs, rs_t)) or (
-            _le(z1, float(cfg.get("stress_z_1d", -2.0))) and _le(zrs1, rs_t)
+        # price weakness gate (stated rule): a group can only be STRESS/WEAK when it is actually in a drawdown —
+        # at least price_dd_min_pct below its 20-session high AND lagging SPY over 20 sessions. A defensive group that
+        # is flat or up in price (staples on 10-23 / 10-29) is never stressed by a z-score of one bad day.
+        price_weak = _le(dd20, float(cfg.get("price_dd_min_pct", -3.0))) and _le(rs20, 0.0)
+        if price_weak and (
+            (_le(z5, float(cfg.get("stress_z", -1.5))) and _le(zrs, rs_t))
+            or (_le(z1, float(cfg.get("stress_z_1d", -2.0))) and _le(zrs1, rs_t))
         ):
             state = "STRESS"
-        elif (_le(z5, float(cfg.get("weak_z", -1.0))) and _le(zrs, 0.0)) or (
-            _le(z1, float(cfg.get("weak_z_1d", -1.5))) and _le(zrs1, 0.0)
+        elif price_weak and (
+            (_le(z5, float(cfg.get("weak_z", -1.0))) and _le(zrs, 0.0))
+            or (_le(z1, float(cfg.get("weak_z_1d", -1.5))) and _le(zrs1, 0.0))
         ):
             state = "WEAK"
         elif (

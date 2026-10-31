@@ -111,6 +111,15 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
             book_precision.attach(a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn)
         except Exception as exc:  # noqa: BLE001 — the book layer is additive; the tier stands without it
             a.positions = {"_note": f"book precision unavailable: {type(exc).__name__}: {exc}"}
+        try:  # the re-entry watch is independent of the held book: a failure here never hides the stances
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.reentry_watch_block(
+                a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn
+            )
+        except Exception as exc:  # noqa: BLE001
+            a.reentry_watch = {"_note": f"re-entry watch unavailable: {type(exc).__name__}: {exc}"}
     return a
 
 
@@ -208,6 +217,30 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model) -> dict
             "transition": rep["kind"],
         }
         pending.append((alerts.render(doc, repeat=rep), rintent, rep["kind"], rep["episode_id"]))
+    # RE-ENTRY WATCH: one P2 card when a watched symbol flips to RE_ENTER (dedupe per symbol and exit date)
+    from scripts.lib.market_risk import reentry_watch as _rw
+
+    prior_watch = (prior or {}).get("reentry_watch") or {}
+    for sym, w in (doc.get("reentry_watch") or {}).items():
+        if str(sym).startswith("_") or not isinstance(w, dict) or w.get("status") != "RE_ENTER":
+            continue
+        if (prior_watch.get(sym) or {}).get("status") == "RE_ENTER":
+            continue
+        rcfg = policy.get("reentry_watch") or {}
+        pending.append(
+            (
+                _rw.render(w),
+                {
+                    "priority": str(rcfg.get("card_priority") or "P2"),
+                    "dedupe_minutes": int(rcfg.get("card_dedupe_minutes") or 1440),
+                    "dedupe_key": f"market_risk:reentry:{sym}:{w.get('exit_date')}",
+                    "tier": "REENTRY",
+                    "transition": "reentry",
+                },
+                "reentry",
+                None,
+            )
+        )
     for text, it, kind, ep_id in pending:
         cur = _curate(text, doc, call_model=call_model, live=apply)
         res = alerts.deliver(cur["text"], it, policy, dry_run=not apply, now=now, ledger=ledger)

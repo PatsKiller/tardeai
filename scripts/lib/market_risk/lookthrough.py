@@ -63,6 +63,35 @@ def exposure_for(
     reporting_soon: set[str] | None = None,
     fund_cfg: dict[str, Any] | None = None,
     ipos: dict[str, Any] | None = None,
+    themes: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    out = _exposure_for(
+        symbol,
+        ai_basket=ai_basket,
+        holdings=holdings,
+        profiles=profiles,
+        reporting_soon=reporting_soon,
+        fund_cfg=fund_cfg,
+        ipos=ipos,
+    )
+    extra = (themes or {}).get(str(symbol).upper()) or []
+    if extra:
+        # operator-owned theme mapping (config positions.theme_overrides): a stock held as a theme exposure that its
+        # own sector does not show gets those groups at full weight beside its sector — never inferred by code
+        out["groups"] = {**(out.get("groups") or {}), **{g: 1.0 for g in extra}}
+        out["basis"] = (out.get("basis") or "") + " + operator theme override"
+    return out
+
+
+def _exposure_for(
+    symbol: str,
+    *,
+    ai_basket: list[str],
+    holdings: dict[str, list[dict[str, Any]]] | None = None,
+    profiles: dict[str, dict[str, Any]] | None = None,
+    reporting_soon: set[str] | None = None,
+    fund_cfg: dict[str, Any] | None = None,
+    ipos: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sym = str(symbol).upper()
     fund_cfg = fund_cfg if fund_cfg is not None else (_load("fund_lookthrough.json").get("funds") or {})

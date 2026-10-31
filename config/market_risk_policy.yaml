@@ -412,6 +412,7 @@ sectors:
   stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
   weak_z_1d: -1.5
   resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  price_dd_min_pct: -3.0    # price-weakness gate: STRESS/WEAK only when >= 3% under the 20-session high AND lagging SPY over 20 sessions
   defensive_key: defensive
   growth_keys: [tech, semis, ai_basket, comm]
   factor_symbols: [IWF, IWD, IWM, HYG, TLT]
@@ -442,6 +443,8 @@ shock_type:
   # it a certain sector related"). Each class is a list of indicators; its score is the share that hold; the top
   # score at or above min_confidence wins (ties by priority), else MIXED. Same standard-score rule as sectors:.
   min_confidence: 0.6
+  min_known_indicators: 2   # score over measured indicators once >= 2 of a class are measured (unknown is not a no-vote)
+  min_known_indicators: 2     # score over measured indicators once at least 2 of a class are measured (unknown is not a no-vote)
   priority: [SYSTEMIC, CREDIT, SECTOR, FACTOR, RATES, EVENT]
   systemic:
     min_frac_sectors_down: 0.8      # 9 of 11 sectors down over 5 sessions
@@ -466,8 +469,24 @@ positions:
   # sessions AND the index back above its 50-day AND VIX below its 20-day — or the engine reaching GREEN.
   min_exposure: 0.25
   count_weak_at: ORANGE        # at ORANGE and above a WEAK group counts toward exposure as well as a STRESSED one
+  defensive_groups: [staples, healthcare, utilities]   # flat-or-up defensive groups are never trimmed (non-systemic)
+  evening_exit_room_pct: 2.0   # stated rule: implied open leaving <= 2 points before the broker stop (about one
+                               # median daily range of a large-cap ETF) raises EXIT review that evening, YELLOW and up
   recovered_sessions: 2
   reclaim_symbol: QQQ
+  # OPERATOR-OWNED theme mapping (§17): symbol -> extra groups at full weight, for a stock held as a theme bet that
+  # its own sector does not show. Empty by default; never inferred by code. Shape: {SYMBOL: [ai_basket]}
+  theme_overrides: {}
+  # Materiality floor (operator 2026-10-31, via coordinator: fractional dividend residuals got "trim review, no broker
+  # stop"). Below any of these a holding is a RESIDUAL: no stance, no playbook, no stop flag — one count line only.
+  materiality:
+    min_shares: 1.0
+    min_market_value: 1000.0
+    min_book_weight: 0.001   # 0.1% of the book
+  # OPERATOR-OWNED theme mapping (§17): symbol -> extra groups at full weight, for a stock the operator holds as a
+  # theme bet that its own sector does not show (empty by default; never inferred by code). Example shape only:
+  # theme_overrides: {XYZ: [ai_basket]}
+  theme_overrides: {}
   reenter_require_all: [group_recovered, index_reclaimed_50d, vix_below_20d]
   reenter_or_any: [engine_green]
 
@@ -489,3 +508,19 @@ positions:
       - "Hedge eligibility follows the inverse-hedge stoplight (PSQ for Nasdaq / tech)."
       - "Reducing exposure before the close is the only way to be out before an after-hours shock."
     wash_sale_note: "Taxable account: a re-buy within 30 days of a loss sale is a wash sale (the loss is deferred into the new lot). Not applicable in IRAs."
+
+reentry_watch:
+  # scripts/lib/market_risk/reentry_watch.py — names exited in the last lookback_days get a CIO RE_ENTER_IF stance with
+  # per-symbol conditions (operator 2026-10-31: "let me know when is the right time to hop back in"). STATED RULES:
+  # trend repair = close above its 20-day average and the pre-exit close; earnings pending inside 5 sessions blocks
+  # evaluation, 3 sessions after a print to settle; market <= YELLOW; options hedging not STRESS. Base rate on the
+  # symbol's own history: breakdown = 8% under the 20-session high and below the 20-day average.
+  lookback_days: 30
+  group_sessions: 2
+  earnings_ahead_sessions: 5
+  settle_sessions: 3
+  breakdown_drawdown_pct: -8.0
+  horizon_sessions: 20
+  wash_sale_days: 30
+  card_priority: P2
+  card_dedupe_minutes: 1440

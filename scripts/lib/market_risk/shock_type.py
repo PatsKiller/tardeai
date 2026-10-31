@@ -32,6 +32,12 @@ def _obs_state(observations: list[dict[str, Any]], category: str) -> str:
     return "UNKNOWN"
 
 
+def _obs(observations: list[dict[str, Any]], category: str, states: tuple[str, ...]) -> bool | None:
+    """None when the category was not measured (UNKNOWN or absent) — never a vote against the class."""
+    st = _obs_state(observations, category)
+    return None if st == "UNKNOWN" else st in states
+
+
 def _group(block: dict[str, Any], key: str) -> dict[str, Any]:
     for r in block.get("groups") or []:
         if r.get("key") == key:
@@ -87,7 +93,7 @@ def classify(
             ind(None if deff.get("r5") is None else float(deff["r5"]) < 0, f"defensives {deff.get('r5')}% 5d"),
             ind(z_ge(corr_z, float(sys_c.get("min_corr_z", 1.0))), f"cross-sector correlation z {corr_z}"),
             ind(
-                _obs_state(observations, "volatility") == "STRESS",
+                _obs(observations, "volatility", ("STRESS",)),
                 f"volatility {_obs_state(observations, 'volatility')}",
             ),
         ],
@@ -125,7 +131,7 @@ def classify(
                 f"dollar 5d z {dollar.get('z5')}",
             ),
             ind(
-                _obs_state(observations, "macro_credit") in ("WARN", "STRESS"),
+                _obs(observations, "macro_credit", ("WARN", "STRESS")),
                 f"macro {_obs_state(observations, 'macro_credit')}",
             ),
         ],
@@ -135,12 +141,16 @@ def classify(
                 f"high yield vs Treasuries 5d spread z {(factors.get('credit') or {}).get('z')}",
             ),
             ind(
-                _obs_state(observations, "macro_credit") == "STRESS",
+                _obs(observations, "macro_credit", ("STRESS",)),
                 f"macro/credit {_obs_state(observations, 'macro_credit')}",
+            ),
+            ind(
+                None if not _group(block, "financials") else _group(block, "financials").get("state") == "STRESS",
+                f"lenders (financials) {_group(block, 'financials').get('state')}",
             ),
         ],
         "EVENT": [
-            ind(_obs_state(observations, "event") == "STRESS", f"event {_obs_state(observations, 'event')}"),
+            ind(_obs(observations, "event", ("STRESS",)), f"event {_obs_state(observations, 'event')}"),
             ind(
                 0 < len(stressed) <= int(sec_c.get("max_stressed_groups", 5)),
                 f"stress concentrated: {', '.join(stressed) or 'none'}",
@@ -148,9 +158,13 @@ def classify(
         ],
     }
     scores = {}
+    min_known = int(cfg.get("min_known_indicators", 2))
     for k, inds in classes.items():
         known = [i for i in inds if i["known"]]
-        scores[k] = (sum(i["holds"] for i in known) / len(inds)) if known else 0.0
+        # stated rule: score over the indicators that could be MEASURED once at least min_known of them are — an
+        # unmeasured indicator (HY OAS before its series starts, a category with no data) is unknown, not a no-vote
+        denom = len(known) if len(known) >= min_known else len(inds)
+        scores[k] = (sum(i["holds"] for i in known) / denom) if known else 0.0
     prio = list(cfg.get("priority") or ["SYSTEMIC", "CREDIT", "SECTOR", "FACTOR", "RATES", "EVENT"])
     best = sorted(scores, key=lambda k: (-scores[k], prio.index(k) if k in prio else 99))
     top = best[0]

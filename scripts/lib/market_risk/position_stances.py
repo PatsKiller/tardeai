@@ -97,15 +97,28 @@ def stances(
     stop_distance_pct: dict[str, float] | None,
     policy: dict[str, Any],
     as_of: str | None,
+    evening_risk: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """``evening_risk``: per symbol, the playbook's after-hours implied open (``room_to_stop_pct``, ``text``) — when the
+    implied open leaves ``evening_exit_room_pct`` or less before the broker stop at YELLOW or above, the stance is
+    raised to EXIT review that evening (operator: "warn me the night before")."""
     cfg = (policy or {}).get("positions") or {}
     min_exp = float(cfg.get("min_exposure", 0.25))
     key_by_label = {r.get("label"): r.get("key") for r in (sectors_block or {}).get("groups") or []}
+    systemic_now = str((shock or {}).get("class")) == "SYSTEMIC"
     stressed_keys = [key_by_label.get(x) for x in (sectors_block or {}).get("stressed") or []]
     if RANK.get(str(tier), 0) >= RANK.get(str(cfg.get("count_weak_at") or "ORANGE"), 3):
-        # stated rule: at ORANGE and above a WEAK group counts too — the market is already confirming the stress
-        stressed_keys += [key_by_label.get(x) for x in (sectors_block or {}).get("weak") or []]
+        # stated rule: at ORANGE and above a WEAK group counts too — but in a SECTOR / theme shock only the theme
+        # groups (growth_keys: tech, semis, AI basket, communications) do; in a SYSTEMIC shock every weak group does.
+        theme = set(((policy or {}).get("sectors") or {}).get("growth_keys") or [])
+        for x in (sectors_block or {}).get("weak") or []:
+            k = key_by_label.get(x)
+            if k and (systemic_now or k in theme):
+                stressed_keys.append(k)
     stressed_keys = [k for k in stressed_keys if k]
+    defensive_keys = set(cfg.get("defensive_groups") or ["staples", "healthcare", "utilities"])
+    group_r5 = {r.get("key"): r.get("r5") for r in (sectors_block or {}).get("groups") or []}
+    evening = evening_risk or {}
     systemic = str((shock or {}).get("class")) == "SYSTEMIC"
     prior = prior or {}
     req_all = list(cfg.get("reenter_require_all") or ["group_recovered", "index_reclaimed_50d", "vix_below_20d"])
@@ -132,28 +145,66 @@ def stances(
         if shock:
             reasons.append(str(shock.get("headline") or ""))
         flagged = RANK.get(str(tier), 0) >= RANK["YELLOW"] and (systemic or share >= min_exp)
+        # a defensive group that is flat or up in price is never trimmed in a non-systemic shock
+        main = max(groups.items(), key=lambda kv: kv[1])[0] if groups else None
+        defensive_up = (
+            not systemic and main in defensive_keys and group_r5.get(main) is not None and float(group_r5[main]) >= 0
+        )
+        ev = evening.get(sym) or {}
+        room = ev.get("room_to_stop_pct")
+        evening_hit = (
+            RANK.get(str(tier), 0) >= RANK["YELLOW"]
+            and room is not None
+            and float(room) <= float(cfg.get("evening_exit_room_pct", 2.0))
+        )
+        fired = [k for k in or_any if met.get(k)] or (
+            [k for k in req_all if met.get(k)] if all(met.get(k) for k in req_all) else []
+        )
         if not groups:
             st, why = "HOLD", ["look-through unknown: " + (ex.get("note") or "no data")]
+        elif defensive_up:
+            st, why = "HOLD", ["defensive group holding up"]
+        elif evening_hit:
+            st = "EXIT"
+            why = [
+                f"after hours: {ev.get('text') or 'implied open'} — {float(room):.1f}% left before the broker stop",
+                *reasons,
+            ]
+        elif prev_st in ("TRIM", "EXIT", "RE_ENTER_IF") and fired and str(tier) != "RED":
+            # stated rule: the re-entry conditions are themselves the recovery evidence, so they are checked before the
+            # tier flag (an elevated-but-not-RED tier can lag the recovery by months); never re-enter at RED
+            st, why = "RE_ENTER", ["conditions met: " + ", ".join(fired)]
+        elif prev_st == "RE_ENTER" and not (
+            flagged and RANK.get(str(tier), 0) > RANK.get(str(prev.get("reentered_tier") or "NONE"), 0)
+        ):
+            # after a re-entry the position is flagged again only when the tier escalates ABOVE the tier at re-entry
+            st, why = "RE_ENTER", ["back in since " + str(prev.get("since") or "the re-entry")]
+        elif prev_st in ("TRIM", "EXIT", "RE_ENTER_IF"):
+            # once out (trim/exit review), the position stays out until the re-entry conditions fire; a later, milder
+            # tier never erases that — only an escalation (to EXIT) replaces it
+            order = {"WATCH_CLOSELY": 1, "TRIM": 2, "RE_ENTER_IF": 2, "EXIT": 3}
+            new = TIER_STANCE.get(str(tier)) if flagged else None
+            if new and order[new] > order[prev_st]:
+                st, why = new, reasons
+            elif new and new == prev_st:
+                st, why = prev_st, reasons
+            else:
+                st = "RE_ENTER_IF"
+                why = ["waiting: " + ", ".join(r["text"] for r in reentry if r["key"] in req_all and not r.get("met"))]
         elif flagged:
             st, why = TIER_STANCE[str(tier)], reasons
-        elif prev_st in ("TRIM", "EXIT", "RE_ENTER_IF"):
-            # flagged earlier: stays RE_ENTER_IF until the conditions are met
-            fired = [k for k in or_any if met.get(k)] or (
-                [k for k in req_all if met.get(k)] if all(met.get(k) for k in req_all) else []
-            )
-            st = "RE_ENTER" if fired else "RE_ENTER_IF"
-            why = (
-                ["conditions met: " + ", ".join(fired)]
-                if fired
-                else ["waiting: " + ", ".join(r["text"] for r in reentry if r["key"] in req_all and not r.get("met"))]
-            )
         else:
             st = "HOLD"
-            why = [
-                "defensive group holding up"
-                if any(_group_state(sectors_block, g) == "RESILIENT" for g in groups)
-                else "not exposed to the stressed groups"
-            ]
+            holding_up = any(_group_state(sectors_block, g) == "RESILIENT" for g in groups) or (
+                main in defensive_keys and _group_state(sectors_block, main) not in ("STRESS", "WEAK")
+            )
+            label_of = {r.get("key"): r.get("label") for r in (sectors_block or {}).get("groups") or []}
+            if holding_up and main in defensive_keys:
+                why = ["defensive group holding up"]
+            elif holding_up:
+                why = [f"{label_of.get(main) or main} holding up"]
+            else:
+                why = ["not exposed to the stressed groups"]
         rec = {
             "symbol": sym,
             "stance": st,
@@ -165,6 +216,9 @@ def stances(
             if st in ("TRIM", "EXIT", "RE_ENTER_IF", "RE_ENTER")
             else [],
             "flagged_groups": sorted(hit) or prev.get("flagged_groups") or [],
+            "reentered_tier": (str(tier) if prev_st != "RE_ENTER" else prev.get("reentered_tier"))
+            if st == "RE_ENTER"
+            else None,
             "as_of": as_of,
         }
         c.assert_no_behavior_fields(rec)
