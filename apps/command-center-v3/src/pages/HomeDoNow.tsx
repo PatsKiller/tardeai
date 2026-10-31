@@ -33,6 +33,8 @@ import { AiIntelligenceBriefing, ExecutiveBriefCard, HermesGatewayLine } from '.
 import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
 import { readableTime, readableTimesInText } from '../lib/readableTime'
+import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
+import { unwrapMarketRisk } from '../lib/marketRisk'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -124,6 +126,9 @@ export default function HomeDoNow() {
   const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  // Design home/v002: the Market Risk Engine projection (tier, score, contributors, episode). Honest not_evaluated until P2.
+  const { data: mrResp, loading: mrLoading } = useApi<any>('/api/v2/market-risk/latest', 60_000)
+  const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
   const { data: oppTop } = useApi<any>('/api/v3/opportunities?preset=top5', 300_000)
@@ -188,6 +193,8 @@ export default function HomeDoNow() {
   return (
     <div data-testid="home-do-now-page" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1392, margin: '0 auto' }}>
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
+      {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
+      <MarketRiskBanner mr={mr} />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
@@ -196,13 +203,8 @@ export default function HomeDoNow() {
           tip="Today's change across all accounts (/api/v2/overview today_change / today_pct: broker snapshot day change, repriced when missing)." />
         <HeadFact name="YTD" testId="home-ytd" color={signTone(ytdChg)} value={ytdChg != null ? `${money(ytdChg, true)}${ytdPct != null ? ` · ${pct(ytdPct)}` : ''}${ytdPreferDisp ? ' ≈' : ''}` : '—'}
           tip={`Year to date, all accounts (/api/v2/portfolio/performance periods.YTD).${ytdPreferDisp ? ' ≈ = market change excluding transfers (display_change), the same rule as Portfolio → Returns.' : ''}${ytd?.adjustment_note ? ` ${ytd.adjustment_note}` : ''}`} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }}
-          title={`Regime from /api/v2/risk-regime/latest; VIX from /api/v2/trade-ai/summary; sectors from /api/v2/defense/posture.`}>
-          <span style={label}>Market</span>
-          <span data-testid="home-market" style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}>
-            {regimeLabel || 'regime unknown'}{vix != null ? ` · VIX ${vix}` : ''}{lagging.length ? ` · ${lagging.map((r: any) => String(r.sector).toLowerCase()).slice(0, 2).join(', ')} lagging` : ''}
-          </span>
-        </div>
+        {/* Design home/v002 §1: the "Market" fact is renamed MARKET RISK; its regime/VIX/sectors text moved to "Market in one look". */}
+        <MarketRiskFact mr={mr} loading={mrLoading} />
         <span style={{ flex: 1 }} />
         <span data-testid="positions-freshness" title={pos.tip}
           style={{ fontSize: TYPE.sm, fontWeight: 700, borderRadius: RADIUS.sm, padding: '4px 8px', cursor: 'help',
@@ -340,9 +342,12 @@ export default function HomeDoNow() {
 
         <section style={card} data-testid="home-market-card" aria-label="Market in one look">
           <CardHead title="Market in one look" to="/defense" linkText="Defense desk" />
-          <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1] }}
+          {/* Design home/v002 §3: first block = the engine's tier, score and five contributors. */}
+          <MarketRiskCompact mr={mr} />
+          <Link to="/risk?tab=market-risk" data-testid="home-market-risk-link" style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Market risk →</Link>
+          <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}
             title="Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows.">
-            Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.
+            <span data-testid="home-market">Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
             {postureRows.length > 0 && <> Sectors: {leading.length} leading, {lagging.length} lagging{lagging.length ? <> (<b>{lagging.map((r: any) => `${String(r.sector).toLowerCase()}${r.book_pct != null ? `, you hold ${r.book_pct}%` : ''}`).slice(0, 3).join('; ')}</b>)</> : ''}.</>}
             {posture?.hedge_state?.line ? <> Hedge: {posture.hedge_state.line}.</> : null}
             {posture?.inverse_stoplights?.line ? <> {posture.inverse_stoplights.line}.</> : null}

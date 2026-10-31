@@ -4,6 +4,8 @@
  *  judgment: lane, conviction, stance, conflicts, next trigger, next step. This file only shapes it for display,
  *  ties armed alerts to prospects (orphans listed), and holds the tooltip text. No colour literals (design tokens). */
 
+import { fmtAsOf } from './asOfDisplay.ts'
+
 export type CompanyFact = { value: string | null; source?: string | null; observed_at?: string | null; clock_kind?: string; missing_reason?: string | null
   /** company only: common card name; `legal_name` is the registered name (secondary). */
   display_name?: string | null; legal_name?: string | null; display_name_source?: string | null }
@@ -159,6 +161,26 @@ export function stanceLabel(s: string | null | undefined): string {
   return s ? String(s).replace(/_/g, '-') : 'no stance'
 }
 
+/** One plain sentence for a stance, shown beside the terse chip (WS-D). Posture/priority only —
+ *  it never claims a size, order or stop. Returns null for an unknown or absent stance. */
+export function stancePlainText(s: string | null | undefined): string | null {
+  const v = String(s || '').toUpperCase()
+  if (['ADD', 'BUY', 'BUY_SETUP'].includes(v)) return 'posture is to add — priority only'
+  if (['RE_ENTER', 'RE-ENTER'].includes(v)) return 'posture is to re-enter on confirmation — priority only'
+  if (['HOLD'].includes(v)) return 'posture is to hold — priority only'
+  if (['WATCH'].includes(v)) return 'posture is to watch — no action yet'
+  if (['TRIM', 'EXIT', 'AVOID', 'TRIM_REVIEW', 'EXIT_REVIEW', 'SELL'].includes(v)) return 'posture is to reduce or exit — priority only'
+  return null
+}
+
+/** One plain sentence for a conviction score, shown beside the terse number (WS-D). */
+export function convictionPlainText(c: number | null | undefined): string {
+  if (c == null || !Number.isFinite(c)) return 'not scored yet'
+  if (c >= 75) return 'high conviction'
+  if (c >= 55) return 'mid conviction'
+  return 'low conviction'
+}
+
 /** Tone of the one next-step button. */
 export function stepTone(kind: string): 'success' | 'danger' | 'warning' | 'info' | 'neutral' {
   if (kind === 'propose') return 'success'
@@ -280,6 +302,27 @@ export function etStamp(at: string | null | undefined): string | null {
   }).format(t) + ' ET'
 }
 
+/** One consolidated freshness line for a prospect card (WS-A): folds stale / evidence_at / expires_at /
+ *  conviction_as_of / review_state.status / review_state.publication_verified into one display string.
+ *  A null clock renders 'time unknown'; a row with no freshness signal at all reads 'time unknown'.
+ *  Display-only: reads existing payload fields, never writes, re-runs or calls a broker. */
+export function freshnessLine(r: Pick<ProspectRow, 'stale' | 'evidence_at' | 'expires_at' | 'conviction_as_of' | 'review_state'>): string {
+  const rs = r.review_state
+  const hasReview = !!(rs && rs.status && rs.status !== 'none')
+  const hasClock = !!(r.evidence_at || r.expires_at || r.conviction_as_of)
+  if (!hasClock && !hasReview && !r.stale) return 'time unknown'
+  const parts: string[] = []
+  if (r.stale) parts.push('Stale')
+  parts.push(`evidence ${fmtAsOf(r.evidence_at) ?? 'time unknown'}`)
+  parts.push(`expires ${fmtAsOf(r.expires_at) ?? 'time unknown'}`)
+  parts.push(`conviction ${fmtAsOf(r.conviction_as_of) ?? 'time unknown'}`)
+  if (hasReview) {
+    parts.push(`review ${rs!.status}`)
+    if (rs!.publication_verified) parts.push('published')
+  }
+  return parts.join(' · ')
+}
+
 /** The detail "Next" line. A resolve step is not offered when the conflict check itself is only a gap. */
 export function detailNextLine(action: NextAction, section: { headline?: string | null; findings?: unknown[] | null; gap?: { reason?: string } | string | null }): string {
   const findings = section.findings || []
@@ -360,6 +403,11 @@ export const TOOLTIPS = {
     + 'Set alert arms an advisory Watch alert; Protect first opens Open Trades.',
   sameRecord: 'What each surface shows for this security. Interim: only the sources this page reads are joined; the others say "not joined" instead of guessing.',
   classic: 'The previous Watch Intelligence view, kept for one release.',
+  freshness: 'What\'s current now — the record\'s freshness in one line: the stale flag, when evidence was observed, when the review window expires, '
+    + 'when conviction was last scored, and the CIO review state (with publication). A null clock reads "time unknown". Changes when the server recomposes the record; the next update is the producer\'s next run.',
+  workflow: 'The fixed pipeline a security passes through, with a LIVE/PARTIAL/UNWIRED/DARK/UNKNOWN status derived from the fields this record actually carries. '
+    + 'LIVE = a current field proves the stage produced; PARTIAL = stale or incomplete; UNWIRED = the field exists but is empty; DARK = no field on this record; UNKNOWN = not derivable from this record.',
+  review: 'The CIO review request state for this symbol — asked, queued, answered or blocked. Publication means the answer is linked into the canonical CIO memory; a request without it is research that has not been accepted.',
 }
 
 // ── CIO review request (batch 31) ────────────────────────────────────────────
