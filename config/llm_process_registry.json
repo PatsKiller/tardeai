@@ -2356,6 +2356,27 @@
       "registered_at": "2026-10-27T15:00:00Z",
       "notes": "<= $1/day (operator brief). One call ~5k input + <= 700 output tokens (~ $0.03 at Sonnet 5.5 list price); 40/day matches config/incident_runbook_actions.json policy.max_model_calls_per_day.",
       "anthropic_first": true
+    },
+    {
+      "id": "market_risk_alert_curation",
+      "name": "Market risk alert curation (one 'Why' sentence)",
+      "category": "Alerts",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/lib/market_risk/curation.py (DSN-20261031-market-risk-engine §5.10, P3-T3; operator 2026-10-31 'you can have normalization and alerts curated by LLM'): rewrites ONE 'Why:' sentence of a deterministic market-risk card. Every number must already be in the card or assessment, behaviour wording is rejected, and any failure or timeout sends the deterministic card unchanged. Free OAuth lanes only (allow_paid=false). READ_ONLY_ADVISORY; sends nothing itself.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "max_input_tokens": 4000,
+      "max_output_tokens": 200,
+      "daily_soft_cap": 200,
+      "tools_allowed": false,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "registered_by": "market-risk-p3-cio-llm-20261031",
+      "registered_at": "2026-10-31T13:00:00Z",
+      "anthropic_first": false
     }
   ],
   "default_deepseek_policy": "FAST",
