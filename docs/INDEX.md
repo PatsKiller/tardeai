@@ -1055,6 +1055,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
 | `docs/designs/DSN-20261030-disk-recovery.md` | DSN-20261030-disk-recovery.md |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
+| `docs/designs/DSN-20261031-home-advisory-section.md` | Home "Market advisory" section |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
