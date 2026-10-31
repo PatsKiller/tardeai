@@ -183,9 +183,11 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
     intent = alerts.intent_for(doc, prior, policy)
+    built_now: set[str] = set()  # cards rendered from THIS cycle's doc; only these may be curated (review #2406 F1)
     if intent:
         if out["episode_id"]:
             intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # deterministic for this episode
+        built_now.add(intent["dedupe_key"])
         alerts.outbox_put(
             {
                 "key": intent["dedupe_key"],
@@ -236,7 +238,11 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
                 )
             alerts.mark_recorded(key, path=ledger)
             continue
-        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+        own_tier = str((ent.get("intent") or {}).get("tier") or "").upper()
+        if key in built_now and own_tier == str(doc.get("tier") or "").upper():
+            cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+        else:  # a retried or repeat card was built from an earlier doc: never curate it against this one (F1)
+            cur = {"text": ent["text"], "curated": False, "reason": "not curated: card built in an earlier cycle"}
         res = alerts.deliver(
             cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
         )

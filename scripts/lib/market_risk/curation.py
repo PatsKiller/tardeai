@@ -24,9 +24,10 @@ are not subject to the off-peak deferral (that gate covers metered DeepSeek call
 
 from __future__ import annotations
 
-import concurrent.futures
 import json
+import math
 import re
+import threading
 import unicodedata
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -36,6 +37,9 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = PROJECT_ROOT / "config" / "market_risk_curation.yaml"
 SCHEMA = "MarketRiskCurationResult@v1"
+# The only tiers whose "why" may ever be curated. Code, not config: ORANGE, RED, NONE, an empty or unknown tier are
+# refused before the config is read (review #2406 F2).
+CURATABLE = frozenset({"BLUE", "YELLOW", "GREEN"})
 
 
 def load_config(path: Path | str = CONFIG_PATH) -> dict[str, Any]:
@@ -111,9 +115,9 @@ def allowed_figures(assessment: dict[str, Any]) -> str:
     grounding material — "any number anywhere" let a stop under 712.5 through."""
     parts: list[str] = []
     for k in ("score", "market_score"):
-        v = assessment.get(k)
-        if isinstance(v, (int, float)):
-            parts.append(str(round(float(v))))
+        v = _finite(assessment.get(k))
+        if v is not None:
+            parts.append(str(round(v)))
     n, of = _confirming(assessment)
     for v in (n, of):
         if v is not None:
@@ -124,7 +128,7 @@ def allowed_figures(assessment: dict[str, Any]) -> str:
     for c in (assessment.get("contributors") or [])[:5]:
         if not isinstance(c, dict):
             continue
-        if isinstance(c.get("points"), (int, float)):
+        if _finite(c.get("points")) is not None:
             parts.append(str(round(float(c["points"]))))
         for k in ("headline", "detail"):  # assessment shape and projection shape
             if c.get(k):
@@ -225,11 +229,31 @@ def _confirming(assessment: dict[str, Any]) -> tuple[Optional[int], Optional[int
     v = assessment.get("confirming")
     if isinstance(v, dict):
         n, of = v.get("n"), v.get("of")
-        return (int(n) if isinstance(n, (int, float)) else None, int(of) if isinstance(of, (int, float)) else None)
-    if isinstance(v, (int, float)):
+        fn, fo = _finite(n), _finite(of)
+        return (int(fn) if fn is not None else None, int(fo) if fo is not None else None)
+    if _finite(v) is not None:
         obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
         return int(v), (len(obs) or None)
     return None, None
+
+
+def _finite(v: Any) -> Optional[float]:
+    """A finite int/float, never a bool, NaN or inf (review #2406 F6)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+        return None
+    return float(v)
+
+
+def _points(c: dict[str, Any]) -> float:
+    v = _finite(c.get("points"))
+    if v is None and "points" in c:
+        raise ChoiceRejected(f"contributor points are not a finite number: {type(c.get('points')).__name__}")
+    return v if v is not None else 0.0
+
+
+def unmeasured_clause(n: int) -> str:
+    """F8: '1 category is unmeasured', '2 categories are unmeasured'."""
+    return f"{n} category is unmeasured" if n == 1 else f"{n} categories are unmeasured"
 
 
 def slot_values(assessment: dict[str, Any], picks: list[int]) -> dict[str, str]:
@@ -239,19 +263,22 @@ def slot_values(assessment: dict[str, Any], picks: list[int]) -> dict[str, str]:
     for slot, pos in zip(("c1", "c2"), picks):
         c = cons[pos - 1]
         vals[slot] = _display_name(c)
-        if isinstance(c.get("points"), (int, float)):
-            vals[f"{slot}_points"] = str(round(float(c["points"])))
+        if "points" in c:
+            vals[f"{slot}_points"] = str(round(_points(c)))
         detail = str(c.get("headline") or c.get("detail") or "").strip().rstrip(".")
         if detail:
             vals[f"{slot}_detail"] = detail
-    if isinstance(assessment.get("score"), (int, float)):
-        vals["score"] = str(round(float(assessment["score"])))
+    score = _finite(assessment.get("score"))
+    if score is not None:
+        vals["score"] = str(round(score))
     n, of = _confirming(assessment)
     if n is not None and of is not None:
         vals["confirming"], vals["of"] = str(n), str(of)
     obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
     if obs:
-        vals["unmeasured"] = str(sum(1 for o in obs if str(o.get("state") or "").upper() == "UNKNOWN"))
+        vals["unmeasured_clause"] = unmeasured_clause(
+            sum(1 for o in obs if str(o.get("state") or "").upper() == "UNKNOWN")
+        )
     return vals
 
 
@@ -325,26 +352,73 @@ def _phrase_allowed(pid: str, assessment: dict[str, Any], tpl: dict[str, Any]) -
     return None
 
 
-def render_choice(choice: list[dict[str, Any]], assessment: dict[str, Any], cfg: dict[str, Any]) -> str:
-    """The sentence, rendered from the bank and the assessment. A slot with no value rejects the whole choice."""
+_HEADER_CONFIRM = re.compile(r"(\d+) of (\d+) categories confirm")
+
+
+def _top_position(assessment: dict[str, Any]) -> int:
+    """1-based position of the displayed contributor with the most points (first on a tie)."""
+    cons = _contributors(assessment)
+    best = max(range(len(cons)), key=lambda i: (_points(cons[i]), -i))
+    return best + 1
+
+
+def render_choice(
+    choice: list[dict[str, Any]], assessment: dict[str, Any], cfg: dict[str, Any], card_text: str = ""
+) -> str:
+    """The sentence, rendered from the bank and the assessment. A slot with no value rejects the whole choice.
+
+    Review #2406: positions carry meaning, so ``lead`` and ``score`` always put the top-points contributor in {c1}
+    (F3); ``pair`` needs its two contributors to hold at least half the displayed points (F3); ``calm_rest`` needs
+    another phrase, every displayed contributor named, and every other observation CALM (F4); ``confirm`` must match
+    the card header's "n of N" (F5)."""
     tpl = cfg.get("why_template") or {}
     bank = tpl.get("phrase_bank") or {}
-    n_cons = len(_contributors(assessment))
+    cons = _contributors(assessment)
+    n_cons = len(cons)
+    total = sum(max(_points(c), 0.0) for c in cons)
     parts: list[str] = []
+    named: set[int] = set()
     for it in choice:
         why_not = _phrase_allowed(it["id"], assessment, tpl)
         if why_not:
             raise ChoiceRejected(why_not)
         picks = [p for p in it["c"] if p <= n_cons]
+        if it["id"] in ("lead", "score"):
+            top = _top_position(assessment)
+            picks = [top] + [p for p in picks if p != top]
         if len(picks) < 2:  # c2 defaults to the next displayed contributor when one exists
             rest = [i for i in range(1, n_cons + 1) if i not in picks]
             picks = (picks + rest)[:2]
+        if it["id"] == "pair":
+            if len(picks) < 2 or total <= 0:
+                raise ChoiceRejected("phrase 'pair' needs two contributors with points")
+            share = (max(_points(cons[picks[0] - 1]), 0.0) + max(_points(cons[picks[1] - 1]), 0.0)) / total
+            if share < float(tpl.get("pair_min_share", 0.5)):
+                raise ChoiceRejected(f"phrase 'pair' needs at least half the points, these two hold {share:.0%}")
+        if it["id"] == "confirm":
+            m = _HEADER_CONFIRM.search(fold_ascii(card_text or ""))
+            n, of = _confirming(assessment)
+            if not m or (n, of) != (int(m.group(1)), int(m.group(2))):
+                raise ChoiceRejected("phrase 'confirm' must match the card header's count")
         vals = slot_values(assessment, picks)
         phrase = str(bank[it["id"]])
-        missing = [m for m in _SLOT.findall(phrase) if m not in vals]
+        slots = _SLOT.findall(phrase)
+        missing = [m for m in slots if m not in vals]
         if missing:
             raise ChoiceRejected(f"phrase {it['id']!r} needs {', '.join(missing)}, which the card does not show")
+        named.update(pos for slot, pos in zip(("c1", "c2"), picks) if any(x.startswith(slot) for x in slots))
         parts.append(_SLOT.sub(lambda m: vals[m.group(1)], phrase))
+    if any(it["id"] == "calm_rest" for it in choice):
+        if len(choice) < 2:
+            raise ChoiceRejected("phrase 'calm_rest' cannot stand alone")
+        if named != set(range(1, n_cons + 1)):
+            raise ChoiceRejected("phrase 'calm_rest' needs every displayed contributor named first")
+        shown = {str(cons[i - 1].get("category") or "") for i in named}
+        others = [
+            o for o in assessment.get("observations") or [] if isinstance(o, dict) and o.get("category") not in shown
+        ]
+        if not others or any(str(o.get("state") or "").upper() != "CALM" for o in others):
+            raise ChoiceRejected("phrase 'calm_rest' needs every other observation to read CALM")
     return " ".join(parts)
 
 
@@ -363,22 +437,20 @@ def labelled_spans(assessment: dict[str, Any]) -> list[str]:
     """Every figure the "why" may show, WITH its own label (review #2383 round 3: grounding checked values, not
     meaning, so "Index fell 50 percent" reused the score). A number is allowed only inside one of these spans."""
     spans: list[str] = []
-    if isinstance(assessment.get("score"), (int, float)):
+    if _finite(assessment.get("score")) is not None:
         spans.append(f"score reads {round(float(assessment['score']))}")
     n, of = _confirming(assessment)
     if n is not None and of is not None:
         spans.append(f"{n} of {of} categories")
     for c in _contributors(assessment):
-        if isinstance(c.get("points"), (int, float)):
+        if _finite(c.get("points")) is not None:
             spans.append(f"{round(float(c['points']))} points")
         d = str(c.get("headline") or c.get("detail") or "").strip().rstrip(".")
         if d:
             spans.append(fold_ascii(d))
     obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
     if obs:
-        spans.append(
-            f"{sum(1 for o in obs if str(o.get('state') or '').upper() == 'UNKNOWN')} categories are unmeasured"
-        )
+        spans.append(unmeasured_clause(sum(1 for o in obs if str(o.get("state") or "").upper() == "UNKNOWN")))
     return sorted(spans, key=len, reverse=True)
 
 
@@ -483,10 +555,12 @@ def curate(
     cfg: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Return ``{text, curated, lane, reason}``. ``text`` is always sendable; on any doubt it is ``card_text``."""
+    tier = fold_ascii(str(assessment.get("tier") or "")).strip().upper()
+    if tier not in CURATABLE:  # code floor, checked before any config (review #2406 F2)
+        return _result(card_text, curated=False, lane=None, reason=f"tier {tier or 'missing'} is never curated")
     cfg = cfg if cfg is not None else load_config()
     if not cfg.get("enabled", False):
         return _result(card_text, curated=False, lane=None, reason="curation disabled")
-    tier = str(assessment.get("tier") or "").upper()
     if tier in {str(t).upper() for t in (cfg.get("skip_tiers") or [])}:
         return _result(card_text, curated=False, lane=None, reason=f"tier {tier} is never curated")
     prefix = str(cfg.get("why_prefix") or "Why: ")
@@ -497,17 +571,24 @@ def curate(
     call = call_model or default_call_model(cfg)
     prompt = build_prompt(card_text, assessment, current, cfg)
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    fut = pool.submit(call, prompt, timeout_s)
-    try:
-        answer = fut.result(timeout=timeout_s)
-    except concurrent.futures.TimeoutError:
-        pool.shutdown(wait=False, cancel_futures=True)
+    box: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            box["answer"] = call(prompt, timeout_s)
+        except BaseException as exc:  # noqa: BLE001 — reported below as a lane failure
+            box["error"] = exc
+
+    # A daemon thread: a hung lane can never hold the evaluator process open (review #2406 F7).
+    worker = threading.Thread(target=_run, name="market-risk-curation", daemon=True)
+    worker.start()
+    worker.join(timeout_s)
+    if worker.is_alive():
         return _result(card_text, curated=False, lane=None, reason=f"timeout after {timeout_s:g}s")
-    except Exception as exc:  # noqa: BLE001 — every lane failure is a reason, and the deterministic card is sent
-        pool.shutdown(wait=False, cancel_futures=True)
+    if "error" in box:
+        exc = box["error"]
         return _result(card_text, curated=False, lane=None, reason=f"lane failure: {type(exc).__name__}: {exc}"[:240])
-    pool.shutdown(wait=False)
+    answer = box.get("answer")
 
     lane = str(cfg.get("lane") or "grok")
     if isinstance(answer, tuple):  # (text, lane that answered) from the fallback chain
@@ -516,7 +597,7 @@ def curate(
         return _result(card_text, curated=False, lane=lane, reason="empty answer")
     try:
         choice = parse_choice(str(answer), assessment, cfg)
-        sentence = render_choice(choice, assessment, cfg)
+        sentence = render_choice(choice, assessment, cfg, card_text)
     except ChoiceRejected as exc:
         return _result(card_text, curated=False, lane=lane, reason=f"not a phrase choice: {exc}"[:240])
     bad = validate_sentence(sentence, card_text, assessment, cfg)

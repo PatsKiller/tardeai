@@ -59,9 +59,10 @@ why_vocabulary: [a, an, the, and, or, but, with, from, on, in, by, as, at, to, o
 # and displayed figures. Free text, unknown ids, extra keys or out-of-range contributors reject the curation and the
 # deterministic card is sent. Every rendered sentence still passes the character, behaviour, grounding and
 # vocabulary checks below. Slots: {c1} {c2} contributor names; {c1_points} {c2_points} their points; {c1_detail} the
-# displayed headline; {score}; {confirming} {of}; {unmeasured}.
+# displayed headline; {score}; {confirming} {of}; {unmeasured_clause} ("1 category is" / "N categories are unmeasured").
 why_template:
   max_phrases: 3
+  pair_min_share: 0.5                    # 'pair' needs its two contributors to hold at least this share of the points
   phrase_bank:
     lead: "{c1} carries the largest share of the score at {c1_points} points."
     pair: "{c1} and {c2} carry most of the score."
@@ -70,7 +71,7 @@ why_template:
     score: "The risk score reads {score}, led by {c1}."
     confirm: "{confirming} of {of} categories confirm."
     calm_rest: "The other measured categories read calm."
-    unmeasured: "{unmeasured} categories are unmeasured."
+    unmeasured: "{unmeasured_clause}."
   requires:                              # phrase preconditions (review #2383 round 3)
     calm_rest: {tiers: [BLUE, GREEN, NONE], others_calm: true}
 # Sentence-initial verbs of command; a rendered sentence opening with one is refused (review #2383 round 3).

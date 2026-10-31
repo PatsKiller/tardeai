@@ -38,7 +38,8 @@ def _mr(tier="ORANGE", state="evaluated", score=63, as_of=None):
 
 
 ASSESS = {
-    "tier": "RED",
+    # YELLOW: RED is refused by the code floor before any config (review #2406 F2), so the prose checks run on YELLOW
+    "tier": "YELLOW",
     "score": 83,
     "confirming": {"n": 5, "of": 9},
     # the contributor's displayed figures are the ONLY grounding material besides the score (review of #2362, B3)
@@ -92,7 +93,7 @@ def test_behaviour_wording_is_rejected(answer):
 
 
 def test_timeout_sends_deterministic_card_without_waiting():
-    cfg = _cfg(timeout_s={"RED": 0.2, "default": 0.2})
+    cfg = _cfg(timeout_s={"YELLOW": 0.2, "default": 0.2})
 
     def slow(p, t):
         time.sleep(2)
@@ -116,7 +117,11 @@ def test_skip_tiers_and_disabled_never_call_the_model():
     def never(p, t):
         raise AssertionError("model must not be called")
 
-    assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(skip_tiers=["RED"]))["reason"].startswith("tier RED")
+    assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(skip_tiers=["YELLOW"]))["reason"].startswith(
+        "tier YELLOW"
+    )
+    red = dict(ASSESS, tier="RED")  # the code floor refuses RED even with skip_tiers empty (review #2406 F2)
+    assert cur.curate(CARD, red, call_model=never, cfg=_cfg(skip_tiers=[]))["reason"] == "tier RED is never curated"
     assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(enabled=False))["reason"] == "curation disabled"
 
 

@@ -232,12 +232,14 @@ def test_a_phrase_whose_slot_the_card_does_not_show_is_refused():
 
 
 def test_rendered_sentence_is_exact_and_uses_the_chosen_contributors():
+    # review #2406 F3: "lead" always names the top-points contributor, whatever position the model asks for (this
+    # test used to pin "Technical carries the largest share ... 24 points", which was false); F8: "1 category is".
     answer = '{"phrases": [{"id": "lead", "c": [2]}, {"id": "confirm"}, {"id": "unmeasured"}]}'
     r = curation.curate(CARD, DOC, call_model=lambda p, to: answer, cfg=_forced_on())
-    assert r["curated"] and r["choice"][0] == {"id": "lead", "c": [2]}
+    assert r["curated"], r["reason"]
     assert r["text"].splitlines()[1] == (
-        "Why: Technical carries the largest share of the score at 24 points. 2 of 9 categories confirm. "
-        "1 categories are unmeasured."
+        "Why: Options flow carries the largest share of the score at 32 points. 2 of 9 categories confirm. "
+        "1 category is unmeasured."
     )
 
 
@@ -321,4 +323,168 @@ def test_calm_rest_needs_low_tier_and_every_other_category_calm():
     r = curation.curate(CARD, warm, call_model=lambda p, to: choice, cfg=cfg)
     assert not r["curated"] and "CALM" in r["reason"]
     r = curation.curate(CARD, dict(calm_doc, tier="RED"), call_model=lambda p, to: choice, cfg=cfg)
-    assert not r["curated"] and "not allowed at tier RED" in r["reason"]
+    assert not r["curated"] and r["reason"] == "tier RED is never curated"  # code floor (F2)
+
+
+# ── review #2406, F1-F8 ────────────────────────────────────────────────────────────────────────────────────────
+
+
+def _syn(tier: str, score: int, cons: list[dict]) -> dict:
+    return {
+        "schema": "MarketRiskAssessment@v1",
+        "tier": tier,
+        "market_tier": tier,
+        "score": score,
+        "market_score": score,
+        "as_of": "2026-10-31T14:30:00Z",
+        "confirming": len(cons),
+        "contributors": cons,
+        "observations": [
+            {
+                "category": c["category"],
+                "state": "STRESS",
+                "score": 80.0,
+                "observed_at": "2026-10-31T14:00:00Z",
+                "headline": c["headline"],
+            }
+            for c in cons
+        ],
+    }
+
+
+def test_f1_a_retried_card_is_never_curated_against_a_later_doc(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    import market_risk_evaluate as mre
+    from scripts.lib.market_risk import alerts
+    from scripts.lib.market_risk import policy as mr_policy
+
+    pol = mr_policy.load_policy()
+    red = _syn("RED", 88, [{"category": "volatility", "points": 44, "headline": "Volatility: VIX 41.0 (2.9x median)"}])
+    yel = _syn("YELLOW", 55, [{"category": "options_flow", "points": 32, "headline": "Options flow: QQQ P/C OI 3.97"}])
+    curated: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        mre,
+        "_curate",
+        lambda text, d, call_model, live: (
+            curated.append((d["tier"], text.splitlines()[0])) or {"text": text, "curated": False, "reason": "spy"}
+        ),
+    )
+    sent = {"ok": False}
+    monkeypatch.setattr(alerts, "deliver", lambda m, intent, policy, **k: {"sent": sent["ok"], "intent": intent})
+    store, ledger = tmp_path / "ep.json", tmp_path / "keys.json"
+    t1 = datetime(2026, 10, 31, 14, 31, tzinfo=timezone.utc)
+    mre._cycle(t1, red, None, None, pol, True, store, ledger, None)  # RED card fails to send, stays queued
+    curated.clear()
+    sent["ok"] = True
+    out = mre._cycle(t1 + timedelta(minutes=15), yel, None, red, pol, True, store, ledger, None)
+    reasons = {s["intent"]["tier"]: s["curation_reason"] for s in out["sends"]}
+    assert reasons["RED"] == "not curated: card built in an earlier cycle"
+    assert [t for t, _ in curated] == ["YELLOW"] and "RED" not in curated[0][1]
+
+
+@pytest.mark.parametrize("tier", ["RED", "red", " RED", "Red​", "", "NONE", "ORANGE", "orange ", "PURPLE", None])
+def test_f2_code_floor_refuses_before_config(tier):
+    cfg = dict(_forced_on(), skip_tiers=[], enabled=True)
+    r = curation.curate(CARD, dict(DOC, tier=tier), call_model=lambda p, to: pytest.fail("model called"), cfg=cfg)
+    assert r["curated"] is False and r["reason"].endswith("is never curated")
+
+
+def test_f2_curatable_is_exactly_blue_yellow_green():
+    assert curation.CURATABLE == frozenset({"BLUE", "YELLOW", "GREEN"})
+
+
+def test_f3_lead_and_score_always_name_the_top_contributor():
+    cfg = _forced_on()
+    for pid in ("lead", "score"):
+        r = curation.curate(
+            CARD, DOC, call_model=lambda p, to, i=pid: f'{{"phrases": [{{"id": "{i}", "c": [2]}}]}}', cfg=cfg
+        )
+        assert (
+            r["curated"]
+            and "Options flow" in r["text"].splitlines()[1]
+            and "Technical" not in r["text"].splitlines()[1]
+        )
+
+
+def test_f3_pair_needs_half_the_points():
+    cfg = _forced_on()
+    doc = dict(
+        DOC,
+        contributors=DOC["contributors"]
+        + [
+            {"category": "breadth", "points": 30, "headline": "Breadth: 3 of 11 sectors up"},
+            {"category": "event", "points": 30, "headline": "Event: 4 names report"},
+        ],
+    )
+    # options_flow 32 + technical 24 = 56 of 116 (48%): refused; options_flow 32 + breadth 30 + ... positions 1, 3
+    r = curation.curate(CARD, doc, call_model=lambda p, to: '{"phrases": [{"id": "pair", "c": [1, 2]}]}', cfg=cfg)
+    assert not r["curated"] and "at least half" in r["reason"]
+    ok = dict(doc, contributors=doc["contributors"][:2])
+    r = curation.curate(CARD, ok, call_model=lambda p, to: '{"phrases": [{"id": "pair"}]}', cfg=cfg)
+    assert r["curated"], r["reason"]
+
+
+def test_f4_calm_rest_rules():
+    cfg = _forced_on()
+    base = dict(
+        DOC,
+        tier="BLUE",
+        observations=[
+            {"category": "options_flow", "state": "WARN"},
+            {"category": "technical", "state": "WARN"},
+            {"category": "breadth", "state": "CALM"},
+        ],
+    )
+    alone = '{"phrases": [{"id": "calm_rest"}]}'
+    assert "cannot stand alone" in curation.curate(CARD, base, call_model=lambda p, to: alone, cfg=cfg)["reason"]
+    one_named = '{"phrases": [{"id": "lead"}, {"id": "calm_rest"}]}'
+    r = curation.curate(CARD, base, call_model=lambda p, to: one_named, cfg=cfg)
+    assert not r["curated"] and "every displayed contributor named" in r["reason"]
+    both = '{"phrases": [{"id": "pair"}, {"id": "calm_rest"}]}'
+    assert curation.curate(CARD, base, call_model=lambda p, to: both, cfg=cfg)["curated"]
+    warm = dict(base, observations=base["observations"][:2] + [{"category": "breadth", "state": "WARN"}])
+    assert "CALM" in curation.curate(CARD, warm, call_model=lambda p, to: both, cfg=cfg)["reason"]
+
+
+def test_f5_confirm_must_match_the_header():
+    cfg = _forced_on()
+    ans = '{"phrases": [{"id": "lead"}, {"id": "confirm"}]}'
+    assert curation.curate(CARD, DOC, call_model=lambda p, to: ans, cfg=cfg)["curated"]
+    off = dict(DOC, confirming={"n": 2, "of": 7})
+    r = curation.curate(CARD, off, call_model=lambda p, to: ans, cfg=cfg)
+    assert not r["curated"] and "header" in r["reason"]
+    no_header = CARD.replace(" · 2 of 9 categories confirm", "")
+    r = curation.curate(no_header, DOC, call_model=lambda p, to: ans, cfg=cfg)
+    assert not r["curated"] and "header" in r["reason"]
+
+
+@pytest.mark.parametrize("pts", [float("nan"), float("inf"), "32", True, None])
+def test_f6_points_must_be_finite_numbers(pts):
+    doc = dict(DOC, contributors=[dict(DOC["contributors"][0], points=pts), DOC["contributors"][1]])
+    r = curation.curate(CARD, doc, call_model=lambda p, to: '{"phrases": [{"id": "lead"}]}', cfg=_forced_on())
+    assert not r["curated"] and "finite number" in r["reason"]
+
+
+def test_f7_a_hung_model_runs_on_a_daemon_thread():
+    import threading
+    import time as _t
+
+    gate = threading.Event()
+
+    def hang(p, to):
+        gate.wait(5)
+        return '{"phrases": [{"id": "lead"}]}'
+
+    cfg = dict(_forced_on(), timeout_s={"YELLOW": 0.2, "default": 0.2})
+    t0 = _t.monotonic()
+    r = curation.curate(CARD, DOC, call_model=hang, cfg=cfg)
+    assert r["reason"].startswith("timeout") and _t.monotonic() - t0 < 1.5
+    workers = [t for t in threading.enumerate() if t.name == "market-risk-curation"]
+    assert workers and all(t.daemon for t in workers)
+    gate.set()
+
+
+def test_f8_singular_unmeasured():
+    assert curation.unmeasured_clause(1) == "1 category is unmeasured"
+    assert curation.unmeasured_clause(3) == "3 categories are unmeasured"
