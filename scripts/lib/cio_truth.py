@@ -312,7 +312,7 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
 
     ``fills`` (from ``fill_ledger``) settles a FILLED observation: when the ledger holds its sale and the position
     was re-bought, or holdings were refreshed after the sale, the fill is history and never "awaiting sync"
-    (2026-10-31: V's 09-09 stop fill kept reading "awaiting holdings sync" after the 10-27 re-buy). Without
+    (2026-10-31: a stopped-out and re-bought name kept reading "awaiting holdings sync"). Without
     ``fills`` a filled state says what it is waiting for and since when instead of asserting a stale state.
     """
     now = now or datetime.now(timezone.utc)
