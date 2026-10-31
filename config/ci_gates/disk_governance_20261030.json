@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_governance_20261030",
+  "files": [
+    "tests/test_agent_scratch_cleanup_20261030.py"
+  ],
+  "comment": [
+    "2026-10-30 disk-governance process (docs/designs/DSN-20261030-disk-governance-process.md): agent self-cleanup leg. scripts/agent_scratch_cleanup.py removes an agent's OWN scratch (~/.cache/agent-tmp/<task>, its own named worktree scratch) at claim-close/takeover/session-end, dry-run by default, only after allowed-root / never-touch / live-process / live-claim checks. Report-only until AGENTS.md 27.0.0 (rule-6 exception (c)) is ACTIVE."
+  ]
+}
