@@ -164,3 +164,22 @@ def test_sources_are_advisory_only() -> None:
     source = (Path(__file__).resolve().parents[1] / "scripts/lib/cio_cash_capital_v1.py").read_text(encoding="utf-8").lower()
     for forbidden in ("place_order", "cancel_order", "modify_stop", "broker_client", "two_factor"):
         assert forbidden not in source
+
+
+@pytest.mark.parametrize("label,expected", [("high_volatility", "HOLD_CASH"), ("risk_off", "HOLD_CASH"), ("risk_on_trend", "DEPLOY_STAGED")])
+def test_cash_gate_recognises_the_classifiers_high_volatility_label(label: str, expected: str) -> None:
+    """2026-10-30 RCA (P0-T3): the classifier emits `high_volatility` for a volatility shock and
+    stop_policy.yaml treats it as risk-off, but this gate only knew `risk_off`, so excess cash was
+    still DEPLOY_STAGED into the shock. Both labels must hold cash; risk-on still deploys."""
+    market = _market(True)
+    market["fields"]["regime"] = {"value": label}
+    situation = build_cash_deployment_situation(
+        policy=_policy(True),
+        portfolio_state=_portfolio(verified=True),
+        market_context=market,
+        seasonality={"version": "season_v1", "truth_quality": "VERIFIED"},
+        portfolio_thesis=_thesis(True),
+        evaluated_at=NOW,
+    )
+    assert situation["deviation_state"] == "ABOVE_RANGE"
+    assert situation["conclusion"] == expected

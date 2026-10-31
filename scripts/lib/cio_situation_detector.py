@@ -1191,7 +1191,7 @@ def eval_s7(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
 
 def eval_s8(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str, Any]]:
     thr = cfg.get("thresholds") or {}
-    labels = {str(x).lower() for x in (thr.get("regime_risk_off_labels") or ["risk_off", "defensive"])}
+    labels = {str(x).lower() for x in (thr.get("regime_risk_off_labels") or ["risk_off", "defensive", "high_volatility"])}
     regime = evidence.get("risk_regime") or evidence.get("regime") or {}
     risk = evidence.get("risk_snapshot") or evidence.get("risk") or {}
     defensive = evidence.get("defensive") or evidence.get("defense") or {}

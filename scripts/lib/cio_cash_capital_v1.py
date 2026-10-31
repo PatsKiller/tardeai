@@ -23,8 +23,11 @@ DEFAULT_STORE = "data/cio/cio_capital_plans.jsonl"
 # Engine attention threshold — NOT operator policy. Used only to decide whether
 # missing cash policy is worth a bounded POLICY_GAP operator question.
 ATTENTION_CASH_PCT = 20.0
+# The classifier (scripts/market_regime_classifier.py) emits `risk_off` and `high_volatility`; stop_policy.yaml
+# treats both as risk-off. `high_volatility` was missing here until the 2026-10-30 selloff RCA
+# (DSN-20261031-market-risk-engine-P0-T3), so the cash gate ignored the one label a volatility shock produces.
 RISK_OFF_REGIMES = frozenset({
-    "risk_off", "defensive", "bear", "crisis", "high_vol", "risk_off_defensive",
+    "risk_off", "defensive", "bear", "crisis", "high_vol", "high_volatility", "risk_off_defensive",
     "risk-off", "defensive_regime",
 })
 POLICY_CASH_FIELDS = ("cash_target_range_pct", "minimum_liquidity_reserve_usd")

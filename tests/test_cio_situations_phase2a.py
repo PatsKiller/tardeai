@@ -282,3 +282,15 @@ def test_run_detector_safe_no_raise():
     from scripts.lib.cio_situation_detector import run_detector_safe
     r = run_detector_safe(evidence={"broken": object()})  # type: ignore
     assert isinstance(r, dict)
+
+
+def test_s8_fires_on_the_classifiers_high_volatility_label(cfg):
+    """2026-10-30 RCA (P0-T3): S8 DEFENSIVE_REGIME only knew RISK_OFF/DEFENSIVE; the classifier's
+    volatility-shock label is `high_volatility` (stop_policy.yaml risk_off set). Config and the code
+    default both recognise it; risk_on_trend still does not fire."""
+    from scripts.lib.cio_situation_detector import eval_s8
+    r = eval_s8({"risk_regime": {"label": "high_volatility"}}, cfg)
+    assert r is not None and "regime_high_volatility" in r["fire_reasons"]
+    r_default = eval_s8({"risk_regime": {"label": "HIGH_VOLATILITY"}}, {"thresholds": {}})
+    assert r_default is not None
+    assert eval_s8({"risk_regime": {"label": "risk_on_trend"}}, cfg) is None
