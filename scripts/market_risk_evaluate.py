@@ -183,22 +183,25 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
     intent = alerts.intent_for(doc, prior, policy)
-    built_now: set[str] = set()  # cards rendered from THIS cycle's doc; only these may be curated (review #2406 F1)
+    built_now: dict[str, str] = {}  # key -> text of cards rendered and queued from THIS cycle's doc; only these may be curated (review #2406 F1)
     if intent:
         if out["episode_id"]:
             intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # deterministic for this episode
-        built_now.add(intent["dedupe_key"])
-        alerts.outbox_put(
+        card_text = alerts.render(doc)
+        if alerts.outbox_put(
             {
                 "key": intent["dedupe_key"],
-                "text": alerts.render(doc),
+                "text": card_text,
                 "intent": intent,
                 "kind": "initial",
                 "episode_id": out["episode_id"],
             },
             now=now,
             path=ledger,
-        )
+        ):
+            # only a card this cycle actually queued may be curated: when the key was already pending, outbox_put
+            # keeps the OLD text, which must never be curated against this doc (review #2406 F1-r2)
+            built_now[intent["dedupe_key"]] = card_text
     for rep in escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already queued this cycle
@@ -239,7 +242,11 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             alerts.mark_recorded(key, path=ledger)
             continue
         own_tier = str((ent.get("intent") or {}).get("tier") or "").upper()
-        if key in built_now and own_tier == str(doc.get("tier") or "").upper():
+        if (
+            key in built_now
+            and ent.get("text") == built_now[key]
+            and own_tier == str(doc.get("tier") or "").upper()
+        ):
             cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
         else:  # a retried or repeat card was built from an earlier doc: never curate it against this one (F1)
             cur = {"text": ent["text"], "curated": False, "reason": "not curated: card built in an earlier cycle"}

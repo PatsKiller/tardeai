@@ -488,3 +488,41 @@ def test_f7_a_hung_model_runs_on_a_daemon_thread():
 def test_f8_singular_unmeasured():
     assert curation.unmeasured_clause(1) == "1 category is unmeasured"
     assert curation.unmeasured_clause(3) == "3 categories are unmeasured"
+
+
+def test_f1r2_a_key_collision_never_curates_the_old_card_against_new_data(tmp_path, monkeypatch):
+    """Review #2406 round 2, F1-r2 scenario C: BLUE→YELLOW (send fails), back to BLUE (still failing), YELLOW again
+    the same day. The second YELLOW recomputes the same dedupe key, outbox_put keeps the OLD text, and that old card
+    must go out uncurated rather than with a Why line built from the new assessment."""
+    from datetime import datetime, timedelta, timezone
+
+    import market_risk_evaluate as mre
+    from scripts.lib.market_risk import alerts
+    from scripts.lib.market_risk import policy as mr_policy
+
+    pol = mr_policy.load_policy()
+    blue = _syn("BLUE", 20, [{"category": "seasonal", "points": 20, "headline": "Seasonal: month-end"}])
+    y_old = _syn("YELLOW", 55, [{"category": "volatility", "points": 44, "headline": "Volatility: VIX 31.0"}])
+    y_new = _syn("YELLOW", 57, [{"category": "options_flow", "points": 29, "headline": "Options flow: QQQ P/C OI 2.9"}])
+    curated: list[str] = []
+    monkeypatch.setattr(
+        mre,
+        "_curate",
+        lambda text, d, call_model, live: (
+            curated.append(text) or {"text": text, "curated": True, "reason": "spy"}
+        ),
+    )
+    sent = {"ok": False}
+    monkeypatch.setattr(alerts, "deliver", lambda m, intent, policy, **k: {"sent": sent["ok"], "intent": intent})
+    store, ledger = tmp_path / "ep.json", tmp_path / "keys.json"
+    t1 = datetime(2026, 10, 30, 14, 31, tzinfo=timezone.utc)
+    mre._cycle(t1, y_old, None, blue, pol, True, store, ledger, None)
+    mre._cycle(t1 + timedelta(minutes=15), blue, None, y_old, pol, True, store, ledger, None)
+    curated.clear()
+    sent["ok"] = True
+    out = mre._cycle(t1 + timedelta(minutes=30), y_new, None, blue, pol, True, store, ledger, None)
+    old_sends = [s for s in out["sends"] if "+44" in s["text"] or "VIX 31.0" in s["text"]]
+    assert old_sends, "scenario did not reproduce the key collision"
+    for s in old_sends:
+        assert s["curated"] is False and s["curation_reason"] == "not curated: card built in an earlier cycle"
+    assert not any("VIX 31.0" in t or "+44" in t for t in curated)
