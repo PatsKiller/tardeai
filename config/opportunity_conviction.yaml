@@ -154,3 +154,23 @@ cio_review:
 # — that changes what Home's ADD list ranks (AGENTS.md §17), so it stays false until the operator turns it on.
 position_conflict:
   suppress_add_hold: false
+
+# Market-risk gate on entry ideas (DSN-20261031-market-risk-engine P3-T3; 2026-10-30 selloff RCA finding 5: entry
+# recommendations went out into a known mega-cap earnings cluster). Operator approved design §11 item 3 in session
+# 2026-10-31: "I approve and agree to everything one through eight." Read by scripts/cio_opportunity_curator.py through
+# scripts/lib/market_risk/cio_context.apply_entry_gate. YELLOW demotes entry ideas (sorted after ungated ones, tagged);
+# ORANGE and RED hold them (stance ADD -> HOLD, RE_ENTER -> WATCH, with stance_suppressed recording why). Conviction,
+# factors and rank are never changed. Only an evaluated engine tier counts; a stale one counts until max_stale_hours.
+market_risk_gate:
+  enabled: true
+  demote_tiers: [YELLOW]
+  hold_tiers: [ORANGE, RED]
+  entry_types: [new_position, re_entry, add_on]
+  hold_stances: {ADD: HOLD, RE_ENTER: WATCH}
+  max_stale_hours: 4
+  temperament:                 # posture word the CIO temperament carries at each evaluated tier
+    GREEN: CONSTRUCTIVE
+    BLUE: SELECTIVE
+    YELLOW: SELECTIVE — ENTRIES DEMOTED
+    ORANGE: DEFENSIVE — ENTRIES HELD
+    RED: DEFENSIVE — ENTRIES HELD, REVIEW STOPS
