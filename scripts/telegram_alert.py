@@ -426,6 +426,36 @@ def _intent_accepted() -> bool:
     return bool(_LAST_INTENT_ROUTE.get("accepted"))
 
 
+# Router levels that suppress by CLASSIFICATION (digest / dashboard / log), as opposed to rate limits, the daily
+# budget or health-repeat throttling, which stay in force for every message.
+_CLASSIFICATION_SUPPRESS_LEVELS = frozenset({"P1_DIGEST", "P2_DASHBOARD_ONLY", "P3_LOG_ONLY"})
+
+
+def _comms_critical_override(message: str, level: str) -> bool:
+    """True when the legacy text router would digest a message the comms classifier rates CRITICAL.
+
+    2026-10-31 audit: in 48 h the legacy router (cron senders run with the comms gateway OFF) suppressed 13 messages
+    the comms classifier itself labelled priority=critical, including the 10-30 11:07 ET "[holdings-change] …
+    protective-stop band recheck recommended" alerts from the position sync. Two classifiers disagreed and the
+    quieter one won. A cron-context critical is now never suppressed by classification; rate limits and the daily
+    budget still apply."""
+    if level not in _CLASSIFICATION_SUPPRESS_LEVELS:
+        return False
+    try:
+        try:
+            from scripts.lib.comms.classify import classify as _comms_classify
+        except ImportError:
+            from lib.comms.classify import classify as _comms_classify  # type: ignore[no-redef]
+        prio = str(_comms_classify(body=message).get("priority") or "").lower()
+    except Exception as exc:  # classification trouble must be visible but must not block the legacy path
+        print(f"[telegram] comms classify unavailable ({type(exc).__name__}); router decision stands")
+        return False
+    if prio != "critical":
+        return False
+    print(f"[telegram] Router level {level} overridden: comms rates this CRITICAL; delivering: {message[:60]}...")
+    return True
+
+
 def _legacy_send(
     message: str,
     bypass_router: bool,
@@ -460,7 +490,7 @@ def _legacy_send(
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
-            if not should_send_telegram(message):
+            if not should_send_telegram(message) and not _comms_critical_override(message, classify_alert(message)):
                 level = classify_alert(message)
                 print(f"[telegram] Suppressed ({level}): {message[:60]}...")
                 try:
