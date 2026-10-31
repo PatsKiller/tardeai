@@ -17,10 +17,14 @@ What it never touches:
     (CodeQL). A cancelled main run counts as red (main-red-alert opens a ci-main-red issue), and
     the deploy poller's promote needs every main workflow green;
   * any run whose head SHA is main's current head;
-  * Mergify merge-queue branches (mergify/...).
+  * Mergify merge-queue branches (mergify/...);
+  * runs whose head repository is gone (deleted fork): the branch cannot be re-checked.
 
-Default is a dry run that prints what it would cancel. --apply re-reads each PR right before
-cancelling and skips the run if the PR head now equals the run's SHA. Operator-run tool: it is not
+Default is a dry run that prints what it would cancel. --apply re-checks every run right before
+cancelling it, by branch (`pulls?state=open&head=<owner>:<branch>`) and, when known, by PR number:
+it skips the run if an open PR's head is the run's SHA, and skips a "closed" run if ANY open PR
+exists for the branch (the open-PR list spans pages, so a PR closing mid-listing can shift another
+PR off the list; a PR may also be reopened). A re-check that errors skips that run and continues. Operator-run tool: it is not
 scheduled (AGENTS.md §17, §24.5 — no scheduled remote write). It uses the caller's `gh` login.
 
 Usage:
@@ -47,6 +51,7 @@ KEEP_NOT_PR = "keep:not-a-pull_request-run"
 KEEP_MAIN_HEAD = "keep:main-head-sha"
 KEEP_MERGE_QUEUE = "keep:merge-queue-branch"
 KEEP_CURRENT = "keep:current-pr-head"
+KEEP_NO_REPO = "keep:head-repository-gone"
 CANCEL_CLOSED = "cancel:pr-closed-or-merged"
 CANCEL_SUPERSEDED = "cancel:superseded-by-newer-pr-head"
 
@@ -97,6 +102,9 @@ def classify(runs: Iterable[dict], open_prs: Iterable[dict], main_head_sha: str)
             action, reason = "keep", KEEP_MAIN_HEAD
         elif branch.startswith(PROTECTED_BRANCH_PREFIXES):
             action, reason = "keep", KEEP_MERGE_QUEUE
+        elif not _head_repo(run):
+            # A deleted fork leaves no head repository: the branch cannot be looked up, so never guess.
+            action, reason = "keep", KEEP_NO_REPO
         elif pr is None:
             action, reason = "cancel", CANCEL_CLOSED
         elif pr_sha != sha:
@@ -171,26 +179,75 @@ def apply_cancels(
     decisions: list[Decision],
     *,
     get_pr: Callable[[int], dict] | None = None,
+    find_open_prs: Callable[[str, str], list] | None = None,
     cancel: Callable[[int], None] | None = None,
 ) -> dict:
-    """Cancel each `cancel` decision after re-checking the PR right before the call."""
+    """Cancel each `cancel` decision only after a fresh re-check of the PR(s) for its branch.
+
+    `find_open_prs(owner, branch)` returns the open PRs whose head is <owner>:<branch>. Any error
+    in the re-check or the cancel is recorded for that run, which is skipped; the loop continues.
+    """
     get_pr = get_pr or (lambda n: _gh_json([f"repos/{repo}/pulls/{n}"]))  # type: ignore[assignment]
+    find_open_prs = find_open_prs or (  # type: ignore[assignment]
+        lambda owner, branch: (
+            _gh_json(
+                [
+                    "-X",
+                    "GET",
+                    f"repos/{repo}/pulls",
+                    "-f",
+                    "state=open",
+                    "-f",
+                    f"head={owner}:{branch}",
+                    "-f",
+                    "per_page=100",
+                ]
+            )
+            or []
+        )
+    )
     cancel = cancel or (lambda rid: _gh_json(["-X", "POST", f"repos/{repo}/actions/runs/{rid}/cancel"]))  # type: ignore[assignment]
-    done, skipped, failed = [], [], []
+    done: list[int] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
     for d in decisions:
         if d.action != "cancel":
             continue
-        if d.pr_number is not None:
-            fresh = get_pr(d.pr_number) or {}
-            if fresh.get("state") == "open" and ((fresh.get("head") or {}).get("sha")) == d.head_sha:
-                skipped.append(d.run_id)
-                continue
+        try:
+            why = _recheck_reason_to_keep(d, get_pr, find_open_prs)
+        except Exception as exc:  # re-check failed: never cancel blind
+            failed.append({"run_id": d.run_id, "stage": "recheck", "error": str(exc)[:200]})
+            continue
+        if why:
+            skipped.append({"run_id": d.run_id, "why": why})
+            continue
         try:
             cancel(d.run_id)
             done.append(d.run_id)
         except Exception as exc:  # already finished, permission, etc. — report, never retry here
-            failed.append({"run_id": d.run_id, "error": str(exc)[:200]})
+            failed.append({"run_id": d.run_id, "stage": "cancel", "error": str(exc)[:200]})
     return {"cancel_requested": done, "skipped_recheck": skipped, "failed": failed}
+
+
+def _recheck_reason_to_keep(
+    d: Decision,
+    get_pr: Callable[[int], dict],
+    find_open_prs: Callable[[str, str], list],
+) -> str | None:
+    """Return why the run must be kept now, or None if the cancel still stands."""
+    owner = d.head_repo.split("/", 1)[0] if d.head_repo else ""
+    if not owner or not d.head_branch:
+        return "no head repository/branch to re-check"
+    open_prs = find_open_prs(owner, d.head_branch) or []
+    if any(((pr.get("head") or {}).get("sha")) == d.head_sha for pr in open_prs):
+        return "an open PR's head is this run's SHA"
+    if d.reason == CANCEL_CLOSED and open_prs:
+        return "the branch has an open PR (reopened, or missed by the paged listing)"
+    if d.pr_number is not None:
+        fresh = get_pr(d.pr_number) or {}
+        if fresh.get("state") == "open" and ((fresh.get("head") or {}).get("sha")) == d.head_sha:
+            return "the PR head is this run's SHA"
+    return None
 
 
 def _table(decisions: list[Decision]) -> str:
@@ -223,7 +280,7 @@ def main(argv: list[str] | None = None, *, fetch: Callable[[str], tuple] | None 
         print(json.dumps(summary, indent=2))
     if args.apply:
         result = apply_cancels(args.repo, decisions)
-        print(json.dumps({"apply": {k: (len(v) if k != "failed" else v) for k, v in result.items()}}, indent=2))
+        print(json.dumps({"apply": result}, indent=2))
     return 0
 
 

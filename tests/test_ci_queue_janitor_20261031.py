@@ -57,13 +57,16 @@ def _by_id(decisions):
 # ── .mergify.yml ───────────────────────────────────────────────────────────────────────────────
 
 
-def test_mergify_updates_only_approved_prs():
+def test_mergify_updates_or_rebases_only_approved_prs():
     cfg = yaml.safe_load((ROOT / ".mergify.yml").read_text(encoding="utf-8"))
-    update_rules = [r for r in cfg.get("pull_request_rules", []) if "update" in (r.get("actions") or {})]
-    assert update_rules, "the approved-PR update rule must stay"
-    for rule in update_rules:
+    rules = cfg.get("pull_request_rules", [])
+    assert any("update" in (r.get("actions") or {}) for r in rules), "the approved-PR update rule must stay"
+    for rule in rules:
+        actions = set(rule.get("actions") or {}) & {"update", "rebase"}
+        if not actions:
+            continue
         conds = [c for c in rule.get("conditions", []) if isinstance(c, str)]
-        assert "label=operator-merge" in conds, f"update without label=operator-merge: {rule.get('name')}"
+        assert "label=operator-merge" in conds, f"{sorted(actions)} without label=operator-merge: {rule.get('name')}"
         assert "-draft" in conds
 
 
@@ -115,12 +118,23 @@ def test_fork_branch_with_same_name_does_not_match():
     assert d[30].action == "cancel" and d[30].reason == J.CANCEL_CLOSED
 
 
+def test_deleted_fork_run_is_kept_not_closed():
+    run = _run(31, "g" * 40, "wt/fork-branch")
+    run["head_repository"] = None
+    d = _by_id(J.classify([run], [], MAIN))
+    assert (d[31].action, d[31].reason) == ("keep", J.KEEP_NO_REPO)
+
+
 def test_completed_runs_are_ignored():
     d = J.classify([_run(40, "z" * 40, "wt/gone", status="completed")], [], MAIN)
     assert d == []
 
 
 # ── apply / dry run ────────────────────────────────────────────────────────────────────────────
+
+
+def _no_open(owner, branch):
+    return []
 
 
 def test_apply_rechecks_pr_and_skips_a_run_that_became_current():
@@ -132,10 +146,94 @@ def test_apply_rechecks_pr_and_skips_a_run_that_became_current():
         "x/y",
         decisions,
         get_pr=lambda n: {"state": "open", "head": {"sha": "s" * 40}},  # PR head moved back to the run's SHA
+        find_open_prs=_no_open,
         cancel=cancelled.append,
     )
-    assert res["skipped_recheck"] == [50]
+    assert [x["run_id"] for x in res["skipped_recheck"]] == [50]
     assert cancelled == [51] == res["cancel_requested"]
+
+
+def test_closed_run_is_rechecked_by_branch_and_kept_when_pr_is_open():
+    """Reviewer's failing input: run on wt/live, empty open-PR list, lookup says open at that SHA."""
+    decisions = J.classify([_run(70, "l" * 40, "wt/live")], [], MAIN)
+    assert decisions[0].reason == J.CANCEL_CLOSED and decisions[0].pr_number is None
+    lookups, cancelled = [], []
+
+    def find(owner, branch):
+        lookups.append((owner, branch))
+        return [_pr(300, "wt/live", "l" * 40)]
+
+    res = J.apply_cancels("x/y", decisions, get_pr=lambda n: {}, find_open_prs=find, cancel=cancelled.append)
+    assert lookups == [("patskiller", "wt/live")]
+    assert cancelled == [] and res["cancel_requested"] == []
+    assert [x["run_id"] for x in res["skipped_recheck"]] == [70]
+
+
+def test_closed_run_kept_when_branch_has_any_open_pr_even_at_another_sha():
+    decisions = J.classify([_run(71, "o" * 40, "wt/reopened")], [], MAIN)
+    cancelled = []
+    res = J.apply_cancels(
+        "x/y",
+        decisions,
+        get_pr=lambda n: {},
+        find_open_prs=lambda o, b: [_pr(301, "wt/reopened", "p" * 40)],
+        cancel=cancelled.append,
+    )
+    assert cancelled == [] and [x["run_id"] for x in res["skipped_recheck"]] == [71]
+
+
+def test_pr_shifted_across_page_boundary_is_not_cancelled():
+    """119 open PRs span two pages. If PR #1 closes between the page reads, PR #101 shifts onto
+    page 1 after page 1 was read, so the listing misses it and its current-head run looks closed."""
+    page1 = [_pr(i, f"wt/p{i}", f"{i:040d}") for i in range(1, 101)]  # read before PR #1 closed
+    page2 = [_pr(i, f"wt/p{i}", f"{i:040d}") for i in range(102, 120)]  # read after: #101 moved to page 1
+    live = {pr["head"]["ref"]: pr for pr in page1[1:] + [_pr(101, "wt/p101", f"{101:040d}")] + page2}
+    runs = [_run(101, f"{101:040d}", "wt/p101"), _run(1, f"{1:040d}", "wt/p1")]
+    decisions = _by_id(J.classify(runs, page1 + page2, MAIN))
+    assert decisions[101].reason == J.CANCEL_CLOSED  # the listing really did lose it
+    cancelled = []
+    res = J.apply_cancels(
+        "x/y",
+        list(decisions.values()),
+        get_pr=lambda n: {},
+        find_open_prs=lambda o, b: [live[b]] if b in live else [],
+        cancel=cancelled.append,
+    )
+    assert 101 not in cancelled
+    assert [x["run_id"] for x in res["skipped_recheck"]] == [101]
+    # PR #1 is genuinely closed, but its run was its current head in the stale listing → kept by classify.
+    assert decisions[1].action == "keep"
+
+
+def test_recheck_error_skips_that_run_and_continues():
+    runs = [_run(80, "a" * 40, "wt/boom"), _run(81, "b" * 40, "wt/fine")]
+    decisions = J.classify(runs, [], MAIN)
+
+    def find(owner, branch):
+        if branch == "wt/boom":
+            raise RuntimeError("HTTP 502")
+        return []
+
+    cancelled = []
+    res = J.apply_cancels("x/y", decisions, get_pr=lambda n: {}, find_open_prs=find, cancel=cancelled.append)
+    assert cancelled == [81] == res["cancel_requested"]
+    assert res["failed"] == [{"run_id": 80, "stage": "recheck", "error": "HTTP 502"}]
+
+
+def test_get_pr_error_skips_that_run_and_continues():
+    runs = [_run(90, "a" * 40, "wt/a"), _run(91, "c" * 40, "wt/c")]
+    prs = [_pr(400, "wt/a", "z" * 40), _pr(401, "wt/c", "y" * 40)]
+    decisions = J.classify(runs, prs, MAIN)
+
+    def get_pr(n):
+        if n == 400:
+            raise RuntimeError("timeout")
+        return {"state": "open", "head": {"sha": "y" * 40}}
+
+    cancelled = []
+    res = J.apply_cancels("x/y", decisions, get_pr=get_pr, find_open_prs=_no_open, cancel=cancelled.append)
+    assert cancelled == [91]
+    assert [f["run_id"] for f in res["failed"]] == [90]
 
 
 def test_default_is_dry_run_and_cancels_nothing(capsys, monkeypatch):
@@ -147,3 +245,19 @@ def test_default_is_dry_run_and_cancels_nothing(capsys, monkeypatch):
     assert out["summary"]["mode"] == "dry-run"
     assert out["summary"]["would_cancel"] == 1
     assert called == []
+
+
+def test_superseded_run_kept_when_a_new_pr_on_the_branch_is_at_its_sha():
+    """PR #500 was closed and #501 opened on the same branch at the run's SHA: get_pr(#500) says
+    closed, so only the by-branch lookup proves the run is current."""
+    decisions = J.classify([_run(95, "r" * 40, "wt/again")], [_pr(500, "wt/again", "x" * 40)], MAIN)
+    assert decisions[0].reason == J.CANCEL_SUPERSEDED
+    cancelled = []
+    res = J.apply_cancels(
+        "x/y",
+        decisions,
+        get_pr=lambda n: {"state": "closed", "head": {"sha": "x" * 40}},
+        find_open_prs=lambda o, b: [_pr(501, "wt/again", "r" * 40)],
+        cancel=cancelled.append,
+    )
+    assert cancelled == [] and [x["run_id"] for x in res["skipped_recheck"]] == [95]
