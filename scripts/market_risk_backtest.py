@@ -33,6 +33,9 @@ for p in (ROOT, ROOT / "scripts"):
 from scripts.lib.market_risk import contract as c  # noqa: E402
 from scripts.lib.market_risk.fixture_reader import ET, FIXTURE_ROOT, FixtureReader, close_instant  # noqa: E402
 
+HOLDOUT_START = "2026-01-01"  # out-of-sample: thresholds are calibrated on 2016-2025 only (market_risk_calibrate.py)
+OPEN_EVAL = time(9, 31)  # one evaluation just after each open: the overnight gap is known from 09:30 (design §5.14)
+
 SCENARIOS_PATH = FIXTURE_ROOT / "scenarios.json"
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN < NONE < BLUE < YELLOW < ORANGE < RED
 ENGINE_CORE = ("scoring",)
@@ -145,6 +148,7 @@ def run_scenario(
     portfolio: c.PortfolioContext | None = None,
     analogs: bool = True,
     drop: tuple[str, ...] = (),
+    open_evaluations: bool = True,
 ) -> dict[str, Any]:
     engine = engine or load_engine()
     if engine.pending():
@@ -154,7 +158,10 @@ def run_scenario(
         overlay = FIXTURE_ROOT / scenario["overlay"] if scenario.get("overlay") else None
         reader = FixtureReader(FIXTURE_ROOT, overlay=overlay)
     start, end = date.fromisoformat(scenario["start"]), date.fromisoformat(scenario["end"])
-    times = [(close_instant(d), "close") for d in reader.sessions(start=start, end=end)]
+    sessions = reader.sessions(start=start, end=end)
+    times = [(close_instant(d), "close") for d in sessions]
+    if open_evaluations:
+        times += [(datetime.combine(d, OPEN_EVAL, tzinfo=ET).astimezone(timezone.utc), "regular") for d in sessions]
     times += [(t, "afterhours" if t.astimezone(ET).time() >= time(16) else "premarket") for t in (extra_times or [])]
     times.sort(key=lambda x: x[0])
     prior = None
@@ -287,8 +294,15 @@ def write_report(results: list[dict], reader: FixtureReader, path: Path) -> None
         "Status:    GENERATED — do not edit by hand; re-run the harness",
         "```",
         "",
-        "| Scenario | Window | Max tier | First ORANGE+ | First RED | Orange sessions | Red sessions |",
-        "|---|---|---|---|---|---|---|",
+        "Each session is evaluated at 09:31 ET (after the open) and at the 16:00 ET close. Session counts are distinct",
+        "dates on which the tier was reached. Lead = sessions from the first evaluation at that tier to the SPY",
+        "max-drawdown trough inside the window (positive = early); '—' = not reached or no >=5% drawdown.",
+        "",
+        "Sample: thresholds come from scripts/market_risk_calibrate.py over 2016-2025 (IN); 2026 is held out (OUT).",
+        "",
+        "| Scenario | Sample | Window | Max tier | First ORANGE+ | First RED | First GREEN | SPY trough | Lead ORANGE | "
+        "Lead RED | Orange sessions | Red sessions | Green sessions |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     all_tl = []
     for r in results:
@@ -296,10 +310,21 @@ def write_report(results: list[dict], reader: FixtureReader, path: Path) -> None
         all_tl += tl
         mx = max((t["tier"] for t in tl), key=lambda x: SEVERITY[x], default="NONE")
         fo, fr = first_at_least(tl, "ORANGE"), first_at_least(tl, "RED")
+        fg = next((t for t in tl if t["tier"] == "GREEN"), None)
+        eps = drawdown_episodes(reader, "SPY", date.fromisoformat(r["start"]), date.fromisoformat(r["end"]), -5.0)
+        trough = min(eps, key=lambda e: e["drawdown_pct"])["trough"] if eps else None
+        lo = lead_sessions(tl, "ORANGE", trough) if trough else None
+        lr = lead_sessions(tl, "RED", trough) if trough else None
+
+        def days_at(tier: str) -> int:
+            return len({t["date"] for t in tl if t["tier"] == tier})
+
         lines.append(
-            f"| {r['scenario']} | {r['start']}..{r['end']} | {mx} | {fo['date'] if fo else '—'} | "
-            f"{fr['date'] if fr else '—'} | {sum(t['tier'] == 'ORANGE' for t in tl)} | "
-            f"{sum(t['tier'] == 'RED' for t in tl)} |"
+            f"| {r['scenario']} | {'OUT' if r['start'] >= HOLDOUT_START else 'IN'} | {r['start']}..{r['end']} | {mx} | "
+            f"{fo['date'] if fo else '—'} | "
+            f"{fr['date'] if fr else '—'} | {fg['date'] if fg else '—'} | {trough or '—'} | "
+            f"{lo if lo is not None else '—'} | {lr if lr is not None else '—'} | "
+            f"{days_at('ORANGE')} | {days_at('RED')} | {days_at('GREEN')} |"
         )
     lines += [
         "",

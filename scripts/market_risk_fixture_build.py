@@ -31,6 +31,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "tests" / "fixtures" / "market_risk_scenarios"
 
 YAHOO_SYMBOLS = "SPY QQQ IWM RSP SMH SOXX XLK TLT HYG LQD UUP USO GLD ^VIX ^VVIX ^VIX3M ^VIX9D".split()
+# Breadth proxy universe (DSN-20261031 §5.5; categories/breadth.py): the sector SPDRs plus DIA. Market-wide NYSE
+# advance/decline and new-high/new-low series have no free public API, so breadth history is built from these.
+BREADTH_SYMBOLS = "XLB XLE XLF XLI XLP XLU XLV XLY XLC XLRE DIA".split()
+YAHOO_SYMBOLS += BREADTH_SYMBOLS
 FRED_SERIES = ("BAMLH0A0HYM2", "DGS10", "T10Y2Y", "DCOILWTICO", "DTWEXBGS", "VIXCLS")
 START = date(2016, 1, 1)  # one year of warm-up before the earliest scenario (2017 calm control)
 UA = "Mozilla/5.0 (compatible; tradeai-fixture-build/1.0)"
@@ -117,12 +121,51 @@ def _write_gz(path: Path, header: list[str], rows: list[tuple]) -> None:
         gz.write(buf.getvalue().encode("utf-8"))
 
 
+def merge_symbols(symbols: list[str], end: date, out: Path, *, apply: bool) -> int:
+    """Fetch ``symbols`` and add them to an existing fixture without refetching (or shifting) the other symbols."""
+    print(f"plan: merge {len(symbols)} Yahoo symbols {START}..{end} into {out / 'bars.csv.gz'}")
+    if not apply:
+        print("DRY RUN — nothing fetched or written (pass --apply)")
+        return 0
+    with gzip.open(out / "bars.csv.gz", "rt", encoding="utf-8") as fh:
+        rows = [tuple(r) for r in csv.reader(fh)][1:]
+    keep = [r for r in rows if r[1] not in set(symbols)]
+    sources = json.loads((out / "SOURCES.json").read_text(encoding="utf-8"))
+    added: list[tuple] = []
+    for s in symbols:
+        try:
+            got = fetch_yahoo(s, START, end)
+            added += got
+            sources["yahoo"][s] = {
+                "rows": len(got),
+                "first": got[0][0] if got else None,
+                "last": got[-1][0] if got else None,
+            }
+            print(f"yahoo {s}: {len(got)} rows")
+        except Exception as exc:  # recorded, never silent
+            sources["refused"].append({"source": "yahoo", "id": s, "error": str(exc)[:200]})
+            print(f"yahoo {s}: REFUSED {exc}", file=sys.stderr)
+        time.sleep(0.4)
+    _write_gz(out / "bars.csv.gz", ["date", "symbol", "open", "high", "low", "close", "volume"], keep + added)
+    sources["merged_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    (out / "SOURCES.json").write_text(json.dumps(sources, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"merged {len(added)} rows; total {len(keep) + len(added)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--end", default=date.today().isoformat())
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument(
+        "--merge-symbols",
+        default="",
+        help="Space-separated Yahoo symbols to fetch and MERGE into the existing bars.csv.gz (other rows untouched)",
+    )
     a = ap.parse_args(argv)
+    if a.merge_symbols:
+        return merge_symbols(a.merge_symbols.split(), date.fromisoformat(a.end), Path(a.out), apply=a.apply)
     end = date.fromisoformat(a.end)
     out = Path(a.out)
     print(f"plan: {len(YAHOO_SYMBOLS)} Yahoo symbols + {len(FRED_SERIES)} FRED series, {START}..{end} -> {out}")

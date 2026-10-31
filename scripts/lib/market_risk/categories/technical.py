@@ -136,7 +136,44 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
 
     fixed = [(k, Evidence(e.label, round(e.value[1], 2), e.as_of, e.source, e.detail)) for k, e in fired.values()]
     fixed += _ai_basket(ctx, cfg)
-    return md.observation(CATEGORY, cfg, fixed, context, newest, headline_prefix="Technical")
+    return md.observation(
+        CATEGORY, cfg, fixed, context, newest, headline_prefix="Technical", improving=_recovery(usable, cfg)
+    )
+
+
+def _recovery(usable: dict, cfg: dict) -> list[Evidence]:
+    """Design §5.2 Green input: the index reclaimed its 50-day average within ``reclaim_sessions`` after a correction of
+    at least ``min_correction_pct`` from its ``high_sessions`` high inside ``correction_window`` sessions."""
+    imp = cfg.get("improving") or {}
+    sym = imp.get("symbol", "SPY")
+    series = usable.get(sym) or []
+    closes = [c for _, c in series]
+    n50, rec, win, hi_n = 50, int(imp["reclaim_sessions"]), int(imp["correction_window"]), int(imp["high_sessions"])
+    if len(closes) < max(n50 + rec, hi_n) + 1:
+        return []
+
+    def above(i: int) -> bool:  # i: index from the end (0 = last)
+        sub = closes[: len(closes) - i]
+        return sub[-1] > sum(sub[-n50:]) / n50
+
+    if not above(0) or all(above(i) for i in range(1, rec + 1)):
+        return []
+    worst = 0.0
+    for i in range(win):
+        sub = closes[: len(closes) - i]
+        worst = min(worst, md.pct(sub[-1], max(sub[-hi_n:])))
+    if worst > -float(imp["min_correction_pct"]):
+        return []
+    asof = md.iso(series[-1][0])
+    return [
+        Evidence(
+            "index reclaimed its 50-day after a correction",
+            round(worst, 1),
+            asof,
+            SOURCE,
+            f"{sym} back above its 50-day after a {worst:.0f}% correction",
+        )
+    ]
 
 
 def _ai_basket(ctx: EvalContext, cfg: dict) -> list[tuple[str, Evidence]]:

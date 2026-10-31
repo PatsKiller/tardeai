@@ -38,7 +38,7 @@ technical:
   losing_streak_sessions: 5      # SOX lost 8 straight sessions into 10-16
   retest_window_sessions: 5
   retest_reference_sessions: 20
-  retest_tolerance_pct: 0.25     # QQQ 725.59 on 10-28 = the 10-21 high
+  retest_tolerance_pct: 0.34     # half the median |QQQ daily move| 2016-2025 (scripts/market_risk_calibrate.py)
   retest_fail_pct: 1.5           # then closed 2.7% lower on 10-29
   semis_mtd_pct: -10.0           # SOX -15% month to date
   points:
@@ -51,6 +51,15 @@ technical:
     semis_mtd: 15
     ai_basket_warn: 10           # ai_concentration.technical_signal WARN (participation < warn or RS <= rs_warn_pct)
     ai_basket_stress: 20         # ... STRESS (participation < 40% or RS <= -5 pts over 20 sessions, plan §5.7)
+  # IMPROVING (design §5.2 Green input, gap-close 2026-10-31): only when the category is otherwise CALM. The index
+  # reclaimed its 50-day within reclaim_sessions after a correction of at least min_correction_pct from its
+  # high_sessions high, inside correction_window sessions.
+  improving:
+    symbol: SPY
+    reclaim_sessions: 10
+    correction_window: 60
+    high_sessions: 126
+    min_correction_pct: 8.0
 
 volatility:
   vix_symbol: "^VIX"
@@ -63,9 +72,9 @@ volatility:
   stress_score: 60
   vix_warn: 20.0
   vix_stress: 25.0
-  vix_5d_change_pct: 20.0
-  divergence_index_drop_pct: -1.5   # 10-29: QQQ -2.7% while VIX fell to 16.59
-  divergence_vix_max_change_pct: 0.0
+  vix_5d_change_pct: 30.9          # p95 of VIX 5-day change 2016-2025 (market_risk_calibrate.py)
+  divergence_index_drop_pct: -2.3   # p5 of QQQ daily move 2016-2025 (market_risk_calibrate.py)
+  divergence_vix_max_change_pct: 7.1  # VIX same-day change in its weakest quartile on those days (not <= 0.0)
   vvix_warn: 110.0
   skew_warn: 150.0
   realized_window: 10
@@ -80,6 +89,11 @@ volatility:
     vvix: 10
     skew: 10
     realized_over_implied: 10
+  # IMPROVING (design §5.2 "falling vol"): otherwise CALM, VIX down at least vix_change_pct over change_sessions, below
+  # its 20-day mean and below vix_warn.
+  improving:
+    change_sessions: 10
+    vix_change_pct: -26.7         # p5 of VIX 10-session change 2016-2025
 
 options_flow_category:
   # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
@@ -93,14 +107,14 @@ macro_credit:
   stale_after_hours: 120            # FRED publishes with a one-to-two-day lag
   warn_score: 30
   stress_score: 60
-  hy_oas_5d_bp: 15                  # 3.18 -> 3.40 over 10-15..10-22 = +22bp
-  hy_oas_20d_bp: 30
+  hy_oas_5d_bp: 25                  # p95 of 5-obs change, 2023-11..2025 (FRED history starts 2023-11)
+  hy_oas_20d_bp: 51                 # p95 of 20-obs change, 2023-11..2025
   hy_oas_z: 2.0
   ust10_level: 5.0                  # 5.19% on 10-14
-  ust10_20d_bp: 30
+  ust10_20d_bp: 44                  # p95 of 20-obs change 2016-2025
   curve_20d_bp: 25                  # fast move either way
-  wti_20d_pct: 15.0                 # 96 -> 110 over 10-14..10-19
-  dxy_20d_pct: 3.0
+  wti_20d_pct: 15.9                 # p95 of 20-obs change 2016-2025
+  dxy_20d_pct: 2.4                  # p95 of 20-obs change 2016-2025
   points:
     hy_oas_5d: 20
     hy_oas_20d: 15
@@ -110,6 +124,12 @@ macro_credit:
     curve_move: 10
     wti: 10
     dxy: 10
+  # IMPROVING (design §5.2 "improving credit"): otherwise CALM, HY OAS down at least hy_oas_20d_bp in 20 observations;
+  # before FRED's spread history (2023-10) HYG up hyg_20d_pct in 20 sessions while above its 50-day.
+  improving:
+    hy_oas_20d_bp: 49             # p5 (tightening) of 20-obs change, 2023-11..2025
+    proxy_symbol: HYG
+    hyg_20d_pct: 3.1              # p95 of HYG 20-session return 2016-2025
 
 correlations:
   window: 20
@@ -203,6 +223,34 @@ breadth:
   warn_score: 35
   stress_score: 60
   stale_after_hours: 30
+  # Sector-ETF breadth proxy (scripts/lib/market_risk/breadth_proxy.py) until market_breadth_daily exists. No free API
+  # carries NYSE advance/decline or new highs/lows, so participation is measured across the eleven sector SPDRs, which
+  # together span the S&P 500. The category takes the stronger of this and the sector-state score, never the sum.
+  proxy:
+    enabled: true
+    universe: [XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLRE, XLU, XLV, XLY]
+    min_members: 8
+    min_history_sessions: 60
+    history_sessions: 300
+    high_low_sessions: 252        # 52-week window for the new-low / new-high proxy
+    near_low_pct: 2.0             # within this % of the 52-week low counts as "at a low"
+    weak_above_50: 0.30           # share above the 50-day at or below this is named in the headline
+    many_at_low: 0.30
+    mcclellan_full: 100           # ratio-adjusted McClellan at -100 earns the full McClellan points
+    rsp_spy_weak_pct: -1.5        # RSP vs SPY over 20 sessions at or below this
+    thrust_sessions: 10
+    stale_after_hours: 30
+    points:
+      below_20dma_full: 20        # x share of sectors below their 20-day
+      below_50dma_full: 25        # x share below their 50-day
+      at_52w_low_full: 35         # x share within near_low_pct of a 52-week low
+      mcclellan_negative_full: 20
+      rsp_spy_weak: 10
+    improving:
+      # Breadth thrust (design §5.2 Green: "breadth expansion, participation"): washed-out to broad inside thrust_sessions.
+      thrust_to: 0.70             # share above the 20-day now at or above this
+      thrust_rise: 0.50           # ... having risen by at least this much in thrust_sessions
+      mcclellan_swing: 50         # or the McClellan went from <= -this to >= +this in thrust_sessions
 
 seasonal:
   # categories/seasonal.py: a low-weight prior from scripts/lib/cio_seasonality_engine.py. It can never by itself
@@ -233,8 +281,8 @@ weights:
   extended_hours: 1.3
 
 tiers:
-  # A tier holds when score >= min_score, OR when at least min_warn categories are WARN/STRESS and (if listed) one
-  # of require_stress_any is at STRESS. The highest tier that holds wins. Plan §5.2.
+  # A tier holds when one of require_stress_any (if listed) is at STRESS AND (score >= min_score OR at least min_warn
+  # categories are WARN/STRESS). require_stress_any binds the score path too (review of #2362, B2). Plan §5.2.
   blue:   {min_score: 25, min_warn: 1}
   yellow: {min_score: 40, min_warn: 3}
   orange: {min_score: 60, min_warn: 4, require_stress_any: [options_flow, cross_asset, event]}
@@ -242,7 +290,7 @@ tiers:
   # Shock: an extended-hours STRESS at or above shock_min_score while the market is already ORANGE-or-worse makes
   # RED on that one evaluation (the 10-29 18:15 ET case: NQ futures -1.5%..-2% after AMZN/INTC prints).
   red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
-  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 1, max_warn: 0}
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0}
   # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
   uplift:
     max_tiers: 1
@@ -322,17 +370,27 @@ extended_hours:
   heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
   lookback_hours: 18
   stale_after_hours: 2
+  # Overnight-gap proxy (gap-close 2026-10-31): today's 09:30 open vs the previous close, from daily bars. Known from
+  # the open only, so it covers the session after a night the extended-session quotes were not collected (and all of
+  # history before the system existed). Same % thresholds as above, or a gap of this many 14-day ATRs; plan §5.14
+  # uses -1.5 ATR for a panic open and 0.75 ATR for a material gap.
+  gap_proxy:
+    enabled: true
+    atr_sessions: 14
+    warn_atr: 0.75
+    stress_atr: 1.5
+    stale_after_hours: 7          # an opening gap stays current through that session's close
 
 composite:
   # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).
   # noisy_or: only WARN/STRESS categories add risk; independent confirmations accumulate, calm categories never dilute.
   # x_i = min(max_per_category, unit_weight * f * weight_i * score_i/100 * decay_i), f = 1 STRESS / warn_factor WARN;
   # score = 100 * (1 - prod(1 - x_i)). unit_weight 0.40: one fully stressed weight-1.0 category alone = 40 (Yellow
-  # floor); two = 64 (Orange); three = 78 (Red). Five WARNs at 60 = 54 (Yellow): WARNs alone never reach Orange.
+  # floor); two = 64; three = 78. Orange and Red also need a STRESS in their require_stress_any list (tiers), so
+  # WARNs alone never reach Orange whatever the score (enforced in scoring._raw_tier).
   method: noisy_or
   unit_weight: 0.40
   warn_factor: 0.6
   max_per_category: 0.95
-  # Degrade, not blind: with categories unmeasured, survive ** (all weight / measured weight), capped here. Calm stays
-  # calm (survive ~ 1); existing stress is extrapolated to the unmeasured weight. 1.0 disables it.
-  coverage_extrapolation_max: 1.6
+  # No coverage extrapolation (review of #2362, B2): an UNKNOWN category never raises the score or the tier; the card
+  # shows the lost coverage instead. The former coverage_extrapolation_max knob is removed.

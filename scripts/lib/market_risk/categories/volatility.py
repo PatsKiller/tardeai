@@ -124,4 +124,14 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
                     ),
                 )
             )
-    return md.observation(CATEGORY, cfg, fired, context, vt, headline_prefix="Volatility")
+    imp = cfg.get("improving") or {}
+    improving: list[Evidence] = []
+    nb = int(imp.get("change_sessions", 10))
+    if imp and len(vix) > max(nb, 20):
+        ch = md.pct(v, vix[-nb - 1][1])
+        m20 = sum(x for _, x in vix[-20:]) / 20
+        if ch <= float(imp["vix_change_pct"]) and v < m20 and v < float(cfg["vix_warn"]):
+            improving.append(
+                Evidence("VIX falling", round(ch, 1), asof, SOURCE, f"VIX {ch:+.0f}% in {nb} sessions to {v:.1f}")
+            )
+    return md.observation(CATEGORY, cfg, fired, context, vt, headline_prefix="Volatility", improving=improving)

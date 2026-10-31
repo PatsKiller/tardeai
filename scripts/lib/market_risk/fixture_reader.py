@@ -34,6 +34,11 @@ def close_instant(d: date) -> datetime:
     return datetime.combine(d, time(16, 0), tzinfo=ET).astimezone(timezone.utc)
 
 
+def open_instant(d: date) -> datetime:
+    """The UTC instant of the 09:30 ET open of session ``d``."""
+    return datetime.combine(d, time(9, 30), tzinfo=ET).astimezone(timezone.utc)
+
+
 def _aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         raise ValueError("fixture reader needs tz-aware datetimes (naive would silently mean UTC or local)")
@@ -121,6 +126,24 @@ class FixtureReader:
         out: list[dict[str, Any]] = []
         for s in symbols:
             out += self._upto(self._bars.get(s, []), end)[-int(sessions) :]
+        return out
+
+    def session_opens(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
+        """Opening prints only (no high/low/close), each knowable from its session's 09:30 ET open."""
+        hi = _aware(end)
+        out: list[dict[str, Any]] = []
+        for s in symbols:
+            rows = [
+                {
+                    "symbol": s,
+                    "date": r["date"],
+                    "open": r["open"],
+                    "as_of": open_instant(date.fromisoformat(r["date"])).isoformat(),
+                }
+                for r in self._bars.get(s, [])
+                if r.get("open") is not None and open_instant(date.fromisoformat(r["date"])) <= hi
+            ]
+            out += rows[-int(sessions) :]
         return out
 
     def quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:

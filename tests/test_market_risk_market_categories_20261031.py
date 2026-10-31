@@ -231,10 +231,17 @@ def _fred(hy_end=3.40, ust=5.19):
 
 
 def test_macro_credit_widening(policy):
+    # Thresholds are p95 of 2016-2025 (scripts/market_risk_calibrate.py, review of #2362 M5), not the RCA week: the
+    # 10-15..10-22 HY OAS widening (+22bp) sits below the 5-session p95 (25bp) and no longer fires on its own.
     o = macro_credit.evaluate(ctx(policy, Reader(fred=_fred())))
     det = " ".join(e.detail for e in o.evidence)
-    assert "HY OAS +22bp in 5 sessions" in det and "10y 5.19%" in det and "WTI +16% in 20 sessions" in det
-    assert o.state in ("WARN", "STRESS")
+    # ... and the 96 -> 111 WTI move (+15.6%) sits just below its 20-session p95 (15.9%).
+    assert "HY OAS +22bp in 5 sessions" not in det and "WTI +16% in 20 sessions" not in det
+    assert "10y 5.19%" in det and "HY OAS widening z" in det
+    assert o.state == "CALM"  # the RCA-week macro picture alone is below WARN under calibrated thresholds
+    wide = macro_credit.evaluate(ctx(policy, Reader(fred=_fred(hy_end=3.50))))  # +32bp: above the p95
+    assert "HY OAS +32bp in 5 sessions" in " ".join(e.detail for e in wide.evidence)
+    assert wide.state in ("WARN", "STRESS")
 
 
 def test_macro_credit_calm_and_unknown(policy):

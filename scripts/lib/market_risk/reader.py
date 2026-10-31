@@ -169,6 +169,28 @@ class PgReader:
             by_sym[sym].append(row)
         return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
 
+    def session_opens(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
+        """Regular-session opening prints from ``market_ohlcv_bars`` (daily), each knowable from 09:30 ET of its session
+        and only if the row existed by ``end``. Only ``open`` is returned: the rest of an in-progress bar is unknowable."""
+        syms = [s.upper() for s in symbols]
+        end = _aware(end)
+        out: dict[tuple[str, date], dict[str, Any]] = {}
+        for r in self._rows(
+            "SELECT symbol, bar_time, open, created_at FROM market_ohlcv_bars "
+            "WHERE timeframe = %s AND symbol = ANY(%s) AND bar_time <= %s AND open IS NOT NULL "
+            "AND (created_at IS NULL OR created_at <= %s) ORDER BY symbol, bar_time",
+            [DAILY_TIMEFRAME, syms, end, end],
+        ):
+            d = r["bar_time"].astimezone(ET).date() if isinstance(r["bar_time"], datetime) else r["bar_time"]
+            t = datetime.combine(d, time(9, 30), tzinfo=ET)
+            if t > end:
+                continue
+            out[(r["symbol"], d)] = {"symbol": r["symbol"], "date": d.isoformat(), "open": r["open"], "as_of": _iso(t)}
+        by_sym: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for (sym, _d), row in sorted(out.items()):
+            by_sym[sym].append(row)
+        return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
+
     def _vix_closes(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """VIX daily closes when no ^VIX bars exist: the regime collector's after-close ``vix_close`` (same evening,
         Yahoo) first, then FRED VIXCLS (published with a lag; ``fred`` applies it). Same shape as a bar."""

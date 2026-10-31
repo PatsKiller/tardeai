@@ -72,13 +72,15 @@ def _raw_tier(score: float | None, eff: list[dict], policy: dict) -> tuple[str, 
     why: dict[str, Any] = {"confirming": warn, "stress": sorted(stress), "calm_or_improving": calm}
 
     def holds(name: str) -> bool:
+        # require_stress_any binds BOTH paths (review of #2362, B2): a high score built from WARNs alone never reaches
+        # a tier that names required STRESS categories.
         t = tiers[name]
+        need = t.get("require_stress_any")
+        if need and not (stress & set(need)):
+            return False
         if score is not None and score >= float(t["min_score"]):
             return True
-        if len(warn) < int(t["min_warn"]):
-            return False
-        need = t.get("require_stress_any")
-        return not need or bool(stress & set(need))
+        return len(warn) >= int(t["min_warn"])
 
     for name in ("red", "orange", "yellow", "blue"):
         if holds(name):
@@ -214,12 +216,8 @@ def _composite(known: list[dict], known_w: float, policy: dict) -> tuple[dict[st
     survive = 1.0
     for x in xs.values():
         survive *= 1.0 - x
-    # Degrade, not blind: when categories are unmeasured (no history, outage) the measured evidence stands in for the
-    # missing weight. survive ** (total_w / known_w), capped. Calm evidence (survive ~ 1) is unchanged; only existing
-    # stress is extrapolated, and the coverage is shown on every card.
-    total_w = float(cfg.get("_total_weight") or 0) or known_w
-    expo = min(float(cfg.get("coverage_extrapolation_max", 1.0)), max(1.0, total_w / known_w))
-    survive = survive**expo
+    # An unmeasured category never raises the score or the tier (review of #2362, B2): no coverage extrapolation.
+    # Lost coverage is reported on the card (hysteresis["coverage"]) instead of being converted into risk.
     score = round(100.0 * (1.0 - survive), 4)
     logs = {k: -math.log(1.0 - x) for k, x in xs.items()}
     tot = sum(logs.values())
@@ -245,9 +243,7 @@ def compose(
     known = [e for e in eff if e["obs"].state != "UNKNOWN"]
     total_w = sum(e["weight"] for e in eff) or 1.0
     known_w = sum(e["weight"] for e in known)
-    total_all = sum(float(policy["weights"].get(k, 0)) for k in c.CATEGORIES)
-    pol = dict(policy, composite=dict(policy.get("composite") or {}, _total_weight=total_all))
-    points, score = _composite(known, known_w, pol)
+    points, score = _composite(known, known_w, policy)
     raw, why = _raw_tier(score, eff, policy)
     tier, hyst = _hysteresis(raw, why, prior, now, policy)
     hyst.update(

@@ -141,4 +141,51 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
                         ),
                     )
                 )
-    return md.observation(CATEGORY, cfg, fired, ctxev, newest, headline_prefix="Macro/credit")
+    return md.observation(
+        CATEGORY,
+        cfg,
+        fired,
+        ctxev,
+        newest,
+        headline_prefix="Macro/credit",
+        improving=_credit_improving(ctx, cfg, fresh),
+    )
+
+
+def _credit_improving(ctx: EvalContext, cfg: dict, fresh: dict) -> list[Evidence]:
+    """Design §5.2 Green input "improving credit": HY OAS down at least ``hy_oas_20d_bp`` in 20 observations; where the
+    spread history is absent (FRED serves it from 2023-10 only), HYG up ``hyg_20d_pct`` in 20 sessions above its 50-day."""
+    imp = cfg.get("improving") or {}
+    if not imp:
+        return []
+    hy = fresh.get("hy_oas")
+    if hy and len(hy) > 20:
+        c20 = _chg(hy, 20)
+        if c20 is not None and c20 * 100 <= -float(imp["hy_oas_20d_bp"]):
+            return [
+                Evidence(
+                    "HY OAS tightening",
+                    round(c20 * 100),
+                    md.iso(hy[-1][0]),
+                    f"fred_economic_series:{cfg['series']['hy_oas']}",
+                    f"HY OAS {c20 * 100:+.0f}bp in 20 sessions",
+                )
+            ]
+        return []
+    bars = md.closes_by_symbol(ctx.reader.daily_bars([imp["proxy_symbol"]], sessions=60, end=ctx.now))
+    s = bars.get(imp["proxy_symbol"]) or []
+    if len(s) < 51 or md.stale(s[-1][0], ctx.now, cfg["stale_after_hours"]):
+        return []
+    closes = [c for _, c in s]
+    r20 = md.pct(closes[-1], closes[-21])
+    if r20 >= float(imp["hyg_20d_pct"]) and closes[-1] > sum(closes[-50:]) / 50:
+        return [
+            Evidence(
+                "high-yield bonds rallying",
+                round(r20, 1),
+                md.iso(s[-1][0]),
+                "daily_bars",
+                f"{imp['proxy_symbol']} {r20:+.1f}% in 20 sessions, above its 50-day",
+            )
+        ]
+    return []

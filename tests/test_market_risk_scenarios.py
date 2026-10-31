@@ -196,8 +196,8 @@ def _check(s: dict, res: dict, reader: FixtureReader) -> None:
         ]
         lead = bt.lead_sessions(tl, w["tier"], drops[0])
         assert lead is not None and lead >= w["lead_sessions"], (s["id"], drops[0], lead)
-    if "max_orange_sessions" in ex:
-        assert sum(t == "ORANGE" for t in tiers) <= ex["max_orange_sessions"], (s["id"], tiers)
+    if "max_orange_sessions" in ex:  # distinct session dates (the harness evaluates at the open and at the close)
+        assert len({t["date"] for t in tl if t["tier"] == "ORANGE"}) <= ex["max_orange_sessions"], (s["id"], tiers)
     if ex.get("no_red"):
         assert "RED" not in tiers, s["id"]
     if "orange_before_each_correction" in ex:
@@ -212,16 +212,21 @@ def _check(s: dict, res: dict, reader: FixtureReader) -> None:
 # Expectations the integrated engine does NOT meet on the public daily fixtures (2026-10-31 integration run).
 # strict=True: when a fix makes one pass, CI fails until it is removed from this list — a miss can never hide.
 KNOWN_MISSES = {
-    "covid2020": "Red one session before the first -3% day: daily closes give ORANGE from 02-25; Red needs breadth or "
-    "extended-hours STRESS, which have no history before the system's own collectors",
-    "carry2024": "Red by 08-02: three daily sessions only; hysteresis needs two consecutive raw tiers, max BLUE",
-    "dec2018_selloff": "Red: max ORANGE (no breadth / extended-hours history)",
-    "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-10-31",
-    "corrections2026": "Orange before each QQQ -10% correction: max YELLOW on daily fixtures",
-    "bear2022_turn": "GREEN: no category emits IMPROVING yet, so the Green tier cannot fire",
-    "jan2019_reversal": "GREEN: no category emits IMPROVING yet",
-    "aimelt2023": "GREEN: no category emits IMPROVING yet",
-    "cut2024": "GREEN: no category emits IMPROVING yet",
+    # Updated by the gap-close run of 2026-10-31 (breadth proxy, opening-gap proxy, IMPROVING, review-B2 scoring).
+    "covid2020": "Red at the 02-24 close, the first -3% day itself (20 sessions before the 03-23 trough), not one "
+    "session before it: the 02-24 opening gap was STRESS but the market tier was still below Orange, so the "
+    "single-evaluation shock rule did not apply",
+    "carry2024": "Red at the 08-05 close, not by 08-02: the window has three sessions and the unwind showed in the "
+    "08-05 opening gap",
+    "dec2018_selloff": "max YELLOW: since review B2, Orange and Red need STRESS in their require_stress_any lists on "
+    "the score path too; options_flow, cross_asset and event have no 2018 history, and breadth reached only WARN",
+    "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-11",
+    "corrections2026": "Orange before each QQQ -10% correction: max YELLOW on daily fixtures (out-of-sample year)",
+    "bear2022_turn": "GREEN not reached (needs >= 3 categories IMPROVING at once with no WARN); RED at the 10-13 open "
+    "on the CPI gap-down inside the turn window",
+    "jan2019_reversal": "GREEN not reached by 01-18: never 3 categories IMPROVING at once with no WARN",
+    "aimelt2023": "GREEN not reached: never 3 categories IMPROVING at once with no WARN",
+    "cut2024": "GREEN not reached: never 3 categories IMPROVING at once with no WARN",
 }
 
 
@@ -334,7 +339,7 @@ def test_harness_extra_time_and_uplift(reader):
 def test_forward_move_table_counts(reader):
     tl = bt.run_scenario(SCEN["covid2020"], engine=_stub_engine(), policy={}, reader=reader)["timeline"]
     tab = bt.forward_move_table(tl, reader)
-    assert sum(v["n"] for v in tab.values()) == len(tl)
+    assert sum(v["n"] for v in tab.values()) == sum(t["session"] == "close" for t in tl)  # close evaluations only
     assert all(0 <= x <= 1 for v in tab.values() for k, x in v.items() if k != "n")
 
 

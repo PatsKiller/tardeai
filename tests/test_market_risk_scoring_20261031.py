@@ -100,9 +100,8 @@ def test_extended_hours_shock_red_bypasses_hysteresis():
         (39.9, "BLUE"),
         (40, "YELLOW"),
         (59.9, "YELLOW"),
-        (60, "ORANGE"),
-        (74.9, "ORANGE"),
-        (75, "RED"),
+        (60, "YELLOW"),  # no STRESS in Orange's require_stress_any -> the score alone never reaches Orange (B2)
+        (75, "YELLOW"),
     ],
 )
 def test_score_boundaries(score, tier):
@@ -113,6 +112,23 @@ def test_score_boundaries(score, tier):
     assert a.tier == tier, a.score
 
 
+@pytest.mark.parametrize(
+    "cat,score,tier",
+    [
+        ("event", 60, "ORANGE"),
+        ("event", 74.9, "ORANGE"),
+        ("event", 75, "ORANGE"),  # event is not in Red's require_stress_any
+        ("extended_hours", 75, "RED"),
+        ("extended_hours", 74.9, "YELLOW"),  # not in Orange's list, below Red's score
+    ],
+)
+def test_score_path_needs_the_required_stress(cat, score, tier):
+    a = scoring.compose(
+        [ob(cat, "STRESS", score)] + [c.unknown(k, NOW, "x") for k in c.CATEGORIES if k != cat], POLICY, now=NOW
+    )
+    assert a.tier == tier, (a.score, a.hysteresis.get("why"))
+
+
 def test_confirmation_without_required_stress_is_not_orange():
     spec = {k: ("WARN", 41) for k in ("technical", "breadth", "volatility", "macro_credit")}
     a = scoring.compose(obs(spec), POLICY, now=NOW)
@@ -120,8 +136,11 @@ def test_confirmation_without_required_stress_is_not_orange():
 
 
 def test_green():
-    spec = {"technical": ("IMPROVING", 10), "breadth": ("CALM", 12), "volatility": ("CALM", 15)}
+    # design §5.2: score <= 20 with >= 3 categories CALM -> IMPROVING
+    spec = {"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)}
     assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "GREEN"
+    spec["volatility"] = ("CALM", 15)
+    assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "NONE"
 
 
 def test_unknown_is_not_zero_and_coverage_drops():
@@ -276,10 +295,15 @@ def test_noisy_or_oct28_close_shape_is_orange_not_red():
     assert a.tier == "ORANGE" and 60 <= a.score < 75, (a.score, a.hysteresis["why"])
 
 
-def test_noisy_or_oct29_1815_shape_is_market_red():
+def test_noisy_or_oct29_1815_shape_is_market_orange_until_breadth_or_extended_hours_stress():
+    # After review B2 Red needs extended_hours or breadth at STRESS on the score path too. In this shape both are WARN,
+    # so the market tier is ORANGE (Red then comes from the portfolio uplift or a measured extended-hours STRESS).
     now = datetime(2026, 10, 29, 22, 15, tzinfo=timezone.utc)
     a = scoring.compose(obs(OCT29_1815_MARKET_ORANGE, now), POLICY_LIVE, now=now)
-    assert a.market_tier == "RED" and a.score >= 75
+    assert a.market_tier == "ORANGE" and a.score >= 75
+    shock = dict(OCT29_1815_MARKET_ORANGE, extended_hours=("STRESS", 85))
+    b = scoring.compose(obs(shock, now), POLICY_LIVE, now=now)
+    assert b.market_tier == "RED"
 
 
 def test_noisy_or_calm_categories_never_dilute_stress():

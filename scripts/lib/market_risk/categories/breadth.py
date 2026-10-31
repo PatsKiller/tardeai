@@ -8,6 +8,8 @@ writer exist (P1-T5); until then it is passed in ``ctx.extras['market_breadth']`
 
 from __future__ import annotations
 
+from scripts.lib.market_risk import breadth_proxy
+from scripts.lib.market_risk.categories import _marketdata as md
 from scripts.lib.market_risk.contract import (
     CategoryObservation,
     EvalContext,
@@ -35,8 +37,9 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     except Exception as exc:
         return unknown(CATEGORY, ctx.now, f"sector_states read failed: {type(exc).__name__}: {exc}"[:200])
     latest = _latest(rows)
-    if not latest:
-        return unknown(CATEGORY, ctx.now, "no sector_momentum_state rows")
+    proxy, proxy_why, proxy_ev, proxy_newest, thrust = _proxy(ctx, cfg)
+    if not latest and proxy is None:
+        return unknown(CATEGORY, ctx.now, "no sector_momentum_state rows and no sector-ETF daily bars for the proxy")
     pts = 0.0
     ev: list[Evidence] = []
     parts: list[str] = []
@@ -92,7 +95,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if mb:
         ev.append(Evidence("market breadth", mb.get("summary"), mb.get("as_of"), mb.get("source", "market_breadth")))
         pts += float(mb.get("points", 0))
-    else:
+    elif proxy is None:
         ev.append(
             Evidence(
                 "market-wide breadth (new lows, % above DMA)",
@@ -103,17 +106,69 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             )
         )
 
-    score = round(min(100.0, pts), 1)
+    # Sector-state points and the ETF breadth proxy measure overlapping things: take the stronger, never the sum.
+    sector_score = round(min(100.0, pts), 1) if latest else None
+    score = max(x for x in (sector_score, proxy) if x is not None)
+    if proxy is not None and (sector_score is None or proxy >= sector_score):
+        parts = proxy_why or parts
+    ev.extend(proxy_ev)
     state = "STRESS" if score >= cfg["stress_score"] else "WARN" if score >= cfg["warn_score"] else "CALM"
-    observed = max((str(r.get("as_of")) for r in latest.values()), default=ctx.now.isoformat())
+    if state == "CALM" and thrust:
+        state = "IMPROVING"
+        parts = [thrust]
+    observed = max(
+        [str(r.get("as_of")) for r in latest.values()] + ([proxy_newest] if proxy_newest else []),
+        default=ctx.now.isoformat(),
+    )
     obs = CategoryObservation(
         category=CATEGORY,
         state=state,
         score=score,
         observed_at=observed,
-        headline="Breadth: " + (" · ".join(parts) if parts else "no deterioration in sector states"),
+        headline="Breadth: " + (" · ".join(parts) if parts else "no deterioration"),
         evidence=tuple(ev),
         stale_after_hours=float(cfg["stale_after_hours"]),
     )
     assert_no_behavior_fields(obs.to_dict())
     return obs
+
+
+def _proxy(ctx: EvalContext, cfg: dict) -> tuple[float | None, list[str], list[Evidence], str | None, str | None]:
+    """The sector-ETF breadth proxy (breadth_proxy.py) from as-of-correct daily bars; (None, ...) when too few ETFs."""
+    pc = cfg.get("proxy") or {}
+    if not pc.get("enabled", True):
+        return None, [], [], None, None
+    universe = list(pc["universe"])
+    try:
+        rows = ctx.reader.daily_bars(universe + ["RSP", "SPY"], sessions=int(pc["history_sessions"]), end=ctx.now)
+    except Exception as exc:  # reported as evidence, the category degrades to sector states / UNKNOWN
+        return (
+            None,
+            [],
+            [Evidence("breadth proxy", "UNKNOWN", None, "daily_bars", f"read failed: {exc}"[:160])],
+            None,
+            None,
+        )
+    by = md.closes_by_symbol(rows)
+    newest = max((s[-1][0] for s in by.values() if s), default=None)
+    if newest is None or md.stale(newest, ctx.now, float(pc["stale_after_hours"])):
+        return None, [], [], None, None
+    closes = {s: [c for _, c in by.get(s, [])] for s in universe if by.get(s)}
+    style = {k: [c for _, c in by.get(k, [])] for k in ("RSP", "SPY")}
+    m = breadth_proxy.measure(closes, style, pc)
+    if m is None:
+        return None, [], [], None, None
+    sc, why = breadth_proxy.score(m, pc)
+    asof = md.iso(newest)
+    ev = [
+        Evidence(
+            "sector-ETF breadth proxy",
+            {k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
+            asof,
+            "daily_bars:sector_spdrs",
+            f"{round(100 * (m['pct_above_50'] or 0))}% above 50-day, "
+            f"{round(100 * m['pct_at_low'])}% at 52w lows, McClellan "
+            + (f"{m['mcclellan']:+.0f}" if m["mcclellan"] is not None else "n/a"),
+        )
+    ]
+    return sc, why, ev, asof, breadth_proxy.improving(m, pc)

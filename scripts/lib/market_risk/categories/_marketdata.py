@@ -85,12 +85,18 @@ def observation(
     newest: datetime,
     *,
     headline_prefix: str,
+    improving: list[Evidence] | None = None,
 ) -> CategoryObservation:
-    """Sum the points of fired sub-signals (capped at 100) and map to CALM / WARN / STRESS."""
+    """Sum the points of fired sub-signals (capped at 100) and map to CALM / WARN / STRESS. A CALM category with an
+    ``improving`` signal (design §5.2 Green inputs) is IMPROVING; WARN/STRESS are never softened by it."""
     pts = cfg["points"]
     score = float(min(100, sum(int(pts[k]) for k, _ in fired)))
     state = "STRESS" if score >= cfg["stress_score"] else "WARN" if score >= cfg["warn_score"] else "CALM"
-    if fired:
+    if state == "CALM" and improving:
+        state = "IMPROVING"
+        headline = f"{headline_prefix} improving: " + " · ".join(e.detail or e.label for e in improving[:3])
+        context = list(improving) + list(context)
+    elif fired:
         top = sorted(fired, key=lambda kv: -int(pts[kv[0]]))[:3]
         headline = f"{headline_prefix}: " + " · ".join(e.detail or e.label for _, e in top)
     else:
