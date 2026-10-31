@@ -18844,6 +18844,24 @@
       "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
     },
     {
+      "lane_id": "market-risk-evaluate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "state_reason": "Declared, not scheduled. The Market Risk Engine evaluator (scripts/market_risk_evaluate.py, DSN-20261031-market-risk-engine P2-T1) lands in PR #2337 with its categories, reader and alerts in #2335-#2342 and #2351. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after the engine merges and its replay and live dry run pass. Proposed cadence: weekdays every 15 min 04:00-20:00 ET plus Sunday 18:30 ET, first in DRY_RUN (shadow) mode, writing nothing and sending nothing.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/market_risk/latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line and no timer exist for scripts/market_risk_evaluate.py; the evaluator is not on main yet (PR #2337). This row exists so the lane is declared before it is scheduled (AGENTS.md §23.11), and the activation PR flips it to ACTIVE with the cron expression.",
+      "note": "Proposed host crontab lines (shadow): '*/15 4-19 * * 1-5', '0 20 * * 1-5' and '30 18 * * 0', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --dry-run --json >> logs/market_risk_evaluate.log 2>&1'. Shadow lasts until the operator promotes it to --apply."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
