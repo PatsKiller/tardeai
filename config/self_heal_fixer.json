@@ -254,6 +254,8 @@
       "config/merge_hold_paths.json",
       "config/agents_guard_hook_rules.json",
       "scripts/githooks/*",
+      ".gitleaks*",
+      "config/pii_baseline.json",
       "scripts/lib/cio_instrument_record.py",
       "sql/*",
       "*migration*",

@@ -33,14 +33,6 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 import self_heal_fixer as S  # noqa: E402
 
-_REAL_SCAN = S.Attempt.scan_commit
-
-
-@pytest.fixture(autouse=True)
-def _stub_prehandoff_scan(monkeypatch):
-    """The hermetic tmp repos carry no scanner scripts; the scan itself is pinned by the tests that restore it."""
-    monkeypatch.setattr(S.Attempt, "scan_commit", lambda self, commit: [])
-
 
 CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
 FIXTURE = ROOT / "tests" / "fixtures" / "self_heal_fixer" / "daily_incubator_refresh_20261016.json"
@@ -627,6 +619,11 @@ def sandbox(tmp_path):
     (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert 1 + 1 == 2\n")
     (repo / "conftest.py").write_text("import sys, pathlib\nsys.path.insert(0, str(pathlib.Path(__file__).parent))\n")
     (repo / "AGENTS.md").write_text("# AGENTS\n\n" + F.extract_rails(AGENTS_TEXT) + "\n---\n\n# 1 · Identity\n")
+    # the real scanners and their rules at BASE: the pre-hand-off scan runs them from here (review round 2)
+    for rel in S.SCAN_GUARDED:
+        if (ROOT / rel).exists():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_bytes((ROOT / rel).read_bytes())
     _sh("git", "-C", str(repo), "add", "-A")
     _sh("git", "-C", str(repo), "commit", "-qm", "base")
     _sh("git", "-C", str(repo), "push", "-q", "origin", "main")
@@ -799,10 +796,54 @@ def test_prehandoff_scan_failure_refuses_the_fix(sandbox, monkeypatch):
     assert job["state"] == F.FIX_REFUSED and job["reason"].startswith("prehandoff_scan_failed:check_no_pii")
 
 
-def test_missing_scanner_refuses(sandbox, monkeypatch):
-    monkeypatch.setattr(S.Attempt, "scan_commit", _REAL_SCAN)
-    job, _ = _run_cycle(sandbox, "fix")
-    assert job["state"] == F.FIX_REFUSED and "scanner_missing" in job["reason"]
+def _git_repo(tmp_path, files):
+    r = tmp_path / "r"
+    r.mkdir()
+    _sh("git", "init", "-q", "-b", "main", str(r))
+    for k, v in (("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")):
+        _sh("git", "-C", str(r), "config", k, v)
+    for rel, data in files.items():
+        (r / rel).parent.mkdir(parents=True, exist_ok=True)
+        (r / rel).write_bytes(data)
+    _sh("git", "-C", str(r), "add", "-A")
+    _sh("git", "-C", str(r), "commit", "-qm", "base")
+    return r, _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+
+
+def test_scan_refuses_a_commit_that_touches_its_own_scanner_rules(tmp_path):
+    files = {rel: (ROOT / rel).read_bytes() for rel in S.SCAN_GUARDED if (ROOT / rel).exists()}
+    r, base = _git_repo(tmp_path, {**files, "scripts/x.py": b"x = 1\n"})
+    (r / ".gitleaksignore").write_text("everything\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "widen the ignore list")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert errs and errs[0].startswith("scanner_or_rules_changed:") and ".gitleaksignore" in errs[0]
+
+
+def test_scan_runs_the_base_scanner_and_finds_a_home_path(tmp_path):
+    files = {rel: (ROOT / rel).read_bytes() for rel in S.SCAN_GUARDED if (ROOT / rel).exists()}
+    r, base = _git_repo(tmp_path, {**files, "scripts/x.py": b"x = 1\n"})
+    home_like = "/" + "/".join(["home", "kqzvtr", "notes.txt"])  # not a generic user name
+    (r / "scripts" / "x.py").write_text(f"x = {home_like!r}\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "leak a home path")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert any(e.startswith("check_no_pii:") for e in errs), errs
+    (tmp_path / "c").mkdir()
+    clean, base2 = _git_repo(tmp_path / "c", {**files, "scripts/x.py": b"x = 1\n"})
+    (clean / "scripts" / "x.py").write_text("x = 2\n")
+    _sh("git", "-C", str(clean), "commit", "-qam", "clean change")
+    head2 = _sh("git", "-C", str(clean), "rev-parse", "HEAD").strip()
+    assert S.scan_range(clean, base2, head2, tmp_path / "rules2", dict(os.environ)) == []
+
+
+def test_missing_scanner_at_base_refuses(tmp_path):
+    r, base = _git_repo(tmp_path, {"scripts/x.py": b"x = 1\n"})
+    (r / "scripts" / "x.py").write_text("x = 2\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "c")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert "scanner_missing:check_no_pii.py at base" in errs  # the exact refusal, not any scanner message
 
 
 def test_credentials_are_bound_read_only():

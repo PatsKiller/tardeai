@@ -308,7 +308,8 @@ def test_train_outcomes_stale_trains_and_live_receipts(tmp_path):
         "priority": "P1",
     }
     assert TI.decide(by[("train_outcome", "FAILED_PRE_MERGE")], CFG)["remediation"] == "coordinator"
-    assert TI.decide(found["train_stale"], CFG)["rule"] == "train_stale_reconcile"
+    # review round 2: no invented 'train-reconcile' command; a stale train is the coordinator's
+    assert TI.decide(found["train_stale"], CFG)["remediation"] == "coordinator"
 
 
 def test_tester_failures_one_finding_per_broken_route(tmp_path):
@@ -508,26 +509,18 @@ def test_fixer_failures_exhaust_attempts_then_give_up(tmp_path):
     assert len(TI.read_fixer_defects(tmp_path / CFG["state"]["fixer_defects_rel"])) == 2
 
 
-def test_stale_train_reconcile_dry_run_first_and_never_forces_ambiguity(tmp_path):
-    st = release_dir(tmp_path) / "trains/rt-20261025-0900-dddd/state.json"
-    write_json(st, {"phase": "merge"})
+def test_stale_train_never_runs_a_command_and_goes_to_the_coordinator(tmp_path):
+    """Review round 2 (2026-10-31): release_window.py has no train-reconcile subcommand; a stale train escalates."""
     import os
 
+    st = release_dir(tmp_path) / "trains/rt-20261025-0900-dddd/state.json"
+    write_json(st, {"phase": "merge"})
     old = (NOW - timedelta(hours=6)).timestamp()
     os.utime(st, (old, old))
     world = FakeWorld()
-    world.reconcile_out, world.reconcile_rc = '{"trains": [{"disposition": "AMBIGUOUS"}]}', 6
-    hb, sent = do_tick(tmp_path, world, agents_text=LIVE_AGENTS)
-    rec = [c for c in world.calls if "train-reconcile" in c]
-    assert len(rec) == 1 and "--live" not in rec[0]
-    assert [p for p, _ in sent] == ["P1"]
-    world2 = FakeWorld()
-    root2 = tmp_path / "b"
-    write_json(release_dir(root2) / "trains/rt-20261025-0900-dddd/state.json", {"phase": "merge"})
-    os.utime(release_dir(root2) / "trains/rt-20261025-0900-dddd/state.json", (old, old))
-    do_tick(root2, world2, agents_text=LIVE_AGENTS)
-    rec2 = [c for c in world2.calls if "train-reconcile" in c]
-    assert len(rec2) == 2 and "--live" in rec2[1]
+    do_tick(tmp_path, world, agents_text=LIVE_AGENTS)
+    assert not [c for c in world.calls if "release_window.py" in " ".join(c)]
+    assert all(r["id"] != "train_stale_reconcile" for r in CFG["deterministic"])
 
 
 def test_non_eligible_fix_pr_goes_to_the_coordinator_queue(tmp_path):
