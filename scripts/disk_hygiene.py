@@ -43,6 +43,10 @@ The optional --standing path requires separately reviewed, enabled A/S/W rules, 
 a <=2h manifest bound to exact rules/file SHA, and a hard 40GiB ceiling. Its config/admission remains an
 operator-applied proposal; --standing --dry-run with offline evidence never collects live facts or deletes.
 Manual --apply still requires its per-run grant. No configuration is enabled by this source change.
+Standing rules (AGENTS.md §24.13/§24.14): A archived dumps, S rtc scratch, T agent scratch, W clean merged worktrees,
+C abandoned worktrees (archive ref first, scripts/lib/workspace_closeout.py), R release dirs beyond CURRENT/previous/
+newest N; X (archive refs past retention) is reported only. ``--until-target PCT`` re-plans and re-applies up to
+``standing_apply.pressure.max_passes``; ``--only-if-above PCT`` exits 0 with a below_threshold receipt.
 
 Exit: 0 = plan written (or dry run printed, or apply finished within caps); 1 = rules / home unreadable, a write
 failed, or an apply refusal; 2 = usage.
@@ -54,6 +58,7 @@ only matched, never opened).
 from __future__ import annotations
 
 import argparse
+import fcntl
 import fnmatch
 import hashlib
 import json
@@ -75,6 +80,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.lib import lane_last_receipt as R  # noqa: E402
 from scripts.lib import disk_hygiene_retention as SR  # noqa: E402
+from scripts.lib import workspace_closeout as WC  # noqa: E402
 
 LANE_ID = "disk-hygiene"
 APPLY_LANE_ID = "disk-hygiene-apply"
@@ -89,6 +95,8 @@ GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
 DOT_GIT = ".git"
+#: Marks a registered linked worktree inside agent scratch in rule T's ``bundles`` list (archived, not bundled).
+NESTED_WORKTREE = "worktree:"
 #: Known board-state documents that live in coordination/claims/ but are not claims (exact names, never a pattern).
 NON_CLAIM_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 
@@ -181,7 +189,53 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
                     raise RulesError(f"agent_scratch_{key}")
             if scratch["bundle_dir"] == "~/.cache/agent-tmp" or scratch["bundle_dir"].startswith("~/.cache/agent-tmp/"):
                 raise RulesError("agent_scratch_bundle_dir")
+        _validate_lifecycle(standing, doc)
     return doc
+
+
+_NUM = (int, float)
+ARCHIVE_NS_RE = re.compile(r"^refs/archive/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
+
+
+def _validate_lifecycle(standing: Mapping[str, Any], doc: Mapping[str, Any]) -> None:
+    """Rules C / R / X and the pressure loop (DSN-20261030-workspace-lifecycle P2): validated like rule T, fail closed."""
+    wt = standing.get("abandoned_worktree")
+    if wt is not None or "C" in standing["rules"]:
+        if not isinstance(wt, dict):
+            raise RulesError("abandoned_worktree_shape")
+        if type(wt.get("idle_days")) not in _NUM or not wt["idle_days"] >= 1:
+            raise RulesError("abandoned_worktree_idle_days")
+        if type(wt.get("max_archive_mb")) not in _NUM or not 0 < wt["max_archive_mb"] <= 2048:
+            raise RulesError("abandoned_worktree_max_archive_mb")
+        if not isinstance(wt.get("archive_ns"), str) or not ARCHIVE_NS_RE.match(wt["archive_ns"]):
+            raise RulesError("abandoned_worktree_archive_ns")
+        keep = wt.get("archive_retention_days", 90)
+        if type(keep) is not int or keep < 7:
+            raise RulesError("abandoned_worktree_archive_retention_days")
+    rel = standing.get("release_reclaim")
+    if rel is not None or "R" in standing["rules"]:
+        if not isinstance(rel, dict):
+            raise RulesError("release_reclaim_shape")
+        if type(rel.get("keep_newest")) is not int or rel["keep_newest"] < 1:
+            raise RulesError("release_reclaim_keep_newest")
+        if not isinstance(rel.get("root"), str) or not rel["root"].startswith("~/"):
+            raise RulesError("release_reclaim_root")
+        # A configured root that is not a release root selects nothing; one that is must be a served-dir root.
+        roots = [r for r in doc["_release_roots"] if r["_path"] == _expand(rel["root"], doc["_home"])]
+        if len(roots) > 1 or any(r.get("entry_kind", "dir") != "dir" or r.get("previous_served") is not True for r in roots):
+            raise RulesError("release_reclaim_root")
+        if not isinstance(rel.get("lock_path"), str) or not rel["lock_path"].startswith("~/"):
+            raise RulesError("release_reclaim_lock_path")
+    pr = standing.get("pressure")
+    if pr is not None:
+        if not isinstance(pr, dict) or any(type(pr.get(k)) not in _NUM or not 0 < pr[k] < 100 for k in ("trigger_pct", "target_pct", "alert_pct")):
+            raise RulesError("pressure_pct")
+        if not pr["target_pct"] < pr["trigger_pct"] <= pr["alert_pct"]:
+            raise RulesError("pressure_order")
+        if type(pr.get("max_passes")) is not int or not 1 <= pr["max_passes"] <= 10:
+            raise RulesError("pressure_max_passes")
+        if "daily_hour_et" in pr and (type(pr["daily_hour_et"]) is not int or not 0 <= pr["daily_hour_et"] <= 23):
+            raise RulesError("pressure_daily_hour_et")
 
 
 # ── path predicates ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -221,6 +275,40 @@ def never_touch_reason(path: Path, rules: Mapping[str, Any]) -> Optional[str]:
                 if fnmatch.fnmatch(part.lower(), g.lower()):
                     return f"never_touch_glob:{g}:{part}"
     return None
+
+
+#: Directory names under which credential-named files are generated test fixtures, not credentials.
+#: pytest's own (``pytest-of-<user>``, ``pytest-<n>``), agent --basetemp roots seen on 2026-10-31 (``pt3``,
+#: ``tradeai_pytest_scratch_*``, ``ci-compat/pytest``) and pytest's per-test ``tmp_path`` dirs (``test_<name><n>``).
+SCRATCH_FIXTURE_DIRS = ("pytest", "pytest-of-*", "pytest-*", "basetemp*", "pt[0-9]*", "tradeai_pytest_scratch_*", "test_*[0-9]")
+
+
+def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
+    """Rule T: does this entry inside an agent scratch dir hold the whole dir (2026-10-31)?
+
+    A symlink never holds: removal unlinks the link, never its target. A never-touch PATH always holds. A
+    never-touch NAME or credential-like GLOB holds only outside a repo copy or a pytest temp tree: there it is a
+    tracked repo file (``secret_registry.yaml``, ``check_no_secrets.py``) or a synthetic fixture, not a credential.
+    """
+    if path.is_symlink():
+        return False
+    why = never_touch_reason(path, rules)
+    if not why:
+        return False
+    if why.startswith(("never_touch_path:", "contains_never_touch_path:")):
+        return True
+    if path.is_dir():
+        return False  # a credential is a file; a dir named ``test_token_x0`` or ``bin/docker`` holds nothing by its name
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return True
+    probe = root
+    for part in rel.parts[:-1]:
+        probe = probe / part
+        if any(fnmatch.fnmatch(part, g) for g in SCRATCH_FIXTURE_DIRS) or os.path.lexists(probe / DOT_GIT):
+            return False
+    return True
 
 
 def protected_reason(path: Path, rules: Mapping[str, Any], *, own_work_tree: bool = False) -> Optional[str]:
@@ -813,6 +901,48 @@ def _opaque_process(process: Path) -> Optional[dict]:
             "comm": (fields.get("Name") or "").strip()[:64]}
 
 
+def _ppid(proc_root: Path, pid: str) -> Optional[str]:
+    try:
+        status = (proc_root / pid / "status").read_text(errors="replace")
+    except OSError:
+        return None
+    return next((line.split(":", 1)[1].strip() for line in status.splitlines() if line.startswith("PPid:")), None)
+
+
+def _resolve_opaque(processes: list[dict], proc_root: Path) -> list[dict]:
+    """Narrow OPAQUE to the processes that could actually sit inside a candidate (2026-10-31).
+
+    A kernel thread (pid 2 or child of kthreadd) has no cwd here. Any other unreadable process inherits its cwd
+    from the session that started it: one with a readable ancestor is recorded with that ancestor's cwd (``sudo``
+    from a worktree holds that worktree); one whose whole ancestry is unreadable was started by the system (a unit,
+    a container, a login manager), so its cwd comes from unit/container configuration, which the ``units`` and
+    ``cron`` references already cover. Only an ancestry that cannot be read at all stays opaque and refuses apply.
+    """
+    readable = {p["pid"]: p for p in processes if not p.get("opaque")}
+    out = []
+    for p in processes:
+        if not p.get("opaque"):
+            out.append(p)
+            continue
+        pid, seen, cwd = p["pid"], set(), None
+        parent = _ppid(proc_root, pid)
+        if pid == "2" or parent == "2":
+            continue
+        while parent and parent not in ("0", "1") and parent not in seen:
+            seen.add(parent)
+            if parent in readable:
+                cwd = readable[parent].get("cwd")
+                break
+            parent = _ppid(proc_root, parent)
+        if parent is None:
+            out.append(p)  # ancestry unreadable: still opaque
+        elif cwd is not None:
+            out.append({"pid": pid, "cwd": cwd, "fds": [], "inherited_from": parent, "uid": p.get("uid"), "comm": p.get("comm")})
+        else:
+            out.append({"pid": pid, "fds": [], "system_started": True, "uid": p.get("uid"), "comm": p.get("comm")})
+    return out
+
+
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
     """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
 
@@ -898,7 +1028,7 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
                 opaque = _opaque_process(process)
                 if opaque is not None:
                     out.append(opaque | ({"cwd": cwd} if cwd else {}))
-        return out
+        return _resolve_opaque(out, rules["_proc_root"])
 
     def coordination():
         base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
@@ -1003,7 +1133,7 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
     registered linked worktree is rule W's), a repo with tracked changes or untracked files, a repo or reference
     check git cannot answer, and an unbounded scan. A ``.git`` file whose gitdir is gone is an orphan: plain files.
     """
-    found, count, pending = [], 0, [path]
+    found, count, pending, bundles = [], 0, [path], []
     while pending:
         p = pending.pop()
         try:
@@ -1018,7 +1148,6 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
                         pending.append(Path(e.path))
         except OSError:
             return [], "nested_repo_scan_unreadable"
-    bundles = []
     for dot in sorted(found):
         repo = dot.parent
         if dot.is_symlink():
@@ -1028,8 +1157,11 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
                 target = dot.read_text().strip().removeprefix("gitdir:").strip()
             except OSError:
                 return [], "nested_repo_unreadable"
-            if not target or os.path.lexists(target if os.path.isabs(target) else repo / target):
-                return [], "nested_worktree_registered"
+            if not target:
+                return [], "nested_repo_unreadable"
+            if os.path.lexists(target if os.path.isabs(target) else repo / target):
+                # A proof worktree an agent made inside its scratch: archived (ref) then removed with the dir (2026-10-31).
+                bundles.append(NESTED_WORKTREE + str(repo.relative_to(path)))
             continue
         rc, status = _nested_git(repo, "status", "--porcelain", "--untracked-files=normal")
         if rc != 0:
@@ -1055,6 +1187,19 @@ def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
     """Before rule T removes a dir: bundle each nested repo holding unique commits, verified; None when all held."""
     root, bdir = Path(item["path"]), Path(item["bundle_dir"])
     for rel in item.get("bundles") or []:
+        if rel.startswith(NESTED_WORKTREE):
+            wt = root / rel.removeprefix(NESTED_WORKTREE)
+            rc, common = _nested_git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
+            if rc != 0:
+                return f"nested_worktree_unreadable:{rel}"
+            arc, err = WC.archive_worktree(wt, item["archive_ns"], "disk_hygiene rule T (AGENTS.md §24.13): proof worktree "
+                                           f"inside agent scratch {root.name}, archived before removal")
+            if err:
+                return f"nested_worktree_archive_failed:{rel}:{err}"
+            ok, how = WC.remove_worktree(wt, Path(common.strip()).parent)
+            if not ok:
+                return f"nested_worktree_remove_failed:{rel}:{how}"
+            continue
         out = bdir / root.name / (rel.replace("/", "__") + ".bundle")
         out.parent.mkdir(parents=True, exist_ok=True)
         rc, _ = _nested_git(root / rel, "bundle", "create", str(out), "--all", timeout=600)
@@ -1066,8 +1211,136 @@ def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
     return None
 
 
-def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict]:
-    """Only A/S/W, with fresh complete coordination/process/PR references."""
+_TEMPLATE_SUFFIXES = (".example", ".sample", ".template")
+
+
+def _credential_name(name: str, rules: Mapping[str, Any]) -> bool:
+    """A credential-like NAME (never-touch globs); committed templates (``.env.example``) are not credentials."""
+    low = name.lower()
+    return not low.endswith(_TEMPLATE_SUFFIXES) and any(fnmatch.fnmatch(low, g.lower()) for g in rules["_never_globs"])
+
+
+def _credential_files_under(root: Path, rules: Mapping[str, Any], budget: list[int]) -> tuple[list[str], Optional[str]]:
+    """Real (non-symlink) credential-like entries below an ignored dir; vendored/cache dirs pruned; bounded."""
+    skip = list(rules["git"].get("ignored_scan_skip_dirs") or [])
+    hits: list[str] = []
+    pending = [root]
+    while pending:
+        d = pending.pop()
+        try:
+            with os.scandir(d) as entries:
+                for e in entries:
+                    budget[0] -= 1
+                    if budget[0] < 0:
+                        return hits, "credential_scan_limit"
+                    if e.is_symlink():
+                        continue
+                    if _credential_name(e.name, rules):
+                        hits.append(str(Path(e.path).relative_to(root.parent)))
+                    elif e.is_dir(follow_symlinks=False) and not any(fnmatch.fnmatch(e.name, sd) for sd in skip):
+                        pending.append(Path(e.path))
+        except OSError:
+            return hits, "credential_scan_unreadable"
+    return hits, None
+
+
+def worktree_closeout_checks(path: Path, rules: Mapping[str, Any], max_untracked_bytes: int) -> tuple[dict, list[str]]:
+    """Rule C content checks: (evidence, hold reasons). Never opens a file: names and lstat only.
+
+    Holds: untracked non-ignored bytes over the cap, an untracked nested repo (a temp-index commit would keep only a
+    gitlink), and any REAL credential-like file, untracked or ignored (a symlink such as a ``.env`` link is fine).
+    """
+    ev: dict[str, Any] = {}
+    reasons: list[str] = []
+    rc, out = _nested_git(path, "ls-files", "--others", "--exclude-standard", "-z", timeout=300)
+    creds: list[str] = []
+    if rc != 0:
+        reasons.append("untracked_listing_failed")
+    else:
+        total = 0
+        for rel in filter(None, out.split("\0")):
+            if rel.endswith("/"):
+                reasons.append("untracked_nested_repo")
+                continue
+            try:
+                st = os.lstat(path / rel)
+            except OSError:
+                continue
+            total += st.st_size
+            if not os.path.islink(path / rel) and _credential_name(Path(rel).name, rules):
+                creds.append(rel)
+        ev["untracked_bytes"] = total
+        if total > max_untracked_bytes:
+            reasons.append("untracked_over_cap")
+    rc, out = _nested_git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", timeout=300)
+    if rc != 0:
+        reasons.append("ignored_listing_failed")
+    else:
+        budget = [int(rules["git"].get("ignored_listing_max_lines") or 200000)]
+        skip = list(rules["git"].get("ignored_scan_skip_dirs") or [])
+        for rel in filter(None, out.split("\0")):
+            fp = path / rel.rstrip("/")
+            if fp.is_symlink():
+                continue
+            if _credential_name(fp.name, rules):
+                creds.append(rel)
+            elif rel.endswith("/") and fp.is_dir() and not any(fnmatch.fnmatch(fp.name, sd) for sd in skip):
+                hits, why = _credential_files_under(fp, rules, budget)
+                creds += hits
+                if why:
+                    reasons.append(why)
+                    break
+    if creds:
+        reasons.append("real_credential_file")
+        ev["credential_like"] = sorted(set(creds))[:5]
+    return ev, sorted(set(reasons))
+
+
+def release_lock_reason(lock: Path) -> Optional[str]:
+    """Rule R: the global release lock (flock) is held -> hold every release. Opened read-only, never created."""
+    if not lock.exists():
+        return None
+    try:
+        fd = os.open(lock, os.O_RDONLY)
+    except OSError:
+        return "release_lock_unreadable"
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return None
+    except OSError:
+        return "release_lock_busy"
+    finally:
+        os.close(fd)
+
+
+def archive_refs(repos: Iterable[Path], archive_ns: str, now: datetime, retention_days: float) -> list[dict]:
+    """Rule X (plan only): archive refs (``<archive_ns>*``, so dated ``closeout-<date>`` namespaces too) older than retention."""
+    rows = []
+    for repo in sorted(set(repos)):
+        rc, out = _nested_git(repo, "for-each-ref", "--format=%(refname) %(objectname) %(committerdate:unix)", "refs/archive/")
+        if rc != 0:
+            rows.append({"path": f"{repo}#refs/archive", "rule": "X", "kind": "archive_ref", "category": "standing",
+                         "reasons": ["archive_ref_listing_failed"], "evidence": {}, "fingerprint": None})
+            continue
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) != 3 or not parts[0].startswith(archive_ns) or not parts[2].isdigit():
+                continue
+            age = (now.timestamp() - int(parts[2])) / 86400.0
+            if age <= retention_days:
+                continue
+            rows.append({"path": f"{repo}#{parts[0]}", "rule": "X", "kind": "archive_ref", "category": "standing",
+                         "reasons": ["rule_x_plan_only"], "evidence": {"repo": str(repo), "ref": parts[0], "sha": parts[1], "age_days": round(age, 1)},
+                         "fingerprint": {"sha": parts[1], "kind": "archive_ref"}})
+    return rows
+
+
+def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: Optional[str] = None) -> list[dict]:
+    """A/S/T/W/C/R (plus plan-only X), with fresh complete coordination/process/PR references.
+
+    ``only`` (apply-time revalidation) evaluates just that path for the per-entry rules; A still ranks every dump.
+    """
     cfg = rules.get("standing_apply")
     if not isinstance(cfg, dict) or not isinstance(cfg.get("rules"), list) or any(not isinstance(r, str) or r not in SR.RULE_KINDS for r in cfg["rules"]) or len(set(cfg["rules"])) != len(cfg["rules"]):
         raise RulesError("standing_rules_unconfigured")
@@ -1077,7 +1350,7 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
         reasons = []
         if rule not in cfg["rules"]:
             reasons.append("rule_plan_only_not_authorized:" + rule)
-        hard = standing_hard_reason(path, kind, rules) or protected_reason(path, rules, own_work_tree=kind == "git_worktree")
+        hard = standing_hard_reason(path, kind, rules) or protected_reason(path, rules, own_work_tree=kind in ("git_worktree", "abandoned_worktree"))
         if hard:
             reasons.append(hard)
         if path.is_symlink():
@@ -1128,6 +1401,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
         except OSError as exc:
             raise RulesError("rtc_unreadable") from exc
         for path in paths:
+            if only is not None and str(path) != only:
+                continue
             item = row(path, "S", "rtc_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
@@ -1154,6 +1429,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
         ref_repo = _expand(t_cfg["reference_repo"], rules["_home"])
         bundle_dir = _expand(t_cfg["bundle_dir"], rules["_home"])
         for path in paths:
+            if only is not None and str(path) != only:
+                continue
             item = row(path, "T", "agent_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
@@ -1163,7 +1440,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             if nested_why:
                 item["reasons"].append(nested_why)
             item["bundles"], item["bundle_dir"] = bundles, str(bundle_dir)
-            activity, why = SR.activity(path, protected=lambda p: p.is_symlink() or bool(never_touch_reason(p, rules)),
+            item["archive_ns"] = (cfg.get("abandoned_worktree") or {}).get("archive_ns", "refs/archive/closeout")
+            activity, why = SR.activity(path, protected=lambda p, root=path: scratch_protected(p, root, rules),
                                         now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
@@ -1173,10 +1451,15 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item["fingerprint"] = {"activity": activity, "kind": "agent_scratch", "bundles": bundles}
             results.append(item)
 
+    c_cfg = cfg.get("abandoned_worktree")  # validated in load_rules; plan-only unless "C" is listed
+    main_repos: set[Path] = set()
     for path in discover_git_dirs(rules):
+        if only is not None and str(path) != only:
+            continue
         lay = git_layout(path)
         if not lay or lay["kind"] != "git_worktree":
             continue  # standing approval never removes standalone clones or their refs
+        main_repos.add(Path(lay["main_repo"]))
         original = evaluate_git(path, rules, ctx)
         item = row(path, "W", "git_worktree")
         item["main_repo"] = original.get("main_repo")
@@ -1204,11 +1487,99 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item["reasons"].append("worktree_not_untouched_48h")
         item["evidence"].update(branch=branch, branch_preserved=bool(branch), detached_ancestor=not branch and item["evidence"].get("merged") == "ancestor")
         item["fingerprint"] = {"head": head, "branch": branch, "activity": activity, "kind": "git_worktree"}
-        results.append(item)
+        w_takes = not [r for r in item["reasons"] if not r.startswith("rule_plan_only_not_authorized:")]
+        if c_cfg is None or w_takes:
+            results.append(item)
+            continue
+        results.append(_abandoned_row(path, lay, original, item, branch, head, rules, ctx, c_cfg, row))
+    if c_cfg is not None and only is None:
+        days = float(c_cfg.get("archive_retention_days", 90))
+        results += archive_refs(main_repos, c_cfg["archive_ns"], ctx["now"], days)
+    r_cfg = cfg.get("release_reclaim")  # validated in load_rules; plan-only unless "R" is listed
+    if r_cfg is not None:
+        results += _release_rows(rules, ctx, r_cfg, row, only)
     for item in results:
         item["candidate"] = not item["reasons"]
         item["id"] = _item_id(item["path"])
     return results
+
+
+#: rule G/W outcomes that also hold rule C (C replaces only the merged/clean/unpushed/idle-48h tests).
+_C_HOLDS_FROM_G = ("not_owned_repo", "worktree_locked", "in_use_cwd", "referenced", "no_head", "status_failed", "symlink", "not_git")
+
+
+def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping, branch: Optional[str], head: Optional[str],
+                   rules: Mapping[str, Any], ctx: Mapping[str, Any], c_cfg: Mapping[str, Any], row) -> dict:
+    """Rule C: a linked worktree rule W does not take, closed by archive-then-remove when abandoned."""
+    item = row(path, "C", "abandoned_worktree")
+    reasons = item["reasons"]
+    gitdir = Path(lay["gitdir"])
+    item.update(main_repo=str(lay["main_repo"]), gitdir=str(gitdir), archive_ns=c_cfg["archive_ns"])
+    item["evidence"].update(original.get("evidence") or {})
+    item["evidence"]["w_reasons"] = [r for r in w_item["reasons"] if not r.startswith("rule_plan_only_not_authorized:")]
+    reasons += [r for r in original.get("reasons") or [] if r in _C_HOLDS_FROM_G or r.startswith(("never_touch", "contains_never_touch", "protected"))]
+    if is_within(path, rules["_home"] / "trade-ai-releases") or is_within(_real(path), rules["_home"] / "trade-ai-releases"):
+        reasons.append("release_tree")
+    if not head:
+        reasons.append("no_head")
+    prs = json.dumps(ctx["snapshot"]["prs"])
+    if branch and (json.dumps(branch) in prs or json.dumps(branch.removeprefix("refs/heads/")) in prs):
+        reasons.append("open_pr_branch")
+    if in_use_by(path, ctx["cwds"]):
+        reasons.append("in_use_cwd")
+    if (gitdir / "locked").exists():
+        reasons.append("worktree_locked")
+    now = ctx["now"].timestamp()
+    activity, why = SR.activity(path, now=now)
+    git_activity, git_why = SR.activity(gitdir, now=now)
+    reasons += [w for w in (why, git_why) if w]
+    activity = max(activity or 0, git_activity or 0)
+    idle = float(c_cfg["idle_days"])
+    if not activity or now - activity <= idle * 86400:
+        reasons.append(f"worktree_not_idle_{idle:g}_days")
+    item["evidence"]["idle_days"] = round((now - activity) / 86400.0, 2) if activity else None
+    untracked = None
+    if not path.is_symlink() and path.is_dir():
+        ev, holds = worktree_closeout_checks(path, rules, int(float(c_cfg["max_archive_mb"]) * 1024**2))
+        item["evidence"].update(ev)
+        reasons += holds
+        untracked = ev.get("untracked_bytes")
+    item["reasons"] = sorted(set(reasons), key=reasons.index)
+    item["fingerprint"] = {"head": head, "branch": branch, "activity": activity, "kind": "abandoned_worktree", "untracked_bytes": untracked}
+    return item
+
+
+def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
+    """Rule R: the existing release selection (CURRENT, pointer targets, previous, newest N, references) on one root."""
+    roots = [{**r, "keep_newest": max(int(r.get("keep_newest") or 0), int(r_cfg["keep_newest"]))}
+             for r in rules["_release_roots"] if r["_path"] == _expand(r_cfg["root"], rules["_home"])]
+    narrowed = {**rules, "_release_roots": roots}
+    current = bool(served_release_targets(rules)) and any(v.startswith("pointer_symlink") for v in served_release_targets(rules).values())
+    lock = release_lock_reason(_expand(r_cfg["lock_path"], rules["_home"]))
+    out = []
+    for ev in evaluate_releases(narrowed, ctx):
+        if ev["kind"] != "release_dir" or (only is not None and ev["path"] != only):
+            continue
+        path = Path(ev["path"])
+        item = row(path, "R", "release_dir")
+        item["reasons"] += [r for r in ev["reasons"] if r not in item["reasons"]]
+        if not current:
+            item["reasons"].append("current_pointer_unresolved")
+        if lock:
+            item["reasons"].append(lock)
+        try:
+            creds = [e.name for e in os.scandir(path) if not e.is_symlink() and _credential_name(e.name, rules)]
+        except OSError:
+            creds = None
+        if creds is None:
+            item["reasons"].append("release_unreadable")
+        elif creds:
+            item["reasons"].append("release_holds_credential_file")
+            item["evidence"]["credential_like"] = sorted(creds)[:5]
+        item["evidence"].update(ev.get("evidence") or {})
+        item["fingerprint"] = ev.get("fingerprint")
+        out.append(item)
+    return out
 
 
 def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *, measure: bool = True) -> dict:
@@ -1219,7 +1590,7 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
     rows = standing_results(rules, ctx)
     if measure:
         for item in rows:
-            item["size_bytes"] = du_bytes(Path(item["path"]), 60)
+            item["size_bytes"] = None if item["kind"] == "archive_ref" else du_bytes(Path(item["path"]), 60)
     items, excluded = [r for r in rows if r["candidate"]], [r for r in rows if not r["candidate"]]
     return {"schema": MANIFEST_SCHEMA, "generated_at": now.isoformat(), "host": socket.gethostname(),
             "home": str(rules["_home"]), "rules_path": rules["_path"], "rules_sha256": rules["_sha256"],
@@ -1336,6 +1707,15 @@ def human_summary(m: Mapping[str, Any], top_n: int) -> str:
                       f" own uid: {', '.join(opaque['own_uid']) or 'none'}) -> {opaque['effect']}"]
     for k, v in sorted(t["by_kind"].items()):
         lines.append(f"  {k:<28} {v['count']:>5}  {_gb(v['bytes']):>8.2f} GB")
+    if m.get("per_rule"):
+        held: dict[str, list[int]] = {}
+        for r in m["excluded"]:
+            k = held.setdefault(r.get("rule") or "?", [0, 0])
+            k[0] += 1
+            k[1] += r.get("size_bytes") or 0
+        lines += ["", "PER RULE  (candidates GB | held count, GB)"]
+        for k in sorted(set(m["per_rule"]) | set(held)):
+            lines.append(f"  {k:<3} {_gb((m['per_rule'].get(k) or {}).get('planned_bytes')):>8.2f} GB | held {held.get(k, [0, 0])[0]:>5}  {_gb(held.get(k, [0, 0])[1]):>8.2f} GB")
     lines += ["", f"LARGEST {top_n} CANDIDATES"]
     for r in sorted(m["items"], key=lambda r: -(r.get("size_bytes") or 0))[:top_n]:
         ev = r.get("evidence") or {}
@@ -1447,9 +1827,35 @@ def revalidate(item: Mapping[str, Any], rules: Mapping[str, Any], ctx: Mapping[s
     return True, "ok"
 
 
-def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
+def closeout_guard(item: Mapping[str, Any], now: Optional[float] = None) -> Optional[str]:
+    """Rule C, immediately before archiving: still a registered, unlocked worktree with unchanged activity."""
+    p, gitdir = Path(item["path"]), Path(item.get("gitdir") or "")
+    if p.is_symlink() or not p.is_dir() or not (p / DOT_GIT).is_file() or not gitdir.is_dir():
+        return "not_a_worktree"
+    if (gitdir / "locked").exists():
+        return "worktree_locked"
+    now = time.time() if now is None else now
+    a, why = SR.activity(p, now=now)
+    b, gwhy = SR.activity(gitdir, now=now)
+    if why or gwhy or max(a or 0, b or 0) != (item.get("fingerprint") or {}).get("activity"):
+        return "changed_before_archive"
+    return None
+
+
+def remove_item(item: Mapping[str, Any]) -> tuple:
+    """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
     kind = item["kind"]
+    if kind == "abandoned_worktree":
+        why = closeout_guard(item)
+        if why:
+            return False, why
+        arc, err = WC.archive_worktree(p, item["archive_ns"], "disk_hygiene rule C (AGENTS.md §24.14): abandoned worktree "
+                                       f"closed by archive-then-remove; branch {(item.get('fingerprint') or {}).get('branch')}")
+        if err:
+            return False, "archive_failed:" + err
+        ok, how = WC.remove_worktree(p, item["main_repo"])
+        return ok, f"archived {arc['ref']}; " + how, {"archive_ref": arc["ref"], "archive_sha": arc["sha"]}
     if kind == "git_worktree":
         rc, _ = _git(Path(item["main_repo"]), "worktree", "remove", str(p), timeout=600)
         if rc != 0 or os.path.lexists(p):
@@ -1646,7 +2052,7 @@ def apply(
                 rep["refused"] = "manifest_changed_during_apply"
                 break
             try:
-                fresh = next((r for r in standing_results(rules, ctx) if r["path"] == item["path"] and r["kind"] == item["kind"]), None)
+                fresh = next((r for r in standing_results(rules, ctx, only=item["path"]) if r["path"] == item["path"] and r["kind"] == item["kind"]), None)
             except (RulesError, OSError):
                 rep["refused"] = "standing_revalidation_unavailable"
                 break
@@ -1674,14 +2080,17 @@ def apply(
             except OSError:
                 rep["refused"] = "progress_write_failed_before_removal"
                 break
+        extra: dict = {}
         try:
-            ok, how = remove_item(item)
+            res = remove_item(item)
+            ok, how = res[0], res[1]
+            extra = dict(res[2]) if len(res) > 2 and isinstance(res[2], dict) else {}
         except OSError as exc:
             ok, how = False, f"error:{type(exc).__name__}"
         if ok:
             done_bytes += size
             rep["removed"].append({"path": item["path"], "kind": item["kind"], "rule": item.get("rule"), "bytes": size, "how": how,
-                                   "revalidation_evidence_sha256": ctx.get("evidence_sha256")})
+                                   "revalidation_evidence_sha256": ctx.get("evidence_sha256")} | extra)
             if standing:
                 rep["pending_removal"] = None
                 try:
@@ -1693,7 +2102,7 @@ def apply(
                     rep["refused"] = "worktree_prune_failed"
                     break
         else:
-            rep["skipped"].append({"path": item["path"], "why": how})
+            rep["skipped"].append({"path": item["path"], "why": how} | extra)
             if standing:
                 rep["refused"] = "removal_failed"
                 break
@@ -1724,6 +2133,174 @@ def _parse_now(text: Optional[str]) -> Optional[datetime]:
     return d if d.tzinfo else None
 
 
+DAILY_STATE = "disk_hygiene_daily_latest.json"
+
+
+def _et_date(now: datetime) -> str:
+    from zoneinfo import ZoneInfo
+
+    return now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+
+
+def _daily_due(rules: Mapping[str, Any], state_root: Optional[Path], now: datetime, hour_et: int) -> bool:
+    """--scheduled: is today's (ET) full run still owed? Due from ``hour_et`` until one is recorded for today."""
+    from zoneinfo import ZoneInfo
+
+    if now.astimezone(ZoneInfo("America/New_York")).hour < hour_et:
+        return False
+    try:
+        last = json.loads((manifest_dir(rules, state_root) / DAILY_STATE).read_text())
+    except (OSError, ValueError):
+        return True
+    return not isinstance(last, dict) or last.get("date_et") != _et_date(now)
+
+
+def _receipt_lane(a: argparse.Namespace) -> str:
+    return LANE_ID if a.standing and os.environ.get(RUN_ID_ENV) else (APPLY_LANE_ID if a.apply else LANE_ID)
+
+
+def _below_threshold(a: argparse.Namespace, rules: Mapping[str, Any], state_root: Optional[Path], wall_start: datetime,
+                     now: datetime, usage: Mapping) -> int:
+    """--only-if-above: usage at/below the threshold -> a small receipt, nothing planned or removed."""
+    doc = {"schema": "DiskHygienePressureCheck@v1", "outcome": "below_threshold", "threshold_pct": a.only_if_above,
+           "usage": dict(usage), "checked_at": now.isoformat(), "run_id": os.environ.get(RUN_ID_ENV)}
+    if not a.dry_run:
+        from scripts.lib.atomic_json_store import atomic_write_json
+
+        atomic_write_json(manifest_dir(rules, state_root) / "disk_hygiene_pressure_check_latest.json", doc, indent=1)
+        lane = _receipt_lane(a)
+        R.write_lane_receipt(lane, ok=True, exit_code=0, started_at=wall_start, script=SCRIPT,
+                             summary={"outcome": "below_threshold", "used_pct": usage.get("used_pct"), "threshold_pct": a.only_if_above},
+                             path=R.receipt_path(lane, state_root),
+                             output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {}, "empty_reason": "nothing_due"})
+    print(json.dumps({"outcome": "below_threshold", "used_pct": usage.get("used_pct"), "threshold_pct": a.only_if_above, "dry_run": bool(a.dry_run)}))
+    return 0
+
+
+def held_top_reasons(m: Optional[Mapping[str, Any]], n: int = 5) -> list[dict]:
+    """Why space is held: the plan's excluded bytes per reason (an entry with several reasons counts under each)."""
+    by = ((m or {}).get("totals") or {}).get("excluded_by_reason") or {}
+    return [{"reason": k, "count": v["count"], "bytes": v["bytes"], "gib": round(v["bytes"] / 1024**3, 2)}
+            for k, v in sorted(by.items(), key=lambda kv: -kv[1]["bytes"])[:n]]
+
+
+def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, state_root: Optional[Path],
+                wall_start: datetime, evidence: Optional[Mapping], evidence_error: Optional[str]) -> int:
+    """One apply, or (``--standing``) up to ``pressure.max_passes`` re-planned passes under ``--until-target``.
+
+    Every pass re-collects evidence, re-plans and re-binds a fresh manifest; caps bind per pass. The loop stops at
+    usage <= target, a pass that removes nothing, a refusal, or max_passes. Only the final report is the run's
+    ``disk_hygiene_standing_apply_*`` receipt (the monitor reads one per run); each pass also leaves its own file.
+    """
+    from scripts.lib.atomic_json_store import atomic_write_json
+
+    pcfg = (rules.get("standing_apply") or {}).get("pressure") or {}
+    max_passes = int(pcfg.get("max_passes") or 1) if a.until_target is not None else 1
+    alert_pct = pcfg.get("alert_pct", 85)
+    passes: list[dict] = []
+    total_removed, total_bytes, m_last, stopped = 0, 0, None, "single_pass"
+    clock = time.monotonic()
+    rep: dict[str, Any] = {}
+    for pass_no in range(1, max_passes + 1):
+        pass_now = now + timedelta(seconds=time.monotonic() - clock)
+        before = disk_usage_sample(rules["_home"])
+        if pass_no > 1:
+            evidence = collect_standing_evidence(rules, pass_now)
+        mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
+        sha = a.manifest_sha256
+        if a.standing and not a.manifest and evidence_error is None:
+            # A fresh native run plans first; it still applies an exact digest-bound manifest.
+            try:
+                fresh = standing_plan(rules, pass_now, evidence)
+                fresh["pressure_pass"] = pass_no
+                mpath = write_manifest(fresh, rules, state_root)
+                sha = hashlib.sha256(mpath.read_bytes()).hexdigest()
+                m_last = fresh
+            except (RulesError, OSError) as exc:
+                evidence_error = str(exc) if isinstance(exc, RulesError) else "manifest_write_failed"
+        if evidence_error:
+            rep = {"schema": APPLY_SCHEMA, "run_id": os.environ.get(RUN_ID_ENV), "started_at": wall_start.isoformat(),
+                   "finished_at": datetime.now(timezone.utc).isoformat(), "refused": evidence_error,
+                   "removed": [], "skipped": [], "per_rule": None, "held_bytes": None, "planned_bytes": None,
+                   "unmeasured_planned_items": None}
+            rep["operator_digest"] = SR.operator_digest(rep)
+        else:
+            progress_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(os.environ.get(RUN_ID_ENV) or now.strftime("%Y%m%dT%H%M%SZ")))[:120]
+            progress_id += f"_p{pass_no}" if pass_no > 1 else ""
+            progress_path = manifest_dir(rules, state_root) / f"disk_hygiene_standing_progress_{progress_id}.json"
+            rep = apply(mpath, rules, pass_now, grant=os.environ.get(GRANT_ENV), run_id=os.environ.get(RUN_ID_ENV),
+                        standing=a.standing, evidence=evidence, manifest_sha256=sha,
+                        progress_sink=(lambda current, _p=progress_path: atomic_write_json(_p, current, indent=1)) if a.standing else None)
+        if rep.get("refused") == "n8n_executor_never_applies":
+            break
+        after = rep.get("post_apply_usage") or disk_usage_sample(rules["_home"])
+        removed = len(rep.get("removed") or [])
+        total_removed += removed
+        total_bytes += int(rep.get("reclaimed_bytes") or 0)
+        rep["pressure_pass"] = {"pass": pass_no, "usage_before": before, "usage_after": after, "removed": removed,
+                                "reclaimed_bytes": rep.get("reclaimed_bytes"), "target_pct": a.until_target}
+        passes.append(rep["pressure_pass"])
+        if a.standing and a.until_target is not None:
+            stamp = pass_now.strftime("%Y%m%dT%H%M%SZ")
+            atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_pressure_pass_{stamp}_p{pass_no}.json", rep, indent=1)
+        pct = after.get("used_pct")
+        if a.until_target is None:
+            break
+        if rep.get("refused"):
+            stopped = "refused"
+            break
+        if isinstance(pct, (int, float)) and pct <= a.until_target:
+            stopped = "target_reached"
+            break
+        if removed == 0:
+            stopped = "pass_removed_nothing"
+            break
+        stopped = "max_passes"
+    if rep.get("refused") == "n8n_executor_never_applies":
+        print(json.dumps({k: rep.get(k) for k in ("refused", "manifest_age_h", "reclaimed_gb")}
+                         | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"])}))
+        return 1
+    if a.standing:
+        final_pct = (passes[-1]["usage_after"] if passes else {}).get("used_pct")
+        rep["pressure"] = {"until_target_pct": a.until_target, "max_passes": max_passes, "alert_pct": alert_pct,
+                           "passes": passes, "stopped_because": stopped, "total_removed": total_removed,
+                           "total_reclaimed_bytes": total_bytes, "final_used_pct": final_pct,
+                           # unmeasured usage counts as above: an alert is cheaper than a silent full disk
+                           "ended_above_alert_pct": not isinstance(final_pct, (int, float)) or final_pct > alert_pct,
+                           "held_top_reasons": held_top_reasons(m_last)}
+        rep["ended_above_alert_pct"] = rep["pressure"]["ended_above_alert_pct"]
+        rep["held_top_reasons"] = rep["pressure"]["held_top_reasons"]
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_apply_{stamp}.json", rep, indent=1)
+    if a.standing:
+        report_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(rep.get("run_id") or stamp))[:120]
+        atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_standing_apply_{stamp}_{report_id}.json", rep, indent=1)
+        atomic_write_json(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json", rep, indent=1)
+    receipt_lane = _receipt_lane(a)
+    R.write_lane_receipt(
+        receipt_lane,
+        ok=not rep.get("refused"),
+        exit_code=0 if not rep.get("refused") else 1,
+        started_at=wall_start,
+        script=SCRIPT,
+        summary={
+            "refused": rep.get("refused"),
+            "removed": len(rep["removed"]),
+            "skipped": len(rep["skipped"]),
+            "reclaimed_bytes": rep.get("reclaimed_bytes"),
+            "per_rule": rep.get("per_rule"), "operator_digest": rep.get("operator_digest"),
+            "pressure": {k: v for k, v in (rep.get("pressure") or {}).items() if k != "passes"} or None,
+        },
+        path=R.receipt_path(receipt_lane, state_root),
+        output={"produced_count": 1 if not rep.get("refused") else 0, "attempted_count": 1,
+                "skipped_reasons": {SKIP_DEPENDENCY: 1} if rep.get("refused") else {},
+                "empty_reason": None, "output_evidence": [{"kind": "file", "ref": str(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json")}]} if a.standing else None,
+    )
+    print(json.dumps({k: rep.get(k) for k in ("refused", "manifest_age_h", "reclaimed_gb", "ended_above_alert_pct")}
+                     | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"]), "passes": len(passes)}))
+    return 1 if rep.get("refused") else 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     g = ap.add_mutually_exclusive_group()
@@ -1740,6 +2317,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--home", help=argparse.SUPPRESS)  # tests
     ap.add_argument("--now", help=argparse.SUPPRESS)  # tests: aware ISO 8601
     ap.add_argument("--no-measure", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--until-target", type=float, metavar="PCT",
+                    help="--standing --apply: re-plan and re-apply until used%% <= PCT, a pass removes nothing, or pressure.max_passes")
+    ap.add_argument("--only-if-above", type=float, metavar="PCT",
+                    help="exit 0 with a below_threshold receipt, planning nothing, when used%% <= PCT")
+    ap.add_argument("--scheduled", action="store_true",
+                    help="--standing --apply, fired hourly: the day's full run once at/after pressure.daily_hour_et (ET), "
+                         "otherwise only above pressure.trigger_pct; both re-run until pressure.target_pct")
     try:
         a = ap.parse_args(argv)
     except SystemExit as exc:
@@ -1767,8 +2351,29 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
         return 1
 
+    pressure = (rules.get("standing_apply") or {}).get("pressure")
+    if a.until_target is not None and (not (a.standing and a.apply) or not 0 < a.until_target < 100 or not isinstance(pressure, dict)):
+        print(json.dumps({"ok": False, "error": "until_target_needs_standing_apply_pct_and_pressure_config"}), file=sys.stderr)
+        return 2
+    daily_due = False
+    if a.scheduled:
+        if not (a.standing and a.apply) or not isinstance(pressure, dict) or "daily_hour_et" not in pressure:
+            print(json.dumps({"ok": False, "error": "scheduled_needs_standing_apply_and_pressure_daily_hour_et"}), file=sys.stderr)
+            return 2
+        daily_due = _daily_due(rules, state_root, now, pressure["daily_hour_et"])
+        a.until_target = float(pressure["target_pct"])
+        if not daily_due:
+            a.only_if_above = float(pressure["trigger_pct"])
+    if a.only_if_above is not None:
+        if not 0 < a.only_if_above < 100:
+            print(json.dumps({"ok": False, "error": "only_if_above_pct"}), file=sys.stderr)
+            return 2
+        usage = disk_usage_sample(rules["_home"])
+        pct = usage.get("used_pct")
+        if isinstance(pct, (int, float)) and pct <= a.only_if_above:
+            return _below_threshold(a, rules, state_root, wall_start, now, usage)
+
     evidence = None
-    rep = None
     evidence_error = None
     if a.standing:
         cfg = rules.get("standing_apply") or {}
@@ -1789,63 +2394,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
 
     if a.apply:
-        mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
-        if a.standing and not a.manifest and evidence_error is None:
-            # A fresh native run plans first; it still applies an exact digest-bound manifest.
-            try:
-                fresh = standing_plan(rules, now, evidence)
-                mpath = write_manifest(fresh, rules, state_root)
-                a.manifest_sha256 = hashlib.sha256(mpath.read_bytes()).hexdigest()
-            except (RulesError, OSError) as exc:
-                evidence_error = str(exc) if isinstance(exc, RulesError) else "manifest_write_failed"
-        if evidence_error:
-            rep = {"schema": APPLY_SCHEMA, "run_id": os.environ.get(RUN_ID_ENV), "started_at": wall_start.isoformat(),
-                   "finished_at": datetime.now(timezone.utc).isoformat(), "refused": evidence_error,
-                   "removed": [], "skipped": [], "per_rule": None, "held_bytes": None, "planned_bytes": None,
-                   "unmeasured_planned_items": None}
-            rep["operator_digest"] = SR.operator_digest(rep)
-        else:
+        rc = _apply_main(a, rules, now, state_root, wall_start, evidence, evidence_error)
+        if daily_due and not a.dry_run:
+            # Recorded whatever the outcome: a refused/failed day alerts once (monitor) and is retried tomorrow; only
+            # a crash before this line (no record) is retried at the next hourly fire.
             from scripts.lib.atomic_json_store import atomic_write_json
-            progress_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(os.environ.get(RUN_ID_ENV) or now.strftime("%Y%m%dT%H%M%SZ")))[:120]
-            progress_path = manifest_dir(rules, state_root) / f"disk_hygiene_standing_progress_{progress_id}.json"
-            rep = apply(mpath, rules, now, grant=os.environ.get(GRANT_ENV), run_id=os.environ.get(RUN_ID_ENV),
-                        standing=a.standing, evidence=evidence, manifest_sha256=a.manifest_sha256,
-                        progress_sink=(lambda current: atomic_write_json(progress_path, current, indent=1)) if a.standing else None)
-        from scripts.lib.atomic_json_store import atomic_write_json
 
-        if rep.get("refused") != "n8n_executor_never_applies":
-            stamp = now.strftime("%Y%m%dT%H%M%SZ")
-            atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_apply_{stamp}.json", rep, indent=1)
-            if a.standing:
-                report_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(rep.get("run_id") or stamp))[:120]
-                atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_standing_apply_{stamp}_{report_id}.json", rep, indent=1)
-                atomic_write_json(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json", rep, indent=1)
-            receipt_lane = LANE_ID if a.standing and os.environ.get(RUN_ID_ENV) else APPLY_LANE_ID
-            R.write_lane_receipt(
-                receipt_lane,
-                ok=not rep.get("refused"),
-                exit_code=0 if not rep.get("refused") else 1,
-                started_at=wall_start,
-                script=SCRIPT,
-                summary={
-                    "refused": rep.get("refused"),
-                    "removed": len(rep["removed"]),
-                    "skipped": len(rep["skipped"]),
-                    "reclaimed_bytes": rep.get("reclaimed_bytes"),
-                    "per_rule": rep.get("per_rule"), "operator_digest": rep.get("operator_digest"),
-                },
-                path=R.receipt_path(receipt_lane, state_root),
-                output={"produced_count": 1 if not rep.get("refused") else 0, "attempted_count": 1,
-                        "skipped_reasons": {SKIP_DEPENDENCY: 1} if rep.get("refused") else {},
-                        "empty_reason": None, "output_evidence": [{"kind": "file", "ref": str(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json")}]} if a.standing else None,
-            )
-        print(
-            json.dumps(
-                {k: rep.get(k) for k in ("refused", "manifest_age_h", "reclaimed_gb")}
-                | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"])}
-            )
-        )
-        return 1 if rep.get("refused") else 0
+            atomic_write_json(manifest_dir(rules, state_root) / DAILY_STATE, {"date_et": _et_date(now), "exit": rc,
+                              "finished_at": datetime.now(timezone.utc).isoformat(), "run_id": os.environ.get(RUN_ID_ENV)}, indent=1)
+        return rc
 
     try:
         m = standing_plan(rules, now, evidence, measure=not a.no_measure) if a.standing else plan(rules, now, measure=not a.no_measure)
