@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_delivery_spin_20261031",
+  "files": ["tests/test_cio_delivery_spin_20261031.py"],
+  "anchor": "CIO_DELIVERY_SPIN_20261031",
+  "comment": ["ANCHOR: CIO_DELIVERY_SPIN_20261031 — tradeai-cio-delivery: list_notifications reads the outbox once (was once per stream, 201 s CPU on the real 7 MB file vs 0.12 s), every PENDING note is considered (the limit=50 hid older notes behind held advisories), overdue notes expire with a reason (expire() was called without one and the TypeError was swallowed), expiry cap from config/cio_delivery.json. Hermetic."]
+}
