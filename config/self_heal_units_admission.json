@@ -1,0 +1,9 @@
+{
+  "schema": "SelfHealUnitsAdmission@v1",
+  "enabled": true,
+  "review_status": "REVIEWED",
+  "approved_by": "operator directive 2026-10-25 (\"Arm the fixer and also a logger that tracks what was fixed ... Somebody needs to monitor it\"; no operator acts), relayed by the coordinator; source reviewed in the [shared-infra] PRs #2129/#2131 and this PR",
+  "approved_at": "2026-10-25",
+  "installation": "scripts/install_staged_units.py at cio_phase2_exact_main_deploy.sh promote (manifest config/staged_user_units.json groups self-heal-train-monitor, self-heal-fixer): --dry-run first (rule 7), archive-on-replace, enable --now, is-active readback (+ the monitor's heartbeat ok_at)",
+  "authority_note": "Installing the units grants no fixing authority: the monitor is SHADOW and the fixer 'not armed' until AGENTS.md 21.0.0 section 28.14 is ACTIVE at origin/main. Kill switches: data/self_heal/MONITOR_DISABLED (both), data/self_heal/FIXER_DISABLED (fixer)."
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_staged_units_20261025",
+  "files": [
+    "tests/test_self_heal_staged_units_20261025.py"
+  ],
+  "anchor": "SELF_HEAL_STAGED_UNITS_20261025",
+  "comment": [
+    "ANCHOR: SELF_HEAL_STAGED_UNITS_20261025 — self-heal monitor + fixer units installed by the release's staged-units step (AGENTS.md 21.0.0 section 28.14; no operator act): dry run first, admission, heartbeat readback, no fixer first run."
+  ]
+}

@@ -102,9 +102,11 @@ def world(tmp_path, monkeypatch):
 # ── the reviewed manifest ────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_repo_manifest_is_valid_and_admits_only_the_watchdog():
+def test_repo_manifest_is_valid_and_lists_the_reviewed_groups():
     assert I.validate_manifest(MANIFEST) == []
-    assert [g["id"] for g in MANIFEST["groups"]] == ["cron-outage-watchdog"]
+    # 2026-10-25: the self-heal lanes (AGENTS.md 21.0.0 section 28.14) ride the same mechanism; their own contract is
+    # pinned by tests/test_self_heal_staged_units_20261025.py
+    assert [g["id"] for g in MANIFEST["groups"]] == ["cron-outage-watchdog", "self-heal-train-monitor", "self-heal-fixer"]
     for unit in WATCHDOG["units"]:
         assert (ROOT / WATCHDOG["source_dir"] / unit).is_file()
     assert WATCHDOG["dry_run"]["argv"] == ["scripts/cron_outage_watchdog.py", "--dry-run"]
