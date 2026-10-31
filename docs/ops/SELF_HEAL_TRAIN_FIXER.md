@@ -83,5 +83,5 @@ Writes: `data/self_heal/fix_log.jsonl` (append-only), `data/self_heal/train_moni
 `data/self_heal/fixer_defects.jsonl` (live only) and `data/runtime/self-heal-train-monitor_last.json` (the
 heartbeat, `ok` + `ok_at`, measured by the cron outage watchdog). Paths are relative to `TRADEAI_STATE_ROOT`.
 
-The fixer's worktrees live under `/home/johnclaw/.shw`. That path is on disk, never `/tmp`, and it is short: the
+The fixer's worktrees live under `~/.shw` (the operator's home, expanded at run time). That path is on disk, never `/tmp`, and it is short: the
 egress bridge binds a unix socket at `<worktree_root>/<job_id>-eg/s`, and AF_UNIX paths cap at 107 bytes.

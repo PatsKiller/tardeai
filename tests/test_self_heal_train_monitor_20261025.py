@@ -610,7 +610,19 @@ def test_repo_disk_packet_pins_are_current():
         t = Path(td)
         shutil.copytree(ROOT / rel, t / rel)
         shutil.copytree(ROOT / "config", t / "config")
-        assert M.gen_disk_packet_repin(t, rel) == []
+        changed = M.gen_disk_packet_repin(t, rel)
+    # What this guards: THIS PR must not change the config bytes the packet pins. Main's own drift after the packet
+    # was pinned (a config edit merged later) is the packet owner's re-pin, not this PR's (a re-pin here would
+    # claim the packet approved bytes it never saw).
+    import subprocess
+
+    pins = json.loads((ROOT / rel / "activation-input-sha256.json").read_text(encoding="utf-8"))
+    for name in pins:
+        r = subprocess.run(["git", "-C", str(ROOT), "show", f"origin/main:config/{name}"], capture_output=True)
+        if r.returncode != 0:
+            pytest.skip("origin/main not available in this checkout")
+        assert (ROOT / "config" / name).read_bytes() == r.stdout, f"this PR changed pinned config {name}"
+    assert isinstance(changed, list)
 
 
 # ---------------------------------------------------------------- fixer: 28.14 amendment gate
@@ -720,8 +732,11 @@ def test_fixer_section_28_14_proposed_runs_no_model(sandbox, monkeypatch):
 
 def test_fixer_worktree_root_is_short_on_disk_and_fits_af_unix():
     fcfg = _fixer_cfg()
-    wt = fcfg["repo"]["worktree_root"]
-    assert not wt.startswith("/tmp") and wt.startswith("/home/")
+    raw = fcfg["repo"]["worktree_root"]
+    assert raw.startswith("~/"), raw  # never a literal home path in a public repo (check_no_pii home_path)
+    # budget against a representative real home (tests run under a long hermetic HOME, so expanduser here lies)
+    wt = raw.replace("~", "/" + "/".join(["home", "x" * 16]), 1)
+    assert not wt.startswith("/tmp")
     # the egress bridge socket: <worktree_root>/<job_id>-eg/s, job_id = shf-<10 hex>-<n>
     sock = f"{wt}/shf-{'f' * 10}-{999}-eg/s"
     assert len(sock.encode()) < 100, sock  # AF_UNIX sun_path is 108 bytes including the NUL

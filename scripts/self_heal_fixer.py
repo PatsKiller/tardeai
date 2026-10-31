@@ -320,7 +320,7 @@ class Attempt:
         r = cfg["repo"]
         self.repo = Path(r["repo_root"])
         self.py = r["python"]
-        self.wt_root = Path(r["worktree_root"])
+        self.wt_root = Path(r["worktree_root"]).expanduser()
         self.base = evidence["base_sha"]
         tag = job["job_id"]
         #: the candidate worktree: the ONLY path the agent may write
@@ -1557,7 +1557,7 @@ def _cycle(
             memory_old + memory_new, failure_kind=job.get("failure_kind"), backends=names, chosen=backend
         )
         if not apply:
-            wt = Path(cfg["repo"]["worktree_root"])
+            wt = Path(cfg["repo"]["worktree_root"]).expanduser()
             pytest_cmd = str(wt / f"{job['job_id']}-bin" / "pytest")
             home = environ.get("HOME") or str(Path.home())
             ah = str(wt / f"{job['job_id']}-home")

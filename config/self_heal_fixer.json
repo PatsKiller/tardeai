@@ -57,18 +57,16 @@
   },
   "policy_gate": {
     "_why": "AGENTS.md 12.0.0 section 24.5 forbids a scheduled job from pushing or opening a PR. Until the operator ratifies the amendment (docs/ops/self_heal_claude_fixer.md section 9) the fixer stops at fix_ready_local: the fix is committed on a local branch and the PR body is written as an artifact. The push/PR step runs only when AGENTS.md at the job's base commit carries this heading marker with the word ACTIVE on the same line.",
-    "amendment_heading_marker": "## 24.11 Self-heal fix PRs from the self-heal-fixer lane",
-    "additional_heading_markers": [
-      "## 28.14 Self-heal monitor and fixer"
-    ],
-    "_additional_why": "2026-10-25: AGENTS.md 21.0.0 section 28.14 (PR #2128; docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
+    "amendment_heading_marker": "## 28.14 Self-heal monitor and fixer",
+    "additional_heading_markers": [],
+    "_additional_why": "2026-10-31 (coordinator, stuck-work sweep): the gate looked for '## 24.11 Self-heal fix PRs', but §24.11 is now 'Read-only broker sync', so the fixer could never arm; the gate is now §28.14 only, ACTIVE on its heading line or in the AGENTS.md header Status (scripts/lib/self_heal_fixer.py policy_verdict). Earlier: 2026-10-25: AGENTS.md 21.0.0 section 28.14 (PR #2128; docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
     "required_status_word": "ACTIVE"
   },
   "repo": {
     "repo_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
     "remote": "origin",
     "base_branch": "main",
-    "worktree_root": "/home/johnclaw/.shw",
+    "worktree_root": "~/.shw",
     "_worktree_root_why": "2026-10-25: on disk, never /tmp (the 10-25 /tmp ENOSPC incident), and SHORT: the egress bridge binds a unix socket at <worktree_root>/<job_id>-eg/s and AF_UNIX paths cap at 107 bytes (tests/test_self_heal_train_monitor_20261025.py pins the budget).",
     "branch_prefix": "self-heal-fix/",
     "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",

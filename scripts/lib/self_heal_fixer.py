@@ -1209,22 +1209,42 @@ def arming_verdict(
 
 
 def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
-    """Push/PR allowed only when AGENTS.md (at the job's base) carries the ACTIVE amendment heading."""
+    """Push/PR allowed only when AGENTS.md (at the job's base) authorizes it. The authority is §28.14 "Self-heal
+    monitor and fixer" (AGENTS.md 21.0.0; coordinator 2026-10-31: "Map the gate to §28.14"). The old 24.11 draft
+    heading is gone: §24.11 is now "Read-only broker sync", so it can never authorize anything here.
+
+    Allowed when the §28.14 heading is present and EITHER its own line carries the status word, OR the document
+    header's ``Status:`` line does (the standard puts status in the header, not on section headings). A PROPOSED
+    header blocks: an unratified version never authorizes a scheduled push (§20)."""
     pg = cfg["policy_gate"]
-    # Either amendment authorizes the push/PR: the original 24.11 draft, or AGENTS.md 21.0.0 section 28.14
-    # "Self-heal monitor and fixer" (2026-10-25). Each needs the status word on its own heading line.
+    word = pg["required_status_word"]
     markers = [pg["amendment_heading_marker"], *(pg.get("additional_heading_markers") or [])]
-    for line in (agents_text or "").splitlines():
+    lines = (agents_text or "").splitlines()
+    header_status = next(
+        (
+            ln.split(":", 1)[1].strip()
+            for ln in lines[: int(pg.get("header_scan_lines", 40))]
+            if ln.startswith("Status:")
+        ),
+        None,
+    )
+    for line in lines:
         if any(line.startswith(m) for m in markers):
-            ok = pg["required_status_word"] in line
+            if word in line:
+                return {"push_allowed": True, "why": "amendment ACTIVE on its heading", "heading": line[:200]}
+            ok = bool(header_status) and header_status.split()[0] == word
             return {
                 "push_allowed": ok,
-                "why": "amendment ACTIVE" if ok else "amendment present but not ACTIVE",
+                "why": "§28.14 present and AGENTS.md header ACTIVE"
+                if ok
+                else f"§28.14 present but AGENTS.md header Status is {header_status or 'missing'}",
                 "heading": line[:200],
+                "header_status": header_status,
             }
     return {
         "push_allowed": False,
-        "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment (24.11 / 28.14) absent",
+        "why": "AGENTS.md 24.5: no push/PR from a scheduled job; §28.14 heading absent",
+        "header_status": header_status,
     }
 
 

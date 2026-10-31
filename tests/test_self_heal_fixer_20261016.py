@@ -395,7 +395,12 @@ def test_arming_needs_named_grant_and_daily_cap():
 
 
 def test_policy_gate_blocks_push_until_amendment_active():
-    assert not F.policy_verdict(AGENTS_TEXT, CFG)["push_allowed"]  # main today: 24.5 binds
+    head = "Policy-Version:      27.0.0\nStatus:              PROPOSED\n"
+    sec = "## 28.14 Self-heal monitor and fixer\n"
+    assert not F.policy_verdict(head + sec, CFG)["push_allowed"]  # an unratified header never authorizes
+    assert F.policy_verdict(head.replace("PROPOSED", "ACTIVE") + sec, CFG)["push_allowed"]
+    assert not F.policy_verdict(head.replace("PROPOSED", "ACTIVE"), CFG)["push_allowed"]  # no 28.14: 24.5 binds
+    assert not F.policy_verdict("Status: ACTIVE\n## 24.11 Read-only broker sync\n", CFG)["push_allowed"]
     marker = CFG["policy_gate"]["amendment_heading_marker"]
     assert not F.policy_verdict(f"{marker} (13.0.0, PROPOSED)\n", CFG)["push_allowed"]
     assert F.policy_verdict(f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", CFG)["push_allowed"]
