@@ -16,7 +16,10 @@ from zoneinfo import ZoneInfo
 
 SCHEMA = "DiskHygieneEvidence@v1"
 SOURCES = ("cron", "units", "processes", "coordination", "prs", "pointers")
-RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree"}
+RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree",
+              "C": "abandoned_worktree", "R": "release_dir"}
+#: Rule X (archive retention) is reported only; it is never listable in standing_apply.rules and never removes.
+PLAN_ONLY_KINDS = {"X": "archive_ref"}
 MAX_BYTES = 40 * 1024**3
 MAX_AGE_SECONDS = 2 * 3600
 

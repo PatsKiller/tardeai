@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_workspace_lifecycle_20261031",
+  "files": [
+    "tests/test_disk_workspace_lifecycle_20261031.py"
+  ],
+  "anchor": "DISK_WORKSPACE_LIFECYCLE_20261031",
+  "comment": [
+    "ANCHOR: DISK_WORKSPACE_LIFECYCLE_20261031 — standing rules C (archive-then-remove abandoned worktrees), R (release dirs beyond CURRENT/previous/newest N), plan-only X, and the --until-target / --only-if-above pressure loop; synthetic repos only."
+  ]
+}

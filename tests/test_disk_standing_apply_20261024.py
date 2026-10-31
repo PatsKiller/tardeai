@@ -254,7 +254,7 @@ def test_apply_simulated_only_binds_rules_manifest_and_all_three_rule_totals(wor
     report = do_apply(path, world[1], doc)
     assert report["refused"] is None and calls
     assert report["per_rule"]["A"]["applied_bytes"] == sum(r["size_bytes"] for r in manifest["items"])
-    assert set(report["per_rule"]) == {"A", "S", "T", "W"}
+    assert set(report["per_rule"]) == set(SR.RULE_KINDS) == {"A", "S", "T", "W", "C", "R"}
     assert "planned/applied" in report["operator_digest"]
     assert all(Path(r["path"]).exists() for r in calls)  # no real unlink/remove/rmtree happened
 

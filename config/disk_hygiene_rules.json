@@ -444,7 +444,9 @@
       "A",
       "S",
       "T",
-      "W"
+      "W",
+      "C",
+      "R"
     ],
     "manifest_max_age_hours": 2,
     "max_bytes_per_run": 42949672960,
@@ -485,6 +487,26 @@
       "reference_repo": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
       "bundle_dir": "~/trade-ai-releases/persistent-state/data/runtime/disk_hygiene/bundles",
       "never": "symlink, or an entry equal to / inside / containing a never-touch or protected path"
+    },
+    "abandoned_worktree": {
+      "_why": "Rule C (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T1): on 2026-10-30, 332 abandoned linked worktrees held 59.6 GiB that rule W (clean + merged only) never takes. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). A linked worktree rule W does not take is a candidate only when: owned repo; not protected, canonical or under ~/trade-ai-releases; no open PR on its branch; its path in no live claim/worklog, crontab, unit, pointer or process cwd/fd; not `git worktree lock`ed; newest activity of the tree and its gitdir older than idle_days; untracked non-ignored bytes <= max_archive_mb and no untracked nested repo; no REAL credential-like file, untracked or ignored (symlinks are fine). Closed by archive-then-remove (scripts/lib/workspace_closeout.py): HEAD + tracked changes + untracked non-ignored files are committed with a temporary index to <archive_ns>/<slug>-<hash> (never pushed), then `git worktree remove --force`; branches and refs are never deleted. Restore: git worktree add <path> <ref>. archive_retention_days feeds rule X, which is plan-only (reported, never removed). Operator-only values (§17).",
+      "idle_days": 7,
+      "max_archive_mb": 200,
+      "archive_ns": "refs/archive/closeout",
+      "archive_retention_days": 90
+    },
+    "release_reclaim": {
+      "_why": "Rule R (2026-10-31, AGENTS.md §24.12 (b)/§24.14; = DSN-20261030-disk-recovery-P2-T1): release prepares add ~32 GiB per 48 h. Reuses evaluate_releases on `root`: holds CURRENT and every pointer target, the previous served release, the newest max(root keep_newest, keep_newest), anything referenced by a crontab line, unit, pointer, live claim/worklog or process cwd/fd, everything while the global release lock (`lock_path`, flock) is held or CURRENT cannot be resolved, and any release whose top level holds a REAL credential-like file (a copied .env.* backup; templates such as .env.example and .env symlinks are fine). Removed by rmtree (a release is rebuildable from its commit). Operator-only values (§17).",
+      "root": "~/trade-ai-releases/portfolio-server",
+      "keep_newest": 3,
+      "lock_path": "~/trade-ai-releases/persistent-state/data/runtime/release_window/.lock"
+    },
+    "pressure": {
+      "_why": "Pressure loop (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T4): disk_hygiene.py --standing --apply --only-if-above <trigger_pct> --until-target <target_pct> re-collects evidence, re-plans and re-applies until used% <= target_pct, a pass removes nothing, or max_passes; the final report carries ended_above_alert_pct and the top held reasons by bytes for the alert. Operator-only values (§17).",
+      "trigger_pct": 80,
+      "target_pct": 75,
+      "max_passes": 5,
+      "alert_pct": 85
     },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
     "github_repo": "PatsKiller/tardeai",
