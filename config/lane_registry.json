@@ -18694,6 +18694,25 @@
       "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
     },
     {
+      "lane_id": "disabled-features-reminder",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "none",
+        "expression": "declared only: health_tick step disabled-features-reminder (not installed)"
+      },
+      "expected_cadence_hours": 24.0,
+      "output_signal": {
+        "kind": "none",
+        "path": ""
+      },
+      "state_reason": "Operator 2026-10-31: \"there needs to be a reminder to switch it back on. We just don't want to leave it off\". scripts/check_disabled_features.py pages P2 once a day for any config/ disabled_until block past review_by. Declared only: adding the health_tick step row is the activation (§25.10.2).",
+      "reason_evidence": "tests/test_disabled_features_reminder_20261031.py; dry run lists market_risk_curation (due 2026-11-07).",
+      "note": "Activation: add the health_tick step in the PR body to config/health_tick_steps.json (daily 09:05 ET, --apply). Exit 3 = finding."
+    },
+    {
       "lane_id": "prospectus-build",
       "owner": "cio",
       "scheduler": {

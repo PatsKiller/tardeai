@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disabled_features_reminder_20261031",
+  "files": [
+    "tests/test_disabled_features_reminder_20261031.py"
+  ],
+  "anchor": "DISABLED_FEATURES_REMINDER_20261031",
+  "comment": [
+    "ANCHOR: DISABLED_FEATURES_REMINDER_20261031 — a feature switched off on purpose carries a disabled_until block",
+    "with a review date; scripts/check_disabled_features.py pages P2 once a day when it passes. Market-risk curation is",
+    "the first entry (due 2026-11-07). Hermetic: temp config dirs, injected sender, no network, no DB."
+  ]
+}

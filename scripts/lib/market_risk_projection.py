@@ -16,6 +16,7 @@ the operator's acknowledgment to the episode ledger (`market_risk.escalation`, f
 
 from __future__ import annotations
 
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -139,6 +140,27 @@ def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
     return round(((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600, 2)
 
 
+
+def curation_status(config_dir=None) -> dict:
+    """Whether LLM curation of the alert prose is on, and when its review is due (operator 2026-10-31: "there needs
+    to be a reminder to switch it back on"). Never raises: an unreadable config reads as OFF with the error."""
+    try:
+        try:
+            from lib import disabled_features as df  # type: ignore
+        except ImportError:  # pragma: no cover - imported as scripts.lib
+            from scripts.lib import disabled_features as df  # type: ignore
+        root = Path(config_dir) if config_dir else df.CONFIG_DIR
+        entry = df.entry_for(root / "market_risk_curation.yaml")
+        return {
+            "state": "OFF" if entry else "ON",
+            "note": df.note(entry, "curation"),
+            "review_by": (entry or {}).get("review_by"),
+            "overdue": bool((entry or {}).get("overdue")),
+            "reenable_plan": (entry or {}).get("reenable_plan"),
+        }
+    except Exception as exc:  # noqa: BLE001 - a status line must never break the projection
+        return {"state": "OFF", "note": f"curation: status unreadable ({type(exc).__name__})", "overdue": True}
+
 def build(
     snapshot: dict | None,
     radar: dict | None,
@@ -178,6 +200,7 @@ def build(
             "book": None,
             "probabilities": None,
             "sources": sources,
+            "curation": curation_status(),
             "generated_at": now.isoformat(),
         }
     age = _age_hours(snapshot.get("as_of"), now)
@@ -207,6 +230,7 @@ def build(
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
         "sources": sources,
+        "curation": curation_status(),
         "generated_at": now.isoformat(),
     }
 
