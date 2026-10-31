@@ -1,0 +1,23 @@
+{
+  "_comment": "Legacy-router override for comms-critical position alerts (2026-10-31, DD audit P1-7 + independent review of PR #2350). Cron senders run with the comms gateway OFF, so the legacy text router decides; it digested 13 comms-critical alerts in 48 h, including the 10-30 11:07 ET position-sync protective-stop rechecks. The override is narrow on purpose: comms rule in comms_rule_ids, first line matches require_first_line_match and not never_match, and the router held it by CLASSIFICATION (never health-repeat, rate limit or budget). It is then sent as a P1 notification intent (exact-body dedupe + receipt) and at most once per subject per subject_window_minutes, because the review's 48 h replay showed 10 of 13 were a self-reversing holdings-sync flap in bursts.",
+  "schema": "LegacyCriticalOverride@v1",
+  "enabled": true,
+  "comms_rule_ids": [
+    "stop_health"
+  ],
+  "require_first_line_match": "^\\[holdings-change\\]|critical stop alert|stop (triggered|crossed)|\\bunprotected\\b",
+  "never_match": "Health Agent:|sweep complete|cleaned up|orphaned workers|\\b0 unprotected\\b|\\bno unprotected\\b",
+  "classification_levels": [
+    "P1_DIGEST",
+    "P2_DASHBOARD_ONLY",
+    "P3_LOG_ONLY"
+  ],
+  "intent_priority": "P1",
+  "dedupe_minutes": 240,
+  "subject_pattern": "\\[holdings-change\\]\\s+([A-Z][A-Z0-9.]{0,9})\\b",
+  "subject_window_minutes": 120,
+  "producer": "legacy_critical_override",
+  "burst_max_pages": 3,
+  "burst_window_seconds": 60,
+  "_comment_followup": "2026-10-31 follow-up (round-2 review): a zero count ('0 unprotected positions') is telemetry, never a page; at most burst_max_pages override pages per burst_window_seconds across all subjects (one 10-30 sync burst paged 5 names in 4 s), the rest go to the digest; a P1 intent that is deduped or fails delivery is archived to the digest instead of vanishing."
+}
