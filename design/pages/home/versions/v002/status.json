@@ -1,0 +1,64 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v002",
+  "state": "PROPOSED",
+  "title": "Home: MARKET RISK fact, Orange/Red banner with Acknowledge, contributors in Market in one look",
+  "created": "2026-10-31",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "awaiting the operator's one-tap decision in Approvals -> Designs (design DSN-20261031-market-risk-ui); prose never counts",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "depends_on": [
+    "DSN-20261031-market-risk-engine-P2-T1",
+    "DSN-20261031-market-risk-engine-P3-T7"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Synthetic data only; bracketed values are placeholders. Viewing copy: claude.ai artifact Dy7ELR7nznuHV8DcJ1XpLZ (private; the operator's viewing copy). Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v002/mockups/HomePhoneRed.dc.html",
+        "sha256": "e4b62f4cecfa451c66b788ea42af911a67d8d355d8f3e16029f492b99413e32e",
+        "bytes": 10253,
+        "role": "mockups"
+      },
+      {
+        "path": "v002/mockups/HomePhoneQuiet.dc.html",
+        "sha256": "92b58d1df1ff1f885709fad06f889ee6a4a8cfc30c7b0074021af941ffc004d4",
+        "bytes": 6678,
+        "role": "mockups"
+      },
+      {
+        "path": "v002/mockups/HomeDesktopOrange.dc.html",
+        "sha256": "6d173dc7c528a8ef7ab82cd3b23fffb98135ef0e6da50e934d50e98d032aead5",
+        "bytes": 10294,
+        "role": "mockups"
+      },
+      {
+        "path": "v002/mockups/canvas.json",
+        "sha256": "26d072e926fa7389e1138de49bab7ba24e0a2e0f3bb778a33e3f0b2dbe55fb6f",
+        "bytes": 2203,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": [
+    {
+      "kind": "rename",
+      "what": "header fact 'Market' -> 'MARKET RISK' (content moved to the 'Market in one look' card)"
+    },
+    {
+      "kind": "rename",
+      "what": "classic hero tile 'REGIME' -> 'MARKET RISK' (/v3/?view=classic)"
+    }
+  ]
+}

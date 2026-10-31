@@ -758,6 +758,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) |
+| `docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md` | Why no warning preceded the 2026-10-30 selloff — root cause analysis |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 |
@@ -1053,6 +1054,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261028-ops-watchdogs.md` | Ops watchdogs — arm the three designed-but-unwired guards |
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
+| `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
+| `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
