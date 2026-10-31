@@ -30726,6 +30726,17 @@ def _queue_summary():
         or {}
     ).get("cnt", 0)
     pending = by_status.get("pending", 0)
+    # The consumer lane's registry state: RETIRED means nothing drains this table by design (needs_action.rule_queue
+    # then raises no Do-now item, and the Jobs page labels the backlog retired instead of CRIT).
+    try:
+        from lib.lane_registry import load_registry as _qs_load
+
+        _qs_lanes = (_qs_load() or {}).get("lanes") or []
+        _qs_row = next((r for r in _qs_lanes if isinstance(r, dict) and r.get("lane_id") == "deep-overnight-llm"), {})
+        lane_state = _qs_row.get("state")
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry is reported, never treated as retired
+        lane_state = None
+        print(f"[queue_summary] lane registry unreadable: {type(exc).__name__}", file=_sys_heal.stderr)
     cap = 100
     now = datetime.now()
     window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
@@ -30737,6 +30748,9 @@ def _queue_summary():
         # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
         # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
         "measured": raw_rows is not None,
+        "lane_id": "deep-overnight-llm",
+        "lane_state": lane_state,
+        "retired": lane_state == "RETIRED",
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),

@@ -1,7 +1,7 @@
 // Overnight LLM queue health (audit 2026-10-21): GET /api/v2/queue/summary (deep_overnight_llm_queue) had no page.
 // Thresholds mirror scripts/lib/needs_action.py QUEUE_WARN / QUEUE_CRIT — change both together.
 
-export type QueueLevel = 'OK' | 'WARN' | 'CRIT' | 'UNAVAILABLE' | 'LOADING'
+export type QueueLevel = 'OK' | 'WARN' | 'CRIT' | 'RETIRED' | 'UNAVAILABLE' | 'LOADING'
 
 export const QUEUE_WARN = { pending: 500, failed: 50, nights: 3 }
 export const QUEUE_CRIT = { pending: 1500, failed: 200, nights: 7 }
@@ -31,6 +31,14 @@ export function queueHealthFrom(payload: any, opts: { loading?: boolean; error?:
   }
   const pending = payload.pending as number
   const failed = payload.failed as number
+  // The consumer lane is RETIRED (config/lane_registry.json): nothing drains this table by design, so a frozen
+  // backlog is history, not an alarm.
+  if (payload.retired === true) {
+    return {
+      level: 'RETIRED', pending, failed, doneToday: num(payload.done_today), capPerNight: null, drainNights: null,
+      nextWindowInHours: null, reasons: ['consumer lane deep-overnight-llm is retired; backlog frozen, kept for history'],
+    }
+  }
   const cap = num(payload.cap_tonight)
   const drain = num(payload.estimated_completion_nights) ?? (cap ? Math.round((pending / cap) * 10) / 10 : null)
   const critR: string[] = []
@@ -50,5 +58,5 @@ export function queueHealthFrom(payload: any, opts: { loading?: boolean; error?:
 }
 
 export function queueLevelTone(level: QueueLevel): 'success' | 'warning' | 'danger' | 'neutral' {
-  return level === 'OK' ? 'success' : level === 'WARN' ? 'warning' : level === 'LOADING' ? 'neutral' : 'danger'
+  return level === 'OK' ? 'success' : level === 'WARN' ? 'warning' : level === 'LOADING' || level === 'RETIRED' ? 'neutral' : 'danger'
 }
