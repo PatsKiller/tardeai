@@ -4,6 +4,7 @@ Observed cash never implies deployable cash. Dollar ranges remain unavailable un
 the operator mandate is confirmed and read-only account evidence verifies investable
 cash. These contracts emit advisory state only and contain no executable instructions.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -26,10 +27,19 @@ ATTENTION_CASH_PCT = 20.0
 # The classifier (scripts/market_regime_classifier.py) emits `risk_off` and `high_volatility`; stop_policy.yaml
 # treats both as risk-off. `high_volatility` was missing here until the 2026-10-30 selloff RCA
 # (DSN-20261031-market-risk-engine-P0-T3), so the cash gate ignored the one label a volatility shock produces.
-RISK_OFF_REGIMES = frozenset({
-    "risk_off", "defensive", "bear", "crisis", "high_vol", "high_volatility", "risk_off_defensive",
-    "risk-off", "defensive_regime",
-})
+RISK_OFF_REGIMES = frozenset(
+    {
+        "risk_off",
+        "defensive",
+        "bear",
+        "crisis",
+        "high_vol",
+        "high_volatility",
+        "risk_off_defensive",
+        "risk-off",
+        "defensive_regime",
+    }
+)
 POLICY_CASH_FIELDS = ("cash_target_range_pct", "minimum_liquidity_reserve_usd")
 
 
@@ -42,7 +52,15 @@ def _hash(value: Any) -> str:
 
 
 def _semantic(value: dict[str, Any]) -> dict[str, Any]:
-    ignored = {"generated_at", "published_at", "version", "situation_version", "plan_version", "publication_version", "content_hash"}
+    ignored = {
+        "generated_at",
+        "published_at",
+        "version",
+        "situation_version",
+        "plan_version",
+        "publication_version",
+        "content_hash",
+    }
     return {key: item for key, item in value.items() if key not in ignored}
 
 
@@ -91,8 +109,7 @@ _COUNTER_CASE_BY_CONCLUSION = {
         "waiting for it."
     ),
     "WAIT": (
-        "Waiting is a position. If the condition being waited on is not "
-        "named and dated, this is indefinite by default."
+        "Waiting is a position. If the condition being waited on is not named and dated, this is indefinite by default."
     ),
 }
 
@@ -118,8 +135,7 @@ def _counter_case(
             "state": "NONE_SPECIFIC",
             "text": None,
             "against_conclusion": conclusion,
-            "note": "no counter-case is stated for this conclusion; an absence, "
-                    "not a generic one",
+            "note": "no counter-case is stated for this conclusion; an absence, not a generic one",
         }
     return {
         "state": "STATED",
@@ -127,8 +143,8 @@ def _counter_case(
         "against_conclusion": conclusion,
         "grounds": grounds,
         "provenance": "TEMPLATE — one per conclusion, selected by this "
-                      "situation's conclusion; the grounds are read from the "
-                      "situation. Not model-written.",
+        "situation's conclusion; the grounds are read from the "
+        "situation. Not model-written.",
     }
 
 
@@ -199,8 +215,7 @@ def _supporting_evidence(
         else:
             missing.append(name)
     return {
-        "state": "COMPLETE" if not missing else (
-            "NONE" if not present else "PARTIAL"),
+        "state": "COMPLETE" if not missing else ("NONE" if not present else "PARTIAL"),
         "present": present,
         "unversioned_sources": missing,
         "counts": {"present": len(present), "missing": len(missing)},
@@ -396,9 +411,11 @@ def build_cash_deployment_situation(
         # `list(...)`, which on a dict silently yields the keys. The structure
         # goes in sibling keys instead.
         "supporting_evidence": _evidence_versions(
-            policy, portfolio_state, market_context, seasonality, portfolio_thesis),
+            policy, portfolio_state, market_context, seasonality, portfolio_thesis
+        ),
         "supporting_evidence_state": _supporting_evidence(
-            policy, portfolio_state, market_context, seasonality, portfolio_thesis),
+            policy, portfolio_state, market_context, seasonality, portfolio_thesis
+        ),
         "counter_case": _counter_case_text(
             conclusion=conclusion,
             deviation_state=deviation_state,
@@ -450,41 +467,63 @@ def build_capital_deployment_plan(
     research_first = [{"question": code, "reason": "BLOCKING_GAP"} for code in situation.get("blockers") or []]
     keep_cash: list[dict[str, Any]] = []
     avoid = [
-        {"item": "UNVERIFIED_CAPITAL_DEPLOYMENT", "reason": "No deployment amount without verified investable cash and confirmed policy"},
+        {
+            "item": "UNVERIFIED_CAPITAL_DEPLOYMENT",
+            "reason": "No deployment amount without verified investable cash and confirmed policy",
+        },
         {"item": "EXECUTABLE_ORDERS", "reason": "READ_ONLY_ADVISORY"},
     ]
 
     if conclusion == "DEPLOY_STAGED" and excess is not None:
         if underweight:
             allocation_range = {"min_usd": 0.0, "max_usd": round(float(excess), 2)}
-            do_now.append({
-                "role": "UNDERWEIGHT_SLEEVE_REVIEW",
-                "sleeves": underweight,
-                "advisory_allocation_range": allocation_range,
-                "entry_condition": "VALID_LIVING_THESIS_AND_CURRENT_EVIDENCE",
-                "invalidation": "PORTFOLIO_THESIS_WEAKENS_OR_MARKET_CONTEXT_DEGRADES",
-                "why_now": "Verified cash exceeds the confirmed policy ceiling.",
-                "why_not_now": "Do not deploy where security-level thesis or valuation evidence is incomplete.",
-            })
+            do_now.append(
+                {
+                    "role": "UNDERWEIGHT_SLEEVE_REVIEW",
+                    "sleeves": underweight,
+                    "advisory_allocation_range": allocation_range,
+                    "entry_condition": "VALID_LIVING_THESIS_AND_CURRENT_EVIDENCE",
+                    "invalidation": "PORTFOLIO_THESIS_WEAKENS_OR_MARKET_CONTEXT_DEGRADES",
+                    "why_now": "Verified cash exceeds the confirmed policy ceiling.",
+                    "why_not_now": "Do not deploy where security-level thesis or valuation evidence is incomplete.",
+                }
+            )
         else:
-            research_first.append({"question": "IDENTIFY_CONFIRMED_UNDERWEIGHT_SLEEVES", "reason": "NO_POLICY_GAP_TARGET"})
+            research_first.append(
+                {"question": "IDENTIFY_CONFIRMED_UNDERWEIGHT_SLEEVES", "reason": "NO_POLICY_GAP_TARGET"}
+            )
     elif conclusion in {"RESEARCH_FIRST", "WAIT"}:
-        keep_cash.append({"role": "OPTIONALITY", "amount_usd": situation.get("investable_cash_usd"), "reason": "Blocking evidence remains unresolved."})
+        keep_cash.append(
+            {
+                "role": "OPTIONALITY",
+                "amount_usd": situation.get("investable_cash_usd"),
+                "reason": "Blocking evidence remains unresolved.",
+            }
+        )
     elif conclusion == "HOLD_CASH":
         if situation.get("regime_risk_off") and situation.get("deviation_state") == "ABOVE_RANGE":
-            keep_cash.append({
-                "role": "REGIME_DEFENSIVE_LIQUIDITY",
-                "amount_usd": situation.get("investable_cash_usd"),
-                "reason": "Verified cash exceeds policy, but the current market regime does not support staged deployment.",
-            })
+            keep_cash.append(
+                {
+                    "role": "REGIME_DEFENSIVE_LIQUIDITY",
+                    "amount_usd": situation.get("investable_cash_usd"),
+                    "reason": "Verified cash exceeds policy, but the current market regime does not support staged deployment.",
+                }
+            )
         else:
-            keep_cash.append({
-                "role": "POLICY_ALIGNED_LIQUIDITY",
-                "amount_usd": situation.get("investable_cash_usd"),
-                "reason": "Cash is inside the confirmed policy range.",
-            })
+            keep_cash.append(
+                {
+                    "role": "POLICY_ALIGNED_LIQUIDITY",
+                    "amount_usd": situation.get("investable_cash_usd"),
+                    "reason": "Cash is inside the confirmed policy range.",
+                }
+            )
     elif conclusion == "REBALANCE":
-        wait.append({"condition": "CONFIRMED_REBALANCING_SOURCE", "reason": "Cash is below the confirmed range; this advisory contract does not create sale instructions."})
+        wait.append(
+            {
+                "condition": "CONFIRMED_REBALANCING_SOURCE",
+                "reason": "Cash is below the confirmed range; this advisory contract does not create sale instructions.",
+            }
+        )
 
     if situation.get("forward_event_context", {}).get("macro") is None:
         wait.append({"condition": "FORWARD_MACRO_CALENDAR_AVAILABLE", "reason": "Event context is unavailable."})
@@ -564,7 +603,9 @@ def reconcile_capital_plan(
             return {"published": False, "reason": "NO_NEW_INFO", **prior}
         version = int(((prior or {}).get("plan") or {}).get("publication_version") or 0) + 1
         published_situation = dict(situation, situation_version=f"cash_situation@v{version}", published_at=_now())
-        published_plan = dict(plan, plan_version=f"capital_plan@v{version}", publication_version=version, published_at=_now())
+        published_plan = dict(
+            plan, plan_version=f"capital_plan@v{version}", publication_version=version, published_at=_now()
+        )
         record = {
             "record_type": "CAPITAL_PLAN_PUBLISHED",
             "recorded_at": _now(),
