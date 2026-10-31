@@ -88,8 +88,11 @@ def security_inputs(*, security_guid, symbol, canonical, held, card=None, reentr
                                    subject_id=card.get("security_guid"), detail="Trade AI checks",
                                    metadata=_metadata(card.get("trade_ai_as_of"))))
     if reentry and reentry.get("state"):
+        # R1: the desk's age is its oldest material (quote, plan); producer_registry picks the binding one.
         result.inputs.append(Input("reentry_decision_desk", reentry["state"],
-                                   timestamp(reentry.get("price_as_of")), subject_id=reentry.get("security_guid")))
+                                   timestamp(reentry.get("price_as_of")), subject_id=reentry.get("security_guid"),
+                                   metadata=_metadata(reentry.get("price_as_of"), {"materials": {
+                                       "quote": reentry.get("price_as_of"), "plan": reentry.get("plan_as_of")}})))
     result.inputs.extend(extras)
     if card.get("symbol") and str(card["symbol"]).upper() != str(symbol).upper():
         result.gaps.append("producer symbol does not match confirmed identity join")
@@ -150,6 +153,12 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
     errors = [_data_error(bundle, "canonical context", reason, n) for n, reason in enumerate(bundle.gaps)]
     if bundle.gaps and not isinstance(bundle.profile, SecurityStanceProfile):
         return errors
+    # R1 producer metadata (cadence, writes_compared_input, binding material time) from the one registry.
+    from .producer_registry import annotate_all
+    if isinstance(bundle.profile, SecurityStanceProfile):
+        annotated = annotate_all(([bundle.canonical] if bundle.canonical else []) + list(bundle.inputs), now=now)
+        bundle = EvaluationInputs(bundle.subject, annotated[0] if bundle.canonical else None,
+                                  annotated[1:] if bundle.canonical else annotated, bundle.profile, list(bundle.gaps))
     valid = []
     canonical = bundle.canonical
     for n, item in enumerate(([canonical] if canonical else []) + list(bundle.inputs)):
@@ -190,8 +199,47 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
         return errors
     history = [{**h, "opened_at": timestamp(h.get("opened_at"))} for h in history]
     history = [h for h in history if "signature" in h or h["opened_at"] and h["opened_at"] <= now]
-    return errors + evaluate(bundle.subject, canonical, [i for i in valid if i is not canonical], bundle.profile,
-                             now=now, history=history)
+    rest = [i for i in valid if i is not canonical]
+    findings = evaluate(bundle.subject, canonical, rest, bundle.profile, now=now, history=history)
+    anchored = _hysteresis_subject(bundle.subject, rest, findings, now=now)
+    if anchored is not None:
+        findings = evaluate(anchored, canonical, rest, bundle.profile, now=now, history=history)
+    return errors + findings
+
+
+def _hysteresis_subject(subject, inputs, findings, *, now):
+    """R15: when the recorded decision's anchor still holds, hand the engine that anchor (else None).
+
+    The anchor is recorded at decision time (ledger.transition -> hysteresis.record_anchor). This checks ACTIONS
+    (no anchored side changed, no new disagreeing side) on the engine's own sides for this run; the engine then
+    compares conviction against the anchor (RULEBOOK hysteresis.conviction_delta) and keeps the resolution.
+    """
+    from dataclasses import replace
+    from .hysteresis import anchor_holds
+    from .profiles.vocabulary import ordinal
+    if subject.kind != "security" or subject.context.get("decision_anchor"):
+        return None
+    decisions = [i for i in inputs if i.metadata.get("recorded_by") in {"operator", "cio"} and i.metadata.get("anchor")
+                 and i.metadata.get("reason") and timestamp(i.metadata.get("expires_at")) and
+                 timestamp(i.metadata.get("expires_at")) > now]
+    if not decisions:
+        return None
+    decision = min(decisions, key=lambda i: 0 if i.metadata["recorded_by"] == "operator" else 1)
+    anchor = decision.metadata["anchor"]
+    held = subject.context.get("held")
+    for finding in findings:
+        if finding.rule not in {"R15", "U7", "R11"} or finding.kind not in {"AGREEMENT", "CONFLICT", "NEEDS_OPERATOR"}:
+            continue
+        if not any(side.get("source") == decision.source for side in finding.sides):
+            continue
+        if not anchor_holds(anchor, finding.sides, held):
+            return None
+        signature = sorted([side["source"], ordinal(side["value"], held)] for side in finding.sides)
+        value = {"signature": signature, "recorded_at": decision.as_of.isoformat() if decision.as_of else None}
+        if isinstance(anchor.get("conviction"), (int, float)) and not isinstance(anchor.get("conviction"), bool):
+            value["conviction"] = anchor["conviction"]
+        return replace(subject, context={**subject.context, "decision_anchor": value})
+    return None
 
 
 def findings_section(findings, *, gap=None):

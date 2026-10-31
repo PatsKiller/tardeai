@@ -1,0 +1,31 @@
+{
+ "schema": "FixturePrivacyDenylist@v1",
+ "why": "The repository is public. Test fixtures must never carry the operator's account ids or the symbols of live holdings.",
+ "account_id_patterns": [
+  "(?i)\\b(schwab|moomoo|fidelity|alpaca|snaptrade|robinhood|vanguard|etrade|ibkr|webull)_[a-z0-9_]*(ira|roth|taxable|rollover|brokerage|401k|hsa|individual|joint)[a-z0-9_]*\\b"
+ ],
+ "host_check": "On a host that has persistent-state/data/portfolios/state/holdings.json the guard also checks the live held symbols and account ids (computed at test time, never committed).",
+ "preexisting_files": [
+  "tests/fixtures/active_trader/xndu_session_20261005.json",
+  "tests/fixtures/buy_ready_v_golden_20260924.txt",
+  "tests/fixtures/cc_client_compat_20261018/observations.json.gz",
+  "tests/fixtures/cio_data_quality/cio_data_quality_20261023.json",
+  "tests/fixtures/cio_prospect/navn_20261022.json",
+  "tests/fixtures/cio_snapshot_shape_20260913_1856.json",
+  "tests/fixtures/conflicts/opportunity_rows.json",
+  "tests/fixtures/conflicts/reference_conflict_engine.py.txt",
+  "tests/fixtures/conflicts/reference_profiles.py.txt",
+  "tests/fixtures/conflicts/reference_tests.py.txt",
+  "tests/fixtures/fidelity_rollover_stops_20260713.json",
+  "tests/fixtures/header_truth/clock_contradiction_20260903_20260904.json",
+  "tests/fixtures/litmus_20260913/desk.json",
+  "tests/fixtures/litmus_20260913/holdings.json",
+  "tests/fixtures/litmus_20260913/questions.json",
+  "tests/fixtures/litmus_20260913/snapshot.json",
+  "tests/fixtures/maria_outbound_gate/maria_s_reply_20260923T1226Z.txt",
+  "tests/fixtures/material_change_20260924.json",
+  "tests/fixtures/operator_questions_20260913.json",
+  "tests/fixtures/refactor_shard_07_20261011/price_db_sync.py.txt"
+ ],
+ "preexisting_note": "Files on main before the guard (2026-10-25) that match; shrink-only. Purging them from the repo and history is an operator decision."
+}

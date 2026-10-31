@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_producers_golden_20261025",
+  "files": [
+    "tests/test_conflict_r15_anchor_20261025.py",
+    "tests/test_conflict_producer_registry_20261025.py",
+    "tests/test_conflict_watch_source_20261025.py",
+    "tests/test_conflict_golden_replay_20261025.py",
+    "tests/test_conflict_entry_plan_time_20261025.py",
+    "tests/test_fixture_privacy_guard_20261025.py"
+  ],
+  "anchor": "CONFLICT_PRODUCERS_GOLDEN_20261025",
+  "comment": [
+    "ANCHOR: CONFLICT_PRODUCERS_GOLDEN_20261025 — conflict matrix gaps (d) R15 decision anchor, (e) R1 producer freshness registry, (f) golden replay of 2026-10-25 real state, (g) read-only Watch card source with its transitive capability proof."
+  ]
+}

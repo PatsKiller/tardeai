@@ -178,7 +178,8 @@ class ConflictLedger:
             self.drain()
             return result
 
-    def transition(self, key, event, *, at, expected_revision=None, decision=None, review_request_id=None, apply=False):
+    def transition(self, key, event, *, at, expected_revision=None, decision=None, review_request_id=None, apply=False,
+                   anchor_conviction=None):
         if event not in {"review_queued", "decided", "review_completed"}:
             raise ValueError("transition not admitted")
         def plan():
@@ -215,9 +216,14 @@ class ConflictLedger:
                         raise ValueError("decision requires a known stance")
                 if record["subject"]["kind"] in {"metric", "job"}:
                     raise ValueError("numeric/schedule defects require source repair, never a chosen number")
+            recorded = decision
+            if decision and record["subject"]["kind"] == "security" and record.get("kind") == "CONFLICT":
+                # R15: record each side's ACTION and the conviction at decision time; the engine compares later runs.
+                from .hysteresis import record_anchor
+                recorded = {**deepcopy(decision), "anchor": record_anchor(record, decision, conviction=anchor_conviction)}
             return {"event": event, "key": key, "subject": record["subject"], "at": _iso(at),
                     "finding": record["finding"],
-                    **({"decision": {**deepcopy(decision), "at": _iso(at)}} if decision else {}),
+                    **({"decision": {**deepcopy(recorded), "at": _iso(at)}} if recorded else {}),
                     **({"request_id": review_request_id} if review_request_id else {})}
         if not apply:
             return plan()
@@ -280,5 +286,6 @@ def decision_inputs(root, subject, *, now):
         output.append(Input("operator decision" if decision["actor_kind"] == "operator" else "CIO decision",
             decision["chosen_side"], at, role="judgment", subject_id=subject.id,
             metadata={"recorded_by": decision["actor_kind"], "reason": decision["reason"], "expires_at": expires,
-                      "evidence_refs": decision["evidence_refs"], "conflict_key": record["key"]}))
+                      "evidence_refs": decision["evidence_refs"], "conflict_key": record["key"],
+                      **({"anchor": deepcopy(decision["anchor"])} if decision.get("anchor") else {})}))
     return output

@@ -1983,6 +1983,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
 | `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
 | `docs/ops/CONFLICT_ENGINE.md` | Conflict engine (W10 PR 1) |
+| `docs/ops/CONFLICT_GOLDEN_REPLAY_20261025.md` | Conflict engine golden replay and producer gaps (d)–(g), 2026-10-25 |
 | `docs/ops/CONFLICT_LEDGER.md` | Conflict ledger, operator API and CIO integration |
 | `docs/ops/CONFLICT_RULE_PROPOSALS.md` | Conflict rule proposals — unmatched conflicts, AI-proposed rules, operator approval |
 | `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
