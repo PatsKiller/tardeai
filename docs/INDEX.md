@@ -1053,6 +1053,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261028-designed-work-lifecycle.md` | Designed work never gets lost |
 | `docs/designs/DSN-20261028-ops-watchdogs.md` | Ops watchdogs — arm the three designed-but-unwired guards |
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
+| `docs/designs/DSN-20261030-disk-recovery.md` | DSN-20261030-disk-recovery.md |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
@@ -2004,6 +2005,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE.md` | Disk Hygiene |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
+| `docs/ops/DISK_RECOVERY_20261030.md` | Disk recovery investigation, October 30 |
 | `docs/ops/DISK_STANDING_APPLY_20261024.md` | WP-33: standing disk-hygiene source preparation |
 | `docs/ops/DISK_STANDING_CI_FOLLOWUP_20261024.md` | Disabled disk hygiene: CI follow-up |
 | `docs/ops/DOC_INDEX_PR_FLOW_20261024.md` | WP-02 documentation-index conflict correction and proposed PR flow |

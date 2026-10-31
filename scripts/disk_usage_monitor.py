@@ -13,8 +13,9 @@ intent consumer turns into an incident fan-in incident and the incident notifier
 queued through CommsIntentStore directly (:func:`queue_host_intent`, same rows/dedupe/cap as host_comms_intents): that
 module's import closure reaches broker modules via the gateway, which an n8n lane must not
 (tests/test_lane_transitive_capabilities_20261015.py). Staying in a
-band sends nothing: dedupe is by band, never by the raw percent. The intent carries the top consumers by category
-and the reclaimable estimate from the latest disk_hygiene manifest.
+band sends nothing: dedupe is by band, never by the raw percent. A bounded hourly category snapshot is kept in
+the existing state and receipt even when the band stays unchanged. Unknown/partial sizes stay explicit.
+The intent carries the measured top consumers and the reclaimable estimate from the latest hygiene manifest.
 
 INODES (operator 2026-10-19, after /tmp, a tmpfs, reached 97% inodes with 20G of bytes free and tools failed with
 ENOSPC): every mount is also banded by inode use% (statvfs f_files / f_ffree; used = f_files - f_ffree) against
@@ -38,12 +39,13 @@ MBI_BEHAVIOR = 0. No broker, no network, no Telegram import, no DB.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -63,6 +65,11 @@ SCRIPT = "scripts/disk_usage_monitor.py"
 STATE_SCHEMA = "DiskUsageMonitorState@v1"
 BANDS = ("ok", "warn", "critical")
 SKIP_DEPENDENCY = "dependency_unavailable"
+# Diagnostic work fits inside the existing 180s lane cap; these never widen it.
+CONSUMER_REFRESH_SECONDS = 3600
+CONSUMER_SCAN_BUDGET_SECONDS = 30
+CONSUMER_PATH_MAX_SECONDS = 10
+CONSUMER_RUN_DEADLINE_SECONDS = 120
 
 
 def measure(mount: str) -> Optional[dict[str, Any]]:
@@ -206,22 +213,109 @@ def latest_tmp_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) ->
     }
 
 
-def top_consumers(rules: Mapping[str, Any], mon: Mapping[str, Any], manifest: Optional[Mapping[str, Any]]) -> list:
-    """[(category, bytes)] largest first: du of the configured category paths plus the git-tree total from the
-    latest manifest (candidates + excluded), never a guess (an unmeasurable path is left out)."""
-    sizes: dict[str, int] = {}
-    to = float(mon.get("du_timeout_s") or 60)
-    for c in mon.get("consumer_categories") or []:
+def _consumer_config_digest(mon: Mapping[str, Any]) -> str:
+    raw = json.dumps(mon.get("consumer_categories") or [], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def consumer_snapshot_due(snapshot: Any, mon: Mapping[str, Any], now: datetime) -> bool:
+    """Legacy, malformed, changed-config, future and expired snapshots are not prior measurements."""
+    if not isinstance(snapshot, dict) or type(snapshot.get("version")) is not int or snapshot["version"] != 1:
+        return True
+    if snapshot.get("config_digest") != _consumer_config_digest(mon) or not isinstance(snapshot.get("categories"), list):
+        return True
+    for row in snapshot["categories"]:
+        if not isinstance(row, dict) or row.get("status") not in {"measured", "partial", "unknown"}:
+            return True
+        if not isinstance(row.get("category"), str) or "bytes" not in row or type(row.get("known_bytes")) is not int or row["known_bytes"] < 0:
+            return True
+        paths = row.get("paths")
+        if not isinstance(paths, list) or not paths:
+            return True
+        for p in paths:
+            if not isinstance(p, dict) or p.get("status") not in {"measured", "unavailable", "budget_exhausted"}:
+                return True
+            if p["status"] == "measured":
+                if type(p.get("bytes")) is not int or p["bytes"] < 0:
+                    return True
+            elif p.get("bytes") is not None:
+                return True
+        good = sum(p["status"] == "measured" for p in paths)
+        expected_status = "measured" if good == len(paths) else "partial" if good else "unknown"
+        if row["status"] != expected_status or row["known_bytes"] != sum(p["bytes"] for p in paths if p["status"] == "measured"):
+            return True
+        if row["status"] == "measured":
+            if type(row.get("bytes")) is not int or row["bytes"] != row["known_bytes"]:
+                return True
+        elif row.get("bytes") is not None:
+            return True
+    expected = {c["category"] for c in mon.get("consumer_categories") or []}
+    if len(snapshot["categories"]) != len(expected) or {r["category"] for r in snapshot["categories"]} != expected:
+        return True
+    try:
+        captured = datetime.fromisoformat(snapshot["captured_at"])
+        age = (now - captured).total_seconds()
+    except (KeyError, TypeError, ValueError):
+        return True
+    return not 0 <= age < CONSUMER_REFRESH_SECONDS
+
+
+def collect_consumer_snapshot(
+    rules: Mapping[str, Any], mon: Mapping[str, Any], now: datetime, *, deadline: Optional[float] = None,
+) -> dict[str, Any]:
+    """One shared bounded capture, including failed/unstarted paths and partial category totals."""
+    started = time.monotonic()
+    deadline = min(started + CONSUMER_SCAN_BUDGET_SECONDS, deadline if deadline is not None else float("inf"))
+    paths = list(mon.get("consumer_categories") or [])
+    categories: dict[str, dict[str, Any]] = {}
+    for i, c in enumerate(paths):
+        row = categories.setdefault(c["category"], {"category": c["category"], "known_bytes": 0, "paths": []})
         p = DH._expand(str(c["path"]), rules["_home"])
-        if p.exists():
-            b = DH.du_bytes(p, to)
-            if b is not None:
-                sizes[c["category"]] = sizes.get(c["category"], 0) + b
+        remaining = deadline - time.monotonic()
+        measured, status = None, "budget_exhausted"
+        if remaining > 0:
+            timeout = max(0.0, min(float(mon.get("du_timeout_s", 60)), CONSUMER_PATH_MAX_SECONDS,
+                                   remaining / (len(paths) - i)))
+            try:
+                p.lstat()
+                if timeout > 0:
+                    measured = DH.du_bytes(p, timeout)
+                    status = "measured" if type(measured) is int and measured >= 0 else "unavailable"
+            except OSError:
+                status = "unavailable"
+        if status == "measured":
+            row["known_bytes"] += measured
+        else:
+            measured = None
+        row["paths"].append({"path": str(p), "bytes": measured, "status": status})
+    for row in categories.values():
+        good = sum(p["status"] == "measured" for p in row["paths"])
+        row["status"] = "measured" if good == len(row["paths"]) else "partial" if good else "unknown"
+        row["bytes"] = row["known_bytes"] if row["status"] == "measured" else None
+    elapsed = max(0.0, time.monotonic() - started)
+    # Internal nested monitor state, read by consumer_snapshot_due/top_consumers;
+    # no separate store or authoritative contract is introduced.
+    return {"version": 1, "captured_at": now.isoformat(),
+            "finished_at": (now + timedelta(seconds=elapsed)).isoformat(),
+            "elapsed_seconds": round(elapsed, 3), "budget_seconds": max(0.0, deadline - started),
+            "config_digest": _consumer_config_digest(mon), "categories": list(categories.values()),
+            "complete": all(r["status"] == "measured" for r in categories.values())}
+
+
+def top_consumers(
+    rules: Mapping[str, Any], mon: Mapping[str, Any], manifest: Optional[Mapping[str, Any]],
+    snapshot: Optional[Mapping[str, Any]] = None,
+) -> list:
+    """Rank complete measurements; keep every unknown category outside the ranking cap."""
+    snapshot = snapshot if snapshot is not None else collect_consumer_snapshot(rules, mon, datetime.now(timezone.utc))
+    sizes = {r["category"]: r["bytes"] for r in snapshot["categories"]}
     if manifest and manifest.get("by_kind"):
         git = sum(v.get("bytes") or 0 for k, v in manifest["by_kind"].items() if k.startswith("G:"))
         if git:
             sizes["git_trees_reclaimable"] = git
-    return sorted(sizes.items(), key=lambda kv: -kv[1])[: int(mon.get("top_consumers") or 5)]
+    known = sorted(((c, b) for c, b in sizes.items() if b is not None), key=lambda kv: -kv[1])
+    unknown = sorted((c, b) for c, b in sizes.items() if b is None)
+    return known[: int(mon.get("top_consumers") or 5)] + unknown
 
 
 def _gb(n: Optional[int]) -> str:
@@ -229,7 +323,8 @@ def _gb(n: Optional[int]) -> str:
 
 
 def intent_text(
-    m: Mapping[str, Any], band: str, mon: Mapping[str, Any], consumers: list, manifest: Optional[Mapping[str, Any]]
+    m: Mapping[str, Any], band: str, mon: Mapping[str, Any], consumers: list, manifest: Optional[Mapping[str, Any]],
+    consumer_captured_at: Optional[str] = None,
 ) -> tuple[str, str]:
     """(subject, summary). The subject is band-stable (no percent) so the store's own dedupe agrees with ours."""
     mount = m["mount"]
@@ -239,8 +334,14 @@ def intent_text(
         thr = float(mon["critical_pct"] if band == "critical" else mon["warn_pct"])
         subject = f"Disk {mount} {band.upper()}: at or above {thr:.0f}% used"
     parts = [f"{m['used_pct']:.1f}% used, {_gb(m['avail_bytes'])} free of {_gb(m['size_bytes'])}"]
-    if consumers:
-        parts.append("top: " + ", ".join(f"{c} {_gb(b)}" for c, b in consumers))
+    unknown = [c for c, b in consumers if b is None]
+    known = [(c, b) for c, b in consumers if b is not None]
+    if unknown:
+        parts.append("unmeasured: " + ", ".join(unknown))
+    if known:
+        parts.append("top: " + ", ".join(f"{c} {_gb(b)}" for c, b in known))
+    if consumer_captured_at:
+        parts.append("category sizes as of " + consumer_captured_at)
     if manifest and manifest.get("reclaimable_bytes") is not None:
         parts.append(
             f"reclaimable {_gb(manifest['reclaimable_bytes'])} in {manifest.get('candidates')} items per hygiene"
@@ -458,6 +559,7 @@ def run(
     now: datetime,
     wall_start: Optional[datetime] = None,
 ) -> int:
+    run_started = time.monotonic()
     # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
     # logical clock for bands and idle math and may be injected
     wall_start = wall_start or datetime.now(timezone.utc)
@@ -526,6 +628,16 @@ def run(
             inodes_state[mount] = entry
         inode_results.append(row)
 
+    consumer_snapshot = state.get("consumer_snapshot")
+    refreshed = False
+    if mon.get("measure_consumers_on") == "alert":
+        if consumer_snapshot_due(consumer_snapshot, mon, now):
+            consumer_snapshot = collect_consumer_snapshot(
+                rules, mon, now, deadline=run_started + CONSUMER_RUN_DEADLINE_SECONDS)
+            refreshed = True
+    else:
+        consumer_snapshot = None
+
     for mount in mon["mounts"]:
         m = measure(mount)
         if m is None:
@@ -537,8 +649,9 @@ def run(
         alert = transition(prev, cur)
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
-            consumers = top_consumers(rules, mon, manifest) if mon.get("measure_consumers_on") == "alert" else []
-            subject, summary = intent_text(m, cur, mon, consumers, manifest)
+            consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
+            captured_at = consumer_snapshot["captured_at"] if consumer_snapshot is not None else None
+            subject, summary = intent_text(m, cur, mon, consumers, manifest, captured_at)
             row.update(subject=subject, summary=summary)
             if apply:
                 try:
@@ -606,7 +719,9 @@ def run(
                 failures += 1
     if measured_pct and not current_pressure:
         pressure_active = False
-    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing, "standing_pressure": pressure, "failures": failures}
+    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing,
+               "standing_pressure": pressure, "consumer_snapshot": consumer_snapshot,
+               "consumer_snapshot_refreshed": refreshed, "failures": failures}
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
         return 0 if not failures else 1
@@ -617,7 +732,9 @@ def run(
 
         atomic_write_json(
             state_path,
-            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state, "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active, "standing_pressure_epoch": pressure_epoch},
+            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state,
+             "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active,
+             "standing_pressure_epoch": pressure_epoch, "consumer_snapshot": consumer_snapshot},
             indent=1,
         )
     except OSError as exc:
