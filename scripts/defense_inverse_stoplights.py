@@ -549,9 +549,13 @@ def record_transition(cur, conn, instrument, benchmark, light, old, new, label,
     return inserted
 
 
-def evaluate_all(cur, conn, notify: bool = False) -> dict:
+def evaluate_all(cur, conn, notify: bool = False, dry_run: bool = False) -> dict:
     """Nightly/refresh evaluation for the whole lane; persists transitions,
-    dedupes alerts (only meaningful transitions fire)."""
+    dedupes alerts (only meaningful transitions fire).
+
+    notify: send the transitions listed in config/defense_stoplight_notify.json
+    (operator promoted the desk out of SHADOW 2026-10-31, P0-T7). dry_run: render
+    the cards and send nothing. Sends go only through lib.market_risk.stoplight_notify."""
     ensure_stoplight_tables(cur, conn)
     try:
         _cfg()
@@ -591,7 +595,11 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
     out = {"generated_at": datetime.now(timezone.utc).isoformat(),
            "policy_version": POLICY_VERSION, "candidates": [], "locked": LOCKED,
            "path_warning": PATH_WARNING}
-    from options_lifecycle_alerts import _telegram
+    from lib.market_risk.stoplight_notify import emit as _notify_emit
+    from lib.market_risk.stoplight_notify import load_config as _notify_config
+    from lib.market_risk.stoplight_notify import should_notify as _should_notify
+    ncfg = _notify_config() if notify else None  # a bad policy file fails loudly before any evaluation
+    out["notifications"] = []
     for inst in LANE:
         bench, inv = inst["bench"], inst["inverse"]
         bars = _bars(cur, bench, 80)
@@ -639,20 +647,25 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                     cur, conn, inv, bench, light, prev, st["state_key"], st["label"],
                     {**st.get("arithmetic", {}), "as_of": bars[-1]["d"] if bars else None},
                     st["reason"], closes=st.get("arithmetic", {}).get("closes"))
-                if notify and fresh_insert and (
-                        (light == "ENTRY" and st["state"] == "GREEN") or
-                        (light == "EXIT" and st["state"] == "RED") or
-                        (light == "ENTRY" and "DAY 1 OF 2" in state_key)):
-                    _telegram(f"🚦 INVERSE HEDGE {inv}/{bench} — {light} {st['state']}: "
-                              f"{st['label']}\n{st['reason'][:300]}")
+                if notify and fresh_insert and _should_notify(light, st["state"], ncfg):
+                    out["notifications"].append(_notify_emit(
+                        {"inverse": inv, "bench": bench, "light": light, "state": st["state"],
+                         "label": st["label"], "reason": st["reason"],
+                         "as_of": bars[-1]["d"] if bars else None},
+                        cfg=ncfg, dry_run=dry_run))
     SNAP.write_text(json.dumps(out, default=str))
     return out
 
 
 if __name__ == "__main__":
+    # --dry-run: evaluate and print what WOULD be sent; nothing reaches Telegram.
     from db_adapter import _get_conn
+    from lib.market_risk.stoplight_notify import load_config as _notify_config
+    _dry = "--dry-run" in sys.argv[1:]
     conn = _get_conn(); cur = conn.cursor()
-    r = evaluate_all(cur, conn, notify=False)
+    r = evaluate_all(cur, conn, notify=bool(_notify_config().get("enabled")), dry_run=_dry)
+    for n in r.get("notifications") or []:
+        print(f"notify {n['light']} {n['state']}: sent={n['sent']} accepted={n['accepted']} error={n['error']}")
     for c in r["candidates"]:
         L = c["lights"]
         print(f"{c['inverse']}/{c['bench']}: THESIS {L['THESIS']['state']} · ENTRY {L['ENTRY']['state']} "
