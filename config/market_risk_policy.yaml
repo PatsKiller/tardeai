@@ -20,3 +20,319 @@ options_flow:
     warn: P2
   dedupe_minutes: 240         # one card per symbol-state per four hours
   producer: options_chain_snapshot
+
+# ── P2 market-data categories (scripts/lib/market_risk/categories/{technical,volatility,options_flow,macro_credit,
+#    cross_asset}.py, scripts/lib/market_risk/correlations.py). Each category sums the points of the sub-signals that
+#    fire (capped at 100); state = STRESS at stress_score, WARN at warn_score, else CALM. Missing inputs are UNKNOWN,
+#    never zero. Proposed defaults, operator-owned (§11 item 3). RCA fixture values quoted beside each rule.
+technical:
+  symbols: [QQQ, SPY, SMH, SOXX, IWM]
+  semis_symbols: [SMH, SOXX]
+  history_sessions: 260          # enough for a 52-week high and a 200-day average
+  min_sessions: 25
+  stale_after_hours: 96          # a Friday close is still current on Monday morning
+  warn_score: 30
+  stress_score: 60
+  drawdown_52w_pct: 8.0          # NDX was 10% off its 10-06 record on 10-30
+  drawdown_20d_pct: 4.0
+  losing_streak_sessions: 5      # SOX lost 8 straight sessions into 10-16
+  retest_window_sessions: 5
+  retest_reference_sessions: 20
+  retest_tolerance_pct: 0.25     # QQQ 725.59 on 10-28 = the 10-21 high
+  retest_fail_pct: 1.5           # then closed 2.7% lower on 10-29
+  semis_mtd_pct: -10.0           # SOX -15% month to date
+  points:
+    drawdown_52w: 15
+    drawdown_20d: 10
+    losing_streak: 15
+    failed_retest: 20
+    below_dma50: 8
+    below_dma200: 12
+    semis_mtd: 15
+    ai_basket_warn: 10           # ai_concentration.technical_signal WARN (participation < warn or RS <= rs_warn_pct)
+    ai_basket_stress: 20         # ... STRESS (participation < 40% or RS <= -5 pts over 20 sessions, plan §5.7)
+
+volatility:
+  vix_symbol: "^VIX"
+  index_symbol: QQQ
+  realized_symbol: SPY
+  term_symbols: {vix9d: "^VIX9D", vix3m: "^VIX3M", vvix: "^VVIX", skew: "^SKEW"}
+  history_sessions: 30
+  stale_after_hours: 96
+  warn_score: 30
+  stress_score: 60
+  vix_warn: 20.0
+  vix_stress: 25.0
+  vix_5d_change_pct: 20.0
+  divergence_index_drop_pct: -1.5   # 10-29: QQQ -2.7% while VIX fell to 16.59
+  divergence_vix_max_change_pct: 0.0
+  vvix_warn: 110.0
+  skew_warn: 150.0
+  realized_window: 10
+  realized_over_implied: 1.0        # 10-day realized (annualised, %) above VIX
+  points:
+    vix_warn: 15
+    vix_stress: 30
+    vix_jump: 15
+    divergence: 30             # alone it is WARN: the 10-29 signal
+    term_inversion_front: 15        # VIX9D above VIX
+    term_inversion_back: 20         # VIX above VIX3M
+    vvix: 10
+    skew: 10
+    realized_over_implied: 10
+
+options_flow_category:
+  # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
+  history_extra_sessions: 1
+  stale_after_hours: 96
+  score: {CALM: 10, WARN: 50, STRESS: 85}
+
+macro_credit:
+  series: {hy_oas: BAMLH0A0HYM2, ust10: DGS10, curve: T10Y2Y, wti: DCOILWTICO, dxy: DTWEXBGS}
+  observations: 400
+  stale_after_hours: 120            # FRED publishes with a one-to-two-day lag
+  warn_score: 30
+  stress_score: 60
+  hy_oas_5d_bp: 15                  # 3.18 -> 3.40 over 10-15..10-22 = +22bp
+  hy_oas_20d_bp: 30
+  hy_oas_z: 2.0
+  ust10_level: 5.0                  # 5.19% on 10-14
+  ust10_20d_bp: 30
+  curve_20d_bp: 25                  # fast move either way
+  wti_20d_pct: 15.0                 # 96 -> 110 over 10-14..10-19
+  dxy_20d_pct: 3.0
+  points:
+    hy_oas_5d: 20
+    hy_oas_20d: 15
+    hy_oas_z: 15
+    ust10_level: 10
+    ust10_move: 10
+    curve_move: 10
+    wti: 10
+    dxy: 10
+
+correlations:
+  window: 20
+  lookback_sessions: 252
+  min_sessions: 60
+  z_anomaly: 2.0
+  sign_flip_sessions: 3
+  min_abs_mean_for_flip: 0.2
+  pairs:
+    - [SPY, "^VIX"]
+    - [SPY, TLT]
+    - [SPY, UUP]
+    - [SPY, HYG]
+    - [QQQ, SMH]
+    - [SPY, RSP]
+    - [SPY, GLD]
+
+cross_asset:
+  history_sessions: 280
+  stale_after_hours: 96
+  warn_score: 30
+  stress_score: 60
+  hyg_5d_pct: -1.5
+  flight_to_safety_spy_5d_pct: -2.0
+  flight_to_safety_tlt_5d_pct: 1.0
+  points:
+    anomaly: 20
+    hyg_drop: 15
+    flight_to_safety: 15
+event:
+  # Event concentration (scripts/lib/market_risk/event_calendar.py, categories/event.py). Index-weighted earnings
+  # share in the next N sessions + scheduled macro releases + calendar tags -> event_concentration_score 0-100.
+  # RCA fixture (synthetic weights): FOMC 10-28 14:00, four mega-caps reporting 10-28/10-29 after hours,
+  # month-end 10-30 -> STRESS from 10-26 onward.
+  windows_sessions: [1, 3, 5]
+  earnings_window_sessions: 3     # the window whose share drives the score
+  earnings_share_full: 0.25       # index-cap share reporting in the window that earns all earnings points
+  earnings_max_points: 60
+  amc_cutoff_et: "20:00"          # today's after-close reporters still count until the extended session ends
+  bmo_cutoff_et: "09:30"          # today's before-open reporters stop counting at the open
+  macro_window_sessions: 3
+  macro_points: {fomc: 25, cpi: 15, employment_situation: 15, default: 5}
+  macro_max_points: 30
+  calendar_window_sessions: 5
+  calendar_points: {month_end: 5, quarter_end: 5, options_expiration: 5, election_day: 10}
+  calendar_max_points: 15
+  warn_score: 40
+  stress_score: 60
+  stale_after_hours: 24
+  # Earnings share is measured over the largest index constituents only (registry._covered_weights); the share is of
+  # this universe's combined cap. Below min_cap_coverage of the list with a known cap, earnings read "not measured".
+  index_universe: [AAPL, MSFT, NVDA, AMZN, GOOGL, GOOG, META, AVGO, TSLA, BRK.B, JPM, LLY, V, WMT, ORCL, MA, XOM,
+                   NFLX, COST, JNJ, HD, PG, ABBV, BAC, AMD, PLTR, KO, CVX, CSCO, UNH, IBM, INTC, MU, CRM, GE]
+  min_cap_coverage: 0.8
+  # AI-basket earnings sensitivity (P2-T6): basket index-cap share reporting within this many sessions.
+  ai_sensitivity_window_sessions: 2
+  ai_sensitivity_stress_share: 0.15
+  ai_sensitivity_stress_score: 80
+
+ai_concentration:
+  # scripts/lib/market_risk/ai_concentration.py. Feeds technical (participation / relative strength) and event
+  # (earnings sensitivity). Basket is operator-owned.
+  basket: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]
+  optional: [AAPL, TSLA, INTC, MU, TSM, ORCL]
+  include_optional: false
+  benchmarks: [RSP, SPY]
+  lookback_sessions: 60
+  rs_sessions: 20
+  participation_calm: 0.70        # share of basket above its 20-day average considered healthy
+  participation_warn: 0.55
+  participation_stress: 0.40
+  rs_warn_pct: -2.5               # basket 20-session return minus benchmark, percentage points
+  rs_stress_pct: -5.0
+  rs_full_pct: -10.0              # relative weakness that earns a full 100 score
+  earnings_lookahead_days: 10     # calendar days of earnings rows read to cover the 5-session window
+  stale_after_hours: 30
+
+breadth:
+  # categories/breadth.py from existing sector_momentum_state rows (style pairs, sector states, sector breadth).
+  # Market-wide breadth (new highs/lows, % above DMAs) comes from market_breadth_daily once that store exists;
+  # until then that sub-signal is UNKNOWN, never zero.
+  style_key: "STYLE:equal_vs_cap"
+  style_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 20, LAGGING: 30}
+  leadership_etfs: [XLK, SMH]
+  leadership_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 15, LAGGING: 20}
+  leadership_max_points: 25
+  weak_breadth_pct: 45            # leadership sector breadth (% of members positive) below this adds points
+  weak_breadth_points: 10
+  deteriorating_states: [WEAKENING, LAGGING]
+  deteriorating_share_points_full: 25   # share of sector ETFs WEAKENING/LAGGING x this
+  warn_score: 35
+  stress_score: 60
+  stale_after_hours: 30
+
+seasonal:
+  # categories/seasonal.py: a low-weight prior from scripts/lib/cio_seasonality_engine.py. It can never by itself
+  # raise the category above WARN (enforced in code, not only by these numbers).
+  points:
+    weak_month: 10
+    worst_six_months: 5
+    midterm_year: 5
+    options_expiration_week: 5
+    quarter_end_window: 3
+    turn_of_month_late: 2
+  max_score: 35
+  warn_score: 25
+  stale_after_hours: 24
+# ── Composite scoring (scripts/lib/market_risk/scoring.py, builder A, P2-T1/P2-T10) ──────────────────────────
+# The composite is the weighted mean of the KNOWN category scores (each 0-100, decayed by age), so the five
+# contributors' points sum to the score exactly. UNKNOWN categories are excluded and reported as lost coverage,
+# never counted as zero. Proposed defaults; the operator owns the numbers (design §11 item 3).
+weights:
+  technical: 1.0
+  breadth: 1.0
+  volatility: 1.0
+  options_flow: 1.2
+  macro_credit: 0.6
+  cross_asset: 0.8
+  event: 1.2
+  seasonal: 0.3
+  extended_hours: 1.3
+
+tiers:
+  # A tier holds when score >= min_score, OR when at least min_warn categories are WARN/STRESS and (if listed) one
+  # of require_stress_any is at STRESS. The highest tier that holds wins. Plan §5.2.
+  blue:   {min_score: 25, min_warn: 1}
+  yellow: {min_score: 40, min_warn: 3}
+  orange: {min_score: 60, min_warn: 4, require_stress_any: [options_flow, cross_asset, event]}
+  red:    {min_score: 75, min_warn: 5, require_stress_any: [extended_hours, breadth]}
+  # Shock: an extended-hours STRESS at or above shock_min_score while the market is already ORANGE-or-worse makes
+  # RED on that one evaluation (the 10-29 18:15 ET case: NQ futures -1.5%..-2% after AMZN/INTC prints).
+  red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 1, max_warn: 0}
+  # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
+  uplift:
+    max_tiers: 1
+    vulnerability_rules:
+      - {from: ORANGE, min_vulnerability: 70, to: RED}
+      - {from: YELLOW, min_vulnerability: 80, to: ORANGE}
+    budget_ratio_uplift: 1.25      # any risk-budget breach at >= 1.25x its limit lifts one tier
+    budget_uplift_from: [YELLOW, ORANGE]
+
+hysteresis:
+  escalate_consecutive: 2          # evaluations in a row at the higher tier before it is adopted
+  deescalate_sessions: 3           # distinct ET session dates below the current tier before it drops
+  bootstrap_adopts_raw: true       # no prior assessment -> adopt the raw tier (recorded as bootstrap)
+
+decay:
+  # Contribution weight by age of the observation (hours): weight of the first step whose max_age >= age.
+  steps:
+    - {max_age_hours: 12, weight: 1.0}
+    - {max_age_hours: 24, weight: 0.8}
+    - {max_age_hours: 48, weight: 0.6}
+    - {max_age_hours: 72, weight: 0.4}
+  default_stale_after_hours: 96    # beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
+  confirm_min_weight: 0.8          # a WARN/STRESS older than ~24h (weight < 0.8) no longer confirms a tier
+alerts:
+  # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
+  # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  producer: market_risk_engine
+  max_contributors: 5
+  priority:
+    RED: P1
+    ORANGE: P1
+    YELLOW: P2
+    BLUE: P3
+    GREEN: P2
+    deescalated: P2        # a drop out of ORANGE/RED is news too
+  dedupe_minutes:
+    RED: 0
+    ORANGE: 60
+    YELLOW: 240
+    BLUE: 720
+    GREEN: 720
+    deescalated: 240
+
+escalation:
+  # MarketRiskEpisode@v1 (scripts/lib/market_risk/escalation.py). File store until the market_risk_episodes table
+  # is granted (§7A). One open episode at a time; ORANGE or RED opens it.
+  opens_at: [ORANGE, RED]
+  red_repeat_offsets_min: [15, 30, 60]   # after the first send, then every red_repeat_every_min
+  red_repeat_every_min: 60
+  red_repeat_cap: 12
+  orange_repeat_offsets_min: [60]        # once at +60, then once at each session boundary
+  orange_session_boundaries_et: ["05:00", "09:45", "16:30"]
+  orange_repeat_cap: 4
+  min_seconds_between_sends: 60          # never two sends of one episode inside a minute
+  resolve_after_sessions_below: 3        # tier below YELLOW for 3 distinct session dates -> RESOLVED
+  resolve_below_tier: YELLOW
+  stalled_after_min: 75                  # OPEN RED with no repeat receipt this long -> health_tick pages
+
+opening_shock:
+  # 09:16-09:46 ET opening-shock detector (scripts/lib/market_risk/opening_shock.py, plan §5.14).
+  symbols: [SPY, QQQ, IWM, SMH]
+  gap_and_go_atr: 0.75        # |gap| >= this many ATRs, breadth confirms, range extends
+  gap_fade_retrace: 0.50      # >= 50% of the gap retraced by 09:45
+  panic_gap_atr: -1.5         # gap <= -1.5 ATR ...
+  panic_advancers_pct: 20     # ... advancers below 20% ...
+  panic_trin: 2.0             # ... TRIN above 2.0 ...
+  panic_vix_change_pct: 10    # ... VIX up 10% or more
+  panic_gap_atr_without_internals: -2.0   # internals unknown: a deeper gap plus the VIX rule is required
+  window_et: ["09:16", "09:46"]
+
+extended_hours:
+  # Premarket / after-hours index proxies and index heavyweights (categories/extended_hours.py).
+  index_proxies: [QQQ, SPY]
+  heavyweights: [NVDA, MSFT, AAPL, AMZN, GOOGL, META, AVGO, TSLA, AMD, INTC]
+  warn_pct: -0.75             # worst index proxy move vs previous close
+  stress_pct: -1.5
+  heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
+  lookback_hours: 18
+  stale_after_hours: 2
+
+composite:
+  # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).
+  # noisy_or: only WARN/STRESS categories add risk; independent confirmations accumulate, calm categories never dilute.
+  # x_i = min(max_per_category, unit_weight * f * weight_i * score_i/100 * decay_i), f = 1 STRESS / warn_factor WARN;
+  # score = 100 * (1 - prod(1 - x_i)). unit_weight 0.40: one fully stressed weight-1.0 category alone = 40 (Yellow
+  # floor); two = 64 (Orange); three = 78 (Red). Five WARNs at 60 = 54 (Yellow): WARNs alone never reach Orange.
+  method: noisy_or
+  unit_weight: 0.40
+  warn_factor: 0.6
+  max_per_category: 0.95
+  # Degrade, not blind: with categories unmeasured, survive ** (all weight / measured weight), capped here. Calm stays
+  # calm (survive ~ 1); existing stress is extrapolated to the unmeasured weight. 1.0 disables it.
+  coverage_extrapolation_max: 1.6

@@ -758,6 +758,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) |
+| `docs/audits/MARKET_RISK_ENGINE_BACKTEST_20261031.md` | Market Risk Engine backtest |
 | `docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md` | Why no warning preceded the 2026-10-30 selloff — root cause analysis |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 |

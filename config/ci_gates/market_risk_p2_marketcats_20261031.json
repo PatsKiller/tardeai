@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p2_marketcats_20261031",
+  "files": [
+    "tests/test_market_risk_market_categories_20261031.py",
+    "tests/test_market_risk_contract_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P2_MARKETCATS_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P2_MARKETCATS_20261031 — Market Risk Engine market-data categories (technical, volatility,",
+    "options flow, macro/credit, cross-asset) and the correlation anomaly engine (DSN-20261031-market-risk-engine",
+    "P2-T1, P2-T5). Pins the 10-28/29 RCA shapes (QQQ failed retest of 725.59, SMH losing streak and -15% MTD,",
+    "complacency divergence, QQQ put/call STRESS, HY OAS +22bp), calm fixtures CALM, missing/stale inputs UNKNOWN",
+    "(never zero), the SPY~VIX sign-flip positive control and its restore. Hermetic: fixture reader, no DB/network."
+  ]
+}
