@@ -1,9 +1,13 @@
 {
   "schema": "CiGate@v1",
   "name": "index_constituent_caps_20261031",
-  "files": ["tests/test_index_constituent_caps_20261031.py"],
+  "files": [
+    "tests/test_index_constituent_caps_20261031.py"
+  ],
   "anchor": "INDEX_CONSTITUENT_CAPS_20261031",
-  "comment": ["ANCHOR: INDEX_CONSTITUENT_CAPS_20261031 — the engine's 35 index constituents get daily caps from the",
-              "registered yfinance provider through the single market_quotes writer; per-name failures are reported,",
-              "dry run writes nothing. Hermetic: fake info, fake writer."]
+  "comment": [
+    "ANCHOR: INDEX_CONSTITUENT_CAPS_20261031 — the engine's index issuers get caps through the existing Finviz",
+    "fundamentals writer (fundamental_data MarketCap), never market_quotes; one entry per issuer (GOOG/GOOGL once); coverage",
+    "needs every required largest issuer plus the policy count floor. Hermetic: fake ingest and reader."
+  ]
 }

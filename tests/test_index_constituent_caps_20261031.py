@@ -1,66 +1,81 @@
-"""Index-constituent caps for the engine's event category (scripts/index_constituent_caps.py). Hermetic."""
+"""Index-issuer caps for the engine's event category. Hermetic: fake ingest, fake reader rows."""
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import scripts.index_constituent_caps as icc
+from scripts.lib.market_risk import contract as c
+from scripts.lib.market_risk import event_calendar, registry
+from scripts.lib.market_risk.policy import load_policy
 
-FAKE = {
-    "AAPL": {"marketCap": 5_000e9, "currentPrice": 340.0},
-    "MSFT": {"marketCap": 3_900e9, "regularMarketPrice": 520.0},
-    "BRK.B": {"marketCap": 1_000e9, "currentPrice": 480.0},
-    "ZERO": {"marketCap": 0, "currentPrice": 10.0},
-}
+ET = ZoneInfo("America/New_York")
 
 
-def _info(s):
-    if s == "BOOM":
-        raise TimeoutError("yahoo timed out")
-    return FAKE.get(s, {})
+def _ingest(caps):
+    def f(symbols, *, limit, dry_run):
+        f.called = {"symbols": list(symbols), "dry_run": dry_run}
+        return {
+            "rows": 0 if dry_run else 9 * len(caps),
+            "provider_calls": 0,
+            "symbols": {s: {"metrics": ({"MarketCap": caps[s]} if s in caps else {})} for s in symbols},
+        }
+
+    return f
 
 
-def test_rows_and_missing_are_reported_not_swallowed(capsys):
-    rows, missing = icc.fetch(["AAPL", "MSFT", "BRK.B", "ZERO", "BOOM", "NONE"], info_of=_info)
-    assert [r["symbol"] for r in rows] == ["AAPL", "MSFT", "BRK.B"]
-    assert missing == ["ZERO", "BOOM", "NONE"]
-    assert "BOOM: TimeoutError" in capsys.readouterr().err
+def test_runner_uses_the_existing_fundamentals_writer_and_never_market_quotes():
+    pol = {"index_universe": ["AAPL", "MSFT", "BRK.B"], "required_issuers": ["AAPL"], "min_cap_coverage": 0.6}
+    ing = _ingest({"AAPL": 5e12, "MSFT": 4e12})
+    out = icc.run(apply=False, ingest=ing, policy=pol)
+    assert ing.called == {"symbols": ["AAPL", "MSFT", "BRK.B"], "dry_run": True}
+    assert out["ok"] and out["missing"] == ["BRK.B"] and out["rows_written"] == 0
+    src = open(icc.__file__).read()
+    assert "write_market_quotes" not in src and "market_quotes_writer" not in src
 
 
-def test_yahoo_symbol_mapping():
-    assert icc._yf_symbol("BRK.B") == "BRK-B"
+def test_required_issuer_missing_fails_even_with_count_coverage():
+    pol = {"index_universe": ["AAPL", "MSFT", "X", "Y", "Z"], "required_issuers": ["AAPL"], "min_cap_coverage": 0.6}
+    out = icc.run(apply=False, ingest=_ingest({"MSFT": 4e12, "X": 1e9, "Y": 1e9, "Z": 1e9}), policy=pol)
+    assert out["coverage"] == 0.8 and out["required_missing"] == ["AAPL"] and out["ok"] is False
 
 
-def test_dry_run_writes_nothing_and_reports_weights():
-    out = icc.run(apply=False, symbols=["AAPL", "MSFT", "BRK.B"], info_of=_info)
-    assert out["written"] == 0 and out["coverage"] == 1.0
-    assert round(sum(t["weight"] for t in out["top"]), 6) == 1.0 and out["top"][0]["symbol"] == "AAPL"
+def test_policy_lists_each_issuer_once():
+    ev = load_policy()["event"]
+    uni = ev["index_universe"]
+    assert "GOOG" not in uni and "GOOGL" in uni and len(uni) == len(set(uni))
+    aliased = {ev["issuer_aliases"].get(s, s) for s in uni}
+    assert len(aliased) == len(uni)
 
 
-def test_apply_writes_through_the_single_writer(monkeypatch):
-    seen = {}
-
-    def fake_write(cur, rows, *, source):
-        seen["rows"], seen["source"] = rows, source
-
-        class R:
-            rows_accepted = len(rows)
-
-        return R()
-
-    class C:
-        committed = False
-
-        def cursor(self):
-            return object()
-
-        def commit(self):
-            C.committed = True
-
-    monkeypatch.setattr("lib.writers.market_quotes_writer.write_market_quotes", fake_write)
-    out = icc.run(apply=True, symbols=["AAPL", "MSFT"], info_of=_info, conn=C())
-    assert out["written"] == 2 and seen["source"] == "yfinance:index_caps" and C.committed
-    assert set(seen["rows"][0]) == {"symbol", "price", "market_cap"}
+def test_alphabet_counts_once_when_both_share_classes_report():
+    ev = load_policy()["event"]
+    now = datetime(2026, 10, 27, 17, 0, tzinfo=ET)
+    rows = [
+        {"symbol": s, "earnings_date": "2026-10-28", "earnings_timing": "amc", "as_of": "2026-10-20T00:00:00+00:00"}
+        for s in ("GOOG", "GOOGL")
+    ]
+    weights = {"GOOGL": 0.0875, "AAPL": 0.12}
+    r = event_calendar.earnings_share(now, rows, weights, 3, ev)
+    assert list(r["reporters"]) == ["GOOGL"] and abs(r["share"] - 0.0875) < 1e-9
 
 
-def test_universe_is_the_policy_list():
-    u = icc.universe()
-    assert len(u) == 35 and "BRK.B" in u and "NVDA" in u
+class _R:
+    def __init__(self, w):
+        self.w = w
+
+    def index_weights(self, *, end, universe=None):
+        return {"weights": {k: v for k, v in self.w.items() if k in (universe or self.w)}}
+
+
+def test_coverage_withholds_weights_when_a_largest_issuer_is_missing():
+    pol = load_policy()
+    uni = pol["event"]["index_universe"]
+    w = {s: 1.0 / len(uni) for s in uni if s != "NVDA"}  # 33 of 34 by count, but NVDA missing
+    ctx = c.EvalContext(now=datetime(2026, 10, 28, 16, 30, tzinfo=ET), reader=_R(w), policy=pol)
+    assert registry._covered_weights(ctx, ctx.reader.index_weights) is None
+    assert "NVDA" in ctx.extras["index_weights_note"]
+    ok = dict(w, NVDA=1.0 / len(uni))
+    ctx2 = c.EvalContext(now=ctx.now, reader=_R(ok), policy=pol)
+    assert registry._covered_weights(ctx2, ctx2.reader.index_weights) is not None

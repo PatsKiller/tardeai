@@ -10236,6 +10236,23 @@
       }
     },
     {
+      "lane_id": "index-constituent-caps",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "state_reason": "Declared, not scheduled. Daily market caps for the Market Risk Engine's index issuers (config/market_risk_policy.yaml event.index_universe, one entry per issuer) through the EXISTING Finviz fundamentals writer (external_market_data_ingest.ingest_finviz_fundamentals -> fundamental_data metric MarketCap; stored Finviz via the data broker, zero provider calls); runner scripts/index_constituent_caps.py. No new store, provider or writer; caps never go to market_quotes. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after this PR merges.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line or timer runs scripts/index_constituent_caps.py. Measured 2026-10-31 (dry run, nothing written): MarketCap for 33 of 34 issuers from the Finviz cache; BRK.B is not in the Finviz enrichment cache. Freshness SLA 24 h; the engine reads caps fetched within 10 days.",
+      "note": "Proposed host crontab line: '20 6 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/index_constituent_caps.lock bash scripts/market_day_gate.sh $PY scripts/index_constituent_caps.py --apply >> logs/index_constituent_caps.log 2>&1'."
+    },
+    {
       "lane_id": "refresh-symbol-cards",
       "owner": "portfolio",
       "scheduler": {
@@ -18842,23 +18859,6 @@
         "path": "data/runtime/premarket-delivery-deadman_last.json"
       },
       "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
-    },
-    {
-      "lane_id": "index-constituent-caps",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "none"
-      },
-      "expected_cadence_hours": 24,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled. Daily market caps for the Market Risk Engine's 35 index constituents (config/market_risk_policy.yaml event.index_universe) from the registered yfinance fallback provider, written through the single market_quotes writer with source yfinance:index_caps (scripts/index_constituent_caps.py). No new store, no new provider. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after this PR merges.",
-      "output_signal": {
-        "kind": "none"
-      },
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/index_constituent_caps.py. Measured 2026-10-31: market_quotes held a cap within 30 days for 4 of the 35 names; the dry run returned caps for 35 of 35. Freshness SLA 24 h (the engine's index_weights lookback is 30 days).",
-      "note": "Proposed host crontab line: '20 6 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/index_constituent_caps.lock bash scripts/market_day_gate.sh $PY scripts/index_constituent_caps.py --apply >> logs/index_constituent_caps.log 2>&1'."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
