@@ -12,6 +12,10 @@ and nothing paged (RCA finding 7). Pins, hermetically (sandbox copy of the runne
 
 from __future__ import annotations
 
+#: C1 firing coverage — test_pager_sends_one_p1_dedupe_zero_intent injects low disk and asserts the P1 reaches the
+#: (stubbed) transport; the pager has one send_telegram site.
+COVERS = ["scripts/pipelines/pipeline_disk_alert.py"]
+
 import json
 import os
 import stat
