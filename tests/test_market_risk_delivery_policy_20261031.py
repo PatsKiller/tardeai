@@ -10,6 +10,7 @@ Nothing here reaches Telegram: the transport is stubbed by ``alarm_capture``.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -56,7 +57,7 @@ def test_config_names_the_window_and_only_market_risk_p2():
     assert doc["schema"] == TR.QUIET_EXEMPTIONS_SCHEMA
     rows = TR.load_quiet_exemptions()
     assert [r["id"] for r in rows] == ["market_risk_premarket"]
-    assert rows[0]["message_classes"] == ["market_risk"] and rows[0]["priorities"] == ["P2"]
+    assert rows[0]["message_classes"] == ["market_risk", "market_regime"] and rows[0]["priorities"] == ["P2"]
     assert rows[0]["window"] == {"start": "04:00", "end": "09:30", "tz": "America/New_York"}
 
 
@@ -211,3 +212,89 @@ def test_comms_hub_classifies_market_risk_cards():
     assert flow["category"] == "market_risk" and flow["priority"] == "critical"
     stop = classify("🚨 CRITICAL STOP ALERT — probe")
     assert stop["category"] == "threat", "a per-position stop card is still a threat, not market risk"
+
+
+# ── review round 1 (adversarial review of #2323) ────────────────────────────────────────────────────────────
+
+
+def _write(tmp_path, name, doc):
+    f = tmp_path / name
+    f.write_text(json.dumps(doc))
+    return f
+
+
+def _row(start, end, tz="America/New_York"):
+    return {
+        "schema": TR.QUIET_EXEMPTIONS_SCHEMA,
+        "exemptions": [
+            {
+                "id": "probe",
+                "message_classes": ["market_risk"],
+                "priorities": ["P2"],
+                "window": {"start": start, "end": end, "tz": tz},
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "start,end,hhmm",
+    [("4am", "09:30", "01:30"), ("04:00", "24:00", "23:30"), ("04:00", "9h30", "23:30"), ("", "09:30", "01:30")],
+)
+def test_malformed_bound_skips_the_row_never_widens_it(quiet, monkeypatch, tmp_path, caplog, start, end, hhmm):
+    monkeypatch.setenv(TR.QUIET_EXEMPTIONS_ENV, str(_write(tmp_path, "bad_bounds.json", _row(start, end))))
+    with caplog.at_level(logging.WARNING, logger=TR.log.name):
+        r = TR.route_intent("probe", "P2", message_class="market_risk", now=_et(hhmm))
+    assert r["decision"] == "HELD_QUIET_HOURS" and "quiet_exemption" not in r
+    assert "not strict HH:MM" in caplog.text
+
+
+def test_unreadable_and_rejected_config_is_logged(quiet, monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv(TR.QUIET_EXEMPTIONS_ENV, str(tmp_path / "absent.json"))
+    with caplog.at_level(logging.WARNING, logger=TR.log.name):
+        assert TR.load_quiet_exemptions() == []
+    assert "FileNotFoundError" in caplog.text and "absent.json" in caplog.text
+    caplog.clear()
+    monkeypatch.setenv(TR.QUIET_EXEMPTIONS_ENV, str(_write(tmp_path, "schema.json", {"schema": "Other@v1"})))
+    with caplog.at_level(logging.WARNING, logger=TR.log.name):
+        assert TR.load_quiet_exemptions() == []
+    assert "schema is not" in caplog.text
+    caplog.clear()
+    bad_row = {"schema": TR.QUIET_EXEMPTIONS_SCHEMA, "exemptions": [{"id": "x"}]}
+    monkeypatch.setenv(TR.QUIET_EXEMPTIONS_ENV, str(_write(tmp_path, "shape.json", bad_row)))
+    with caplog.at_level(logging.WARNING, logger=TR.log.name):
+        assert TR.load_quiet_exemptions() == []
+    assert "rejected (shape)" in caplog.text
+
+
+def test_regime_classifier_class_is_exempt(quiet):
+    # the literal class scripts/market_regime_classifier.py sends with
+    r = TR.route_intent(
+        "*Market Regime Changed* probe",
+        "P2",
+        producer="market_regime_classifier",
+        message_class="market_regime",
+        now=_et("05:51"),
+    )
+    assert r["decision"] == "DELIVER" and r["quiet_exemption"] == "market_risk_premarket"
+
+
+def test_quiet_window_end_at_0700_is_the_real_boundary(quiet):
+    r = TR.route_intent("probe 0659", "P2", message_class="market_risk", now=_et("06:59"))
+    assert r["decision"] == "DELIVER" and r["quiet_exemption"] == "market_risk_premarket"
+    r = TR.route_intent("probe 0700", "P2", message_class="market_risk", now=_et("07:00"))
+    assert r["decision"] == "DELIVER" and "quiet_exemption" not in r, "07:00 is outside quiet hours; no exemption"
+    r = TR.route_intent("probe ops 0700", "P2", message_class="ops/info", now=_et("07:00"))
+    assert r["decision"] == "DELIVER"
+
+
+def test_row_without_tz_uses_the_quiet_window_tz_env(quiet, monkeypatch, tmp_path):
+    doc = _row("04:00", "09:30")
+    del doc["exemptions"][0]["window"]["tz"]
+    monkeypatch.setenv(TR.QUIET_EXEMPTIONS_ENV, str(_write(tmp_path, "notz.json", doc)))
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_TZ", "UTC")
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_QUIET_START", "22:00")
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_QUIET_END", "07:00")
+    # 05:30 ET is 09:30 UTC: outside both the UTC quiet window and the UTC exemption window
+    r = TR.route_intent("probe", "P2", message_class="market_risk", now=_et("01:30"))  # 05:30 UTC
+    assert r["decision"] == "DELIVER" and r["quiet_exemption"] == "probe"

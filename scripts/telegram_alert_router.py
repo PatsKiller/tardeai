@@ -712,17 +712,33 @@ QUIET_EXEMPTIONS_SCHEMA = "NotificationIntentQuietExemptions@v1"
 
 
 def load_quiet_exemptions() -> list[dict]:
-    """The reviewed exemption rows (schema-checked). Unreadable or malformed config means no exemption."""
+    """The reviewed exemption rows (schema-checked). Unreadable or malformed config means no exemption, logged."""
     path = Path(os.environ.get(QUIET_EXEMPTIONS_ENV) or _QUIET_EXEMPTIONS_DEFAULT)
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        log.warning("quiet exemptions unreadable (%s) at %s — no exemption applies", type(e).__name__, path)
         return []
     if not isinstance(doc, dict) or doc.get("schema") != QUIET_EXEMPTIONS_SCHEMA:
+        log.warning("quiet exemptions rejected: schema is not %s at %s — no exemption applies",
+                    QUIET_EXEMPTIONS_SCHEMA, path)
         return []
-    rows = doc.get("exemptions") or []
-    return [r for r in rows if isinstance(r, dict) and r.get("id") and r.get("message_classes")
-            and isinstance(r.get("window"), dict)]
+    rows = []
+    for r in doc.get("exemptions") or []:
+        if isinstance(r, dict) and r.get("id") and r.get("message_classes") and isinstance(r.get("window"), dict):
+            rows.append(r)
+        else:
+            log.warning("quiet exemption row rejected (shape) at %s: %r", path, str(r)[:120])
+    return rows
+
+
+def _hhmm_strict(text) -> int | None:
+    """Minutes after midnight for a strict HH:MM (00:00-23:59), else None. No default: a bad bound never widens."""
+    try:
+        h, m = (int(x) for x in str(text).strip().split(":"))
+    except ValueError:
+        return None
+    return h * 60 + m if 0 <= h < 24 and 0 <= m < 60 else None
 
 
 def quiet_exemption_for(message_class: str | None, priority: str, now=None) -> str | None:
@@ -739,14 +755,19 @@ def quiet_exemption_for(message_class: str | None, priority: str, now=None) -> s
         if priority not in [str(x).upper() for x in row.get("priorities") or [INTENT_P2]]:
             continue
         win = row["window"]
-        start = _hhmm(str(win.get("start") or ""), "00:00")
-        end = _hhmm(str(win.get("end") or ""), "00:00")
-        if start == end:
+        start, end = _hhmm_strict(win.get("start")), _hhmm_strict(win.get("end"))
+        if start is None or end is None or start == end:
+            log.warning("quiet exemption %s skipped: window bounds %r-%r are not strict HH:MM",
+                        row.get("id"), win.get("start"), win.get("end"))
             continue
+        default_tz = str(os.environ.get(_QUIET_TZ_ENV[0]) or _QUIET_TZ_ENV[1]).strip()
         try:
-            tz = ZoneInfo(str(win.get("tz") or _QUIET_TZ_ENV[1]))
+            tz = ZoneInfo(str(win.get("tz") or default_tz))
         except (ZoneInfoNotFoundError, ValueError):
-            tz = ZoneInfo(_QUIET_TZ_ENV[1])
+            try:
+                tz = ZoneInfo(default_tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                tz = ZoneInfo(_QUIET_TZ_ENV[1])
         t = (now or _dt.now(_tz.utc)).astimezone(tz)
         m = t.hour * 60 + t.minute
         inside = (start <= m < end) if start < end else (m >= start or m < end)
