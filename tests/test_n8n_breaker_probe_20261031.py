@@ -73,18 +73,28 @@ def test_backoff_doubles_and_caps():
 
 def test_judge_pass_fail_timeout_neutral():
     probing = {"lane": {"probes": 0, "probing_since": (NOW - timedelta(hours=1)).isoformat(), "consecutive": 3}}
-    released = [{"lane_id": "lane", "opened_at": "x", "released_at": "y", "open": False}]
-    ok = BP.decide(released, {"lane": [{"run_id": "r1", "state": "RUN_DONE"}]}, probing, CFG, NOW)
-    assert ok[0]["action"] == "pass"
-    bad = BP.decide(released, {"lane": [{"run_id": "r1", "state": "RUN_FAILED"}]}, probing, CFG, NOW)
+    released = [
+        {
+            "lane_id": "lane",
+            "opened_at": (NOW - timedelta(hours=30)).isoformat(),
+            "released_at": "y",
+            "released_by": CFG["released_by"],
+            "open": False,
+        }
+    ]
+
+    def runs(*states):
+        return {"lane": [{"run_id": f"r{i}", "slot_key": "s1", "state": s} for i, s in enumerate(states)]}
+
+    assert BP.decide(released, runs("RUN_DONE"), probing, CFG, NOW)[0]["action"] == "pass"
+    bad = BP.decide(released, runs("RUN_FAILED"), probing, CFG, NOW)
     assert bad[0]["action"] == "fail" and bad[0]["consecutive"] == 3
-    neutral = BP.decide(released, {"lane": [{"run_id": "r0", "state": "RUN_SKIPPED_LOCK"}]}, probing, CFG, NOW)
-    assert neutral[0]["action"] == "wait"
+    assert BP.decide(released, runs("RUN_SKIPPED_LOCK"), probing, CFG, NOW)[0]["action"] == "wait"
     old = {"lane": {**probing["lane"], "probing_since": (NOW - timedelta(hours=7)).isoformat()}}
     assert BP.decide(released, {}, old, CFG, NOW)[0]["action"] == "timeout"
     st = BP.next_state(probing, bad[0], NOW)
     assert st["lane"]["probes"] == 1 and st["lane"]["probing_since"] is None
-    assert BP.next_state(probing, ok[0], NOW) == {}
+    assert BP.next_state(probing, BP.decide(released, runs("RUN_DONE"), probing, CFG, NOW)[0], NOW) == {}
 
 
 # ---------------------------------------------------------------- end to end on a temp ledger
@@ -102,27 +112,26 @@ def env(tmp_path, monkeypatch):
     return tmp_path, led, sent, cfg_p
 
 
-def _run(led, lane, state, at):
+def _run(led, lane, state, at, slot="slot-1"):
     led._conn.execute(
-        "INSERT INTO runs (run_id, lane_id, mode, state, requested_at, finished_at) VALUES (?,?,?,?,?,?)",
-        (f"r-{state}-{at}", lane, "live", state, at, at),
+        "INSERT INTO runs (run_id, lane_id, mode, state, requested_at, finished_at, slot_key) VALUES (?,?,?,?,?,?,?)",
+        (f"r-{state}-{at}", lane, "live", state, at, at, slot),
     )
 
 
 def test_end_to_end_probe_then_fail_reopens_then_pass(env):
     root, led, sent, cfg_p = env
     store = LedgerRunStore(led)
-    store.open_breaker("cio-ask-lifecycle", 3, (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp())
+    store.open_breaker("lane-a", 3, (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp())
     assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
-    assert store.breaker("cio-ask-lifecycle")["open"] is False  # released for the probe
-    assert store.breaker("cio-ask-lifecycle")["released_by"] == "auto:half_open_probe"
-    assert sent and "probe" in sent[-1]["message"]
-    state = json.loads((root / CFG["state_rel"]).read_text())
-    _run(led, "cio-ask-lifecycle", "RUN_FAILED", (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat())
+    assert store.breaker("lane-a")["open"] is False  # released for the probe
+    assert store.breaker("lane-a")["released_by"] == "auto:half_open_probe"
+    assert sent and "probe" in sent[-1]["message"] and sent[-1]["message_class"] == CFG["message_class"]
+    _run(led, "lane-a", "RUN_FAILED", (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat())
     assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
-    assert store.breaker("cio-ask-lifecycle")["open"] is True  # re-opened at the first failure
+    assert store.breaker("lane-a")["open"] is True  # re-opened at the first failure
     state = json.loads((root / CFG["state_rel"]).read_text())
-    assert state["cio-ask-lifecycle"]["probes"] == 1
+    assert state["lane-a"]["probes"] == 1
     kinds = [json.loads(x)["action"] for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
     assert kinds == ["probe", "fail"]
 
@@ -140,5 +149,69 @@ def test_enabled_false_and_dry_run_change_nothing(env):
 
 
 def test_config_defaults():
-    assert CFG["enabled"] is False
-    assert any("broker" in g for g in CFG["never_probe_globs"]) and any("stop" in g for g in CFG["never_probe_globs"])
+    assert CFG["enabled"] is False and CFG["never_probe_extra"] == []
+    for word in ("scalp", "sender", "secret", "deploy", "guard", "position", "paper", "broker", "stop", "execution"):
+        assert word in BP.NEVER_PROBE
+    assert BP.blocked("Tradeai-SCALP-feed", CFG)  # case-insensitive
+    assert BP.blocked("x-broker", {**CFG, "never_probe_extra": []})  # config cannot remove the floor
+    assert BP.blocked("my-lane", {**CFG, "never_probe_extra": ["my-"]}) and not BP.blocked("my-lane", CFG)
+    assert BP.blocked("cio-ask-lifecycle", CFG, stage="canary") == "live canary lane"
+
+
+# ---------------------------------------------------------------- review 2026-10-31 (BLOCK on #2379): regressions
+def test_one_probe_per_tick_oldest_first():
+    acts = {a["lane"]: a for a in BP.decide([_br("newer", 30), _br("oldest", 90), _br("mid", 60)], {}, {}, CFG, NOW)}
+    assert acts["oldest"]["action"] == "probe"
+    assert acts["mid"]["action"] == "wait" and acts["newer"]["action"] == "wait"
+
+
+def test_operator_hold_and_another_actor_yield():
+    assert BP.decide([_br("held", 90)], {}, {}, CFG, NOW, holds=["held"])[0]["action"] == "held"
+    probing = {"lane": {"probes": 0, "probing_since": (NOW - timedelta(hours=1)).isoformat()}}
+    by_operator = [
+        {"lane_id": "lane", "opened_at": (NOW - timedelta(hours=30)).isoformat(), "released_by": "john", "open": False}
+    ]
+    assert BP.decide(by_operator, {}, probing, CFG, NOW)[0]["action"] == "yield"
+    reopened = [
+        {"lane_id": "lane", "opened_at": (NOW - timedelta(minutes=10)).isoformat(), "released_by": None, "open": True}
+    ]
+    assert BP.decide(reopened, {}, probing, CFG, NOW)[0]["action"] == "yield"
+
+
+def test_judges_exactly_one_probe_slot():
+    probing = {"lane": {"probes": 0, "probing_since": (NOW - timedelta(hours=1)).isoformat(), "consecutive": 3}}
+    rel = [
+        {
+            "lane_id": "lane",
+            "opened_at": (NOW - timedelta(hours=30)).isoformat(),
+            "released_by": CFG["released_by"],
+            "open": False,
+        }
+    ]
+    runs = {
+        "lane": [
+            {"run_id": "a", "slot_key": "s1", "state": "RUN_SKIPPED_LOCK"},
+            {"run_id": "b", "slot_key": "s2", "state": "RUN_DONE"},
+        ]
+    }  # a LATER slot never decides
+    assert BP.decide(rel, runs, probing, CFG, NOW)[0]["action"] == "wait"
+    runs["lane"].insert(1, {"run_id": "c", "slot_key": "s1", "state": "RUN_FAILED"})
+    assert BP.decide(rel, runs, probing, CFG, NOW)[0]["action"] == "fail"
+
+
+def test_state_written_before_release_and_failed_action_receipted(env, monkeypatch):
+    root, led, sent, cfg_p = env
+    store = LedgerRunStore(led)
+    store.open_breaker("lane-w", 3, (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp())
+    seen = {}
+
+    def boom(self, lane, by, now):
+        seen["state_at_release"] = json.loads((root / CFG["state_rel"]).read_text())
+        raise RuntimeError("ledger busy")
+
+    monkeypatch.setattr(LedgerRunStore, "release_breaker", boom)
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 1
+    assert seen["state_at_release"]["lane-w"]["probing_since"]  # written ahead of the release
+    assert "lane-w" not in json.loads((root / CFG["state_rel"]).read_text())  # rolled back: nothing was released
+    (rec,) = [json.loads(x) for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
+    assert rec["action"] == "probe" and rec["applied"] is False and "ledger busy" in rec["error"]

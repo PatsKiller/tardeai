@@ -1,18 +1,22 @@
 {
   "schema": "N8nBreakerProbe@v1",
   "as_of": "2026-10-31",
-  "_why": "A breaker opens after 3 consecutive dead slots and blocks every later slot, and only a completed run (or an operator release) closes it, so nothing ever recovers on its own: on 2026-10-31 ten breakers had been open for 22 h to 8 days (stuck-work sweep). Half-open probe: after open_hours (times backoff_factor^probes, capped at max_interval_hours) release the breaker once so the lane's next natural slot is the probe; a RUN_DONE keeps it closed, a RUN_FAILED/RUN_TIMEOUT re-opens it at once (a release resets consecutive_dead, so without this the lane would fail three more times before re-opening). Coordinator 2026-10-31; operator: \"validate all stuck agents and processes fix montior and make auto healings with claude code\". Default off (§25.10.2).",
+  "_why": "A breaker opens after 3 consecutive dead slots and blocks every later slot, and only a completed run (or an operator release) closes it, so nothing ever recovers on its own: on 2026-10-31 ten breakers had been open for 22 h to 8 days (stuck-work sweep). Half-open probe: after open_hours (times backoff_factor^probes, capped at max_interval_hours) release the breaker once so the lane's next natural slot is the probe; a RUN_DONE keeps it closed, a RUN_FAILED/RUN_TIMEOUT re-opens it at once (a release resets consecutive_dead, so without this the lane would fail three more times before re-opening). Coordinator 2026-10-31; operator: \"validate all stuck agents and processes fix montior and make auto healings with claude code\". Default off (\u00a725.10.2).",
   "enabled": false,
   "open_hours": 6,
   "backoff_factor": 2,
   "max_interval_hours": 48,
   "max_probes": 6,
   "probe_timeout_hours": 6,
-  "never_probe_globs": ["*broker*", "*schwab*", "*alpaca*", "*moomoo*", "*order*", "*stop*", "*execution*", "*active-trader*", "*options-lifecycle*"],
   "ledger_rel": "data/governance/n8n_coordination_ledger.sqlite",
   "state_rel": "data/governance/n8n_breaker_probe_state.json",
   "receipts_rel": "data/governance/n8n_breaker_probe_receipts.jsonl",
   "released_by": "auto:half_open_probe",
   "producer": "n8n_breaker_probe",
-  "alert_priority": "P2"
+  "alert_priority": "P2",
+  "never_probe_extra": [],
+  "_never_probe_why": "Additions only: scripts/lib/n8n_breaker_probe.py NEVER_PROBE is the code floor (broker, order, stop, execution, scalp, sender, telegram, secret, deploy, release, guard, position, paper, account, dof, ...), plus every live canary lane from the lane registry (AGENTS.md \u00a723.14, review 2026-10-31).",
+  "holds_rel": "data/governance/n8n_breaker_probe_holds.json",
+  "_holds_why": "Operator hold marker: a JSON object {lane_id: reason}. A held lane is never probed, judged or re-opened by the prober.",
+  "message_class": "ops_breaker_probe"
 }

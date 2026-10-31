@@ -77,12 +77,25 @@ def collect(led, state: dict) -> tuple[list[dict], dict]:
             runs[lane] = [
                 dict(r)
                 for r in led._conn.execute(
-                    "SELECT run_id, state, finished_at FROM runs WHERE lane_id = ? AND requested_at >= ?"
-                    " AND finished_at IS NOT NULL ORDER BY finished_at",
+                    "SELECT run_id, slot_key, state, finished_at FROM runs WHERE lane_id = ? AND requested_at >= ?"
+                    " ORDER BY requested_at",
                     (lane, since),
                 )
             ]
     return rows, runs
+
+
+def lane_stages() -> dict[str, str]:
+    """lane -> scheduler stage from the lane registry (live canary lanes are never probed)."""
+    try:
+        reg = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {
+        str(r.get("lane_id")): str((r.get("scheduler") or {}).get("stage") or "")
+        for r in reg.get("lanes") or []
+        if (r.get("scheduler") or {}).get("stage")
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -106,32 +119,52 @@ def main(argv: list[str] | None = None) -> int:
     state_p, rec_p = root / cfg["state_rel"], root / cfg["receipts_rel"]
     state = _read_json(state_p, {})
     breakers, runs = collect(led, state)
-    acts = BP.decide(breakers, runs, state, cfg, now)
+    holds = list(_read_json(root / cfg["holds_rel"], {}) or {})
+    acts = BP.decide(breakers, runs, state, cfg, now, holds=holds, stages=lane_stages())
     errors: list[str] = []
+
+    def _receipt(act: dict, error: str | None = None) -> None:
+        rec_p.parent.mkdir(parents=True, exist_ok=True)
+        with rec_p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(BP.receipt(act, now, applied=error is None, error=error), default=str) + "\n")
+
     if apply:
         store = LedgerRunStore(led)
         for act in acts:
-            try:
-                if act["action"] == "probe":
-                    store.release_breaker(act["lane"], cfg["released_by"], now.timestamp())
-                elif act["action"] in ("fail", "timeout"):
-                    store.open_breaker(act["lane"], int(act.get("consecutive") or 1), now.timestamp())
-            except Exception as exc:  # noqa: BLE001 — recorded and returned, never swallowed
-                errors.append(f"{act['lane']}: {type(exc).__name__}: {exc}")
-                act["error"] = errors[-1]
+            kind = act["action"]
+            if kind not in ("probe", "pass", "fail", "timeout", "exhausted", "yield"):
                 continue
-            if act["action"] in ("probe", "pass", "fail", "timeout", "exhausted"):
-                rec_p.parent.mkdir(parents=True, exist_ok=True)
-                with rec_p.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(BP.receipt(act, now, applied=True), default=str) + "\n")
-            state = BP.next_state(state, act, now)
+            new_state = BP.next_state(state, act, now)
+            if kind == "probe":  # write-ahead: a crash after the release still knows the lane is probing
+                _atomic(state_p, new_state)
+            try:
+                if kind == "probe":
+                    store.release_breaker(act["lane"], cfg["released_by"], now.timestamp())
+                elif kind in ("fail", "timeout"):
+                    store.open_breaker(act["lane"], int(act.get("consecutive") or 1), now.timestamp())
+            except Exception as exc:  # noqa: BLE001 — receipted and returned, never swallowed
+                err = f"{act['lane']}: {type(exc).__name__}: {exc}"
+                errors.append(err)
+                act["error"] = err
+                _receipt(act, err)
+                if kind == "probe":  # roll the write-ahead back: the breaker was not released
+                    _atomic(state_p, state)
+                continue
+            _receipt(act)
+            state = new_state
         _atomic(state_p, state)
         msg = BP.render(acts)
         if msg:
             try:
                 from telegram_alert import send_telegram
 
-                if not send_telegram(msg, priority=cfg["alert_priority"], dedupe_minutes=0, producer=cfg["producer"]):
+                if not send_telegram(
+                    msg,
+                    priority=cfg["alert_priority"],
+                    dedupe_minutes=0,
+                    producer=cfg["producer"],
+                    message_class=cfg["message_class"],
+                ):
                     errors.append("send_telegram returned falsy")
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"send: {type(exc).__name__}: {exc}")
