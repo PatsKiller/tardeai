@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_review3_fixes_20261031",
+  "files": [
+    "tests/test_market_risk_review3_fixes_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_REVIEW3_FIXES_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_REVIEW3_FIXES_20261031 — round-3 review of the Market Risk Engine (#2383): outbox never",
+    "terminal (H1), orphaned entries superseded (H2), below_open cleared (H3), no repeat after ACK (H4), flock + ACK",
+    "sidecar + evaluator process lock (H5), GREEN must-measure and no bootstrap (M-B), ACK CSRF (M-C), account",
+    "breaches (L1/L3). Every probe in ~/agent_scratch/r3probes is a case here. Hermetic."
+  ]
+}
