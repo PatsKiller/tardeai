@@ -3,10 +3,11 @@
 declare const process: { exit(code?: number): never }
 import { FIXTURE as FIX } from '../fixtures/watchProspects.fixture.ts'
 import {
-  LANE_ORDER, alertIntel, allRows, conflictCount, convictionTone, drawers, headerChips, laneById, orphanWhy,
-  proposeSeed, stanceTone, stepTone, tieAlerts, TOOLTIPS, unwrap, type ProspectRow,
+  LANE_ORDER, alertIntel, allRows, conflictCount, convictionPlainText, convictionTone, drawers, freshnessLine, headerChips, laneById, orphanWhy,
+  proposeSeed, stancePlainText, stanceTone, stepTone, tieAlerts, TOOLTIPS, unwrap, type ProspectRow,
   asksCio, cioReviewNote, detailNextLine, etStamp, reviewStateText, reviewStateTone, cioMemoryState,
 } from './watchProspectsModel.ts'
+import { WORKFLOW_LABELS, WORKFLOW_ORDER, workflowStrip } from './watchWorkflowModel.ts'
 
 let failed = 0
 function eq(name: string, got: unknown, want: unknown) {
@@ -145,6 +146,53 @@ eq('queued is not yet linked', cioMemoryState({ status: 'queued', label: 'x', op
   { tone: 'neutral', label: 'not yet linked to CIO memory' })
 eq('publication_verified beats research_link_verified', cioMemoryState({ status: 'answered', label: 'x', open: false, publication_verified: true, research_link_verified: true }),
   { tone: 'success', label: 'tracked in CIO memory' })
+
+// WS-A: one consolidated freshness line; a null clock reads 'time unknown'.
+const caci = by('CACI')
+eq('freshness folds evidence/expiry/conviction', freshnessLine(caci),
+  'evidence Oct 22 11:00 ET · expires Oct 26 11:00 ET · conviction Oct 22 11:00 ET')
+eq('freshness with no signals is time unknown',
+  freshnessLine({ stale: false, evidence_at: null, expires_at: null, conviction_as_of: null, review_state: null }), 'time unknown')
+ok('stale leads the freshness line',
+  freshnessLine({ stale: true, evidence_at: null, expires_at: null, conviction_as_of: null, review_state: null }).startsWith('Stale'))
+eq('freshness folds review state and publication', freshnessLine({
+  stale: false, evidence_at: null, expires_at: null, conviction_as_of: null,
+  review_state: { status: 'answered', label: 'x', open: false, publication_verified: true },
+}), 'evidence time unknown · expires time unknown · conviction time unknown · review answered · published')
+
+// WS-B: workflow strip — fixed node order, states derived from real fields only.
+eq('workflow key order matches the constant', WORKFLOW_ORDER.join(','), workflowStrip(caci).map(n => n.key).join(','))
+eq('workflow label order matches the constant', Object.values(WORKFLOW_LABELS).join(','), workflowStrip(caci).map(n => n.label).join(','))
+const caciStates = Object.fromEntries(workflowStrip(caci).map(n => [n.key, n.state]))
+eq('CACI workflow states', caciStates, {
+  event: 'DARK', security: 'DARK', identity: 'UNWIRED', materiality: 'UNKNOWN', instrument: 'LIVE',
+  gap: 'LIVE', judgment: 'LIVE', specialist: 'LIVE', commitment: 'UNKNOWN', product: 'LIVE',
+  notification: 'PARTIAL', delivery: 'UNKNOWN', outcome: 'UNKNOWN', scoring: 'LIVE', mbi: 'UNKNOWN',
+})
+const liveFacts: ProspectRow = {
+  ...caci,
+  security_guid: 'guid-1', identity_status: 'CONFIRMED',
+  company_facts: {
+    schema: 'CIOCompanyFacts@v1', company: { value: 'ACME Corp' }, description: { value: 'x' },
+    sector: { value: 'Technology' }, industry: { value: 'Software' },
+    catalyst: { headline: 'Earnings beat', status: 'CURRENT' },
+  },
+}
+const liveStates = Object.fromEntries(workflowStrip(liveFacts).map(n => [n.key, n.state]))
+ok('confirmed identity is LIVE', liveStates.identity === 'LIVE')
+ok('current catalyst event is LIVE', liveStates.event === 'LIVE')
+ok('security/sector/catalyst all on file is LIVE', liveStates.security === 'LIVE')
+
+// WS-C: tooltips cover freshness, workflow and review.
+ok('freshness tooltip explains the one line', /stale flag/.test(TOOLTIPS.freshness) && /time unknown/.test(TOOLTIPS.freshness))
+ok('workflow tooltip names the five states', /LIVE\/PARTIAL\/UNWIRED\/DARK\/UNKNOWN/.test(TOOLTIPS.workflow))
+ok('review tooltip explains publication', /publication/i.test(TOOLTIPS.review) && /canonical CIO memory/.test(TOOLTIPS.review))
+
+// WS-D: plain text beside terse statuses.
+eq('stance plain text', [stancePlainText('ADD'), stancePlainText('RE_ENTER'), stancePlainText('WATCH'), stancePlainText('HOLD'), stancePlainText(null)],
+  ['posture is to add — priority only', 'posture is to re-enter on confirmation — priority only', 'posture is to watch — no action yet', 'posture is to hold — priority only', null])
+eq('conviction plain text', [convictionPlainText(81), convictionPlainText(58), convictionPlainText(44), convictionPlainText(null)],
+  ['high conviction', 'mid conviction', 'low conviction', 'not scored yet'])
 
 if (failed) { console.error(`watchProspectsModel: ${failed} failure(s)`); process.exit(1) }
 console.log('watchProspectsModel: all checks passed')
