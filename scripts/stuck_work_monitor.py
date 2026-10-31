@@ -594,17 +594,30 @@ def collect_ledger_done(cfg: dict, state: Path, lanes: list[str]) -> dict[str, d
 
 
 def collect_quarantined(cfg: dict, state: Path) -> list[dict]:
-    try:
-        doc = json.loads((state / cfg["poison_quarantine_rel"]).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
+    """Items held by scripts/lib/poison_quarantine.py: one store per lane, ``<poison_quarantine_dir_rel>/<lane>.json``
+    (#2380). A store that does not parse is itself reported (as a quarantine of item ``<store unreadable>``), never
+    read as empty."""
     out = []
-    for lane, st in (doc or {}).items():
-        for item, rec in ((st or {}).get("quarantined") or {}).items():
+    for f in sorted((state / cfg["poison_quarantine_dir_rel"]).glob("*.json")):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+            held = (doc or {}).get("quarantined") or {}
+        except (OSError, ValueError) as exc:
+            out.append(
+                {
+                    "lane": f.stem,
+                    "item": "<store unreadable>",
+                    "at": None,
+                    "consecutive_failures": None,
+                    "reason": f"{type(exc).__name__}: {exc}"[:200],
+                }
+            )
+            continue
+        for item, rec in held.items():
             rec = rec or {}
             out.append(
                 {
-                    "lane": lane,
+                    "lane": f.stem,
                     "item": item,
                     "at": _parse_iso(rec.get("at")),
                     "consecutive_failures": rec.get("consecutive_failures"),
@@ -734,12 +747,16 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
-def do_heal(plan: dict, state: Path, project: Path, cfg: dict) -> dict:
+def do_heal(plan: dict, state: Path, project: Path, cfg: dict, *, allow_unratified: bool = False) -> dict:
     """Act on one heal plan. Every condition is re-checked at act time on the live file, under the store's real
     flock (``<file>.lock`` when present, and the file itself), held across archive-and-act; the original is archived
     before any change. Review 2026-10-31: never os.replace a store a writer may be appending to; truncate in place
     to the last good newline instead, only after the file has been quiet for ``quiet_min``."""
     src = Path(plan["path"])
+    if plan["action"] not in SW.RATIFIED_HEALS and not allow_unratified:  # tests exercise the guards directly
+        return {**plan, "result": "refused", "why": "not in RATIFIED_HEALS"}
+    if SW.never_act(src.name, cfg):  # the file's own name; every state path contains "releases"
+        return {**plan, "result": "refused", "why": "NEVER_ACT pattern in the target name"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     arch = Path(_expand(plan["archive_dir"], project, state)) / stamp / src.name
     h = cfg["heals"]
@@ -845,6 +862,15 @@ def apply(receipt: dict, cfg: dict, *, now: datetime, project: Path, state: Path
             loops = int((receipt.get("heal_counts_24h") or {}).get(str(plan.get("path")), 0))
             if loops >= int(cfg["heals"]["loop_min"]):
                 actions["heals"].append({**plan, "result": "suppressed", "why": f"heal loop: {loops} tries in 24 h"})
+                continue
+            if plan["action"] not in SW.RATIFIED_HEALS:
+                actions["heals"].append(
+                    {
+                        **plan,
+                        "result": "not_ratified",
+                        "why": "not in RATIFIED_HEALS: needs a ratified §28.14 amendment",
+                    }
+                )
                 continue
             if len(actions["heals"]) >= int(cfg["heals"]["max_per_tick"]):
                 break

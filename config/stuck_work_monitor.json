@@ -271,8 +271,8 @@
       "/tmp/tradeai_*.lock"
     ]
   },
-  "poison_quarantine_rel": "data/runtime/poison_quarantine.json",
   "never_act_extra": [],
   "_never_act_why": "Additions only: scripts/lib/stuck_work.py NEVER_ACT is the code floor (portfolio-server, broker, order, stop, position, account, paper, scalp, sender, telegram, secret, guard, deploy, release, retention, agent-loop, dof, ...); config can add patterns here, never remove one.",
-  "_market_windows_why": "premarket-delivery-deadman is not a window lane: it writes no signal file on a quiet morning (it is itself the dead-man), so checking it would page a missed window every trading day (review 2026-10-31)."
+  "_market_windows_why": "premarket-delivery-deadman is not a window lane: it writes no signal file on a quiet morning (it is itself the dead-man), so checking it would page a missed window every trading day (review 2026-10-31).",
+  "poison_quarantine_dir_rel": "data/runtime/poison_quarantine"
 }

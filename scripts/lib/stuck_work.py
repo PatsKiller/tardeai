@@ -71,6 +71,12 @@ CLASSES = (
 HEAL_KEYS = ("page", "repair_tail", "restore_backup", "code", "reaper", "reconcile_lock")
 
 
+#: The heals that may actually run. A code constant (review round 2, 2026-10-31): ``heals_enabled`` alone can never turn
+#: on a heal that AGENTS.md §28.14 does not name. §28.14's deterministic fixes include the stale-lock reconcile; the
+#: tail repair and the zero-byte restore are built and tested but NOT ratified, so ``apply`` and ``do_heal`` refuse
+#: them until a reviewed PR adds them here after the operator ratifies a §28.14 amendment naming them.
+RATIFIED_HEALS = frozenset({"reconcile_lock"})
+
 #: Units/lanes no automation here may ever act on (restart, heal, release). A code constant: config may ADD patterns
 #: (``never_act_extra``), never remove these. Case-insensitive substring match. AGENTS.md §23.14 + review 2026-10-31.
 NEVER_ACT = (
