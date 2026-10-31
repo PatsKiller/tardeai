@@ -693,7 +693,8 @@ def test_deploy_strips_leaked_ci_vars_only_in_deploy_context(tmp_path):
     PYTEST_CURRENT_TEST never is."""
     _, _, calls = _bash_env(
         tmp_path,
-        {"TRADE_AI_CI": "1", "TRADEAI_TEST_HARNESS": "1", "PYTEST_CURRENT_TEST": "x", "CBU_DEPLOY_CONTEXT": "1"},
+        {"TRADE_AI_CI": "1", "TRADEAI_TEST_HARNESS": "1", "PYTEST_CURRENT_TEST": "x"},
+        local_marker=True,
     )
     verify = [ln for ln in calls.splitlines() if " verify " in f" {ln} "][0]
     assert "CI=<unset>" in verify and "HARNESS=<unset>" in verify and "PYT=x" in verify
@@ -708,10 +709,10 @@ def test_harness_sourcing_the_function_keeps_its_guard(tmp_path):
 
 def test_deploy_context_marker_is_set_in_promote_and_rollback():
     for fn in ("cmd_promote", "cmd_rollback"):
-        assert "local CBU_DEPLOY_CONTEXT=1" in _fn(fn), fn
+        assert "local +x CBU_DEPLOY_CONTEXT=1" in _fn(fn), fn
 
 
-def _real_cli_harness(tmp_path, extra_env):
+def _real_cli_harness(tmp_path, extra_env, *, local_marker=False):
     """The REAL restart function and the REAL current_bound_units CLI, with an UNMARKED stub sender that records any
     call to a file (no network possible), a fake systemctl, and a real-looking scratch state root."""
     import os
@@ -753,7 +754,11 @@ def _real_cli_harness(tmp_path, extra_env):
     script = (
         f'set -euo pipefail\nlog() {{ echo "LOG $*"; }}\nROOT={ROOT}\nVENV_PYTHON={pyw}\n'
         + _fn("restart_root_frozen_units")
-        + f"restart_root_frozen_units {NEW} promote || true\n"
+        + (
+            f"w() {{ local +x CBU_DEPLOY_CONTEXT=1; restart_root_frozen_units {NEW} promote || true; }}\nw\n"
+            if local_marker
+            else f"restart_root_frozen_units {NEW} promote || true\n"
+        )
     )
     env = {
         "PATH": f"{fake}:/usr/bin:/bin",
@@ -778,7 +783,7 @@ def test_real_cli_under_ci_harness_never_sends_or_writes(tmp_path):
 def test_real_cli_in_deploy_context_keeps_pytest_guard(tmp_path):
     """Even inside a deploy context, PYTEST_CURRENT_TEST is never stripped, so a pytest run cannot page."""
     r, sent, realish = _real_cli_harness(
-        tmp_path, {"TRADE_AI_CI": "1", "PYTEST_CURRENT_TEST": "t::x", "CBU_DEPLOY_CONTEXT": "1"}
+        tmp_path, {"TRADE_AI_CI": "1", "PYTEST_CURRENT_TEST": "t::x"}, local_marker=True
     )
     assert sent == "", r.stdout + r.stderr
     assert not any(realish.rglob("*"))
@@ -797,7 +802,7 @@ def test_override_replaces_the_list_no_union(tmp_path):
     assert restarted == ["tradeai-health-agent.service"]
 
 
-def _bash_env(tmp_path, env_extra, *, plan_names="", verify_rc=0):
+def _bash_env(tmp_path, env_extra, *, plan_names="", verify_rc=0, local_marker=False):
     fake = tmp_path / "bin"
     fake.mkdir(exist_ok=True)
     log = tmp_path / "restarts"
@@ -821,7 +826,11 @@ def _bash_env(tmp_path, env_extra, *, plan_names="", verify_rc=0):
     script = (
         f'set -euo pipefail\nlog() {{ echo "LOG $*"; }}\nROOT=/x\nVENV_PYTHON={pyf}\n'
         + _fn("restart_root_frozen_units")
-        + f"restart_root_frozen_units {NEW} promote && echo RC0 || echo RCNZ\n"
+        + (
+            f"w() {{ local +x CBU_DEPLOY_CONTEXT=1; restart_root_frozen_units {NEW} promote; }}\nw && echo RC0 || echo RCNZ\n"
+            if local_marker
+            else f"restart_root_frozen_units {NEW} promote && echo RC0 || echo RCNZ\n"
+        )
     )
     env = {"PATH": f"{fake}:/usr/bin:/bin", **env_extra}
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
@@ -833,5 +842,20 @@ def test_real_cli_positive_control_without_harness_reaches_the_stub(tmp_path):
     """Positive control: with no harness variable the same setup DOES call the (stub) sender and writes the
     receipt, so the two tests above prove the guard and not a broken harness."""
     r, sent, realish = _real_cli_harness(tmp_path, {})
+    assert "RELEASE NOT REACHED" in sent, r.stdout + r.stderr
+    assert (realish / "data/runtime/current_bound_units_last.json").exists()
+
+
+def test_exported_deploy_marker_cannot_disable_the_guard(tmp_path):
+    """A harness that EXPORTS CBU_DEPLOY_CONTEXT=1 with TRADE_AI_CI=1 and sources the function: nothing is sent."""
+    r, sent, realish = _real_cli_harness(tmp_path, {"TRADE_AI_CI": "1", "CBU_DEPLOY_CONTEXT": "1"})
+    assert sent == "", r.stdout + r.stderr
+    assert not any(realish.rglob("*"))
+
+
+def test_local_deploy_marker_strips_ci_and_sends(tmp_path):
+    """Positive control for the marker: a real non-exported local marker (as in cmd_promote) strips a leaked
+    TRADE_AI_CI, so the (stub) sender IS reached and the receipt IS written."""
+    r, sent, realish = _real_cli_harness(tmp_path, {"TRADE_AI_CI": "1"}, local_marker=True)
     assert "RELEASE NOT REACHED" in sent, r.stdout + r.stderr
     assert (realish / "data/runtime/current_bound_units_last.json").exists()

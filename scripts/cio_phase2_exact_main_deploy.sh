@@ -876,7 +876,7 @@ staged_units_step() {
 
 cmd_promote() {
   # A real deploy, never a test: the bound-unit verify strips leaked CI/harness variables only under this marker.
-  local CBU_DEPLOY_CONTEXT=1
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
   [[ -n "$dir" ]] || die "no release — run prepare first"
@@ -1073,7 +1073,10 @@ restart_root_frozen_units() {
     # its guard; PYTEST_CURRENT_TEST is never stripped (only pytest sets it).
     local vrc=0
     local -a vpre=()
-    [[ "${CBU_DEPLOY_CONTEXT:-}" == "1" ]] && vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
+    # Honoured only as a NON-exported shell variable: a harness that exports CBU_DEPLOY_CONTEXT cannot disable the guard.
+    if [[ "${CBU_DEPLOY_CONTEXT:-}" == "1" && "$(declare -p CBU_DEPLOY_CONTEXT 2>/dev/null)" != "declare -x"* ]]; then
+      vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
+    fi
     "${vpre[@]}" "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
       --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" || vrc=$?
     case "$vrc" in
@@ -1092,7 +1095,7 @@ cmd_bound_units() {
 
 cmd_rollback() {
   # A real rollback, never a test (see cmd_promote).
-  local CBU_DEPLOY_CONTEXT=1
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local target="${1:-${PREV_RELEASE:-}}"
   [[ -n "$target" && -d "$target" ]] || die "rollback target missing"
