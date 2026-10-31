@@ -4,7 +4,8 @@ title: Market risk on Home and the Risk page (tile, banner with acknowledge, Mar
 status: PROPOSED
 approval: awaiting operator — one tap in Approvals → Designs approves Home v002 and Risk v002 together (AGENTS.md §28.13; design/README.md rule 2)
 source: docs/designs/DSN-20261031-market-risk-engine.md (P3-T2); operator 2026-10-31 "mock up the Home and Risk market-risk design"
-summary: Where the Market Risk Engine's output lives in the Command Center. Home: the header "Market" fact becomes a MARKET RISK
+summary: >-
+  Where the Market Risk Engine's output lives in the Command Center. Home: the header "Market" fact becomes a MARKET RISK
   fact (tier colour, score, one-line why) and a full-width banner appears above the header only while Orange or Red is active,
   with the Acknowledge button that silences repeats; the "Market in one look" card gains the five contributors. Risk: the
   "Regime" tab becomes "Market risk" and holds the nine category states, score history, probabilities, episode log and the
@@ -28,7 +29,7 @@ phases:
 ```
 Status:      PROPOSED (awaiting the operator's tap in Approvals → Designs)
 as_of:       2026-10-31T03:20Z
-Specs:       design/pages/home/versions/v002/SPEC.md · design/pages/risk/versions/v002/SPEC.md
+Specs:       the home v002 and risk v002 SPEC.md files under design/pages/<page>/versions/v002/
 Mockups:     private store ~/trade-ai-releases/persistent-state/data/design/pages/{home,risk}/v002/mockups (sha256 in status.json);
              viewing copy: claude.ai artifact "Market Risk: Home and Risk mockups" (private to the operator)
 Depends on:  DSN-20261031-market-risk-engine P2-T1 (projection + GET /api/v2/market-risk/latest) and P3-T7 (POST /api/v2/market-risk/ack)

@@ -12,16 +12,16 @@ phases:
   title: Hotfixes to the existing path (RCA findings 2, 3, 5, 7, 4, 10)
   status: IN_PROGRESS
   tasks:
-  - {id: DSN-20261031-market-risk-engine-P0-T1, title: 'Regime classifier reads the latest collector snapshot only; scan activity not scored', status: PR_OPEN, areas: [scripts/market_regime_classifier.py]}
-  - {id: DSN-20261031-market-risk-engine-P0-T2, title: 'Regime change into risk_off/high_volatility is a P1 operator-action intent; errors surfaced', status: PR_OPEN, areas: [scripts/market_regime_classifier.py]}
-  - {id: DSN-20261031-market-risk-engine-P0-T3, title: 'CIO cash gate and S8 recognise high_volatility', status: PR_OPEN, areas: [scripts/lib/cio_cash_capital_v1.py, config/cio_situations.yaml, scripts/lib/cio_situation_detector.py]}
-  - {id: DSN-20261031-market-risk-engine-P0-T4, title: 'Pre-market dead-man health-tick step (P1, hourly repeats)', status: PR_OPEN, areas: [scripts/check_premarket_delivery.py, config/health_tick_steps.json, config/lane_registry.json]}
-  - {id: DSN-20261031-market-risk-engine-P0-T5, title: 'Manifest runner: disk preflight pages P1, log fallback, receipt-failure paging', status: PR_OPEN, areas: [scripts/pipelines/_manifest_runner.sh, scripts/pipelines/pipeline_disk_alert.py, config/pipelines/runner_disk_policy.json]}
-  - {id: DSN-20261031-market-risk-engine-P0-T6, title: 'Index options-flow detector on option_chain_snapshots (first engine module)', status: PR_OPEN, areas: [scripts/lib/market_risk/, config/market_risk_policy.yaml, scripts/options_chain_snapshot.py]}
+  - {id: DSN-20261031-market-risk-engine-P0-T1, title: 'Regime classifier reads the latest collector snapshot only; scan activity not scored', status: IN_PROGRESS, areas: [scripts/market_regime_classifier.py]}
+  - {id: DSN-20261031-market-risk-engine-P0-T2, title: 'Regime change into risk_off/high_volatility is a P1 operator-action intent; errors surfaced', status: IN_PROGRESS, areas: [scripts/market_regime_classifier.py]}
+  - {id: DSN-20261031-market-risk-engine-P0-T3, title: 'CIO cash gate and S8 recognise high_volatility', status: IN_PROGRESS, areas: [scripts/lib/cio_cash_capital_v1.py, config/cio_situations.yaml, scripts/lib/cio_situation_detector.py]}
+  - {id: DSN-20261031-market-risk-engine-P0-T4, title: 'Pre-market dead-man health-tick step (P1, hourly repeats)', status: IN_PROGRESS, areas: [scripts/check_premarket_delivery.py, config/health_tick_steps.json, config/lane_registry.json]}
+  - {id: DSN-20261031-market-risk-engine-P0-T5, title: 'Manifest runner: disk preflight pages P1, log fallback, receipt-failure paging', status: IN_PROGRESS, areas: [scripts/pipelines/_manifest_runner.sh, scripts/pipelines/pipeline_disk_alert.py, config/pipelines/runner_disk_policy.json]}
+  - {id: DSN-20261031-market-risk-engine-P0-T6, title: 'Index options-flow detector on option_chain_snapshots (first engine module)', status: IN_PROGRESS, areas: [scripts/lib/market_risk/, config/market_risk_policy.yaml, scripts/options_chain_snapshot.py]}
   - {id: DSN-20261031-market-risk-engine-P0-T7, title: 'OPERATOR: promote defense inverse-stoplight notify (SHADOW since 2026-07-18)', status: PROPOSED, owner: OPERATOR, areas: [scripts/defense_inverse_stoplights.py, config/promote_criteria.json]}
-  - {id: DSN-20261031-market-risk-engine-P0-T8, title: 'Email/SMS routes for stop_health, regime_change, market_risk — folded into P3-T1 (the incident-notifier mirror carries only comms-intent kinds)', status: SUPERSEDED, areas: [config/comms_email_mirror.json]}
-  - {id: DSN-20261031-market-risk-engine-P0-T9, title: 'Market header honesty: change% from prices, stale says prev close, implausible says n/a', status: PR_OPEN, areas: [scripts/market_context.py, scripts/telegram_alert.py, scripts/continuous_runner.py, config/market_context_policy.json]}
-  - {id: DSN-20261031-market-risk-engine-P0-T10, title: 'Docs: redacted RCA, this design, OPEN_ITEMS rows, incident record', status: PR_OPEN, areas: [docs/audits/, docs/designs/, docs/governance/OPEN_ITEMS.md]}
+  - {id: DSN-20261031-market-risk-engine-P0-T8, title: 'Email/SMS routes for stop_health, regime_change, market_risk — folded into P3-T1 (the incident-notifier mirror carries only comms-intent kinds)', status: HELD, areas: [config/comms_email_mirror.json]}
+  - {id: DSN-20261031-market-risk-engine-P0-T9, title: 'Market header honesty: change% from prices, stale says prev close, implausible says n/a', status: IN_PROGRESS, areas: [scripts/market_context.py, scripts/telegram_alert.py, scripts/continuous_runner.py, config/market_context_policy.json]}
+  - {id: DSN-20261031-market-risk-engine-P0-T10, title: 'Docs: redacted RCA, this design, OPEN_ITEMS rows, incident record', status: IN_PROGRESS, areas: [docs/audits/, docs/designs/, docs/governance/OPEN_ITEMS.md]}
 - id: DSN-20261031-market-risk-engine-P1
   title: Data — registry rows first, then writers
   status: PROPOSED
