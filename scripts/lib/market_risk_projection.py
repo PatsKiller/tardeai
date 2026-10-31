@@ -207,6 +207,7 @@ def build(
         "book": snapshot.get("book"),
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
+        "deep_brief": snapshot.get("deep_brief") if isinstance(snapshot.get("deep_brief"), dict) else None,
         "sources": sources,
         "generated_at": now.isoformat(),
     }

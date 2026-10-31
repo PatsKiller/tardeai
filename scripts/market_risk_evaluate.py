@@ -67,7 +67,12 @@ def persist(doc: dict, now: datetime) -> str:
     prev = _read_prior(snapshot_path()) or {}
     hist = [h for h in (prev.get("history") or []) if isinstance(h, dict)]
     hist.append({"as_of": doc.get("as_of"), "score": doc.get("score"), "tier": doc.get("tier")})
-    atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))
+    snap = snapshot_from_assessment(body, history=hist)
+    # Keep the last deep brief on the snapshot while risk stays elevated (the brief is written once per episode
+    # transition, the snapshot every cycle).
+    if isinstance(prev.get("deep_brief"), dict) and str(doc.get("tier") or "").upper() in ("YELLOW", "ORANGE", "RED"):
+        snap["deep_brief"] = prev["deep_brief"]
+    atomic_write_json(snapshot_path(), snap)
     return str(d / "latest.json")
 
 
@@ -153,7 +158,9 @@ def run_cycle(
             if src.exists():
                 shutil.copy2(src, dst)
     try:
-        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model)
+        out = _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model)
+        out["deep_brief"] = _deep_brief(now, doc, prior, reader, policy, apply, ledger, out, call_model)
+        return out
     finally:
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -200,6 +207,44 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model) -> dict
         out["sends"].append(res)
     out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
     return out
+
+
+def _deep_brief(now, doc, prior, reader, policy, apply, ledger, out, call_model) -> dict[str, Any] | None:
+    """The follow-up deep brief, AFTER the initial cards of this cycle (never delays them). Any failure is reported in
+    the cycle, never raised: the alert path is already done."""
+    try:
+        from scripts.lib.market_risk import deep_brief
+
+        sources = None
+        if hasattr(reader, "_rows"):  # production PgReader: the other stores through the same read-only session
+            from scripts.lib.market_risk.deep_brief_facts import PgSources
+
+            sources = PgSources(reader)
+        snap = _read_prior(snapshot_path()) if apply else None
+        res = deep_brief.follow_up(
+            doc,
+            prior,
+            now=now,
+            reader=reader,
+            policy=policy,
+            apply=apply,
+            ledger=ledger,
+            episode_id=out.get("episode_id"),
+            snapshot=snap,
+            sources=sources,
+            call_model=call_model,
+        )
+        if res is None:
+            return None
+        if apply:
+            snap = _read_prior(snapshot_path())
+            if isinstance(snap, dict):
+                snap["deep_brief"] = deep_brief.snapshot_block(res)
+                atomic_write_json(snapshot_path(), snap)
+        return {k: res[k] for k in ("trigger", "brief", "send")} | {"unknown": res["pack"].get("unknown")}
+    except Exception as exc:  # noqa: BLE001 — the brief can never break the alert cycle; reported, not swallowed
+        print(f"market_risk_evaluate: deep brief failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return {"error": f"{type(exc).__name__}: {exc}"[:240]}
 
 
 def _curate(text: str, doc: dict, *, call_model: Any, live: bool) -> dict[str, Any]:
@@ -276,6 +321,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  send[{snd['kind']}] {snd['intent']['priority']} sent={snd.get('sent')} curated={snd['curated']}")
             for line in snd["text"].splitlines():
                 print("    | " + line)
+        db = doc["cycle"].get("deep_brief")
+        if db and db.get("brief"):
+            print(
+                f"  deep brief[{db['trigger']}] P2 sent={db['send'].get('sent')} curated={db['brief']['curated']} "
+                f"({db['brief']['reason']})"
+            )
+            for line in db["brief"]["text"].splitlines():
+                print("    | " + line)
+        elif db and db.get("error"):
+            print(f"  deep brief error: {db['error']}")
         print(f"  episode: {doc['cycle']['episode_event']} {doc['cycle']['episode_id'] or ''}")
         print(
             f"  hysteresis: raw {assessment.hysteresis.get('raw_tier')} -> {assessment.tier} "
