@@ -5,6 +5,7 @@ READ_ONLY_ADVISORY. SHADOW by default (plans + events only; notify off).
 Emits draft plans via CIOPlanStore. Never invents numbers: every numeric claim
 must come from the evidence pack or be labeled DATA_UNAVAILABLE.
 """
+
 from __future__ import annotations
 
 import os
@@ -160,6 +161,7 @@ def _is_cash_row(row: dict[str, Any]) -> bool:
 #
 # This only ever SKIPS a fire. No threshold is loosened and no new fire is added.
 
+
 def _subject_skip_reason(
     symbol: str,
     *,
@@ -197,7 +199,7 @@ def _subject_skip_reason(
     if not is_held_equity_ticker(sym) and classify_instrument_id(sym) in {"CUSIP", "ISIN"}:
         return "not_a_ticker"
     if not market_value_known:
-        return None                      # unknown is HELD, never dust
+        return None  # unknown is HELD, never dust
     if is_dust_market_value(market_value):
         return "dust_residual"
     return None
@@ -267,8 +269,7 @@ def get_basis(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opt
         positions = cb.get("positions") or cb.get("data") or []
         if isinstance(positions, list):
             matches = [
-                p for p in positions
-                if isinstance(p, dict) and str(p.get("symbol") or "").upper() == symbol.upper()
+                p for p in positions if isinstance(p, dict) and str(p.get("symbol") or "").upper() == symbol.upper()
             ]
             if matches:
                 num = den = 0.0
@@ -314,7 +315,11 @@ def get_last(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opti
                     return v
     q = evidence.get("market_quote") or evidence.get("quotes") or {}
     if isinstance(q, dict):
-        entry = q.get(symbol.upper()) or q.get("data", {}).get(symbol.upper()) if isinstance(q.get("data"), dict) else q.get(symbol.upper())
+        entry = (
+            q.get(symbol.upper()) or q.get("data", {}).get(symbol.upper())
+            if isinstance(q.get("data"), dict)
+            else q.get(symbol.upper())
+        )
         if isinstance(entry, dict):
             for k in ("last", "price", "mark", "close"):
                 v = _num(entry.get(k))
@@ -387,7 +392,11 @@ def get_stop(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opti
 def get_mean_target(evidence: dict[str, Any], symbol: str) -> Optional[float]:
     ar = evidence.get("analyst_rollup") or evidence.get("analyst") or {}
     if isinstance(ar, dict):
-        entry = ar.get(symbol.upper()) or ar.get("by_symbol", {}).get(symbol.upper()) if isinstance(ar.get("by_symbol"), dict) else ar.get(symbol.upper())
+        entry = (
+            ar.get(symbol.upper()) or ar.get("by_symbol", {}).get(symbol.upper())
+            if isinstance(ar.get("by_symbol"), dict)
+            else ar.get(symbol.upper())
+        )
         if entry is None and ar.get("symbol", "").upper() == symbol.upper():
             entry = ar
         if isinstance(entry, dict):
@@ -480,8 +489,16 @@ def has_major_catalyst(tags: list[str]) -> bool:
     return any(
         k in blob
         for k in (
-            "earnings", "lockup", "lock-up", "fda", "merger", "offering",
-            "regulatory", "guidance", "critical", "high",
+            "earnings",
+            "lockup",
+            "lock-up",
+            "fda",
+            "merger",
+            "offering",
+            "regulatory",
+            "guidance",
+            "critical",
+            "high",
         )
     )
 
@@ -532,8 +549,7 @@ def calendar_catalyst_material(
             )
             if ev:
                 reasons.append(
-                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}"
-                    f"_{ev.get('kind')}_h{ev.get('horizon_days')}"
+                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}_{ev.get('kind')}_h{ev.get('horizon_days')}"
                 )
         # Medium+ ≤ research gap horizon on held name → still material for S1 path
         elif catalyst_research_gap_eligible(pack):
@@ -544,8 +560,7 @@ def calendar_catalyst_material(
             )
             if ev:
                 reasons.append(
-                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}"
-                    f"_{ev.get('kind')}_h{ev.get('horizon_days')}"
+                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}_{ev.get('kind')}_h{ev.get('horizon_days')}"
                 )
         return bool(reasons), reasons, pack
     except Exception:
@@ -622,11 +637,19 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
     if evidence.get("analyst_rollup"):
         refs.append(_ref("analyst_rollup", evidence["analyst_rollup"], ["mean_target"]))
     if cat_pack:
-        refs.append(cat_pack if cat_pack.get("domain") == "catalyst" else _ref(
-            "catalyst", cat_pack, ["events", "max_severity", "next_event"],
-        ))
+        refs.append(
+            cat_pack
+            if cat_pack.get("domain") == "catalyst"
+            else _ref(
+                "catalyst",
+                cat_pack,
+                ["events", "max_severity", "next_event"],
+            )
+        )
     elif evidence.get("catalyst_record") or evidence.get("catalysts"):
-        refs.append(_ref("catalyst_record", evidence.get("catalyst_record") or evidence.get("catalysts") or {}, ["type"]))
+        refs.append(
+            _ref("catalyst_record", evidence.get("catalyst_record") or evidence.get("catalysts") or {}, ["type"])
+        )
 
     reasons: list[str] = []
     dd_thr = float(thr.get("basis_drawdown_pct") or 25)
@@ -693,7 +716,12 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
             "pros": "Protects reclaimed capital; advisory only",
             "cons": "Stop still operator-placed; no auto order",
         },
-        {"id": "trim", "label": "Trim", "pros": "Reduce exposure after material path", "cons": "May cut recovery early"},
+        {
+            "id": "trim",
+            "label": "Trim",
+            "pros": "Reduce exposure after material path",
+            "cons": "May cut recovery early",
+        },
     ]
     rec = (
         f"Recommend reviewing hold vs hold+stop-above-BE (once last ≥ basis={basis}) vs trim. "
@@ -757,7 +785,13 @@ def eval_s2(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
     if not reasons:
         return None
     # Require at least a meaningful gap: no stop, or inconsistent stop
-    if "no_stop" not in reasons and "stop_deep_underwater_after_recovery" not in reasons and "last_at_or_above_basis_stop_below_be" not in reasons and "no_stop_above_be_after_reclaim_path" not in reasons and "no_stop_while_materially_underwater" not in reasons:
+    if (
+        "no_stop" not in reasons
+        and "stop_deep_underwater_after_recovery" not in reasons
+        and "last_at_or_above_basis_stop_below_be" not in reasons
+        and "no_stop_above_be_after_reclaim_path" not in reasons
+        and "no_stop_while_materially_underwater" not in reasons
+    ):
         return None
     # If only bare no_stop without underwater/reclaim context, skip (noise)
     if reasons == ["no_stop"]:
@@ -775,8 +809,18 @@ def eval_s2(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
             "pros": "Locks reclaim if last ≥ basis",
             "cons": "Operator must place; system does not execute",
         },
-        {"id": "review_stop_policy", "label": "Review stop policy vs basis", "pros": "Align risk with thesis", "cons": "Delay"},
-        {"id": "hold_no_change", "label": "Hold without stop change", "pros": "No action", "cons": "Unprotected gap risk"},
+        {
+            "id": "review_stop_policy",
+            "label": "Review stop policy vs basis",
+            "pros": "Align risk with thesis",
+            "cons": "Delay",
+        },
+        {
+            "id": "hold_no_change",
+            "label": "Hold without stop change",
+            "pros": "No action",
+            "cons": "Unprotected gap risk",
+        },
     ]
     rec = (
         f"{symbol}: last={last}, basis={basis}, stop={stop_s}. "
@@ -835,24 +879,39 @@ def eval_s3(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
         # NEAR. The empty intersection was luck, and it read like a rule.
         if r.get("held") is True:
             continue
-        refs = [_ref("reentry_decision_desk", desk if isinstance(desk, dict) else {"items": rows}, ["status", "symbol"])]
-        out.append({
-            "situation_type": SITUATION_CODES["S3"],
-            "symbols": [sym],
-            "title": f"S3 REENTRY_CANDIDATE — {sym}",
-            "summary": f"reentry_desk status={st} (read-only; not re-ranked)",
-            "options": [
-                {"id": "watch_reentry", "label": "Watch reentry levels", "pros": "Follow desk", "cons": "May miss fill"},
-                {"id": "staged_interest", "label": "Staged interest plan (advisory)", "pros": "Size framing only", "cons": "No order"},
-                {"id": "pass", "label": "Pass", "pros": "Capital preserved", "cons": "Miss recovery"},
-            ],
-            "recommendation": f"{sym} reentry desk={st}. Surface only — no broker order. Align sizing with Steph if proceeding.",
-            "risks": ["False READY from desk lag", "Does not create orders"],
-            "evidence_refs": refs,
-            "fire_reasons": [f"reentry_{st}"],
-        })
+        refs = [
+            _ref("reentry_decision_desk", desk if isinstance(desk, dict) else {"items": rows}, ["status", "symbol"])
+        ]
+        out.append(
+            {
+                "situation_type": SITUATION_CODES["S3"],
+                "symbols": [sym],
+                "title": f"S3 REENTRY_CANDIDATE — {sym}",
+                "summary": f"reentry_desk status={st} (read-only; not re-ranked)",
+                "options": [
+                    {
+                        "id": "watch_reentry",
+                        "label": "Watch reentry levels",
+                        "pros": "Follow desk",
+                        "cons": "May miss fill",
+                    },
+                    {
+                        "id": "staged_interest",
+                        "label": "Staged interest plan (advisory)",
+                        "pros": "Size framing only",
+                        "cons": "No order",
+                    },
+                    {"id": "pass", "label": "Pass", "pros": "Capital preserved", "cons": "Miss recovery"},
+                ],
+                "recommendation": f"{sym} reentry desk={st}. Surface only — no broker order. Align sizing with Steph if proceeding.",
+                "risks": ["False READY from desk lag", "Does not create orders"],
+                "evidence_refs": refs,
+                "fire_reasons": [f"reentry_{st}"],
+            }
+        )
     try:
         from scripts.lib.cio_subject_guid import stamp_row
+
         out = [stamp_row(c) for c in out]
     except Exception:
         pass
@@ -868,10 +927,7 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
     material = False
     if isinstance(rot, dict):
         material = bool(
-            rot.get("material_change")
-            or rot.get("changed")
-            or rot.get("material")
-            or rot.get("significant_change")
+            rot.get("material_change") or rot.get("changed") or rot.get("material") or rot.get("significant_change")
         )
         # optional: large transition list with material marker
         transitions = rot.get("transitions") or []
@@ -881,11 +937,7 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
         material = True
     if not material:
         return None
-    held_syms = [
-        str(h.get("symbol") or "").upper()
-        for h in holdings
-        if h.get("symbol") and not _is_cash_row(h)
-    ]
+    held_syms = [str(h.get("symbol") or "").upper() for h in holdings if h.get("symbol") and not _is_cash_row(h)]
     refs = [_ref("rotation", rot if isinstance(rot, dict) else {"items": rot}, ["material_change", "ladders"])]
     if holdings:
         refs.append(_ref("holdings_detail", evidence.get("holdings_detail") or {}, ["weights"]))
@@ -895,7 +947,12 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
         "title": "S4 SECTOR_ROTATION — material ladder/momentum change",
         "summary": "sector_momentum/rotation_ladders material_change flagged vs holdings weights",
         "options": [
-            {"id": "review_weights", "label": "Review sector weights", "pros": "Align with momentum", "cons": "Turnover"},
+            {
+                "id": "review_weights",
+                "label": "Review sector weights",
+                "pros": "Align with momentum",
+                "cons": "Turnover",
+            },
             {"id": "hold_allocation", "label": "Hold allocation", "pros": "Stability", "cons": "Drift vs momentum"},
         ],
         "recommendation": "Steph+Alex: review rotation ladders against held sector weights. Advisory only.",
@@ -908,12 +965,7 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
 def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str, Any]]:
     thr = cfg.get("thresholds") or {}
     cash_band = float(thr.get("cash_pct_band_min") or 15.0)
-    cash_pack = (
-        evidence.get("cash_buying_power")
-        or evidence.get("cash")
-        or evidence.get("buying_power")
-        or {}
-    )
+    cash_pack = evidence.get("cash_buying_power") or evidence.get("cash") or evidence.get("buying_power") or {}
     cash_pct = None
     cash_quality = "OK"
     if isinstance(cash_pack, dict):
@@ -948,7 +1000,9 @@ def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
     # High cash alone is material for S5; rotation/watch are boosters not hard gates
     rot = evidence.get("rotation_ladders") or evidence.get("sector_momentum") or evidence.get("rotation") or {}
     constructive = False
-    if isinstance(rot, dict) and (rot.get("constructive") or rot.get("material_change") or rot.get("bias") in ("risk_on", "constructive")):
+    if isinstance(rot, dict) and (
+        rot.get("constructive") or rot.get("material_change") or rot.get("bias") in ("risk_on", "constructive")
+    ):
         constructive = True
     watch = evidence.get("watch_intelligence") or evidence.get("watch") or {}
     ready_n = 0
@@ -981,17 +1035,30 @@ def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
         "title": "S5 CASH_DEPLOYMENT — cash above policy band",
         "summary": summary,
         "options": [
-            {"id": "staged_deploy", "label": "Staged deployment options (advisory)", "pros": "Put cash to work gradually", "cons": "Timing risk"},
+            {
+                "id": "staged_deploy",
+                "label": "Staged deployment options (advisory)",
+                "pros": "Put cash to work gradually",
+                "cons": "Timing risk",
+            },
             {"id": "hold_cash", "label": "Hold cash reserve", "pros": "Dry powder", "cons": "Opportunity cost"},
-            {"id": "exit_if_fades", "label": "Pre-define revisit if momentum fades", "pros": "Discipline", "cons": "Requires operator"},
+            {
+                "id": "exit_if_fades",
+                "label": "Pre-define revisit if momentum fades",
+                "pros": "Discipline",
+                "cons": "Requires operator",
+            },
         ],
         "recommendation": (
             f"Cash share {cash_pct:.2f}% exceeds band {cash_band}% (quality={cash_quality}). "
             f"Stage deployment options only — never 'buy now' execution. Revisit if rotation fades."
         ),
-        "risks": ["Soft cash figure" if cash_quality == "PARTIAL" else "Opportunity cost of idle cash", "No auto deploy"],
+        "risks": [
+            "Soft cash figure" if cash_quality == "PARTIAL" else "Opportunity cost of idle cash",
+            "No auto deploy",
+        ],
         "evidence_refs": refs,
-        "fire_reasons": [f"cash_pct_above_band", f"quality_{cash_quality}"],
+        "fire_reasons": ["cash_pct_above_band", f"quality_{cash_quality}"],
     }
 
 
@@ -1010,13 +1077,16 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             continue
         if symbol and sym != symbol.upper():
             continue
-        acc = by_sym.setdefault(sym, {
-            "symbol": sym,
-            "market_value": 0.0,
-            "market_value_known": True,
-            "rows": [],
-            "last": get_last(row, evidence, sym),
-        })
+        acc = by_sym.setdefault(
+            sym,
+            {
+                "symbol": sym,
+                "market_value": 0.0,
+                "market_value_known": True,
+                "rows": [],
+                "last": get_last(row, evidence, sym),
+            },
+        )
         row_mv = _num(row.get("market_value"))
         if row_mv is None:
             # One unpriced leg makes the aggregate unknown. Without this the sum
@@ -1078,21 +1148,38 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             _ref("holdings_detail", acc["rows"][0], ["market_value", "portfolio_weight_pct", "last"]),
             _ref("cost_basis", evidence.get("cost_basis") or {}, ["avg_cost_per_share", "holding_months"]),
         ]
-        out.append({
-            "situation_type": SITUATION_CODES["S6"],
-            "symbols": [sym],
-            "title": f"S6 CONCENTRATION_OR_DISPOSITION — {sym}",
-            "summary": f"reasons={','.join(reasons)}; weight={w}; loss_pct={loss_pct}; mv={acc.get('market_value')}",
-            "options": [
-                {"id": "trim", "label": "Trim concentration", "pros": "Reduce single-name risk", "cons": "Tax/feel"},
-                {"id": "hold_with_thesis", "label": "Hold with explicit thesis", "pros": "Conviction", "cons": "Bias risk"},
-                {"id": "morgan_review", "label": "Morgan behavioral review", "pros": "Disposition Rule-1", "cons": "Delay"},
-            ],
-            "recommendation": f"Morgan primary: {sym} — {', '.join(reasons)}. Alex synthesizes. Advisory only.",
-            "risks": ["Disposition effect", "Concentration gap risk"],
-            "evidence_refs": refs,
-            "fire_reasons": reasons,
-        })
+        out.append(
+            {
+                "situation_type": SITUATION_CODES["S6"],
+                "symbols": [sym],
+                "title": f"S6 CONCENTRATION_OR_DISPOSITION — {sym}",
+                "summary": f"reasons={','.join(reasons)}; weight={w}; loss_pct={loss_pct}; mv={acc.get('market_value')}",
+                "options": [
+                    {
+                        "id": "trim",
+                        "label": "Trim concentration",
+                        "pros": "Reduce single-name risk",
+                        "cons": "Tax/feel",
+                    },
+                    {
+                        "id": "hold_with_thesis",
+                        "label": "Hold with explicit thesis",
+                        "pros": "Conviction",
+                        "cons": "Bias risk",
+                    },
+                    {
+                        "id": "morgan_review",
+                        "label": "Morgan behavioral review",
+                        "pros": "Disposition Rule-1",
+                        "cons": "Delay",
+                    },
+                ],
+                "recommendation": f"Morgan primary: {sym} — {', '.join(reasons)}. Alex synthesizes. Advisory only.",
+                "risks": ["Disposition effect", "Concentration gap risk"],
+                "evidence_refs": refs,
+                "fire_reasons": reasons,
+            }
+        )
     if skipped_subjects:
         # Visible, not silent: a dropped subject is reported on the candidates
         # that did fire, and in the dry receipt when nothing fired at all.
@@ -1102,7 +1189,9 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
 
 
 def eval_s6_skipped_subjects(
-    evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = None,
+    evidence: dict[str, Any],
+    cfg: dict[str, Any],
+    symbol: str | None = None,
 ) -> list[dict[str, str]]:
     """Subjects S6 refused, for a dry run that fires nothing. Read-only."""
     from scripts.lib.holdings_universe import is_dust_market_value  # noqa: F401  (policy anchor)
@@ -1167,22 +1256,30 @@ def eval_s7(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             if st not in ("READY", "GO"):
                 continue
         refs = [_ref("watch_intelligence", it, ["status", "score"])]
-        out.append({
-            "situation_type": SITUATION_CODES["S7"],
-            "symbols": [sym],
-            "title": f"S7 WATCH_PROMOTION — {sym}",
-            "summary": f"watch status={st}; held={is_held}; score={score}",
-            "options": [
-                {"id": "promote_research", "label": "Promote for research/size framing", "pros": "Follow Watch desk", "cons": "Not an order"},
-                {"id": "keep_watch", "label": "Keep on watch", "pros": "Patience", "cons": "Miss move"},
-            ],
-            "recommendation": f"{sym} Watch desk={st} (not re-ranked). Held={is_held}. Maria evidence → Alex synthesis. No order.",
-            "risks": ["Desk lag", "False GO"],
-            "evidence_refs": refs,
-            "fire_reasons": [f"watch_{st}"],
-        })
+        out.append(
+            {
+                "situation_type": SITUATION_CODES["S7"],
+                "symbols": [sym],
+                "title": f"S7 WATCH_PROMOTION — {sym}",
+                "summary": f"watch status={st}; held={is_held}; score={score}",
+                "options": [
+                    {
+                        "id": "promote_research",
+                        "label": "Promote for research/size framing",
+                        "pros": "Follow Watch desk",
+                        "cons": "Not an order",
+                    },
+                    {"id": "keep_watch", "label": "Keep on watch", "pros": "Patience", "cons": "Miss move"},
+                ],
+                "recommendation": f"{sym} Watch desk={st} (not re-ranked). Held={is_held}. Maria evidence → Alex synthesis. No order.",
+                "risks": ["Desk lag", "False GO"],
+                "evidence_refs": refs,
+                "fire_reasons": [f"watch_{st}"],
+            }
+        )
     try:
         from scripts.lib.cio_subject_guid import stamp_row
+
         out = [stamp_row(c) for c in out]
     except Exception:
         pass
@@ -1191,7 +1288,9 @@ def eval_s7(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
 
 def eval_s8(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str, Any]]:
     thr = cfg.get("thresholds") or {}
-    labels = {str(x).lower() for x in (thr.get("regime_risk_off_labels") or ["risk_off", "defensive"])}
+    labels = {
+        str(x).lower() for x in (thr.get("regime_risk_off_labels") or ["risk_off", "defensive", "high_volatility"])
+    }
     regime = evidence.get("risk_regime") or evidence.get("regime") or {}
     risk = evidence.get("risk_snapshot") or evidence.get("risk") or {}
     defensive = evidence.get("defensive") or evidence.get("defense") or {}
@@ -1221,9 +1320,19 @@ def eval_s8(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
         "title": "S8 DEFENSIVE_REGIME",
         "summary": "reasons=" + ",".join(reasons),
         "options": [
-            {"id": "tighten_risk", "label": "Tighten risk review (advisory)", "pros": "Protect capital", "cons": "May cut winners"},
+            {
+                "id": "tighten_risk",
+                "label": "Tighten risk review (advisory)",
+                "pros": "Protect capital",
+                "cons": "May cut winners",
+            },
             {"id": "review_stops", "label": "Review stop coverage", "pros": "Gap control", "cons": "Operator action"},
-            {"id": "hold_course", "label": "Hold course with monitoring", "pros": "Avoid whipsaw", "cons": "Regime risk"},
+            {
+                "id": "hold_course",
+                "label": "Hold course with monitoring",
+                "pros": "Avoid whipsaw",
+                "cons": "Regime risk",
+            },
         ],
         "recommendation": f"Alex+risk: defensive posture signals ({', '.join(reasons)}). Review stops/heat. No auto orders.",
         "risks": ["Regime flip", "Over-hedging"],
@@ -1341,6 +1450,7 @@ class CIOSituationDetector:
         if self.bus is None:
             try:
                 from scripts.lib.cio_event_bus import CIOEventBus
+
                 self.bus = CIOEventBus()
             except Exception:
                 return
@@ -1381,6 +1491,7 @@ class CIOSituationDetector:
         if self.goals is None:
             try:
                 from scripts.lib.cio_goals import CIOGoalStore
+
                 self.goals = CIOGoalStore()
             except Exception:
                 self.goals = False  # type: ignore
@@ -1442,6 +1553,7 @@ class CIOSituationDetector:
         sit_wake_id = f"situation:{st}:{','.join(syms)[:40]}"
         try:
             from scripts.lib.cio_wake_traces import open_trace
+
             open_trace(
                 wake_id=sit_wake_id,
                 source="situation.raised",
@@ -1453,6 +1565,7 @@ class CIOSituationDetector:
         except Exception:
             try:
                 from lib.cio_wake_traces import open_trace  # type: ignore
+
                 open_trace(
                     wake_id=sit_wake_id,
                     source="situation.raised",
@@ -1467,13 +1580,22 @@ class CIOSituationDetector:
         # CIO_LLM_ENRICH=0 still forces template for routine tests only.
         try:
             from scripts.lib.cio_plan_enrichment import (
-                enrich_plan, maybe_notify_plan, is_material_plan,
+                enrich_plan,
+                maybe_notify_plan,
+                is_material_plan,
             )
+
             force_tpl = os.environ.get("CIO_LLM_ENRICH", "1").strip().lower() in (
-                "0", "false", "off", "no",
+                "0",
+                "false",
+                "off",
+                "no",
             )
             force_hard = os.environ.get("CIO_LLM_FORCE_TEMPLATE", "").strip().lower() in (
-                "1", "true", "yes", "on",
+                "1",
+                "true",
+                "yes",
+                "on",
             )
             # Gate deferred path: material plans still get enrichment under live pin
             if force_tpl and not force_hard:
@@ -1496,11 +1618,7 @@ class CIOSituationDetector:
             plan.setdefault("narrative_source", enr.get("narrative_source"))
             # fire_reasons live in create extra — promote for Telegram "Why"
             if not plan.get("fire_reasons"):
-                plan["fire_reasons"] = (
-                    cand.get("fire_reasons")
-                    or (plan.get("extra") or {}).get("fire_reasons")
-                    or []
-                )
+                plan["fire_reasons"] = cand.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons") or []
             if do_notify:
                 try:
                     plan["_notified"] = bool(maybe_notify_plan(plan))
@@ -1586,13 +1704,15 @@ class CIOSituationDetector:
                     out["plans_created"].append(plan.get("plan_id"))
                     if plan.pop("_notified", False):
                         notified += 1
-                    out.setdefault("plans_detail", []).append({
-                        "plan_id": plan.get("plan_id"),
-                        "situation_type": plan.get("situation_type"),
-                        "symbols": plan.get("symbols"),
-                        "status": plan.get("status"),
-                        "narrative_source": plan.get("narrative_source"),
-                    })
+                    out.setdefault("plans_detail", []).append(
+                        {
+                            "plan_id": plan.get("plan_id"),
+                            "situation_type": plan.get("situation_type"),
+                            "symbols": plan.get("symbols"),
+                            "status": plan.get("status"),
+                            "narrative_source": plan.get("narrative_source"),
+                        }
+                    )
                 else:
                     out["dedup_skipped"] += 1
             except Exception as exc:
