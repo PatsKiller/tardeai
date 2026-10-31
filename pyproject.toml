@@ -45,8 +45,3 @@ ignore = ["F401", "F811", "F841"]
 # Keep formatting compatible
 quote-style = "double"
 indent-style = "space"
-
-[tool.pytest.ini_options]
-# 2026-10-31 (AGENTS.md §24.14, DSN-20261030-workspace-lifecycle-P1-T2): keep tmp_path dirs only for failed
-# tests. The default kept every test's dirs for the last 3 runs, which is most of ~/.cache/agent-tmp.
-tmp_path_retention_policy = "failed"

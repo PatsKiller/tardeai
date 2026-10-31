@@ -30212,6 +30212,10 @@
         {
           "check": "monitor_queued",
           "text": "Per-rule planned/applied and eligible-unapplied bytes recorded; run-correlated digest intent queued by disk_usage_monitor. Operator delivery independently NOT_MEASURED."
+        },
+        {
+          "check": "output_produced",
+          "text": "every live fire's LaneRunReceipt@v2 has produced_count >= 1 (a standing result report) or empty_reason nothing_due (an hourly fire at or below pressure.trigger_pct outside the day's full run); any other empty output is RUN_FAILED (expected_output)"
         }
       ],
       "degraded": [
@@ -30228,6 +30232,10 @@
         {
           "check": "run_failed",
           "text": "RUN_FAILED/TIMEOUT/REFUSED; incomplete source/PR/ref evidence; changed rules/manifest/kill switch; removal/journal/report failure. Never report failure as zero-removal success."
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced below min_produced 1 without the allowed empty reason nothing_due, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {

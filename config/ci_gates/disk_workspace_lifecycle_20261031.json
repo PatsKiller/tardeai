@@ -2,10 +2,13 @@
   "schema": "CiGate@v1",
   "name": "disk_workspace_lifecycle_20261031",
   "files": [
-    "tests/test_disk_workspace_lifecycle_20261031.py"
+    "tests/test_disk_workspace_lifecycle_20261031.py",
+    "tests/test_n_plus_one_backups_20261031.py",
+    "tests/test_alarm_fires_backup_enforcer_20261031.py"
   ],
   "anchor": "DISK_WORKSPACE_LIFECYCLE_20261031",
   "comment": [
-    "ANCHOR: DISK_WORKSPACE_LIFECYCLE_20261031 — standing rules C (archive-then-remove abandoned worktrees), R (release dirs beyond CURRENT/previous/newest N), plan-only X, and the --until-target / --only-if-above pressure loop; synthetic repos only."
+    "ANCHOR: DISK_WORKSPACE_LIFECYCLE_20261031 — standing rules C (archive-then-remove abandoned worktrees), R (release dirs beyond CURRENT/previous/newest N), plan-only X, and the --until-target / --only-if-above pressure loop; synthetic repos only.",
+    "2026-10-31: backups one dump on host, N+1 on Drive, removed only after Drive verification (fake Drive only); the backup_enforcer alert site driven to the transport (alarm_capture)."
   ]
 }
