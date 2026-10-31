@@ -154,6 +154,47 @@ def run(
     return rows
 
 
+def reentry_summary(rows: list[dict[str, Any]], position: str, price: dict[str, float], false_window: int = 20) -> dict:
+    """Exit / re-entry cycles for one position: when the CIO stance went to TRIM/EXIT, when RE_ENTER fired, where the
+    trough was, false re-entries (a new TRIM/EXIT within ``false_window`` sessions at a lower price), and the return
+    avoided while out versus staying in. Closes only (one row per session close)."""
+    closes = [r for r in rows if r.get("when", "close") == "close"]
+    dates = [r["date"] for r in closes]
+    cycles, out_since = [], None
+    for i, r in enumerate(closes):
+        st = r["stances"].get(position)
+        if st in ("TRIM", "EXIT") and out_since is None:
+            out_since = i
+        elif st == "RE_ENTER" and out_since is not None:
+            cycles.append((out_since, i))
+            out_since = None
+    if out_since is not None:
+        cycles.append((out_since, None))
+    res = []
+    for k, (a, b) in enumerate(cycles):
+        pa = price.get(dates[a])
+        pb = price.get(dates[b]) if b is not None else price.get(dates[-1])
+        seg = [(d, price[d]) for d in dates[a : (b if b is not None else len(dates) - 1) + 1] if d in price]
+        trough = min(seg, key=lambda x: x[1]) if seg else (None, None)
+        false = False
+        if b is not None and k + 1 < len(cycles):
+            na = cycles[k + 1][0]
+            false = (na - b) <= false_window and price.get(dates[na], 1e9) < (pb or 0)
+        res.append(
+            {
+                "out": dates[a],
+                "back_in": dates[b] if b is not None else None,
+                "trough": trough[0],
+                "sessions_after_trough": (dates.index(dates[b]) - dates.index(trough[0]))
+                if (b is not None and trough[0])
+                else None,
+                "move_while_out_pct": round((pb / pa - 1) * 100, 2) if pa and pb else None,
+                "false_reentry": false,
+            }
+        )
+    return {"position": position, "cycles": res}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--start", required=True)
@@ -165,9 +206,17 @@ def main(argv: list[str] | None = None) -> int:
         "--live", action="store_true", help="categories from the live DB (read-only), sectors from fixtures"
     )
     ap.add_argument("--opens", action="store_true", help="also evaluate at 09:31 ET each session")
+    ap.add_argument("--reentry", help="POSITION=PRICE_SYMBOL: print exit/re-entry cycles for that position")
     a = ap.parse_args(argv)
     book = dict(x.split("=", 1) for x in a.book.split(","))
     rows = run(date.fromisoformat(a.start), date.fromisoformat(a.end), book, a.overlay, a.live, a.opens)
+    if a.reentry:
+        pos, _, psym = a.reentry.partition("=")
+        rd = FixtureReader(overlay=a.overlay) if a.overlay else FixtureReader()
+        end = close_instant(date.fromisoformat(a.end))
+        price = {r["date"]: float(r["close"]) for r in rd.daily_bars([psym], sessions=5000, end=end) if r.get("close")}
+        print(json.dumps(reentry_summary(rows, pos, price), indent=1))
+        return 0
     if a.json:
         print(json.dumps(rows, indent=1))
     else:

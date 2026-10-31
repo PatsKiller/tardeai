@@ -132,7 +132,10 @@ class RiskAssessment:
     sectors: dict[str, Any] = field(default_factory=dict)  # sectors.measure: stressed / resilient / rotating
     shock_type: dict[str, Any] = field(default_factory=dict)  # shock_type.classify: SYSTEMIC / SECTOR / ...
     heatmap: list[dict[str, Any]] = field(default_factory=list)  # sectors.heatmap; book exposure only when live
-    positions: dict[str, Any] = field(default_factory=dict)  # position_stances.stances (live only)
+    positions: dict[str, Any] = field(default_factory=dict)
+    reentry_watch: dict[str, Any] = field(
+        default_factory=dict
+    )  # reentry_watch cards (live only)  # position_stances.stances (live only)
     schema: str = SCHEMA_ASSESSMENT
 
     def to_dict(self) -> dict[str, Any]:

@@ -40,7 +40,7 @@ def expected(sid: str) -> set[str]:
     return EXPECT.get(sid, set())
 
 
-def run(min_dd: float) -> list[dict]:
+def run(min_dd: float, with_observations: bool = True) -> list[dict]:
     policy = P.load_policy()
     rd = FixtureReader()
     scen = json.loads((ROOT / "tests/fixtures/market_risk_scenarios/scenarios.json").read_text())
@@ -63,7 +63,12 @@ def run(min_dd: float) -> list[dict]:
             if dd > -min_dd:
                 continue
             ctx = c.EvalContext(now=close_instant(d), reader=rd, policy=policy)
-            counts[shock_type.classify(sectors.measure(ctx), [], policy)["class"]] += 1
+            obs = []
+            if with_observations:  # the live classifier sees the engine's category states; so does the backtest
+                from scripts.lib.market_risk import registry
+
+                obs = [o.to_dict() for o in registry.evaluate_all(ctx)]
+            counts[shock_type.classify(sectors.measure(ctx), obs, policy)["class"]] += 1
         dom = counts.most_common(1)[0][0] if counts else None
         exp = expected(s["id"])
         out.append(
@@ -83,8 +88,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--min-dd", type=float, default=3.0)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--sectors-only", action="store_true", help="classify without the engine's category states")
     a = ap.parse_args(argv)
-    rows = run(a.min_dd)
+    rows = run(a.min_dd, with_observations=not a.sectors_only)
     if a.json:
         print(json.dumps(rows, indent=1))
     else:
