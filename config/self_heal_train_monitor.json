@@ -1,0 +1,257 @@
+{
+  "schema": "SelfHealTrainMonitorConfig@v1",
+  "version": "2026-10-25.2",
+  "_why": "Operator 2026-10-25 (verbatim, voice-typed): \"Arm the fixer and also a logger that tracks what was fixed, but this train should be no different than submitting in [to GitHub]. Somebody needs to monitor it, if there's little errors they need to correct it as long as they're adhering to our agents.md.\" Read by scripts/lib/self_heal_train_intake.py and scripts/self_heal_train_monitor.py only. Design + binding text: docs/ops/SELF_HEAL_TRAIN_FIXER.md (AGENTS.md section 28.14 draft). Changed only by reviewed PR.",
+  "arming": {
+    "_why": "Live operation (deterministic remediations, fixer hand-off, coordinator tasks, sends) needs AGENTS.md at origin/main to carry Policy-Version >= min_policy_version with Status ACTIVE AND the section heading below with ACTIVE on the same line (AGENTS.md 21.0.0 section 28.14, PR #2128: \"Arming is this section becoming ACTIVE; there is no separate guard grant.\"). Anything less = SHADOW: detect, log (fix_log rows with outcome shadow-proposed), propose; nothing is executed, launched or sent. The kill switch file stops all action. The model's output never arms anything.",
+    "min_policy_version": "21.0.0",
+    "required_status": "ACTIVE",
+    "section_heading_marker": "## 28.14 Self-heal monitor and fixer",
+    "kill_switch_rel": "data/self_heal/MONITOR_DISABLED"
+  },
+  "sources": {
+    "release_state_dir_rel": "data/runtime/release_window",
+    "tester_dir_rel": "data/runtime/post_release_tester",
+    "fixer_state_rel": "data/runtime/self_heal_fixer_state.json",
+    "lookback_hours": 36,
+    "train_outcomes": [
+      "FAILED_PRE_MERGE",
+      "MERGED_NOT_LIVE",
+      "ROLLED_BACK",
+      "ROLLBACK_FAILED"
+    ],
+    "train_receipt_states": [
+      "FAILED"
+    ],
+    "stall_codes": [
+      "TRAIN_STALLED"
+    ],
+    "stale_train_after_minutes": 240,
+    "tester_modes": [
+      "api",
+      "light",
+      "nightly"
+    ],
+    "ci_required_workflows_source": "the push/main runs of main HEAD (gh run list, GET only); any completed conclusion other than success/skipped/neutral is red",
+    "ci_log_tail_chars": 6000
+  },
+  "dedupe": {
+    "cooldown_hours": 12,
+    "max_attempts_per_signature": 2,
+    "deterministic_max_per_signature": 1
+  },
+  "budgets": {
+    "_why": "The monitor itself never calls a model. Model budget lives in config/self_heal_fixer.json (per job 4 iterations / 90 min / USD 12 reserved up front; 3 jobs and USD 24 per ET day; 1 job per cycle). The monitor adds per-day caps on what it may START.",
+    "max_new_fix_jobs_per_tick": 2,
+    "max_fixer_handoffs_per_day": 3,
+    "max_deterministic_actions_per_day": 8,
+    "max_ci_reruns_per_day": 4,
+    "max_coordinator_tasks_per_day": 10,
+    "max_p1_alerts_per_day": 12,
+    "subprocess_timeout_s": 240
+  },
+  "deterministic": [
+    {
+      "id": "ci_infra_flake_rerun",
+      "source": "ci",
+      "kind": "rerun_failed_jobs_once",
+      "_why": "Known runner/infra flake (Docker Hub pull limits or pull failures in the Postgres shard, runner lost). One rerun of the failed jobs of that run, never a second: a repeat is a real failure and goes to the fixer.",
+      "job_name_patterns": [
+        "*shard pg*",
+        "*hardening shard pg*",
+        "*Postgres*"
+      ],
+      "log_patterns": [
+        "toomanyrequests",
+        "Error response from daemon",
+        "failed to pull",
+        "pull access denied",
+        "manifest unknown",
+        "TLS handshake timeout",
+        "i/o timeout",
+        "The runner has received a shutdown signal",
+        "lost communication with the server"
+      ],
+      "argv": [
+        "gh",
+        "run",
+        "rerun",
+        "{run_id}",
+        "--failed"
+      ]
+    },
+    {
+      "id": "ci_gates_canonical",
+      "source": "ci",
+      "kind": "regenerate_pr",
+      "_why": "A config/ci_gates/*.json file is not in canonical bytes (scripts/lib/ci_gates.render). Rewrites each gate file through validate+render; refused when any gate is malformed (that needs a human).",
+      "log_patterns": [
+        "config/ci_gates",
+        "not canonical",
+        "GateRegistryError"
+      ],
+      "generator": "ci_gates_canonical",
+      "allowed_paths": [
+        "config/ci_gates/*.json"
+      ]
+    },
+    {
+      "id": "docs_index_regen",
+      "source": "ci",
+      "kind": "regenerate_pr",
+      "_why": "docs/INDEX.md is generated (config/release_train_policy.json generated[]): python3 scripts/report_docs_inventory.py --write-index.",
+      "log_patterns": [
+        "docs/INDEX.md",
+        "--check-index",
+        "report_docs_inventory"
+      ],
+      "generator_argv": [
+        "{python}",
+        "scripts/report_docs_inventory.py",
+        "--write-index"
+      ],
+      "allowed_paths": [
+        "docs/INDEX.md"
+      ]
+    },
+    {
+      "id": "disk_packet_repin",
+      "source": "ci",
+      "kind": "regenerate_pr",
+      "_why": "docs/ops/packets/disk-standing-apply-20261024 pins the sha256 of config bytes (activation-input-sha256.json) and the review binds the pins file digest (review.required.json source_config_pins_sha256). When ONLY pinned config bytes changed, re-derive both (precedents 583512363, dcbdd0d08). Never touches the draft contract digest, the rules digest or any approval field.",
+      "log_patterns": [
+        "source_config_changed",
+        "review_source_pins_mismatch",
+        "activation-input-sha256"
+      ],
+      "generator": "disk_packet_repin",
+      "packet_rel": "docs/ops/packets/disk-standing-apply-20261024",
+      "allowed_paths": [
+        "docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json",
+        "docs/ops/packets/disk-standing-apply-20261024/review.required.json"
+      ]
+    }
+  ],
+  "regen_pr": {
+    "_why": "A regenerate remediation runs in a throwaway worktree off origin/main under TMPDIR, commits only allowed_paths, pushes ONE branch and opens ONE PR labelled self-heal-fix. It never merges: the train carries it when eligible, otherwise it goes to the coordinator queue like any PR.",
+    "branch_prefix": "self-heal-regen/",
+    "label": "self-heal-fix",
+    "worktree_root_env": "TMPDIR",
+    "commit_trailers": [
+      "Self-Heal-Monitor: self-heal-train-monitor lane (config/self_heal_train_monitor.json)"
+    ]
+  },
+  "refused_scopes": {
+    "_why": "A failure whose evidence names one of these paths is never fixed autonomously: it produces a P1 alert and a coordinator task. Mirrors AGENTS.md section 0 / 17 / 24.5-24.7 and the train's own rule set (train_self is blocked, broker held, guard/policy needs operator).",
+    "broker_active_trader": [
+      "scripts/brokers/*",
+      "scripts/moomoo/*",
+      "scripts/active_trader/*",
+      "*active_trader*",
+      "*alpaca*",
+      "*schwab*",
+      "*moomoo*",
+      "scripts/broker_*",
+      "scripts/lib/broker_*",
+      "*execution_guard*",
+      "*order_intent*",
+      "*stop_manager*",
+      "scripts/defense_execution.py",
+      "apps/broker-admin/*",
+      "*ActiveTrader*",
+      "*activeTrader*",
+      "*mbi*",
+      "*MBI*"
+    ],
+    "guard_policy": [
+      "AGENTS.md",
+      "*/AGENTS.md",
+      "AI_WORK_POLICY.md",
+      "CLAUDE.md",
+      "GEMINI.md",
+      ".cursor/*",
+      ".claude/*",
+      ".githooks/*",
+      "scripts/hooks/*",
+      "bin/*",
+      "scripts/lib/guard_*",
+      "scripts/guard_*",
+      "scripts/lib/tradeai_push_budget.py",
+      ".github/*"
+    ],
+    "train_self": [
+      "config/release_train_policy.json",
+      "config/release_train_delegation.json",
+      "config/schemas/release_train/*",
+      "scripts/lib/release_train_*",
+      "scripts/release_train*",
+      "scripts/release_window.py",
+      "scripts/release_grant_preflight.py",
+      "scripts/lib/release_grant_binding.py",
+      "scripts/cio_phase2_exact_main_deploy.sh",
+      "scripts/conformance_gate.py"
+    ],
+    "self_heal_self": [
+      "config/self_heal_fixer.json",
+      "config/self_heal_train_monitor.json",
+      "scripts/self_heal_*",
+      "scripts/lib/self_heal_*"
+    ],
+    "credentials": [
+      "*.env",
+      "*.env.*",
+      ".env*",
+      "*credential*",
+      "*secret*",
+      "*token_store*",
+      "*cookies*",
+      "*oauth*",
+      "config/cc_auth*",
+      "scripts/lib/cc_auth*"
+    ]
+  },
+  "coordinator": {
+    "_why": "The coordinator queue is the agent claim board task list (scripts/agent_claim.py task add --kind fix --source agent). Used for refused scopes, non-eligible fix PRs (the train's NOT_RIDING reason is held / blocked / needs_operator / BLOCKED_SELF_MODIFICATION) and escalations.",
+    "argv": [
+      "{python}",
+      "scripts/agent_claim.py",
+      "--vendor",
+      "claude",
+      "--session",
+      "self-heal-train-monitor",
+      "--no-gh",
+      "task",
+      "add",
+      "--kind",
+      "fix",
+      "--source",
+      "agent",
+      "--priority",
+      "{priority}",
+      "--title",
+      "{title}",
+      "--areas",
+      "{areas}",
+      "--json"
+    ],
+    "non_eligible_reason_prefixes": [
+      "held",
+      "blocked",
+      "needs_operator",
+      "BLOCKED_SELF_MODIFICATION"
+    ]
+  },
+  "notify": {
+    "_why": "Escalations (refused scope, attempts exhausted, ROLLBACK_FAILED, ambiguous reconcile, a train outcome that is not the fixer's to fix) are P1 immediately through the existing chokepoint telegram_alert.send_telegram(priority P1, producer self_heal_train_monitor). The raw failure itself (main CI red, train outcome, tester FAILED) is paged by scripts/delivery_failure_alerts.py once PR #2106 is on the release; this lane pages only what it decided (escalated / gave-up) and never duplicates that trigger. A fix that reaches fixed-released gets one short P2 note. The 10/15/17 ET digest reads the fix log (one daily line).",
+    "producer": "self_heal_train_monitor",
+    "link": "/v3/system/releases?tab=fixes"
+  },
+  "state": {
+    "fix_log_rel": "data/self_heal/fix_log.jsonl",
+    "state_rel": "data/self_heal/train_monitor_state.json",
+    "heartbeat_rel": "data/runtime/self-heal-train-monitor_last.json",
+    "fixer_defects_rel": "data/self_heal/fixer_defects.jsonl",
+    "lock_rel": "data/self_heal/train_monitor.lock"
+  },
+  "_train_stale_why": "2026-10-31 review round 2: the train_stale_reconcile rule called 'release_window.py train-reconcile', which does not exist (subcommands: plan, run, status, clear-stop). Removed: a stale train now goes to the coordinator (release machinery is the coordinator's), never to an invented command."
+}

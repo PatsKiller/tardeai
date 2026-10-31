@@ -33,6 +33,7 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 import self_heal_fixer as S  # noqa: E402
 
+
 CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
 FIXTURE = ROOT / "tests" / "fixtures" / "self_heal_fixer" / "daily_incubator_refresh_20261016.json"
 NOW = datetime(2026, 10, 16, 18, 0, tzinfo=timezone.utc)
@@ -385,19 +386,25 @@ def test_failing_set_and_no_progress():
 
 
 def test_arming_needs_named_grant_and_daily_cap():
-    assert not F.arming_verdict(None, cfg=CFG, jobs_today=0)["armed"]
-    assert not F.arming_verdict({"reason": "PR #1830 sha abc1234"}, cfg=CFG, jobs_today=0)["armed"]
-    ok = F.arming_verdict({"reason": "self-heal-fixer 2026-10-17", "grant_id": "f" * 32}, cfg=CFG, jobs_today=0)
+    g = _cfg(arming={"arm_on": "guard_grant"})  # the original rule; production arms on section 28.14
+    assert not F.arming_verdict(None, cfg=g, jobs_today=0)["armed"]
+    assert not F.arming_verdict({"reason": "PR #1830 sha abc1234"}, cfg=g, jobs_today=0)["armed"]
+    ok = F.arming_verdict({"reason": "self-heal-fixer 2026-10-17", "grant_id": "f" * 32}, cfg=g, jobs_today=0)
     assert ok["armed"]
-    capped = F.arming_verdict({"reason": "self-heal-fixer"}, cfg=CFG, jobs_today=CFG["arming"]["daily_job_cap"])
+    capped = F.arming_verdict({"reason": "self-heal-fixer"}, cfg=g, jobs_today=g["arming"]["daily_job_cap"])
     assert not capped["armed"] and "cap" in capped["why"]
 
 
-def test_policy_gate_blocks_push_until_amendment_active():
-    assert not F.policy_verdict(AGENTS_TEXT, CFG)["push_allowed"]  # main today: 24.5 binds
+def test_policy_gate_never_allows_a_push():
+    """AGENTS.md §24.5: "The §28.14 fixer stops at a local fix branch". Review 2026-10-31 (B1): no header Status, no
+    heading word and no amendment text can arm a push from this timer lane."""
+    head = "Policy-Version:      27.0.1\nStatus:              ACTIVE\n"
+    sec = "## 28.14 Self-heal monitor and fixer\n"
     marker = CFG["policy_gate"]["amendment_heading_marker"]
-    assert not F.policy_verdict(f"{marker} (13.0.0, PROPOSED)\n", CFG)["push_allowed"]
-    assert F.policy_verdict(f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", CFG)["push_allowed"]
+    for text in (head + sec, head, sec, f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", AGENTS_TEXT, ""):
+        v = F.policy_verdict(text, CFG)
+        assert v["push_allowed"] is False and "24.5" in v["why"]
+    assert CFG["arming"]["arm_on"] == "guard_grant"
 
 
 # ---------------------------------------------------------------- evaluator, selector, repair memory
@@ -612,6 +619,11 @@ def sandbox(tmp_path):
     (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert 1 + 1 == 2\n")
     (repo / "conftest.py").write_text("import sys, pathlib\nsys.path.insert(0, str(pathlib.Path(__file__).parent))\n")
     (repo / "AGENTS.md").write_text("# AGENTS\n\n" + F.extract_rails(AGENTS_TEXT) + "\n---\n\n# 1 · Identity\n")
+    # the real scanners and their rules at BASE: the pre-hand-off scan runs them from here (review round 2)
+    for rel in S.SCAN_GUARDED:
+        if (ROOT / rel).exists():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_bytes((ROOT / rel).read_bytes())
     _sh("git", "-C", str(repo), "add", "-A")
     _sh("git", "-C", str(repo), "commit", "-qm", "base")
     _sh("git", "-C", str(repo), "push", "-q", "origin", "main")
@@ -633,6 +645,9 @@ def sandbox(tmp_path):
             "ci_timeout_s": 120,
         },
         lifecycle={"release_current_sha_file": str(tmp_path / "GIT_SHA")},
+        # the attempt loop is exercised under the original grant rule; production arms on section 28.14
+        # (tests/test_self_heal_train_monitor_20261025.py covers arm_on=policy_section end to end)
+        arming={"arm_on": "guard_grant"},
     )
     cfg_path = tmp_path / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))
@@ -766,14 +781,74 @@ def test_a_second_backend_without_cost_evidence_is_held(sandbox):
     assert job["shadow_route"]["chosen_static"] == "candidate"
 
 
-def test_success_with_amendment_pushes_one_branch_and_opens_labelled_pr(sandbox):
+def test_success_with_amendment_still_stops_at_a_local_branch(sandbox):
+    """Even with the amendment heading ACTIVE the fixer never pushes or opens a PR (AGENTS.md §24.5)."""
     job, _ = _run_cycle(sandbox, "fix", agents_marker=True)
-    assert job["state"] == F.FIX_PR_OPENED and job["pr_number"] == 4242
-    assert job["branch"] in _sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
-    gh = (sandbox["bin"] / "gh_calls.txt").read_text()
-    assert "pr create" in gh and "--label self-heal-fix" in gh and "--base main" in gh
-    assert "merge" not in gh  # never merges
-    assert not F.is_healed(job)
+    assert job["state"] == F.FIX_READY_LOCAL
+    assert job["branch"] not in _sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
+    assert not (sandbox["bin"] / "gh_calls.txt").exists()
+
+
+def test_prehandoff_scan_failure_refuses_the_fix(sandbox, monkeypatch):
+    """Review 2026-10-31 (H6): a check_no_pii or secret-scan hit on the fix commit refuses the hand-off."""
+    monkeypatch.setattr(S.Attempt, "scan_commit", lambda self, commit: ["check_no_pii:home_path"])
+    job, _ = _run_cycle(sandbox, "fix")
+    assert job["state"] == F.FIX_REFUSED and job["reason"].startswith("prehandoff_scan_failed:check_no_pii")
+
+
+def _git_repo(tmp_path, files):
+    r = tmp_path / "r"
+    r.mkdir()
+    _sh("git", "init", "-q", "-b", "main", str(r))
+    for k, v in (("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")):
+        _sh("git", "-C", str(r), "config", k, v)
+    for rel, data in files.items():
+        (r / rel).parent.mkdir(parents=True, exist_ok=True)
+        (r / rel).write_bytes(data)
+    _sh("git", "-C", str(r), "add", "-A")
+    _sh("git", "-C", str(r), "commit", "-qm", "base")
+    return r, _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+
+
+def test_scan_refuses_a_commit_that_touches_its_own_scanner_rules(tmp_path):
+    files = {rel: (ROOT / rel).read_bytes() for rel in S.SCAN_GUARDED if (ROOT / rel).exists()}
+    r, base = _git_repo(tmp_path, {**files, "scripts/x.py": b"x = 1\n"})
+    (r / ".gitleaksignore").write_text("everything\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "widen the ignore list")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert errs and errs[0].startswith("scanner_or_rules_changed:") and ".gitleaksignore" in errs[0]
+
+
+def test_scan_runs_the_base_scanner_and_finds_a_home_path(tmp_path):
+    files = {rel: (ROOT / rel).read_bytes() for rel in S.SCAN_GUARDED if (ROOT / rel).exists()}
+    r, base = _git_repo(tmp_path, {**files, "scripts/x.py": b"x = 1\n"})
+    home_like = "/" + "/".join(["home", "kqzvtr", "notes.txt"])  # not a generic user name
+    (r / "scripts" / "x.py").write_text(f"x = {home_like!r}\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "leak a home path")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert any(e.startswith("check_no_pii:") for e in errs), errs
+    (tmp_path / "c").mkdir()
+    clean, base2 = _git_repo(tmp_path / "c", {**files, "scripts/x.py": b"x = 1\n"})
+    (clean / "scripts" / "x.py").write_text("x = 2\n")
+    _sh("git", "-C", str(clean), "commit", "-qam", "clean change")
+    head2 = _sh("git", "-C", str(clean), "rev-parse", "HEAD").strip()
+    assert S.scan_range(clean, base2, head2, tmp_path / "rules2", dict(os.environ)) == []
+
+
+def test_missing_scanner_at_base_refuses(tmp_path):
+    r, base = _git_repo(tmp_path, {"scripts/x.py": b"x = 1\n"})
+    (r / "scripts" / "x.py").write_text("x = 2\n")
+    _sh("git", "-C", str(r), "commit", "-qam", "c")
+    head = _sh("git", "-C", str(r), "rev-parse", "HEAD").strip()
+    errs = S.scan_range(r, base, head, tmp_path / "rules", dict(os.environ))
+    assert "scanner_missing:check_no_pii.py at base" in errs  # the exact refusal, not any scanner message
+
+
+def test_credentials_are_bound_read_only():
+    binds, why = F.agent_auth_binds(CFG, home="/h", agent_home="/a", probe=lambda p: "file")
+    assert why == "auth:credentials_file" and binds and binds[0][2] is False
 
 
 def test_previous_output_is_fed_back_and_two_step_fix_passes(sandbox):
