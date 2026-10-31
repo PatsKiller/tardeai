@@ -167,7 +167,53 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             "stale": bool(mr.get("stale")),
         }
     )
+    db = mr.get("deep_brief")
+    if isinstance(db, dict) and db.get("text"):
+        out["deep_brief"] = {  # cited facts only; Ask-the-CIO may quote them, never add to them
+            "generated_at": db.get("generated_at"),
+            "trigger": db.get("trigger"),
+            "consensus": db.get("consensus"),
+            "facts": [{"id": f.get("id"), "text": f.get("text"), "as_of": f.get("as_of")} for f in db.get("facts") or []][:40],
+            "unknown": (db.get("unknown") or [])[:12],
+        }
     return out
+
+
+DEEP_BRIEF_ASK = ("deep brief", "deeper analysis", "market risk brief", "what normally happens")
+
+
+def wants_deep_brief(question: str) -> bool:
+    q = str(question or "").lower()
+    return any(k in q for k in DEEP_BRIEF_ASK)
+
+
+def deep_brief_on_demand(now: Optional[datetime] = None) -> dict[str, Any]:
+    """Ask-the-CIO "deep brief": the stored brief when the snapshot has one, else a deterministic brief built now from
+    the latest assessment (read-only, no model, nothing written, nothing sent). Never raises."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        mr = load_market_risk()
+        if isinstance(mr, dict) and isinstance(mr.get("deep_brief"), dict) and mr["deep_brief"].get("text"):
+            return {"source": "stored", **mr["deep_brief"]}
+        import json as _json
+        import os as _os
+        from pathlib import Path as _P
+
+        root = _P(_os.environ.get("TRADEAI_STATE_ROOT") or _P.home() / "trade-ai-releases" / "persistent-state")
+        latest = root / "data" / "runtime" / "market_risk" / "latest.json"
+        doc = _json.loads(latest.read_text(encoding="utf-8"))
+        from . import deep_brief
+        from .deep_brief_facts import PgSources, build_fact_pack
+        from .reader import PgReader
+
+        reader = PgReader()
+        try:
+            pack = build_fact_pack(now, reader, doc, snapshot=mr if isinstance(mr, dict) else None, sources=PgSources(reader))
+        finally:
+            reader.close()
+        return {"source": "built_on_demand", **deep_brief.snapshot_block({"brief": deep_brief.write(pack), "pack": pack})}
+    except Exception as exc:  # noqa: BLE001 — a named gap for the answer, never a crash
+        return {"source": "unavailable", "reason": f"{type(exc).__name__}: {exc}"[:200]}
 
 
 def load_gate_config(path: Path | str = GATE_CONFIG_PATH) -> dict[str, Any]:
