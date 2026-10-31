@@ -271,6 +271,8 @@ def _cli(monkeypatch, tmp_path, argv, sent, units=None, deliver=None):
         sent.append((message, kw))
         return True
 
+    fake_send._tradeai_test_double = True
+
     import telegram_alert
 
     monkeypatch.setattr(telegram_alert, "send_telegram", fake_send)
@@ -567,3 +569,100 @@ def test_word_tokens_are_components_not_substrings_and_skip_env_names():
         is_market_open=False,
     )
     assert ok, reason
+
+
+# ------------------------------------------------------------------ follow-up 2: the bypasses reviewer A found
+def _real_sender_reached(monkeypatch):
+    import telegram_alert
+
+    reached: list = []
+
+    def no_network(*a, **k):
+        reached.append(a)
+        raise AssertionError("real sender reached")
+
+    # Stub the real sender's transport so a bypass is detected without any network.
+    monkeypatch.setattr(telegram_alert, "_legacy_send", no_network, raising=False)
+    monkeypatch.setattr(telegram_alert, "_intent_send", no_network, raising=False)
+    return telegram_alert, reached
+
+
+@pytest.mark.parametrize("kind", ["mock_wraps", "partial", "lambda", "scripts_module", "unmarked_mock"])
+def test_wrapped_or_reexported_real_sender_is_refused(monkeypatch, kind):
+    import functools
+    from unittest import mock
+
+    import scripts.current_bound_units as cli
+
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    ta, reached = _real_sender_reached(monkeypatch)
+    real = ta.send_telegram
+    if kind == "mock_wraps":
+        wrapper = mock.Mock(wraps=real)
+    elif kind == "partial":
+        wrapper = functools.partial(real)
+    elif kind == "lambda":
+        wrapper = lambda m, **k: real(m, **k)  # noqa: E731
+    elif kind == "unmarked_mock":
+        wrapper = mock.Mock(return_value=True)  # auto-attributes are truthy; only an explicit marker counts
+    else:
+        import scripts.telegram_alert as sta
+
+        wrapper = sta.send_telegram
+    monkeypatch.setattr(ta, "send_telegram", wrapper)
+    ok, err = cli.deliver("x")
+    assert ok is False and err.startswith("refused"), kind
+    assert reached == []
+
+
+def test_marked_test_double_is_allowed(monkeypatch):
+    import scripts.current_bound_units as cli
+    import telegram_alert
+
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    calls = []
+
+    def double(message, **kw):
+        calls.append(message)
+        return True
+
+    double._tradeai_test_double = True
+    monkeypatch.setattr(telegram_alert, "send_telegram", double)
+    assert cli.deliver("x") == (True, None) and calls == ["x"]
+
+
+def test_symlinked_runtime_dir_into_production_is_refused(monkeypatch, tmp_path):
+    import scripts.current_bound_units as cli
+
+    prod = tmp_path / "prod-state"
+    (prod / "data" / "runtime").mkdir(parents=True)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(prod))
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    scratch = tmp_path / "scratch"
+    (scratch / "data").mkdir(parents=True)
+    (scratch / "data" / "runtime").symlink_to(prod / "data" / "runtime")
+    assert cli.write_refused(scratch) is not None
+    # a plain scratch root with no symlink is fine
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert cli.write_refused(plain) is None
+
+
+@pytest.mark.parametrize(
+    "value,expect",
+    [("1", True), ("true", True), ("TRUE", True), ("0", False), ("false", False), ("", False), ("yes", False)],
+)
+def test_harness_env_parsing_is_strict(monkeypatch, value, expect):
+    import scripts.current_bound_units as cli
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("TRADEAI_TEST_HARNESS", raising=False)
+    monkeypatch.setenv("TRADE_AI_CI", value)
+    assert (cli.harness_reason() is not None) is expect
+
+
+def test_receipt_records_harness_reason(monkeypatch, tmp_path):
+    sent: list = []
+    _cli(monkeypatch, tmp_path, ["verify", "--current", NEW, "--restarted", "tradeai-health-agent.service"], sent)
+    rec = json.loads((tmp_path / "data/runtime/current_bound_units_last.json").read_text())
+    assert "harness_reason" in rec and rec["harness_reason"]

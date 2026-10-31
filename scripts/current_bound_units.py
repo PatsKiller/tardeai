@@ -41,12 +41,30 @@ HARNESS_VARS = ("TRADE_AI_CI", "PYTEST_CURRENT_TEST", "TRADEAI_TEST_HARNESS")
 DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 
 
+TRUTHY = frozenset({"1", "true"})
+
+
 def harness_reason() -> str | None:
-    """Non-None under a test or CI harness: no live Telegram send and no write under a production state root."""
-    for var in HARNESS_VARS:
-        if os.environ.get(var):
+    """Non-None under a test or CI harness: no live Telegram send and no write under a production state root.
+
+    ``TRADE_AI_CI`` / ``TRADEAI_TEST_HARNESS`` count only when "1" or "true" (any case), so a stray ``=0`` in
+    production can never suppress a real P1. ``PYTEST_CURRENT_TEST`` is set only by pytest (to the test id), so any
+    non-empty value counts."""
+    for var in ("TRADE_AI_CI", "TRADEAI_TEST_HARNESS"):
+        if os.environ.get(var, "").strip().lower() in TRUTHY:
             return var
+    if os.environ.get("PYTEST_CURRENT_TEST", "").strip():
+        return "PYTEST_CURRENT_TEST"
     return None
+
+
+def is_test_double(fn) -> bool:
+    """Only a callable that explicitly declares ``_tradeai_test_double = True`` counts (Mock auto-attributes,
+    wrappers, partials and re-exports of the real sender do not)."""
+    try:
+        return object.__getattribute__(fn, "__dict__").get("_tradeai_test_double") is True
+    except (AttributeError, TypeError):
+        return False
 
 
 def _state_root(arg: str | None) -> Path:
@@ -86,10 +104,13 @@ def write_refused(root: Path) -> str | None:
     why = harness_reason()
     if not why:
         return None
-    rr = root.expanduser().resolve()
+    root = root.expanduser()
+    # Resolve the FINAL paths: a scratch root whose data/runtime is a symlink into production must be refused.
+    targets = [root.resolve(), (root / RECEIPT_REL).resolve(), (root / HISTORY_REL).resolve()]
     for pr in protected_roots():
-        if rr == pr or pr in rr.parents or rr in pr.parents:
-            return f"{why} set: refusing to write under the persistent-state root {pr}"
+        for rr in targets:
+            if rr == pr or pr in rr.parents or (rr is targets[0] and rr in pr.parents):
+                return f"{why} set: refusing to write under the persistent-state root {pr}"
     return None
 
 
@@ -129,7 +150,7 @@ def deliver(message: str) -> tuple[bool, str | None]:
         from telegram_alert import send_telegram
 
         why = harness_reason()
-        if why and getattr(send_telegram, "__module__", "") == "telegram_alert":
+        if why and not is_test_double(send_telegram):
             # A harness may exercise this path with a test double, never with the real sender.
             print(
                 f"current_bound_units: {why} set — live Telegram send refused (behaving as --dry-run)", file=sys.stderr
@@ -191,6 +212,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "failed": failed,
         "stale_page_only": stale_page_only,
         "dry_run": bool(args.dry_run),
+        "harness_reason": harness_reason(),
         "paged": False,
         "page_error": None,
     }
