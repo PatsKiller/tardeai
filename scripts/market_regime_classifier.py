@@ -36,16 +36,22 @@ def classify(conn, snapshot_id=None):
     from market_session import current_market_session
     session = current_market_session()
 
-    # Collect latest indicators
+    # Collect the indicators of ONE collector run. Until 2026-10-31 this read
+    # `ORDER BY created_at DESC LIMIT 20` across runs and overwrote the dict key by key,
+    # so the OLDEST of ~3 runs won every key: the 2026-10-30 16:05 snapshot recorded
+    # `vix_close: normal` while the same-minute collector row said 21.3 `high`
+    # (RCA docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md, DSN-20261031-market-risk-engine-P0-T1).
     cur = conn.cursor()
-    if snapshot_id:
-        cur.execute("SELECT indicator_key, signal, value, value_text FROM market_regime_indicators WHERE snapshot_id=%s", [snapshot_id])
-    else:
-        cur.execute("SELECT indicator_key, signal, value, value_text FROM market_regime_indicators ORDER BY created_at DESC LIMIT 20")
+    if not snapshot_id:
+        cur.execute("SELECT snapshot_id FROM market_regime_indicators ORDER BY created_at DESC LIMIT 1")
+        row = cur.fetchone()
+        snapshot_id = row[0] if row else None
 
     indicators = {}
-    for row in cur.fetchall():
-        indicators[row[0]] = {"signal": row[1], "value": _f(row[2]), "text": row[3]}
+    if snapshot_id:
+        cur.execute("SELECT indicator_key, signal, value, value_text FROM market_regime_indicators WHERE snapshot_id=%s", [snapshot_id])
+        for row in cur.fetchall():
+            indicators[row[0]] = {"signal": row[1], "value": _f(row[2]), "text": row[3]}
 
     # Scoring model
     scores = {"risk_on_trend": 0, "risk_off": 0, "choppy_range": 0,
@@ -53,14 +59,10 @@ def classify(conn, snapshot_id=None):
               "broad_momentum": 0, "unknown": 0}
     missing = []
 
-    # Breadth
+    # "Breadth": scan_breadth_24h counts how many symbols the scanner touched in 24h. That is scan
+    # activity, not market breadth (advancers, new highs/lows, % above a moving average), so it no
+    # longer scores and breadth_state says so (P0-T1). Real breadth arrives with the Market Risk Engine.
     breadth = indicators.get("scan_breadth_24h", {})
-    if breadth.get("signal") == "broad":
-        scores["broad_momentum"] += 2; scores["risk_on_trend"] += 1
-    elif breadth.get("signal") == "narrow":
-        scores["choppy_range"] += 1
-    elif breadth.get("signal") == "missing":
-        missing.append("scan_breadth")
 
     # Score momentum
     score_avg = indicators.get("scan_score_avg", {})
@@ -119,7 +121,7 @@ def classify(conn, snapshot_id=None):
     # States
     vol_state = gap_vol.get("signal", "unknown")
     trend_state = score_avg.get("signal", "unknown")
-    breadth_state = breadth.get("signal", "unknown")
+    breadth_state = "not_measured"  # scan activity is not breadth; see above
 
     summary = f"Regime: {regime} (conf={confidence:.0%})"
     if missing:
@@ -134,7 +136,8 @@ def classify(conn, snapshot_id=None):
         "leadership_state": "unknown", "risk_appetite_state": trend_state,
         "macro_state": "unknown", "data_freshness_state": "stale" if stale else "fresh",
         "stale_data": stale, "missing_data": missing,
-        "inputs": {k: v.get("signal") for k, v in indicators.items()},
+        "inputs": {**{k: v.get("signal") for k, v in indicators.items()},
+                   "_indicator_snapshot_id": snapshot_id},
         "summary": summary,
     }
     return snapshot
@@ -213,11 +216,21 @@ def _get_previous_regime(conn):
     return row[0] if row else None
 
 
+RISK_OFF_LABELS = frozenset({"risk_off", "high_volatility"})  # the labels stop_policy.yaml treats as risk-off
+
+
 def _alert_regime_change(old_regime, snapshot):
-    """Send Telegram alert when regime changes."""
+    """Notify the operator that the regime label changed.
+
+    A change INTO a risk-off label is something the operator must act on (review stops and exposure),
+    so it goes out as a P1 operator-action intent — delivered now, never quiet-held, dedupe window 0
+    (AGENTS.md §9.1). Before 2026-10-31 every change was a P2 `dispatch_alert`, which the 22:00–07:00
+    quiet window archived for a digest that showed it only as a count (P0-T2). Any other change keeps
+    the P2 dispatcher path. Errors are returned, never swallowed; the caller records them in the run log.
+    Returns {"path", "accepted", "error"}.
+    """
+    new = snapshot["regime_label"]
     try:
-        from alert_dispatcher import dispatch_alert
-        new = snapshot["regime_label"]
         vol = snapshot.get("volatility_state", "?")
         trend = snapshot.get("trend_state", "?")
         breadth = snapshot.get("breadth_state", "?")
@@ -233,13 +246,21 @@ def _alert_regime_change(old_regime, snapshot):
             f"VIX signal: {vix_input}\n\n"
             f"Review open positions for regime alignment."
         )
-        dispatch_alert(
+        if new in RISK_OFF_LABELS:
+            from telegram_alert import send_telegram
+            accepted = send_telegram(message, priority="P1", dedupe_minutes=0,
+                                     producer="market_regime_classifier", message_class="market_regime")
+            return {"path": "p1_intent", "accepted": bool(accepted), "error": None}
+        from alert_dispatcher import dispatch_alert
+        res = dispatch_alert(
             "regime_change", f"Regime: {old_regime} → {new}",
             message, tier="ALERT", source="market_regime_classifier",
             dedupe_scope="global",
         )
-    except Exception:
-        pass
+        return {"path": "dispatch_alert", "accepted": bool((res or {}).get("sent")), "error": None}
+    except Exception as e:  # noqa: BLE001 — surfaced to the run log, never silent
+        return {"path": "p1_intent" if new in RISK_OFF_LABELS else "dispatch_alert",
+                "accepted": False, "error": f"{type(e).__name__}: {e}"}
 
 
 def main(argv=None):
@@ -274,20 +295,26 @@ def main(argv=None):
         snapshot = classify(conn)
 
         write_ok = False
+        alert_out = None
         if not dry_run:
             prev = _get_previous_regime(conn)
             write_ok = save_snapshot(conn, snapshot, dry_run=False)
             if write_ok and prev and prev != snapshot["regime_label"]:
-                _alert_regime_change(prev, snapshot)
+                alert_out = _alert_regime_change(prev, snapshot) or None
+                if alert_out and alert_out.get("error"):
+                    print(f"WARNING: regime change alert failed ({alert_out['path']}): {alert_out['error']}", file=sys.stderr)
+            err = None if write_ok else "snapshot write failed"
+            if alert_out and alert_out.get("error"):
+                err = (err + "; " if err else "") + f"regime_change alert: {alert_out['error']}"
             _record_run_log(conn, run_id, "apply", started_at,
                             "success" if write_ok else "failed",
                             snapshot_id=snapshot["snapshot_id"] if write_ok else None,
-                            indicators_read=len(snapshot.get("inputs", {})),
-                            error_msg="snapshot write failed" if not write_ok else None)
+                            indicators_read=len([k for k in snapshot.get("inputs", {}) if not k.startswith("_")]),
+                            error_msg=err)
 
         out = {"mode": "dry_run" if dry_run else "applied",
                "write_ok": write_ok if not dry_run else None,
-               "run_id": run_id, **snapshot}
+               "run_id": run_id, "regime_change_alert": alert_out, **snapshot}
 
         if args.json or args.verbose:
             print(json.dumps(out, indent=2, default=str) if args.json else
