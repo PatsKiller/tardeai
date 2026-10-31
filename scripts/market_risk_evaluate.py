@@ -127,6 +127,12 @@ def attach_precision(a: Any, ctx: c.EvalContext, policy: dict) -> None:
     except Exception as exc:  # noqa: BLE001 — precision is additive; an error is an honest unknown in the payload
         a.sectors = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
         a.shock_type = {"class": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+    try:  # rotation advisor: durable leadership turns (additive; never blocks the tier)
+        from scripts.lib.market_risk import leadership
+
+        a.leadership = leadership.measure(ctx)
+    except Exception as exc:  # noqa: BLE001 — additive layer; an error is an honest unknown in the payload
+        a.leadership = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
 
 
 def portfolio_context(now: datetime) -> c.PortfolioContext | None:
