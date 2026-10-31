@@ -9,6 +9,9 @@ threshold comes from config/market_risk_policy.yaml. Hermetic: fake cursor, tele
 
 from __future__ import annotations
 
+#: C1 firing coverage — the tests below inject the 10-29 surge and assert the card reaches the (stubbed) transport.
+COVERS = ["scripts/lib/market_risk/flow_alert.py"]
+
 import sys
 import types
 from datetime import date
