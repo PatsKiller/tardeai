@@ -88,6 +88,11 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+**26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
+`conflict_ledger` and `conflict_rule_proposals` were granted by the operator (§7A/§26.6, in-session 2026-10-29) and the
+generated source-of-truth table in §7A now lists them as active; no rule-text change. Supersedes 26.2.1.
+*(Moved here from AGENTS.md by 28.1.0, 2026-10-31, for the binding-text size limit.)*
+
 ### Moved here by 28.0.0 (2026-10-31; superseded versions' banners, verbatim)
 
 **26.2.1 is ACTIVE (PATCH) — ratification of 26.2.0 (operator-delegated promote).** 26.2.0 was merged as

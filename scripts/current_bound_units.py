@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Plan, filter, verify and receipt the post-promote restart of CURRENT-bound user units (AGENTS.md 28.1.0 §25.10).
+
+Used by ``scripts/cio_phase2_exact_main_deploy.sh`` (``restart_root_frozen_units``, promote and rollback):
+
+  python scripts/current_bound_units.py plan --current <dir> [--json]      # read-only: restart vs page-only
+  python scripts/current_bound_units.py plan --current <dir> --names       # restartable names only
+  python scripts/current_bound_units.py filter --units "a.service b.service"  # fail-closed filter of ANY list
+  python scripts/current_bound_units.py verify --current <dir> --event promote|rollback \\
+      --restarted "..." --restart-failed "..." [--dry-run]
+
+``verify`` is the single judge: it reads back each restarted unit's ``/proc/<pid>/cwd``, counts failed restarts,
+lists stale page-only units, writes the receipt and pages P1 once per unit set per day. Nothing here restarts a unit.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (ROOT, ROOT / "scripts"):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+from lib import current_bound_units as cbu  # noqa: E402
+
+PRODUCER = "deploy_current_bound_units"
+RECEIPT_REL = "data/runtime/current_bound_units_last.json"
+HISTORY_REL = "data/runtime/current_bound_units_history.jsonl"
+DEDUPE_MINUTES = 1440  # one page per identical unit set per day; the body carries no release name
+
+
+def _state_root(arg: str | None) -> Path:
+    if arg:
+        return Path(arg)
+    from lib.persistent_state_root import good_persistent_root
+
+    return good_persistent_root()
+
+
+def _split(raw: str | None) -> list[str]:
+    return [u for u in (raw or "").replace(",", " ").split() if u]
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def render_page(event: str, day: str, failed: list[str], restart_failed: list[str], stale_page_only: list[dict]) -> str:
+    """Stable per unit set per day: no release name, no pid, no time — so the router's body dedupe holds."""
+    what = "rollback" if event == "rollback" else "promote"
+    lines = [f"🚨 *RELEASE NOT REACHED after {what}* — {day}"]
+    for name in restart_failed:
+        lines.append(f"• *{name}*: restart FAILED — still on the previous release")
+    for name in failed:
+        if name not in restart_failed:
+            lines.append(f"• *{name}*: restarted but not running the new release")
+    for u in stale_page_only:
+        lines.append(
+            f"• *{u['name']}*: on an old release, not restarted by the deploy ({u['reason']}) — restart it when safe"
+        )
+    lines.append(f"These services run older code until restarted (Ops → Releases). Receipt: {RECEIPT_REL}")
+    return "\n".join(lines)
+
+
+def deliver(message: str) -> tuple[bool, str | None]:
+    try:
+        from telegram_alert import send_telegram
+
+        ok = send_telegram(
+            message, priority="P1", dedupe_minutes=DEDUPE_MINUTES, producer=PRODUCER, message_class="operator_alert"
+        )
+        return bool(ok), None if ok else "send_telegram returned falsy"
+    except Exception as e:  # noqa: BLE001 — recorded on the receipt and the exit code, never only logged
+        return False, f"{type(e).__name__}: {e}"
+
+
+def cmd_plan(args: argparse.Namespace) -> int:
+    p = cbu.plan(args.current)
+    if args.names:
+        print(" ".join(p.restart))
+        return 0
+    if args.json:
+        print(json.dumps(p.to_dict(), indent=2))
+        return 0
+    print(f"CURRENT {p.current}")
+    for u in p.units:
+        state = "STALE" if u.stale else "current"
+        print(f"  {u.action:9s} {u.name:45s} {state:7s} cwd={Path(u.cwd).name if u.cwd else '-'} ({u.reason})")
+    print(f"restart: {len(p.restart)}  page_only: {len(p.page_only)}")
+    return 0
+
+
+def cmd_filter(args: argparse.Namespace) -> int:
+    keep, refused = cbu.filter_units(_split(args.units))
+    for name, why in refused.items():
+        print(f"refused {name}: {why}", file=sys.stderr)
+    print(" ".join(keep))
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    restarted = _split(args.restarted)
+    restart_failed = _split(args.restart_failed)
+    checks = cbu.verify(args.current, restarted)
+    failed = sorted({*restart_failed, *(k for k, v in checks.items() if not v["ok"])})
+    p = cbu.plan(args.current)
+    stale_page_only = [
+        {"name": u.name, "cwd": u.cwd, "reason": u.reason}
+        for u in p.units
+        if u.action == "page_only" and u.stale and u.name not in restarted and u.name not in restart_failed
+    ]
+    now = datetime.now(timezone.utc)
+    out: dict = {
+        "schema": "CurrentBoundRestart@v1",
+        "at": now.isoformat(timespec="seconds"),
+        "event": args.event,
+        "current": str(args.current),
+        "restarted": restarted,
+        "restart_failed": restart_failed,
+        "verify": checks,
+        "failed": failed,
+        "stale_page_only": stale_page_only,
+        "dry_run": bool(args.dry_run),
+        "paged": False,
+        "page_error": None,
+    }
+    if failed or stale_page_only:
+        msg = render_page(args.event, now.strftime("%Y-%m-%d"), failed, restart_failed, stale_page_only)
+        out["page_key"] = hashlib.sha256(msg.encode()).hexdigest()[:16]
+        if args.dry_run:
+            print(msg)
+        else:
+            ok, err = deliver(msg)
+            out["paged"], out["page_error"] = ok, err
+    if not args.dry_run:
+        root = _state_root(args.state_root)
+        _atomic_write(root / RECEIPT_REL, json.dumps(out, indent=2) + "\n")
+        hist = root / HISTORY_REL
+        hist.parent.mkdir(parents=True, exist_ok=True)
+        with hist.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(out, sort_keys=True) + "\n")
+    print(
+        json.dumps(out, indent=2)
+        if args.json
+        else f"verify[{args.event}]: {len(checks) - len([k for k, v in checks.items() if not v['ok']])}/{len(checks)} "
+        f"on new release; failed={failed} stale_page_only={[u['name'] for u in stale_page_only]} paged={out['paged']}"
+    )
+    if failed:
+        return 2
+    if out["page_error"]:
+        return 3
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    a = sub.add_parser("plan", help="list CURRENT-bound running units (read-only)")
+    a.add_argument("--current", required=True)
+    a.add_argument("--names", action="store_true", help="print restartable unit names only")
+    a.add_argument("--json", action="store_true")
+    f = sub.add_parser("filter", help="fail-closed filter of any candidate unit list (read-only)")
+    f.add_argument("--units", default="")
+    b = sub.add_parser("verify", help="read back cwd; receipt; page P1 when stale or a restart failed")
+    b.add_argument("--current", required=True)
+    b.add_argument("--event", choices=("promote", "rollback"), default="promote")
+    b.add_argument("--restarted", default="")
+    b.add_argument("--restart-failed", default="")
+    b.add_argument("--state-root")
+    b.add_argument("--dry-run", action="store_true", help="print the page; send nothing; write no receipt")
+    b.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+    return {"plan": cmd_plan, "filter": cmd_filter, "verify": cmd_verify}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
