@@ -2324,6 +2324,7 @@ def get_portfolio_state_v1() -> dict[str, Any]:
 
 def get_market_context_state_v1() -> dict[str, Any]:
     from scripts.lib.cio_market_context_state import (
+        load_market_risk_projection,
         build_market_context_state,
         connect_trade_ai_readonly,
         load_market_context_inputs,
@@ -2335,7 +2336,7 @@ def get_market_context_state_v1() -> dict[str, Any]:
             regime, fred = load_market_context_inputs(conn)
         finally:
             conn.close()
-        state = build_market_context_state(regime_snapshot=regime, fred_rows=fred)
+        state = build_market_context_state(regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection())
         return {"ok": True, "market_context": state, "authority": AUTHORITY_ADVISORY}
     except Exception as exc:
         state = build_market_context_state(regime_snapshot=None, fred_rows=[])

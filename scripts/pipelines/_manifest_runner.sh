@@ -157,6 +157,37 @@ PY
   return 0
 }
 
+# ---- disk preflight (P0-T5, 2026-10-31) --------------------------------------------------------------------
+# Free MB on the filesystem that holds $1 (0 when df cannot answer: unknown is reported, never assumed fine).
+_mr_avail_mb() { local kb; kb="$(df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}')"; echo "$(( ${kb:-0} / 1024 ))"; }
+_mr_mount() { df -P "$1" 2>/dev/null | awk 'NR==2 {print $6}'; }
+# One P1 operator-action intent through the house chokepoint (scripts/pipelines/pipeline_disk_alert.py).
+_mr_disk_page() {  # pipeline stage reason avail_mb min_mb mount
+  local alert="$_MR_DIR/pipeline_disk_alert.py"
+  [ -f "$alert" ] || { echo "[disk] pipeline_disk_alert.py missing beside the runner — cannot page" >&2; return 1; }
+  "${PY:-python3}" "$alert" --pipeline "$1" --stage "$2" --reason "$3" --avail-mb "${4:-0}" ${5:+--min-mb "$5"} --mount "${6:-?}"
+}
+# Below the policy floor: say so in the log, page P1, and KEEP GOING — the steps are the point of the stage.
+_mr_disk_preflight() {  # pipeline stage log_dir
+  local policy="$PROJ/config/pipelines/runner_disk_policy.json" min_mb avail_mb mount
+  if [ ! -f "$policy" ]; then
+    echo "[disk] policy missing ($policy) — preflight skipped (a finding: every threshold lives in config)"
+    return 0
+  fi
+  min_mb="$(python3 -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["min_free_mb"]))' "$policy" 2>/dev/null || echo "")"
+  [ -n "$min_mb" ] || { echo "[disk] policy unreadable ($policy) — preflight skipped" >&2; return 0; }
+  avail_mb="$(_mr_avail_mb "$3")"; mount="$(_mr_mount "$3")"
+  if [ "$avail_mb" -lt "$min_mb" ]; then
+    echo "[disk] LOW FREE SPACE ${avail_mb}MB < ${min_mb}MB on ${mount:-?} — paging P1, steps still run"
+    if ! _mr_disk_page "$1" "$2" low_disk "$avail_mb" "$min_mb" "${mount:-?}"; then
+      echo "[disk] P1 page FAILED (rc=$?) — the dead-man (premarket-delivery-deadman) is the backstop" >&2
+    fi
+  else
+    echo "[disk] free ${avail_mb}MB ≥ floor ${min_mb}MB on ${mount:-?} ✓"
+  fi
+  return 0
+}
+
 manifest_pipeline_main() {
   local default_manifest="$1"; shift
   local STAGE="" MANIFEST="" APPLY_REQUESTED=0 LIST=0
@@ -213,6 +244,13 @@ manifest_pipeline_main() {
   trap 'rm -f -- "$_MR_RESULTS_TMP"' EXIT
   local STARTED_AT; STARTED_AT="$(_ts)"
 
+  # 2026-10-30 05:45 ET: this exec died with "No space left on device" and the whole premarket stage was lost
+  # before its first step, silently (RCA finding 7, P0-T5). A run log that cannot be opened must not take the
+  # steps with it: fall back to no run log, say so, and let the disk preflight below page the operator.
+  if ! : >> "$RUN_LOG" 2>/dev/null; then
+    echo "[log] cannot write $RUN_LOG — continuing WITHOUT a run log; steps still run (check free space)" >&2
+    RUN_LOG=/dev/null
+  fi
   exec > >(tee -a "$RUN_LOG") 2>&1
   echo "=================================================================="
   echo "[$STARTED_AT] START pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN manifest=$MANIFEST log=$RUN_LOG"
@@ -227,6 +265,7 @@ manifest_pipeline_main() {
   export PROJ HOME
   local PY_RESOLVED; PY_RESOLVED="$(_mr_resolve_py)"; export PY="$PY_RESOLVED"
   echo "[env] PROJ=$PROJ PY=$PY"
+  _mr_disk_preflight "$PIPELINE" "$STAGE" "$LOG_DIR"
   local TODAY_DOW="${PIPELINE_TODAY_DOW:-$(date +%w)}"   # cron convention: 0=Sunday
 
   local plan; plan="$("$PY3" "$MANIFEST_PY" "$MANIFEST" --plan "$STAGE")"
@@ -311,8 +350,14 @@ manifest_pipeline_main() {
   local -a sumflags=()
   [ "$DRY_RUN" = 1 ] && sumflags+=(--dry-run)
   [ "$APPLY_REQUESTED" = 1 ] && sumflags+=(--apply-requested)
-  "$PY3" "$MANIFEST_PY" "$MANIFEST" --summary "$STAGE" --results "$RESULTS" --out "$SUMMARY" \
-      --started-at "$STARTED_AT" --log "$RUN_LOG" --worker-failures "$worker_failures" "${sumflags[@]}"
+  if ! "$PY3" "$MANIFEST_PY" "$MANIFEST" --summary "$STAGE" --results "$RESULTS" --out "$SUMMARY" \
+      --started-at "$STARTED_AT" --log "$RUN_LOG" --worker-failures "$worker_failures" "${sumflags[@]}"; then
+    # A stage that ran but left no receipt reads as "never ran" to every freshness monitor (P0-T5).
+    echo "[summary] FAILED to write $SUMMARY — paging P1" >&2
+    _mr_disk_page "$PIPELINE" "$STAGE" summary_write_failed "$(_mr_avail_mb "$PROJ/data/runtime")" "" "$(_mr_mount "$PROJ/data/runtime")" || true
+    rm -f "$RESULTS"
+    return 1
+  fi
   rm -f "$RESULTS"
   echo "[summary] wrote $SUMMARY"
   echo "[$(_ts)] END pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN steps=$n_steps"
