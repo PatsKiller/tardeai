@@ -8,7 +8,10 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import JobsHealth from '../components/JobsHealth'
-import DeployInFlightBoard from '../components/DeployInFlightBoard'
+import DeployInFlightBoard, { type DeployInFlightWire } from '../components/DeployInFlightBoard'
+import DeployOperatorCoach from '../components/DeployOperatorCoach'
+import DeployPromoteReadiness from '../components/DeployPromoteReadiness'
+import DeployHelpDrawer from '../components/DeployHelpDrawer'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
@@ -67,11 +70,33 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
 }
 
-function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
+function DeploysTab({ s, stopEffective, stopState }: {
+  s: Record<SectionKey, SectionView<any>>
+  stopEffective: boolean
+  stopState?: string | null
+}) {
+  const [helpOpen, setHelpOpen] = useState(false)
+  const inFlightApi = useApi<DeployInFlightWire>('/api/v2/ops/in-flight', 60_000)
   const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
   const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
   const nx = s.next_release.value as NextRelease | null
+  const serving = s.serving.value as Serving | null
+  const inFlight = inFlightApi.data?.schema === 'DeployInFlight@v1' ? inFlightApi.data : null
   return <div style={{ display: 'grid', gap: 12 }}>
+    <DeployHelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
+    <DeployOperatorCoach
+      inFlight={inFlight}
+      serving={serving}
+      next={nx}
+      stopEffective={stopEffective}
+      onHelp={() => setHelpOpen(true)}
+    />
+    <DeployPromoteReadiness
+      serving={serving}
+      next={nx}
+      stopEffective={stopEffective}
+      stopState={stopState}
+    />
     <DeployInFlightBoard />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
@@ -107,7 +132,7 @@ function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
       <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }} data-testid="rs-ops-controls-link">Ops → Controls → Deploys</Link>
       {' '}· Observe:{' '}
       <Link to="/coordination?tab=release" style={{ color: TOKENS.primary }} data-testid="rs-lifecycle-link">Coordination → Deploy</Link>
-      . Mergify owns the merge queue; emergency promote is host CLI under release-write naming the SHA. This tab is serving pin, main HEAD, release history and errors.
+      . Job A = Approve merge (Mergify). Job B = put main on the site (poller / Push Live). Emergency promote remains host CLI under release-write naming the SHA.
     </p>
   </div>
 }
@@ -184,7 +209,7 @@ export default function ReleasesSchedules() {
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={{ ...panel, gap: 4 }}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
-      <p style={muted}>Serving pin · last promote · deploy STOP · Mergify queue (external) · n8n schedules. Read-only; nothing here merges, promotes or schedules.</p>
+      <p style={muted}>Two jobs on Deploys: Approve a merge (not live yet), then put main on the site. Serving pin · deploy STOP · Mergify · n8n schedules. Help is on the Deploys tab.</p>
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
           : <Chip tone={api.data?.status === 'OK' && current ? 'neutral' : 'warning'}>{current ? (api.data?.status ?? 'UNKNOWN') : 'STALE'}</Chip>}
@@ -211,7 +236,9 @@ export default function ReleasesSchedules() {
         style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
-    {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    {tab === 'deploys'
+      ? <DeploysTab s={s} stopEffective={!!api.data?.stop?.effective_stop} stopState={api.data?.stop?.state ?? null} />
+      : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
   </OpsDeskFrame>
 }

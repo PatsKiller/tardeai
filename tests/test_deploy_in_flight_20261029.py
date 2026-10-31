@@ -1,9 +1,9 @@
-"""Deploy console P1 in-flight board (GET /api/v2/ops/in-flight), design DSN-20261029-deploy-console (P1).
+"""Deploy console in-flight board (GET /api/v2/ops/in-flight), DSN-20261029 + operator clarity.
 
 Hermetic (AGENTS.md §24.6): no network, no live ``gh``. The pure projection
-(``project_pr`` / ``why_held`` / ``next_action`` / ``normalize_mergeable``) is exercised against fixture PR
-dicts, and ``build`` / ``handle`` are exercised with an injected ``lister`` returning fixture rows — a gh failure
-is UNAVAILABLE with a reason, never an empty list wearing "zero". The route is GET-only and cached.
+(``project_pr`` / ``why_held`` / ``next_action`` / ``normalize_mergeable`` / digest parity) is
+exercised against fixture PR dicts, and ``build`` / ``handle`` with an injected ``lister``.
+A gh failure is UNAVAILABLE with a reason, never an empty list wearing "zero".
 """
 from __future__ import annotations
 
@@ -21,6 +21,15 @@ from lib import deploy_in_flight as D  # noqa: E402
 NOW = datetime(2026, 10, 29, 15, 0, tzinfo=timezone.utc)
 SHA = "e" * 40
 
+PLAIN_BODY = """## In plain English
+**What changes:** Adds operator clarity fields to the deploy board.
+**Why:** So a non-developer can Approve safely.
+**Who / what it affects:** The Releases Deploys tab only.
+**When it takes effect:** After merge and promote to CURRENT.
+**Approval:** Operator Approve when READY.
+**Risk and fallback:** Hold removes the label; no force push.
+"""
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
@@ -31,11 +40,29 @@ def _hermetic(monkeypatch):
     D.clear_cache()
 
 
-def _pr(number, *, mergeable=None, state="CLEAN", labels=(), draft=False, title="t"):
-    return {"number": number, "title": title, "url": f"https://github.com/x/y/pull/{number}",
-            "headRefOid": SHA, "isDraft": draft,
-            "labels": [{"name": n} for n in labels], "mergeable": mergeable,
-            "mergeStateStatus": state}
+def _checks(ok=True):
+    state = "SUCCESS" if ok else "FAILURE"
+    return [{"name": n, "conclusion": state} for n in D.REQUIRED_CHECKS]
+
+
+def _pr(number, *, mergeable=None, state="CLEAN", labels=(), draft=False, title="Adds a clear operator sentence here",
+        body=None, rollup=None, created=None, updated=None):
+    return {
+        "number": number,
+        "title": title,
+        "url": f"https://github.com/x/y/pull/{number}",
+        "headRefOid": SHA,
+        "headRefName": f"branch-{number}",
+        "isDraft": draft,
+        "labels": [{"name": n} for n in labels],
+        "mergeable": mergeable,
+        "mergeStateStatus": state,
+        "body": PLAIN_BODY if body is None else body,
+        "statusCheckRollup": _checks(True) if rollup is None else rollup,
+        "createdAt": created or "2026-10-29T12:00:00Z",
+        "updatedAt": updated or "2026-10-29T14:00:00Z",
+        "author": {"login": "agent"},
+    }
 
 
 def test_normalize_mergeable_three_states():
@@ -45,11 +72,16 @@ def test_normalize_mergeable_three_states():
 
 
 def test_project_pr_wire_row():
-    row = D.project_pr(_pr(2211, mergeable=True, state="CLEAN", labels=["shared-infra"]))
-    assert row["number"] == 2211 and row["title"] == "t"
+    row = D.project_pr(_pr(2211, mergeable=True, state="CLEAN", labels=["shared-infra"]), now=NOW)
+    assert row["number"] == 2211
     assert row["head_sha"] == SHA and row["head_sha_short"] == SHA[:9]
     assert row["mergeable"] == "MERGEABLE" and row["merge_state"] == "CLEAN"
     assert row["is_draft"] is False and row["url"].endswith("/2211")
+    assert row["plain_english"]["What changes"]
+    assert row["checks"]["cio-hardening"] == "SUCCESS"
+    assert row["digest_status"] == "ready" and row["can_approve"] is True
+    assert row["updated_age"] == "60m ago"
+    assert "Safe to Approve" in row["next_plain"]
 
 
 def test_why_held_labels_and_mergeability():
@@ -74,12 +106,31 @@ def test_next_action_four_buckets():
     assert D.next_action(_pr(7, mergeable=None, state="CLEAN")) == "auto-rebase"
 
 
+def test_digest_parity_gates_block_approve():
+    assert D.digest_classify_row(_pr(1, draft=True))[0] == "draft"
+    assert D.digest_classify_row(_pr(2, labels=["operator-merge"]))[0] == "approved"
+    assert D.digest_classify_row(_pr(3, mergeable=False))[0] == "conflict"
+    assert D.digest_classify_row(_pr(4, body="no plain english here"))[0] == "not_described"
+    assert D.digest_classify_row(_pr(5, labels=["held"]))[0] == "needs_operator"
+    assert D.digest_classify_row(_pr(6, rollup=_checks(False)))[0] == "waiting_ci"
+    status, reason, can = D.digest_classify_row(_pr(7, mergeable=True, state="CLEAN"))
+    assert status == "ready" and reason == "ready" and can is True
+
+
+def test_next_plain_unknown_is_not_conflict():
+    row = D.project_pr(_pr(8, mergeable=None, state="CLEAN", rollup=_checks(True)), now=NOW)
+    # checks green + plain → ready, but next_plain still explains UNKNOWN mergeability
+    assert row["digest_status"] == "ready"
+    assert "not the same as a conflict" in row["next_plain"]
+
+
 def test_build_projects_and_counts():
     rows = [_pr(2211, mergeable=True, state="CLEAN"), _pr(2212, mergeable=False, state="DIRTY", labels=["held"])]
     d = D.build(None, now=NOW, lister=lambda repo, limit: rows)
     assert d["schema"] == "DeployInFlight@v1" and d["authority"] == "READ_ONLY_ADVISORY"
     assert d["count"] == 2 and [r["number"] for r in d["prs"]] == [2211, 2212]
     assert d["prs"][0]["next"] == "auto-merge" and d["prs"][1]["next"] == "coordinator"
+    assert d["ready_count"] == 1
     assert d["freshness"] == "OK" and d["status"] == "OK"
 
 
@@ -112,7 +163,8 @@ def test_module_is_read_only():
     src = (ROOT / "scripts" / "lib" / "deploy_in_flight.py").read_text(encoding="utf-8")
     # No write path: no file writes, no SQL mutations, no merge/approve/label/promote/order verbs.
     for bad in ("write_text(", "open(\"w", "INSERT ", "UPDATE ", "DELETE ", "place_order",
-                "gh pr merge", "gh pr review", "gh label", "-X", "POST", "put("):
+                "gh pr merge", "gh pr review", "gh label", "-X", "put("):
         assert bad not in src, bad
     # gh is called only as a read: `gh pr list` (and nothing else that mutates).
     assert "gh pr list" in src and "gh api" not in src
+    assert "statusCheckRollup" in src and "plain_english" in src

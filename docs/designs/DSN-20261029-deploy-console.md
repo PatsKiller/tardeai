@@ -39,9 +39,37 @@ phases:
       - id: DSN-20261029-deploy-console-P4-T1
         title: WebAuthn passkey + typed-phrase force-promote and rollback (§27.3/§25.10) — its own reviewed PR
         status: PROPOSED
+  - id: DSN-20261029-deploy-console-OPCLARITY
+    title: Operator-first clarity — two-job coach, digest READY parity, help/glossary, promote readiness
+    status: IN_PROGRESS
+    tasks:
+      - id: DSN-20261029-deploy-console-OPCLARITY-T1
+        title: Enrich GET /api/v2/ops/in-flight with plain_english, four checks, ages, digest_status/can_approve, next_plain (Telegram READY parity)
+        status: DONE
+      - id: DSN-20261029-deploy-console-OPCLARITY-T2
+        title: Deploys coach strip + Help drawer + Operator vs Advanced mode; Approve only when READY; promote-readiness panel
+        status: DONE
 ---
 
 # Deploy console — design of record
+
+## Operator clarity (digest parity)
+
+Audience: a novice operator who needs to know **what to click** without learning GitHub. The Deploys tab
+teaches two jobs:
+
+1. **Job A — Approve a merge** (Telegram or web Approve): adds `operator-merge`. Nothing is on the live site yet.
+2. **Job B — Put main on the site**: poller / Push Live (`prepare` → `promote` → CURRENT).
+
+`GET /api/v2/ops/in-flight` stays additive on `DeployInFlight@v1`. New optional row fields: `plain_english`,
+`checks` (the four required contexts), `digest_status` / `digest_reason` / `can_approve` (same READY gates as
+`pr_merge_digest.classify_pr` for draft / plain English / hold labels / checks / conflict), `created_at` /
+`updated_at` / ages, `next_plain`. The UI **Approve** button is enabled only when `can_approve` is true.
+Branch **Push** is renamed **Update branch** and hidden behind Advanced — it is not Push Live.
+
+Honest: path-based held-class from `merge_hold_paths.json` (files_unverified) is still digest/Mergify’s job;
+the board mirrors label holds + the four checks + plain English. P1 claimed CI in the projection; operator
+clarity finally ships the check rollup into this endpoint.
 
 ## What it is
 
