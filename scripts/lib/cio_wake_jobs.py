@@ -17,6 +17,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -204,10 +205,22 @@ ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class CIOWakeStoreCorrupt(RuntimeError):
+    """The store's tail could not be made whole; appending would lose the next record."""
+
+
+def _write_fsync(path: Path, data: bytes) -> None:
+    with open(path, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
 class CIOWakeLockTimeout(TimeoutError):
     """The wake-job store lock was not acquired in time; the caller fails loudly instead of hanging."""
 
 
+_log = logging.getLogger(__name__)
 _HELD: dict[tuple[int, int, str], list[int]] = {}
 _HELD_GUARD = threading.Lock()
 
@@ -331,14 +344,22 @@ class CIOWakeJobStore:
         Rewrites the store under lock only when the final record(s) fail to parse.
         Intact interior corruption is left for operator forensics — we only trim a
         bad *suffix*, which is what blocks `_get_last_event` / enqueue.
+
+        Works on bytes split on b"\n" only (str.splitlines also breaks on U+2028/U+2029/U+0085, which can sit
+        inside a valid JSON string and would wrongly cut a good record). The quarantine copy and the rewritten
+        store are fsynced before the rename. Failures raise: on the write path a failed trim must stop the
+        append, never let it glue a new record onto a half-written one (2026-10-31 review).
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
         lock_fd = self._acquire_lock()
         try:
-            raw = self.event_store_path.read_text(encoding="utf-8", errors="replace")
-            lines = raw.splitlines(keepends=True)
-            removed: list[str] = []
+            raw = self.event_store_path.read_bytes()
+            lines = raw.split(b"\n")
+            trailing_newline = raw.endswith(b"\n")
+            if trailing_newline:
+                lines.pop()  # the empty segment after the final newline
+            removed: list[bytes] = []
             while lines:
                 candidate = lines[-1]
                 if not candidate.strip():
@@ -346,28 +367,57 @@ class CIOWakeJobStore:
                     lines.pop()
                     continue
                 try:
-                    json.loads(candidate.strip())
-                    break
-                except json.JSONDecodeError:
+                    row = json.loads(candidate.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
                     removed.append(candidate)
                     lines.pop()
-            if not removed:
+                    continue
+                if not isinstance(row, dict):
+                    removed.append(candidate)
+                    lines.pop()
+                    continue
+                break
+            kept = b"\n".join(lines) + (b"\n" if lines else b"")
+            if not removed and kept == raw:
                 return {"ok": True, "removed": 0, "reason": "clean"}
             quarantine = self.event_store_path.with_suffix(
                 self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
             )
-            quarantine.write_text("".join(removed), encoding="utf-8")
+            if removed:
+                _write_fsync(quarantine, b"\n".join(reversed(removed)))
             tmp = self.event_store_path.with_suffix(".tmp")
-            tmp.write_text("".join(lines), encoding="utf-8")
+            _write_fsync(tmp, kept)
             os.replace(tmp, self.event_store_path)
             return {
                 "ok": True,
                 "removed": len(removed),
-                "quarantine": str(quarantine),
+                "quarantine": str(quarantine) if removed else None,
                 "bytes_removed": sum(len(x) for x in removed),
             }
         finally:
             self._release_lock(lock_fd)
+
+    def _ensure_clean_tail(self) -> None:
+        """Write path: the store must end on a complete record before anything is appended. Trims a damaged tail
+        under the (re-entrant) lock and raises if it cannot -- never appends onto a partial line."""
+        try:
+            size = self.event_store_path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size == 0:
+            return
+        with open(self.event_store_path, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            last = f.read(1)
+        if last == b"\n" and self._tail_last_event() is not None:
+            return
+        self.quarantine_corrupt_trailing_events()
+        size = self.event_store_path.stat().st_size
+        if size:
+            with open(self.event_store_path, "rb") as f:
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    raise CIOWakeStoreCorrupt(f"{self.event_store_path}: tail still not newline-terminated after trim")
 
     def _tail_last_event(self, chunk: int = 65536) -> Optional[dict[str, Any]]:
         """Last event from the end of the file, or None if the last record does
@@ -410,11 +460,13 @@ class CIOWakeJobStore:
             last = row
             corrupt_suffix = False
         if corrupt_suffix:
-            # Best-effort auto-trim so the next enqueue is not permanently wedged.
+            # Best-effort auto-trim on the READ path so the next enqueue is not wedged. The write path does its
+            # own strict trim (_ensure_clean_tail) and never proceeds past a failure.
             try:
                 self.quarantine_corrupt_trailing_events()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("%s: corrupt-tail trim failed on read: %s: %s", self.event_store_path,
+                             type(exc).__name__, exc)
         return last
 
     def _get_last_event_hash(self) -> str:
@@ -426,6 +478,7 @@ class CIOWakeJobStore:
     def _append_event(self, event: dict[str, Any]) -> None:
         lock_fd = self._acquire_lock()
         try:
+            self._ensure_clean_tail()
             current_head_hash = self._get_last_event_hash()
             event["prev_event_hash"] = current_head_hash
 

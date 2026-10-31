@@ -99,3 +99,100 @@ def test_nested_acquire_in_one_process_is_reentrant(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert "nested ok" in r.stdout
+
+
+# ── round 2 (2026-10-31 independent review) ────────────────────────────────────────────────────────
+
+
+def test_reactive_cycle_stops_without_advancing_cursor_on_store_timeout(monkeypatch, tmp_path):
+    """3 events and a lock timeout on the first: the cursor stays where it was and the error is hard."""
+    from datetime import datetime, timezone
+
+    import scripts.cio_reactive_cycle as rc
+    from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout
+
+    class Ev:
+        def __init__(self, i):
+            self.event_id = f"e{i}"
+            self.event_type = "price.alert"
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.payload = {}
+            self.symbol = "SYMA"
+
+    class Bus:
+        advanced: dict = {}
+
+        def poll(self, consumer, event_types):
+            return [Ev(1), Ev(2), Ev(3)]
+
+        def advance_cursor(self, consumer, eid):
+            Bus.advanced[consumer] = eid
+
+    class Store:
+        calls = 0
+
+        def get_wake_job(self, _):
+            return None
+
+        def enqueue(self, *a, **k):
+            Store.calls += 1
+            raise CIOWakeLockTimeout("cio_wake_jobs.jsonl.lock: lock not acquired within 120s")
+
+    out = {"errors": [], "event_enqueued": [], "event_skipped": [], "event_stale": [], "cursor_advanced": []}
+    n, _ = rc.process_event_bus(
+        Bus(), Store(), out=out, routing={"agent_x": ["price.alert"], "agent_y": ["price.alert"]}
+    )
+    assert n == 0 and Store.calls == 1  # stopped at the first failure, no second agent either
+    assert Bus.advanced == {}  # nothing lost: next run retries from the same cursor
+    assert out["errors"] and out["errors"][0].startswith("wake_store_unavailable:")
+    soft = ("enqueue:", "cursor:", "wake_store_repair:")
+    assert not out["errors"][0].startswith(soft)  # _execute treats it as hard -> exit 1
+
+
+def test_append_never_glues_onto_a_partial_line_when_trim_fails(tmp_path):
+    r = _run(
+        tmp_path / "cio_wake_jobs.jsonl",
+        """
+        import errno
+        import scripts.lib.cio_wake_jobs as m
+        store.enqueue({"wake_job_id": "good-0", "trigger_type": "SCHEDULE_DUE"})
+        with open(store.event_store_path, "a") as f:
+            f.write('{"stream_id": "trunc')
+        before = store.event_store_path.read_bytes()
+        real = m._write_fsync
+        def enospc(path, data):
+            raise OSError(errno.ENOSPC, "No space left on device")
+        m._write_fsync = enospc
+        try:
+            store.enqueue({"wake_job_id": "acked-1", "trigger_type": "SCHEDULE_DUE"})
+            print("NO RAISE")
+        except OSError:
+            print("raised")
+        print("unchanged", store.event_store_path.read_bytes() == before)
+        m._write_fsync = real
+        store.enqueue({"wake_job_id": "acked-1", "trigger_type": "SCHEDULE_DUE"})
+        import json
+        print("ids", [json.loads(x)["stream_id"] for x in store.event_store_path.read_bytes().split(b"\\n") if x.strip()])
+        """,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "raised" in r.stdout and "unchanged True" in r.stdout
+    assert "'good-0', 'acked-1'" in r.stdout
+
+
+def test_quarantine_splits_on_newline_bytes_only(tmp_path):
+    r = _run(
+        tmp_path / "cio_wake_jobs.jsonl",
+        """
+        import json
+        store.enqueue({"wake_job_id": "good-headline", "trigger_type": "SCHEDULE_DUE",
+                       "context": {"headline": "beat\\u0085 raised\\u2028guide"}})
+        with open(store.event_store_path, "a") as f:
+            f.write('{"stream_id": "trunc')
+        res = store.quarantine_corrupt_trailing_events()
+        ids = [json.loads(x)["stream_id"] for x in store.event_store_path.read_bytes().split(b"\\n") if x.strip()]
+        print("removed", res["removed"], "ids", ids)
+        """,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "removed 1" in r.stdout and "good-headline" in r.stdout

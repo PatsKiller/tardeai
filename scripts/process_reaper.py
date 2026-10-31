@@ -74,13 +74,6 @@ DEFAULT_RULES = [
         "pattern": "watchlist_enrichment_sweep.py",
         "max_concurrent": 1,
         "max_runtime_min": 15,
-    },    {"name": "cio_reactive_cycle", "pattern": "cio_reactive_cycle.py", "max_concurrent": 1, "max_runtime_min": 15},
-    {"name": "cio_event_detector", "pattern": "run_cio_event_detector_once", "max_concurrent": 1, "max_runtime_min": 20},
-    {
-        "name": "cio_wake_dispatch",
-        "pattern": "cio_wake_dispatch_entrypoint.py",
-        "max_concurrent": 1,
-        "max_runtime_min": 20,
     },
 ]
 # Hard never-kill guard: even if a rule pattern somehow matched these, skip. Belt-and-suspenders.
