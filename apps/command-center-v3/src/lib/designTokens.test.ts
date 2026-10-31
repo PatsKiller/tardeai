@@ -8,7 +8,7 @@ const assert = Object.assign((c: unknown, m = 'assertion failed') => { if (!c) f
 })
 import { TONES, toneVars, toneFromVerdict, chipStyle, TOKENS, RADIUS, SHADOW, TYPE, CHART_HEX } from './designTokens.ts'
 
-assert.deepEqual([...TONES], ['success', 'warning', 'danger', 'info', 'ai', 'neutral'])
+assert.deepEqual([...TONES], ['success', 'warning', 'danger', 'info', 'ai', 'neutral', 'elevated'])
 for (const t of TONES) {
   const v = toneVars(t)
   assert.equal(v.color, `var(--${t}-color)`); assert.equal(v.bg, `var(--${t}-bg)`); assert.equal(v.border, `var(--${t}-border)`)
@@ -29,3 +29,5 @@ console.log('✓ chip recipe and token maps are literal-free')
 assert.equal(CHART_HEX.dark.series.length, 6); assert.equal(CHART_HEX.light.series.length, 6)
 assert.ok(CHART_HEX.dark.series.every(h => /^#[0-9a-f]{6}$/i.test(h)) && CHART_HEX.light.series.every(h => /^#[0-9a-f]{6}$/i.test(h)))
 console.log('✓ chart hex is the only literal palette, both themes')
+
+assert.equal(toneFromVerdict('ORANGE'), 'elevated'); assert.equal(toneFromVerdict('RED'), 'danger'); assert.equal(toneFromVerdict('GREEN'), 'success'); assert.equal(toneFromVerdict('BLUE'), 'info')
