@@ -1003,10 +1003,28 @@ write_expected_release_pin() {
 # Correctness is checked by READING BACK each unit's cwd, not by "is-active":
 # the unit stays active across a promote precisely while being wrong, so
 # activeness is the one signal that cannot detect this.
+#
+# 2026-10-31: the fixed list missed tradeai-ops-applier (on 10-22 code, refusing new Ops Controls kinds as
+# KIND_UNKNOWN), grok-/chatgpt-oauth-proxy and heartbeat-receiver (10-11/10-13 code). The list is now DERIVED
+# as well: every running user unit whose WorkingDirectory/ExecStart references CURRENT, minus the AGENTS.md
+# §23.14 never-list and Active Trader (scripts/lib/current_bound_units.py; a code constant config can only
+# extend). Never-list units are not restarted; verify pages P1 if they are left stale. An operator-set
+# TRADEAI_CURRENT_BOUND_UNITS still replaces the list exactly, as before.
 restart_root_frozen_units() {
   local dir="$1"
-  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service tradeai-phone-status.service}"
-  local u pid cwd failures=0
+  # Fixed defaults (kept) ∪ the derived CURRENT-bound set; an operator-set TRADEAI_CURRENT_BOUND_UNITS replaces both.
+  local defaults="tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service tradeai-phone-status.service"
+  local units derived=""
+  if [[ -n "${TRADEAI_CURRENT_BOUND_UNITS:-}" ]]; then
+    units="$TRADEAI_CURRENT_BOUND_UNITS"
+  else
+    if [[ -n "${VENV_PYTHON:-}" && -n "${ROOT:-}" ]]; then
+      derived="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null)" \
+        || { log "  WARN could not derive CURRENT-bound units — using the fixed list only"; derived=""; }
+    fi
+    units="$(printf '%s\n' $defaults $derived | awk 'NF && !seen[$0]++' | tr '\n' ' ')"
+  fi
+  local u pid cwd failures=0 restarted=""
   for u in $units; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
     systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
@@ -1019,6 +1037,7 @@ restart_root_frozen_units() {
     pid="$(systemctl --user show -p MainPID --value "$u" 2>/dev/null || true)"
     cwd=""
     [[ -n "$pid" && "$pid" != "0" ]] && cwd="$(readlink "/proc/${pid}/cwd" 2>/dev/null || true)"
+    restarted="${restarted} ${u}"
     if [[ "$cwd" == "$dir" ]]; then
       log "  $u re-resolved → $dir"
     else
@@ -1026,7 +1045,17 @@ restart_root_frozen_units() {
       failures=$((failures + 1))
     fi
   done
+  # Durable receipt + P1 page for any unit still stale (restarted or never-list), read back from /proc.
+  if [[ -n "${VENV_PYTHON:-}" && -n "${ROOT:-}" ]]; then
+    "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --restarted "$restarted" \
+      || log "  WARN current-bound verify reported stale units (receipt: data/runtime/current_bound_units_last.json)"
+  fi
   [[ "$failures" == "0" ]]
+}
+
+cmd_bound_units() {
+  # Read-only: which units a promote to CURRENT would restart, and which it would only page about.
+  "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$(current_release)" "$@"
 }
 
 cmd_rollback() {
@@ -1071,13 +1100,14 @@ case "$MODE" in
   status)   cmd_status ;;
   pins)     release_pin_step plan "${2:-$(current_release)}" ;;
   units)    TRADEAI_STAGED_UNITS_MODE=plan staged_units_step promote "${2:-$(current_release)}" ;;
+  bound-units) cmd_bound_units ;;
   venv-plan) release_venv_plan "${2:-$ROOT}" || die "release venv plan failed" ;;
   stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
             stamp_build "$2" "$3"
             write_build_meta "$2" "$3"
             log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status|pins|units|venv-plan|stamp} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|pins|units|bound-units|venv-plan|stamp} [path]"
     exit 2
     ;;
 esac
