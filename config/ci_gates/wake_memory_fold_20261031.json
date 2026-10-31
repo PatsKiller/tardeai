@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "wake_memory_fold_20261031",
-  "files": ["tests/test_wake_memory_fold_20261031.py"],
+  "files": [
+    "tests/test_wake_memory_fold_20261031.py"
+  ],
   "anchor": "WAKE_MEMORY_FOLD_20261031",
-  "comment": ["ANCHOR: WAKE_MEMORY_FOLD_20261031 — persistent wake: re-persisted memory versions fold (last wins) instead of refusing the subject as MEMORY_MALFORMED; a real content conflict fails closed only for its subject; a still-malformed subject is quarantined (P2 once) and skipped until the store changes. Hermetic."]
+  "comment": [
+    "ANCHOR: WAKE_MEMORY_FOLD_20261031 — persistent wake: re-persisted memory versions fold (last wins) instead of refusing the subject as MEMORY_MALFORMED; a real content conflict fails closed only for its subject; a still-malformed subject is quarantined (P2 once) and skipped until the store changes. Hermetic."
+  ]
 }
