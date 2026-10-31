@@ -1,0 +1,9 @@
+{
+  "schema": "MarketRiskEscalationStallCheck@v1",
+  "_comment": "health_tick step market-risk-escalation-stall (scripts/check_market_risk_escalation.py). The stall threshold itself is escalation.stalled_after_min in config/market_risk_policy.yaml (75 min, plan §5.8); this file only sets how often the operator is re-paged while the stall persists and where the dedupe state lives. Operator approval 2026-10-31 (design §11 items 5 and 8).",
+  "repeat_minutes": 60,
+  "priority": "P1",
+  "producer": "check_market_risk_escalation",
+  "message_class": "market_risk",
+  "state_rel": "data/runtime/market_risk/escalation_stall_state.json"
+}
