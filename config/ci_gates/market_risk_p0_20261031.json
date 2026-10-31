@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_20261031",
+  "files": [
+    "tests/test_market_regime_classifier_snapshot_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_20261031 — P0 fixes from the 2026-10-30 selloff RCA",
+    "(docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md, design DSN-20261031-market-risk-engine).",
+    "P0-T1: the regime classifier reads only the latest collector snapshot (it read 20 rows across runs and",
+    "let the oldest win); scan activity is no longer scored as breadth. P0-T2: a regime change into",
+    "risk_off/high_volatility is a P1 operator-action intent; alert errors surface in the run log.",
+    "Hermetic: fake DB, telegram_alert and alert_dispatcher stubbed. Schedules nothing, sends nothing."
+  ]
+}

@@ -28,7 +28,7 @@ thresholds:
   reentry_statuses: ["READY", "NEAR"]
   watch_statuses: ["READY", "GO", "NEAR"]
   watch_near_min_score: 70       # strong NEAR if score present
-  regime_risk_off_labels: ["RISK_OFF", "DEFENSIVE", "risk_off", "defensive"]
+  regime_risk_off_labels: ["RISK_OFF", "DEFENSIVE", "HIGH_VOLATILITY", "risk_off", "defensive", "high_volatility"]  # high_volatility = the classifier's volatility-shock label (stop_policy.yaml risk_off set); added 2026-10-31 P0-T3
 
 owners:
   S1_POSITION_LIFECYCLE: alex
