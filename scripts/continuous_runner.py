@@ -364,10 +364,20 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict,
     a trigger that raises is left out of the message and appended to ``failed`` (when given) so the caller can
     leave it un-alerted for the next cycle, instead of one bad GO killing the whole cycle's alert."""
     try:
-        spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
-        vix = market.get("vix",{}).get("price",0)
-        b   = market.get("breadth_label","?")
-        _mkt = f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}"
+        spy_d = market.get("indices", {}).get("SPY", {})
+        spy = spy_d.get("change_percent", 0)
+        vix_d = market.get("vix", {})
+        vix = vix_d.get("price", 0)
+        b   = market.get("breadth_label", "?")
+        # P0-T9 (2026-10-31): a stale or implausible quote is said, never printed as a number ("SPY +29.30%").
+        if spy_d.get("implausible"):
+            spy_s = "SPY n/a"
+        elif spy_d.get("price_is_stale"):
+            spy_s = f"SPY prev close {float(spy_d.get('price', 0) or 0):.2f}"
+        else:
+            spy_s = f"SPY {spy:+.2f}%"
+        vix_s = "VIX n/a" if vix_d.get("implausible") else (f"VIX {vix:.1f} (prev close)" if vix_d.get("price_is_stale") else f"VIX {vix:.1f}")
+        _mkt = f"{spy_s}  {vix_s}  {b}"
     except Exception:  # noqa: BLE001 — a malformed market snapshot must not drop the alert
         _mkt = "SPY ?  VIX ?  ?"
     lines = [f"\u26a1 *Trade AI LIVE [{time_str}]*", _mkt, ""]

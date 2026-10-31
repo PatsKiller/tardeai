@@ -1258,14 +1258,24 @@ def build_telegram_message(
             d = indices.get(sym, {})
             pct = d.get("change_percent", 0) or 0
             px  = d.get("price", 0) or 0
+            px_str = f" ${px:.2f}" if px else ""
+            # P0-T9 (2026-10-31): never print a stale previous close as "+0.00%" or a defective quote as a number
+            # (the 04:00/07:00 briefs showed "+0.00%" all morning on 2026-10-30; 10-27 said "SPY +29.30%").
+            if d.get("implausible"):
+                return f"⚪ *{sym}* n/a (quote failed plausibility){px_str}"
+            if d.get("price_is_stale"):
+                return f"⚪ *{sym}* prev close{px_str} · no {d.get('session') or 'live'} print yet"
             col = "🟢" if pct > 0 else ("🔴" if pct < 0 else "⚪")
             sign = "+" if pct >= 0 else ""
-            px_str = f" ${px:.2f}" if px else ""
             return f"{col} *{sym}* {sign}{pct:.2f}%{px_str}"
 
         vix_val = vix.get("price", 0) or 0
         vix_pct = vix.get("change_percent", 0) or 0
         vix_dir = vix.get("direction", "flat")
+        if vix.get("implausible"):
+            vix_dir = "n/a (quote failed plausibility)"
+        elif vix.get("price_is_stale"):
+            vix_dir = "prev close · no live print yet"
         v_e = "🔺" if "ris" in vix_dir or "spik" in vix_dir else ("🔻" if "fall" in vix_dir or "col" in vix_dir else "➡️")
         vix_sign = "+" if vix_pct >= 0 else ""
 
