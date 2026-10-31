@@ -583,3 +583,33 @@ leadership:
   # carry the classes, labelled with that track record. Turning the card on is an operator decision.
   card_enabled: false
   track_record_path: docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json
+  # Operator 2026-10-31: "We also want to make sure that the CIO is memorizing all of this. And when stuff is pivoting
+  # to a new sector, I would think logically we're going to look first for stuff that we already researched that's on
+  # the watch list or our short list and then go to what else is leading in the industry. It should also click off
+  # separate Hermes searches and Brave and you.com searches related to all of this."
+  # scripts/lib/market_risk/cio_memory_fanout.py. Writes only through the EXISTING CIO paths (aif_memory admission,
+  # InstrumentRecordStore apply_cognition, SecurityResearchSpine silo=cio) and the EXISTING research queues
+  # (watch_directives single writer -> Hermes + TradeAI sweep; governed_research_producer -> Brave router).
+  candidate_tiers:
+    research_stale_days: 30          # research older than this is shown as stale and re-queued
+    tier3_min_momentum: 60           # "other leaders in the group" = un-researched names with momentum >= this
+    per_tier: 5
+  fanout:
+    triggers: [leadership_transition, shock_type_change, reentry_flip]
+    hermes:
+      enabled: true
+      created_by: market_risk_rotation
+      ttl_days: 21
+      priority: normal
+      daily_cap: 12                  # directives per day across all triggers
+    brave:
+      enabled: true
+      daily_cap: 10                  # research targets per day; never more than the router's own headroom
+      min_daily_headroom: 50         # leave this many Brave calls a day for every other caller
+    youcom:
+      registered: false              # no provider, client or registry row exists (grep 2026-10-31); §7A proposal:
+                                     # docs/proposals/REGISTRY_ROW_youcom_search_20261031.md
+  memory:
+    aif_memory_type: EPISODIC         # market-level episode and shock-type memories (governed admission, 30-day TTL)
+    spine_tag: market_risk            # per-symbol research-spine contributions Ask-the-CIO recalls
+    spine_kind: market_risk.event
