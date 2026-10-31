@@ -97,11 +97,12 @@ def test_d82_enforcer_skips_part_and_dumps_younger_than_2h_by_default(tmp_path):
     _stamp(young, 90 * 60, now, b"tiny")
     part = d / "trade_ai_open.sql.gz.part"         # matches this glob; still never touched
     _stamp(part, 5 * 3600, now, b"tiny")
-    old = d / "trade_ai_abandoned.sql.gz"          # 3 h old partial: retired to archive/, not unlinked
+    old = d / "trade_ai_abandoned.sql.gz"          # 3 h old partial: no complete successor, so it is kept (§24.15)
     _stamp(old, 3 * 3600, now, b"tiny")
-    res = be.enforce_local(cfg, dry_run=False, now=now)
-    assert young.exists() and part.exists() and not old.exists()
-    assert (d / "archive" / old.name).exists()
+    res = be.enforce_local(cfg, dry_run=False, now=now,
+                           verify=lambda p, st: {"verified": True, "reason": "verified"})
+    assert young.exists() and part.exists() and old.exists()
+    assert res["verification"]["reason"] == "no_complete_dump"
     assert {Path(p).name for p in res["skipped_in_progress"]} == {young.name, part.name}
     assert be.DEFAULT_SKIP_YOUNGER_S == 2 * 3600
 

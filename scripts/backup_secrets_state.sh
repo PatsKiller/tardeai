@@ -36,6 +36,7 @@ case "$TARGET" in
   data) PREFIX="data_backup"; KEEP=1;  SOURCES=("data");  GLOB="" ;;
   memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
           SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
+  # db: KEEP is unused — Drive db retention is backup_enforcer.py (drive_db.keep_n + 1, verified first)
   db)   PREFIX="db_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
   ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
   apps) PREFIX="apps_backup"; KEEP=1; TAR_BASE="$HOME"
@@ -149,9 +150,29 @@ gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASS_FILE" \
 SIZE="$(du -h "$ENC" | cut -f1)"
 echo "[backup:$TARGET] encrypted -> $(basename "$ENC") ($SIZE)"
 
-# Upload to Drive.
-"$GOG" drive upload "$ENC" -a "$ACCT" --parent "$DRIVE_FOLDER" -p 2>&1 | grep -E "^id|^name" || true
+# Upload to Drive. A failed upload exits non-zero BEFORE retention, so old Drive copies are never pruned
+# after a failed upload (DSN-20261030-workspace-lifecycle P4-T2).
+UP_RC=0
+UP_OUT="$("$GOG" drive upload "$ENC" -a "$ACCT" --parent "$DRIVE_FOLDER" -p 2>&1)" || UP_RC=$?
+printf '%s\n' "$UP_OUT" | grep -E "^id|^name" || true
+[ "$UP_RC" -eq 0 ] || { echo "FATAL: gog drive upload failed rc=$UP_RC" >&2; exit 1; }
 echo "[backup:$TARGET] uploaded to Drive folder $DRIVE_FOLDER"
+
+if [ "$TARGET" = "db" ]; then
+  # P4-T2: the upload counts only when Drive holds exactly one object with this name, size and md5,
+  # and the encrypted plaintext is byte-identical to the host dump. The verifier records the upload
+  # ledger backup_enforcer.py requires before it removes any older dump (host or Drive). Drive db
+  # retention (keep_n + 1, after verification) belongs to backup_enforcer.py, not to this script.
+  VPY="$PROJ/.venv/bin/python"; [ -x "$VPY" ] || VPY="python3"
+  if ! "$VPY" "$PROJ/scripts/backup_enforcer.py" --verify-upload \
+        --source "$NEWEST_DUMP" --plaintext "$TAR" --encrypted "$ENC"; then
+    echo "FATAL: Drive copy of $(basename "$ENC") not verified (name/size/md5) — host dump kept" >&2
+    exit 1
+  fi
+  echo "[backup:db] verified on Drive; retention is backup_enforcer.py's (keep_n + 1 after verification)"
+  echo "[backup:db] done ($STAMP)"
+  exit 0
+fi
 
 # Retention: keep newest $KEEP for this prefix, delete the rest.
 # Sort by NAME (embeds YYYYMMDD_HHMMSS — lexically chronological and unambiguous); the old
