@@ -536,3 +536,50 @@ reentry_watch:
   wash_sale_days: 30
   card_priority: P2
   card_dedupe_minutes: 1440
+leadership:
+  # scripts/lib/market_risk/leadership.py + rotation_advice.py — regime-turn rotation advisor (operator 2026-10-31:
+  # "if stuff is turning for the long term, I should have advisement of what I should be getting into"). STATED RULE,
+  # fixed before the backtest and not fitted to it: a group "leads" when its price relative to SPY is higher than it was
+  # N sessions ago (sign of the relative trend) AND it spent a majority of those sessions above its own relative-strength
+  # 20-session average (persistence), with the group itself above its 50- and 200-day averages (an uptrend, not a
+  # relative "least-bad"). Horizons are the conventional 1 / 3 / 6 trading months. 2026 is held out of the backtest.
+  benchmark: SPY
+  horizons: [20, 60, 120]
+  rs_sma_sessions: 20
+  persistence_min: 0.60        # majority-plus of sessions with RS above its 20-session average
+  fading_persistence_max: 0.40
+  breadth_min: 0.60            # multi-member groups: share of members above their 50-day average
+  new_high_pct: 0.05           # "near a 52-week high" = within 5%
+  volume_sessions: 20          # up-day volume / down-day volume over this window; > 1.0 confirms
+  min_history_sessions: 260
+  strategic_requires_macro: true
+  # Macro preference per group: the direction of rates (TLT 60-session return: up = falling yields), the dollar (UUP)
+  # and credit (HYG/TLT ratio) under which the group has historically led. Textbook sensitivities, not fitted.
+  macro_preference:
+    tech:          {rates: falling}
+    comm:          {rates: falling}
+    discretionary: {credit: improving}
+    staples:       {credit: worsening}
+    healthcare:    {credit: worsening}
+    utilities:     {rates: falling}
+    real_estate:   {rates: falling}
+    energy:        {dollar: falling}
+    materials:     {dollar: falling}
+    financials:    {rates: rising}
+    industrials:   {credit: improving}
+    semis:         {rates: falling}
+    ai_basket:     {rates: falling}
+  candidate_groups_kinds: [sector, theme]
+  candidates_per_group: 5
+  candidate_min_conviction: 55     # the CIO's own advice floor (opportunity_conviction.yaml advice.conviction_floor)
+  earnings_window_sessions: 10
+  residual_min_value_usd: 1000     # book overlap ignores fractional / residual lots below this value
+  entry_gate_tiers: [ORANGE, RED]  # the existing market_risk_gate: entries held at ORANGE+
+  card_priority: P2
+  card_dedupe_minutes: 10080       # one card per leadership-state signature per week
+  # The weekly / on-transition card stays OFF until the detector shows an edge over plain momentum. Backtest
+  # (scripts/market_risk_leadership_backtest.py, 2016-2025 in-sample, 2026 held out) did NOT beat the top-3 relative-
+  # strength baseline; see docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json. The payload and the CIO facts still
+  # carry the classes, labelled with that track record. Turning the card on is an operator decision.
+  card_enabled: false
+  track_record_path: docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json

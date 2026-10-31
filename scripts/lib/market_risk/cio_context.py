@@ -186,6 +186,7 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
                 for s, w in (mr.get("reentry_watch") or {}).items()
                 if isinstance(w, dict) and not str(s).startswith("_")
             },
+            "leadership": _leadership_facts(mr.get("leadership")),
             "position_stances": {
                 s: {k: p.get(k) for k in ("stance", "label", "reasons", "re_enter_if", "as_of")}
                 for s, p in (mr.get("positions") or {}).items()
@@ -194,6 +195,20 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
         }
     )
     return out
+
+
+def _leadership_facts(block: Any) -> Optional[dict[str, Any]]:
+    """Durable leadership classes per group (rotation advisor), for Ask-the-CIO; None when not evaluated."""
+    if not isinstance(block, dict) or block.get("state") != "evaluated":
+        return None
+    return {
+        "as_of": block.get("as_of"),
+        "groups": {
+            k: {x: g.get(x) for x in ("label", "class", "horizon", "confidence", "macro_aligned")}
+            for k, g in (block.get("groups") or {}).items()
+            if isinstance(g, dict) and g.get("class") not in ("NEUTRAL", "UNKNOWN")
+        },
+    }
 
 
 def load_gate_config(path: Path | str = GATE_CONFIG_PATH) -> dict[str, Any]:
