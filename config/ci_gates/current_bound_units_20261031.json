@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "current_bound_units_20261031",
+  "files": [
+    "tests/test_current_bound_units_20261031.py"
+  ],
+  "anchor": "CURRENT_BOUND_UNITS_20261031",
+  "comment": [
+    "ANCHOR: CURRENT_BOUND_UNITS_20261031 — after a healthy promote the deploy restarts every user unit running from",
+    "CURRENT (derived; §23.14 never-list + Active Trader excluded by name in code; portfolio-server on its own path),",
+    "reads back each /proc/<pid>/cwd, receipts every restart and pages P1 on a stale unit (AGENTS.md 28.1.0 §25.10).",
+    "Hermetic: fake systemctl runner and fake /proc cwd; no restarts."
+  ]
+}

@@ -88,6 +88,17 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
+Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
+operator-approved scope is the push authorization — no separate `git-push` grant for an approved-scope fast-forward
+push of the agent's own non-`main` branch; budget and never-`main`/`release/*` still bind. (2) §28.3b: each buildable
+unit is a registered task id, never prose. (3) §25.10 / §17: held PRs merge on the operator's per-PR tap (never
+GitHub), and operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound; broker rails are never
+bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy authority. §2, §2A, §7A, §23.14 and the
+broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`. Details: LESSONS L28-29/L28-30/L25-07; named
+debt OI-131/133/134.
+*(Moved here from AGENTS.md by 28.1.0, 2026-10-31, for the binding-text size limit.)*
+
 The 17.0.0 and 22.0.0 banners are not kept: the release train was retired 2026-10-27 by the operator and replaced by
 §25.10. Their history rows remain above.
 
