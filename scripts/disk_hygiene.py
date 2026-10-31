@@ -234,6 +234,8 @@ def _validate_lifecycle(standing: Mapping[str, Any], doc: Mapping[str, Any]) -> 
             raise RulesError("pressure_order")
         if type(pr.get("max_passes")) is not int or not 1 <= pr["max_passes"] <= 10:
             raise RulesError("pressure_max_passes")
+        if "daily_hour_et" in pr and (type(pr["daily_hour_et"]) is not int or not 0 <= pr["daily_hour_et"] <= 23):
+            raise RulesError("pressure_daily_hour_et")
 
 
 # ── path predicates ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -276,7 +278,9 @@ def never_touch_reason(path: Path, rules: Mapping[str, Any]) -> Optional[str]:
 
 
 #: Directory names under which credential-named files are generated test fixtures, not credentials.
-SCRATCH_FIXTURE_DIRS = ("pytest-of-*", "pytest-*", "basetemp*")
+#: pytest's own (``pytest-of-<user>``, ``pytest-<n>``), agent --basetemp roots seen on 2026-10-31 (``pt3``,
+#: ``tradeai_pytest_scratch_*``, ``ci-compat/pytest``) and pytest's per-test ``tmp_path`` dirs (``test_<name><n>``).
+SCRATCH_FIXTURE_DIRS = ("pytest", "pytest-of-*", "pytest-*", "basetemp*", "pt[0-9]*", "tradeai_pytest_scratch_*", "test_*[0-9]")
 
 
 def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
@@ -293,6 +297,8 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
         return False
     if why.startswith(("never_touch_path:", "contains_never_touch_path:")):
         return True
+    if path.is_dir():
+        return False  # a credential is a file; a dir named ``test_token_x0`` or ``bin/docker`` holds nothing by its name
     try:
         rel = path.relative_to(root)
     except ValueError:
@@ -2127,6 +2133,28 @@ def _parse_now(text: Optional[str]) -> Optional[datetime]:
     return d if d.tzinfo else None
 
 
+DAILY_STATE = "disk_hygiene_daily_latest.json"
+
+
+def _et_date(now: datetime) -> str:
+    from zoneinfo import ZoneInfo
+
+    return now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+
+
+def _daily_due(rules: Mapping[str, Any], state_root: Optional[Path], now: datetime, hour_et: int) -> bool:
+    """--scheduled: is today's (ET) full run still owed? Due from ``hour_et`` until one is recorded for today."""
+    from zoneinfo import ZoneInfo
+
+    if now.astimezone(ZoneInfo("America/New_York")).hour < hour_et:
+        return False
+    try:
+        last = json.loads((manifest_dir(rules, state_root) / DAILY_STATE).read_text())
+    except (OSError, ValueError):
+        return True
+    return not isinstance(last, dict) or last.get("date_et") != _et_date(now)
+
+
 def _receipt_lane(a: argparse.Namespace) -> str:
     return LANE_ID if a.standing and os.environ.get(RUN_ID_ENV) else (APPLY_LANE_ID if a.apply else LANE_ID)
 
@@ -2293,6 +2321,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="--standing --apply: re-plan and re-apply until used%% <= PCT, a pass removes nothing, or pressure.max_passes")
     ap.add_argument("--only-if-above", type=float, metavar="PCT",
                     help="exit 0 with a below_threshold receipt, planning nothing, when used%% <= PCT")
+    ap.add_argument("--scheduled", action="store_true",
+                    help="--standing --apply, fired hourly: the day's full run once at/after pressure.daily_hour_et (ET), "
+                         "otherwise only above pressure.trigger_pct; both re-run until pressure.target_pct")
     try:
         a = ap.parse_args(argv)
     except SystemExit as exc:
@@ -2324,6 +2355,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     if a.until_target is not None and (not (a.standing and a.apply) or not 0 < a.until_target < 100 or not isinstance(pressure, dict)):
         print(json.dumps({"ok": False, "error": "until_target_needs_standing_apply_pct_and_pressure_config"}), file=sys.stderr)
         return 2
+    daily_due = False
+    if a.scheduled:
+        if not (a.standing and a.apply) or not isinstance(pressure, dict) or "daily_hour_et" not in pressure:
+            print(json.dumps({"ok": False, "error": "scheduled_needs_standing_apply_and_pressure_daily_hour_et"}), file=sys.stderr)
+            return 2
+        daily_due = _daily_due(rules, state_root, now, pressure["daily_hour_et"])
+        a.until_target = float(pressure["target_pct"])
+        if not daily_due:
+            a.only_if_above = float(pressure["trigger_pct"])
     if a.only_if_above is not None:
         if not 0 < a.only_if_above < 100:
             print(json.dumps({"ok": False, "error": "only_if_above_pct"}), file=sys.stderr)
@@ -2354,7 +2394,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
 
     if a.apply:
-        return _apply_main(a, rules, now, state_root, wall_start, evidence, evidence_error)
+        rc = _apply_main(a, rules, now, state_root, wall_start, evidence, evidence_error)
+        if daily_due and not a.dry_run:
+            # Recorded whatever the outcome: a refused/failed day alerts once (monitor) and is retried tomorrow; only
+            # a crash before this line (no record) is retried at the next hourly fire.
+            from scripts.lib.atomic_json_store import atomic_write_json
+
+            atomic_write_json(manifest_dir(rules, state_root) / DAILY_STATE, {"date_et": _et_date(now), "exit": rc,
+                              "finished_at": datetime.now(timezone.utc).isoformat(), "run_id": os.environ.get(RUN_ID_ENV)}, indent=1)
+        return rc
 
     try:
         m = standing_plan(rules, now, evidence, measure=not a.no_measure) if a.standing else plan(rules, now, measure=not a.no_measure)

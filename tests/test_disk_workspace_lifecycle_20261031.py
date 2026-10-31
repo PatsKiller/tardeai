@@ -324,12 +324,13 @@ def test_rule_x_can_never_be_listed_for_removal(world):
         lifecycle(world, rules=("A", "X"))
 
 
-def test_committed_config_lists_c_and_r_but_stays_disabled():
+def test_committed_config_is_operator_approved_and_enabled_without_rule_a():
     rules = DH.load_rules()
     sa = rules["standing_apply"]
-    assert {"T", "C", "R"} <= set(sa["rules"]) and sa["enabled"] is False
-    assert sa["approval"]["status"] == "PENDING_OPERATOR_REVIEW"
-    assert sa["pressure"] == {**P_CFG, "_why": sa["pressure"]["_why"]}
+    assert set(sa["rules"]) == {"S", "T", "W", "C", "R"} and sa["enabled"] is True  # A: backup_enforcer owns db_backups
+    assert sa["approval"]["status"] == "APPROVED" and sa["approved_by"] == sa["approval"]["approved_by"]
+    assert "goes live complete" in sa["approval"]["source"]  # the operator's words, verbatim (§20)
+    assert sa["pressure"] == {**P_CFG, "daily_hour_et": 4, "_why": sa["pressure"]["_why"], "_schedule": sa["pressure"]["_schedule"]}
     assert sa["abandoned_worktree"]["archive_ns"] == NS
 
 
@@ -443,6 +444,10 @@ def test_pressure_flags_are_usage_errors_outside_standing_apply(world, argv):
     ("wt/config/secret_registry.yaml", False),                 # tracked repo file inside a repo copy
     ("pytest-of-u/pytest-3/t0/.env", False),                   # synthetic test fixture
     ("link.env", False),                                       # a symlink: removal unlinks the link only
+    ("pt3/test_policy_token_binds0/host.env", False),          # agent --basetemp root + per-test tmp_path
+    ("tradeai_pytest_scratch_ab/x/.env", False),
+    ("tools/bin/docker/", False),                              # a DIR named like a never-touch name
+    ("logs/prepublish-secrets.log", True),                     # a real file at large still holds
 ])
 def test_scratch_protected_holds_only_real_credentials(world, rel, holds):
     home, rules, _, _ = world
@@ -453,6 +458,8 @@ def test_scratch_protected_holds_only_real_credentials(world, rel, holds):
     target.parent.mkdir(parents=True, exist_ok=True)
     if rel == "link.env":
         target.symlink_to(root / "notes-target")
+    elif rel.endswith("/"):
+        target.mkdir(parents=True, exist_ok=True)
     elif not target.exists():
         target.write_text("fixture")
     assert DH.scratch_protected(target, root, rules) is holds
@@ -486,3 +493,48 @@ def test_opaque_processes_resolve_by_ancestry(tmp_path):
     assert out["30"]["cwd"] == "/w/tree" and not out["30"].get("opaque")
     assert out["40"]["system_started"] and out["50"]["system_started"]
     assert out["60"]["opaque"] is True
+
+
+# --- 2026-10-31: --scheduled (hourly fire, daily full run at pressure.daily_hour_et ET, pressure otherwise) --------
+
+def _sched(pworld, hour_et):
+    make, run, calls, state, rules_path, home = pworld
+    cfg = json.loads(rules_path.read_text())
+    cfg["standing_apply"]["pressure"]["daily_hour_et"] = 4
+    rules_path.write_text(json.dumps(cfg))
+    # The evidence fixtures are stamped at NOW (08:00 ET), so the clock stays NOW and the daily hour moves instead.
+    cfg["standing_apply"]["pressure"]["daily_hour_et"] = 8 + (4 - hour_et if hour_et < 4 else 0)
+    rules_path.write_text(json.dumps(cfg))
+    daily = DH.manifest_dir(DH.load_rules(rules_path, home=home), state) / DH.DAILY_STATE
+    return make, (lambda: run("--scheduled")), calls, daily
+
+
+def test_scheduled_before_daily_hour_below_trigger_plans_nothing(pworld):
+    make, fire, calls, daily = _sched(pworld, 3)
+    make(1)  # usage 75 <= trigger 80
+    rc, rep = fire()
+    assert rc == 0 and rep is None and calls["removed"] == [] and not daily.exists()
+
+
+def test_scheduled_daily_run_happens_once_then_only_under_pressure(pworld):
+    make, fire, calls, daily = _sched(pworld, 4)
+    make(1)  # usage 75: below trigger, but the day's full run is due
+    rc, rep = fire()
+    assert rc == 0 and rep is not None and len(calls["removed"]) == 1
+    assert json.loads(daily.read_text())["date_et"] == "2026-10-24"
+    make(1)  # a new idle dir; usage 75 again, the day's run is recorded: nothing
+    rc, rep2 = fire()
+    assert len(calls["removed"]) == 1
+
+
+def test_scheduled_pressure_fire_runs_to_target(pworld):
+    make, fire, calls, daily = _sched(pworld, 2)
+    make(4)  # usage 90 > trigger 80, before the daily hour
+    rc, rep = fire()
+    assert rc == 0 and rep["pressure"]["stopped_because"] == "target_reached" and len(calls["removed"]) == 3
+    assert not daily.exists()
+
+
+def test_scheduled_needs_daily_hour_config(pworld):
+    *_, run, calls, state, rules_path, home = pworld
+    assert run("--scheduled")[0] == 2

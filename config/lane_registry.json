@@ -16967,14 +16967,14 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/disk_hygiene.py",
-        "cadence": "0 4 * * 0",
+        "cadence": "17 * * * *",
         "stage": "canary",
         "wave": "W1"
       },
-      "expected_cadence_hours": 168.0,
+      "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-18",
-      "state_reason": "Operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly.' n8n-native host lane fired by tradeai-dispatcher Sunday 04:00 ET. live_arg is --plan: rules G/R/C/never-touch from config/disk_hygiene_rules.json produce a DiskHygieneManifest@v1 (path, kind, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a manifest younger than apply.manifest_max_age_hours, per-item re-validation, item and byte caps) and refuses under the n8n executor (TRADEAI_RUN_ID): destructive retention never runs from n8n (allowlist never-list, AGENTS.md §23.14). Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "state_since": "2026-10-31",
+      "state_reason": "Operator 2026-10-31 (direct session, verbatim in config/disk_hygiene_rules.json standing_apply.approval.source): 'a repeatable process that's automated so we never get here again ... alerted ... with permissions to delete the same class of items you just deleted'. n8n-native host lane fired by tradeai-dispatcher hourly at :17 ET with --standing --apply --scheduled: the day's full run at the first fire at/after standing_apply.pressure.daily_hour_et (04 ET), otherwise only when used% > pressure.trigger_pct (80); both re-plan and re-apply until pressure.target_pct (75) or max_passes. Rules S/T/W/C/R only (AGENTS.md §0 rule 6 (a), §24.12-§24.14); ~/db_backups belongs to backup_enforcer.py (§24.15). Kill switch: standing_apply.enabled=false or drop disk-hygiene from TRADEAI_N8N_RELAY_LIVE_LANES. retry_policy none: no automatic destructive retry inside a fire; the next hourly fire re-plans from fresh evidence.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/disk-hygiene_last.json",
@@ -16983,18 +16983,18 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
       "review_by": "2026-10-25",
-      "note": "Writes only <state root>/data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json and the LaneRunReceipt. Read-only git (GIT_OPTIONAL_LOCKS=0) and du over the configured roots. Sends nothing. The monitor quotes the latest manifest's reclaimable estimate. Exit 0 manifest written; 1 rules/home unreadable or write failure.",
+      "note": "Writes <state root>/data/runtime/disk_hygiene/ manifests, per-pass and per-run standing apply reports, disk_hygiene_daily_latest.json, the pressure check receipt and the LaneRunReceipt. Removes only what the reviewed standing rules select, after per-item re-validation (worktrees archived to refs/archive/closeout* first; agent scratch nested repos bundled, proof worktrees archived). Every run is digested to the operator by disk_usage_monitor (host/disk_hygiene_digest, P2: Telegram + email, quiet hours 22-07 ET); a refusal or >85% after the run is host/disk_hygiene_alert. Exit 0 ran (including below_threshold); 1 refused/failed.",
       "severity": "Low",
       "dispatch": {
         "mode": "live",
         "cron": [
-          "0 4 * * 0"
+          "17 * * * *"
         ],
         "tz": "America/New_York",
         "wave": "W1",
         "class": "hygiene",
         "priority": 3,
-        "retry_policy": "transient-2"
+        "retry_policy": "none"
       }
     },
     {
@@ -26090,22 +26090,6 @@
     }
   ],
   "pending_changes": {
-    "disk-hygiene-standing-apply-20261024": {
-      "status": "PENDING_OPERATOR_REVIEW_DISABLED",
-      "lane_id": "disk-hygiene",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "cadence": "0 4 * * 1,3,5,0",
-        "tz": "America/New_York",
-        "expected_cadence_hours": 48,
-        "minimum_gap_hours": 24,
-        "nominal_max_gap_local_hours": 48,
-        "maximum_elapsed_gap_hours": 49,
-        "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
-      },
-      "requires": "Atomic contract/admission/enable review; current operative schedule remains plan-only"
-    },
     "w8-writer-restoration-20261024": {
       "status": "DRAFT_PENDING_OWNER_REVIEW",
       "operative": false,

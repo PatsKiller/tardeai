@@ -418,20 +418,22 @@ def test_explicit_manifest_hash_mismatch_refuses_before_remover(world, monkeypat
     assert report["refused"] == "manifest_sha_mismatch" and not calls
 
 
-def test_default_committed_configuration_remains_unconfigured_and_disabled():
+def test_committed_configuration_is_the_operator_activation_and_the_old_packet_cannot_rerun(tmp_path):
+    """2026-10-31: the operator approved the standing sweep in a direct session; this PR is its activation, so the
+    2026-10-24 promotion packet (kept as history) is superseded and refuses: it only ever promotes a disabled config."""
     rules = DH.load_rules()
-    assert rules["standing_apply"]["enabled"] is False
-    assert rules["standing_apply"]["approval"]["status"] == "PENDING_OPERATOR_REVIEW"
+    assert rules["standing_apply"]["enabled"] is True and rules["standing_apply"]["approval"]["status"] == "APPROVED"
     for filename, key in (("lane_registry.json", "lane_id"), ("n8n_run_allowlist.json", "lane_id"), ("n8n_health_contracts.json", "id")):
         doc = json.loads((ROOT / "config" / filename).read_text())
         collection = doc["contracts"] if key == "id" else doc["lanes"]
         row = next(r for r in collection if r.get(key) == "disk-hygiene")
-        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["0 4 * * 0"]
-        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--plan"]
-        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and "Deletes nothing" in row["purpose"]["text"]
-        assert doc["pending_changes"]["disk-hygiene-standing-apply-20261024"]
-
-
+        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["17 * * * *"] and row["dispatch"]["retry_policy"] == "none"
+        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--standing", "--apply", "--scheduled"]
+        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and row["previous_plan_review"]["purpose"]["text"].startswith("Weekly")
+        assert "disk-hygiene-standing-apply-20261024" not in doc.get("pending_changes", {})
+    mod, packet, config, review = activation_fixture(tmp_path)
+    with pytest.raises(ValueError, match="standing_not_disabled"):
+        mod.promotion(config, packet, review)
 
 def monitor_world(world, tmp_path, monkeypatch):
     rules = world[1]
@@ -640,41 +642,6 @@ def activation_fixture(tmp_path):
     return mod,packet,config,review
 
 
-def test_activation_packet_is_default_read_only_and_requires_real_review_shape(tmp_path):
-    mod,packet,config,review = activation_fixture(tmp_path)
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    pending=dict(review,decision='PENDING_OPERATOR_REVIEW')
-    with pytest.raises(ValueError,match='operator_review_pending'):
-        mod.promotion(config,packet,pending)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}
-    rendered,digest = mod.promotion(config,packet,review)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}  # pure preview, even with synthetic approval
-    assert len(digest)==64
-    rules=json.loads(rendered['disk_hygiene_rules.json'])
-    assert rules['standing_apply']['enabled'] and rules['standing_apply']['approval']['approved_by']=='SYNTHETIC_OPERATOR_FIXTURE_ONLY'
-
-
-def test_exact_promotion_changes_cadence_contract_argv_and_enable_together(tmp_path):
-    from scripts.lib.n8n_health_contracts import validate_contract
-    mod,packet,config,review=activation_fixture(tmp_path)
-    rendered,_=mod.promotion(config,packet,review)
-    reg=json.loads(rendered['lane_registry.json']);allow=json.loads(rendered['n8n_run_allowlist.json']);contracts=json.loads(rendered['n8n_health_contracts.json'])
-    row=next(x for x in reg['lanes'] if x['lane_id']=='disk-hygiene')
-    assert row['dispatch']['cron']==['0 4 * * 1,3,5,0'] and row['dispatch']['tz']=='America/New_York'
-    assert row['expected_cadence_hours']==48 and row['dispatch']['retry_policy']=='none'
-    entry=next(x for x in allow['lanes'] if x['lane_id']=='disk-hygiene')
-    assert entry['live_arg']==['--standing','--apply']
-    contract=next(x for x in contracts['contracts'] if x['id']=='disk-hygiene')
-    assert not validate_contract(contract)
-    assert contract['status']=='REVIEWED' and contract['reviewed_by']==review['approved_by']
-    assert contract['previous_plan_review']['purpose']['text'].startswith('Weekly')
-    # Every other operative object is preserved, including data from the shared base.
-    for name,key,idkey in [('lane_registry.json','lanes','lane_id'),('n8n_run_allowlist.json','lanes','lane_id'),('n8n_health_contracts.json','contracts','id')]:
-        before=json.loads((config/name).read_text())
-        after=json.loads(rendered[name])
-        assert [r for r in before[key] if r.get(idkey)!='disk-hygiene']==[r for r in after[key] if r.get(idkey)!='disk-hygiene']
-
-
 def test_activation_refuses_changed_base_and_wrong_reviewed_draft(tmp_path):
     mod,packet,config,review=activation_fixture(tmp_path)
     with pytest.raises(ValueError,match='review_contract_hash_mismatch'):
@@ -756,29 +723,6 @@ def test_two_hour_manifest_limit_applies_to_manual_grant_and_standing(world,monk
     assert at['refused'] is None
     after=DH.apply(path,world[1],NOW+timedelta(hours=2,microseconds=1),**kwargs)
     assert after['refused']=='manifest_stale'
-
-
-def test_activation_cli_preview_and_unbound_write_leave_fixture_configs_unchanged(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    args=['--config-dir',str(config),'--review-file',str(review_path)]
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    assert mod.main(args)==0
-    assert mod.main([*args,'--write','--plan-sha256','wrong'])==1
-    assert before=={p.name:p.read_bytes() for p in config.iterdir()}
-
-
-def test_activation_cli_exact_source_write_is_contained_in_owned_fixture(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    encoded,digest=mod.promotion(config,packet,review)
-    args=['--config-dir',str(config),'--review-file',str(review_path),'--write','--plan-sha256',digest]
-    assert mod.main(args)==0
-    assert {p.name:p.read_bytes() for p in config.iterdir()}==encoded
-    assert mod.main(args)==1  # stale/replayed source write cannot pass the old pins
-    assert json.loads((ROOT/'config/disk_hygiene_rules.json').read_text())['standing_apply']['enabled'] is False
 
 
 def test_old_review_cannot_authorize_changed_source_with_regenerated_pins(tmp_path):
