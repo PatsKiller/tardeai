@@ -4,8 +4,8 @@
 Policy-Version:      29.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
+Status:              ACTIVE
+Effective-Date:      2026-10-30
 Last-Reviewed:       2026-10-30T20:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
@@ -13,8 +13,8 @@ Supersedes:          28.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**29.0.0 is PROPOSED (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes
-the rest; backups are one on host, N+1 on Drive.** Awaiting `APPROVE_AGENTS_POLICY_29_0_0 <pr> <head_sha>` (§20).
+**29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes
+the rest; backups are one on host, N+1 on Drive.** Ratified (`APPROVE_AGENTS_POLICY_29_0_0 2311 6f5db2cf`).
 §0 rule 6, §24.12, §24.14–§24.15, §17; `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** new
 deleting rules (C/R/X, backups, agent worktree close-out); `MBI_BEHAVIOR = 0`.
 
@@ -2604,7 +2604,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 29.0.0 | 2026-10-30 | PROPOSED | MAJOR | §0 rule 6 (d) backups + §24.15 (one dump on host, N+1 on Drive, verified before removal; twice-weekly growth audit). Workspace lifecycle: §24.14 (declared workspaces, `agent_claim.py close` archive-then-remove, sweep rules C/R/X, daily/weekly/pressure `--until-target`); §0 rule 6 worktree clause; §24.12 kind (e); §17 thresholds. 26.2.1 banner moved to AGENTS_HISTORY.md. |
+| 29.0.0 | 2026-10-30 | ACTIVE | MAJOR | §0 rule 6 (d) backups + §24.15 (one dump on host, N+1 on Drive, verified before removal; twice-weekly growth audit). Workspace lifecycle: §24.14 (declared workspaces, `agent_claim.py close` archive-then-remove, sweep rules C/R/X, daily/weekly/pressure `--until-target`); §0 rule 6 worktree clause; §24.12 kind (e); §17 thresholds. 26.2.1 banner moved to AGENTS_HISTORY.md. |
 | 28.0.0 | 2026-10-30 | ACTIVE | MAJOR | §24.13: rule T no longer holds every dir with a nested `.git`; registered worktrees and dirty nested repos still hold, unique nested commits are bundled (verified) into `standing_apply.agent_scratch.bundle_dir` before removal. 26.0.0 banner moved to AGENTS_HISTORY.md. |
 | 27.0.1 | 2026-10-30 | ACTIVE | MAJOR | Replaces unratified 27.0.0 (#2303). §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>`: the owning agent deletes it after its proofs, rule T reclaims the rest; worktree hand-deletion removed (rule W owns worktrees). §24.12 names the exception and adds kind (d); §24.13 states what rule T checks in code; §17 keeps rule T's threshold, pattern and enablement operator-only. |
 | 27.0.0 | 2026-10-30 | WITHDRAWN (replaced by 27.0.1, never ratified) | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | PENDING — `APPROVE_AGENTS_POLICY_27_0_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
