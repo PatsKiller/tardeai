@@ -68320,6 +68320,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Market Risk Engine projection (DSN-20261031-market-risk-ui; design home/v002, risk/v002) ──────
+    # GET: the engine snapshot when it exists, else an honest not_evaluated with the P0 options-flow block.
+    # POST ack: refused until the episodes store exists (P3-T7); the UI shows the refusal verbatim.
+    if base_path == "/api/v2/market-risk/latest" and method == "GET":
+        try:
+            from lib.market_risk_projection import build as _mr_build
+
+            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
+            _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
+            return 200, {"ok": True, "data": _json_clean(_mr_build(_snap, _radar))}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    if base_path == "/api/v2/market-risk/ack" and method == "POST":
+        try:
+            from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
+
+            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
+            _code, _out = _mr_ack(_mr_build(_snap, None), body or {})
+            return _code, _out
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):
         try:
