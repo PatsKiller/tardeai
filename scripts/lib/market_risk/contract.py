@@ -132,6 +132,7 @@ class RiskAssessment:
     sectors: dict[str, Any] = field(default_factory=dict)  # sectors.measure: stressed / resilient / rotating
     shock_type: dict[str, Any] = field(default_factory=dict)  # shock_type.classify: SYSTEMIC / SECTOR / ...
     heatmap: list[dict[str, Any]] = field(default_factory=list)  # sectors.heatmap; book exposure only when live
+    leadership: dict[str, Any] = field(default_factory=dict)  # leadership.measure: durable leadership turns
     positions: dict[str, Any] = field(default_factory=dict)  # position_stances.stances (live only)
     schema: str = SCHEMA_ASSESSMENT
 
