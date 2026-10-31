@@ -309,8 +309,11 @@ def du_bytes(path: Path, timeout_s: float) -> Optional[int]:
         proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)
     except (OSError, subprocess.SubprocessError):
         return None
+    if proc.returncode != 0:
+        return None  # du can print a partial total while failing on unreadable entries.
     try:
-        return int(proc.stdout.split()[0])
+        measured = int(proc.stdout.split()[0])
+        return measured if measured >= 0 else None
     except (IndexError, ValueError):
         return None
 
