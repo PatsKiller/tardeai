@@ -117,8 +117,12 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
     r1_sectors: list[float] = []
     for g in groups:
         idx = _index(series, list(g.get("symbols") or []))
-        row: dict[str, Any] = {"key": g["key"], "label": g["label"], "kind": g.get("kind", "sector"),
-                               "symbols": list(g.get("symbols") or [])}
+        row: dict[str, Any] = {
+            "key": g["key"],
+            "label": g["label"],
+            "kind": g.get("kind", "sector"),
+            "symbols": list(g.get("symbols") or []),
+        }
         if len(idx) < 60 or b5 is None:
             row.update(state="UNKNOWN", tier="UNKNOWN", reason_unknown="insufficient history", as_of=as_of)
             rows.append(row)
@@ -151,14 +155,27 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
             _le(z1, float(cfg.get("weak_z_1d", -1.5))) and _le(zrs1, 0.0)
         ):
             state = "WEAK"
-        elif (zrs is not None and zrs >= float(cfg.get("resilient_rs_z", 0.75))) or (
-            b5 < 0 and r5 is not None and r5 >= 0
-        ) or (b1 is not None and b1 < 0 and r1 is not None and r1 >= 0 and zrs1 is not None and zrs1 >= 1.0):
+        elif (
+            (zrs is not None and zrs >= float(cfg.get("resilient_rs_z", 0.75)))
+            or (b5 < 0 and r5 is not None and r5 >= 0)
+            or (b1 is not None and b1 < 0 and r1 is not None and r1 >= 0 and zrs1 is not None and zrs1 >= 1.0)
+        ):
             state = "RESILIENT"
         row.update(
-            r1=_rnd(r1), r5=_rnd(r5), r20=_rnd(r20), rs1=_rnd(rs1), rs5=_rnd(rs5), rs20=_rnd(rs20), z1=_rnd(z1),
-            zrs1=_rnd(zrs1), z5=_rnd(z5), zrs5=_rnd(zrs),
-            dd20=_rnd(dd20), state=state, tier=STATE_TIER[state], as_of=idx[-1][0],
+            r1=_rnd(r1),
+            r5=_rnd(r5),
+            r20=_rnd(r20),
+            rs1=_rnd(rs1),
+            rs5=_rnd(rs5),
+            rs20=_rnd(rs20),
+            z1=_rnd(z1),
+            zrs1=_rnd(zrs1),
+            z5=_rnd(z5),
+            zrs5=_rnd(zrs),
+            dd20=_rnd(dd20),
+            state=state,
+            tier=STATE_TIER[state],
+            as_of=idx[-1][0],
             evidence=f"{g['label']} {r1:+.1f}% 1d / {r5:+.1f}% 5d vs SPY {b1:+.1f}% / {b5:+.1f}%",
         )
         if g.get("kind") == "sector":
@@ -253,7 +270,9 @@ def heatmap(block: dict[str, Any] | None, exposure: dict[str, float] | None = No
     — the book's look-through exposure share to that group. Never written into repo fixtures."""
     out = []
     for r in (block or {}).get("groups") or []:
-        row = {k: r.get(k) for k in ("key", "label", "kind", "r1", "r5", "r20", "rs5", "rs20", "state", "tier", "as_of")}
+        row = {
+            k: r.get(k) for k in ("key", "label", "kind", "r1", "r5", "r20", "rs5", "rs20", "state", "tier", "as_of")
+        }
         if exposure is not None:
             row["book_exposure_share"] = exposure.get(r["key"])
         out.append(row)

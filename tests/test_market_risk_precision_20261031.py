@@ -80,9 +80,16 @@ EXPO = {
 
 def _stances(tier, shock_class, block, prior=None, reentry=None):
     return ps.stances(
-        positions=list(EXPO), exposures=EXPO, tier=tier, shock={"class": shock_class, "headline": f"Type: {shock_class}"},
-        sectors_block=block, prior=prior, reentry=reentry or [], stop_distance_pct={"GROWTH": 4.1},
-        policy=POLICY, as_of="2026-10-30T20:00:00+00:00",
+        positions=list(EXPO),
+        exposures=EXPO,
+        tier=tier,
+        shock={"class": shock_class, "headline": f"Type: {shock_class}"},
+        sectors_block=block,
+        prior=prior,
+        reentry=reentry or [],
+        stop_distance_pct={"GROWTH": 4.1},
+        policy=POLICY,
+        as_of="2026-10-30T20:00:00+00:00",
     )
 
 
@@ -110,7 +117,9 @@ def test_reentry_needs_all_required_conditions(oct30):
     calm = {**oct30, "stressed": [], "weak": []}
     partial = _stances("NONE", "SECTOR", calm, prior, _re(group_recovered=True, index_reclaimed_50d=True))
     assert partial["GROWTH"]["stance"] == "RE_ENTER_IF"
-    full = _stances("NONE", "SECTOR", calm, prior, _re(group_recovered=True, index_reclaimed_50d=True, vix_below_20d=True))
+    full = _stances(
+        "NONE", "SECTOR", calm, prior, _re(group_recovered=True, index_reclaimed_50d=True, vix_below_20d=True)
+    )
     assert full["GROWTH"]["stance"] == "RE_ENTER"
     assert ps.reentry_card(full["GROWTH"]).startswith("🟢 RE-ENTRY CONDITIONS MET")
     green = _stances("GREEN", "SECTOR", calm, prior, _re(engine_green=True))
@@ -125,13 +134,22 @@ def test_stance_payload_has_no_behaviour_fields(oct30):
 
 
 def test_lookthrough_ipo_overrides_stale_fund_entry_and_goog_alias():
-    funds = {"SPCX": {"name": "old fund", "lookthrough": "none"},
-             "GROWTH_ETF": {"weights": {"Technology": 0.5}, "industries": {"Semiconductors": 0.2}}}
+    funds = {
+        "SPCX": {"name": "old fund", "lookthrough": "none"},
+        "GROWTH_ETF": {"weights": {"Technology": 0.5}, "industries": {"Semiconductors": 0.2}},
+    }
     ipos = {"lockups": {"SPCX": {}}}
-    ex = lt.exposure_for("SPCX", ai_basket=["NVDA"], fund_cfg=funds, ipos=ipos,
-                         profiles={"SPCX": {"sector": "Industrials"}})
+    ex = lt.exposure_for(
+        "SPCX", ai_basket=["NVDA"], fund_cfg=funds, ipos=ipos, profiles={"SPCX": {"sector": "Industrials"}}
+    )
     assert ex["groups"] == {"industrials": 1.0} and "stale" in ex["note"]
-    hs = {"GROWTH_ETF": [{"holding": "NVDA", "weight": 0.12}, {"holding": "GOOG", "weight": 0.04}, {"holding": "XOM", "weight": 0.01}]}
+    hs = {
+        "GROWTH_ETF": [
+            {"holding": "NVDA", "weight": 0.12},
+            {"holding": "GOOG", "weight": 0.04},
+            {"holding": "XOM", "weight": 0.01},
+        ]
+    }
     g = lt.exposure_for("GROWTH_ETF", ai_basket=["NVDA", "GOOGL"], fund_cfg=funds, ipos=ipos, holdings=hs)
     assert g["ai_share"] == pytest.approx(0.16) and g["groups"]["semis"] == 0.2
     none = lt.exposure_for("SPCX", ai_basket=[], fund_cfg=funds, ipos={})
@@ -160,12 +178,33 @@ def test_playbook_band_comes_from_house_policy_not_literals(oct30):
 def test_playbook_gap_implied_open_wash_sale_and_guards():
     stance = {"stance": "TRIM", "re_enter_if": [{"key": "vix_below_20d", "met": False, "text": "VIX below its 20-day"}]}
     bars = _bars([0.1] * 100 + [-5.0, 0.2, -4.5] + [0.1] * 50)
-    hold = [{"holding": "AMZN", "weight": 0.05}, {"holding": "GOOG", "weight": 0.04}, {"holding": "NVDA", "weight": 0.12}]
-    band = {"family": "f", "family_label": "Growth", "stop_band_pct": [10.0, 12.0], "trail_band_pct": [10.0, 12.0],
-            "posture_applied": None, "posture_source": None}
-    kw = dict(symbol="GROWTH", tier="ORANGE", stance=stance, stop_distance_pct=4.1, bars=bars, holdings=hold,
-              after_hours_moves={"AMZN": -6.0, "GOOGL": -2.0, "NVDA": -1.0}, hedge={"symbol": "PSQ", "state": "GREEN"},
-              cluster=["GROWTH", "SEMIS_FUND"], policy=POLICY, as_of=None, band=band)
+    hold = [
+        {"holding": "AMZN", "weight": 0.05},
+        {"holding": "GOOG", "weight": 0.04},
+        {"holding": "NVDA", "weight": 0.12},
+    ]
+    band = {
+        "family": "f",
+        "family_label": "Growth",
+        "stop_band_pct": [10.0, 12.0],
+        "trail_band_pct": [10.0, 12.0],
+        "posture_applied": None,
+        "posture_source": None,
+    }
+    kw = dict(
+        symbol="GROWTH",
+        tier="ORANGE",
+        stance=stance,
+        stop_distance_pct=4.1,
+        bars=bars,
+        holdings=hold,
+        after_hours_moves={"AMZN": -6.0, "GOOGL": -2.0, "NVDA": -1.0},
+        hedge={"symbol": "PSQ", "state": "GREEN"},
+        cluster=["GROWTH", "SEMIS_FUND"],
+        policy=POLICY,
+        as_of=None,
+        band=band,
+    )
     ira = pp.build(account_types=["ira"], **kw)
     assert ira["gap_risk"]["gapped_through"] == 2
     assert ira["implied_open"]["implied_open_pct"] == pytest.approx(-0.5)
@@ -181,8 +220,11 @@ def test_playbook_gap_implied_open_wash_sale_and_guards():
 
 def test_book_clusters_same_ai_bet():
     r = [0.01 * ((i % 7) - 3) for i in range(60)]
-    cl = pp.book_clusters({"A": r, "B": [x * 1.1 for x in r], "C": [((i * 37) % 11 - 5) / 100 for i in range(60)]},
-                          {"A": ["ai_basket"], "D": ["ai_basket"]}, 0.8)
+    cl = pp.book_clusters(
+        {"A": r, "B": [x * 1.1 for x in r], "C": [((i * 37) % 11 - 5) / 100 for i in range(60)]},
+        {"A": ["ai_basket"], "D": ["ai_basket"]},
+        0.8,
+    )
     assert ["A", "B", "D"] in cl
 
 
@@ -190,8 +232,17 @@ def test_card_leads_with_shock_type_and_sectors(oct30):
     from scripts.lib.market_risk import alerts
 
     st = shock_type.classify(oct30, [], POLICY)
-    text = alerts.render({"tier": "ORANGE", "score": 61, "confirming": 3, "contributors": [], "sectors": oct30,
-                          "shock_type": st, "positions": _stances("ORANGE", "SECTOR", oct30)})
+    text = alerts.render(
+        {
+            "tier": "ORANGE",
+            "score": 61,
+            "confirming": 3,
+            "contributors": [],
+            "sectors": oct30,
+            "shock_type": st,
+            "positions": _stances("ORANGE", "SECTOR", oct30),
+        }
+    )
     lines = text.splitlines()
     assert lines[1].startswith("Type: SECTOR") and lines[2].startswith("Hit: ")
     assert any(x.startswith("GROWTH: CIO trim review") for x in lines)
@@ -202,10 +253,68 @@ def test_projection_and_cio_facts_carry_precision(oct30):
     from scripts.lib.market_risk import cio_context
 
     st = shock_type.classify(oct30, [], POLICY)
-    doc = {"schema": c.SCHEMA_ASSESSMENT, "as_of": "2026-10-30T20:00:00+00:00", "tier": "ORANGE", "market_tier": "ORANGE",
-           "score": 61.0, "confirming": 3, "observations": [], "contributors": [], "sectors": oct30, "shock_type": st,
-           "heatmap": sectors.heatmap(oct30), "positions": {}}
+    doc = {
+        "schema": c.SCHEMA_ASSESSMENT,
+        "as_of": "2026-10-30T20:00:00+00:00",
+        "tier": "ORANGE",
+        "market_tier": "ORANGE",
+        "score": 61.0,
+        "confirming": 3,
+        "observations": [],
+        "contributors": [],
+        "sectors": oct30,
+        "shock_type": st,
+        "heatmap": sectors.heatmap(oct30),
+        "positions": {},
+    }
     snap = mp.snapshot_from_assessment(doc)
     assert snap["shock_type"]["class"] == "SECTOR" and snap["heatmap"]
     facts = cio_context.ask_facts({**snap, "state": "evaluated"})
     assert facts["shock_type"]["class"] == "SECTOR" and "Technology" in facts["sectors"]["stressed"]
+
+
+def test_weak_groups_count_only_from_orange():
+    block = {
+        "groups": [{"key": "ai_basket", "label": "AI basket", "state": "WEAK"}],
+        "stressed": [],
+        "weak": ["AI basket"],
+        "resilient": [],
+    }
+    ex = {"GROWTH": {"groups": {"ai_basket": 0.44}}}
+    kw = dict(
+        positions=["GROWTH"],
+        exposures=ex,
+        shock={"class": "SECTOR"},
+        sectors_block=block,
+        prior=None,
+        reentry=[],
+        stop_distance_pct=None,
+        policy=POLICY,
+        as_of=None,
+    )
+    assert ps.stances(tier="YELLOW", **kw)["GROWTH"]["stance"] == "HOLD"
+    assert ps.stances(tier="RED", **kw)["GROWTH"]["stance"] == "EXIT"
+
+
+def test_moves_with_is_direct_not_transitive():
+    a = [0.01 * ((i % 7) - 3) for i in range(60)]
+    b = [x * 1.2 for x in a]
+    c2 = [0.5 * x + 0.01 * ((i * 13) % 5 - 2) for i, x in enumerate(b)]
+    got = pp.moves_with("A", {"A": a, "B": b, "C": c2}, {"A": ["ai_basket"], "D": ["ai_basket"], "C": []}, 0.95)
+    assert "B" in got and "D" in got and "C" not in got
+
+
+def test_no_broker_stop_is_said():
+    pb = {
+        "symbol": "X",
+        "stance": "TRIM",
+        "house": {"family_label": "f", "stop_band_pct": [5, 8], "trail_band_pct": [6, 8], "posture_applied": None},
+        "broker_stop_distance_pct": None,
+        "gap_risk": {},
+        "implied_open": {},
+        "session_facts": [],
+        "moves_with": [],
+        "hedge": None,
+        "wash_sale_note": None,
+    }
+    assert "No broker stop is observed on this position." in pp.render_lines(pb)

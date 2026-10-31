@@ -171,10 +171,14 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             else None,
             "probabilities": mr.get("probabilities"),
             "stale": bool(mr.get("stale")),
-            "shock_type": {k: (mr.get("shock_type") or {}).get(k) for k in ("class", "headline", "confidence", "evidence", "as_of")}
+            "shock_type": {
+                k: (mr.get("shock_type") or {}).get(k) for k in ("class", "headline", "confidence", "evidence", "as_of")
+            }
             if isinstance(mr.get("shock_type"), dict)
             else None,
-            "sectors": {k: (mr.get("sectors") or {}).get(k) for k in ("stressed", "weak", "resilient", "rotating", "as_of")}
+            "sectors": {
+                k: (mr.get("sectors") or {}).get(k) for k in ("stressed", "weak", "resilient", "rotating", "as_of")
+            }
             if isinstance(mr.get("sectors"), dict)
             else None,
             "position_stances": {

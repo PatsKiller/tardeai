@@ -53,18 +53,34 @@ def reentry_conditions(
     (one per completed session), used for 'for N sessions' conditions."""
     n = int(cfg.get("recovered_sessions", 2))
     recent = (history or [])[-n:]
-    group_ok = bool(flagged_groups) and len(recent) >= n and all(
-        all(_group_state(h.get("sectors") or {}, g) not in ("STRESS", "WEAK") for g in flagged_groups) for h in recent
+    group_ok = (
+        bool(flagged_groups)
+        and len(recent) >= n
+        and all(
+            all(_group_state(h.get("sectors") or {}, g) not in ("STRESS", "WEAK") for g in flagged_groups)
+            for h in recent
+        )
     )
     tier_ok = len(recent) >= n and all(RANK.get(str(h.get("tier")), 0) < RANK["YELLOW"] for h in recent)
     return [
-        {"key": "group_recovered", "met": group_ok,
-         "text": f"{', '.join(flagged_groups) or 'flagged groups'} out of stress for {n} sessions"},
+        {
+            "key": "group_recovered",
+            "met": group_ok,
+            "text": f"{', '.join(flagged_groups) or 'flagged groups'} out of stress for {n} sessions",
+        },
         {"key": "market_below_yellow", "met": tier_ok, "text": f"market risk below YELLOW for {n} sessions"},
-        {"key": "index_reclaimed_50d", "met": bool(index_above_50d), "known": index_above_50d is not None,
-         "text": f"{cfg.get('reclaim_symbol', 'QQQ')} back above its 50-day average"},
-        {"key": "vix_below_20d", "met": bool(vix_below_20d), "known": vix_below_20d is not None,
-         "text": "VIX below its 20-day average"},
+        {
+            "key": "index_reclaimed_50d",
+            "met": bool(index_above_50d),
+            "known": index_above_50d is not None,
+            "text": f"{cfg.get('reclaim_symbol', 'QQQ')} back above its 50-day average",
+        },
+        {
+            "key": "vix_below_20d",
+            "met": bool(vix_below_20d),
+            "known": vix_below_20d is not None,
+            "text": "VIX below its 20-day average",
+        },
         {"key": "engine_green", "met": str(engine_tier) == "GREEN", "text": "market risk GREEN"},
     ]
 
@@ -86,6 +102,9 @@ def stances(
     min_exp = float(cfg.get("min_exposure", 0.25))
     key_by_label = {r.get("label"): r.get("key") for r in (sectors_block or {}).get("groups") or []}
     stressed_keys = [key_by_label.get(x) for x in (sectors_block or {}).get("stressed") or []]
+    if RANK.get(str(tier), 0) >= RANK.get(str(cfg.get("count_weak_at") or "ORANGE"), 3):
+        # stated rule: at ORANGE and above a WEAK group counts too — the market is already confirming the stress
+        stressed_keys += [key_by_label.get(x) for x in (sectors_block or {}).get("weak") or []]
     stressed_keys = [k for k in stressed_keys if k]
     systemic = str((shock or {}).get("class")) == "SYSTEMIC"
     prior = prior or {}
@@ -102,7 +121,10 @@ def stances(
         prev_st = str(prev.get("stance") or "HOLD")
         reasons: list[str] = []
         if hit:
-            reasons.append("exposed to " + ", ".join(f"{g} {round(v * 100)}%" for g, v in sorted(hit.items(), key=lambda kv: -kv[1])))
+            reasons.append(
+                "exposed to "
+                + ", ".join(f"{g} {round(v * 100)}%" for g, v in sorted(hit.items(), key=lambda kv: -kv[1]))
+            )
         if ex.get("reporting"):
             reasons.append(f"{len(ex['reporting'])} holding(s) report in the earnings window")
         if stop_distance_pct and sym in stop_distance_pct:
@@ -116,12 +138,22 @@ def stances(
             st, why = TIER_STANCE[str(tier)], reasons
         elif prev_st in ("TRIM", "EXIT", "RE_ENTER_IF"):
             # flagged earlier: stays RE_ENTER_IF until the conditions are met
-            fired = [k for k in or_any if met.get(k)] or ([k for k in req_all if met.get(k)] if all(met.get(k) for k in req_all) else [])
+            fired = [k for k in or_any if met.get(k)] or (
+                [k for k in req_all if met.get(k)] if all(met.get(k) for k in req_all) else []
+            )
             st = "RE_ENTER" if fired else "RE_ENTER_IF"
-            why = ["conditions met: " + ", ".join(fired)] if fired else ["waiting: " + ", ".join(r["text"] for r in reentry if r["key"] in req_all and not r.get("met"))]
+            why = (
+                ["conditions met: " + ", ".join(fired)]
+                if fired
+                else ["waiting: " + ", ".join(r["text"] for r in reentry if r["key"] in req_all and not r.get("met"))]
+            )
         else:
             st = "HOLD"
-            why = ["defensive group holding up" if any(_group_state(sectors_block, g) == "RESILIENT" for g in groups) else "not exposed to the stressed groups"]
+            why = [
+                "defensive group holding up"
+                if any(_group_state(sectors_block, g) == "RESILIENT" for g in groups)
+                else "not exposed to the stressed groups"
+            ]
         rec = {
             "symbol": sym,
             "stance": st,
@@ -129,7 +161,9 @@ def stances(
             "reasons": [r for r in why if r],
             "since": prev.get("since") if prev_st == st else as_of,
             "exposure_to_stressed": round(share, 4),
-            "re_enter_if": [r for r in reentry if r["key"] in req_all + or_any] if st in ("TRIM", "EXIT", "RE_ENTER_IF", "RE_ENTER") else [],
+            "re_enter_if": [r for r in reentry if r["key"] in req_all + or_any]
+            if st in ("TRIM", "EXIT", "RE_ENTER_IF", "RE_ENTER")
+            else [],
             "flagged_groups": sorted(hit) or prev.get("flagged_groups") or [],
             "as_of": as_of,
         }
@@ -152,6 +186,8 @@ def reentry_card(rec: dict[str, Any]) -> str:
     fired = [r["text"] for r in rec.get("re_enter_if") or [] if r.get("met")]
     return (
         f"🟢 RE-ENTRY CONDITIONS MET · {rec['symbol']}\n"
-        + "Fired: " + "; ".join(fired) + "\n"
+        + "Fired: "
+        + "; ".join(fired)
+        + "\n"
         + "CIO stance: RE_ENTER (advisory). Your decision; no order, size or price is implied."
     )

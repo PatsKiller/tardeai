@@ -465,6 +465,7 @@ positions:
   # the whole book when the shock type is SYSTEMIC. Re-entry needs the flagged groups out of stress for 2 completed
   # sessions AND the index back above its 50-day AND VIX below its 20-day — or the engine reaching GREEN.
   min_exposure: 0.25
+  count_weak_at: ORANGE        # at ORANGE and above a WEAK group counts toward exposure as well as a STRESSED one
   recovered_sessions: 2
   reclaim_symbol: QQQ
   reenter_require_all: [group_recovered, index_reclaimed_50d, vix_below_20d]

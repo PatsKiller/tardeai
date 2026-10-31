@@ -49,14 +49,19 @@ def gap_risk(bars: list[dict[str, Any]], stop_distance_pct: float | None, lookba
     """How often the open gapped through a stop this far below the prior close, in the position's own history."""
     if stop_distance_pct is None:
         return {"known": False, "reason": "no broker stop distance"}
-    rows = [r for r in bars if r.get("open") is not None and r.get("close") is not None][-(lookback + 1):]
+    rows = [r for r in bars if r.get("open") is not None and r.get("close") is not None][-(lookback + 1) :]
     gaps = [(rows[i]["open"] / rows[i - 1]["close"] - 1.0) * 100.0 for i in range(1, len(rows)) if rows[i - 1]["close"]]
     if len(gaps) < 60:
         return {"known": False, "reason": f"only {len(gaps)} sessions of open/close history"}
     k = sum(1 for g in gaps if g <= -abs(stop_distance_pct))
     worst = min(gaps)
-    return {"known": True, "sessions": len(gaps), "gapped_through": k, "worst_gap_pct": round(worst, 2),
-            "text": f"Stop at {abs(stop_distance_pct):.1f}% below; in the last {len(gaps)} sessions the open gapped past it {k} time(s) (worst {worst:.1f}%)."}
+    return {
+        "known": True,
+        "sessions": len(gaps),
+        "gapped_through": k,
+        "worst_gap_pct": round(worst, 2),
+        "text": f"Stop at {abs(stop_distance_pct):.1f}% below; in the last {len(gaps)} sessions the open gapped past it {k} time(s) (worst {worst:.1f}%).",
+    }
 
 
 def implied_open(holdings: list[dict[str, Any]], moves: dict[str, float]) -> dict[str, Any]:
@@ -76,8 +81,38 @@ def implied_open(holdings: list[dict[str, Any]], moves: dict[str, float]) -> dic
         return {"known": False, "reason": "no extended-hours prints for the holdings"}
     used.sort(key=lambda u: -abs(u["holding_pct"] * u["move_pct"]))
     desc = ", ".join(f"{u['holding']} {u['holding_pct']}% of fund {u['move_pct']:+.1f}%" for u in used[:5])
-    return {"known": True, "implied_open_pct": round(impact, 2), "coverage_pct": round(w_total * 100, 1), "movers": used,
-            "text": f"implied open {impact:+.2f}% from {len(used)} after-hours movers ({desc}); covers {w_total * 100:.0f}% of the fund"}
+    return {
+        "known": True,
+        "implied_open_pct": round(impact, 2),
+        "coverage_pct": round(w_total * 100, 1),
+        "movers": used,
+        "text": f"implied open {impact:+.2f}% from {len(used)} after-hours movers ({desc}); covers {w_total * 100:.0f}% of the fund",
+    }
+
+
+def moves_with(
+    symbol: str, returns: dict[str, list[float]], groups: dict[str, list[str]], min_corr: float
+) -> list[str]:
+    """Positions that move WITH this one in this shock — direct pairs only (no transitive chaining): the same flagged
+    group, or daily-return correlation >= min_corr over the window."""
+    out = []
+    mine = set(groups.get(symbol) or [])
+    for other in sorted(set(returns) | set(groups)):
+        if other == symbol:
+            continue
+        if mine & set(groups.get(other) or []):
+            out.append(other)
+            continue
+        a, b = returns.get(symbol) or [], returns.get(other) or []
+        n = min(len(a), len(b))
+        if n >= 20:
+            a, b = a[-n:], b[-n:]
+            ma, mb = mean(a), mean(b)
+            va = math.sqrt(sum((x - ma) ** 2 for x in a))
+            vb = math.sqrt(sum((y - mb) ** 2 for y in b))
+            if va and vb and sum((x - ma) * (y - mb) for x, y in zip(a, b)) / (va * vb) >= min_corr:
+                out.append(other)
+    return out
 
 
 def book_clusters(returns: dict[str, list[float]], groups: dict[str, list[str]], min_corr: float) -> list[list[str]]:
@@ -102,13 +137,13 @@ def book_clusters(returns: dict[str, list[float]], groups: dict[str, list[str]],
         return x
 
     for i, a in enumerate(syms):
-        for b in syms[i + 1:]:
+        for b in syms[i + 1 :]:
             r = corr(returns[a], returns[b])
             if r is not None and r >= min_corr:
                 parent[find(a)] = find(b)
     allsyms = list(parent)
     for i, a in enumerate(allsyms):
-        for b in allsyms[i + 1:]:
+        for b in allsyms[i + 1 :]:
             if set(groups.get(a) or []) & set(groups.get(b) or []):
                 parent[find(a)] = find(b)
     out: dict[str, list[str]] = {}
@@ -173,10 +208,16 @@ def render_lines(pb: dict[str, Any]) -> list[str]:
         f"stop {h['stop_band_pct'][0]}–{h['stop_band_pct'][1]}%, trail {h['trail_band_pct'][0]}–{h['trail_band_pct'][1]}%"
         + (f" (tier posture {h['posture_applied']}, operator-set)" if h.get("posture_applied") else ""),
     ]
+    if pb.get("broker_stop_distance_pct") is None:
+        lines.append("No broker stop is observed on this position.")
     if pb.get("broker_stop_distance_pct") is not None:
         lines.append(
             f"Broker stop {pb['broker_stop_distance_pct']}% below last"
-            + (" — wider than the house band at this tier" if pb.get("outside_house_band") else " — inside the house band")
+            + (
+                " — wider than the house band at this tier"
+                if pb.get("outside_house_band")
+                else " — inside the house band"
+            )
         )
     if (pb.get("gap_risk") or {}).get("known"):
         lines.append(pb["gap_risk"]["text"])

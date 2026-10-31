@@ -75,24 +75,40 @@ def exposure_for(
     out: dict[str, Any] = {"symbol": sym, "groups": {}, "ai_share": None, "reporting": [], "basis": None, "note": ""}
     fund = fund_cfg.get(sym)
     if fund and sym in ipo_syms:
-        out["note"] = f"fund_lookthrough.json entry for {sym} ({fund.get('name')}) is stale: {sym} is a listed IPO; treated as a stock"
+        out["note"] = (
+            f"fund_lookthrough.json entry for {sym} ({fund.get('name')}) is stale: {sym} is a listed IPO; treated as a stock"
+        )
         fund = None
     if fund:
         if str(fund.get("lookthrough") or "") == "none" or not fund.get("weights"):
-            out.update(basis="fund_unknown", note=f"no factsheet decomposition for {sym}: {fund.get('why') or 'not decomposed'}")
+            out.update(
+                basis="fund_unknown",
+                note=f"no factsheet decomposition for {sym}: {fund.get('why') or 'not decomposed'}",
+            )
             return out
         groups: dict[str, float] = {}
         for sector, w in (fund.get("weights") or {}).items():
             g = SECTOR_TO_GROUP.get(str(sector).lower())
             if g:
                 groups[g] = groups.get(g, 0.0) + float(w)
-        semis = sum(float(w) for ind, w in (fund.get("industries") or {}).items() if any(k in ind.lower() for k in SEMI_INDUSTRIES))
+        semis = sum(
+            float(w)
+            for ind, w in (fund.get("industries") or {}).items()
+            if any(k in ind.lower() for k in SEMI_INDUSTRIES)
+        )
         if semis:
             groups["semis"] = round(semis, 4)
-        out.update(groups={k: round(v, 4) for k, v in groups.items()}, basis=f"factsheet ({fund.get('source') or 'fund_lookthrough.json'})")
+        out.update(
+            groups={k: round(v, 4) for k, v in groups.items()},
+            basis=f"factsheet ({fund.get('source') or 'fund_lookthrough.json'})",
+        )
         hs = holdings.get(sym) or []
         if hs:
-            ai = sum(float(h.get("weight") or 0) for h in hs if ALIASES.get(str(h.get("holding")).upper(), str(h.get("holding")).upper()) in basket)
+            ai = sum(
+                float(h.get("weight") or 0)
+                for h in hs
+                if ALIASES.get(str(h.get("holding")).upper(), str(h.get("holding")).upper()) in basket
+            )
             out["ai_share"] = round(ai, 4)
             out["groups"]["ai_basket"] = round(ai, 4)
             out["reporting"] = sorted({str(h.get("holding")).upper() for h in hs} & reporting_soon)

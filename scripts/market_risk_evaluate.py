@@ -103,6 +103,14 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     a = scoring.apply_uplift(a, portfolio, policy)
     a = explain.explain(a, policy)
     attach_precision(a, ctx, policy)
+    if portfolio is not None and os.environ.get("MRE_BOOK_PRECISION", "1") == "1":
+        try:  # live only: the backtests and replays pass no portfolio context
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.attach(a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn)
+        except Exception as exc:  # noqa: BLE001 — the book layer is additive; the tier stands without it
+            a.positions = {"_note": f"book precision unavailable: {type(exc).__name__}: {exc}"}
     return a
 
 

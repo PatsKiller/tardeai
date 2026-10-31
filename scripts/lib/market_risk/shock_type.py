@@ -39,11 +39,19 @@ def _group(block: dict[str, Any], key: str) -> dict[str, Any]:
     return {}
 
 
-def classify(block: dict[str, Any] | None, observations: list[dict[str, Any]], policy: dict[str, Any]) -> dict[str, Any]:
+def classify(
+    block: dict[str, Any] | None, observations: list[dict[str, Any]], policy: dict[str, Any]
+) -> dict[str, Any]:
     cfg = (policy or {}).get("shock_type") or {}
     if not block or not block.get("sectors_measured"):
-        return {"class": "UNKNOWN", "label": "not measured", "confidence": None, "evidence": [],
-                "reason_unknown": "no sector data", "as_of": (block or {}).get("as_of")}
+        return {
+            "class": "UNKNOWN",
+            "label": "not measured",
+            "confidence": None,
+            "evidence": [],
+            "reason_unknown": "no sector data",
+            "as_of": (block or {}).get("as_of"),
+        }
     n = int(block.get("sectors_measured") or 0)
     down = int(block.get("sectors_down") or 0)
     frac_down = down / n if n else 0.0
@@ -72,40 +80,71 @@ def classify(block: dict[str, Any] | None, observations: list[dict[str, Any]], p
 
     classes: dict[str, list[dict[str, Any]]] = {
         "SYSTEMIC": [
-            ind(frac_down >= float(sys_c.get("min_frac_sectors_down", 0.8)), f"{down} of {n} sectors down over 5 sessions"),
+            ind(
+                frac_down >= float(sys_c.get("min_frac_sectors_down", 0.8)),
+                f"{down} of {n} sectors down over 5 sessions",
+            ),
             ind(None if deff.get("r5") is None else float(deff["r5"]) < 0, f"defensives {deff.get('r5')}% 5d"),
             ind(z_ge(corr_z, float(sys_c.get("min_corr_z", 1.0))), f"cross-sector correlation z {corr_z}"),
-            ind(_obs_state(observations, "volatility") == "STRESS", f"volatility {_obs_state(observations, 'volatility')}"),
+            ind(
+                _obs_state(observations, "volatility") == "STRESS",
+                f"volatility {_obs_state(observations, 'volatility')}",
+            ),
         ],
         "SECTOR": [
-            ind(0 < len(stressed) <= int(sec_c.get("max_stressed_groups", 5)), f"stressed: {', '.join(stressed) or 'none'}"),
-            ind(len(resilient) >= int(sec_c.get("min_resilient_sectors", 3)) or deff.get("state") == "RESILIENT",
-                f"holding up: {', '.join(resilient) or 'none'}; defensives {deff.get('state')}"),
+            ind(
+                0 < len(stressed) <= int(sec_c.get("max_stressed_groups", 5)),
+                f"stressed: {', '.join(stressed) or 'none'}",
+            ),
+            ind(
+                len(resilient) >= int(sec_c.get("min_resilient_sectors", 3)) or deff.get("state") == "RESILIENT",
+                f"holding up: {', '.join(resilient) or 'none'}; defensives {deff.get('state')}",
+            ),
             ind(z_ge(disp_z, float(sec_c.get("min_dispersion_z", 1.0))), f"sector dispersion z {disp_z}"),
             ind(frac_down < float(sys_c.get("min_frac_sectors_down", 0.8)), f"{n - down} of {n} sectors not down"),
         ],
         "FACTOR": [
-            ind(None if gv is None and sl is None else (
-                (gv is not None and abs(float(gv)) >= float(fac_c.get("min_abs_z", 2.0)))
-                or (sl is not None and abs(float(sl)) >= float(fac_c.get("min_abs_z", 2.0)))),
-                f"growth-value z {gv}, small-large z {sl}"),
+            ind(
+                None
+                if gv is None and sl is None
+                else (
+                    (gv is not None and abs(float(gv)) >= float(fac_c.get("min_abs_z", 2.0)))
+                    or (sl is not None and abs(float(sl)) >= float(fac_c.get("min_abs_z", 2.0)))
+                ),
+                f"growth-value z {gv}, small-large z {sl}",
+            ),
             ind(frac_down < float(sys_c.get("min_frac_sectors_down", 0.8)), f"{down} of {n} sectors down"),
         ],
         "RATES": [
-            ind(z_le(rates.get("z5"), float((cfg.get("rates") or {}).get("bond_stress_z", -1.5))),
-                f"long bonds 5d z {rates.get('z5')}"),
-            ind(z_ge(dollar.get("z5"), float((cfg.get("rates") or {}).get("dollar_z", 1.5))),
-                f"dollar 5d z {dollar.get('z5')}"),
-            ind(_obs_state(observations, "macro_credit") in ("WARN", "STRESS"), f"macro {_obs_state(observations, 'macro_credit')}"),
+            ind(
+                z_le(rates.get("z5"), float((cfg.get("rates") or {}).get("bond_stress_z", -1.5))),
+                f"long bonds 5d z {rates.get('z5')}",
+            ),
+            ind(
+                z_ge(dollar.get("z5"), float((cfg.get("rates") or {}).get("dollar_z", 1.5))),
+                f"dollar 5d z {dollar.get('z5')}",
+            ),
+            ind(
+                _obs_state(observations, "macro_credit") in ("WARN", "STRESS"),
+                f"macro {_obs_state(observations, 'macro_credit')}",
+            ),
         ],
         "CREDIT": [
-            ind(z_le((factors.get("credit") or {}).get("z"), float((cfg.get("credit") or {}).get("hy_rel_z", -1.5))),
-                f"high yield vs Treasuries 5d spread z {(factors.get('credit') or {}).get('z')}"),
-            ind(_obs_state(observations, "macro_credit") == "STRESS", f"macro/credit {_obs_state(observations, 'macro_credit')}"),
+            ind(
+                z_le((factors.get("credit") or {}).get("z"), float((cfg.get("credit") or {}).get("hy_rel_z", -1.5))),
+                f"high yield vs Treasuries 5d spread z {(factors.get('credit') or {}).get('z')}",
+            ),
+            ind(
+                _obs_state(observations, "macro_credit") == "STRESS",
+                f"macro/credit {_obs_state(observations, 'macro_credit')}",
+            ),
         ],
         "EVENT": [
             ind(_obs_state(observations, "event") == "STRESS", f"event {_obs_state(observations, 'event')}"),
-            ind(0 < len(stressed) <= int(sec_c.get("max_stressed_groups", 5)), f"stress concentrated: {', '.join(stressed) or 'none'}"),
+            ind(
+                0 < len(stressed) <= int(sec_c.get("max_stressed_groups", 5)),
+                f"stress concentrated: {', '.join(stressed) or 'none'}",
+            ),
         ],
     }
     scores = {}

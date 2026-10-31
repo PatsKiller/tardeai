@@ -93,7 +93,9 @@ def run(
         from scripts.lib.market_risk.reader import PgReader
 
         sec = policy.get("sectors") or {}
-        syms = {s for g in sec.get("groups") or [] for s in g.get("symbols") or []} | set(sec.get("factor_symbols") or [])
+        syms = {s for g in sec.get("groups") or [] for s in g.get("symbols") or []} | set(
+            sec.get("factor_symbols") or []
+        )
         reader = CompositeReader(PgReader(), fixture, syms - {"SPY", "QQQ", "^VIX"})
     cfg = policy.get("positions") or {}
     exposures = _exposures(book, policy)
@@ -121,15 +123,31 @@ def run(
             cfg=cfg,
         )
         st = ps.stances(
-            positions=list(book), exposures=exposures, tier=str(doc.get("tier")), shock=doc.get("shock_type") or {},
-            sectors_block=block, prior=prior_st, reentry=reentry, stop_distance_pct=None, policy=policy,
+            positions=list(book),
+            exposures=exposures,
+            tier=str(doc.get("tier")),
+            shock=doc.get("shock_type") or {},
+            sectors_block=block,
+            prior=prior_st,
+            reentry=reentry,
+            stop_distance_pct=None,
+            policy=policy,
             as_of=now.isoformat(),
         )
         if d >= start:
-            rows.append({"date": d.isoformat(), "when": when, "tier": doc.get("tier"), "market_tier": doc.get("market_tier"), "score": doc.get("score"),
-                         "shock": (doc.get("shock_type") or {}).get("class"),
-                         "hit": block.get("stressed"), "holding": block.get("resilient"),
-                         "stances": {k: v["stance"] for k, v in st.items()}})
+            rows.append(
+                {
+                    "date": d.isoformat(),
+                    "when": when,
+                    "tier": doc.get("tier"),
+                    "market_tier": doc.get("market_tier"),
+                    "score": doc.get("score"),
+                    "shock": (doc.get("shock_type") or {}).get("class"),
+                    "hit": block.get("stressed"),
+                    "holding": block.get("resilient"),
+                    "stances": {k: v["stance"] for k, v in st.items()},
+                }
+            )
         if when == "close":
             hist.append({"tier": doc.get("tier"), "sectors": block})
         prior_doc, prior_st = doc, st
@@ -143,7 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--book", required=True)
     ap.add_argument("--overlay")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--live", action="store_true", help="categories from the live DB (read-only), sectors from fixtures")
+    ap.add_argument(
+        "--live", action="store_true", help="categories from the live DB (read-only), sectors from fixtures"
+    )
     ap.add_argument("--opens", action="store_true", help="also evaluate at 09:31 ET each session")
     a = ap.parse_args(argv)
     book = dict(x.split("=", 1) for x in a.book.split(","))
@@ -152,7 +172,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(rows, indent=1))
     else:
         for r in rows:
-            print(f"{r['date']} {r['when']:5} {r['tier']:7} {r['shock'] or '-':9} hit={r['hit']} " + " ".join(f"{k}:{v}" for k, v in r["stances"].items()))
+            print(
+                f"{r['date']} {r['when']:5} {r['tier']:7} {r['shock'] or '-':9} hit={r['hit']} "
+                + " ".join(f"{k}:{v}" for k, v in r["stances"].items())
+            )
     return 0
 
 
