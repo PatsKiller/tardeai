@@ -22,7 +22,7 @@ from typing import Any
 SCHEMA = "MarketRiskProjection@v1"
 SNAPSHOT_SCHEMA = "MarketRiskSnapshot@v1"
 ASSESSMENT_SCHEMA = "MarketRiskAssessment@v1"
-TIERS = ("GREEN", "BLUE", "YELLOW", "ORANGE", "RED")
+TIERS = ("GREEN", "NONE", "BLUE", "YELLOW", "ORANGE", "RED")  # NONE = evaluated, nothing to flag (review #2383, N6)
 ACTIONABLE = ("ORANGE", "RED")
 # The ONE path the engine writes and every consumer reads, relative to a project root whose data/runtime is the
 # persistent-state runtime dir (release dirs symlink it). Review of #2362, B1: the evaluator wrote
@@ -84,12 +84,11 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
     if port:
         book = {
             "vulnerability": port.get("vulnerability"),
+            # budget NAMES only: actual and limit are book-weight percentages and never leave the engine (review #2383, M3)
             "budgets": [
                 {
                     "budget": b.get("budget"),
-                    "actual": b.get("actual"),
-                    "limit": b.get("limit"),
-                    "unit": b.get("unit") or "%",
+                    "scope": "book" if b.get("scope", "book") == "book" else "account",
                     "breached": True,
                 }
                 for b in port.get("budget_breaches") or []
@@ -226,6 +225,9 @@ def ack_outcome(
         from lib.market_risk import escalation as esc
     except ImportError:  # pragma: no cover - imported as scripts.lib
         from scripts.lib.market_risk import escalation as esc
+    if not str(actor or "").startswith("tailnet:"):
+        # the ACK is an operator act: the shared service token (agents, automations) is refused (review #2383, N6)
+        return 403, {"ok": False, "error": "acknowledgment needs a signed-in operator (tailnet identity)"}
     wanted = str((body or {}).get("episode_id") or "") or None
     shown = (projection or {}).get("episode") or {}
     if wanted is None and shown.get("id"):

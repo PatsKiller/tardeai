@@ -185,12 +185,24 @@ def run_scenario(
                 "contributors": [(k.category, k.points) for k in a.contributors],
             }
         )
-    return {"scenario": scenario["id"], "start": scenario["start"], "end": scenario["end"], "timeline": timeline}
+    return {
+        "scenario": scenario["id"],
+        "start": scenario["start"],
+        "end": scenario["end"],
+        "timeline": timeline,
+        "overlay": bool(scenario.get("overlay")),
+    }
 
 
 # ── metrics ──────────────────────────────────────────────────────────────────────────────────────
 def at_least(tier: str, floor: str) -> bool:
     return SEVERITY[tier] >= SEVERITY[floor]
+
+
+def _sample(r: dict) -> str:
+    if r.get("overlay"):
+        return "OVERLAY"
+    return "OUT" if r["start"] >= HOLDOUT_START else "IN"
 
 
 def first_at_least(timeline: list[dict], floor: str) -> dict | None:
@@ -299,6 +311,9 @@ def write_report(results: list[dict], reader: FixtureReader, path: Path) -> None
         "max-drawdown trough inside the window (positive = early); '—' = not reached or no >=5% drawdown.",
         "",
         "Sample: thresholds come from scripts/market_risk_calibrate.py over 2016-2025 (IN); 2026 is held out (OUT).",
+        "OVERLAY marks a scenario that adds hand-entered data from the RCA (after-hours moves, option snapshots) on top",
+        "of the public bars. It is NOT out-of-sample evidence: the overlay was written knowing the outcome. Without the",
+        "overlay, October 2026 is the tail of corrections2026, which peaks at YELLOW (review of #2383).",
         "",
         "| Scenario | Sample | Window | Max tier | First ORANGE+ | First RED | First GREEN | SPY trough | Lead ORANGE | "
         "Lead RED | Orange sessions | Red sessions | Green sessions |",
@@ -320,7 +335,7 @@ def write_report(results: list[dict], reader: FixtureReader, path: Path) -> None
             return len({t["date"] for t in tl if t["tier"] == tier})
 
         lines.append(
-            f"| {r['scenario']} | {'OUT' if r['start'] >= HOLDOUT_START else 'IN'} | {r['start']}..{r['end']} | {mx} | "
+            f"| {r['scenario']} | {_sample(r)} | {r['start']}..{r['end']} | {mx} | "
             f"{fo['date'] if fo else '—'} | "
             f"{fr['date'] if fr else '—'} | {fg['date'] if fg else '—'} | {trough or '—'} | "
             f"{lo if lo is not None else '—'} | {lr if lr is not None else '—'} | "

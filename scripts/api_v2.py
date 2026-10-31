@@ -37519,7 +37519,11 @@ def _data_source_health(query=None):
         except Exception as e:
             out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
 
-    _feed("FRED macro", "macro", "SELECT max(fetched_at), count(*) FROM fred_economic_series", 72)
+    _feed(  # last_seen_at (2026_10_31 migration) else fetched_at, which is now first-fetch only (review of #2383, N5)
+        "FRED macro", "macro",
+        "SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)), count(*) "
+        "FROM fred_economic_series f", 72,
+    )
     _feed(
         "Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24
     )
@@ -68351,11 +68355,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
 
             _snap = _load_json(PROJECT_ROOT / _MR_REL)
-            _proj = _mr_build(_snap, None, episode=_mr_esc.open_episode(_mr_esc.load()))
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except _mr_esc.EpisodeStoreCorrupt:
+                # a torn ledger: refuse the ack with the reason, never a 500 echoing a path (review of #2383, M2)
+                return 503, {"ok": False, "error": "episode ledger unreadable; the next evaluation recovers it"}
+            _proj = _mr_build(_snap, None, episode=_ep)
             _code, _out = _mr_ack(_proj, body or {}, actor=_mr_auth.current_principal())
             return _code, _json_clean(_out)
         except Exception as e:
-            return 500, {"ok": False, "error": str(e)}
+            return 500, {"ok": False, "error": f"acknowledgment failed: {type(e).__name__}"}
 
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):
