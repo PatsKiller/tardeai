@@ -30326,7 +30326,7 @@
         "owner": "platform",
         "connects_to": [
           {
-            "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+            "name": "n8n -> run relay (port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
             "kind": "service",
             "direction": "calls",
             "source": "AGENTS.md \u00a723.3"
