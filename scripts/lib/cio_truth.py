@@ -9,6 +9,7 @@ from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import json
 import hashlib
+import re
 import math
 from pathlib import Path
 from typing import Any
@@ -234,26 +235,114 @@ def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) 
             "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
 
 
-def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None) -> dict:
+_ORDER_ID_IN_DESCRIPTION = re.compile(r"\border\s+(\d{6,})", re.IGNORECASE)
+# On one broker read every observation shares captured_at; a working order outranks a filled one.
+_STATE_RANK = {"active": 3, "pending_activation": 2, "unknown": 1, "filled": 0}
+
+
+def _when(raw) -> datetime | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    try:
+        at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _norm_state(raw) -> str:
+    raw = str(raw or "").lower().replace(" ", "_")
+    return ("active" if raw in _ACTIVE_STOP_STATES else "pending_activation" if raw in _PENDING_STOP_STATES
+            else "filled" if raw == "filled" else "unknown")
+
+
+def fill_ledger(broker_rows, *, db_query=None, ledger_rows=None) -> dict | None:
+    """order_id -> {"sold_at", "rebought_at"} for every FILLED stop observation, from the trade ledger.
+
+    Schwab's order read keeps returning filled orders for weeks, so a filled observation alone does not say whether
+    the sale is history (already in the ledger, position since re-bought) or still waiting for the holdings sync.
+    The ledger names each fill's order id ("order <id>" in ``trade_transactions.description``). ``None`` means
+    the ledger is unreadable (callers then say so instead of asserting a state). Read-only.
+    """
+    filled = [r for r in (broker_rows or []) if str(r.get("status") or "").lower() == "filled" and r.get("order_id")]
+    if not filled:
+        return {}
+    if ledger_rows is None:
+        symbols = sorted({str(r.get("symbol") or "").upper() for r in filled})
+        ledger_rows = _query_rows(
+            db_query,
+            "SELECT trade_time, trade_date, action, symbol, account, description FROM trade_transactions "
+            "WHERE upper(symbol) = ANY(%s) AND action IN ('Buy', 'Sell') ORDER BY trade_time",
+            (symbols,))
+        if ledger_rows is None:
+            return None
+    sales, buys = {}, {}
+    for t in ledger_rows:
+        at = _when(t.get("trade_time")) or _when(t.get("trade_date"))
+        if at is None:
+            continue
+        key = (canonical_key(t.get("account")), str(t.get("symbol") or "").upper())
+        action = str(t.get("action") or "").lower()
+        if action == "buy":
+            buys.setdefault(key, []).append(at)
+        elif action == "sell":
+            m = _ORDER_ID_IN_DESCRIPTION.search(str(t.get("description") or ""))
+            if m:
+                sales[m.group(1)] = (key, at)
+    out = {}
+    for r in filled:
+        oid = str(r.get("order_id"))
+        if oid not in sales:
+            continue
+        key, sold_at = sales[oid]
+        later = [b for b in buys.get(key, []) if b > sold_at]
+        out[oid] = {"sold_at": sold_at.isoformat(), "rebought_at": min(later).isoformat() if later else None}
+    return out
+
+
+def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None, fills=None,
+             holding_updated_at=None) -> dict:
     """Display-only stop precedence by canonical account+symbol, including state.
 
     ``broker_rows`` are persisted stop_last_known observations, never a broker
     request. Terminal observations cannot become active protection. A planned
     level is displayed but does not prove a resting broker order exists.
+
+    ``fills`` (from ``fill_ledger``) settles a FILLED observation: when the ledger holds its sale and the position
+    was re-bought, or holdings were refreshed after the sale, the fill is history and never "awaiting sync"
+    (2026-10-31: V's 09-09 stop fill kept reading "awaiting holdings sync" after the 10-27 re-buy). Without
+    ``fills`` a filled state says what it is waiting for and since when instead of asserting a stale state.
     """
     now = now or datetime.now(timezone.utc)
     account, symbol = canonical_key(account), str(symbol or "").upper()
     matches = [r for r in (broker_rows or []) if canonical_key(r.get("account")) == account
                and str(r.get("symbol") or "").upper() == symbol]
-    # The newest observation for each order wins. Retain a filled observation
-    # when no working or pending order remains, so awaiting sync stays visible.
+    # The newest observation for each order wins.
     latest = {}
     for r in matches:
         key = str(r.get("order_id") or "position")
         if key not in latest or str(r.get("captured_at") or "") > str(latest[key].get("captured_at") or ""):
             latest[key] = r
-    viable = [r for r in latest.values() if str(r.get("status") or "").lower() not in _DEAD_STOP_STATES]
-    row = max(viable, key=lambda r: str(r.get("captured_at") or ""), default={})
+    held_at = _when(holding_updated_at)
+    history = None
+    viable = []
+    for r in latest.values():
+        status = str(r.get("status") or "").lower()
+        if status in _DEAD_STOP_STATES:
+            continue
+        info = (fills or {}).get(str(r.get("order_id"))) if status == "filled" else None
+        if info:
+            sold_at, rebought_at = _when(info.get("sold_at")), _when(info.get("rebought_at"))
+            if sold_at and ((rebought_at and rebought_at > sold_at) or (held_at and held_at > sold_at)):
+                if history is None or sold_at > _when(history["filled_at"]):
+                    history = {"filled_at": sold_at.isoformat(),
+                               "rebought_at": rebought_at.isoformat() if rebought_at else None}
+                continue  # the sale is settled history; the current position is a new lot
+        viable.append(r)
+    row = max(viable, key=lambda r: (str(r.get("captured_at") or ""), _STATE_RANK.get(_norm_state(r.get("status")), 0)),
+              default={})
     raw_state = str(row.get("status") or "").lower().replace(" ", "_")
     state = ("active" if raw_state in _ACTIVE_STOP_STATES else "pending_activation" if raw_state in _PENDING_STOP_STATES
              else "filled" if raw_state == "filled" else "unknown" if row else "none")
@@ -274,11 +363,32 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
                 break
     meta = _evidence("stop_last_known" if row else "stops.json", at, now,
                      reason="stop state not recorded" if state == "unknown" else None)
+    note = None
+    if state == "filled":
+        seen = _when(row.get("captured_at"))
+        seen_label = _et_label(seen) if seen else "an unrecorded time"
+        info = (fills or {}).get(str(row.get("order_id")))
+        if fills is None:
+            note = f"stop filled (broker read {seen_label}) · sale not yet checked against the trade ledger"
+        elif not info:
+            note = f"stop filled (broker read {seen_label}) · waiting for the sale to reach the trade ledger"
+        elif held_at:
+            note = (f"stop filled {_et_label(_when(info['sold_at']))} · waiting for the holdings sync"
+                    f" (holdings last updated {_et_label(held_at)})")
+        else:  # no holding context (e.g. the live-stops route): state the recorded fact, claim no wait
+            note = f"stop filled {_et_label(_when(info['sold_at']))} · sale recorded in the trade ledger"
+    elif history:
+        filled_label = _et_label(_when(history["filled_at"]))
+        rebought = _when(history.get("rebought_at"))
+        note = (f"previous stop filled {filled_label}"
+                + (f" · re-bought {_et_label(rebought)}" if rebought else " · holdings refreshed since")
+                + ("" if state in ("active", "pending_activation") else " · no broker stop on the current position"))
     return {"account_id": account, "account_label": account_label(account), "symbol": symbol,
             "stop_price": sp, "stop_source": source, "stop_state": state,
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
             "broker_protected": state == "active" and sp is not None and sp > 0,
-            "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"), **meta}
+            "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
+            "stop_note": note, "stop_history": history, **meta}
 
 
 _SOURCE_LABELS = {"cio_opportunity_projection": "CIO opportunity review", "cio_decisions": "CIO decision",
@@ -1172,7 +1282,9 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
             continue
         state = p.get("stop_state")
         reason = ("Stop awaiting activation" if state == "pending_activation"
-                  else "Stop filled · awaiting holdings sync" if state == "filled" else "No active broker stop observed")
+                  else ((p.get("stop_note") or "stop filled · awaiting holdings sync")[:1].upper()
+                        + (p.get("stop_note") or "stop filled · awaiting holdings sync")[1:]) if state == "filled"
+                  else "No active broker stop observed")
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
@@ -1209,20 +1321,23 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
+    fills = inputs.get("stop_fills") if "stop_fills" in inputs else fill_ledger(broker, db_query=db_query)
     positions = []
     for r in portfolio["holdings"]:
         if r["is_cash"] or r.get("is_loan") or (_number(r.get("shares", r.get("quantity"))) or 0) <= 0:
             continue
         p = deepcopy(r)
         p["basis_truth"] = basis_for(p, mark=_number(p.get("price")))
-        stop = stop_for(r["account_id"], r.get("symbol"), broker_rows=broker, planned=planned, now=now)
+        stop = stop_for(r["account_id"], r.get("symbol"), broker_rows=broker, planned=planned, now=now, fills=fills,
+                        holding_updated_at=r.get("updated_at"))
         p.update({k: v for k, v in stop.items() if k not in ("source", "as_of", "age_hours", "stale", "gap")})
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
-                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")} for p in positions]
+                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
+                                      "stop_history")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
@@ -1285,7 +1400,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     stops["filled_awaiting_sync"] = [
         {"symbol": p["symbol"], "account_id": p["account_id"], "account_label": p.get("account_label"),
          "stop_price": p.get("stop_price"), "captured_at": p.get("stop_captured_at"),
-         "reason": "stop filled · awaiting holdings sync"}
+         "reason": p.get("stop_note") or "stop filled · awaiting holdings sync"}
         for p in counted_positions if p["stop_state"] == "filled"] if broker is not None else []
     stops["nearest"] = min(distances, key=lambda r: abs(r["distance_pct"]), default=None)
     stops["awaiting_fill_count"] = len(stops["awaiting_fill"])
