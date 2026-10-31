@@ -187,7 +187,25 @@ def off_template_words(sentence: str, assessment: dict[str, Any], cfg: dict[str,
     """Words outside the template. Numbers are checked separately (``ungrounded_numbers``)."""
     vocab = template_vocabulary(assessment, cfg)
     text = _NUM_TOKEN.sub(" ", fold_ascii(sentence))
-    return sorted({w for w in _WORD.findall(text) if w.lower() not in vocab and w.lower().rstrip("'s") not in vocab})
+    return sorted({w for w in _WORD.findall(text) if not _in_vocab(w.lower(), vocab)})
+
+
+def _in_vocab(w: str, vocab: set[str]) -> bool:
+    """Exact plural rule: the word itself, or a possessive / plural of a listed word of 3+ letters. Never ``rstrip``
+    (review #2383 round 3: ``"ass".rstrip("'s")`` is ``"a"``, which let "Ass." through)."""
+    if w in vocab:
+        return True
+
+    def ok(base: str) -> bool:
+        return len(base) >= 3 and base in vocab
+
+    if w.endswith("'s") and ok(w[:-2]):
+        return True
+    if w.endswith("ies") and ok(w[:-3] + "y"):
+        return True
+    if w.endswith("es") and w[:-2].endswith(("s", "x", "z", "ch", "sh")) and ok(w[:-2]):
+        return True
+    return w.endswith("s") and not w.endswith("ss") and ok(w[:-1])
 
 
 class ChoiceRejected(ValueError):
@@ -285,12 +303,38 @@ def parse_choice(answer: str, assessment: dict[str, Any], cfg: dict[str, Any]) -
     return out
 
 
+_CALM_WORDS = re.compile(r"\b(calm|quiet|steady|low|lower|easing|eased|fading|normal|benign|safe)\b", re.IGNORECASE)
+_ELEVATED = {"YELLOW", "ORANGE", "RED"}
+
+
+def _phrase_allowed(pid: str, assessment: dict[str, Any], tpl: dict[str, Any]) -> Optional[str]:
+    """A phrase's precondition; returns the refusal reason or None. ``calm_rest`` claims the other categories are
+    calm, so it needs every observation outside the displayed contributors to be CALM and a tier below YELLOW."""
+    req = ((tpl.get("requires") or {}).get(pid)) or {}
+    tier = str(assessment.get("tier") or "").upper()
+    allowed_tiers = req.get("tiers")
+    if allowed_tiers and tier not in {str(t).upper() for t in allowed_tiers}:
+        return f"phrase {pid!r} is not allowed at tier {tier or 'unknown'}"
+    if req.get("others_calm"):
+        shown = {str(c.get("category") or "") for c in _contributors(assessment)}
+        others = [
+            o for o in assessment.get("observations") or [] if isinstance(o, dict) and o.get("category") not in shown
+        ]
+        if not others or any(str(o.get("state") or "").upper() != "CALM" for o in others):
+            return f"phrase {pid!r} needs every other measured category to read CALM"
+    return None
+
+
 def render_choice(choice: list[dict[str, Any]], assessment: dict[str, Any], cfg: dict[str, Any]) -> str:
     """The sentence, rendered from the bank and the assessment. A slot with no value rejects the whole choice."""
-    bank = (cfg.get("why_template") or {}).get("phrase_bank") or {}
+    tpl = cfg.get("why_template") or {}
+    bank = tpl.get("phrase_bank") or {}
     n_cons = len(_contributors(assessment))
     parts: list[str] = []
     for it in choice:
+        why_not = _phrase_allowed(it["id"], assessment, tpl)
+        if why_not:
+            raise ChoiceRejected(why_not)
         picks = [p for p in it["c"] if p <= n_cons]
         if len(picks) < 2:  # c2 defaults to the next displayed contributor when one exists
             rest = [i for i in range(1, n_cons + 1) if i not in picks]
@@ -302,6 +346,83 @@ def render_choice(choice: list[dict[str, Any]], assessment: dict[str, Any], cfg:
             raise ChoiceRejected(f"phrase {it['id']!r} needs {', '.join(missing)}, which the card does not show")
         parts.append(_SLOT.sub(lambda m: vals[m.group(1)], phrase))
     return " ".join(parts)
+
+
+def imperative_openings(sentence: str, cfg: dict[str, Any]) -> list[str]:
+    """Sentences that open with a verb of command ("Lower risk now.", "Hedging now ..."): refused (review #2383 r3)."""
+    verbs = {str(v).lower() for v in cfg.get("imperative_openers") or []}
+    out = []
+    for part in re.split(r"(?<=[.;:!?])\s+", sentence.strip()):
+        m = _WORD.search(part)
+        if m and m.group(0).lower() in verbs:
+            out.append(m.group(0))
+    return out
+
+
+def labelled_spans(assessment: dict[str, Any]) -> list[str]:
+    """Every figure the "why" may show, WITH its own label (review #2383 round 3: grounding checked values, not
+    meaning, so "Index fell 50 percent" reused the score). A number is allowed only inside one of these spans."""
+    spans: list[str] = []
+    if isinstance(assessment.get("score"), (int, float)):
+        spans.append(f"score reads {round(float(assessment['score']))}")
+    n, of = _confirming(assessment)
+    if n is not None and of is not None:
+        spans.append(f"{n} of {of} categories")
+    for c in _contributors(assessment):
+        if isinstance(c.get("points"), (int, float)):
+            spans.append(f"{round(float(c['points']))} points")
+        d = str(c.get("headline") or c.get("detail") or "").strip().rstrip(".")
+        if d:
+            spans.append(fold_ascii(d))
+    obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
+    if obs:
+        spans.append(
+            f"{sum(1 for o in obs if str(o.get('state') or '').upper() == 'UNKNOWN')} categories are unmeasured"
+        )
+    return sorted(spans, key=len, reverse=True)
+
+
+def unlabelled_numbers(sentence: str, assessment: dict[str, Any]) -> list[str]:
+    """Numbers left after removing every labelled span: each one is a figure used out of its own context."""
+    rest = fold_ascii(sentence)
+    for sp in labelled_spans(assessment):
+        rest = rest.replace(sp, " ")
+    return _NUM_TOKEN.findall(rest)
+
+
+def validate_sentence(
+    sentence: str, card_text: str, assessment: dict[str, Any], cfg: dict[str, Any]
+) -> Optional[tuple[str, list[str]]]:
+    """Every check a "why" sentence must pass, rendered or not. Returns (reason, rejected) or None when it passes."""
+    if len(sentence) > int(cfg.get("max_why_chars") or 280):
+        return "answer longer than max_why_chars", []
+    odd = non_ascii_digits(sentence)
+    if odd:
+        return "non-ASCII digits rejected", odd
+    odd = non_ascii_chars(sentence)
+    if odd:
+        return "non-ASCII characters rejected", odd
+    sentence = fold_ascii(sentence)
+    hits = behaviour_hits(sentence, list(cfg.get("behaviour_patterns") or []))
+    if hits:
+        return "behaviour wording rejected", hits
+    imp = imperative_openings(sentence, cfg)
+    if imp:
+        return "imperative wording rejected", imp
+    if str(assessment.get("tier") or "").upper() in _ELEVATED and _CALM_WORDS.search(sentence):
+        return "calm wording on an elevated tier rejected", sorted(
+            {m.group(0).lower() for m in _CALM_WORDS.finditer(sentence)}
+        )
+    bad = ungrounded_numbers(sentence, card_text, assessment)
+    if bad:
+        return "ungrounded numbers rejected", bad
+    off = off_template_words(sentence, assessment, cfg)
+    if off:
+        return "words outside the template rejected", off
+    loose = unlabelled_numbers(sentence, assessment)
+    if loose:
+        return "numbers outside their own label rejected", loose
+    return None
 
 
 def build_prompt(card_text: str, assessment: dict[str, Any], current_why: str, cfg: dict[str, Any]) -> str:
@@ -398,24 +519,10 @@ def curate(
         sentence = render_choice(choice, assessment, cfg)
     except ChoiceRejected as exc:
         return _result(card_text, curated=False, lane=lane, reason=f"not a phrase choice: {exc}"[:240])
-    if len(sentence) > int(cfg.get("max_why_chars") or 280):
-        return _result(card_text, curated=False, lane=lane, reason="answer longer than max_why_chars")
-    odd = non_ascii_digits(sentence)
-    if odd:
-        return _result(card_text, curated=False, lane=lane, reason="non-ASCII digits rejected", rejected=odd)
-    odd = non_ascii_chars(sentence)
-    if odd:
-        return _result(card_text, curated=False, lane=lane, reason="non-ASCII characters rejected", rejected=odd)
-    sentence = fold_ascii(sentence)
-    hits = behaviour_hits(sentence, list(cfg.get("behaviour_patterns") or []))
-    if hits:
-        return _result(card_text, curated=False, lane=lane, reason="behaviour wording rejected", rejected=hits)
-    bad = ungrounded_numbers(sentence, card_text, assessment)
+    bad = validate_sentence(sentence, card_text, assessment, cfg)
     if bad:
-        return _result(card_text, curated=False, lane=lane, reason="ungrounded numbers rejected", rejected=bad)
-    off = off_template_words(sentence, assessment, cfg)
-    if off:
-        return _result(card_text, curated=False, lane=lane, reason="words outside the template rejected", rejected=off)
+        return _result(card_text, curated=False, lane=lane, reason=bad[0], rejected=bad[1])
+    sentence = fold_ascii(sentence)
 
     new_line = f"{prefix}{sentence}"
     if idx is None:

@@ -100,6 +100,38 @@ P_CUR3 = [
     "NVDA could lose 5.0%.",
 ]
 
+# Round-3 review probes, ~/agent_scratch/r3probes/p_cur4.py (verbatim).
+P_CUR4 = [
+    "Lower risk now.",
+    "Less risk now.",
+    "Hedging now, with options.",
+    "Options hedging now is the only open.",
+    "Index fell 50 percent today.",
+    "The index fell 32 percent today.",
+    "Market down 50 percent.",
+    "Semiconductors fell 18 percent.",
+    "Risk is low and the market is calm.",
+    "All categories calm; risk is low.",
+    "No stress; market steady; risk low.",
+    "Volatility is low and quiet; no risk.",
+    "Index up 32 percent.",
+    "Below 50 now, so lower.",
+    "Put/call 3.97, so options hedging and more puts.",
+    "Less market, more options hedging.",
+    "Hedging demand high: hedging now.",
+    "Ass.",
+    "Less semiconductor risk.",
+    "Semiconductors: less now.",
+    "Lower semiconductors now.",
+    "Open interest is high, so open hedging now.",
+    "Index to 2 percent below.",
+    "Market is 50 percent below the high.",
+    "QQQ fell 3.97 percent.",
+    "QQQ 32 percent lower by the open.",
+    "Down 18 percent at the open.",
+    "Risk is 50 and lower is better.",
+    "Exit",
+]
 
 CARD = (
     "🟡 MARKET RISK YELLOW 50/100 · 2 of 9 categories confirm\nWhy: Options flow and technicals are stressed.\n"
@@ -142,7 +174,7 @@ def _wrappings(t: str) -> list[str]:
 def test_every_probe_is_refused_with_curation_forced_on_for_every_tier(tier):
     cfg, doc = _forced_on(), dict(DOC, tier=tier)
     leaks = []
-    for t in P_CUR2 + P_CUR3:
+    for t in P_CUR2 + P_CUR3 + P_CUR4:
         for answer in _wrappings(t):
             r = curation.curate(CARD, doc, call_model=lambda p, to, a=answer: a, cfg=cfg)
             if r["curated"] or r["text"] != CARD:
@@ -159,13 +191,17 @@ def test_every_valid_choice_renders_only_card_figures_and_no_behaviour():
         for combo in itertools.permutations(bank, k):
             answer = json.dumps({"phrases": [{"id": i} for i in combo]})
             r = curation.curate(CARD, DOC, call_model=lambda p, to, a=answer: a, cfg=cfg)
+            if "calm_rest" in combo:  # a YELLOW card may never say the rest is calm (review #2383 round 3)
+                assert not r["curated"] and "not allowed at tier YELLOW" in r["reason"], (combo, r["reason"])
+                continue
             assert r["curated"], (combo, r["reason"])
             why = r["text"].splitlines()[1]
             assert not curation.behaviour_hits(why, pats), why
             assert curation.ungrounded_numbers(why, CARD, DOC) == [], why
             assert curation.non_ascii_chars(why) == [], why
             rendered += 1
-    assert rendered == len(bank) + len(bank) * (len(bank) - 1) + len(bank) * (len(bank) - 1) * (len(bank) - 2)
+    b = len(bank) - 1  # calm_rest is refused on this YELLOW card
+    assert rendered == b + b * (b - 1) + b * (b - 1) * (b - 2)
 
 
 @pytest.mark.parametrize(
@@ -219,3 +255,70 @@ def test_shipped_config_still_skips_every_tier_and_carries_the_reminder():
     for tier in TIERS:
         r = curation.curate(CARD, dict(DOC, tier=tier), call_model=lambda p, to: pytest.fail("model called"), cfg=cfg)
         assert r["curated"] is False
+
+
+TIERS_ALL = ("RED", "ORANGE", "YELLOW", "BLUE", "GREEN")
+
+
+@pytest.mark.parametrize("tier", TIERS_ALL)
+def test_validator_alone_refuses_every_probe_on_every_tier(tier):
+    """Defence in depth: even if prose ever reached the checks, every probe fails them."""
+    cfg, doc = _forced_on(), dict(DOC, tier=tier)
+    passed = [t for t in P_CUR2 + P_CUR3 + P_CUR4 if curation.validate_sentence(t, CARD, doc, cfg) is None]
+    assert passed == []
+
+
+@pytest.mark.parametrize(
+    "sentence,reason",
+    [
+        ("Lower risk now.", "imperative"),
+        ("Hedging demand high: hedging now.", "imperative"),
+        ("Index fell 50 percent today.", "outside the template"),
+        ("Options flow carries 50 points.", "own label"),
+        ("Risk is low and the market is calm.", "calm wording"),
+        ("Ass.", "outside the template"),
+    ],
+)
+def test_round3_examples_fail_for_the_named_reason(sentence, reason):
+    r = curation.validate_sentence(sentence, CARD, dict(DOC, tier="RED"), _forced_on())
+    assert r is not None and reason in r[0], (sentence, r)
+
+
+def test_numbers_only_next_to_their_own_label():
+    cfg, doc = _forced_on(), DOC
+    assert curation.validate_sentence("The risk score reads 50, led by Options flow.", CARD, doc, cfg) is None
+    assert (
+        curation.validate_sentence("Options flow carries the largest share of the score at 32 points.", CARD, doc, cfg)
+        is None
+    )
+    for bad in ("The risk score reads 32, led by Options flow.", "2 of 9 points.", "Options flow at 3.97 points."):
+        r = curation.validate_sentence(bad, CARD, doc, cfg)
+        assert r is not None, bad
+
+
+def test_exact_plural_rule():
+    vocab = {"a", "category", "box", "score"}
+    assert curation._in_vocab("categorys", vocab) is True  # plain plural of a listed word
+    assert curation._in_vocab("boxes", vocab) and curation._in_vocab("score's", vocab)
+    assert not curation._in_vocab("ass", vocab) and not curation._in_vocab("as", {"a"})
+
+
+def test_calm_rest_needs_low_tier_and_every_other_category_calm():
+    cfg = _forced_on()
+    choice = '{"phrases": [{"id": "lead", "c": [1]}, {"id": "calm_rest"}]}'
+    calm_doc = dict(
+        DOC,
+        tier="BLUE",
+        contributors=DOC["contributors"][:1],
+        observations=[{"category": "options_flow", "state": "WARN"}, {"category": "technical", "state": "CALM"}],
+    )
+    r = curation.curate(CARD, calm_doc, call_model=lambda p, to: choice, cfg=cfg)
+    assert r["curated"], r["reason"]
+    warm = dict(
+        calm_doc,
+        observations=[{"category": "options_flow", "state": "WARN"}, {"category": "technical", "state": "WARN"}],
+    )
+    r = curation.curate(CARD, warm, call_model=lambda p, to: choice, cfg=cfg)
+    assert not r["curated"] and "CALM" in r["reason"]
+    r = curation.curate(CARD, dict(calm_doc, tier="RED"), call_model=lambda p, to: choice, cfg=cfg)
+    assert not r["curated"] and "not allowed at tier RED" in r["reason"]
