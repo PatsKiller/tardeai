@@ -49,6 +49,8 @@ technical:
     below_dma50: 8
     below_dma200: 12
     semis_mtd: 15
+    ai_basket_warn: 10           # ai_concentration.technical_signal WARN (participation < warn or RS <= rs_warn_pct)
+    ai_basket_stress: 20         # ... STRESS (participation < 40% or RS <= -5 pts over 20 sessions, plan §5.7)
 
 volatility:
   vix_symbol: "^VIX"
@@ -157,6 +159,11 @@ event:
   warn_score: 40
   stress_score: 60
   stale_after_hours: 24
+  # Earnings share is measured over the largest index constituents only (registry._covered_weights); the share is of
+  # this universe's combined cap. Below min_cap_coverage of the list with a known cap, earnings read "not measured".
+  index_universe: [AAPL, MSFT, NVDA, AMZN, GOOGL, GOOG, META, AVGO, TSLA, BRK.B, JPM, LLY, V, WMT, ORCL, MA, XOM,
+                   NFLX, COST, JNJ, HD, PG, ABBV, BAC, AMD, PLTR, KO, CVX, CSCO, UNH, IBM, INTC, MU, CRM, GE]
+  min_cap_coverage: 0.8
   # AI-basket earnings sensitivity (P2-T6): basket index-cap share reporting within this many sessions.
   ai_sensitivity_window_sessions: 2
   ai_sensitivity_stress_share: 0.15
@@ -315,3 +322,17 @@ extended_hours:
   heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
   lookback_hours: 18
   stale_after_hours: 2
+
+composite:
+  # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).
+  # noisy_or: only WARN/STRESS categories add risk; independent confirmations accumulate, calm categories never dilute.
+  # x_i = min(max_per_category, unit_weight * f * weight_i * score_i/100 * decay_i), f = 1 STRESS / warn_factor WARN;
+  # score = 100 * (1 - prod(1 - x_i)). unit_weight 0.40: one fully stressed weight-1.0 category alone = 40 (Yellow
+  # floor); two = 64 (Orange); three = 78 (Red). Five WARNs at 60 = 54 (Yellow): WARNs alone never reach Orange.
+  method: noisy_or
+  unit_weight: 0.40
+  warn_factor: 0.6
+  max_per_category: 0.95
+  # Degrade, not blind: with categories unmeasured, survive ** (all weight / measured weight), capped here. Calm stays
+  # calm (survive ~ 1); existing stress is extrapolated to the unmeasured weight. 1.0 disables it.
+  coverage_extrapolation_max: 1.6

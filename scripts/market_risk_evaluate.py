@@ -126,6 +126,87 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     return a
 
 
+def portfolio_context(now: datetime) -> c.PortfolioContext | None:
+    """Exposure-aware severity input from the production stores; any failure is an honest unknown, never a crash."""
+    try:
+        from scripts.lib.market_risk import exposure
+
+        return exposure.context_from_production(now=now)
+    except Exception as exc:  # noqa: BLE001 — a missing book is UNKNOWN vulnerability, reported in the card
+        print(f"market_risk_evaluate: portfolio context unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return c.PortfolioContext(vulnerability=None, note=f"portfolio unavailable: {type(exc).__name__}")
+
+
+def run_cycle(
+    now: datetime,
+    reader: Any,
+    policy: dict,
+    prior: dict | None,
+    *,
+    apply: bool,
+    portfolio: c.PortfolioContext | None = None,
+    episodes_path: Path | None = None,
+    call_model: Any = None,
+) -> dict[str, Any]:
+    """One full evaluation: categories -> compose -> uplift -> explain -> alert intent -> episode -> repeats -> curation
+    -> send. Dry run computes every step against a scratch copy of the episode store and sends nothing."""
+    import shutil
+    import tempfile
+
+    from scripts.lib.market_risk import alerts, escalation
+
+    a = evaluate(now, reader, policy, prior, portfolio)
+    doc = a.to_dict()
+    real_store = episodes_path or escalation.store_path()
+    store = real_store
+    if not apply:  # never touch the live episode ledger in a dry run
+        tmpdir = Path(tempfile.mkdtemp(prefix="mre-dry-"))
+        store = tmpdir / "episodes.json"
+        if real_store.exists():
+            shutil.copy2(real_store, store)
+    out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
+    ep = escalation.observe(doc, now=now, policy=policy, path=store)
+    out["episode_event"] = ep["event"]
+    out["episode_id"] = (ep.get("episode") or {}).get("id")
+    pending: list[tuple[str, dict, str, str | None]] = []
+    intent = alerts.intent_for(doc, prior, policy)
+    if intent:
+        pending.append((alerts.render(doc), intent, "initial", out["episode_id"]))
+    for rep in escalation.due_repeats(now=now, policy=policy, path=store):
+        if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
+            continue  # the initial card of this episode is already in this cycle
+        rintent = {
+            "priority": "P1",
+            "dedupe_minutes": 0,
+            "dedupe_key": f"market_risk:repeat:{rep['episode_id']}:{rep['repeat_number']}",
+            "tier": rep["tier"],
+            "transition": rep["kind"],
+        }
+        pending.append((alerts.render(doc, repeat=rep), rintent, rep["kind"], rep["episode_id"]))
+    for text, it, kind, ep_id in pending:
+        cur = _curate(text, doc, call_model=call_model, live=apply)
+        res = alerts.deliver(cur["text"], it, policy, dry_run=not apply)
+        res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"])
+        if ep_id:
+            escalation.record_send(ep_id, now=now, kind=kind, ok=bool(res.get("sent")) or not apply, path=store)
+        out["sends"].append(res)
+    out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
+    return out
+
+
+def _curate(text: str, doc: dict, *, call_model: Any, live: bool) -> dict[str, Any]:
+    """LLM may rephrase only the why sentence (curation.py); a dry run never calls a model unless one is injected."""
+    from scripts.lib.market_risk import curation
+
+    if not live and call_model is None:
+        return {"text": text, "curated": False, "reason": "dry run: model not called"}
+    try:
+        return curation.curate(text, doc, call_model=call_model)
+    except Exception as exc:  # noqa: BLE001 — curation can never block a card; the deterministic text is sent
+        print(f"market_risk_evaluate: curation failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return {"text": text, "curated": False, "reason": f"curation error: {type(exc).__name__}"}
+
+
 def _read_prior(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -142,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--prior", help="prior assessment JSON (default: latest.json when not replaying)")
     ap.add_argument("--policy", default=str(POLICY_PATH))
     ap.add_argument("--json", action="store_true", dest="as_json")
+    ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
     a = ap.parse_args(argv)
     apply = a.apply and not a.dry_run
     now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
@@ -155,8 +237,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / "latest.json")
     prior = _read_prior(prior_path) if prior_path else None
-    assessment = evaluate(now, reader, policy, prior)
-    doc = assessment.to_dict()
+    portfolio = None if a.no_portfolio else portfolio_context(now)
+    cycle = run_cycle(now, reader, policy, prior, apply=apply, portfolio=portfolio)
+    doc = cycle["assessment"]
+    assessment = cycle["object"]
+    doc["cycle"] = {k: v for k, v in cycle.items() if k not in ("assessment", "object")}
     doc["mode"] = "apply" if apply else "dry_run"
     doc["session"] = session_of(now)
     if apply:
@@ -171,6 +256,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[market-risk] {doc['mode']} as_of {doc['as_of']} session {doc['session']}")
         for line in explain.card_lines(assessment):
             print("  " + line)
+        for snd in doc["cycle"]["sends"]:
+            print(f"  send[{snd['kind']}] {snd['intent']['priority']} sent={snd.get('sent')} curated={snd['curated']}")
+            for line in snd["text"].splitlines():
+                print("    | " + line)
+        print(f"  episode: {doc['cycle']['episode_event']} {doc['cycle']['episode_id'] or ''}")
         print(
             f"  hysteresis: raw {assessment.hysteresis.get('raw_tier')} -> {assessment.tier} "
             f"(bootstrap={assessment.hysteresis.get('bootstrap')})"

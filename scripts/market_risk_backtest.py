@@ -125,6 +125,10 @@ def evaluate_at(
     a = engine.scoring.compose(observe(engine, ctx, drop=drop), policy, prior=prior, now=now)
     if portfolio is not None and hasattr(engine.scoring, "apply_uplift"):
         a = engine.scoring.apply_uplift(a, portfolio, policy)
+    from scripts.lib.market_risk import explain as _explain  # same seam as scripts/market_risk_evaluate.py
+
+    if "points" in (a.hysteresis or {}):  # the real scoring module; stub engines in tests carry no attribution
+        a = _explain.explain(a, policy)
     if analogs and engine.analogs is not None and hasattr(engine.analogs, "find"):
         a.analogs = list(engine.analogs.find(a, reader=reader, now=now))
     c.assert_no_behavior_fields(a.to_dict())

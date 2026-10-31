@@ -17,7 +17,7 @@ TOLERANCE = 0.01
 def attribute(assessment: c.RiskAssessment, top_n: int = TOP_N) -> list[c.Contributor]:
     points: dict[str, float] = dict((assessment.hysteresis or {}).get("points") or {})
     by_cat = {o.category: o for o in assessment.observations}
-    ranked = sorted(points.items(), key=lambda kv: (-kv[1], kv[0]))
+    ranked = sorted(((k, v) for k, v in points.items() if abs(v) > 1e-9), key=lambda kv: (-kv[1], kv[0]))
     out = [
         c.Contributor(category=k, points=round(v, 2), headline=by_cat[k].headline, as_of=by_cat[k].observed_at)
         for k, v in ranked[:top_n]
@@ -60,10 +60,16 @@ def deescalates_if(assessment: c.RiskAssessment, policy: dict) -> str:
     contributors = assessment.contributors or attribute(assessment)
     top = next((x for x in contributors if x.category != "other"), None)
     lead = f"; the largest driver is {top.category} ({top.headline})" if top else ""
-    uplift = ""
-    if assessment.uplift:
-        uplift = f" The portfolio uplift to {assessment.uplift['to']} also lifts when the book's exposure falls back under its limits."
-    return f"{tier} -> {lower} if {' and '.join(parts)}{lead}.{uplift}"
+    market = f"{tier} -> {lower} if {' and '.join(parts)}{lead}."
+    up = assessment.uplift or {}
+    shown = assessment.tier
+    if up and shown != tier:
+        why = "; ".join(str(r) for r in (up.get("reasons") or [])) or "portfolio exposure"
+        return (
+            f"{shown} (portfolio uplift from {tier}) -> {tier} when the book falls back under its limits ({why}); "
+            f"the market itself: {market}"
+        )
+    return market
 
 
 def explain(assessment: c.RiskAssessment, policy: dict) -> c.RiskAssessment:

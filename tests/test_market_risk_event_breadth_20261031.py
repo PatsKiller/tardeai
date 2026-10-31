@@ -109,7 +109,7 @@ def test_missing_weights_is_reported_not_zero():
     o = event.evaluate(ctx(et(2026, 10, 26, 6, 30), Reader(EARNINGS, MACRO), weights=None))
     ev = {e.label: e.value for e in o.evidence}
     assert ev["index-cap share reporting"] == "not measured"
-    assert "earnings weights unavailable" in o.headline
+    assert "earnings share not measured" in o.headline
 
 
 def test_reader_failure_is_unknown():

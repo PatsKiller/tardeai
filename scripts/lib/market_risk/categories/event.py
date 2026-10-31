@@ -44,7 +44,9 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if e3 and e3["reporters"]:
         parts.append(f"{' + '.join(list(e3['reporters'])[:4])} report ≈ {round(100 * e3['share'])}% of index cap")
     elif conc.get("earnings_unknown"):
-        parts.append("earnings weights unavailable")
+        parts.append(
+            "earnings share not measured (" + (ctx.extras.get("index_weights_note") or "no index weights") + ")"
+        )
     for m in conc["macro"][:2]:
         parts.append(f"{m['name']} {m['date'][5:]}{' ' + m['time_et'] if m.get('time_et') else ''}")
     for t in conc["calendar"][:2]:

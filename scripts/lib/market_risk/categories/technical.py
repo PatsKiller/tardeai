@@ -135,4 +135,37 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         context.append(Evidence("last close", round(last, 2), asof, SOURCE, f"{sym} {last:.2f}"))
 
     fixed = [(k, Evidence(e.label, round(e.value[1], 2), e.as_of, e.source, e.detail)) for k, e in fired.values()]
+    fixed += _ai_basket(ctx, cfg)
     return md.observation(CATEGORY, cfg, fixed, context, newest, headline_prefix="Technical")
+
+
+def _ai_basket(ctx: EvalContext, cfg: dict) -> list[tuple[str, Evidence]]:
+    """AI-leadership participation and relative strength (scripts/lib/market_risk/ai_concentration.py, plan §5.7)
+    as technical sub-signals ``ai_basket_warn`` / ``ai_basket_stress``. Unmeasurable basket -> nothing fired."""
+    from scripts.lib.market_risk import ai_concentration as ai
+
+    acfg = ctx.policy.get("ai_concentration")
+    pts = cfg.get("points") or {}
+    if not acfg or "ai_basket_stress" not in pts:
+        return []
+    names = ai.basket(acfg) + [b.upper() for b in acfg.get("benchmarks") or []]
+    rows = ctx.reader.daily_bars(names, sessions=int(acfg["lookback_sessions"]), end=ctx.now)
+    weights = (ctx.extras.get("index_weights") or {}).get("weights")
+    sig = ai.technical_signal(ai._series(rows), acfg, weights)
+    if sig.get("state") not in ("WARN", "STRESS"):
+        return []
+    key = "ai_basket_stress" if sig["state"] == "STRESS" else "ai_basket_warn"
+    at = sig.get("observed_at")
+    at_iso = at if isinstance(at, str) or at is None else md.iso(at)
+    return [
+        (
+            key,
+            Evidence(
+                "AI basket participation / relative strength",
+                sig.get("score"),
+                at_iso,
+                "ai_concentration",
+                sig.get("headline") or "",
+            ),
+        )
+    ]

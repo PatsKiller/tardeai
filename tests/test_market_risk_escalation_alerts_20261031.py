@@ -71,7 +71,7 @@ RED = {
 def test_red_card_has_tier_uplift_five_contributors_book_and_advisory():
     card = alerts.render(RED)
     assert "MARKET RISK RED 83/100" in card and "6 of 9 categories confirm" in card
-    assert "Market 76 (ORANGE) → RED after portfolio vulnerability 78" in card
+    assert "Market 76 (ORANGE) → RED because portfolio vulnerability 78" in card
     assert card.count("\n") >= 8 and "sixth contributor" not in card
     assert "extended_hours +18" in card and "10-29 18:15 ET" in card
     assert "Your book: growth style 85 vs 50 · ETF-A stop 4.1% below" in card

@@ -16,7 +16,11 @@ from scripts.lib.market_risk import contract as c
 from scripts.lib.market_risk import explain, registry, scoring
 from scripts.lib.market_risk.policy import load_policy
 
-POLICY = load_policy()
+POLICY_LIVE = load_policy()
+# The arithmetic tests below pin tier boundaries, hysteresis, decay and attribution on the weighted-mean composite
+# (composite.method: mean), where a score is easy to construct exactly. The shipped policy uses noisy_or; its own tests
+# are at the end of this file (test_noisy_or_*).
+POLICY = dict(POLICY_LIVE, composite={"method": "mean"})
 NOW = datetime(2026, 10, 28, 20, 30, tzinfo=timezone.utc)  # 16:30 ET
 
 
@@ -262,3 +266,54 @@ def test_uplift_cap_binds_even_if_a_rule_asks_for_two_tiers():
     spec = {k: ("WARN", 41) for k in ("technical", "breadth", "volatility")}
     a = scoring.compose(obs(spec), pol, now=NOW)
     assert scoring.apply_uplift(a, c.PortfolioContext(vulnerability=90), pol).tier == "ORANGE"
+
+
+# ---- noisy_or (the shipped composite, config/market_risk_policy.yaml composite.method) -------------------------
+
+
+def test_noisy_or_oct28_close_shape_is_orange_not_red():
+    a = scoring.compose(obs(OCT28_CLOSE), POLICY_LIVE, now=NOW)
+    assert a.tier == "ORANGE" and 60 <= a.score < 75, (a.score, a.hysteresis["why"])
+
+
+def test_noisy_or_oct29_1815_shape_is_market_red():
+    now = datetime(2026, 10, 29, 22, 15, tzinfo=timezone.utc)
+    a = scoring.compose(obs(OCT29_1815_MARKET_ORANGE, now), POLICY_LIVE, now=now)
+    assert a.market_tier == "RED" and a.score >= 75
+
+
+def test_noisy_or_calm_categories_never_dilute_stress():
+    stressed = {"technical": ("STRESS", 95), "volatility": ("STRESS", 80)}
+    calm = dict(stressed, seasonal=("CALM", 20), event=("CALM", 10), macro_credit=("CALM", 15))
+    a1 = scoring.compose(obs(stressed), POLICY_LIVE, now=NOW)
+    a2 = scoring.compose(obs(calm), POLICY_LIVE, now=NOW)
+    assert a2.score <= a1.score + 1e-9  # adding calm categories can only lower the extrapolation, never add risk
+    assert a2.score >= 40
+
+
+def test_noisy_or_warns_alone_never_reach_orange():
+    five_warn = {k: ("WARN", 60) for k in ("technical", "volatility", "macro_credit", "seasonal", "event")}
+    full = {k: ("CALM", 10) for k in c.CATEGORIES}
+    full.update(five_warn)
+    assert scoring.compose(obs(full), POLICY_LIVE, now=NOW).score < 60
+
+
+def test_noisy_or_points_sum_to_score():
+    a = explain.explain(scoring.compose(obs(OCT28_CLOSE), POLICY_LIVE, now=NOW), POLICY_LIVE)
+    assert sum(x.points for x in a.contributors) == pytest.approx(a.score, abs=0.05)
+    assert all(x.points == 0 for x in a.contributors if x.category in ("seasonal",))
+
+
+def test_noisy_or_calm_market_is_unchanged_by_extrapolation():
+    calm = {"technical": ("CALM", 10), "volatility": ("CALM", 10)}
+    assert scoring.compose(obs(calm), POLICY_LIVE, now=NOW).score == 0
+
+
+def test_deescalation_counts_a_session_only_after_its_close():
+    calm = obs({"technical": ("CALM", 10)})
+    prior = {"tier": "ORANGE", "market_tier": "ORANGE", "hysteresis": {"below_sessions": ["2026-10-27", "2026-10-28"]}}
+    morning = datetime(2026, 10, 29, 14, 15, tzinfo=timezone.utc)  # 10:15 ET, session still open
+    a = scoring.compose(calm, POLICY_LIVE, prior=prior, now=morning)
+    assert a.tier == "ORANGE" and a.hysteresis["below_sessions"] == ["2026-10-27", "2026-10-28"]
+    close = datetime(2026, 10, 29, 20, 30, tzinfo=timezone.utc)  # 16:30 ET
+    assert scoring.compose(calm, POLICY_LIVE, prior=prior, now=close).tier != "ORANGE"

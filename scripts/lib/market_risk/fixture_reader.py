@@ -176,6 +176,15 @@ class FixtureReader:
                 out.append(r)
         return sorted(out, key=lambda r: r["at"])
 
+    def index_weights(self, *, end: datetime, universe: Iterable[str] | None = None) -> dict[str, Any] | None:
+        """``index_weights.json`` ({"as_of", "weights": {symbol: share}}) when the scenario ships one, else None.
+        The public fixtures carry no per-company weights, so replayed earnings concentration reads "not measured"."""
+        rows = [r for r in self._timed("index_weights.json", end)] if self._has("index_weights.json") else []
+        return rows[-1] if rows else None
+
+    def _has(self, name: str) -> bool:
+        return any(b and (b / name).exists() for b in (self.root, self.overlay))
+
     def earnings_calendar(self, *, start: datetime, end: datetime, now: datetime | None = None) -> list[dict]:
         return self._events("earnings", start, end, now)
 

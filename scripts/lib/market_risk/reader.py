@@ -35,6 +35,7 @@ ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
 REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
+VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
 SECTOR_COLUMNS = (
@@ -160,10 +161,57 @@ class PgReader:
         span = timedelta(days=int(sessions * 1.6) + 10)
         for row in self._quote_closes(syms, start=end - span, end=end):
             out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
+        if VIX_SYMBOL in syms:
+            for row in self._vix_closes(start=end - span, end=end):
+                out.setdefault((VIX_SYMBOL, date.fromisoformat(row["date"])), row)
         by_sym: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for (sym, _d), row in sorted(out.items()):
             by_sym[sym].append(row)
         return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
+
+    def _vix_closes(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """VIX daily closes when no ^VIX bars exist: the regime collector's after-close ``vix_close`` (same evening,
+        Yahoo) first, then FRED VIXCLS (published with a lag; ``fred`` applies it). Same shape as a bar."""
+        rows = self._rows(
+            "SELECT DISTINCT ON ((created_at AT TIME ZONE 'America/New_York')::date) "
+            "(created_at AT TIME ZONE 'America/New_York')::date AS d, value, created_at "
+            "FROM market_regime_indicators WHERE indicator_key = 'vix_close' AND value IS NOT NULL "
+            "AND created_at >= %s AND created_at <= %s "
+            "AND (created_at AT TIME ZONE 'America/New_York')::time >= %s "
+            "ORDER BY (created_at AT TIME ZONE 'America/New_York')::date, created_at DESC",
+            [start, end, REGULAR_CLOSE_CUTOFF_ET],
+        )
+        out = {
+            r["d"]: {
+                "symbol": VIX_SYMBOL,
+                "date": r["d"].isoformat(),
+                "open": None,
+                "high": None,
+                "low": None,
+                "close": r["value"],
+                "volume": None,
+                "source": "market_regime_indicators:vix_close",
+                "provisional": False,
+                "as_of": _iso(r["created_at"]),
+            }
+            for r in rows
+        }
+        for f in self.fred(["VIXCLS"], observations=400, end=end):
+            d = date.fromisoformat(str(f["observation_date"])[:10])
+            if d >= _aware(start).astimezone(ET).date() and f.get("value") is not None and d not in out:
+                out[d] = {
+                    "symbol": VIX_SYMBOL,
+                    "date": d.isoformat(),
+                    "open": None,
+                    "high": None,
+                    "low": None,
+                    "close": f["value"],
+                    "volume": None,
+                    "source": "fred_economic_series:VIXCLS",
+                    "provisional": False,
+                    "as_of": _iso(_close_instant(d)),
+                }
+        return [out[d] for d in sorted(out)]
 
     def _quote_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         rows = self._rows(
@@ -293,6 +341,32 @@ class PgReader:
                         }
                     )
         return out
+
+    def index_weights(
+        self, *, end: datetime, lookback_days: int = 30, universe: Iterable[str] | None = None
+    ) -> dict[str, Any] | None:
+        """Cap weights {symbol: share} from the newest non-null ``market_quotes.market_cap`` per symbol fetched in
+        the ``lookback_days`` before ``end``. The share is of the covered universe (``coverage`` symbols), not of the
+        S&P 500; the event card says so. None when no caps are known (event earnings then read "not measured")."""
+        hi = _aware(end)
+        rows = self._rows(
+            "SELECT DISTINCT ON (symbol) symbol, market_cap, fetched_at FROM market_quotes "
+            "WHERE market_cap > 0 AND fetched_at <= %s AND fetched_at > %s "
+            + ("AND symbol = ANY(%s) " if universe is not None else "")
+            + "ORDER BY symbol, fetched_at DESC",
+            [hi, hi - timedelta(days=int(lookback_days))] + ([[u.upper() for u in universe]] if universe else []),
+        )
+        caps = {r["symbol"]: float(r["market_cap"]) for r in rows if r.get("market_cap")}
+        total = sum(caps.values())
+        if not caps or total <= 0:
+            return None
+        newest = max((r["fetched_at"] for r in rows), default=None)
+        return {
+            "weights": {k: v / total for k, v in caps.items()},
+            "as_of": _iso(newest),
+            "coverage": len(caps),
+            "source": "market_quotes.market_cap",
+        }
 
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()

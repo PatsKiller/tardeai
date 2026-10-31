@@ -10,7 +10,8 @@ the score exactly (``explain.attribute`` relies on this). UNKNOWN categories are
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
+import math
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,7 @@ from scripts.lib.market_risk import contract as c
 ET = ZoneInfo("America/New_York")
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN 0 < NONE 1 < BLUE 2 < YELLOW 3 < ORANGE 4 < RED 5
 CONFIRMING_STATES = ("WARN", "STRESS")
+SESSION_CLOSE_ET = time(16, 0)
 
 
 def _parse(ts: str | None) -> datetime | None:
@@ -110,6 +112,11 @@ def _session_date(now: datetime) -> str:
     return now.astimezone(ET).date().isoformat()
 
 
+def _session_closed(now: datetime) -> bool:
+    local = now.astimezone(ET)
+    return local.weekday() >= 5 or local.time() >= SESSION_CLOSE_ET
+
+
 def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: dict) -> tuple[str, dict[str, Any]]:
     cfg = policy["hysteresis"]
     today = _session_date(now)
@@ -141,7 +148,9 @@ def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: 
         state.update(candidate=raw, count=count, need=need)
         return cur, state
     below = list(h.get("below_sessions") or [])
-    if today not in below:
+    # A session counts toward de-escalation only once it has closed: a calm morning print must not complete the
+    # count on the day hedging demand surges (2026-10-31 integration: 10-29 10:15 dropped ORANGE -> YELLOW).
+    if today not in below and _session_closed(now):
         below.append(today)
     need = int(cfg["deescalate_sessions"])
     if len(below) >= need:
@@ -150,29 +159,95 @@ def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: 
     return cur, state
 
 
+def _prior_dict(prior: Any) -> dict | None:
+    """Accept the previous assessment as a dict (stored JSON) or a RiskAssessment (in-process replay).
+
+    Hysteresis runs on the MARKET tier: the portfolio uplift is re-applied every evaluation and must never feed back
+    into the market state machine (else an uplifted RED would need three sessions to fall even when the book changed).
+    """
+    if prior is None:
+        return None
+    if not isinstance(prior, dict):
+        prior = {
+            "tier": getattr(prior, "tier", None),
+            "market_tier": getattr(prior, "market_tier", None),
+            "hysteresis": dict(getattr(prior, "hysteresis", None) or {}),
+        }
+    d = dict(prior)
+    if d.get("market_tier") in SEVERITY:
+        d["tier"] = d["market_tier"]
+    return d
+
+
+def _composite(known: list[dict], known_w: float, policy: dict) -> tuple[dict[str, float], float | None]:
+    """Composite 0-100 and per-category points that sum to it.
+
+    ``noisy_or`` (default): only confirming categories (WARN/STRESS) add risk, and independent confirmations
+    accumulate: score = 100 * (1 - prod(1 - x_i)), x_i = min(cap, unit_weight * f * weight_i * score_i/100 * decay_i),
+    f = 1 for STRESS and warn_factor for WARN (a WARN is evidence, a STRESS is confirmation).
+    A calm or improving category adds nothing instead of diluting the others; this is the design's "escalate only on
+    multi-category confirmation" (one fully stressed category alone stays Blue/Yellow; Orange needs several).
+    The 2026-10-31 integration replaced the weighted mean, under which calm low-weight priors (seasonal, event)
+    pulled the March 2020 crash down to Yellow.
+    Points are attributed by each category's share of -log(1 - x_i), so the contributors sum exactly to the score.
+    ``mean``: the original weighted average over known categories (kept for comparison runs).
+    """
+    if known_w <= 0:
+        return {}, None
+    cfg = policy.get("composite") or {}
+    method = str(cfg.get("method") or "noisy_or")
+    points: dict[str, float] = {}
+    if method == "mean":
+        for e in known:
+            points[e["obs"].category] = e["weight"] * float(e["obs"].score) * e["decay"] / known_w
+        return points, round(sum(points.values()), 4)
+    unit, cap = float(cfg.get("unit_weight", 0.40)), float(cfg.get("max_per_category", 0.95))
+    warn_factor = float(cfg.get("warn_factor", 0.6))
+    xs: dict[str, float] = {}
+    for e in known:
+        if e["obs"].state not in CONFIRMING_STATES:
+            continue
+        f = 1.0 if e["obs"].state == "STRESS" else warn_factor
+        x = min(cap, unit * f * e["weight"] * float(e["obs"].score or 0) / 100.0 * e["decay"])
+        if x > 0:
+            xs[e["obs"].category] = x
+    survive = 1.0
+    for x in xs.values():
+        survive *= 1.0 - x
+    # Degrade, not blind: when categories are unmeasured (no history, outage) the measured evidence stands in for the
+    # missing weight. survive ** (total_w / known_w), capped. Calm evidence (survive ~ 1) is unchanged; only existing
+    # stress is extrapolated, and the coverage is shown on every card.
+    total_w = float(cfg.get("_total_weight") or 0) or known_w
+    expo = min(float(cfg.get("coverage_extrapolation_max", 1.0)), max(1.0, total_w / known_w))
+    survive = survive**expo
+    score = round(100.0 * (1.0 - survive), 4)
+    logs = {k: -math.log(1.0 - x) for k, x in xs.items()}
+    tot = sum(logs.values())
+    for e in known:
+        cat = e["obs"].category
+        points[cat] = (score * logs[cat] / tot) if (cat in logs and tot > 0) else 0.0
+    return points, score
+
+
 def compose(
     observations: list[c.CategoryObservation],
     policy: dict,
     *,
-    prior: dict | None = None,
+    prior: Any = None,
     now: datetime | None = None,
 ) -> c.RiskAssessment:
     """Observations -> RiskAssessment (market-level; ``apply_uplift`` adds the portfolio)."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("compose(now=...) must be timezone-aware")
+    prior = _prior_dict(prior)
     eff = _effective(observations, now, policy)
     known = [e for e in eff if e["obs"].state != "UNKNOWN"]
     total_w = sum(e["weight"] for e in eff) or 1.0
     known_w = sum(e["weight"] for e in known)
-    points: dict[str, float] = {}
-    score: float | None
-    if known_w > 0:
-        for e in known:
-            points[e["obs"].category] = e["weight"] * float(e["obs"].score) * e["decay"] / known_w
-        score = round(sum(points.values()), 4)
-    else:
-        score = None
+    total_all = sum(float(policy["weights"].get(k, 0)) for k in c.CATEGORIES)
+    pol = dict(policy, composite=dict(policy.get("composite") or {}, _total_weight=total_all))
+    points, score = _composite(known, known_w, pol)
     raw, why = _raw_tier(score, eff, policy)
     tier, hyst = _hysteresis(raw, why, prior, now, policy)
     hyst.update(

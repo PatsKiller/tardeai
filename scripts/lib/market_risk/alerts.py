@@ -62,10 +62,10 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     lines.append(head)
     up = a.get("uplift") or None
     if up:
-        lines.append(
-            f"Market {_num(a.get('market_score'))} ({a.get('market_tier')}) → {tier} after portfolio "
-            f"vulnerability {_num(up.get('vulnerability'))}" + (f" · {up.get('reason')}" if up.get("reason") else "")
+        why = "; ".join(str(r) for r in (up.get("reasons") or [])) or (
+            f"portfolio vulnerability {_num(up.get('vulnerability'))}"
         )
+        lines.append(f"Market {_num(a.get('market_score'))} ({a.get('market_tier')}) → {tier} because {why}")
     for c in (a.get("contributors") or [])[:max_contributors]:
         pts = float(c.get("points") or 0)
         lines.append(
@@ -74,7 +74,8 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     book = a.get("portfolio") or {}
     parts = []
     for b in book.get("budget_breaches") or []:
-        parts.append(f"{b.get('budget')} {b.get('actual')} vs {b.get('limit')}")
+        scope = f"{b.get('scope')} " if b.get("scope") and b.get("scope") != "book" else ""
+        parts.append(f"{scope}{b.get('budget')} {_num(b.get('actual'))} vs {_num(b.get('limit'))}")
     for d in book.get("drivers") or []:
         s = str(d.get("symbol") or "")
         if d.get("stop_distance_pct") is not None:

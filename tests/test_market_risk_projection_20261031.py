@@ -150,7 +150,8 @@ def test_temperament_title_names_an_evaluated_tier_and_never_an_unevaluated_one(
         },
     )
     t = build_temperament(**base, market_risk=mp.build(SNAP, None, now=NOW))
-    assert t["title"] == "RISK ON TREND — SELECTIVE RISK · MARKET RISK RED 83/100"
+    # PR #2342 (CIO overlay): an evaluated ORANGE/RED turns the posture defensive (operator §11 item 3).
+    assert t["title"] == "RISK ON TREND — DEFENSIVE — ENTRIES HELD, REVIEW STOPS · MARKET RISK RED 83/100"
     assert t["market_risk"]["tier"] == "RED" and t["market_risk"]["top"] == "c0"
     t2 = build_temperament(**base, market_risk=mp.build(None, None, now=NOW))
     assert t2["title"] == "RISK ON TREND — SELECTIVE RISK" and t2["market_risk"]["tier"] == "NOT_EVALUATED"

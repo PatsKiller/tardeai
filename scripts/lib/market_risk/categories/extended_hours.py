@@ -12,10 +12,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-try:
-    from lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
-except ImportError:  # pragma: no cover - imported as scripts.lib
-    from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
+from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
 
 CATEGORY = "extended_hours"
 
