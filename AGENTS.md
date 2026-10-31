@@ -1,31 +1,30 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.0.0
+Policy-Version:      28.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-30
-Last-Reviewed:       2026-10-30T20:30:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-31T11:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          28.0.0
+Supersedes:          27.0.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes
-the rest; backups are one on host, N+1 on Drive.** Ratified (`APPROVE_AGENTS_POLICY_29_0_0 2311 6f5db2cf`).
-§0 rule 6, §24.12, §24.14–§24.15, §17; `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** new
-deleting rules (C/R/X, backups, agent worktree close-out); `MBI_BEHAVIOR = 0`.
+**28.0.0 is PROPOSED (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
+rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
+27.0.1 (#2309), 28.0.0 (#2310) and 29.0.0 (#2311); those PRs never merged and #2306 took 27.0.1 on main first, so the
+content is renumbered here and needs `APPROVE_AGENTS_POLICY_28_0_0 2311 <head_sha>`. §0 rule 6, §24.12–§24.15, §17;
+`docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
+nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
 
-**28.0.0 is ACTIVE (MAJOR) — rule T may reclaim scratch holding nested git repos, after bundling any unique
-commits.** Ratified by the operator (`APPROVE_AGENTS_POLICY_28_0_0 2310 06a90d74b49f334936b70ef61134c7cf01efaeb7`). §24.13 only. **Why MAJOR:** widens what a
-deleting rule may take; `MBI_BEHAVIOR = 0`.
-
-**27.0.1 is ACTIVE (MAJOR) — agents delete their own `agent-tmp` scratch; rule T reclaims the rest; worktrees
-are never hand-deleted.** Ratified by the operator (`APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b65f3828ca4a2119ae41369c417c28ac1`). Replaces unratified 27.0.0
-(#2303; findings: `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md`). §0 rule 6 (c), §24.12, §24.13, §17.
-**Why MAJOR:** adds an agent delete authority and a reclaimable kind; `MBI_BEHAVIOR = 0`.
+**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
+27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
+LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
+2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
+(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
 
 Older banners (26.2.2 and before): `docs/governance/AGENTS_HISTORY.md`.
 
@@ -2604,10 +2603,9 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 29.0.0 | 2026-10-30 | ACTIVE | MAJOR | §0 rule 6 (d) backups + §24.15 (one dump on host, N+1 on Drive, verified before removal; twice-weekly growth audit). Workspace lifecycle: §24.14 (declared workspaces, `agent_claim.py close` archive-then-remove, sweep rules C/R/X, daily/weekly/pressure `--until-target`); §0 rule 6 worktree clause; §24.12 kind (e); §17 thresholds. 26.2.1 banner moved to AGENTS_HISTORY.md. |
-| 28.0.0 | 2026-10-30 | ACTIVE | MAJOR | §24.13: rule T no longer holds every dir with a nested `.git`; registered worktrees and dirty nested repos still hold, unique nested commits are bundled (verified) into `standing_apply.agent_scratch.bundle_dir` before removal. 26.0.0 banner moved to AGENTS_HISTORY.md. |
-| 27.0.1 | 2026-10-30 | ACTIVE | MAJOR | Replaces unratified 27.0.0 (#2303). §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>`: the owning agent deletes it after its proofs, rule T reclaims the rest; worktree hand-deletion removed (rule W owns worktrees). §24.12 names the exception and adds kind (d); §24.13 states what rule T checks in code; §17 keeps rule T's threshold, pattern and enablement operator-only. |
-| 27.0.0 | 2026-10-30 | WITHDRAWN (replaced by 27.0.1, never ratified) | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | PENDING — `APPROVE_AGENTS_POLICY_27_0_0 <pr> <head_sha>`; held-class operator merge (§25.10). |
+| 28.0.0 | 2026-10-31 | PROPOSED | MAJOR | Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | PENDING — `APPROVE_AGENTS_POLICY_28_0_0 2311 <head_sha>` (content previously ratified as `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
+| 27.0.1 | 2026-10-30 | ACTIVE | PATCH | Ratifying edit only: 27.0.0 was merged to main as PROPOSED (ratifying commit not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-30`, banner and history row with no rule-text change. §0 rule 6 / §24.13 / §17 content is exactly as in 27.0.0. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
+| 27.0.0 | 2026-10-30 | SUPERSEDED | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
 | 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |
 | 26.2.1 | 2026-10-29 | ACTIVE | PATCH | Ratifying edit only: 26.2.0 was merged to main as PROPOSED (the ratifying commit was not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-29`, banner and history row with no rule-text change. §25.10.1/§25.10.2 content is exactly as in 26.2.0. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` |
 | 26.2.0 | 2026-10-29 | SUPERSEDED | MAJOR | §25.10.1 "Operator-delegated promote" and §25.10.2 "Operator-delegated lane activation and live testing" added: an agent hands the operator the exact deploy commands (already §28.4 — stated explicitly, not new) and may run the promote on the operator's behalf after it presents the exact command, full 40-hex SHA and dry-run output; a lane/scheduled-job/dispatcher-row the agent built may be turned on live and tested on the operator's in-session approval. §17 and §28.4 cross-referenced. §0 rules 1–2 and §24.7 never overridable, even by the operator; never extends to pushing main/release/*, merging, broker/order/stop/sizing/secret actions, arming/disarming the delegation, clearing STOP, or any unnamed §17 item; ReleaseGrantBinding@v1, STOP, GlobalReleaseLock and operator-set TRADEAI_EMERGENCY_RELEASE_SHA unchanged. | `APPROVE_AGENTS_POLICY_26_2_0 2292 82259827cb7c35d75bef4c743995c188f734e5f7` (ratified as 26.2.1) |
