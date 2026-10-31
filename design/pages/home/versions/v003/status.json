@@ -1,0 +1,63 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v003",
+  "state": "PROPOSED",
+  "title": "Home: Market advisory section (shock type + heat-map strip, where leadership is moving, re-entry watch)",
+  "created": "2026-10-31",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "awaiting the operator's decision on design DSN-20261031-home-advisory-section",
+    "source": [
+      "docs/designs/DSN-20261031-home-advisory-section.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-home-advisory-section",
+  "depends_on": [
+    "DSN-20261031-market-risk-ui",
+    "PR #2388 (sectors, shock_type, heatmap)",
+    "rotation advisor (in flight)",
+    "re-entry watch (in flight)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Synthetic data only; bracketed values are placeholders. Paths relative to root; sha256 binds each file. Viewing copy: claude.ai artifact 4hEtXkPgtPi9zqrwP3d81w (private; the operator's viewing copy).",
+    "files": [
+      {
+        "path": "v003/mockups/HomeDesktopAdvisory.html",
+        "sha256": "6e4187a6ea6ed605a0a744a3da803e146733c63e3d24a19f4d0c6341ce6e2696",
+        "bytes": 8729,
+        "role": "mockups"
+      },
+      {
+        "path": "v003/mockups/HomePhoneAdvisoryCollapsed.html",
+        "sha256": "36a59f3edfa6eca79da5f300ac4bbb7cac374cc8b426099d8c047d5943347aa3",
+        "bytes": 5152,
+        "role": "mockups"
+      },
+      {
+        "path": "v003/mockups/HomePhoneAdvisoryExpanded.html",
+        "sha256": "212cb154da0d9abfa3b4c8f5b3af681987e040a704280c8d7fb9a260a61aee3d",
+        "bytes": 8407,
+        "role": "mockups"
+      },
+      {
+        "path": "v003/mockups/HomePhoneReentrySheet.html",
+        "sha256": "efe8a84bf53ad1a563b046dca6f44f59196f95d722de9c14cf465d56939e126d",
+        "bytes": 6034,
+        "role": "mockups"
+      },
+      {
+        "path": "v003/mockups/canvas.html",
+        "sha256": "d82262ddaf6fa687904f127d349379901e4d9dc8ca4553237d285cea812b9df4",
+        "bytes": 15084,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": []
+}
