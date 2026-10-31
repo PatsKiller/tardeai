@@ -95,8 +95,10 @@ def earnings_share(
         sym = aliases.get(sym, sym)
         if not sym or (keep is not None and sym not in keep):
             continue
+        if sym not in weights:
+            continue  # only index-universe issuers carry a weight; others never appear as "reporters"
         if _earnings_counts(r, now, window, cfg):
-            reporters[sym] = float(weights.get(sym, 0.0))
+            reporters[sym] = float(weights[sym])
     return {
         "sessions": sessions,
         "window": [d.isoformat() for d in window],

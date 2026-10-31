@@ -396,7 +396,8 @@ class PgReader:
         hi = _aware(end)
         rows = self._rows(
             "SELECT DISTINCT ON (symbol) symbol, metric_value, fetched_at FROM fundamental_data "
-            "WHERE metric_name = 'MarketCap' AND metric_value > 0 AND fetched_at <= %s AND fetched_at > %s "
+            "WHERE metric_name = 'MarketCap' AND source = 'finviz' AND metric_value > 0 AND fetched_at <= %s "
+            "AND fetched_at > %s "
             + ("AND symbol = ANY(%s) " if universe is not None else "")
             + "ORDER BY symbol, fetched_at DESC",
             [hi, hi - timedelta(days=int(lookback_days))] + ([[u.upper() for u in universe]] if universe else []),

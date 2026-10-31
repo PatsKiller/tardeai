@@ -46,9 +46,12 @@ def run(
         import external_market_data_ingest as x
 
         ingest = x.ingest_finviz_fundamentals
-    res = ingest(syms, limit=max(len(syms), 1), dry_run=not apply)
+    # The Finviz cache keys some issuers by another ticker form (BRK.B -> BRK-B): request the cache key, report the issuer.
+    to_key = {v.upper(): k.upper() for k, v in (ev.get("issuer_aliases") or {}).items() if "-" in k}
+    keys = [to_key.get(s, s) for s in syms]
+    res = ingest(keys, limit=max(len(keys), 1), dry_run=not apply)
     per = res.get("symbols") or {}
-    caps = {s: (per.get(s) or {}).get("metrics", {}).get("MarketCap") for s in syms}
+    caps = {s: (per.get(to_key.get(s, s)) or {}).get("metrics", {}).get("MarketCap") for s in syms}
     have = {s: float(v) for s, v in caps.items() if v}
     floor = float(ev.get("min_cap_coverage", 0.8))
     required = [str(u).upper() for u in ev.get("required_issuers") or []]
