@@ -488,9 +488,24 @@ def _comms_critical_override(message: str, level: str, router=None) -> dict | No
     if router is not None and window_s and router._durable_recently_sent(subject, window_s):
         print(f"[telegram] comms-critical {subject_core} already paged within {cfg.get('subject_window_minutes')}m; held")
         return None
+    # Burst cap across subjects: one 10-30 holdings sync paged five names in four seconds. Take one of
+    # burst_max_pages durable slots that has not been used inside burst_window_seconds; none free -> digest.
+    burst_slot = None
+    burst_max = int(cfg.get("burst_max_pages") or 0)
+    burst_window = float(cfg.get("burst_window_seconds") or 0)
+    if router is not None and burst_max > 0 and burst_window > 0:
+        for i in range(burst_max):
+            key = f"legacy_critical_burst:{i}"
+            if not router._durable_recently_sent(key, burst_window):
+                burst_slot = key
+                break
+        if burst_slot is None:
+            print(f"[telegram] comms-critical {subject_core} held: {burst_max} pages already in the last {burst_window:g}s")
+            return None
     return {"subject": subject, "priority": str(cfg.get("intent_priority") or "P1"),
             "dedupe_minutes": int(cfg.get("dedupe_minutes") or 240),
-            "producer": str(cfg.get("producer") or "legacy_critical_override")}
+            "producer": str(cfg.get("producer") or "legacy_critical_override"),
+            "burst_slot": burst_slot}
 
 
 def _legacy_send(
@@ -548,7 +563,16 @@ def _legacy_send(
                     )
                     if delivered:
                         _router_mod.durable_mark_sent(plan["subject"], meta={"producer": plan["producer"]})
-                    return delivered
+                        if plan.get("burst_slot"):
+                            _router_mod.durable_mark_sent(plan["burst_slot"], meta={"producer": plan["producer"]})
+                        return delivered
+                    # Deduped or not delivered: keep it in the digest rather than losing it from both phone and digest.
+                    try:
+                        from report_capture import archive_message
+                        archive_message(message, suppressed=True, reason=f"{level}:override_not_delivered")
+                    except Exception as archive_exc:
+                        print(f"[telegram] override not delivered and archive failed: {type(archive_exc).__name__}: {archive_exc}")
+                    return False
                 print(f"[telegram] Suppressed ({level}): {message[:60]}...")
                 try:
                     from report_capture import archive_message

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "legacy_critical_override_followup_20261031",
+  "files": [
+    "tests/test_legacy_critical_override_followup_20261031.py",
+    "tests/test_cron_critical_never_suppressed_20261031.py"
+  ],
+  "anchor": "LEGACY_CRITICAL_OVERRIDE_FOLLOWUP_20261031",
+  "comment": [
+    "ANCHOR: LEGACY_CRITICAL_OVERRIDE_FOLLOWUP_20261031 \u2014 follow-up to #2350: '0 unprotected' telemetry never pages,",
+    "a deduped or undelivered override intent is archived to the digest (not lost), and a cross-subject burst cap",
+    "digests the rest of a sync burst. Hermetic: stubbed transport, temp dedupe/receipt paths.",
+    "Also registers #2350's own test file, which #2350 left unregistered (ci_test_coverage_gate)."
+  ]
+}
