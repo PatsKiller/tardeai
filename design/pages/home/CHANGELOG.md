@@ -12,3 +12,8 @@
     the set-only **STOP DEPLOYS** control, links to Ops → Controls, Releases & schedules and the Mergify dashboard).
   - Phone (412 / 390): the drawer still opens a full-screen sheet with ← Back; checked in
     `apps/command-center-v3/e2e/deploys-train-removal.spec.ts` and `e2e/home-do-now.spec.ts` at 1440 / 412 / 390.
+
+- 2026-10-31 PROPOSED v002 (design DSN-20261031-market-risk-ui; engine DSN-20261031-market-risk-engine P3-T2): header fact
+  "Market" → "MARKET RISK" (tier, score, top contributor); Orange/Red banner with Acknowledge above the header; "Market in
+  one look" gains the five contributors and takes the old regime/VIX/sectors text; classic hero tile "REGIME" → "MARKET
+  RISK". Awaiting the operator's tap in Approvals → Designs. Mockups (synthetic) in the private design store.

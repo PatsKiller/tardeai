@@ -43,6 +43,10 @@
   --info-color: #7db4ff;
   --info-bg: rgba(96, 165, 250, 0.14);
   --info-border: rgba(96, 165, 250, 0.40);
+  /* elevated = market-risk ORANGE (design home/v002, risk/v002): between warning and danger in lightness, not hue alone */
+  --elevated-color: #fb923c;
+  --elevated-bg: rgba(251, 146, 60, 0.14);
+  --elevated-border: rgba(251, 146, 60, 0.45);
   --ai-color: #c4a6ff;
   --ai-bg: rgba(168, 85, 247, 0.16);
   --ai-border: rgba(168, 85, 247, 0.42);
@@ -89,6 +93,9 @@
   --info-color: #1d4ed8;
   --info-bg: rgba(29, 78, 216, 0.10);
   --info-border: rgba(29, 78, 216, 0.35);
+  --elevated-color: #9a3412;
+  --elevated-bg: rgba(194, 65, 12, 0.10);
+  --elevated-border: rgba(194, 65, 12, 0.35);
   --ai-color: #6d28d9;
   --ai-bg: rgba(109, 40, 217, 0.10);
   --ai-border: rgba(109, 40, 217, 0.35);
@@ -118,6 +125,7 @@
     --warning-color: #8f5106; --warning-bg: rgba(143, 81, 6, 0.10); --warning-border: rgba(143, 81, 6, 0.38);
     --danger-color: #b91c1c; --danger-bg: rgba(185, 28, 28, 0.10); --danger-border: rgba(185, 28, 28, 0.35);
     --info-color: #1d4ed8; --info-bg: rgba(29, 78, 216, 0.10); --info-border: rgba(29, 78, 216, 0.35);
+    --elevated-color: #9a3412; --elevated-bg: rgba(194, 65, 12, 0.10); --elevated-border: rgba(194, 65, 12, 0.35);
     --ai-color: #6d28d9; --ai-bg: rgba(109, 40, 217, 0.10); --ai-border: rgba(109, 40, 217, 0.35);
     --neutral-color: #4b5568; --neutral-bg: rgba(75, 85, 104, 0.10); --neutral-border: rgba(75, 85, 104, 0.30);
     --primary-color: #1d4ed8; --secondary-color: #4b5568; --focus-ring: 0 0 0 2px rgba(29, 78, 216, 0.45);
