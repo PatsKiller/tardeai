@@ -68322,23 +68322,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── Market Risk Engine projection (DSN-20261031-market-risk-ui; design home/v002, risk/v002) ──────
     # GET: the engine snapshot when it exists, else an honest not_evaluated with the P0 options-flow block.
-    # POST ack: refused until the episodes store exists (P3-T7); the UI shows the refusal verbatim.
+    # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import build as _mr_build
+            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL, build as _mr_build
 
-            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
+            from lib.market_risk import escalation as _mr_esc
+
+            _snap = _load_json(PROJECT_ROOT / _MR_REL)
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
-            return 200, {"ok": True, "data": _json_clean(_mr_build(_snap, _radar))}
+            _ep_err = None
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except Exception as _e:  # noqa: BLE001 — a torn episode ledger never turns the honest answer into a 500
+                _ep, _ep_err = None, f"episode ledger unreadable: {type(_e).__name__}"
+            _proj = _mr_build(_snap, _radar, episode=_ep)
+            if _ep_err:
+                _proj["episode_error"] = _ep_err
+            return 200, {"ok": True, "data": _json_clean(_proj)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if base_path == "/api/v2/market-risk/ack" and method == "POST":
         try:
+            from lib import cc_auth as _mr_auth
+            from lib.market_risk import escalation as _mr_esc
             from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
 
-            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
-            _code, _out = _mr_ack(_mr_build(_snap, None), body or {})
-            return _code, _out
+            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
+
+            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            _proj = _mr_build(_snap, None, episode=_mr_esc.open_episode(_mr_esc.load()))
+            _code, _out = _mr_ack(_proj, body or {}, actor=_mr_auth.current_principal())
+            return _code, _json_clean(_out)
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
