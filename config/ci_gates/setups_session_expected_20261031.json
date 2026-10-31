@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "setups_session_expected_20261031",
-  "files": ["tests/test_setups_session_expected_20261031.py"],
+  "files": [
+    "tests/test_setups_session_expected_20261031.py"
+  ],
   "anchor": "SETUPS_SESSION_EXPECTED_20261031",
-  "comment": ["ANCHOR: SETUPS_SESSION_EXPECTED_20261031 — Health Agent trade_ai_session_stale compares run_date with the session that should be current (today after the first full scan on a trading day, else the previous trading day), so the finding clears on weekends/holidays/pre-open and the heal stops being 'ineffective'. Hermetic."]
+  "comment": [
+    "ANCHOR: SETUPS_SESSION_EXPECTED_20261031 — Health Agent trade_ai_session_stale compares run_date with the session that should be current (today after the first full scan on a trading day, else the previous trading day), so the finding clears on weekends/holidays/pre-open and the heal stops being 'ineffective'. Hermetic."
+  ]
 }
