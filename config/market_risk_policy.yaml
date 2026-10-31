@@ -20,3 +20,60 @@ options_flow:
     warn: P2
   dedupe_minutes: 240         # one card per symbol-state per four hours
   producer: options_chain_snapshot
+
+alerts:
+  # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
+  # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  producer: market_risk_engine
+  max_contributors: 5
+  priority:
+    RED: P1
+    ORANGE: P1
+    YELLOW: P2
+    BLUE: P3
+    GREEN: P2
+    deescalated: P2        # a drop out of ORANGE/RED is news too
+  dedupe_minutes:
+    RED: 0
+    ORANGE: 60
+    YELLOW: 240
+    BLUE: 720
+    GREEN: 720
+    deescalated: 240
+
+escalation:
+  # MarketRiskEpisode@v1 (scripts/lib/market_risk/escalation.py). File store until the market_risk_episodes table
+  # is granted (§7A). One open episode at a time; ORANGE or RED opens it.
+  opens_at: [ORANGE, RED]
+  red_repeat_offsets_min: [15, 30, 60]   # after the first send, then every red_repeat_every_min
+  red_repeat_every_min: 60
+  red_repeat_cap: 12
+  orange_repeat_offsets_min: [60]        # once at +60, then once at each session boundary
+  orange_session_boundaries_et: ["05:00", "09:45", "16:30"]
+  orange_repeat_cap: 4
+  min_seconds_between_sends: 60          # never two sends of one episode inside a minute
+  resolve_after_sessions_below: 3        # tier below YELLOW for 3 distinct session dates -> RESOLVED
+  resolve_below_tier: YELLOW
+  stalled_after_min: 75                  # OPEN RED with no repeat receipt this long -> health_tick pages
+
+opening_shock:
+  # 09:16-09:46 ET opening-shock detector (scripts/lib/market_risk/opening_shock.py, plan §5.14).
+  symbols: [SPY, QQQ, IWM, SMH]
+  gap_and_go_atr: 0.75        # |gap| >= this many ATRs, breadth confirms, range extends
+  gap_fade_retrace: 0.50      # >= 50% of the gap retraced by 09:45
+  panic_gap_atr: -1.5         # gap <= -1.5 ATR ...
+  panic_advancers_pct: 20     # ... advancers below 20% ...
+  panic_trin: 2.0             # ... TRIN above 2.0 ...
+  panic_vix_change_pct: 10    # ... VIX up 10% or more
+  panic_gap_atr_without_internals: -2.0   # internals unknown: a deeper gap plus the VIX rule is required
+  window_et: ["09:16", "09:46"]
+
+extended_hours:
+  # Premarket / after-hours index proxies and index heavyweights (categories/extended_hours.py).
+  index_proxies: [QQQ, SPY]
+  heavyweights: [NVDA, MSFT, AAPL, AMZN, GOOGL, META, AVGO, TSLA, AMD, INTC]
+  warn_pct: -0.75             # worst index proxy move vs previous close
+  stress_pct: -1.5
+  heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
+  lookback_hours: 18
+  stale_after_hours: 2

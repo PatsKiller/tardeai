@@ -265,6 +265,22 @@
       "note": "2026-10-31 DSN-20261031-market-risk-engine-P0-T4 (new step, no crontab ancestor). 2026-10-30 RCA finding 7: the 05:45 premarket pipeline died on ENOSPC and the 07:30 morning brief failed; nothing paged; zero operator sends 06:00-09:45 ET. Pages P1 after 06:45 ET (pipeline receipt) and 07:45 ET (brief delivery), repeats hourly up to 4x, silent after 12:00 ET and on non-market days (config/premarket_delivery_deadman.json). Reads the receipt file and communication_events; sends via telegram_alert.send_telegram; writes LaneRunReceipt premarket-delivery-deadman. Placed before pipeline-watchdog, which must stay last."
     },
     {
+      "step_id": "market-risk-escalation-stall",
+      "finding_rc": [3],
+      "finding_note": "exits 3 (EXIT_FINDING) when an OPEN unacknowledged RED market-risk episode has had no repeat send for escalation.stalled_after_min; the step pages P1 itself (hourly while it persists). rc 1 = delivery failed or crashed.",
+      "command": ["$PY", "scripts/check_market_risk_escalation.py"],
+      "cadence_minutes": 15,
+      "minute_offset": 5,
+      "hours": null,
+      "weekdays": null,
+      "lock": "/tmp/health_tick_market_risk_escalation_stall.lock",
+      "timeout_s": 60,
+      "needs_env": false,
+      "market_day_gate": false,
+      "log": "logs/market_risk_escalation_stall.log",
+      "note": "2026-10-31 DSN-20261031-market-risk-engine-P3-T7 (new step, no crontab ancestor). Plan §5.8: a RED episode repeats until acknowledged; if the evaluator that sends repeats dies, this step pages 'escalation stalled'. Reads the episode store only (escalation.stalled); silent when no RED episode is OPEN. Operator approved design §11 items 5 and 8 on 2026-10-31. Placed before pipeline-watchdog, which must stay last."
+    },
+    {
       "step_id": "pipeline-watchdog",
       "command": ["$PY", "scripts/pipeline_watchdog.py"],
       "cadence_minutes": 120,
