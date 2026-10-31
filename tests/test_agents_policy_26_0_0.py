@@ -32,7 +32,8 @@ GOV = ROOT / "docs" / "governance"
 VH = AGENTS.index("\n# Version history")
 BINDING = AGENTS[:VH]
 #: Binding-text ceiling. 26.0.0 measured well under it; raising it is a PR that says why (version policy).
-MAX_BINDING_LINES = 2600
+#: 29.0.0: 28.0.0 (#2334, 2597 lines) and the workspace-lifecycle rules (#2311, 2599 lines) each fit alone; together 2633.
+MAX_BINDING_LINES = 2650
 
 
 def _control() -> dict[str, str]:

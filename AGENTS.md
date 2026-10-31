@@ -1,24 +1,32 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      28.0.0
+Policy-Version:      29.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-31
-Last-Reviewed:       2026-10-31T12:40:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-31T19:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          27.0.1
+Supersedes:          28.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**28.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
+**29.0.0 is PROPOSED (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
 rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
 27.0.1 (#2309), 28.0.0 (#2310) and 29.0.0 (#2311); those PRs never merged and #2306 took 27.0.1 on main first, so the
-content is renumbered here. Ratified by the operator (`APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`). §0 rule 6, §24.12–§24.15, §17;
+content is renumbered here. The operator ratified it as 28.0.0 on 2026-10-31 (`APPROVE_AGENTS_POLICY_28_0_0 2311
+a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`), but #2334 merged its own 28.0.0 first, so it is renumbered 29.0.0 and awaits
+`APPROVE_AGENTS_POLICY_29_0_0 <pr> <head_sha>` (§20). §0 rule 6, §24.12–§24.15, §17;
 `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
 nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
+
+**28.0.0 is ACTIVE (MAJOR) — operator-delegated merge (§25.10.3).** Ratified 2026-10-31 by the operator in session
+(`APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793`, §20). An agent never merges on its own; after the operator's explicit in-session approval naming the PR
+numbers (§28.4), or the operator's own Command Center Approvals → Merges tap, it may record the approval (verbatim,
+head-SHA bound) and apply `operator-merge`, or merge directly when the operator says not to wait for Mergify.
+**Why MAJOR:** adds a merge-approval recording authority to agents. §0 untouched; §0 rules 1–2 / §24.7 never overridable; `MBI_BEHAVIOR = 0`.
 
 **27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
 27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
@@ -1543,8 +1551,9 @@ the operator's own merge (§28.4) — never relayed by another agent, and never 
 - Changing an n8n broker read lane into one that writes, or widening any read lane's reach (§27.1).
 
 **Merge, deploy and the repository**
-- Approving merges — the digest's "Approve all", a per-PR approval, or merging a held-class PR; installing or
-  re-permissioning the Mergify GitHub App; changing `config/merge_hold_paths.json` to hold less (§25.10).
+- Approving merges — the digest's "Approve all", a per-PR approval, an in-session approval naming PR numbers that
+  the agent records under §25.10.3, or merging a held-class PR; installing or re-permissioning the Mergify GitHub
+  App; changing `config/merge_hold_paths.json` to hold less (§25.10).
 - Arming, pausing or revoking the standing **deploy** (promote-only) delegation; clearing a deploy STOP or resuming
   the poller; running `scripts/emergency_manual_promote.sh` or setting `TRADEAI_EMERGENCY_RELEASE_SHA` (a
   coordinator may run the promote only on the operator's own instruction in its session, §25.10, or the
@@ -2242,11 +2251,10 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 
 ## 25.10 Mergify merges, the host promotes
 
-- **Agents queue; they never merge or promote.** No agent merges, pushes `main`, approves on GitHub, adds or removes
-  `operator-merge`, runs prepare or promote, or sets `TRADEAI_EMERGENCY_RELEASE_SHA`. No one runs `gh pr merge`; the
-  `PR_MERGE_BOOTSTRAP_GH_MERGE` path is retired. A draft PR may hold a claim (§0 rule 11); Mergify never merges a
-  draft. The one exception is the operator-initiated emergency merge below ("Emergency merge and deploy"); it bypasses
-  Mergify. *Cause: 2026-10-26 — #2208 merged by `gh` (LESSONS L25-01).*
+- **Agents queue; they never merge or promote on their own.** No agent merges, pushes `main`, approves on GitHub,
+  adds or removes `operator-merge`, runs prepare or promote, or sets `TRADEAI_EMERGENCY_RELEASE_SHA`, except as the
+  operator delegates in §25.10.3 or the emergency merge below; `PR_MERGE_BOOTSTRAP_GH_MERGE` is retired and Mergify
+  never merges a draft. *Cause: 2026-10-26 — #2208 merged by `gh` (LESSONS L25-01).*
 - **"Approve all" in the digest is the operator's merge approval.** It approves exactly the PRs listed, each bound to
   the head SHA the digest showed; a changed head returns in the next digest. A GitHub Approve, an LGTM, an agent
   label, a guard grant or a relayed approval never counts. *Cause: 2026-10-27 — one-tap merges (LESSONS L25-02).*
@@ -2305,9 +2313,9 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   The delegation binds that agent and that session only; it never transfers to another agent or session.
 - **Never overridable, even by the operator.** §0 rule 1 (`MBI_BEHAVIOR = 0` — never order, stop or size), §0 rule 2
   (broker writes) and §24.7 (secrets) are not waived by any delegation here.
-- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging (Mergify / operator merge
-  only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy delegation,
-  clearing a STOP, or any §17 item not explicitly named in this subsection.
+- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging outside §25.10.3 (Mergify /
+  operator merge only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy
+  delegation, clearing a STOP, or any §17 item not explicitly named in this subsection.
 - **`ReleaseGrantBinding@v1`, the STOP latch and `GlobalReleaseLock` apply unchanged;** `TRADEAI_EMERGENCY_RELEASE_SHA`
   is still set by the operator, never by the agent (§24.8).
 - **Approval provenance is §28.4:** given in that agent's own session, verbatim, and recorded in the receipt; never
@@ -2324,14 +2332,38 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   Same provenance rule as §25.10.1.
 - **Never overridable, even by the operator.** §0 rule 1 (`MBI_BEHAVIOR = 0` — never order, stop or size), §0 rule 2
   (broker writes) and §24.7 (secrets) are not waived by any delegation here.
-- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging (Mergify / operator merge
-  only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy delegation,
-  clearing a STOP, or any §17 item not explicitly named in this subsection. §23.14's never-dispatcher-eligible lanes
+- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), merging outside §25.10.3 (Mergify /
+  operator merge only, §25.10), any broker/order/stop/sizing/secret action, arming or disarming the standing deploy
+  delegation, clearing a STOP, or any §17 item not explicitly named in this subsection. §23.14's never-dispatcher-eligible lanes
   (broker, order, secret and daemon lanes) are unchanged by this.
 - **Approval provenance is §28.4:** given in that agent's own session, verbatim, and recorded in the receipt; never
   relayed, never inferred, and never Telegram `/approve` (retired, §8). *Cause: 2026-10-29 — operator directive
   (verbatim in the PR body): "anything that a agent builds, they can ask permission to turn it on live and test it,
   and I will approve it. Also, same process."*
+
+### 25.10.3 Operator-delegated merge
+
+- **An agent never merges on its own.** The first bullet of §25.10 stands: no agent runs `gh pr merge`, approves on
+  GitHub, or adds `operator-merge` on its own judgment. This subsection adds only the narrow delegation below.
+- **The delegation.** After the operator has typed an explicit approval **naming the PR numbers in that agent's own
+  session** (§28.4), or has tapped approve on the Command Center Approvals → Merges surface, that agent may record the
+  approval as a `PrMergeDigestApproval@v1` row in the digest approval ledger — provenance "operator in-session
+  directive", the operator's words verbatim, each PR bound to its current head SHA — and apply `operator-merge`
+  through the host helper the Telegram tap uses (`scripts/lib/pr_merge_telegram.add_operator_merge_label`). Mergify
+  merges by default; when the operator says not to wait for it, the agent merges directly with `gh pr merge --squash
+  --match-head-commit <approved head>` once the four required checks are green on that head, never `--admin`. A
+  changed head drops the approval. It binds that agent and that session only.
+- **Held classes only by name.** A held-class PR (`config/merge_hold_paths.json`) is covered only when the operator
+  names that PR number; "everything" or an approved scope never covers a held PR, and the §28.15 item 3 review
+  receipts stay required before the label.
+- **Never overridable, even by the operator.** §0 rule 1 (`MBI_BEHAVIOR = 0` — never order, stop or size), §0 rule 2
+  (broker writes) and §24.7 (secrets) are not waived by any delegation here.
+- **The delegation never extends to** pushing `main` or `release/*` (§0 rule 4), a direct merge the operator did
+  not ask for, the emergency merge path (§25.10), approving the agent's own PR on its own word, any
+  broker/order/stop/sizing/secret action, arming or disarming the standing deploy delegation, clearing a STOP, or any §17 item not named here.
+- **Approval provenance is §28.4:** in that agent's own session, verbatim, in the ledger row and receipt; never
+  relayed or inferred. *Cause: 2026-10-31 — operator, verbatim in the PR body: "with operator approval you are able
+  to merge"; "You don't need to wait for Merger 5 [Mergify], you can merge" (LESSONS L25-08).*
 
 ---
 
@@ -2455,6 +2487,9 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **The operator-delegated lane activation (§25.10.2) follows the same provenance rule:** the operator's approval to
   turn a built lane live and test it is given in that agent's own session, verbatim, and recorded in the receipt; it
   is never relayed, never inferred, and never Telegram `/approve` (retired).
+- **The operator-delegated merge (§25.10.3) follows the same provenance rule:** the operator's approval naming the PR
+  numbers is given in that agent's own session (or by the operator's own Command Center tap), verbatim, recorded in
+  the `PrMergeDigestApproval@v1` row and the receipt; never relayed, never inferred, never Telegram `/approve`.
 
 ## 28.5 The Ops → Controls sudo window
 
@@ -2603,7 +2638,8 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 28.0.0 | 2026-10-31 | ACTIVE | MAJOR | Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | `APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab7147498aa59750f4cf8fa8d1c60edfe2f7` (content previously ratified as `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
+| 29.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 28.0.0. Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | Awaiting `APPROVE_AGENTS_POLICY_29_0_0 <pr> <head_sha>` (renumbered: #2334 took 28.0.0 first; content previously ratified as `APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab71`, `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
+| 28.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 27.0.1. §25.10.3 "Operator-delegated merge" added: an agent never merges on its own, but after the operator types an explicit approval naming the PR numbers in that agent's own session (§28.4), or taps approve on the Command Center Approvals → Merges surface, that agent may record a `PrMergeDigestApproval@v1` row (provenance "operator in-session directive", words verbatim, bound to each PR's current head SHA) and apply `operator-merge` through the host helper the Telegram tap uses; Mergify still merges under the four required checks, the ET windows and the head-SHA binding; held classes only when the operator names the PR; a direct `gh pr merge --squash --match-head-commit` only when the operator says not to wait for Mergify (operator 2026-10-31: "You don't need to wait for Merger 5 [Mergify], you can merge"), with the four required checks green on the approved head and never `--admin`; never the emergency path, never self-approval; §0 rules 1–2 and §24.7 never overridable. §25.10 first bullet, §25.10.1/§25.10.2 "never extends to merging", §28.4 and §17 cross-referenced. MAJOR because it adds a merge-approval recording authority to agents. §0 untouched (no adapter propagation). Textually independent of the open 27.0.1 ratification PRs #2306/#2309. | `APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793` (operator, in-session 2026-10-31) |
 | 27.0.1 | 2026-10-30 | ACTIVE | PATCH | Ratifying edit only: 27.0.0 was merged to main as PROPOSED (ratifying commit not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-30`, banner and history row with no rule-text change. §0 rule 6 / §24.13 / §17 content is exactly as in 27.0.0. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
 | 27.0.0 | 2026-10-30 | SUPERSEDED | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
 | 26.2.2 | 2026-10-30 | ACTIVE | PATCH | Generated §7A source-of-truth table refreshed: `conflict_ledger` and `conflict_rule_proposals` granted (operator §7A/§26.6, in-session 2026-10-29) and listed as active domains; no rule-text change. | operator 2026-10-29 in-session (recorded in `config/data_source_authority.json` approval) |
