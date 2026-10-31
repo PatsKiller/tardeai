@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_t9_20261031",
+  "files": [
+    "tests/test_market_context_header_honesty_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_T9_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_T9_20261031 — market header honesty (2026-10-30 RCA finding 10): change% derived from",
+    "the session's two prices (a +0.29% day no longer prints as +29.30%), a session without a print is stale and",
+    "renders 'prev close' instead of '+0.00%', a move beyond config/market_context_policy.json is implausible and",
+    "renders n/a; both the brief header and the scalp header honour the flags. Hermetic: requests stubbed."
+  ]
+}

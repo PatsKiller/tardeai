@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """backup_enforcer.py — hard-cap local pg dumps + optional Drive db prune.
 
-Prevents unbounded ~/db_backups growth (Aug 2026 backup storm).
+Caps top-level dumps by archiving older files; the archive is never expired.
+Reports whole-tree local bytes separately so archiving cannot look like reclaim.
 
 Usage:
   python scripts/backup_enforcer.py                  # enforce local max_count
@@ -14,8 +15,10 @@ Policy: config/backup_policy.yaml
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
+import stat
 import sys
 import time
 from pathlib import Path
@@ -101,6 +104,117 @@ def list_local_dumps(cfg: dict) -> list[Path]:
     return files
 
 
+def local_storage_usage(
+    cfg: dict, *, max_entries: int = 100_000, max_seconds: float = 2.0, max_depth: int = 32
+) -> dict:
+    """Metadata only: disjoint path buckets, never dump contents or symlink targets.
+
+    The existing total_bytes is a TOP-LEVEL dump total consumed as a dump-size
+    baseline by backup_verify.py. Archives/holds are outside that cap, not freed
+    space. Incomplete scans expose partial observations, never a complete total.
+    """
+    root = Path(os.path.expanduser(cfg.get("dir") or "~/db_backups")).absolute()
+    totals = dict.fromkeys(("live_dump_bytes", "archive_bytes", "held_bytes", "other_bytes"), 0)
+    unknown = set()
+    scanned = 0
+    started = time.monotonic()
+    # Every component is opened relative to an anchored descriptor. O_NOFOLLOW
+    # also fences a directory swapped to a symlink after its observed stat.
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    stack = []
+    opening = None
+    try:
+        opening = os.open(root.anchor, flags)
+        for part in root.parts[1:]:
+            child = os.open(part, flags, dir_fd=opening)
+            os.close(opening)
+            opening = child
+        root_info = os.fstat(opening)
+        stack.append((opening, os.scandir(opening), ()))
+        opening = None
+        scanned = 1
+        while stack:
+            if scanned >= max_entries or time.monotonic() - started >= max_seconds:
+                unknown.add("scan_limit")
+                break
+            parent_fd, entries, parent_parts = stack[-1]
+            try:
+                entry = next(entries)
+            except StopIteration:
+                entries.close()
+                os.close(parent_fd)
+                stack.pop()
+                continue
+            scanned += 1
+            parts = parent_parts + (entry.name,)
+            try:
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode):
+                    unknown.add("symlink_not_followed")
+                elif stat.S_ISDIR(info.st_mode):
+                    if len(parts) > max_depth:
+                        unknown.add("depth_limit")
+                        continue
+                    opening = os.open(entry.name, flags, dir_fd=parent_fd)
+                    opened = os.fstat(opening)
+                    if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                        unknown.add("directory_changed")
+                        os.close(opening)
+                        opening = None
+                        continue
+                    stack.append((opening, os.scandir(opening), parts))
+                    opening = None
+                elif stat.S_ISREG(info.st_mode):
+                    if any(p.lower() == "hold" or p.lower().startswith(("hold-", "hold_")) for p in parts[:-1]):
+                        bucket = "held_bytes"
+                    elif parts[0] == "archive":
+                        bucket = "archive_bytes"
+                    elif len(parts) == 1 and fnmatch.fnmatch(entry.name, cfg.get("pattern") or "trade_ai_*.sql.gz"):
+                        bucket = "live_dump_bytes"
+                    else:
+                        bucket = "other_bytes"
+                    totals[bucket] += info.st_size
+                else:
+                    unknown.add("unsupported_entry")
+            except OSError:
+                unknown.add("entry_unavailable")
+                if opening is not None:
+                    os.close(opening)
+                    opening = None
+        # A renamed/replaced root no longer describes the configured location.
+        opening = os.open(root.anchor, flags)
+        for part in root.parts[1:]:
+            child = os.open(part, flags, dir_fd=opening)
+            os.close(opening)
+            opening = child
+        current = os.fstat(opening)
+        if (current.st_dev, current.st_ino) != (root_info.st_dev, root_info.st_ino):
+            unknown.add("directory_changed")
+    except OSError:
+        unknown.add("entry_unavailable")
+    finally:
+        if opening is not None:
+            os.close(opening)
+        for descriptor, entries, _ in reversed(stack):
+            entries.close()
+            os.close(descriptor)
+    complete = not unknown
+    return {
+        "byte_basis": "logical_regular_file_bytes_by_path_not_reclaimable_disk_bytes",
+        "cap_scope": "top_level_dump_pattern_only",
+        "archive_and_holds_outside_cap": True,
+        "measurement_complete": complete,
+        "unknown_reasons": sorted(unknown),
+        "entries_scanned": scanned,
+        "scan_max_entries": max_entries,
+        "scan_max_seconds": max_seconds,
+        "scan_max_depth": max_depth,
+        **{key: value if complete else None for key, value in totals.items()},
+        "local_backup_total_bytes": sum(totals.values()) if complete else None,
+        "observed_bytes": totals,
+    }
+
+
 def enforce_local(cfg: dict, *, dry_run: bool = False, now: float | None = None) -> dict:
     min_bytes = int(cfg.get("min_bytes") or 500_000_000)
     max_count = int(cfg.get("max_count") or 1)
@@ -155,9 +269,10 @@ def enforce_local(cfg: dict, *, dry_run: bool = False, now: float | None = None)
         except OSError:
             pass
 
+    storage = local_storage_usage(cfg)
     return {
         "ok": len([p for p in remaining if p.stat().st_size >= min_bytes]) <= max_count
-              and total_bytes <= max_total,
+              and total_bytes <= max_total and storage["measurement_complete"],
         "dry_run": dry_run,
         "kept": kept,
         "deleted": archived,
@@ -170,12 +285,18 @@ def enforce_local(cfg: dict, *, dry_run: bool = False, now: float | None = None)
         "max_count": max_count,
         "max_total_bytes": max_total,
         "over_bytes": total_bytes > max_total,
+        "storage": storage,
     }
 
 
 def status_local(cfg: dict) -> dict:
     min_bytes = int(cfg.get("min_bytes") or 500_000_000)
-    files = list_local_dumps(cfg)
+    live_complete = True
+    try:
+        files = list_local_dumps(cfg)
+    except OSError:
+        files = []
+        live_complete = False
     items = []
     total = 0
     newest_age_h = None
@@ -195,16 +316,22 @@ def status_local(cfg: dict) -> dict:
                 "age_hours": round(age_h, 2),
             })
         except OSError:
-            continue
+            live_complete = False
+    storage = local_storage_usage(cfg)
+    max_total = int(cfg.get("max_total_bytes") or 5_000_000_000)
     return {
         "count": len(items),
         "full_count": sum(1 for i in items if i["full"]),
-        "total_bytes": total,
+        "total_bytes": total if live_complete else None,
+        "live_measurement_complete": live_complete,
         "newest_age_hours": newest_age_h,
         "files": items[:20],
         "max_count": int(cfg.get("max_count") or 1),
-        "max_total_bytes": int(cfg.get("max_total_bytes") or 0),
-        "compliant": sum(1 for i in items if i["full"]) <= int(cfg.get("max_count") or 1),
+        "max_total_bytes": max_total,
+        "over_bytes": total > max_total if live_complete else None,
+        "compliant": live_complete and storage["measurement_complete"] and total <= max_total
+                     and sum(1 for i in items if i["full"]) <= int(cfg.get("max_count") or 1),
+        "storage": storage,
     }
 
 
