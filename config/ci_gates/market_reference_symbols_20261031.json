@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_reference_symbols_20261031",
+  "files": [
+    "tests/test_market_reference_symbols_20261031.py"
+  ],
+  "anchor": "MARKET_REFERENCE_SYMBOLS_20261031",
+  "comment": [
+    "ANCHOR: MARKET_REFERENCE_SYMBOLS_20261031 — the quote universe always includes the Market Risk Engine's reference ETFs from config/market_reference_symbols.json (HYG, UUP, VIXY were absent per builder H's audit, PR #2341); a missing or wrong-schema file logs a warning and degrades to the DB universe. sqlite shim; no network, no DB."
+  ]
+}
