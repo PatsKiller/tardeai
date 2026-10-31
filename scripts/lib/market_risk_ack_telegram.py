@@ -8,11 +8,12 @@ STRESSed category re-opens it. Rules (review of #2354):
   episode's tier is not the one the operator named, so an ORANGE→RED upgrade that lands between the operator reading
   ORANGE and the ACK arriving can never be silenced by "ACK ORANGE".
 * **RED needs the words ``ACK RED``.** A bare ``ACK`` never acknowledges a RED.
-* **A bare ``ACK`` must be a reply to a market-risk card.** It binds to the tier that card shows and to the episode
-  that was open when the card went out (the card is no older than the episode's last tier change); anything else is
-  refused with the reason.
+* **A bare ``ACK`` must be a reply to a market-risk card the bot sent.** It binds to the tier that card shows and to
+  the episode that was open when the card went out (the card is no older than the episode's last tier change, compared
+  at whole-second resolution); anything else, including a forwarded or operator-typed copy, is refused with the reason.
 * **Only the operator.** The chat must be allowlisted AND the sender's ``from.id`` must be an operator id
-  (``TRADEAI_OPERATOR_FROM_IDS``, else the allowlisted chat ids, which for a private chat equal the operator's own id),
+  (``TRADEAI_OPERATOR_FROM_IDS``, else the allowlisted private-chat ids, which equal the operator's own id; a group id
+  is never an operator id),
   so another member of an allowlisted group cannot acknowledge.
 
 The receipt is the episode store itself (``escalation.acknowledge`` appends ``acks[]`` and the ``.acks.jsonl`` sidecar).
@@ -41,7 +42,10 @@ def operator_from_ids(allowed_chats: Iterable[Any]) -> set[str]:
     raw = os.environ.get("TRADEAI_OPERATOR_FROM_IDS", "").strip()
     if raw:
         return {x.strip() for x in raw.split(",") if x.strip()}
-    return {str(c) for c in allowed_chats if c is not None and str(c)}
+    # only private-chat ids are user ids; a group id (negative) is never an operator (review of #2411, M2)
+    return {
+        str(c).strip() for c in allowed_chats if c is not None and str(c).strip() and not str(c).strip().startswith("-")
+    }
 
 
 def card_tier(text: str | None) -> str | None:
@@ -92,16 +96,19 @@ def handle_ack_text(
     if said:
         expected = said
     else:
-        shown = card_tier((reply_to or {}).get("text"))
+        from_bot = bool(((reply_to or {}).get("from") or {}).get("is_bot"))
+        shown = card_tier((reply_to or {}).get("text")) if from_bot else None
         if not shown:
             return (
                 f"Not acknowledged: reply ACK {ep.get('tier')} (or reply ACK to the market-risk alert itself). "
-                "A bare ACK must answer a market-risk card."
+                "A bare ACK must answer a market-risk card the bot sent."
             )
         if shown == "RED":
             return "Not acknowledged: a RED needs the words ACK RED."
         sent = (reply_to or {}).get("date")
         anchor = _parse(ep.get("anchor_at") or ep.get("opened_at"))
+        if anchor is not None:
+            anchor = anchor.replace(microsecond=0)  # Telegram dates are whole seconds (review of #2411, M3)
         if sent is None or anchor is None or datetime.fromtimestamp(int(sent), timezone.utc) < anchor:
             return (
                 f"Not acknowledged: that card is older than the open {ep.get('tier')} episode. "

@@ -232,9 +232,11 @@ def ack_outcome(
     shown = (projection or {}).get("episode") or {}
     if wanted is None and shown.get("id"):
         wanted = str(shown.get("id"))
-    # the episode tier the page showed (not the market tier, which can sit below an open RED episode); checked under
-    # the ledger lock so an upgrade that lands after the page rendered is refused, not silently acknowledged
-    shown_tier = str(shown.get("tier") or "") or None
+    # the episode tier the PAGE showed, sent by the client as ``episode_tier`` (the projection here is rebuilt at POST
+    # time, so its tier is the server's current one, not what the operator saw — review of #2411, B1). It is required
+    # whenever an episode is open and checked under the ledger lock: an ORANGE->RED upgrade that lands after the page
+    # rendered is refused with the reason, never silently acknowledged.
+    shown_tier = str((body or {}).get("episode_tier") or "").strip() or None
     return esc.acknowledge(
         wanted,
         actor=actor,
@@ -242,4 +244,5 @@ def ack_outcome(
         now=now or datetime.now(timezone.utc),
         path=path,
         expected_tier=shown_tier,
+        require_expected_tier=True,
     )

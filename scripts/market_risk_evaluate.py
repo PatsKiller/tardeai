@@ -362,6 +362,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--policy", default=str(POLICY_PATH))
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
+    ap.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="this run was launched by the scheduler (the market-risk-evaluate cron lines): write the run receipt "
+        "data/runtime/market_risk/run_last.json that the stalled-escalation check reads; manual runs never write it",
+    )
     a = ap.parse_args(argv)
     apply = a.apply and not a.dry_run
     if apply:
@@ -406,8 +412,9 @@ def main(argv: list[str] | None = None) -> int:
     doc["session"] = session_of(now)
     if apply:
         doc["written"] = written.get("latest") or str(state_dir() / "latest.json")
-    if not a.as_of and not a.fixture:
-        # a scheduled run (dry or apply) leaves its receipt; a replay never does
+    if a.scheduled and not a.as_of and not a.fixture:
+        # only a scheduler-launched run (dry or apply) leaves the receipt; a manual or replay run never does, so a
+        # hand-run cannot mask a dead schedule (review of #2411, M8)
         doc["run_receipt"] = write_run_receipt(doc, started=started, finished=datetime.now(timezone.utc))
     if a.as_json:
         print(json.dumps(doc, indent=2, default=str))

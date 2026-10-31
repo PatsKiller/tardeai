@@ -400,6 +400,7 @@ def acknowledge(
     now: datetime,
     path: Path | None = None,
     expected_tier: str | None = None,
+    require_expected_tier: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     """Operator acknowledgment (safe direction, one click, AGENTS §27.3). Returns (http_status, body).
 
@@ -407,7 +408,15 @@ def acknowledge(
     writer that drops it from the ledger cannot lose it (H5). It clears ``below_open`` (H3)."""
     p = path or store_path()
     with locked(p):
-        return _acknowledge(episode_id, actor=actor, channel=channel, now=now, path=p, expected_tier=expected_tier)
+        return _acknowledge(
+            episode_id,
+            actor=actor,
+            channel=channel,
+            now=now,
+            path=p,
+            expected_tier=expected_tier,
+            require_expected_tier=require_expected_tier,
+        )
 
 
 def _acknowledge(
@@ -418,6 +427,7 @@ def _acknowledge(
     now: datetime,
     path: Path,
     expected_tier: str | None = None,
+    require_expected_tier: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     data = load_for_write(path)
     ep = open_episode(data)
@@ -427,6 +437,13 @@ def _acknowledge(
         return 409, {"ok": False, "error": f"episode {episode_id} is not the open episode {ep['id']}"}
     if not actor:
         return 403, {"ok": False, "error": "acknowledgment needs an authenticated operator principal"}
+    if require_expected_tier and not expected_tier:
+        # the caller must say which tier the operator saw; a missing tier is refused, never assumed (review of #2411, B1)
+        return 409, {
+            "ok": False,
+            "error": f"acknowledgment must name the episode tier shown (the open episode is {ep.get('tier')}); reload and retry",
+            "episode_tier": ep.get("tier"),
+        }
     if expected_tier and str(expected_tier).upper() != str(ep.get("tier") or "").upper():
         # checked under the ledger lock: an ORANGE->RED upgrade that lands after the operator read ORANGE must not
         # let "ACK ORANGE" silence the RED (review of #2354, race)

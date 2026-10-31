@@ -1,10 +1,30 @@
 {
   "schema": "MarketRiskEscalationStallCheck@v2",
-  "_comment": "health_tick step market-risk-escalation-stall (scripts/check_market_risk_escalation.py). A RED escalation is 'stalled' only when the evaluator that sends its repeats missed a run it was scheduled to make: the evaluator's run receipt (data/runtime/market_risk/run_last.json, written by every scheduled dry or apply run) is older than the latest scheduled slot that is at least overdue_after_min old. Outside the evaluator's schedule the step is silent (review of #2354: judging by send age paged 46 times over one weekend). The schedule mirrors the market-risk-evaluate crontab lines (lane registry note); trading_days_only follows scripts/market_day_gate.sh. At most max_pages_per_episode pages per episode, at most one per repeat_minutes. Operator approval 2026-10-31 (design §11 items 5 and 8).",
+  "_comment": "health_tick step market-risk-escalation-stall (scripts/check_market_risk_escalation.py). A RED escalation is 'stalled' only when the evaluator that sends its repeats missed a run it was scheduled to make: the evaluator's run receipt (data/runtime/market_risk/run_last.json, written by every scheduled dry or apply run) is older than the latest scheduled slot that is at least overdue_after_min old. Outside the evaluator's schedule the step is silent (review of #2354: judging by send age paged 46 times over one weekend). The schedule mirrors the market-risk-evaluate crontab lines (lane registry note); trading_days_only follows scripts/market_day_gate.sh. At most max_pages_per_episode pages per episode, at most one per repeat_minutes. Operator approval 2026-10-31 (design §11 items 5 and 8). tick_interval_min is the health-tick cadence: one interval of slack after end+overdue keeps a window's last slot checkable. A run receipt that is unreadable, or dated more than future_skew_s ahead, counts as stale. The page cap is per episode opening (id + anchor_at), so a re-opened episode gets a fresh cap.",
   "evaluator_receipt_rel": "data/runtime/market_risk/run_last.json",
   "schedule": [
-    {"weekdays": [0, 1, 2, 3, 4], "trading_days_only": true, "start": "04:00", "end": "20:00", "every_min": 15},
-    {"weekdays": [6], "trading_days_only": false, "start": "18:30", "end": "18:30", "every_min": 15}
+    {
+      "weekdays": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "trading_days_only": true,
+      "start": "04:00",
+      "end": "20:00",
+      "every_min": 15
+    },
+    {
+      "weekdays": [
+        6
+      ],
+      "trading_days_only": false,
+      "start": "18:30",
+      "end": "18:30",
+      "every_min": 15
+    }
   ],
   "overdue_after_min": 35,
   "repeat_minutes": 60,
@@ -12,5 +32,7 @@
   "priority": "P1",
   "producer": "check_market_risk_escalation",
   "message_class": "market_risk",
-  "state_rel": "data/runtime/market_risk/escalation_stall_state.json"
+  "state_rel": "data/runtime/market_risk/escalation_stall_state.json",
+  "tick_interval_min": 15,
+  "future_skew_s": 120
 }

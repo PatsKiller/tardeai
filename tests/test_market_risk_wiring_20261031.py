@@ -26,6 +26,7 @@ COVERS = ["scripts/check_market_risk_escalation.py"]
 ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 10, 29, 18, 15, tzinfo=ET)  # Thu 18:15 ET (inside the evaluator schedule)
 CHAT = "1111"  # private chat: chat id == operator user id
+BOT = {"id": 999, "is_bot": True}
 
 
 @pytest.fixture(autouse=True)
@@ -162,13 +163,13 @@ def test_bare_ack_needs_a_reply_to_a_card(tmp_path):
     store = tmp_path / "e.json"
     _seed(store, tier="ORANGE")
     reply = mra.handle_ack_text("ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], now=T0, path=store)
-    assert "A bare ACK must answer a market-risk card" in reply and _status(store) == "OPEN"
+    assert "A bare ACK must answer a market-risk card the bot sent" in reply and _status(store) == "OPEN"
 
 
 def test_bare_ack_never_acknowledges_red(tmp_path):
     store = tmp_path / "e.json"
     _seed(store, tier="RED")
-    card = {"text": "🔴 MARKET RISK RED 83/100", "date": int(T0.timestamp())}
+    card = {"text": "🔴 MARKET RISK RED 83/100", "date": int(T0.timestamp()), "from": BOT}
     reply = mra.handle_ack_text(
         "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
     )
@@ -178,7 +179,7 @@ def test_bare_ack_never_acknowledges_red(tmp_path):
 def test_bare_ack_replying_to_the_current_orange_card_acknowledges(tmp_path):
     store = tmp_path / "e.json"
     _seed(store, tier="ORANGE")
-    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int((T0 - timedelta(minutes=30)).timestamp())}
+    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int((T0 - timedelta(minutes=30)).timestamp()), "from": BOT}
     reply = mra.handle_ack_text(
         "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
     )
@@ -188,7 +189,7 @@ def test_bare_ack_replying_to_the_current_orange_card_acknowledges(tmp_path):
 def test_bare_ack_replying_to_an_older_card_is_refused(tmp_path):
     store = tmp_path / "e.json"
     _seed(store, tier="ORANGE", anchor=T0 - timedelta(minutes=10))
-    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int((T0 - timedelta(hours=3)).timestamp())}
+    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int((T0 - timedelta(hours=3)).timestamp()), "from": BOT}
     reply = mra.handle_ack_text(
         "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
     )
@@ -198,7 +199,7 @@ def test_bare_ack_replying_to_an_older_card_is_refused(tmp_path):
 def test_bare_ack_to_an_orange_card_after_upgrade_to_red_is_refused(tmp_path):
     store = tmp_path / "e.json"
     _seed(store, tier="RED")
-    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int(T0.timestamp())}
+    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int(T0.timestamp()), "from": BOT}
     reply = mra.handle_ack_text(
         "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
     )
@@ -214,18 +215,94 @@ def test_escalation_acknowledge_expected_tier(tmp_path):
     assert code == 200
 
 
-def test_api_ack_binds_to_the_shown_episode_tier(tmp_path):
+def test_ack_outcome_requires_and_checks_the_episode_tier_the_page_showed(tmp_path):
     from scripts.lib import market_risk_projection as mrp
 
     store = tmp_path / "e.json"
     _seed(store, tier="RED")
-    shown = {"episode": {"id": "ep-test-1", "tier": "ORANGE"}}
-    code, body = mrp.ack_outcome(shown, {}, actor="tailnet:op", now=T0, path=store)
-    assert code == 409 and _status(store) == "OPEN"
-    code, _ = mrp.ack_outcome(
-        {"episode": {"id": "ep-test-1", "tier": "RED"}}, {}, actor="tailnet:op", now=T0, path=store
+    proj = {"episode": {"id": "ep-test-1", "tier": "RED"}}  # rebuilt at POST time: always the server's tier
+    code, body = mrp.ack_outcome(proj, {"episode_id": "ep-test-1"}, actor="tailnet:op", now=T0, path=store)
+    assert code == 409 and "must name the episode tier" in body["error"] and _status(store) == "OPEN"
+    code, body = mrp.ack_outcome(
+        proj, {"episode_id": "ep-test-1", "episode_tier": "ORANGE"}, actor="tailnet:op", now=T0, path=store
     )
-    assert code == 200
+    assert code == 409 and "not ORANGE" in body["error"] and _status(store) == "OPEN"
+    code, _ = mrp.ack_outcome(
+        proj, {"episode_id": "ep-test-1", "episode_tier": "RED"}, actor="tailnet:op", now=T0, path=store
+    )
+    assert code == 200 and _status(store) == "ACKED"
+
+
+@pytest.mark.parametrize("with_snapshot", [False, True])
+def test_real_ack_route_refuses_an_orange_tap_after_the_upgrade(tmp_path, monkeypatch, with_snapshot):
+    """Review of #2411, B1, through the real route: the page showed an ORANGE episode, the evaluator upgraded the same
+    episode to RED, the operator taps Acknowledge -> refused (409), never ACKED RED. With and without a snapshot."""
+    import api_v2
+    from lib import cc_auth
+    from lib.market_risk_projection import SNAPSHOT_REL
+
+    store = tmp_path / "e.json"
+    _seed(store, tier="ORANGE")
+    raw = json.loads(store.read_text())
+    raw["episodes"][0].update(tier="RED", current_tier="RED")  # the upgrade, same episode id
+    store.write_text(json.dumps(raw))
+    monkeypatch.setattr(api_v2, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setenv("MARKET_RISK_EPISODES_PATH", str(store))
+    monkeypatch.setattr(cc_auth, "command_csrf_check", lambda cfg, m, p: (True, ""))
+    monkeypatch.setattr(cc_auth, "current_principal", lambda: "tailnet:op")
+    if with_snapshot:
+        snap = tmp_path / SNAPSHOT_REL
+        snap.parent.mkdir(parents=True, exist_ok=True)
+        snap.write_text(json.dumps({"schema": "x", "tier": "RED", "score": 80, "as_of": T0.isoformat()}))
+    code, resp = api_v2.handle(
+        "/api/v2/market-risk/ack", "POST", {"episode_id": "ep-test-1", "episode_tier": "ORANGE"}, {}
+    )
+    assert code == 409 and "not ORANGE" in json.dumps(resp)
+    code, resp = api_v2.handle("/api/v2/market-risk/ack", "POST", {"episode_id": "ep-test-1"}, {})
+    assert code == 409 and "must name the episode tier" in json.dumps(resp)
+    assert _status(store) == "OPEN"
+    code, resp = api_v2.handle(
+        "/api/v2/market-risk/ack", "POST", {"episode_id": "ep-test-1", "episode_tier": "RED"}, {}
+    )
+    assert code == 200 and _status(store) == "ACKED"
+
+
+def test_both_clients_send_the_episode_tier():
+    for rel in (
+        "apps/command-center-v3/src/components/W7RiskPanels.tsx",
+        "apps/command-center-v3/src/components/home/MarketRiskBanner.tsx",
+    ):
+        assert "episode_tier: mr" in (ROOT / rel).read_text(encoding="utf-8"), rel
+
+
+def test_bare_ack_to_a_card_not_sent_by_the_bot_is_refused(tmp_path):
+    store = tmp_path / "e.json"
+    _seed(store, tier="ORANGE")
+    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int(T0.timestamp()), "from": {"id": 1111, "is_bot": False}}
+    reply = mra.handle_ack_text(
+        "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
+    )
+    assert "the bot sent" in reply and _status(store) == "OPEN"
+
+
+def test_group_ids_are_never_operator_ids_in_the_fallback(tmp_path):
+    store = tmp_path / "e.json"
+    _seed(store)
+    group = "-100777"
+    assert mra.operator_from_ids([group, CHAT]) == {CHAT}
+    reply = mra.handle_ack_text("ACK RED", chat_id=group, from_id=group, allowed_chats=[group], now=T0, path=store)
+    assert reply.startswith("Not acknowledged: only the operator") and _status(store) == "OPEN"
+
+
+def test_card_sent_in_the_same_second_as_the_episode_change_counts(tmp_path):
+    store = tmp_path / "e.json"
+    anchor = (T0 - timedelta(minutes=1)).replace(microsecond=750_000)
+    _seed(store, tier="ORANGE", anchor=anchor)
+    card = {"text": "🟠 MARKET RISK ORANGE 63/100", "date": int(anchor.timestamp()), "from": BOT}  # floored second
+    reply = mra.handle_ack_text(
+        "ACK", chat_id=CHAT, from_id=CHAT, allowed_chats=[CHAT], reply_to=card, now=T0, path=store
+    )
+    assert reply.startswith("Acknowledged market risk ORANGE")
 
 
 def test_poller_routes_ack_before_free_text_and_passes_the_reply():
@@ -325,6 +402,70 @@ def test_outside_the_schedule_a_dead_evaluator_does_not_page(tmp_path, monkeypat
     assert _tick(tmp_path, monkeypatch, datetime(2026, 10, 30, 4, 35, tzinfo=ET), calls) == 3 and len(calls) == 1
 
 
+def test_last_slot_of_a_window_is_checked_when_the_tick_runs_late(tmp_path, monkeypatch, capsys):
+    """Review of #2411, M4: the health tick runs a few seconds after :05. A missed weekday 20:00 run and a missed
+    Sunday 18:30 run must still page when the tick lands 20 s past the minute."""
+    calls: list = []
+    _seed(tmp_path / "e.json")
+    _receipt(tmp_path, datetime(2026, 10, 29, 19, 45, 10, tzinfo=ET))  # 20:00 run missing
+    assert _tick(tmp_path, monkeypatch, datetime(2026, 10, 29, 20, 35, 20, tzinfo=ET), calls) == 3 and len(calls) == 1
+    t2 = tmp_path / "sun"
+    t2.mkdir()
+    _seed(t2 / "e.json", anchor=datetime(2026, 11, 1, 17, 0, tzinfo=ET))
+    _receipt(t2, datetime(2026, 10, 30, 20, 0, 10, tzinfo=ET))  # Sunday 18:30 run missing
+    assert _tick(t2, monkeypatch, datetime(2026, 11, 1, 19, 5, 20, tzinfo=ET), calls) == 3 and len(calls) == 2
+
+
+@pytest.mark.parametrize("body", ['{"finished_at": "2026-10-29T1', '{"finished_at": "garbage"}', "[]", '"x"', "{}"])
+def test_unreadable_receipt_counts_as_stale_and_pages(tmp_path, monkeypatch, capsys, body):
+    _seed(tmp_path / "e.json")
+    p = tmp_path / "data/runtime/market_risk/run_last.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body)
+    calls: list = []
+    assert _tick(tmp_path, monkeypatch, T0, calls) == 3 and len(calls) == 1
+
+
+def test_receipt_dated_in_the_future_is_not_fresh(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path / "e.json")
+    _receipt(tmp_path, T0 + timedelta(hours=2))
+    calls: list = []
+    assert _tick(tmp_path, monkeypatch, T0, calls) == 3 and "dated in the future" in calls[0][1]
+
+
+@pytest.mark.parametrize("body", ["{torn", "[]", '{"ep-test-1@x": 5}'])
+def test_unreadable_page_ledger_still_pages_then_caps(tmp_path, monkeypatch, capsys, body):
+    _seed(tmp_path / "e.json")
+    _receipt(tmp_path, datetime(2026, 10, 29, 10, 0, tzinfo=ET))
+    st = tmp_path / "data/runtime/market_risk/escalation_stall_state.json"
+    st.parent.mkdir(parents=True, exist_ok=True)
+    st.write_text(body)
+    calls: list = []
+    t = datetime(2026, 10, 29, 10, 50, tzinfo=ET)
+    while t <= datetime(2026, 10, 29, 20, 50, tzinfo=ET):
+        _tick(tmp_path, monkeypatch, t, calls)
+        t += timedelta(minutes=15)
+    assert len(calls) == 3
+    assert list(st.parent.glob("escalation_stall_state.json.corrupt-*"))  # archived, not deleted
+
+
+def test_reopened_episode_gets_a_fresh_page_cap(tmp_path, monkeypatch, capsys):
+    store = tmp_path / "e.json"
+    _seed(store)
+    _receipt(tmp_path, datetime(2026, 10, 29, 10, 0, tzinfo=ET))
+    calls: list = []
+    t = datetime(2026, 10, 29, 10, 50, tzinfo=ET)
+    while t <= datetime(2026, 10, 29, 14, 0, tzinfo=ET):
+        _tick(tmp_path, monkeypatch, t, calls)
+        t += timedelta(minutes=15)
+    assert len(calls) == 3
+    raw = json.loads(store.read_text())
+    raw["episodes"][0].update(anchor_at=datetime(2026, 10, 29, 14, 0, tzinfo=ET).isoformat(), status="OPEN", repeats=0)
+    store.write_text(json.dumps(raw))  # re-opened: new anchor, same id
+    _tick(tmp_path, monkeypatch, datetime(2026, 10, 29, 14, 5, tzinfo=ET), calls)
+    assert len(calls) == 4 and "page 1 of 3" in calls[-1][1]
+
+
 def test_holiday_weekday_is_silent(tmp_path, monkeypatch, capsys):
     _seed(tmp_path / "e.json", anchor=datetime(2026, 11, 25, 18, 0, tzinfo=ET))
     _receipt(tmp_path, datetime(2026, 11, 25, 20, 0, tzinfo=ET))  # Thanksgiving 2026-11-26: gated off
@@ -372,7 +513,7 @@ def test_health_tick_row_present_and_watchdog_last():
 # ── evaluator run receipt ─────────────────────────────────────────────────────
 
 
-def test_every_scheduled_run_writes_a_receipt_and_a_replay_does_not(tmp_path, monkeypatch, capsys):
+def test_only_a_scheduled_run_writes_the_receipt(tmp_path, monkeypatch, capsys):
     import market_risk_evaluate as ev
     from scripts.lib.market_risk.fixture_reader import FixtureReader
 
@@ -383,6 +524,8 @@ def test_every_scheduled_run_writes_a_receipt_and_a_replay_does_not(tmp_path, mo
     assert ev.main(["--as-of", "2026-10-28T20:30:00+00:00", "--no-portfolio", "--json"]) == 0
     assert not rp.exists()  # a replay leaves no run receipt
     assert ev.main(["--dry-run", "--no-portfolio", "--json"]) == 0
+    assert not rp.exists()  # a manual run (no --scheduled) never writes it (review of #2411, M8)
+    assert ev.main(["--dry-run", "--scheduled", "--no-portfolio", "--json"]) == 0
     rec = json.loads(rp.read_text())
     assert (
         rec["schema"] == "MarketRiskRunReceipt@v1"
