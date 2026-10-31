@@ -50,6 +50,24 @@ why_vocabulary: [a, an, the, and, or, but, with, from, on, in, by, as, at, to, o
   semiconductors, chips, earnings, event, events, concentration, seasonal, extended, hours, overnight, session, data,
   measured, unmeasured, unknown, macro, cross-asset, asset, correlation, correlations, so, because, after, hit,
   reached, all, each]
+# The allow-list TEMPLATE (review of #2383 round 2, B3; operator 2026-10-31 "we got to get it working correctly").
+# The model never writes prose. It returns ONLY a JSON choice of phrase ids from this bank (and which contributors,
+# by their 1-based position on the card, fill {c1}/{c2}); the sentence is rendered here from the engine's own names
+# and displayed figures. Free text, unknown ids, extra keys or out-of-range contributors reject the curation and the
+# deterministic card is sent. Every rendered sentence still passes the character, behaviour, grounding and
+# vocabulary checks below. Slots: {c1} {c2} contributor names; {c1_points} {c2_points} their points; {c1_detail} the
+# displayed headline; {score}; {confirming} {of}; {unmeasured}.
+why_template:
+  max_phrases: 3
+  phrase_bank:
+    lead: "{c1} carries the largest share of the score at {c1_points} points."
+    pair: "{c1} and {c2} carry most of the score."
+    second: "{c2} adds {c2_points} points."
+    detail: "{c1_detail}."
+    score: "The risk score reads {score}, led by {c1}."
+    confirm: "{confirming} of {of} categories confirm."
+    calm_rest: "The other measured categories read calm."
+    unmeasured: "{unmeasured} categories are unmeasured."
 behaviour_patterns:                      # case-insensitive regexes on NFKC-normalised prose; any match rejects the curation
   - '\b(buy|sell|short|cover|trim|reduce|add to|scale (in|out)|exit|liquidate|hedge with)\b'
   - '\b(lighten|unload|dump|offload|shed|shrink|pare|cut|rotate|de-?risk)\b'

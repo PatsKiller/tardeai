@@ -1,4 +1,9 @@
-"""LLM curation of a market-risk card — the model may rephrase ONE sentence, nothing else.
+"""LLM curation of a market-risk card — the model may only CHOOSE phrases for ONE sentence, never write it.
+
+Template mode (review of #2383 round 2, B3; operator 2026-10-31 "we got to get it working correctly"): the model
+returns a JSON choice of phrase ids from ``why_template.phrase_bank`` in ``config/market_risk_curation.yaml`` plus which
+displayed contributors fill the slots. ``render_choice`` builds the sentence from the engine's own names and displayed
+figures; free text is never sent. The checks below still run on every rendered sentence (defence in depth).
 
 Design DSN-20261031-market-risk-engine §5.10 / P3-T3. Operator 2026-10-31: "you can have normalization and alerts
 curated by LLM." The deterministic card (built by the engine, never by a model) is the product. This module may hand
@@ -109,8 +114,13 @@ def allowed_figures(assessment: dict[str, Any]) -> str:
         v = assessment.get(k)
         if isinstance(v, (int, float)):
             parts.append(str(round(float(v))))
-    if isinstance(assessment.get("confirming"), (int, float)):
-        parts.append(str(int(assessment["confirming"])))
+    n, of = _confirming(assessment)
+    for v in (n, of):
+        if v is not None:
+            parts.append(str(v))
+    obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
+    if obs:
+        parts.append(str(sum(1 for o in obs if str(o.get("state") or "").upper() == "UNKNOWN")))
     for c in (assessment.get("contributors") or [])[:5]:
         if not isinstance(c, dict):
             continue
@@ -158,6 +168,9 @@ def template_vocabulary(assessment: dict[str, Any], cfg: dict[str, Any]) -> set[
     """The allow-list template: the descriptive words in ``cfg['why_vocabulary']`` plus every word of the
     contributors' displayed names and headlines and the category names. Nothing else may appear in the sentence."""
     words = {str(w).lower() for w in cfg.get("why_vocabulary") or []}
+    for phrase in ((cfg.get("why_template") or {}).get("phrase_bank") or {}).values():
+        for w in _WORD.findall(re.sub(r"\{[a-z0-9_]+\}", " ", str(phrase))):
+            words.add(w.lower())
     for c in (assessment.get("contributors") or [])[:5]:
         if not isinstance(c, dict):
             continue
@@ -177,24 +190,142 @@ def off_template_words(sentence: str, assessment: dict[str, Any], cfg: dict[str,
     return sorted({w for w in _WORD.findall(text) if w.lower() not in vocab and w.lower().rstrip("'s") not in vocab})
 
 
+class ChoiceRejected(ValueError):
+    """The model's answer is not a valid phrase choice."""
+
+
+def _contributors(assessment: dict[str, Any]) -> list[dict[str, Any]]:
+    return [c for c in (assessment.get("contributors") or [])[:5] if isinstance(c, dict)]
+
+
+def _display_name(c: dict[str, Any]) -> str:
+    raw = str(c.get("name") or c.get("category") or "").replace("_", " ").strip()
+    return raw[:1].upper() + raw[1:] if raw else ""
+
+
+def _confirming(assessment: dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+    v = assessment.get("confirming")
+    if isinstance(v, dict):
+        n, of = v.get("n"), v.get("of")
+        return (int(n) if isinstance(n, (int, float)) else None, int(of) if isinstance(of, (int, float)) else None)
+    if isinstance(v, (int, float)):
+        obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
+        return int(v), (len(obs) or None)
+    return None, None
+
+
+def slot_values(assessment: dict[str, Any], picks: list[int]) -> dict[str, str]:
+    """Slot text from the assessment only. ``picks`` are 1-based positions of displayed contributors for c1, c2."""
+    cons = _contributors(assessment)
+    vals: dict[str, str] = {}
+    for slot, pos in zip(("c1", "c2"), picks):
+        c = cons[pos - 1]
+        vals[slot] = _display_name(c)
+        if isinstance(c.get("points"), (int, float)):
+            vals[f"{slot}_points"] = str(round(float(c["points"])))
+        detail = str(c.get("headline") or c.get("detail") or "").strip().rstrip(".")
+        if detail:
+            vals[f"{slot}_detail"] = detail
+    if isinstance(assessment.get("score"), (int, float)):
+        vals["score"] = str(round(float(assessment["score"])))
+    n, of = _confirming(assessment)
+    if n is not None and of is not None:
+        vals["confirming"], vals["of"] = str(n), str(of)
+    obs = [o for o in assessment.get("observations") or [] if isinstance(o, dict)]
+    if obs:
+        vals["unmeasured"] = str(sum(1 for o in obs if str(o.get("state") or "").upper() == "UNKNOWN"))
+    return vals
+
+
+_SLOT = re.compile(r"\{([a-z0-9_]+)\}")
+
+
+def parse_choice(answer: str, assessment: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Strictly parse ``{"phrases": [{"id": <bank id>, "c": [i, j]}, ...]}``. Anything else raises ChoiceRejected."""
+    text = str(answer or "").strip()
+    if text.startswith("```"):  # a fenced JSON block is the only wrapper tolerated
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+    if not text.startswith("{"):
+        raise ChoiceRejected("answer is not a JSON phrase choice")
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        raise ChoiceRejected(f"answer is not valid JSON ({type(exc).__name__})") from exc
+    if not isinstance(doc, dict) or set(doc) != {"phrases"} or not isinstance(doc["phrases"], list):
+        raise ChoiceRejected('answer must be exactly {"phrases": [...]}')
+    tpl = cfg.get("why_template") or {}
+    bank = tpl.get("phrase_bank") or {}
+    max_n = int(tpl.get("max_phrases") or 3)
+    items = doc["phrases"]
+    if not 1 <= len(items) <= max_n:
+        raise ChoiceRejected(f"choose 1 to {max_n} phrases")
+    n_cons = len(_contributors(assessment))
+    if n_cons == 0:
+        raise ChoiceRejected("the card shows no contributors to describe")
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict) or not set(it) <= {"id", "c"} or not isinstance(it.get("id"), str):
+            raise ChoiceRejected('each phrase is {"id": <bank id>, "c": [positions]}')
+        pid = it["id"]
+        if pid not in bank:
+            raise ChoiceRejected(f"unknown phrase id {pid[:40]!r}")
+        if pid in seen:
+            raise ChoiceRejected(f"phrase {pid!r} chosen twice")
+        seen.add(pid)
+        picks = it.get("c", list(range(1, min(2, n_cons) + 1)))
+        if (
+            not isinstance(picks, list)
+            or len(picks) > 2
+            or not all(isinstance(x, int) and not isinstance(x, bool) and 1 <= x <= n_cons for x in picks)
+            or len(set(picks)) != len(picks)
+        ):
+            raise ChoiceRejected("contributor positions out of range")
+        out.append({"id": pid, "c": picks or [1]})
+    return out
+
+
+def render_choice(choice: list[dict[str, Any]], assessment: dict[str, Any], cfg: dict[str, Any]) -> str:
+    """The sentence, rendered from the bank and the assessment. A slot with no value rejects the whole choice."""
+    bank = (cfg.get("why_template") or {}).get("phrase_bank") or {}
+    n_cons = len(_contributors(assessment))
+    parts: list[str] = []
+    for it in choice:
+        picks = [p for p in it["c"] if p <= n_cons]
+        if len(picks) < 2:  # c2 defaults to the next displayed contributor when one exists
+            rest = [i for i in range(1, n_cons + 1) if i not in picks]
+            picks = (picks + rest)[:2]
+        vals = slot_values(assessment, picks)
+        phrase = str(bank[it["id"]])
+        missing = [m for m in _SLOT.findall(phrase) if m not in vals]
+        if missing:
+            raise ChoiceRejected(f"phrase {it['id']!r} needs {', '.join(missing)}, which the card does not show")
+        parts.append(_SLOT.sub(lambda m: vals[m.group(1)], phrase))
+    return " ".join(parts)
+
+
 def build_prompt(card_text: str, assessment: dict[str, Any], current_why: str, cfg: dict[str, Any]) -> str:
-    facts = {
-        "tier": assessment.get("tier"),
-        "score": assessment.get("score"),
-        "confirming": assessment.get("confirming"),
-        "contributors": assessment.get("contributors"),
-        "deescalates_if": assessment.get("deescalates_if"),
-        "as_of": assessment.get("as_of"),
-    }
+    """The model sees the phrase bank and the displayed contributors and returns ONLY a JSON phrase choice."""
+    tpl = cfg.get("why_template") or {}
+    bank = tpl.get("phrase_bank") or {}
+    cons = [
+        {
+            "position": i,
+            "name": _display_name(c),
+            "points": c.get("points"),
+            "detail": c.get("headline") or c.get("detail"),
+        }
+        for i, c in enumerate(_contributors(assessment), 1)
+    ]
     return (
-        "You rewrite ONE sentence of a market-risk alert for a busy investor reading on a phone.\n"
-        f"Return only the sentence, at most {int(cfg.get('max_why_chars') or 280)} characters, no prefix, no quotes.\n"
-        "RULES: say why risk is at this level, using only the facts below. Do not add any number that is not in the "
-        "facts. Do not recommend buying, selling, trimming, hedging, a stop level, an order or a position size. "
-        "Do not reassure and do not exaggerate. Use only the category names, words from the contributor lines and "
-        "these words: " + ", ".join(sorted(str(w) for w in cfg.get("why_vocabulary") or [])) + ".\n\n"
-        f"CURRENT SENTENCE: {current_why or '(none)'}\n\n"
-        f"CARD:\n{card_text}\n\nFACTS:\n{json.dumps(facts, default=str, indent=1)}\n"
+        "Choose how to explain ONE line of a market-risk alert. Do not write any sentence yourself.\n"
+        'Return ONLY JSON: {"phrases": [{"id": "<phrase id>", "c": [<contributor position>, ...]}]} with 1 to '
+        f'{int(tpl.get("max_phrases") or 3)} phrases, most important first. "c" lists which contributors fill '
+        "{c1} and {c2} (default [1, 2]). Use only these phrase ids:\n"
+        + "\n".join(f"- {k}: {v}" for k, v in bank.items())
+        + f"\n\nCONTRIBUTORS:\n{json.dumps(cons, default=str, indent=1)}\n"
+        f"TIER: {assessment.get('tier')}  SCORE: {assessment.get('score')}\n"
+        f"CURRENT LINE: {current_why or '(none)'}\n"
     )
 
 
@@ -260,11 +391,13 @@ def curate(
     lane = str(cfg.get("lane") or "grok")
     if isinstance(answer, tuple):  # (text, lane that answered) from the fallback chain
         answer, lane = answer[0], (answer[1] or lane)
-    sentence = " ".join(str(answer or "").split()).strip().strip('"').strip()
-    if sentence.lower().startswith(prefix.strip().lower()):
-        sentence = sentence[len(prefix.strip()) :].strip()
-    if not sentence:
+    if not str(answer or "").strip():
         return _result(card_text, curated=False, lane=lane, reason="empty answer")
+    try:
+        choice = parse_choice(str(answer), assessment, cfg)
+        sentence = render_choice(choice, assessment, cfg)
+    except ChoiceRejected as exc:
+        return _result(card_text, curated=False, lane=lane, reason=f"not a phrase choice: {exc}"[:240])
     if len(sentence) > int(cfg.get("max_why_chars") or 280):
         return _result(card_text, curated=False, lane=lane, reason="answer longer than max_why_chars")
     odd = non_ascii_digits(sentence)
@@ -289,4 +422,4 @@ def curate(
         lines = lines[:1] + [new_line] + lines[1:]
     else:
         lines[idx] = new_line
-    return _result("\n".join(lines), curated=True, lane=lane, reason="grounded", original_why=current)
+    return _result("\n".join(lines), curated=True, lane=lane, reason="grounded", original_why=current, choice=choice)
