@@ -9,8 +9,9 @@ single source; a tier the engine did not compute is never shown as one.
 Flat module on purpose: `scripts/lib/market_risk/` is born on the P0-T6 branch and this branch must merge
 independently; the engine (P2) moves this file into the package.
 
-Pure functions over dicts; the API route does the file reads. Acknowledgment: there is no episodes store yet
-(engine P3-T7), so `ack_outcome()` refuses with the reason; the UI shows the refusal verbatim.
+Pure functions over dicts; the API route does the file reads. Acknowledgment (engine P3-T7): `ack_outcome()` writes
+the operator's acknowledgment to the episode ledger (`market_risk.escalation`, file store until the
+`market_risk_episodes` table is granted) and returns the episode; it refuses with the reason when no episode is open.
 """
 
 from __future__ import annotations
@@ -36,9 +37,15 @@ def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
 
 
 def build(
-    snapshot: dict | None, radar: dict | None, *, stale_after_hours: float = 1.0, now: datetime | None = None
+    snapshot: dict | None,
+    radar: dict | None,
+    *,
+    stale_after_hours: float = 1.0,
+    now: datetime | None = None,
+    episode: dict | None = None,
 ) -> dict:
-    """snapshot: the engine's MarketRiskSnapshot@v1 (or None); radar: hedging_radar_latest.json (or None)."""
+    """snapshot: the engine's MarketRiskSnapshot@v1 (or None); radar: hedging_radar_latest.json (or None);
+    episode: the open MarketRiskEpisode@v1 from the ledger, used when the snapshot carries none."""
     now = now or datetime.now(timezone.utc)
     flow = (radar or {}).get("options_flow") if isinstance(radar, dict) else None
     sources: dict[str, Any] = {}
@@ -73,7 +80,8 @@ def build(
     tier = str(snapshot.get("tier") or "NOT_EVALUATED").upper()
     if tier not in TIERS:
         tier = "NOT_EVALUATED"
-    episode = snapshot.get("episode") if isinstance(snapshot.get("episode"), dict) else None
+    if isinstance(snapshot.get("episode"), dict):
+        episode = snapshot.get("episode")
     return {
         "schema": SCHEMA,
         "state": "stale" if stale else "evaluated",
@@ -103,20 +111,19 @@ def banner_visible(projection: dict) -> bool:
     return projection.get("state") == "evaluated" and projection.get("tier") in ACTIONABLE
 
 
-def ack_outcome(projection: dict, body: dict | None) -> tuple[int, dict]:
-    """HTTP status and body for POST /api/v2/market-risk/ack. Refuses honestly until the episodes store exists."""
-    episode = projection.get("episode") or {}
-    wanted = str((body or {}).get("episode_id") or "")
-    if not episode:
-        return 409, {
-            "ok": False,
-            "error": "no open market-risk episode to acknowledge",
-            "detail": "the acknowledgment ledger (market_risk_episodes) lands with DSN-20261031-market-risk-engine-P3-T7",
-        }
-    if wanted and wanted != str(episode.get("id")):
-        return 409, {"ok": False, "error": f"episode {wanted} is not the open episode {episode.get('id')}"}
-    return 501, {
-        "ok": False,
-        "error": "acknowledgment store not built yet (DSN-20261031-market-risk-engine-P3-T7)",
-        "episode_id": episode.get("id"),
-    }
+def ack_outcome(
+    projection: dict, body: dict | None, *, actor: str = "", now: datetime | None = None, path=None
+) -> tuple[int, dict]:
+    """HTTP status and body for POST /api/v2/market-risk/ack: record the operator's acknowledgment of the open
+    episode in the ledger (safe direction, one click, AGENTS §27.3). Refuses with the reason when there is none."""
+    try:
+        from lib.market_risk import escalation as esc
+    except ImportError:  # pragma: no cover - imported as scripts.lib
+        from scripts.lib.market_risk import escalation as esc
+    wanted = str((body or {}).get("episode_id") or "") or None
+    shown = (projection or {}).get("episode") or {}
+    if wanted is None and shown.get("id"):
+        wanted = str(shown.get("id"))
+    return esc.acknowledge(
+        wanted, actor=actor, channel="command_center", now=now or datetime.now(timezone.utc), path=path
+    )
