@@ -763,8 +763,18 @@ def read_stored_stops(query=None, *, db_query, clean=lambda x: x, stop_resolver=
         if not account or not symbol:
             continue
         groups.setdefault((account, symbol), []).append(row)
+    fills = None
+    try:
+        from .cio_truth import fill_ledger
+
+        fills = fill_ledger(rows, db_query=db_query)
+    except ImportError:
+        fills = None
     for (account, symbol), observations in groups.items():
-        truth = stop_resolver(account, symbol, broker_rows=observations, now=now)
+        try:
+            truth = stop_resolver(account, symbol, broker_rows=observations, now=now, fills=fills)
+        except TypeError:  # an injected resolver without the ledger keyword
+            truth = stop_resolver(account, symbol, broker_rows=observations, now=now)
         by_key[f"{symbol}:{account}"] = {
             **{k: clean(v) for k, v in truth.items()},
             "account": account,
