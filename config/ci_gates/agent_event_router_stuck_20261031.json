@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_event_router_stuck_20261031",
+  "files": [
+    "tests/test_agent_event_router_stuck_20261031.py"
+  ],
+  "anchor": "AGENT_EVENT_ROUTER_STUCK_20261031",
+  "comment": [
+    "ANCHOR: AGENT_EVENT_ROUTER_STUCK_20261031 — event status writes use a fresh connection (the batch one is closed",
+    "by the server during the content-gap loop), failures are logged not raised, and rows stuck 'processing' for",
+    "more than STALE_PROCESSING_HOURS are marked failed (never re-run). Hermetic."
+  ]
+}
