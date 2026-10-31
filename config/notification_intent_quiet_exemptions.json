@@ -1,0 +1,22 @@
+{
+  "schema": "NotificationIntentQuietExemptions@v1",
+  "_comment": "Operator 2026-10-31 (design DSN-20261031-market-risk-engine P3-T1, §11 item 5): a P2 notification intent whose message_class is listed here is DELIVERED inside the operator's quiet window (22:00-07:00 ET) when the wall clock is inside the row's window, instead of being archived for the digest. Read by scripts/telegram_alert_router.quiet_exemption_for only. P1 is never quiet-held anyway; P3 is never exempt. Changed only by reviewed PR (AGENTS.md §24.1). The row's window (04:00-09:30) is wider than the quiet window it relaxes: only its overlap with quiet hours (04:00-07:00 ET) changes anything, because from 07:00 every P2 is delivered anyway. Bounds must be strict HH:MM; a malformed bound skips the row (never widens it). The window has no weekday notion: a weekend pre-market P2 of a listed class is delivered too. market_regime is the regime classifier's class (scripts/market_regime_classifier.py); its risk-off change is already P1, so the row matters for any P2 it or the engine sends.",
+  "exemptions": [
+    {
+      "id": "market_risk_premarket",
+      "message_classes": [
+        "market_risk",
+        "market_regime"
+      ],
+      "priorities": [
+        "P2"
+      ],
+      "window": {
+        "start": "04:00",
+        "end": "09:30",
+        "tz": "America/New_York"
+      },
+      "reason": "2026-10-30 selloff RCA finding 3: the only market-level warning of the week (05:52 ET 10-27) was held for the digest. A pre-market market-risk warning is the one the operator needs before the open."
+    }
+  ]
+}
