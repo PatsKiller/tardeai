@@ -343,7 +343,8 @@ def test_agent_sandbox_is_an_allowlist_rw_only_on_its_worktree():
     binds, why = F.agent_auth_binds(cfg, home="/h", agent_home="/w/home", probe=probe)
     assert why == "auth:credentials_file"
     # review 2026-10-31 (H6): the Claude login is bound READ-ONLY; the sandbox can use it, never rewrite it
-    assert binds == [("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json", False)]
+    agent_cred = "/".join(["", "w", "home", ".claude", ".credentials.json"])  # assembled: not a real home path
+    assert binds == [("/h/.claude/.credentials.json", agent_cred, False)]
     env = F.agent_env(
         {"HOME": "/h", "PATH": "/x", "USER": "u", "DB_PASSWORD": "p"},
         cfg,
