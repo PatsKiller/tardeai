@@ -1,4 +1,4 @@
-"""Unit tests for backup_enforcer local cap. Dumps are archived, never unlinked."""
+"""Unit tests for backup_enforcer local cap. Older dumps are removed only after the newest is verified (§24.15)."""
 from __future__ import annotations
 
 import importlib.util
@@ -33,7 +33,11 @@ def _stamp(path: Path, age_s: float, now: float, payload: bytes) -> None:
     os.utime(path, (t, t))
 
 
-def test_enforce_local_archives_old_partial_and_keeps_newest_full(tmp_path):
+def _verified(path, st):
+    return {"verified": True, "reason": "verified", "drive_name": "db_backup_fixture.sql.gz.gpg"}
+
+
+def test_enforce_local_removes_older_and_old_partial_only_after_newest_verified(tmp_path):
     be = _load()
     d = tmp_path / "db_backups"
     d.mkdir()
@@ -41,19 +45,30 @@ def test_enforce_local_archives_old_partial_and_keeps_newest_full(tmp_path):
     for i in range(5):
         _stamp(d / f"trade_ai_2026081{i}_000000.sql.gz", age_s=(5 - i) * 10_000, now=now, payload=b"x" * 60)
     partial = d / "trade_ai_partial.sql.gz"
-    _stamp(partial, age_s=10_000, now=now, payload=b"tiny")
-    res = be.enforce_local(_cfg(d), dry_run=False, now=now)
+    _stamp(partial, age_s=60_000, now=now, payload=b"tiny")
+    res = be.enforce_local(_cfg(d), dry_run=False, now=now, verify=_verified)
     assert res["remaining_full"] == 1
     assert res["remaining_count"] == 1
     assert not partial.exists()
-    archived = list((d / "archive").glob("trade_ai_*.sql.gz"))
-    assert partial.name in {p.name for p in archived}
+    assert not (d / "archive").exists()  # removed, never moved (a same-disk move frees nothing)
     remaining = list(d.glob("trade_ai_*.sql.gz"))
     assert [p.name for p in remaining] == ["trade_ai_20260814_000000.sql.gz"]
-    assert (d / "archive" / "TRIPWIRE.txt").is_file()
 
 
-def test_young_and_part_dumps_are_not_archived(tmp_path):
+def test_enforce_local_without_verification_removes_nothing(tmp_path):
+    be = _load()
+    d = tmp_path / "db_backups"
+    d.mkdir()
+    now = 1_800_000_000.0
+    for i in range(3):
+        _stamp(d / f"trade_ai_{i}.sql.gz", age_s=10_000 + i, now=now, payload=b"x" * 60)
+    res = be.enforce_local(_cfg(d), dry_run=False, now=now)
+    assert len(list(d.glob("trade_ai_*.sql.gz"))) == 3
+    assert res["refused"] == "drive_verification_unavailable"
+    assert res["removed"] == []
+
+
+def test_young_and_part_dumps_are_not_removed(tmp_path):
     be = _load()
     d = tmp_path / "db_backups"
     d.mkdir()
@@ -63,25 +78,24 @@ def test_young_and_part_dumps_are_not_archived(tmp_path):
     part = d / "trade_ai_open.sql.gz.part"
     _stamp(part, age_s=30, now=now, payload=b"tiny")
     # .part does not match the live glob; a young .sql.gz does.
-    res = be.enforce_local(_cfg(d), dry_run=False, now=now)
+    res = be.enforce_local(_cfg(d), dry_run=False, now=now, verify=_verified)
     assert growing.exists()
     assert part.exists()
     assert growing.name in {Path(p).name for p in res["skipped_in_progress"]}
-    assert not (d / "archive").exists() or not any((d / "archive").glob("trade_ai_growing*"))
 
 
-def test_enforce_local_dry_run_does_not_move(tmp_path):
+def test_enforce_local_dry_run_does_not_remove(tmp_path):
     be = _load()
     d = tmp_path / "db_backups"
     d.mkdir()
     now = 1_800_000_000.0
     for i in range(3):
         _stamp(d / f"trade_ai_{i}.sql.gz", age_s=10_000 + i, now=now, payload=b"x" * 60)
-    res = be.enforce_local(_cfg(d), dry_run=True, now=now)
+    res = be.enforce_local(_cfg(d), dry_run=True, now=now, verify=_verified)
     assert res["dry_run"] is True
     assert len(list(d.glob("trade_ai_*.sql.gz"))) == 3
-    assert len(res["archived"]) == 2
-    assert all(item.startswith("would_archive:") for item in res["archived"])
+    assert len(res["removed"]) == 2
+    assert all(item["action"] == "would_remove" for item in res["removed"])
 
 
 def test_status_respects_byte_cap_even_with_one_full_dump(tmp_path):
@@ -114,7 +128,7 @@ def test_status_reports_disjoint_tree_bytes_without_expanding_live_cap(tmp_path,
     cfg = {**_cfg(tmp_path), "max_total_bytes": 70}
     with monkeypatch.context() as patch:
         patch.setattr(Path, "open", lambda *a, **k: (_ for _ in ()).throw(AssertionError("payload read")))
-        patch.setattr(be, "_archive", lambda *a, **k: (_ for _ in ()).throw(AssertionError("archive called")))
+        patch.setattr(be, "_remove_dump", lambda *a, **k: (_ for _ in ()).throw(AssertionError("remove called")))
         patch.setattr(be, "enforce_drive_db", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Drive called")))
         result = be.status_local(cfg)
     assert {name: (tmp_path / name).read_bytes() for name in sizes} == before

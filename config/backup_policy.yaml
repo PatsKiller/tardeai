@@ -1,12 +1,18 @@
 # Backup policy — single source of truth for local + Drive caps.
 # Prevents recurrence of the Aug 2026 backup-storm (~250GB / fill-disk).
-# Enforced by: linux_launchers/run_pg_backup.sh, scripts/backup_enforcer.py,
-#              scripts/backup_secrets_state.sh (db target KEEP), health_agent.
+# Enforced by: linux_launchers/run_pg_backup.sh, scripts/backup_enforcer.py (host + Drive db
+#              retention, AGENTS.md §24.15), scripts/backup_secrets_state.sh (db upload is verified via
+#              backup_enforcer.py --verify-upload; Drive db retention is the enforcer's), health_agent.
 
 local_pg:
-  dir: "~/db_backups"
+  dir: "~/db_backups"          # backup_enforcer looks at direct files here and in <dir>/archive only
   pattern: "trade_ai_*.sql.gz"
-  max_count: 1                 # hard cap — only one full dump on the live host
+  # AGENTS.md §24.15 / operator 2026-10-30: "keep one copy on the server, the latest copy".
+  # Older dumps (top level or archive/) are REMOVED — never moved — and only after the newest
+  # passes gzip -t and its Drive copy is verified (see `verification`).
+  keep_on_host: 1
+  max_count: 1                 # legacy name read by health/status code; must equal keep_on_host
+  skip_younger_than_s: 7200    # D8.2: a dump younger than this is never touched (may still be written)
   min_interval_minutes: 1200   # 20h — daily cadence only (portfolio backup @02:30)
   min_bytes: 1500000000        # full dumps are ~2–2.5G; <1.5GB = incomplete thrash dump
   max_total_bytes: 5000000000  # alert if directory exceeds ~5GB
@@ -15,7 +21,36 @@ local_pg:
 drive_db:
   folder_id: "1GYbZyM8nTfwuh-h2EsWTxbMpXlEUA6Qi"  # Trade_AI_Backups
   prefix: "db_backup"
-  max_count: 1                 # single offsite DB copy
+  # Operator 2026-10-30: "keep n plus one on Google Drive and then delete it". Drive keeps the
+  # newest keep_n + 1 db dumps (keep_n 1 -> 2). Older ones are deleted only after the newest
+  # Drive object is verified (name, size, md5) against the host's upload ledger.
+  keep_n: 1
+  prune_enabled: true          # false = verify and report only; never delete on Drive
+  account: "john@jwwhiting.com"                    # same account backup_secrets_state.sh uses
+  gog_bin: "~/.local/bin/gog"
+  keyring_password_file: "~/.openclaw/credentials/gog_keyring_password"  # read by the gog child only
+  list_max: 200                # one page; a listing with a next page is "incomplete" and blocks deletes
+  command_timeout_s: 300
+
+verification:
+  # How backup_enforcer.py proves the newest dump before removing anything (host or Drive).
+  # gog exposes no md5Checksum, so the Drive md5 is computed by streaming the object through a
+  # FIFO (no bytes on disk) once per Drive object and cached by id+size+modifiedTime.
+  gzip_timeout_s: 1800
+  drive_md5_timeout_s: 3600
+  # Alerts (telegram_alert + alert_condition_state dedupe; once per condition, cleared on recovery).
+  drive_unreachable_grace_hours: 6     # Drive listing failing longer than this alerts
+  newest_unverified_grace_hours: 30    # newest dump not yet verified on Drive longer than this alerts
+  alert_realert_minutes: 360           # a condition that stays bad is repeated at most this often
+  # Durable state (relative paths are under the repo root; data/runtime is persistent-state).
+  ledger_path: "data/runtime/backup_offsite_db_ledger.json"     # written by --verify-upload (uploader)
+  ledger_max_records: 30
+  cache_path: "data/runtime/backup_enforcer_verify_cache.json"  # gzip -t / md5 results by file identity
+  cache_max_entries: 50
+  receipt_path: "data/runtime/backup_enforcer_last_run.json"    # every live run, atomic
+  removals_log_path: "data/runtime/backup_enforcer_removals.jsonl"  # one line per removed dump
+  lock_path: "~/.cache/tradeai/backup_enforcer.lock"
+  fifo_dir: "~/.cache/tradeai/backup_enforcer"
 
 drive_other:
   # 2026-08-11 operator directive: only leave latest of each family on Drive.
