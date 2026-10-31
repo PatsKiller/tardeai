@@ -12,6 +12,7 @@ universe first, then holdings, and the snapshot says exactly what was covered.
 
 Usage: options_chain_snapshot.py [--dry-run] [--limit N]
 """
+
 import argparse
 import json
 import sys
@@ -28,7 +29,6 @@ _PP = _FULL_CFG.get("protective_put")  # R1: absent block = no put picks, never 
 SNAP = ROOT / "data" / "runtime" / "hedging_radar_latest.json"
 
 
-
 def _next_earnings(symbol: str):
     """Next earnings date for the underlying, or None if genuinely unknown.
 
@@ -40,6 +40,7 @@ def _next_earnings(symbol: str):
     """
     try:
         from earnings_provider import get_one, SCHEDULED
+
         info = get_one(symbol)
         return info.date if info.state == SCHEDULED else None
     except Exception:
@@ -97,8 +98,13 @@ def aggregate(chain: dict) -> dict | None:
             if s["side"] == "call" and abs(ad - tgt) <= 0.08:
                 call25.append(float(iv))
             dte = s.get("dte") or exp.get("dte") or 0
-            if (s["side"] == "call" and 18 <= dte <= 50 and 0.15 <= ad <= 0.38
-                    and s.get("bid") is not None and s.get("ask") is not None):
+            if (
+                s["side"] == "call"
+                and 18 <= dte <= 50
+                and 0.15 <= ad <= 0.38
+                and s.get("bid") is not None
+                and s.get("ask") is not None
+            ):
                 # v6.1 operator ask: VALIDATE greeks + liquidity before a strike
                 # ever reaches a card — OI, volume, spread, delta band from config
                 vc = _CC_VAL
@@ -106,10 +112,12 @@ def aggregate(chain: dict) -> dict | None:
                 spread_pct = round((s["ask"] - s["bid"]) / mid * 100, 1) if mid else 999
                 oi = s.get("oi") or 0
                 vol = s.get("volume") or 0
-                valid = (oi >= vc["min_open_interest"]
-                         and max(oi, vol) >= vc["min_volume_or_oi"]
-                         and spread_pct <= vc["max_spread_pct_of_mid"]
-                         and vc["delta_band"][0] <= ad <= vc["delta_band"][1])
+                valid = (
+                    oi >= vc["min_open_interest"]
+                    and max(oi, vol) >= vc["min_volume_or_oi"]
+                    and spread_pct <= vc["max_spread_pct_of_mid"]
+                    and vc["delta_band"][0] <= ad <= vc["delta_band"][1]
+                )
                 # Earnings inside the contract is a first-class selection
                 # criterion, not just a downstream refusal. An expiry that
                 # straddles the report is heavily penalised so an earnings-SAFE
@@ -130,46 +138,87 @@ def aggregate(chain: dict) -> dict | None:
                 # an equally good earnings-safe contract, and it must carry the
                 # disclosure through to the operator.
                 if _spans:
-                    _spanning_seen.append({
-                        "exp": s["exp"], "strike": s["strike"], "delta": round(ad, 2),
-                        "earnings_date": _earn.isoformat() if _earn else None})
+                    _spanning_seen.append(
+                        {
+                            "exp": s["exp"],
+                            "strike": s["strike"],
+                            "delta": round(ad, 2),
+                            "earnings_date": _earn.isoformat() if _earn else None,
+                        }
+                    )
                 # Tie-break only: a safe contract wins when one is comparable.
                 # Never large enough to hide a materially better spanning pick.
                 fit = abs(ad - 0.28) + (0 if valid else 10) + (0.05 if _spans else 0)
                 if cc_call is None or fit < cc_call["_fit"]:
-                    cc_call = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
-                               "delta": round(ad, 2), "iv": round(float(iv), 1),
-                               "mid": round(mid, 2), "bid": s["bid"], "ask": s["ask"],
-                               "oi": oi, "volume": vol, "spread_pct": spread_pct,
-                               "validated": valid,
-                               "spans_earnings": _spans,
-                               "earnings_date": _earn.isoformat() if _earn else None,
-                               "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
-                                              + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")
-                                              + (f" — ⚠ EARNINGS {_earn.isoformat()} INSIDE this contract" if _spans else "")),
-                               "_fit": fit}
-            if (_PP and s["side"] == "put"
-                    and _PP["tenor_dte"][0] <= dte <= _PP["tenor_dte"][1]
-                    and _PP["delta_band"][0] <= ad <= _PP["delta_band"][1]
-                    and s.get("bid") is not None and s.get("ask") is not None):
+                    cc_call = {
+                        "exp": s["exp"],
+                        "dte": dte,
+                        "strike": s["strike"],
+                        "delta": round(ad, 2),
+                        "iv": round(float(iv), 1),
+                        "mid": round(mid, 2),
+                        "bid": s["bid"],
+                        "ask": s["ask"],
+                        "oi": oi,
+                        "volume": vol,
+                        "spread_pct": spread_pct,
+                        "validated": valid,
+                        "spans_earnings": _spans,
+                        "earnings_date": _earn.isoformat() if _earn else None,
+                        "validation": (
+                            f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
+                            + (
+                                ""
+                                if valid
+                                else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)"
+                            )
+                            + (f" — ⚠ EARNINGS {_earn.isoformat()} INSIDE this contract" if _spans else "")
+                        ),
+                        "_fit": fit,
+                    }
+            if (
+                _PP
+                and s["side"] == "put"
+                and _PP["tenor_dte"][0] <= dte <= _PP["tenor_dte"][1]
+                and _PP["delta_band"][0] <= ad <= _PP["delta_band"][1]
+                and s.get("bid") is not None
+                and s.get("ask") is not None
+            ):
                 vc = _CC_VAL  # same liquidity rails as CC picks — one standard, one config
                 mid = (s["bid"] + s["ask"]) / 2
                 spread_pct = round((s["ask"] - s["bid"]) / mid * 100, 1) if mid else 999
                 oi = s.get("oi") or 0
                 vol = s.get("volume") or 0
-                valid = (oi >= vc["min_open_interest"]
-                         and max(oi, vol) >= vc["min_volume_or_oi"]
-                         and spread_pct <= vc["max_spread_pct_of_mid"])
+                valid = (
+                    oi >= vc["min_open_interest"]
+                    and max(oi, vol) >= vc["min_volume_or_oi"]
+                    and spread_pct <= vc["max_spread_pct_of_mid"]
+                )
                 fit = abs(ad - 0.28) + (0 if valid else 10)
                 if prot_put is None or fit < prot_put["_fit"]:
-                    prot_put = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
-                                "delta": round(ad, 2), "iv": round(float(iv), 1),
-                                "mid": round(mid, 2), "bid": s["bid"], "ask": s["ask"],
-                                "oi": oi, "volume": vol, "spread_pct": spread_pct,
-                                "validated": valid,
-                                "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
-                                               + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
-                                "_fit": fit}
+                    prot_put = {
+                        "exp": s["exp"],
+                        "dte": dte,
+                        "strike": s["strike"],
+                        "delta": round(ad, 2),
+                        "iv": round(float(iv), 1),
+                        "mid": round(mid, 2),
+                        "bid": s["bid"],
+                        "ask": s["ask"],
+                        "oi": oi,
+                        "volume": vol,
+                        "spread_pct": spread_pct,
+                        "validated": valid,
+                        "validation": (
+                            f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
+                            + (
+                                ""
+                                if valid
+                                else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)"
+                            )
+                        ),
+                        "_fit": fit,
+                    }
     # NO_ELIGIBLE_COVERED_CALL: an explicit, machine-readable verdict so the card
     # can state why there is no pick instead of rendering an empty or substituted
     # one. Distinguishes "earnings ruled everything out" from "nothing fit the
@@ -187,7 +236,8 @@ def aggregate(chain: dict) -> dict | None:
             cc_call["ack_prompt"] = (
                 f"CSCO-style event risk: earnings {cc_call.get('earnings_date')} fall before "
                 f"expiry {cc_call.get('exp')}. Assignment risk and an IV crush both sit inside "
-                f"this contract. Confirm you intend to sell premium through the report.")
+                f"this contract. Confirm you intend to sell premium through the report."
+            )
             cc_call["strategy_variant"] = "covered_call_earnings_iv"
     else:
         cc_verdict = {
@@ -200,7 +250,10 @@ def aggregate(chain: dict) -> dict | None:
         prot_put.pop("_fit", None)
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None
     return {
-        "put_oi": put_oi, "call_oi": call_oi, "put_vol": put_vol, "call_vol": call_vol,
+        "put_oi": put_oi,
+        "call_oi": call_oi,
+        "put_vol": put_vol,
+        "call_vol": call_vol,
         "pc_oi_ratio": round(put_oi / call_oi, 3) if call_oi else None,
         "pc_vol_ratio": round(put_vol / call_vol, 3) if call_vol else None,
         "atm_iv": mean(atm_ivs),
@@ -220,6 +273,7 @@ def main() -> int:
 
     from db_adapter import _get_conn
     from schwab_transport import get_option_chain
+
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("""CREATE TABLE IF NOT EXISTS option_chain_snapshots (
@@ -231,7 +285,7 @@ def main() -> int:
 
     syms = universe()
     if args.limit:
-        syms = syms[:args.limit]
+        syms = syms[: args.limit]
     covered, failed = [], []
     rows = {}
     for sym in syms:
@@ -246,7 +300,8 @@ def main() -> int:
         covered.append(sym)
         rows[sym] = agg
         if not args.dry_run:
-            cur.execute("""INSERT INTO option_chain_snapshots
+            cur.execute(
+                """INSERT INTO option_chain_snapshots
                 (as_of, symbol, put_oi, call_oi, put_vol, call_vol, pc_oi_ratio,
                  pc_vol_ratio, atm_iv, skew25, underlying_price)
                 VALUES (CURRENT_DATE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -255,28 +310,49 @@ def main() -> int:
                   call_vol=EXCLUDED.call_vol, pc_oi_ratio=EXCLUDED.pc_oi_ratio,
                   pc_vol_ratio=EXCLUDED.pc_vol_ratio, atm_iv=EXCLUDED.atm_iv,
                   skew25=EXCLUDED.skew25, underlying_price=EXCLUDED.underlying_price""",
-                (sym, agg["put_oi"], agg["call_oi"], agg["put_vol"], agg["call_vol"],
-                 agg["pc_oi_ratio"], agg["pc_vol_ratio"], agg["atm_iv"], agg["skew25"],
-                 agg["underlying_price"]))
+                (
+                    sym,
+                    agg["put_oi"],
+                    agg["call_oi"],
+                    agg["put_vol"],
+                    agg["call_vol"],
+                    agg["pc_oi_ratio"],
+                    agg["pc_vol_ratio"],
+                    agg["atm_iv"],
+                    agg["skew25"],
+                    agg["underlying_price"],
+                ),
+            )
     if not args.dry_run:
         conn.commit()
 
     # deltas vs prior snapshot date + P/C vol vs mean over available history (n stated)
     radar = []
     for sym, agg in rows.items():
-        cur.execute("""SELECT put_oi, call_oi, skew25 FROM option_chain_snapshots
+        cur.execute(
+            """SELECT put_oi, call_oi, skew25 FROM option_chain_snapshots
                        WHERE symbol=%s AND as_of < CURRENT_DATE
-                       ORDER BY as_of DESC LIMIT 1""", (sym,))
+                       ORDER BY as_of DESC LIMIT 1""",
+            (sym,),
+        )
         prior = cur.fetchone()
-        cur.execute("""SELECT avg(pc_vol_ratio), count(*) FROM option_chain_snapshots
+        cur.execute(
+            """SELECT avg(pc_vol_ratio), count(*) FROM option_chain_snapshots
                        WHERE symbol=%s AND as_of >= CURRENT_DATE - %s AND pc_vol_ratio IS NOT NULL""",
-                    (sym, CFG["pc_mean_window_days"]))
+            (sym, CFG["pc_mean_window_days"]),
+        )
         pc_mean, pc_n = cur.fetchone()
         d = dict(agg)
         d["symbol"] = sym
         d["put_oi_delta_pct"] = round((agg["put_oi"] - prior[0]) / prior[0] * 100, 1) if prior and prior[0] else None
-        d["skew25_delta"] = round(agg["skew25"] - float(prior[2]), 2) if prior and prior[2] is not None and agg["skew25"] is not None else None
-        d["pc_vol_vs_mean"] = round(agg["pc_vol_ratio"] / float(pc_mean), 2) if pc_mean and agg["pc_vol_ratio"] else None
+        d["skew25_delta"] = (
+            round(agg["skew25"] - float(prior[2]), 2)
+            if prior and prior[2] is not None and agg["skew25"] is not None
+            else None
+        )
+        d["pc_vol_vs_mean"] = (
+            round(agg["pc_vol_ratio"] / float(pc_mean), 2) if pc_mean and agg["pc_vol_ratio"] else None
+        )
         d["pc_mean_n"] = int(pc_n or 0)
         # one plain sentence per row — inference language only
         bits = []
@@ -286,16 +362,24 @@ def main() -> int:
             bits.append(f"skew {d['skew25_delta']:+.1f}")
         if d["pc_oi_ratio"] is not None:
             bits.append(f"P/C OI {d['pc_oi_ratio']}")
-        verdict = "hedging demand building" if ((d["put_oi_delta_pct"] or 0) > 5 or (d["skew25_delta"] or 0) > 1) else \
-                  "no unusual hedging read" if bits else "baseline captured — deltas start next snapshot"
+        verdict = (
+            "hedging demand building"
+            if ((d["put_oi_delta_pct"] or 0) > 5 or (d["skew25_delta"] or 0) > 1)
+            else "no unusual hedging read"
+            if bits
+            else "baseline captured — deltas start next snapshot"
+        )
         d["line"] = f"{sym}: {' · '.join(bits) if bits else 'first capture'} — {verdict}"
         radar.append(d)
     radar.sort(key=lambda r: -(r.get("put_oi_delta_pct") or -999))
 
     snap = {
         "captured_at": datetime.now(timezone.utc).isoformat(),
-        "coverage": {"covered": covered, "failed": failed,
-                     "note": f"{len(covered)}/{len(syms)} underlyings (priority universe first, then top holdings)"},
+        "coverage": {
+            "covered": covered,
+            "failed": failed,
+            "note": f"{len(covered)}/{len(syms)} underlyings (priority universe first, then top holdings)",
+        },
         "history_note": f"OI deltas vs prior snapshot; P/C-vs-mean over {CFG['pc_mean_window_days']}d as history accrues (n per row)",
         "inference_label": "positioning INFERENCE from OI/volume/skew — never order-flow claims",
         "radar": radar,
@@ -310,9 +394,14 @@ def main() -> int:
 
 
 def _flow_history(cur, symbol: str, lookback: int) -> list:
-    cur.execute("""SELECT as_of, pc_oi_ratio, pc_vol_ratio, underlying_price FROM option_chain_snapshots
-                   WHERE symbol=%s AND as_of < CURRENT_DATE ORDER BY as_of DESC LIMIT %s""", (symbol, lookback))
-    return [{"as_of": r[0], "pc_oi_ratio": r[1], "pc_vol_ratio": r[2], "underlying_price": r[3]} for r in cur.fetchall()]
+    cur.execute(
+        """SELECT as_of, pc_oi_ratio, pc_vol_ratio, underlying_price FROM option_chain_snapshots
+                   WHERE symbol=%s AND as_of < CURRENT_DATE ORDER BY as_of DESC LIMIT %s""",
+        (symbol, lookback),
+    )
+    return [
+        {"as_of": r[0], "pc_oi_ratio": r[1], "pc_vol_ratio": r[2], "underlying_price": r[3]} for r in cur.fetchall()
+    ]
 
 
 def _flow_alerts(cur, rows: dict, *, dry_run: bool, now=None) -> dict:
@@ -329,11 +418,14 @@ def _flow_alerts(cur, rows: dict, *, dry_run: bool, now=None) -> dict:
     except Exception as e:  # noqa: BLE001 — a missing policy is a finding on the snapshot, not a crash of the radar
         print(f"[flow] policy unavailable: {type(e).__name__}: {e}")
         return {"findings": [], "priority": None, "accepted": None, "error": f"policy: {e}"}
-    today = {s: dict(rows[s], as_of=datetime.now(timezone.utc).date().isoformat()) for s in cfg["index_symbols"] if s in rows}
+    today = {
+        s: dict(rows[s], as_of=datetime.now(timezone.utc).date().isoformat()) for s in cfg["index_symbols"] if s in rows
+    }
     history = {s: _flow_history(cur, s, int(cfg["lookback_sessions"])) for s in today}
     findings = of.evaluate(today, history, cfg)
     try:
         from market_session import current_market_session
+
         session = current_market_session(now)
     except Exception:  # noqa: BLE001
         session = "unknown"
@@ -350,8 +442,16 @@ def _flow_alerts(cur, rows: dict, *, dry_run: bool, now=None) -> dict:
         return out
     try:
         from telegram_alert import send_telegram
-        out["accepted"] = bool(send_telegram(message, priority=priority, dedupe_minutes=int(cfg["dedupe_minutes"]),
-                                             producer=cfg["producer"], message_class="market_risk"))
+
+        out["accepted"] = bool(
+            send_telegram(
+                message,
+                priority=priority,
+                dedupe_minutes=int(cfg["dedupe_minutes"]),
+                producer=cfg["producer"],
+                message_class="market_risk",
+            )
+        )
     except Exception as e:  # noqa: BLE001
         out["accepted"] = False
         out["error"] = f"{type(e).__name__}: {e}"
