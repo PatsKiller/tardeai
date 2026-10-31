@@ -140,7 +140,11 @@ def test_green():
     # GREEN also needs >= 70% of the weight measured (review of #2383, N2): the other categories read CALM here
     spec = {k: ("CALM", 5) for k in c.CATEGORIES}
     spec.update({"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)})
-    assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "GREEN"
+    pr = {"tier": "NONE", "market_tier": "NONE", "hysteresis": {}}  # never GREEN on a bootstrap (round 3, M-B)
+    assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "NONE"
+    a = scoring.compose(obs(spec), POLICY, prior=pr, now=NOW)
+    a = scoring.compose(obs(spec), POLICY, prior=a.to_dict(), now=NOW)
+    assert a.tier == "GREEN"
     spec["volatility"] = ("CALM", 15)
     assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "NONE"
     thin = {"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)}

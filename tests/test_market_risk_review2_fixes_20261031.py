@@ -369,8 +369,9 @@ def _green_obs(now, unknown=0, stress_age_h=None):
 
 def test_n2_green_needs_coverage():
     now = datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc)
-    assert scoring.compose(_green_obs(now), POLICY, now=now).hysteresis["raw_tier"] == "GREEN"
-    assert scoring.compose(_green_obs(now, unknown=5), POLICY, now=now).hysteresis["raw_tier"] == "NONE"
+    prior = {"tier": "NONE", "market_tier": "NONE", "hysteresis": {}}  # GREEN is never emitted on bootstrap (round 3)
+    assert scoring.compose(_green_obs(now), POLICY, prior=prior, now=now).hysteresis["raw_tier"] == "GREEN"
+    assert scoring.compose(_green_obs(now, unknown=5), POLICY, prior=prior, now=now).hysteresis["raw_tier"] == "NONE"
 
 
 def test_n2_green_needs_no_stress_in_24h():
