@@ -14,6 +14,10 @@ Hermetic: fake DB connection, telegram_alert / alert_dispatcher stubbed via sys.
 
 from __future__ import annotations
 
+#: C1 firing coverage — test_a_change_into_risk_off_is_a_p1_operator_action_intent injects the label change and asserts the
+#: P1 reaches the (stubbed) transport; the one send_telegram site in the classifier funnels through that path.
+COVERS = ["scripts/market_regime_classifier.py"]
+
 import sys
 import types
 from decimal import Decimal
