@@ -1,0 +1,9 @@
+{
+  "schema": "CiGate@v1",
+  "name": "index_constituent_caps_20261031",
+  "files": ["tests/test_index_constituent_caps_20261031.py"],
+  "anchor": "INDEX_CONSTITUENT_CAPS_20261031",
+  "comment": ["ANCHOR: INDEX_CONSTITUENT_CAPS_20261031 — the engine's 35 index constituents get daily caps from the",
+              "registered yfinance provider through the single market_quotes writer; per-name failures are reported,",
+              "dry run writes nothing. Hermetic: fake info, fake writer."]
+}
