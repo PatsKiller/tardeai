@@ -1,7 +1,7 @@
 # Market Risk Engine backtest
 
 ```
-Generated: 2026-10-31T15:23:19+00:00 by scripts/market_risk_backtest.py
+Generated: 2026-10-31T15:47:20+00:00 by scripts/market_risk_backtest.py
 Data:      tests/fixtures/market_risk_scenarios (public daily history; see SOURCES.json)
 Status:    GENERATED — do not edit by hand; re-run the harness
 ```
