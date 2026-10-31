@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "poison_quarantine_20261031",
+  "files": [
+    "tests/test_poison_quarantine_20261031.py"
+  ],
+  "anchor": "POISON_QUARANTINE_20261031",
+  "comment": [
+    "ANCHOR: POISON_QUARANTINE_20261031 — poison-item quarantine (coordinator 2026-10-31). Pins: success resets a",
+    "streak; threshold consecutive failures quarantine with a receipt and one P2; a quarantined Ask-the-CIO thread is",
+    "skipped and the lane run is ok again (end to end through run_once); disabled and dry run are inert."
+  ]
+}

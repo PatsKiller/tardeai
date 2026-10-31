@@ -6,6 +6,8 @@ All durable business state is appended through AskEventStore. No broker mutation
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -22,6 +24,23 @@ from scripts.lib.cio_ask_store import event_id_for
 SCHEMA = "CioAskLifecycleReceipt@v1"
 AUTO_PROCESS = "cio_ask_reanswer"
 REQUEST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+
+# A source that ran and answered counts as checked. ``rejected`` means the source answered but its fact failed the
+# validation gate (cio_ask_research.gather: FactRejected -> gap FACT_REJECTED); the gap is already recorded, so it must
+# not fail the whole check. Before 2026-10-31 it did: internal.thesis returned ``rejected`` for every tracked subject,
+# so each hourly check raised SOURCE_CHECK_INCOMPLETE, three in a row opened the n8n breakers for cio-ask-lifecycle and
+# cio-ask-material-events (10-30 16:25Z / 17:00Z) and Ask-the-CIO stopped tracking anything.
+SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "rejected"})
+_REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def _check_failed_reason(exc: BaseException) -> str:
+    """``CHECK_FAILED:<Type>`` plus the message when it is a machine token (``SOURCE_CHECK_INCOMPLETE``): the event
+    ledger said only ``ValueError`` for six failed checks on 10-30, which hid the cause. Free text never lands here."""
+    msg = str(exc).strip()
+    tail = ":" + msg if _REASON_TOKEN.match(msg) else ""
+    return "CHECK_FAILED:" + type(exc).__name__ + tail
 
 
 def clock(value=None):
@@ -812,8 +831,19 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
 
         collect = collect_current_evidence
     slot = stamp(now.replace(minute=0, second=0, microsecond=0))
+    from scripts.lib.poison_quarantine import PoisonStoreCorrupt, Quarantine, load_config as _pq_config
+
+    lane_id = "cio-ask-material-events" if events_only else "cio-ask-lifecycle"
+    try:
+        quarantine = Quarantine.for_lane(lane_id, dry_run=dry_run, now=now)
+    except PoisonStoreCorrupt as exc:  # loud: the run fails and says why; never read as an empty store
+        report["source_errors"].append(f"quarantine_store:{str(exc)[:200]}")
+        quarantine = Quarantine(lane_id, {**_pq_config(), "enabled": False}, Path("."), dry_run=True, now=now)
     for snapshot in tracked:
         tid = snapshot["thread_id"]
+        if quarantine.is_quarantined(tid):  # a poison item: skipped so the lane serves every other thread
+            report.setdefault("quarantined_skipped", []).append(tid)
+            continue
         with store.thread_lock(tid) as acquired:
             if not acquired:
                 report["deferred_count"] += 1
@@ -868,9 +898,9 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 evidence = collect(_request(thread, turn))
                 fingerprint = _fingerprint(evidence)
                 source_rows = evidence.get("source_runs") or []
-                errors = [x for x in source_rows if x.get("status") not in ("ok", "no_data", "not_applicable")]
+                errors = [x for x in source_rows if x.get("status") not in SOURCE_ANSWERED_STATUSES]
                 if errors:
-                    raise ValueError("SOURCE_CHECK_INCOMPLETE")
+                    raise ValueError("SOURCE_CHECK_INCOMPLETE")  # names land in the report via _check_failed_reason
                 prior_checks = [
                     e
                     for e in tevents
@@ -1042,14 +1072,46 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     now=now,
                     outcome="failed",
                     state="failed",
-                    reason="CHECK_FAILED:" + type(exc).__name__,
+                    reason=_check_failed_reason(exc),
                     checked=False,
                     automated=True,
                 )
                 report["failed_count"] += 1
-                report["source_errors"].append(tid + ":" + type(exc).__name__)
+                report["source_errors"].append(tid + ":" + _check_failed_reason(exc).removeprefix("CHECK_FAILED:"))
                 report["threads"].append(
                     {"thread_id": tid, "lifecycle": life, "consumer_readback": {"state": "not_measured"}}
                 )
+    _apply_quarantine(quarantine, report)
     report["ok"] = not report["source_errors"] and report["failed_count"] == 0
     return report
+
+
+def _apply_quarantine(quarantine, report: dict) -> None:
+    """Record this run's per-thread outcome; a thread that just reached the poison threshold is quarantined and its
+    failure no longer fails the run (the lane carries on; the quarantine receipt and P2 carry the failure)."""
+    ids = {t["thread_id"] for t in report["threads"]}
+    errs = [str(e).split(":", 1) for e in report["source_errors"]]
+    by_thread = {e[0]: e[-1] for e in errs if e[0] in ids or e[0].startswith("thr_")}  # never "quarantine_store"
+    failed = set(by_thread) | {
+        t["thread_id"] for t in report["threads"] if (t.get("lifecycle") or {}).get("state") == "failed"
+    }
+    seen = ids | failed
+    reasons = {
+        **{t["thread_id"]: (t.get("lifecycle") or {}).get("reason") for t in report["threads"]},
+        **by_thread,
+    }
+    newly = quarantine.record_run({tid: tid in failed for tid in seen}, reasons=reasons)
+    for rec in newly:
+        tid = rec["item"]
+        before = len(report["source_errors"])
+        report["source_errors"] = [e for e in report["source_errors"] if not str(e).startswith(tid + ":")]
+        dropped = before - len(report["source_errors"])
+        thread_failed = any(
+            t["thread_id"] == tid and (t.get("lifecycle") or {}).get("state") == "failed" for t in report["threads"]
+        )
+        report["failed_count"] = max(0, report["failed_count"] - max(dropped, int(thread_failed)))
+    if newly:
+        report["quarantined_now"] = [r["item"] for r in newly]
+    errs = quarantine.save()
+    if errs:
+        report.setdefault("quarantine_errors", []).extend(errs)
