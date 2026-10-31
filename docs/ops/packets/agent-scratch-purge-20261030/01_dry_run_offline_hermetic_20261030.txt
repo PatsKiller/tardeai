@@ -1,0 +1,18 @@
+# Hermetic standing dry run — offline evidence, tiny scratch home (2026-10-30)
+
+Command (mutation-tested: the report keys on the scratch under test):
+    python scripts/disk_hygiene.py --standing --dry-run \
+        --evidence-snapshot /tmp/agent_scratch_tinyhome_20261030/evidence.json \
+        --home /tmp/agent_scratch_tinyhome_20261030 --no-measure
+
+Fixture: one idle ~/.cache/agent-tmp/task-abc123/note.txt (10 days old) and one idle
+~/.cache/rtc/rtc-old/data.txt (10 days old), with an offline DiskHygieneEvidence@v1 snapshot
+(empty processes / PRs / coordination). No deletion, no writes; dry_run_report prints only.
+
+Output (verbatim):
+
+DRY-RUN {"dry_run": true, "lane_id": "disk-hygiene", "summary": {"totals": {"by_kind": {"S:rtc_scratch": {"bytes": 0, "count": 1}, "T:agent_scratch": {"bytes": 0, "count": 1}}, "candidates": 2, "excluded": 0, "excluded_by_reason": {}, "excluded_bytes": 0, "reclaimable_bytes": 0, "reclaimable_gb": 0.0, "report_only": {}, "unmeasured_candidates": 2}}, "would_write": ["/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/disk_hygiene"], "would_write_receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/disk-hygiene_last.json"}
+DRY_RUN_EXIT= 0
+
+Interpretation: two candidates — rule S (rtc_scratch) and rule T (agent_scratch) — each selects exactly the
+idle scratch dir it was pointed at; nothing is deleted (dry run). The dry run writes nothing.

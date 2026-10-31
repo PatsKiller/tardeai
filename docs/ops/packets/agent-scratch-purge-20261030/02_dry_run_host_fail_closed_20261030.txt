@@ -1,0 +1,19 @@
+# Live host standing dry run — fail-closed on incomplete coordination evidence (2026-10-30)
+
+Command:
+    python scripts/disk_hygiene.py --standing --dry-run
+
+This collects fresh read-only standing evidence (crontab, systemd units, /proc cwds/fds, the coordination
+tree, open GitHub PRs, release pointers) before planning. It refuses while any source is incomplete.
+
+Output (verbatim):
+
+{"dry_run": true, "ok": false, "error": "evidence_incomplete:coordination", "detail": "ValueError:claim_unreadable"}
+EXIT=1
+
+Interpretation: the run refused before producing a plan because a claim file in the coordination tree
+(~/trade-ai-releases/persistent-state/data/coordination/claims/) does not match AgentClaim@v1. This is the
+§24.13 fail-closed rail: an evidence source it cannot prove makes the plan ineligible, and nothing is deleted.
+
+Pre-flight note: on arming day, a malformed claim file will keep the purge refusing until it is fixed or
+aged out; this must be cleared by the operator (or the claim-board compaction lane) before the first live run.

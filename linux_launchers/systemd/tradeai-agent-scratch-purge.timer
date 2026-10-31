@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI agent-scratch purge — daily 05:00 ET (DSN-20261030: AGENTS.md §0 rule 6(c) + §24.13 scheduled purge)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 America/New_York
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

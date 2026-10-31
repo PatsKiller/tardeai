@@ -1,5 +1,5 @@
 """Pinned standing hygiene tests: fake removers only, no host census/PR/service calls.
-COVERS = ["scripts/disk_hygiene.py", "scripts/disk_usage_monitor.py", "scripts/lib/disk_hygiene_retention.py", "docs/ops/packets/disk-standing-apply-20261024/activate_reviewed.py"]
+COVERS = ["scripts/disk_hygiene.py", "scripts/disk_usage_monitor.py", "scripts/lib/disk_hygiene_retention.py", "docs/ops/packets/disk-standing-apply-20261024/activate_reviewed.py", "config/lane_registry.json", "linux_launchers/systemd/tradeai-agent-scratch-purge.service", "linux_launchers/systemd/tradeai-agent-scratch-purge.timer"]
 """
 from __future__ import annotations
 
@@ -199,6 +199,35 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     assert {r["path"] for r in result["items"]} == {str(paths[0])}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
     assert any("scratch_not_older" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[2]))
+
+
+def test_agent_scratch_purge_lane_and_units_are_staged_never_scheduled():
+    """DSN-20261030 / §24.13: the scheduled purge ships as a NEVER_SCHEDULED host timer + registry row.
+
+    The unit runs the standing apply path (`--standing --apply`) with a run id so the reviewed-standing
+    authorization (no per-run grant) applies; the timer is daily 05:00 ET, never n8n.
+    """
+    from scripts.lib.lane_registry import validate_row
+
+    reg = json.loads((ROOT / "config/lane_registry.json").read_text())
+    row = next(r for r in reg["lanes"] if r["lane_id"] == "agent-scratch-purge")
+    assert validate_row(row) == []
+    assert row["state"] == "NEVER_SCHEDULED" and row["owner"] == "platform"
+    assert row["scheduler"] == {
+        "kind": "systemd",
+        "expression": "tradeai-agent-scratch-purge.timer",
+        "match": "scripts/disk_hygiene.py --standing --apply",
+    }
+    assert row["output_signal"] == {
+        "kind": "json_key",
+        "path": "data/runtime/disk_hygiene/disk_hygiene_standing_apply_latest.json",
+        "key": "finished_at",
+    }
+    unit = (ROOT / "linux_launchers/systemd/tradeai-agent-scratch-purge.service").read_text()
+    timer = (ROOT / "linux_launchers/systemd/tradeai-agent-scratch-purge.timer").read_text()
+    assert "scripts/disk_hygiene.py --standing --apply" in unit and "Type=oneshot" in unit
+    assert "TRADEAI_RUN_ID=agent-scratch-purge" in unit
+    assert "OnCalendar=*-*-* 05:00:00 America/New_York" in timer and "WantedBy=timers.target" in timer
 
 
 def test_recursive_activity_limit_fails_closed(tmp_path):

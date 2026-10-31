@@ -1,0 +1,14 @@
+[Unit]
+Description=TradeAI agent-scratch purge — standing disk-hygiene apply: fresh plan + delete what the reviewed standing rules select (DSN-20261030, operator)
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/packets/agent-scratch-purge-20261030/README.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TRADEAI_RUN_ID=agent-scratch-purge
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/disk_hygiene.py --standing --apply
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=idle
