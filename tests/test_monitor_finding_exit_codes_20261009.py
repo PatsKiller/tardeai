@@ -8,6 +8,7 @@ monitors now exit 3 for a finding and the table declares `finding_rc: [3]`.
 
 Hermetic: every probe, DB read and alert is stubbed.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,18 +31,23 @@ def test_finding_code_is_distinct_from_success_and_python_crash():
 
 def test_live_table_declares_the_shared_finding_code():
     from scripts import health_tick as ht
+
     table = ht.load_table(ROOT / "config" / "health_tick_steps.json")
     declared = {s["step_id"]: s.get("finding_rc") for s in table["steps"] if s.get("finding_rc")}
-    assert declared == {"system-health-agent": [codes.EXIT_FINDING],
-                        "moomoo-opend-health": [codes.EXIT_FINDING],
-                        "pipeline-liveness-report": [codes.EXIT_FINDING],
-                        "premarket-delivery-deadman": [codes.EXIT_FINDING]}  # 2026-10-31 P0-T4
+    assert declared == {
+        "system-health-agent": [codes.EXIT_FINDING],
+        "moomoo-opend-health": [codes.EXIT_FINDING],
+        "pipeline-liveness-report": [codes.EXIT_FINDING],
+        "premarket-delivery-deadman": [codes.EXIT_FINDING],
+    }  # 2026-10-31 P0-T4
 
 
 # ── pipeline_liveness_report --fail-on-finding ──────────────────────────────
 
+
 def _liveness(monkeypatch, findings):
     from scripts import pipeline_liveness_report as mod
+
     report = types.SimpleNamespace(to_dict=lambda: {"lanes": [], "findings": findings})
     monkeypatch.setattr(mod, "default_lanes", lambda: [])
     monkeypatch.setattr(mod, "evaluate", lambda lanes: report)
@@ -65,6 +71,7 @@ def test_liveness_without_findings_or_flag_exits_zero(monkeypatch):
 
 
 # ── moomoo opend_health ─────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def opend(monkeypatch, tmp_path):
@@ -94,17 +101,20 @@ def test_opend_up_exits_zero(opend, monkeypatch):
 
 # ── system_health_agent ─────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def agent(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "scripts"))
     import system_health_agent as mod
+
     return mod
 
 
 def _report(status):
-    return {"summary": {"ok": 0, "stale": 0, "missing": 0, "failed": 1, "locked": 0,
-                        "retried": 0, "escalated": 0},
-            "checks": [{"name": "c", "critical": True, "status": status}]}
+    return {
+        "summary": {"ok": 0, "stale": 0, "missing": 0, "failed": 1, "locked": 0, "retried": 0, "escalated": 0},
+        "checks": [{"name": "c", "critical": True, "status": status}],
+    }
 
 
 def test_agent_critical_down_exits_finding_code(agent, monkeypatch):
@@ -120,5 +130,5 @@ def test_agent_all_ok_or_dry_run_does_not_exit_nonzero(agent, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["system_health_agent.py", "--apply"])
     agent.main()
     monkeypatch.setattr(agent, "run_health_check", lambda **kw: _report("STALE"))
-    monkeypatch.setattr(sys, "argv", ["system_health_agent.py"])   # dry run
+    monkeypatch.setattr(sys, "argv", ["system_health_agent.py"])  # dry run
     agent.main()

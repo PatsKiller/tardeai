@@ -4,6 +4,7 @@ Hermetic: a fake step table with `true` / `sleep` / `false` commands, a tmp
 project root, tmp lock paths and a tmp state root. Nothing here touches /tmp
 locks the live crontab uses, the live receipt, or any monitor script.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -22,8 +23,14 @@ LIVE_TABLE = REPO / "config" / "health_tick_steps.json"
 
 
 def _table(tmp_path: Path, steps: list[dict], **extra) -> Path:
-    data = {"schema": "HealthTickSteps@v1", "tick_minutes": 5, "tick_budget_s": 280,
-            "max_parallel": 1, "default_timeout_s": 240, "steps": steps}
+    data = {
+        "schema": "HealthTickSteps@v1",
+        "tick_minutes": 5,
+        "tick_budget_s": 280,
+        "max_parallel": 1,
+        "default_timeout_s": 240,
+        "steps": steps,
+    }
     data.update(extra)
     p = tmp_path / "steps.json"
     p.write_text(json.dumps(data), encoding="utf-8")
@@ -31,24 +38,46 @@ def _table(tmp_path: Path, steps: list[dict], **extra) -> Path:
 
 
 def _step(step_id: str, command: list[str], tmp_path: Path, **kw) -> dict:
-    row = {"step_id": step_id, "command": command, "cadence_minutes": 5, "minute_offset": 0,
-           "hours": None, "weekdays": None, "lock": str(tmp_path / f"{step_id}.lock"),
-           "timeout_s": 240, "needs_env": False, "market_day_gate": False,
-           "log": f"logs/{step_id}.log", "note": "test"}
+    row = {
+        "step_id": step_id,
+        "command": command,
+        "cadence_minutes": 5,
+        "minute_offset": 0,
+        "hours": None,
+        "weekdays": None,
+        "lock": str(tmp_path / f"{step_id}.lock"),
+        "timeout_s": 240,
+        "needs_env": False,
+        "market_day_gate": False,
+        "log": f"logs/{step_id}.log",
+        "note": "test",
+    }
     row.update(kw)
     return row
 
 
 def _run(argv: list[str], tmp_path: Path, table: Path) -> tuple[int, dict]:
     state = tmp_path / "state"
-    rc = ht.main(argv + ["--table", str(table), "--project-root", str(tmp_path),
-                         "--state-root", str(state), "--now", "2026-10-07T09:20:00"])
+    rc = ht.main(
+        argv
+        + [
+            "--table",
+            str(table),
+            "--project-root",
+            str(tmp_path),
+            "--state-root",
+            str(state),
+            "--now",
+            "2026-10-07T09:20:00",
+        ]
+    )
     receipt_path = state / "data" / "runtime" / "health_tick_last.json"
     receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
     return rc, receipt
 
 
 # ── due computation ─────────────────────────────────────────────────────────
+
 
 def _due(step: dict, when: str, tick_minutes: int = 5) -> bool:
     return ht.step_is_due(step, ht.snap_to_tick(datetime.fromisoformat(when), tick_minutes), tick_minutes)
@@ -82,8 +111,8 @@ def test_multi_hour_cadences_match_cron_star_slash_hours():
 def test_hour_and_weekday_windows():
     slo = {"cadence_minutes": 120, "minute_offset": 15, "hours": [7, 9, 11, 13, 15, 17], "weekdays": [1, 2, 3, 4, 5]}
     assert [h for h in range(24) if _due(slo, f"2026-10-07T{h:02d}:15:00")] == [7, 9, 11, 13, 15, 17]  # Wed
-    assert not _due(slo, "2026-10-10T09:15:00")   # Saturday
-    assert not _due(slo, "2026-10-11T09:15:00")   # Sunday
+    assert not _due(slo, "2026-10-10T09:15:00")  # Saturday
+    assert not _due(slo, "2026-10-11T09:15:00")  # Sunday
     mkt = {"cadence_minutes": 5, "minute_offset": 0, "hours": list(range(9, 21)), "weekdays": [1, 2, 3, 4, 5]}
     assert _due(mkt, "2026-10-07T09:00:00") and _due(mkt, "2026-10-07T20:55:00")
     assert not _due(mkt, "2026-10-07T08:55:00") and not _due(mkt, "2026-10-07T21:00:00")
@@ -133,12 +162,20 @@ def test_table_validation_rejects_bad_rows(tmp_path):
 
 # ── execution ───────────────────────────────────────────────────────────────
 
+
 def test_apply_runs_due_steps_writes_receipt_and_logs(tmp_path):
-    table = _table(tmp_path, [
-        _step("ok", ["true"], tmp_path),
-        _step("echoer", [sys.executable, "-c", "import sys; print('hello'); print('warn line', file=sys.stderr)"], tmp_path),
-        _step("not-due", ["false"], tmp_path, cadence_minutes=60, minute_offset=45),
-    ])
+    table = _table(
+        tmp_path,
+        [
+            _step("ok", ["true"], tmp_path),
+            _step(
+                "echoer",
+                [sys.executable, "-c", "import sys; print('hello'); print('warn line', file=sys.stderr)"],
+                tmp_path,
+            ),
+            _step("not-due", ["false"], tmp_path, cadence_minutes=60, minute_offset=45),
+        ],
+    )
     rc, receipt = _run(["--apply"], tmp_path, table)
     assert rc == 0
     assert receipt["schema"] == "HealthTickReceipt@v1"
@@ -168,7 +205,9 @@ def test_failed_step_sets_nonzero_exit(tmp_path):
 
 
 def test_timeout_is_a_failure_and_does_not_hang(tmp_path):
-    table = _table(tmp_path, [_step("slow", ["sleep", "30"], tmp_path, timeout_s=1), _step("after", ["true"], tmp_path)])
+    table = _table(
+        tmp_path, [_step("slow", ["sleep", "30"], tmp_path, timeout_s=1), _step("after", ["true"], tmp_path)]
+    )
     rc, receipt = _run(["--apply"], tmp_path, table)
     assert rc == ht.EXIT_STEP_FAILED
     rows = {r["step_id"]: r for r in receipt["steps"]}
@@ -176,7 +215,7 @@ def test_timeout_is_a_failure_and_does_not_hang(tmp_path):
     assert rows["slow"]["rc"] != 0
     assert rows["slow"]["duration_s"] < 15
     assert receipt["timed_out"] == ["slow"] and receipt["failed"] == ["slow"]
-    assert rows["after"]["rc"] == 0          # the wedge did not stop the next step
+    assert rows["after"]["rc"] == 0  # the wedge did not stop the next step
     assert "timeout after 1s" in (tmp_path / "logs" / "slow.log").read_text()
 
 
@@ -201,8 +240,9 @@ def test_lock_held_elsewhere_skips_the_step_without_failing(tmp_path):
 
 
 def test_tick_budget_defers_remaining_steps_and_reports_it(tmp_path):
-    table = _table(tmp_path, [_step("first", ["sleep", "1"], tmp_path), _step("second", ["true"], tmp_path)],
-                   tick_budget_s=0.5)
+    table = _table(
+        tmp_path, [_step("first", ["sleep", "1"], tmp_path), _step("second", ["true"], tmp_path)], tick_budget_s=0.5
+    )
     rc, receipt = _run(["--apply"], tmp_path, table)
     assert rc == ht.EXIT_STEP_FAILED
     assert receipt["deferred"] == ["second"] and "second" in receipt["failed"]
@@ -211,33 +251,53 @@ def test_tick_budget_defers_remaining_steps_and_reports_it(tmp_path):
 
 
 def test_dry_run_writes_nothing_and_once_runs_one_step(tmp_path, capsys):
-    table = _table(tmp_path, [_step("a", ["true"], tmp_path), _step("b", ["false"], tmp_path, cadence_minutes=60, minute_offset=45)])
+    table = _table(
+        tmp_path,
+        [_step("a", ["true"], tmp_path), _step("b", ["false"], tmp_path, cadence_minutes=60, minute_offset=45)],
+    )
     rc, receipt = _run(["--dry-run"], tmp_path, table)
     assert rc == 0 and receipt == {}
     assert not (tmp_path / "state").exists() and not (tmp_path / "logs").exists()
     out = capsys.readouterr().out
     assert "mode=dry-run" in out and "PLANNED" in out and "  a " in out and "  b " not in out
 
-    rc, receipt = _run(["--once", "--step", "b"], tmp_path, table)      # not due at 09:20, forced
+    rc, receipt = _run(["--once", "--step", "b"], tmp_path, table)  # not due at 09:20, forced
     assert rc == ht.EXIT_STEP_FAILED and receipt["mode"] == "once"
     rows = {r["step_id"]: r for r in receipt["steps"]}
     assert rows["b"]["ran"] is True and rows["b"]["rc"] == 1 and rows["a"]["ran"] is False
     assert ht.main(["--once", "--table", str(table)]) == ht.EXIT_CANNOT_RUN
-    assert ht.main(["--once", "--step", "nope", "--table", str(table), "--project-root", str(tmp_path),
-                    "--state-root", str(tmp_path / "s")]) == ht.EXIT_CANNOT_RUN
+    assert (
+        ht.main(
+            [
+                "--once",
+                "--step",
+                "nope",
+                "--table",
+                str(table),
+                "--project-root",
+                str(tmp_path),
+                "--state-root",
+                str(tmp_path / "s"),
+            ]
+        )
+        == ht.EXIT_CANNOT_RUN
+    )
 
 
 def test_market_day_gate_wrapper_and_env_rendering(tmp_path):
     gate = tmp_path / "scripts" / "market_day_gate.sh"
     gate.parent.mkdir(parents=True)
-    gate.write_text("#!/usr/bin/env bash\necho gated:$*\nexec \"$@\"\n")
+    gate.write_text('#!/usr/bin/env bash\necho gated:$*\nexec "$@"\n')
     (tmp_path / ".env").write_text("HT_TEST_VAR=from_env\n")
     probe = [sys.executable, "-c", "import os,sys; print(os.environ.get('HT_TEST_VAR','unset')); sys.exit(0)"]
-    table = _table(tmp_path, [
-        _step("gated", ["$PY", "-c", "print('ran-under-gate')"], tmp_path, market_day_gate=True),
-        _step("env-on", probe, tmp_path, needs_env=True),
-        _step("env-off", probe, tmp_path, needs_env=False),
-    ])
+    table = _table(
+        tmp_path,
+        [
+            _step("gated", ["$PY", "-c", "print('ran-under-gate')"], tmp_path, market_day_gate=True),
+            _step("env-on", probe, tmp_path, needs_env=True),
+            _step("env-off", probe, tmp_path, needs_env=False),
+        ],
+    )
     rc, receipt = _run(["--apply", "--py", sys.executable], tmp_path, table)
     assert rc == 0
     rows = {r["step_id"]: r for r in receipt["steps"]}
