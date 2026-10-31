@@ -18,5 +18,7 @@
   "_never_probe_why": "Additions only: scripts/lib/n8n_breaker_probe.py NEVER_PROBE is the code floor (broker, order, stop, execution, scalp, sender, telegram, secret, deploy, release, guard, position, paper, account, dof, ...), plus every live canary lane from the lane registry (AGENTS.md \u00a723.14, review 2026-10-31).",
   "holds_rel": "data/governance/n8n_breaker_probe_holds.json",
   "_holds_why": "Operator hold marker: a JSON object {lane_id: reason}. A held lane is never probed, judged or re-opened by the prober.",
-  "message_class": "ops_breaker_probe"
+  "message_class": "ops_breaker_probe",
+  "max_concurrent_probes": 1,
+  "_round2_why": "Review round 2 (2026-10-31): exactly one probe slot \u2014 the breaker is re-opened (gate) as soon as the first slot after the release is requested, and that slot's verdict decides (pass releases for good); at most max_concurrent_probes lanes probe at once; a yield keeps the backoff; an unreadable holds file or lane registry starts no probe."
 }
