@@ -5,7 +5,8 @@
 #
 # Lanes (n8n-native, fired by the already-active tradeai-dispatcher; no cron line or unit ever existed):
 #   disk-usage-monitor  */15        scripts/disk_usage_monitor.py --apply  (bands; one host comms intent per band change)
-#   disk-hygiene        Sun 04:00   scripts/disk_hygiene.py --plan         (manifest only: DELETES NOTHING)
+#   disk-hygiene        hourly :17  scripts/disk_hygiene.py --standing --apply --scheduled  (2026-10-31 operator activation:
+#                                   daily full run 04 ET + pressure >80% -> 75%; reviewed standing rules S/T/W/C/R)
 #   tmp-hygiene         daily 05:00 scripts/tmp_hygiene.py --plan          (/tmp manifest with inodes: DELETES NOTHING)
 # 2026-10-19 (operator, after /tmp, a tmpfs, hit 97% INODES with 20G bytes free and tools failed with ENOSPC): the
 # monitor also bands inode use per mount (/ and /tmp), and tmp-hygiene plans the /tmp reclaim (ended Claude session
@@ -96,7 +97,7 @@ reg = {r["lane_id"]: r for r in j("config/lane_registry.json")["lanes"]}
 allow = {e["lane_id"]: e for e in j("config/n8n_run_allowlist.json")["lanes"]}
 hc = {c["id"]: c for c in j("config/n8n_health_contracts.json")["contracts"]}
 routes = {(r["domain"], r["kind"]) for r in j("config/host_comms_intent_routes.json")["routes"]}
-want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["0 4 * * 0"], ["--plan"]),
+want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["17 * * * *"], ["--standing", "--apply", "--scheduled"]),
         "tmp-hygiene": (["0 5 * * *"], ["--plan"])}
 checks = {}
 for lane, (cron, live_arg) in want.items():
@@ -110,9 +111,12 @@ for lane, (cron, live_arg) in want.items():
     checks[f"{lane}: health contract REVIEWED canary min_produced"] = (
         c.get("status") == "REVIEWED" and c.get("stage") == "canary"
         and (c.get("expected_output") or {}).get("rule") == "min_produced")
-for lane in ("disk-hygiene", "tmp-hygiene"):
-    hy = allow.get(lane) or {}
-    checks[f"{lane}: --apply is never an allowlist argv"] = "--apply" not in json.dumps([hy.get(k) for k in ("command", "live_arg", "dry_run_arg")])
+hy = allow.get("tmp-hygiene") or {}
+checks["tmp-hygiene: --apply is never an allowlist argv"] = "--apply" not in json.dumps([hy.get(k) for k in ("command", "live_arg", "dry_run_arg")])
+# 2026-10-31: disk-hygiene applies only through the reviewed, operator-approved standing path (never the manual grant path).
+dh = allow.get("disk-hygiene") or {}
+checks["disk-hygiene: --apply only with --standing"] = (dh.get("live_arg") == ["--standing", "--apply", "--scheduled"]
+                                                       and "--apply" not in json.dumps([dh.get("command"), dh.get("dry_run_arg")]))
 rules = j("config/disk_hygiene_rules.json")
 checks["config/disk_hygiene_rules.json monitor.inodes + tmp rules"] = bool(rules.get("tmp")) and bool(rules["monitor"].get("inodes"))
 checks["host routes host/disk_usage_{warn,critical,recovered}"] = {

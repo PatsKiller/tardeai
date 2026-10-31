@@ -30285,7 +30285,9 @@
           "no_runner",
           "dependency_unavailable"
         ],
-        "empty_allowed_reasons": [],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
         "evidence": [
           {
             "kind": "receipt_field",

@@ -245,9 +245,12 @@ def test_observed_directory_swapped_to_symlink_never_scans_outside_metadata(tmp_
         assert info.st_ino != outside_inode, "outside metadata was reached"
         return real_scan(descriptor)
 
-    monkeypatch.setattr(be.os, "open", open_dir)
-    monkeypatch.setattr(be.os, "scandir", scan)
-    result = be.local_storage_usage(_cfg(root))
+    # be.os IS the os module: scope the patch to the call, so pytest's own tmp_path cleanup (it removes passing tests'
+    # dirs at teardown since tmp_path_retention_policy = "failed") never runs through the fake scandir.
+    with monkeypatch.context() as m:
+        m.setattr(be.os, "open", open_dir)
+        m.setattr(be.os, "scandir", scan)
+        result = be.local_storage_usage(_cfg(root))
     assert swapped
     assert result["measurement_complete"] is False
     assert result["local_backup_total_bytes"] is None

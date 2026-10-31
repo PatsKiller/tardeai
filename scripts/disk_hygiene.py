@@ -2172,7 +2172,7 @@ def _below_threshold(a: argparse.Namespace, rules: Mapping[str, Any], state_root
         R.write_lane_receipt(lane, ok=True, exit_code=0, started_at=wall_start, script=SCRIPT,
                              summary={"outcome": "below_threshold", "used_pct": usage.get("used_pct"), "threshold_pct": a.only_if_above},
                              path=R.receipt_path(lane, state_root),
-                             output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {}, "empty_reason": "below_threshold"})
+                             output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {}, "empty_reason": "nothing_due"})
     print(json.dumps({"outcome": "below_threshold", "used_pct": usage.get("used_pct"), "threshold_pct": a.only_if_above, "dry_run": bool(a.dry_run)}))
     return 0
 
