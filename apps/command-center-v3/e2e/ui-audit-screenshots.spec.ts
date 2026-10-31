@@ -27,7 +27,7 @@ const ROUTES: Array<{ path: string; slug: string; tabs?: string[] }> = [
   { path: '/trading', slug: 'trading', tabs: ['Trade AI', 'Options', 'Open Trades', 'Proposals'] },
   { path: '/watch', slug: 'watch', tabs: ['Intelligence', 'Watchpool', 'Sectors', 'Pullback'] },
   { path: '/watch/intelligence/DELL', slug: 'symbol-DELL' },
-  { path: '/risk', slug: 'risk', tabs: ['Exposure', 'Correlation', 'Regime', 'Recovery'] },
+  { path: '/risk', slug: 'risk', tabs: ['Exposure', 'Correlation', 'Market risk', 'Recovery'] },
   { path: '/active-trader', slug: 'active-trader', tabs: ['Alerts', 'Scalp'] },
   { path: '/journal', slug: 'journal' },
   { path: '/cio', slug: 'cio', tabs: ['Overview', 'Decisions', 'Research', 'Capital & Policy', 'Evidence & Comms'] },
