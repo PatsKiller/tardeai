@@ -472,3 +472,97 @@ def test_literal_default_kept_for_parsers():
         assert name in line, name
     m = re.search(r"TRADEAI_CURRENT_BOUND_UNITS:-([^}\"]*)", SH)
     assert m and "cio-governed-bridge.service" in m.group(1)
+
+
+# ------------------------------------------------------------------ follow-up: hard safety under a harness
+def test_harness_refuses_real_send_and_production_root_write(monkeypatch, tmp_path):
+    """A reviewer harness once ran verify for real and paged the operator with fake data. Never again."""
+    import scripts.current_bound_units as cli
+    import telegram_alert
+
+    realish = tmp_path / "trade-ai-releases" / "persistent-state"
+    realish.mkdir(parents=True)
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(realish))
+    called: list = []
+    real = telegram_alert.send_telegram
+    monkeypatch.setattr(telegram_alert, "send_telegram", real)  # the REAL sender stays in place
+
+    def no_network(*a, **k):
+        called.append(a)
+        raise AssertionError("network reached")
+
+    monkeypatch.setattr(telegram_alert, "_legacy_send", no_network, raising=False)
+    units = units_fixture()
+    op, ov = cli.cbu.plan, cli.cbu.verify
+    monkeypatch.setattr(
+        cli.cbu,
+        "plan",
+        lambda cur, **kw: op(
+            cur, releases_base=BASE, run=fake_run(units), cwd_of=fake_cwd(units), is_open=False, extra_never=[]
+        ),
+    )
+    monkeypatch.setattr(
+        cli.cbu, "verify", lambda cur, names, **kw: ov(cur, names, run=fake_run(units), cwd_of=fake_cwd(units))
+    )
+    rc = cli.main(["verify", "--current", NEW, "--restarted", "heartbeat-receiver.service", "--json"])
+    assert rc == 2  # still judged stale
+    assert called == []
+    assert not any(realish.rglob("*")), "nothing may be written under the production state root"
+    # the default root (TRADEAI_PERSISTENT_STATE_ROOT) is used when --state-root is absent
+    assert cli._state_root(None) == realish
+    ok, err = cli.deliver("x")
+    assert ok is False and err.startswith("refused: TRADE_AI_CI")
+
+
+def test_harness_allows_tmp_root_and_test_double(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    import scripts.current_bound_units as cli
+
+    monkeypatch.delenv("TRADEAI_PERSISTENT_STATE_ROOT", raising=False)
+    assert cli.write_refused(tmp_path / "scratch") is None
+    assert cli.write_refused(cli.DEFAULT_STATE_ROOT) is not None
+    monkeypatch.delenv("TRADE_AI_CI")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    assert cli.write_refused(cli.DEFAULT_STATE_ROOT) is None  # production run: allowed
+
+
+def test_stale_unit_skipped_by_narrowed_override_still_pages(monkeypatch, tmp_path):
+    sent: list = []
+    # grok-oauth-proxy is restartable and stale, but this deploy's list did not include it
+    rc = _cli(monkeypatch, tmp_path, ["verify", "--current", NEW, "--restarted", "tradeai-health-agent.service"], sent)
+    assert rc == 0
+    assert "grok-oauth-proxy.service" in sent[0][0] and "not_in_this_deploy_list" in sent[0][0]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tradeai-positions-sync.service",
+        "stop-drift.service",
+        "account-sync.service",
+        "telegram-sender.service",
+        "order-execution.service",
+        "db-retention.service",
+        "tradeai-agent-loop.service",
+    ],
+)
+def test_23_14_word_tokens(name):
+    ok, reason = cbu.decide(
+        name, argv="/v/python x.py", wd=LINK, env="", installed=True, current_link=LINK, is_market_open=False
+    )
+    assert not ok and reason.startswith("never:"), (name, reason)
+
+
+def test_word_tokens_are_components_not_substrings_and_skip_env_names():
+    # trade-ai-releases path, a 'stopwatch' word and an env var NAME containing SENDER must not veto
+    ok, reason = cbu.decide(
+        "tradeai-health-agent.service",
+        argv="/v/python /home/j/trade-ai-releases/portfolio-server/CURRENT/scripts/stopwatch_agent.py",
+        wd=LINK,
+        env="COMMS_INBOUND_SENDER_ALLOWLIST=1",
+        installed=True,
+        current_link=LINK,
+        is_market_open=False,
+    )
+    assert ok, reason

@@ -115,6 +115,19 @@ HARD_NEVER: tuple[str, ...] = (
     "guard",
     "dof",
 )
+# AGENTS.md §23.14 word classes. Matched as whole words / path components of the unit NAME, argv and
+# WorkingDirectory only (so `trade-ai-releases` never hits, and an environment variable NAME such as
+# COMMS_INBOUND_SENDER_ALLOWLIST does not turn a reader into a "sender").
+WORD_NEVER_23_14: tuple[str, ...] = (
+    "stop",
+    "position",
+    "account",
+    "sender",
+    "execution",
+    "retention",
+    "agent-loop",
+    "agent_loop",
+)
 
 Runner = Callable[[list[str]], str]
 
@@ -195,7 +208,9 @@ def decide(
     """Fail-closed decision for one unit: (restart, reason)."""
     if name in PAGE_ONLY_NAMED:
         return False, PAGE_ONLY_NAMED[name]
-    hard = _hit(f"{name} {argv} {wd} {env}", (*HARD_NEVER, *extra_never))
+    hard = _hit(f"{name} {argv} {wd} {env}", (*HARD_NEVER, *extra_never)) or _hit(
+        f"{name} {argv} {wd}", WORD_NEVER_23_14
+    )
     if hard:
         return False, f"never:{hard}"
     if is_market_open and name in MARKET_HOURS_PAGE_ONLY:

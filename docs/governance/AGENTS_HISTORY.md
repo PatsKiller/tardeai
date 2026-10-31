@@ -88,6 +88,13 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
+27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
+LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
+2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
+(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
+*(Moved here from AGENTS.md by 28.1.0, 2026-10-31, to keep binding-text margin.)*
+
 **26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
 `conflict_ledger` and `conflict_rule_proposals` were granted by the operator (§7A/§26.6, in-session 2026-10-29) and the
 generated source-of-truth table in §7A now lists them as active; no rule-text change. Supersedes 26.2.1.
