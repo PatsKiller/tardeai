@@ -33,6 +33,15 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 import self_heal_fixer as S  # noqa: E402
 
+_REAL_SCAN = S.Attempt.scan_commit
+
+
+@pytest.fixture(autouse=True)
+def _stub_prehandoff_scan(monkeypatch):
+    """The hermetic tmp repos carry no scanner scripts; the scan itself is pinned by the tests that restore it."""
+    monkeypatch.setattr(S.Attempt, "scan_commit", lambda self, commit: [])
+
+
 CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
 FIXTURE = ROOT / "tests" / "fixtures" / "self_heal_fixer" / "daily_incubator_refresh_20261016.json"
 NOW = datetime(2026, 10, 16, 18, 0, tzinfo=timezone.utc)
@@ -394,16 +403,16 @@ def test_arming_needs_named_grant_and_daily_cap():
     assert not capped["armed"] and "cap" in capped["why"]
 
 
-def test_policy_gate_blocks_push_until_amendment_active():
-    head = "Policy-Version:      27.0.0\nStatus:              PROPOSED\n"
+def test_policy_gate_never_allows_a_push():
+    """AGENTS.md §24.5: "The §28.14 fixer stops at a local fix branch". Review 2026-10-31 (B1): no header Status, no
+    heading word and no amendment text can arm a push from this timer lane."""
+    head = "Policy-Version:      27.0.1\nStatus:              ACTIVE\n"
     sec = "## 28.14 Self-heal monitor and fixer\n"
-    assert not F.policy_verdict(head + sec, CFG)["push_allowed"]  # an unratified header never authorizes
-    assert F.policy_verdict(head.replace("PROPOSED", "ACTIVE") + sec, CFG)["push_allowed"]
-    assert not F.policy_verdict(head.replace("PROPOSED", "ACTIVE"), CFG)["push_allowed"]  # no 28.14: 24.5 binds
-    assert not F.policy_verdict("Status: ACTIVE\n## 24.11 Read-only broker sync\n", CFG)["push_allowed"]
     marker = CFG["policy_gate"]["amendment_heading_marker"]
-    assert not F.policy_verdict(f"{marker} (13.0.0, PROPOSED)\n", CFG)["push_allowed"]
-    assert F.policy_verdict(f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", CFG)["push_allowed"]
+    for text in (head + sec, head, sec, f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", AGENTS_TEXT, ""):
+        v = F.policy_verdict(text, CFG)
+        assert v["push_allowed"] is False and "24.5" in v["why"]
+    assert CFG["arming"]["arm_on"] == "guard_grant"
 
 
 # ---------------------------------------------------------------- evaluator, selector, repair memory
@@ -775,14 +784,30 @@ def test_a_second_backend_without_cost_evidence_is_held(sandbox):
     assert job["shadow_route"]["chosen_static"] == "candidate"
 
 
-def test_success_with_amendment_pushes_one_branch_and_opens_labelled_pr(sandbox):
+def test_success_with_amendment_still_stops_at_a_local_branch(sandbox):
+    """Even with the amendment heading ACTIVE the fixer never pushes or opens a PR (AGENTS.md §24.5)."""
     job, _ = _run_cycle(sandbox, "fix", agents_marker=True)
-    assert job["state"] == F.FIX_PR_OPENED and job["pr_number"] == 4242
-    assert job["branch"] in _sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
-    gh = (sandbox["bin"] / "gh_calls.txt").read_text()
-    assert "pr create" in gh and "--label self-heal-fix" in gh and "--base main" in gh
-    assert "merge" not in gh  # never merges
-    assert not F.is_healed(job)
+    assert job["state"] == F.FIX_READY_LOCAL
+    assert job["branch"] not in _sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
+    assert not (sandbox["bin"] / "gh_calls.txt").exists()
+
+
+def test_prehandoff_scan_failure_refuses_the_fix(sandbox, monkeypatch):
+    """Review 2026-10-31 (H6): a check_no_pii or secret-scan hit on the fix commit refuses the hand-off."""
+    monkeypatch.setattr(S.Attempt, "scan_commit", lambda self, commit: ["check_no_pii:home_path"])
+    job, _ = _run_cycle(sandbox, "fix")
+    assert job["state"] == F.FIX_REFUSED and job["reason"].startswith("prehandoff_scan_failed:check_no_pii")
+
+
+def test_missing_scanner_refuses(sandbox, monkeypatch):
+    monkeypatch.setattr(S.Attempt, "scan_commit", _REAL_SCAN)
+    job, _ = _run_cycle(sandbox, "fix")
+    assert job["state"] == F.FIX_REFUSED and "scanner_missing" in job["reason"]
+
+
+def test_credentials_are_bound_read_only():
+    binds, why = F.agent_auth_binds(CFG, home="/h", agent_home="/a", probe=lambda p: "file")
+    assert why == "auth:credentials_file" and binds and binds[0][2] is False
 
 
 def test_previous_output_is_fed_back_and_two_step_fix_passes(sandbox):

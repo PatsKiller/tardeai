@@ -56,6 +56,7 @@ OUTCOMES = (
     "shadow-proposed",
     "remediating",
     "fix-PR-open",
+    "fix-ready-local",
     "fixer-queued",
     "fixed-released-pending",
     "fixed-released",
@@ -64,7 +65,9 @@ OUTCOMES = (
     "gave-up",
     "cleared",
 )
-OPEN_OUTCOMES = frozenset({"remediating", "fix-PR-open", "fixer-queued", "fixed-released-pending"})
+OPEN_OUTCOMES = frozenset(
+    {"remediating", "fix-PR-open", "fix-ready-local", "fixer-queued", "fixed-released-pending"}
+)  # fix-ready-local: a local branch awaiting a person's push (AGENTS.md §24.5)
 TERMINAL_OUTCOMES = frozenset({"fixed-released", "fixed-no-release", "gave-up", "cleared"})
 
 _PATH_RE = re.compile(

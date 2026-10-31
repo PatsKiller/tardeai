@@ -1,11 +1,6 @@
 # Self-heal train monitor and fixer
 
-Status: BUILT, SHADOW. It turns LIVE only when AGENTS.md 21.0.0 is ACTIVE with §28.14 marked ACTIVE on its heading
-line. That amendment is PR #2128, and arming is that section becoming ACTIVE. No guard grant is needed and no
-operator step is involved.
-Owner: platform. Code: `scripts/self_heal_train_monitor.py`, `scripts/lib/self_heal_train_intake.py`,
-`scripts/self_heal_fixer.py` (the existing Claude Code fixer). Config: `config/self_heal_train_monitor.json`,
-`config/self_heal_fixer.json`.
+Status: BUILT, SHADOW. Revised 2026-10-31 after an independent review: AGENTS.md §24.5 binds — "The §28.14 fixer stops at a local fix branch". Neither the fixer nor the train monitor's regenerate rules ever push or open a PR; a person pushes the local branch they leave (fix.patch and the PR body sit beside it). A live attempt arms only on an operator `git-push` guard grant naming `self-heal-fixer` (`arm_on: guard_grant`); the header Status never arms. Before the hand-off the fix commit must pass check_no_pii and a secret scan, and the Claude credentials file is bound read-only into the sandbox.
 
 Operator, 2026-10-25 (verbatim, voice-typed): "Arm the fixer and also a logger that tracks what was fixed, but this
 train should be no different than submitting in [to GitHub]. Somebody needs to monitor it, if there's little errors

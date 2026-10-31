@@ -750,6 +750,52 @@ class Attempt:
             rec.get("acceptance"), commit_sha=commit, tree_sha=tree_now or "", prepush_refusals=refusals
         )
 
+    def scan_commit(self, commit: str) -> list[str]:
+        """Review 2026-10-31 (H6): before the fix branch is handed off, the evaluated commit must pass the repo's own
+        personal-data check (check_no_pii over base..commit) and a secret scan (gitleaks over the range when it is
+        installed, else scripts/check_no_secrets.py over the checked-out tree). Any failure, or a missing scanner,
+        refuses the hand-off; nothing is pushed in any case (§24.5)."""
+        errs: list[str] = []
+        env = {k: v for k, v in self.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
+        env["TRADE_AI_CI"] = "1"
+        pii = self.fix_wt / "scripts" / "check_no_pii.py"
+        if not pii.is_file():
+            errs.append("scanner_missing:check_no_pii.py")
+        else:
+            r = run(
+                [sys.executable, str(pii), "--range", f"{self.base}..{commit}"], cwd=self.fix_wt, env=env, timeout=600
+            )
+            if r["rc"] != 0:
+                errs.append(f"check_no_pii:{(r['out'] + r['err'])[-300:]}")
+        gl = shutil.which("gitleaks")
+        if gl:
+            r = run(
+                [
+                    gl,
+                    "detect",
+                    "--no-banner",
+                    "--redact",
+                    "--source",
+                    str(self.fix_wt),
+                    "--log-opts",
+                    f"{self.base}..{commit}",
+                ],
+                cwd=self.fix_wt,
+                env=env,
+                timeout=600,
+            )
+            if r["rc"] != 0:
+                errs.append(f"gitleaks:{(r['out'] + r['err'])[-300:]}")
+        else:
+            sec = self.fix_wt / "scripts" / "check_no_secrets.py"
+            if not sec.is_file():
+                errs.append("scanner_missing:check_no_secrets.py")
+            else:
+                r = run([sys.executable, str(sec), "--tree"], cwd=self.fix_wt, env=env, timeout=600)
+                if r["rc"] != 0:
+                    errs.append(f"check_no_secrets:{(r['out'] + r['err'])[-300:]}")
+        return errs
+
     def land_local(self, commit: str) -> dict:
         """Point the job branch at the evaluated commit (compare-and-swap from base) and write fix.patch from it."""
         r = git(self.repo, "update-ref", f"refs/heads/{self.branch}", commit, self.base)
@@ -902,6 +948,17 @@ def attempt_job(
             a.teardown(keep_branch=False)
             return job
         commit = ship["commit_sha"]
+        scan = a.scan_commit(commit)
+        if scan:
+            F.transition(
+                job,
+                F.FIX_REFUSED,
+                now(),
+                reason=f"prehandoff_scan_failed:{';'.join(scan)[:400]}",
+                updated_at=now().isoformat(),
+            )
+            a.teardown(keep_branch=False)
+            return job
         c = a.land_local(commit)
         if c["rc"] != 0:
             F.transition(

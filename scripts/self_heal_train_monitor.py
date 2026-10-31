@@ -441,44 +441,22 @@ class Tick:
             gw("checkout", "-q", "-b", branch)
             gw("add", "--", *changed)
             c = gw("commit", "-q", "-m", msg)
-            env = {**os.environ, "TRADEAI_REMOTE_PUSH_AUTHORIZED": "1"}
-            p = self.runner(
-                ["git", "-C", str(wt), "push", "-q", "origin", f"HEAD:refs/heads/{branch}"], env=env, timeout=180
-            )
-            if c["rc"] != 0 or p["rc"] != 0:
-                return self.set_outcome(rec, "detected", "regen_failed", f"commit rc={c['rc']} push rc={p['rc']}")
+            if c["rc"] != 0:
+                return self.set_outcome(rec, "detected", "regen_failed", f"commit rc={c['rc']}")
             head = (gw("rev-parse", "HEAD").get("out") or "").strip()
             bf = wt.parent / f"{wt.name}.body.md"
             bf.write_text(body, encoding="utf-8")
-            pr = self.runner(
-                [
-                    "gh",
-                    "pr",
-                    "create",
-                    "--head",
-                    branch,
-                    "--base",
-                    "main",
-                    "--title",
-                    title,
-                    "--body-file",
-                    str(bf),
-                    "--label",
-                    self.cfg["regen_pr"]["label"],
-                ],
-                cwd=self.repo,
-                timeout=120,
-            )
-            url = (pr.get("out") or "").strip().splitlines()[-1:] or [""]
-            num = int(url[0].rsplit("/", 1)[-1]) if url[0].rsplit("/", 1)[-1].isdigit() else None
+            # AGENTS.md §24.5: a timer lane never pushes or opens a PR. The fix stops at this LOCAL branch; a person
+            # pushes it (title and body are in the .body.md next to the worktree). Review 2026-10-31 (M).
             self.set_outcome(
                 rec,
-                "fix-PR-open" if num else "detected",
-                "fix_pr_opened",
-                f"{rule['id']}: {url[0]}",
-                pr_number=num,
+                "fix-ready-local",
+                "fix_ready_local",
+                f"{rule['id']}: local branch {branch} at {head[:9]}; push it by hand (§24.5)",
+                branch=branch,
                 pr_head=head,
-                model_cost_usd=0.0,
+                pr_title=title,
+                body_file=str(bf),
             )
         finally:
             self.runner(["git", "-C", str(self.repo), "worktree", "remove", "--force", str(wt)], timeout=60)

@@ -628,13 +628,12 @@ def test_repo_disk_packet_pins_are_current():
 # ---------------------------------------------------------------- fixer: 28.14 amendment gate
 
 
-def test_fixer_push_gate_accepts_section_28_14_only_when_active():
+def test_fixer_push_gate_never_opens():
     from lib import self_heal_fixer as F
 
     fcfg = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
-    assert F.policy_verdict(f"{H} (21.0.0, ACTIVE)\n", fcfg)["push_allowed"]
-    assert not F.policy_verdict(f"{H} (21.0.0, PROPOSED)\n", fcfg)["push_allowed"]
-    assert not F.policy_verdict("## 24.11 Read-only broker sync (14.0.0, ACTIVE)\n", fcfg)["push_allowed"]
+    for text in (f"{H} (21.0.0, ACTIVE)\n", f"{H} (21.0.0, PROPOSED)\n", "Status: ACTIVE\n" + H + "\n"):
+        assert not F.policy_verdict(text, fcfg)["push_allowed"]  # AGENTS.md §24.5: local branch only
 
 
 def test_fix_log_projection_latest_row_per_fix():
@@ -670,19 +669,20 @@ def _fixer_cfg():
     return json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
 
 
-def test_fixer_arms_on_section_28_14_alone_never_on_a_grant():
+def test_fixer_arms_only_on_a_guard_grant():
     from lib import self_heal_fixer as F
 
     fcfg = _fixer_cfg()
-    assert fcfg["arming"]["arm_on"] == "policy_section"
+    assert fcfg["arming"]["arm_on"] == "guard_grant"
     active = F.policy_verdict("## 28.14 Self-heal monitor and fixer — x (21.0.0, ACTIVE)\n", fcfg)
-    proposed = F.policy_verdict("## 28.14 Self-heal monitor and fixer — x (21.0.0, PROPOSED)\n", fcfg)
-    assert F.arming_verdict(None, cfg=fcfg, jobs_today=0, policy=active)["armed"]  # no grant needed
     grant = {"reason": "self-heal-fixer", "grant_id": "a" * 32}
-    assert not F.arming_verdict(grant, cfg=fcfg, jobs_today=0, policy=proposed)["armed"]  # a grant never arms
-    capped = F.arming_verdict(None, cfg=fcfg, jobs_today=fcfg["arming"]["daily_job_cap"], policy=active)
+    assert not F.arming_verdict(None, cfg=fcfg, jobs_today=0, policy=active)["armed"]  # no grant: never armed
+    assert F.arming_verdict(grant, cfg=fcfg, jobs_today=0, policy=active)["armed"]
+    legacy = {**fcfg, "arming": {**fcfg["arming"], "arm_on": "policy_section"}}
+    assert not F.arming_verdict(None, cfg=legacy, jobs_today=0, policy=active)["armed"]  # retired path
+    capped = F.arming_verdict(grant, cfg=fcfg, jobs_today=fcfg["arming"]["daily_job_cap"], policy=active)
     assert not capped["armed"] and "cap" in capped["why"]
-    killed = F.arming_verdict(None, cfg=fcfg, jobs_today=0, policy=active, disabled="data/self_heal/FIXER_DISABLED")
+    killed = F.arming_verdict(grant, cfg=fcfg, jobs_today=0, policy=active, disabled="data/self_heal/FIXER_DISABLED")
     assert not killed["armed"] and "kill switch" in killed["why"]
 
 
@@ -701,24 +701,24 @@ from tests import test_self_heal_fixer_20261016 as B  # noqa: E402
 sandbox = B.sandbox  # the base suite's hermetic origin/repo/stub-CLI fixture
 
 
-def test_fixer_section_28_14_end_to_end_pushes_without_a_grant_and_logs_the_push(sandbox, monkeypatch):
-    """Armed by section 28.14 ACTIVE at origin/main only: no grant, one pushed branch, one PR, one fix-log row."""
+def test_fixer_with_grant_and_section_active_stops_at_a_local_branch(sandbox, monkeypatch):
+    """Review 2026-10-31 (B1): even with a grant and §28.14 ACTIVE at origin/main, nothing is pushed and no PR opens."""
     from lib import self_heal_fixer as F
 
     monkeypatch.setenv("TRADE_AI_CI", "1")
-    cfg = json.loads(sandbox["cfg"].read_text())
-    cfg["arming"]["arm_on"] = "policy_section"
-    sandbox["cfg"].write_text(json.dumps(cfg))
+    monkeypatch.setattr(B.S.Attempt, "scan_commit", lambda self, commit: [])
     p = sandbox["repo"] / "AGENTS.md"
     p.write_text(p.read_text() + "\n## 28.14 Self-heal monitor and fixer — the train is watched (21.0.0, ACTIVE)\n")
     B._sh("git", "-C", str(sandbox["repo"]), "commit", "-qam", "28.14 active")
     B._sh("git", "-C", str(sandbox["repo"]), "push", "-q", "origin", "main")
-    job, _ = B._run_cycle(sandbox, "fix", grant=None)
-    assert job["state"] == F.FIX_PR_OPENED and job["pr_number"] == 4242
-    rows = TI.read_fix_log(sandbox["state"] / "data/self_heal/fix_log.jsonl")
-    assert [r["event"] for r in rows] == ["fixer_push"]
-    assert rows[0]["pr_number"] == 4242 and rows[0]["pr_head"] == job["head_sha"]
-    assert rows[0]["outcome"] == "fix-PR-open" and rows[0]["source"] == "lane"
+    job, _ = B._run_cycle(sandbox, "fix", grant="self-heal-fixer test")
+    assert job["state"] == F.FIX_READY_LOCAL
+    assert job["branch"] not in B._sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
+    assert not (sandbox["bin"] / "gh_calls.txt").exists()
+    assert (
+        not (sandbox["state"] / "data/self_heal/fix_log.jsonl").exists()
+        or "fixer_push" not in (sandbox["state"] / "data/self_heal/fix_log.jsonl").read_text()
+    )
 
 
 def test_fixer_section_28_14_proposed_runs_no_model(sandbox, monkeypatch):
@@ -740,3 +740,37 @@ def test_fixer_worktree_root_is_short_on_disk_and_fits_af_unix():
     # the egress bridge socket: <worktree_root>/<job_id>-eg/s, job_id = shf-<10 hex>-<n>
     sock = f"{wt}/shf-{'f' * 10}-{999}-eg/s"
     assert len(sock.encode()) < 100, sock  # AF_UNIX sun_path is 108 bytes including the NUL
+
+
+def test_regen_stops_at_a_local_branch_never_pushes(tmp_path):
+    """Review 2026-10-31 (M): a regenerate-PR remediation runs from a timer, so AGENTS.md §24.5 binds — it commits a
+    local branch and writes the PR body beside it; it never pushes and never calls gh."""
+    world = FakeWorld()
+    orig = world.__call__
+
+    def runner(argv, **kw):
+        argv = [str(a) for a in argv]
+        if argv[-2:] == ["status", "--porcelain"]:
+            world.calls.append(argv)
+            return {"rc": 0, "out": " M docs/INDEX.md\n", "err": ""}
+        return orig(argv, **kw)
+
+    t = M.Tick(
+        cfg=CFG,
+        root=tmp_path,
+        repo=tmp_path / "repo",
+        live=True,
+        write=True,
+        now=NOW,
+        runner=runner,
+        sender=Sent(),
+        environ={"TMPDIR": str(tmp_path / "tmp"), "TRADEAI_STATE_ROOT": str(tmp_path)},
+    )
+    (tmp_path / "tmp").mkdir()
+    f = ci_finding(["docs"], "docs/INDEX.md out of date; run report_docs_inventory --check-index")
+    rule = next(r for r in CFG["deterministic"] if r["id"] == "docs_index_regen")
+    rec = t.rec_for(f)
+    t.regen_pr(f, rec, rule)
+    assert rec["outcome"] == "fix-ready-local" and rec["branch"].startswith(CFG["regen_pr"]["branch_prefix"])
+    assert not [c for c in world.calls if "push" in c], world.calls
+    assert not [c for c in world.calls if c[:1] == ["gh"]]

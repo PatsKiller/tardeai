@@ -11,7 +11,7 @@
   },
   "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
   "arming": {
-    "arm_on": "policy_section",
+    "arm_on": "guard_grant",
     "_arm_on_why": "2026-10-25, AGENTS.md 21.0.0 section 28.14 (PR #2128): \"Arming is this section becoming ACTIVE; there is no separate guard grant.\" policy_section = armed iff the policy_gate heading (24.11 or 28.14) is ACTIVE at origin/main, no kill_switch_rels file exists under the state root, and the day is under daily_job_cap / daily_cost_cap_usd. The fixer then pushes its ONE fix branch with TRADEAI_REMOTE_PUSH_AUTHORIZED=1 (never the override) and logs the push to data/self_heal/fix_log.jsonl. guard_grant = the original rule below (kept for the hermetic attempt-loop suites).",
     "kill_switch_rels": [
       "data/self_heal/FIXER_DISABLED",
@@ -138,10 +138,10 @@
     "timeout_s": 1500,
     "setting_sources": "project",
     "auth": {
-      "_why": "The ONLY credential inside the agent sandbox (finding 2). The Claude CLI on Linux keeps its OAuth login in ~/.claude/.credentials.json; that one file is bind-mounted at {agent_home}/.claude/.credentials.json and CLAUDE_CONFIG_DIR points there, so the rest of ~/.claude (history, transcripts, settings, other projects), ~/.claude.json and every other credential stay invisible. rw lets the CLI persist a token refresh in place (a read-only bind could strand a rotated refresh token). The harness never reads or copies this file. mode none = bind nothing (stub CLIs in tests).",
+      "_why": "The ONLY credential inside the agent sandbox (finding 2). The Claude CLI on Linux keeps its OAuth login in ~/.claude/.credentials.json; that one file is bind-mounted at {agent_home}/.claude/.credentials.json and CLAUDE_CONFIG_DIR points there, so the rest of ~/.claude (history, transcripts, settings, other projects), ~/.claude.json and every other credential stay invisible. READ-ONLY (review 2026-10-31, H6): the sandbox can use the login but never rewrite it; a token the CLI would refresh is refreshed by the operator's own interactive session. The harness never reads or copies this file. mode none = bind nothing (stub CLIs in tests).",
       "mode": "credentials_file",
       "credentials_file": "{home}/.claude/.credentials.json",
-      "rw": true
+      "rw": false
     }
   },
   "sandbox": {
@@ -239,6 +239,21 @@
       "*order*",
       "*execution*",
       "*2fa*",
+      "*merge*",
+      ".mergify*",
+      "*hook*",
+      "*deploy*",
+      "*promote*",
+      "*guard*",
+      "*stop*",
+      "telegram*",
+      "*telegram*",
+      "*sender*",
+      "config/stop_policy.yaml",
+      "scripts/agent_merge_pr.sh",
+      "config/merge_hold_paths.json",
+      "config/agents_guard_hook_rules.json",
+      "scripts/githooks/*",
       "scripts/lib/cio_instrument_record.py",
       "sql/*",
       "*migration*",

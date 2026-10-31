@@ -1172,24 +1172,18 @@ def arming_verdict(
 ) -> dict:
     """Is a live attempt allowed now?
 
-    ``arm_on: policy_section`` (2026-10-25, AGENTS.md 21.0.0 section 28.14: "Arming is this section becoming ACTIVE;
-    there is no separate guard grant"): armed iff the amendment heading is ACTIVE at the job's base (``policy``, from
-    policy_verdict), no kill switch file exists (``disabled``) and the day is under its cap. The grant is ignored.
-    ``arm_on: guard_grant`` is the original 2026-10-16 rule (an active grant naming grant_reason_token), kept for the
-    hermetic suites that exercise the attempt loop without the amendment."""
+    Only ``arm_on: guard_grant``: an active operator grant naming ``grant_reason_token``, no kill switch, under the day
+    cap. (``policy_section`` arming is retired, review 2026-10-31 B1.) Armed means a LOCAL attempt only: the fixer
+    stops at a local branch and never pushes (``policy_verdict``, AGENTS.md §24.5)."""
     a = cfg["arming"]
     if disabled:
         return {"armed": False, "why": f"kill switch present: {disabled}"}
-    if a.get("arm_on", "guard_grant") == "policy_section":
-        if not (policy or {}).get("push_allowed"):
-            return {"armed": False, "why": f"AGENTS.md section 28.14 not ACTIVE: {(policy or {}).get('why')}"}
-        if jobs_today >= int(a["daily_job_cap"]):
-            return {"armed": False, "why": f"daily job cap reached ({jobs_today}/{a['daily_job_cap']})"}
+    if a.get("arm_on", "guard_grant") != "guard_grant":
+        # Review 2026-10-31 (B1): arming on the policy section let a header Status arm the lane with no grant. Only an
+        # operator guard grant arms a live attempt, and even armed the fixer stops at a local branch (§24.5).
         return {
-            "armed": True,
-            "why": "AGENTS.md section 28.14 ACTIVE; under the daily cap (no guard grant required)",
-            "jobs_today": jobs_today,
-            "daily_job_cap": int(a["daily_job_cap"]),
+            "armed": False,
+            "why": f"arm_on {a.get('arm_on')!r} is retired: only guard_grant arms (AGENTS.md §24.5)",
         }
     if not isinstance(grant, dict):
         return {"armed": False, "why": f"no active {a['grant_tier']} guard grant"}
@@ -1209,42 +1203,18 @@ def arming_verdict(
 
 
 def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
-    """Push/PR allowed only when AGENTS.md (at the job's base) authorizes it. The authority is §28.14 "Self-heal
-    monitor and fixer" (AGENTS.md 21.0.0; coordinator 2026-10-31: "Map the gate to §28.14"). The old 24.11 draft
-    heading is gone: §24.11 is now "Read-only broker sync", so it can never authorize anything here.
-
-    Allowed when the §28.14 heading is present and EITHER its own line carries the status word, OR the document
-    header's ``Status:`` line does (the standard puts status in the header, not on section headings). A PROPOSED
-    header blocks: an unratified version never authorizes a scheduled push (§20)."""
+    """May the fixer push or open a PR? Never. AGENTS.md §24.5, verbatim: "A cron line, timer, n8n-fired lane or
+    daemon never pushes, opens a PR or writes to a remote. … The §28.14 fixer stops at a local fix branch." The
+    fixer is a timer lane, so push_allowed is always False whatever AGENTS.md's header or §28.14 heading say (review
+    2026-10-31, B1: an earlier revision armed a push on the header Status — removed). The §28.14 heading is reported
+    for the receipt only. A fix ships when a person pushes the local branch the fixer left (fix.patch alongside)."""
     pg = cfg["policy_gate"]
-    word = pg["required_status_word"]
     markers = [pg["amendment_heading_marker"], *(pg.get("additional_heading_markers") or [])]
-    lines = (agents_text or "").splitlines()
-    header_status = next(
-        (
-            ln.split(":", 1)[1].strip()
-            for ln in lines[: int(pg.get("header_scan_lines", 40))]
-            if ln.startswith("Status:")
-        ),
-        None,
-    )
-    for line in lines:
-        if any(line.startswith(m) for m in markers):
-            if word in line:
-                return {"push_allowed": True, "why": "amendment ACTIVE on its heading", "heading": line[:200]}
-            ok = bool(header_status) and header_status.split()[0] == word
-            return {
-                "push_allowed": ok,
-                "why": "§28.14 present and AGENTS.md header ACTIVE"
-                if ok
-                else f"§28.14 present but AGENTS.md header Status is {header_status or 'missing'}",
-                "heading": line[:200],
-                "header_status": header_status,
-            }
+    heading = next((ln for ln in (agents_text or "").splitlines() if any(ln.startswith(m) for m in markers)), None)
     return {
         "push_allowed": False,
-        "why": "AGENTS.md 24.5: no push/PR from a scheduled job; §28.14 heading absent",
-        "header_status": header_status,
+        "why": "AGENTS.md §24.5: the §28.14 fixer stops at a local fix branch; a scheduled lane never pushes",
+        "heading": heading[:200] if heading else None,
     }
 
 
