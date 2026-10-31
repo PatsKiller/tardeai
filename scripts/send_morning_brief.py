@@ -56,7 +56,10 @@ def market_risk_line():
         from lib.market_risk import cio_context as _mr_cio
     except ImportError:
         from scripts.lib.market_risk import cio_context as _mr_cio
-    return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    try:
+        return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    except Exception as exc:  # noqa: BLE001 — the brief/digest always goes out; the line says what failed
+        return f"Market risk: not yet evaluated (tier line failed: {type(exc).__name__})"
 
 
 def format_telegram(data):

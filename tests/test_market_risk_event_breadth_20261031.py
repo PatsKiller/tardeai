@@ -37,7 +37,7 @@ class Reader:
         if self._fail:
             raise ConnectionError("db down")
 
-    def earnings_calendar(self, *, start, end):
+    def earnings_calendar(self, *, start, end, now=None):
         self._chk()
         return self._e
 

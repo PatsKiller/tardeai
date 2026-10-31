@@ -29,7 +29,8 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy[CATEGORY]
     term = cfg["term_symbols"]
     syms = [cfg["vix_symbol"], cfg["index_symbol"], cfg["realized_symbol"], *term.values()]
-    by = md.closes_by_symbol(ctx.reader.daily_bars(syms, sessions=int(cfg["history_sessions"]), end=ctx.now))
+    md_rows = list(ctx.reader.daily_bars(syms, sessions=int(cfg["history_sessions"]), end=ctx.now))
+    by = md.closes_by_symbol(md_rows)
     vix = by.get(cfg["vix_symbol"]) or []
     if len(vix) < 6:
         return unknown(CATEGORY, ctx.now, "VIX history missing")
@@ -38,15 +39,19 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         return unknown(CATEGORY, ctx.now, f"VIX stale (newest {md.iso(vt)})")
     asof = md.iso(vt)
     fired: list[tuple[str, Evidence]] = []
-    context: list[Evidence] = [Evidence("VIX close", v, asof, SOURCE, f"VIX {v:.2f}")]
+    vix_rows = [r for r in md_rows if str(r.get("symbol") or "").upper() == str(cfg["vix_symbol"]).upper()]
+    vix_source = str((vix_rows[-1] if vix_rows else {}).get("source") or SOURCE)  # honest label (review B6)
+    context: list[Evidence] = [Evidence("VIX close", v, asof, vix_source, f"VIX {v:.2f}")]
 
     if v >= float(cfg["vix_stress"]):
-        fired.append(("vix_stress", Evidence("VIX level", v, asof, SOURCE, f"VIX {v:.1f} ≥ {cfg['vix_stress']}")))
+        fired.append(("vix_stress", Evidence("VIX level", v, asof, vix_source, f"VIX {v:.1f} ≥ {cfg['vix_stress']}")))
     elif v >= float(cfg["vix_warn"]):
-        fired.append(("vix_warn", Evidence("VIX level", v, asof, SOURCE, f"VIX {v:.1f} ≥ {cfg['vix_warn']}")))
+        fired.append(("vix_warn", Evidence("VIX level", v, asof, vix_source, f"VIX {v:.1f} ≥ {cfg['vix_warn']}")))
     ch5 = md.pct(v, vix[-6][1])
     if ch5 >= float(cfg["vix_5d_change_pct"]):
-        fired.append(("vix_jump", Evidence("VIX 5-day change", round(ch5, 1), asof, SOURCE, f"VIX +{ch5:.0f}% in 5d")))
+        fired.append(
+            ("vix_jump", Evidence("VIX 5-day change", round(ch5, 1), asof, vix_source, f"VIX +{ch5:.0f}% in 5d"))
+        )
 
     idx = by.get(cfg["index_symbol"]) or []
     if len(idx) >= 2 and len(vix) >= 2 and idx[-1][0].date() == vt.date():

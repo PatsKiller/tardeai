@@ -92,10 +92,19 @@ def _default_conn():
 class PgReader:
     """``DataReader`` over Postgres. ``conn_factory`` returns a DB-API connection (default: session13_db)."""
 
-    def __init__(self, conn_factory: Callable[[], Any] | None = None, *, publication_lag_days: int = 1):
+    def __init__(
+        self,
+        conn_factory: Callable[[], Any] | None = None,
+        *,
+        publication_lag_days: int = 1,
+        backfill_grace_days: int = 14,
+    ):
         self._factory = conn_factory or _default_conn
         self._conn = None
         self.publication_lag_days = publication_lag_days
+        # A FRED row is knowable at ``end`` when it was first fetched by then, or when its observation is so old that
+        # it was published before ``end`` even if a later backfill fetched it (review of #2362, M1).
+        self.backfill_grace_days = backfill_grace_days
         self.macro_calendar_note = ""
 
     # -- plumbing ---------------------------------------------------------------------------------------------
@@ -170,8 +179,10 @@ class PgReader:
         return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
 
     def _vix_closes(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """VIX daily closes when no ^VIX bars exist: the regime collector's after-close ``vix_close`` (same evening,
-        Yahoo) first, then FRED VIXCLS (published with a lag; ``fred`` applies it). Same shape as a bar."""
+        """VIX daily closes when no ^VIX bars exist: FRED VIXCLS (the official close, published with a lag; ``fred``
+        applies it) first, then — only for days FRED has not published yet — the regime collector's ``vix_close``,
+        which is a 16:05 ET snapshot taken BEFORE the 16:15 settlement and is labelled as such (review of #2362, B6:
+        10-29 snapshot 16.59 vs VIXCLS 17.20). Same shape as a bar."""
         rows = self._rows(
             "SELECT DISTINCT ON ((created_at AT TIME ZONE 'America/New_York')::date) "
             "(created_at AT TIME ZONE 'America/New_York')::date AS d, value, created_at "
@@ -190,16 +201,16 @@ class PgReader:
                 "low": None,
                 "close": r["value"],
                 "volume": None,
-                "source": "market_regime_indicators:vix_close",
-                "provisional": False,
+                "source": "market_regime_indicators:vix_close_1605_snapshot",
+                "provisional": True,
                 "as_of": _iso(r["created_at"]),
             }
             for r in rows
         }
         for f in self.fred(["VIXCLS"], observations=400, end=end):
             d = date.fromisoformat(str(f["observation_date"])[:10])
-            if d >= _aware(start).astimezone(ET).date() and f.get("value") is not None and d not in out:
-                out[d] = {
+            if d >= _aware(start).astimezone(ET).date() and f.get("value") is not None:
+                out[d] = {  # the official close replaces any pre-settlement snapshot for the same day
                     "symbol": VIX_SYMBOL,
                     "date": d.isoformat(),
                     "open": None,
@@ -276,9 +287,16 @@ class PgReader:
         rows = self._rows(
             "SELECT series_id, series_name, value, observation_date, fetched_at FROM ("
             " SELECT *, row_number() OVER (PARTITION BY series_id ORDER BY observation_date DESC) rn"
-            " FROM fred_economic_series WHERE series_id = ANY(%s) AND observation_date <= %s) t "
+            " FROM fred_economic_series WHERE series_id = ANY(%s) AND observation_date <= %s"
+            " AND (fetched_at <= %s OR observation_date <= %s)) t "
             "WHERE rn <= %s ORDER BY series_id, observation_date",
-            [list(series), last_known, int(observations)],
+            [
+                list(series),
+                last_known,
+                _aware(end),
+                last_known - timedelta(days=int(self.backfill_grace_days)),
+                int(observations),
+            ],
         )
         for r in rows:
             r["as_of"] = _iso(r["observation_date"])
@@ -315,13 +333,16 @@ class PgReader:
             r["source"] = "sector_momentum_state"
         return rows
 
-    def earnings_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    def earnings_calendar(self, *, start: datetime, end: datetime, now: datetime | None = None) -> list[dict[str, Any]]:
+        """Earnings rows in [start, end] that were KNOWN at ``now`` (``earnings_updated_at <= now``). ``end`` is the
+        forward window, not the evaluation instant (review of #2362, M1); live callers may omit ``now``."""
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
+        known_at = _aware(now) if now is not None else datetime.now(timezone.utc)
         rows = self._rows(
             "SELECT symbol, sector, industry, instrument_type, next_earnings_date, last_earnings_date, "
-            "earnings_updated_at FROM symbol_profiles WHERE next_earnings_date BETWEEN %s AND %s "
-            "OR last_earnings_date BETWEEN %s AND %s ORDER BY symbol",
-            [d0, d1, d0, d1],
+            "earnings_updated_at FROM symbol_profiles WHERE (next_earnings_date BETWEEN %s AND %s "
+            "OR last_earnings_date BETWEEN %s AND %s) AND earnings_updated_at <= %s ORDER BY symbol",
+            [d0, d1, d0, d1, known_at],
         )
         out = []
         for r in rows:

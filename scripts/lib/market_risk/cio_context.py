@@ -73,8 +73,8 @@ def evaluated_tier(
 def _contributor_names(mr: dict[str, Any], n: int = 3) -> list[str]:
     out = []
     for c in (mr.get("contributors") or [])[:n]:
-        if isinstance(c, dict) and c.get("name"):
-            out.append(str(c["name"]))
+        if isinstance(c, dict) and (c.get("name") or c.get("category")):
+            out.append(str(c.get("name") or c.get("category")))
     return out
 
 
@@ -150,7 +150,12 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
         {
             "confirming": mr.get("confirming"),
             "contributors": [
-                {k: c.get(k) for k in ("name", "points", "detail", "as_of") if k in c}
+                {
+                    "name": c.get("name") or c.get("category"),
+                    "points": c.get("points"),
+                    "detail": c.get("detail") or c.get("headline"),
+                    "as_of": c.get("as_of"),
+                }
                 for c in (mr.get("contributors") or [])[:5]
                 if isinstance(c, dict)
             ],
@@ -171,8 +176,8 @@ def load_gate_config(path: Path | str = GATE_CONFIG_PATH) -> dict[str, Any]:
 
     try:
         return dict((yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("market_risk_gate") or {})
-    except (OSError, ValueError, AttributeError):
-        return {}
+    except (OSError, ValueError, AttributeError, yaml.YAMLError):
+        return {}  # an unreadable gate config means "gate off", never a crash of the curator or temperament
 
 
 def gate_action(tier: Optional[str], cfg: dict[str, Any]) -> Optional[str]:
