@@ -12,7 +12,8 @@ Usage:
     python3 scripts/external_market_data_ingest.py --quotes          # yfinance quotes for all symbols
     python3 scripts/external_market_data_ingest.py --fundamentals    # Finviz fundamentals via the data broker
     python3 scripts/external_market_data_ingest.py --fundamentals --dry-run --symbols V,CLF   # read-only preview
-    python3 scripts/external_market_data_ingest.py --fred            # FRED macro snapshot
+    python3 scripts/external_market_data_ingest.py --fred            # FRED macro window (upsert)
+  python3 scripts/external_market_data_ingest.py --fred --dry-run  # fetch and report, write nothing
     python3 scripts/external_market_data_ingest.py --all             # Everything
 """
 import json, os, sys, time
@@ -708,46 +709,71 @@ FRED_SERIES = {
     "DTWEXBGS": "Nominal Broad US Dollar Index",
     "PCEPILFE": "Core PCE Price Index",
     "PAYEMS": "Nonfarm Payrolls (thousands)",
+    # Market Risk Engine volatility category (DSN-20261031-market-risk-engine P1-T3): Nasdaq-100 implied vol.
+    # Verified served 2026-10-31: fredgraph.csv?id=VXNCLS -> 2026-10-29,25.18.
+    "VXNCLS": "CBOE Nasdaq-100 Volatility Index Close",
 }
 
+# Observations fetched per series per run (P1-T3). One observation left the engine no history for 5d/20d changes or
+# z-scores; 400 covers ~19 months of daily series. Upserts are idempotent (series_id, observation_date).
+# Override with TRADEAI_FRED_WINDOW_OBS (e.g. 1 to restore the old single-row fetch).
+FRED_WINDOW_OBSERVATIONS = 400
 
-def ingest_fred() -> dict:
-    """Fetch key macro economic series from FRED."""
+
+def _fred_window() -> int:
+    raw = os.environ.get("TRADEAI_FRED_WINDOW_OBS")
+    return max(1, int(raw)) if raw else FRED_WINDOW_OBSERVATIONS
+
+
+def _fred_rows(series_id: str, name: str, observations: list) -> list:
+    """(series_id, name, value, date) for every usable observation; FRED marks a missing value with '.'."""
+    return [(series_id, name, float(o["value"]), o["date"]) for o in observations
+            if o.get("value") not in (None, ".", "") and o.get("date")]
+
+
+def ingest_fred(dry_run: bool = False) -> dict:
+    """Fetch key macro economic series from FRED: the last ``_fred_window()`` observations of each series,
+    upserted idempotently. ``dry_run`` fetches and reports the rows it would write and writes nothing."""
     import urllib.request
     api_key = _env("FRED_API_KEY")
     if not api_key:
         print("[fred] No FRED_API_KEY — skipping")
         return {"source": "fred", "fetched": 0, "reason": "no_key"}
 
-    conn = _get_conn()
-    cur = conn.cursor()
+    window = _fred_window()
+    conn = None if dry_run else _get_conn()
+    cur = conn.cursor() if conn is not None else None
     fetched = 0
+    rows_total = 0
 
     for series_id, name in FRED_SERIES.items():
         try:
             url = (f"https://api.stlouisfed.org/fred/series/observations"
                    f"?series_id={series_id}&api_key={api_key}&file_type=json"
-                   f"&sort_order=desc&limit=1")
+                   f"&sort_order=desc&limit={window}")
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read())
 
-            obs = data.get("observations", [])
-            if obs:
-                val = obs[0].get("value", ".")
-                obs_date = obs[0].get("date", "")
-                if val != "." and obs_date:
-                    cur.execute("""
+            rows = _fred_rows(series_id, name, data.get("observations", []))
+            if rows:
+                if cur is not None:
+                    cur.executemany("""
                         INSERT INTO fred_economic_series (series_id, series_name, value, observation_date)
                         VALUES (%s, %s, %s, %s)
                         ON CONFLICT (series_id, observation_date) DO UPDATE SET value=EXCLUDED.value, fetched_at=NOW()
-                    """, (series_id, name, float(val), obs_date))
-                    fetched += 1
-                    print(f"  [fred] {series_id}: {val} ({obs_date})")
+                    """, rows)
+                fetched += 1
+                rows_total += len(rows)
+                newest = max(rows, key=lambda r: r[3])
+                verb = "would upsert" if dry_run else "upserted"
+                print(f"  [fred] {series_id}: {newest[2]} ({newest[3]}) — {verb} {len(rows)} observations")
         except Exception as e:
             print(f"  [fred] {series_id}: {e}")
             last_exc = str(e)[:160]
 
+    if dry_run:
+        return {"source": "fred", "fetched": fetched, "rows": rows_total, "window": window, "mode": "dry_run"}
     conn.commit()
     conn.close()
     # Liveness (2026-09-13): the fred health row read 'unknown' forever because
@@ -759,7 +785,7 @@ def ingest_fred() -> dict:
                       error=None if fetched else (locals().get("last_exc") or f"0/{len(FRED_SERIES)} series fetched"))
     except Exception:
         pass
-    return {"source": "fred", "fetched": fetched}
+    return {"source": "fred", "fetched": fetched, "rows": rows_total, "window": window}
 
 
 # ── Macro context for agents ─────────────────────────────────────────
@@ -874,7 +900,7 @@ if __name__ == "__main__":
     elif "--news-sentiment" in sys.argv:
         ingest_av_news_sentiment()
     elif "--fred" in sys.argv:
-        ingest_fred()
+        print(json.dumps(ingest_fred(dry_run="--dry-run" in sys.argv)))
     elif "--all" in sys.argv:
         ingest_quotes()
         ingest_finviz_fundamentals()
