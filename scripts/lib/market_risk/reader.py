@@ -150,17 +150,26 @@ class PgReader:
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """Pre-market / after-hours prints from their own store (never market_quotes, the latest-quote ledger). A row
         is returned only when its bar had ended AND it had been inserted by ``end`` (replays see what existed then).
-        A missing table (migration not yet applied) yields no rows, so extended_hours reads "not measured"."""
+        Before the migration is applied the table is absent: that is checked with ``to_regclass`` first, so no error
+        is raised and the session's read-only setting is never rolled back (review of #2384 round 2). Any other read
+        error rolls back and re-asserts ``default_transaction_read_only`` before returning nothing."""
+        exists = self._rows("SELECT to_regclass('market_quotes_extended') IS NOT NULL AS present", [])
+        if not exists or not exists[0].get("present"):
+            self.extended_quotes_error = "market_quotes_extended not created (migration not applied)"
+            return []
         try:
             rows = self._rows(
-                f"SELECT symbol, session, price, reference_close, change_pct, volume, bar_end, feed, reference_basis "
-                f"FROM {EXTENDED_TABLE} WHERE symbol = ANY(%s) AND bar_end >= %s AND bar_end <= %s "
-                f"AND inserted_at <= %s ORDER BY symbol, bar_end",
+                "SELECT symbol, session, session_date, price, reference_close, reference_date, change_pct, volume, "
+                "bar_end, feed, reference_basis FROM market_quotes_extended WHERE symbol = ANY(%s) AND bar_end >= %s "
+                "AND bar_end <= %s AND inserted_at <= %s ORDER BY symbol, bar_end",
                 [[s.upper() for s in symbols], _aware(start), _aware(end), _aware(end)],
             )
-        except Exception as exc:  # noqa: BLE001 - the store may not exist yet; reported via the category as UNKNOWN
+        except Exception as exc:  # noqa: BLE001 - reported via the category as UNKNOWN, logged here
             if self._conn is not None:
                 self._conn.rollback()
+                cur = self._conn.cursor()
+                cur.execute("SET default_transaction_read_only = on")
+                cur.close()
             self.extended_quotes_error = f"{type(exc).__name__}"
             logging.getLogger(__name__).warning("market_quotes_extended unreadable (%s): extended_hours reads UNKNOWN",
                                                 type(exc).__name__)
@@ -169,9 +178,11 @@ class PgReader:
         for r in rows:
             out.append({
                 "symbol": r["symbol"], "source": f"{EXTENDED_TABLE}:{r['feed']}", "session": r["session"],
+                "session_date": _iso(r["session_date"]) if isinstance(r["session_date"], datetime) else str(r["session_date"]),
                 "price": float(r["price"]), "prev_close": float(r["reference_close"]),
+                "reference_date": str(r["reference_date"]), "reference_basis": r["reference_basis"],
                 "day_change_pct": float(r["change_pct"]), "volume": r["volume"],
-                "reference_basis": r["reference_basis"], "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
+                "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
             })
         return out
 

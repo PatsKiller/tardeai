@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS market_quotes_extended (
     inserted_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- knowability for replays (review M2)
     CONSTRAINT market_quotes_extended_uniq UNIQUE (symbol, bar_start, feed)
 );
-CREATE INDEX IF NOT EXISTS market_quotes_extended_symbol_inserted
+CREATE INDEX IF NOT EXISTS idx_market_quotes_extended_symbol_inserted
     ON market_quotes_extended (symbol, inserted_at DESC);
