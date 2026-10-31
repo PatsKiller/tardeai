@@ -1,0 +1,29 @@
+# Market Risk Engine — LLM curation of the "why" sentence (DSN-20261031-market-risk-engine §5.10, P3-T3).
+# Operator 2026-10-31: "you can have normalization and alerts curated by LLM." The deterministic card is built first and
+# is always sendable; the model may only rephrase its one "Why:" sentence. Every number the model writes must already be
+# in the card or the assessment, no behaviour wording is allowed, and a failure, refusal or timeout sends the
+# deterministic card unchanged. scripts/lib/market_risk/curation.py reads this file; nothing here is hardcoded there.
+schema: MarketRiskCuration@v1
+as_of: 2026-10-31
+enabled: true
+process_id: market_risk_alert_curation   # config/llm_process_registry.json row (free OAuth lanes only)
+lane: grok                               # first lane; llm_fallback walks grok -> chatgpt
+allow_paid: false                        # never a metered lane for alert prose
+why_prefix: "Why: "
+max_why_chars: 280
+max_tokens: 200
+timeout_s:                               # wall-clock budget per tier; on expiry the deterministic card is sent
+  RED: 6
+  ORANGE: 10
+  YELLOW: 15
+  BLUE: 15
+  GREEN: 15
+  default: 10
+skip_tiers: []                           # tiers that never call the model (e.g. [RED] to send Red cards with zero delay)
+behaviour_patterns:                      # case-insensitive regexes; a match in model prose rejects the curation
+  - '\b(buy|sell|short|cover|trim|reduce|add to|scale (in|out)|exit|liquidate|hedge with)\b'
+  - '\b\d[\d,]*\s*(shares?|contracts?|lots?)\b'
+  - '\bstops?\s+(at|to|of|near)\b'
+  - '\b(limit|market|stop)[- ]orders?\b'
+  - '\b(position[- ]?siz\w*|allocat\w*|weight(ing)? (to|of))\b'
+  - '\$\s?\d'
