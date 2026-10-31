@@ -29,6 +29,7 @@ documentation with the proper time settings. So another agent doesn't come behin
 | `orphan_wait_s` | `config/health_tick_steps.json`, `DEFAULT_ORPHAN_WAIT_S` in `scripts/health_tick.py` | **30 s** | unchanged | Legacy fire-and-forget children only |
 | `tick_budget_s` / `tick_deadline_s` | `config/health_tick_steps.json` | **280 / 300 s** | unchanged | Below the unit timeout |
 | `TimeoutStartSec` | `tradeai-health-tick.service` (`config/systemd/user/`) | **330 s** | unchanged | 300 + `KILL_GRACE_S` 10 + receipt |
+| `CIO_WAKE_JOBS_LOCK_TIMEOUT_S` | `scripts/lib/cio_wake_jobs.py` | **120 s** | unbounded | One append + fsync is sub-second; covers a full-store tail quarantine |
 
 ## 1. Orchestrator reaper cap: 30 minutes
 
@@ -154,6 +155,25 @@ then `error`, then `note || ' by ' || cleared_by`. The alert reads
 `Error: zombie run cleared by remediate_pipeline_failures`. The run was verified read-only against the
 live table for the 36 h to 2026-10-22. It produced 18 such orchestrator rows, 15 for symbol_enrichment
 and 32 for finviz_screener_runner.
+
+## 4. CIO wake store: re-entrant lock, bounded waits (2026-10-31)
+
+On 2026-10-30 at 05:00 ET the disk-full night had left a truncated last record in `data/cio/cio_wake_jobs.jsonl`.
+`cio-event-detector` held the store lock inside `_append_event`; reading the head hash found the corrupt tail and
+called `quarantine_corrupt_trailing_events`, which opened a second descriptor on the same lock file and waited on its
+own lock forever (flock locks belong to an open file description). `tradeai-cio-reactive` (oneshot, no timeout) then
+sat "activating" and its timer stopped firing; every `*/5` wake dispatch timed out at 15 minutes (92 times) and the
+last successful dispatch was 10-30 00:45 ET.
+
+Now: the lock is re-entrant per process, thread and lock path, and every wait is bounded (`CIOWakeLockTimeout`,
+`CIO_WAKE_JOBS_LOCK_TIMEOUT_S`, 120 s). The write path refuses to append onto a partial line: it trims the damaged
+tail first (bytes split on `\n`, quarantine copy and rewrite fsynced) and raises if it cannot. The reactive cycle
+treats any wake-store write failure as a hard error (exit 1) and does not advance its bus cursor past the event, so
+nothing is lost and the next run retries. Regression tests: `tests/test_cio_wake_jobs_lock_reentrant_20261031.py`.
+
+Not done here, on purpose: process-reaper caps and a unit `TimeoutStartSec` for these three lanes. §28.1 needs the
+measured longest run, and no receipt history with durations exists for them yet (the lane receipts keep only the
+last run; `pipeline_runs` has no rows for them). The bounded lock wait removes the infinite wait that froze them.
 
 ## How to change any of this
 
