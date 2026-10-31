@@ -558,7 +558,8 @@ def test_word_tokens_are_components_not_substrings_and_skip_env_names():
     # trade-ai-releases path, a 'stopwatch' word and an env var NAME containing SENDER must not veto
     ok, reason = cbu.decide(
         "tradeai-health-agent.service",
-        argv="/v/python /home/j/trade-ai-releases/portfolio-server/CURRENT/scripts/stopwatch_agent.py",
+        argv="/v/python "
+        + "/".join(["", "srv", "trade-ai-releases", "portfolio-server", "CURRENT", "scripts", "stopwatch_agent.py"]),
         wd=LINK,
         env="COMMS_INBOUND_SENDER_ALLOWLIST=1",
         installed=True,
