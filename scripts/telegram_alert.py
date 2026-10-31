@@ -493,7 +493,9 @@ def _comms_critical_override(message: str, level: str, router=None) -> dict | No
     burst_slot = None
     burst_max = int(cfg.get("burst_max_pages") or 0)
     burst_window = float(cfg.get("burst_window_seconds") or 0)
-    if router is not None and burst_max > 0 and burst_window > 0:
+    burst_exempt = cfg.get("burst_exempt_first_line")
+    severe = bool(burst_exempt and _re.search(burst_exempt, head, _re.IGNORECASE))
+    if router is not None and burst_max > 0 and burst_window > 0 and not severe:
         for i in range(burst_max):
             key = f"legacy_critical_burst:{i}"
             if not router._durable_recently_sent(key, burst_window):
@@ -501,7 +503,10 @@ def _comms_critical_override(message: str, level: str, router=None) -> dict | No
                 break
         if burst_slot is None:
             print(f"[telegram] comms-critical {subject_core} held: {burst_max} pages already in the last {burst_window:g}s")
-            return None
+            # Held, not dropped: the caller digests it AND claims the subject window, so this name's reversal
+            # ("opened 0→1000" after "closed 1000→0") cannot page alone (2026-10-31 round-3 review).
+            return {"held": "burst", "subject": subject,
+                    "producer": str(cfg.get("producer") or "legacy_critical_override")}
     return {"subject": subject, "priority": str(cfg.get("intent_priority") or "P1"),
             "dedupe_minutes": int(cfg.get("dedupe_minutes") or 240),
             "producer": str(cfg.get("producer") or "legacy_critical_override"),
@@ -547,6 +552,14 @@ def _legacy_send(
                 import telegram_alert_router as _router_mod
 
                 plan = _comms_critical_override(message, level, router=_router_mod)
+                if plan and plan.get("held") == "burst":
+                    _router_mod.durable_mark_sent(plan["subject"], meta={"producer": plan["producer"], "held": "burst"})
+                    try:
+                        from report_capture import archive_message
+                        archive_message(message, suppressed=True, reason=f"{level}:burst_held")
+                    except Exception as archive_exc:
+                        print(f"[telegram] burst-held alert archive failed: {type(archive_exc).__name__}: {archive_exc}")
+                    return False
                 if plan:
                     print(f"[telegram] Router level {level} overridden: comms-critical position alert sent as "
                           f"{plan['priority']} intent: {message[:60]}...")

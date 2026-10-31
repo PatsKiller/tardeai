@@ -19,5 +19,7 @@
   "producer": "legacy_critical_override",
   "burst_max_pages": 3,
   "burst_window_seconds": 60,
-  "_comment_followup": "2026-10-31 follow-up (round-2 review): a zero count ('0 unprotected positions') is telemetry, never a page; at most burst_max_pages override pages per burst_window_seconds across all subjects (one 10-30 sync burst paged 5 names in 4 s), the rest go to the digest; a P1 intent that is deduped or fails delivery is archived to the digest instead of vanishing."
+  "_comment_followup": "2026-10-31 follow-up (round-2 review): a zero count ('0 unprotected positions') is telemetry, never a page; at most burst_max_pages override pages per burst_window_seconds across all subjects (one 10-30 sync burst paged 5 names in 4 s), the rest go to the digest; a P1 intent that is deduped or fails delivery is archived to the digest instead of vanishing.",
+  "burst_exempt_first_line": "stop (triggered|crossed)|critical stop alert",
+  "_comment_burst_severity": "2026-10-31 round-3 review: the burst cap is never applied to a stop that fired or crossed or a critical stop alert (burst_exempt_first_line). A burst-held message claims its subject window, so its own reversal cannot page alone, and it is archived to the digest with reason '<level>:burst_held'."
 }
