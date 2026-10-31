@@ -148,10 +148,10 @@ def curation_status(config_dir=None) -> dict:
     try:
         try:
             from lib import disabled_features as df  # type: ignore
-            from lib.market_risk import curation as cur  # type: ignore
+            from lib.market_risk import curation_config as cur  # type: ignore  # config only: no LLM/DB/broker reach
         except ImportError:  # pragma: no cover - imported as scripts.lib
             from scripts.lib import disabled_features as df  # type: ignore
-            from scripts.lib.market_risk import curation as cur  # type: ignore
+            from scripts.lib.market_risk import curation_config as cur  # type: ignore
         root = Path(config_dir) if config_dir else df.CONFIG_DIR
         path = root / "market_risk_curation.yaml"
         cfg = cur.load_config(path)

@@ -29,24 +29,17 @@ import math
 import re
 import threading
 import unicodedata
-from pathlib import Path
 from typing import Any, Callable, Optional
 
-import yaml
+try:
+    from scripts.lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # noqa: F401
+except ImportError:  # pragma: no cover — cron path with scripts/ on sys.path
+    from lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # type: ignore  # noqa: F401
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CONFIG_PATH = PROJECT_ROOT / "config" / "market_risk_curation.yaml"
 SCHEMA = "MarketRiskCurationResult@v1"
 # The only tiers whose "why" may ever be curated. Code, not config: ORANGE, RED, NONE, an empty or unknown tier are
 # refused before the config is read (review #2406 F2).
 CURATABLE = frozenset({"BLUE", "YELLOW", "GREEN"})
-
-
-def load_config(path: Path | str = CONFIG_PATH) -> dict[str, Any]:
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if data.get("schema") != "MarketRiskCuration@v1":
-        raise ValueError(f"{path}: expected schema MarketRiskCuration@v1, got {data.get('schema')!r}")
-    return data
 
 
 def _grounding():
