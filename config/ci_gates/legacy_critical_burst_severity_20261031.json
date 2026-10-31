@@ -6,7 +6,7 @@
   ],
   "anchor": "LEGACY_CRITICAL_BURST_SEVERITY_20261031",
   "comment": [
-    "ANCHOR: LEGACY_CRITICAL_BURST_SEVERITY_20261031 \u2014 follow-up to #2365: a stop crossed/triggered is never burst-capped;",
+    "ANCHOR: LEGACY_CRITICAL_BURST_SEVERITY_20261031 — follow-up to #2365: a stop crossed/triggered is never burst-capped;",
     "a burst-held message claims its subject window (its reversal cannot page alone) and is archived as '<level>:burst_held'.",
     "Hermetic: stubbed transport, temp dedupe/receipt paths."
   ]
