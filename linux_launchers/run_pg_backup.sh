@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The October 30 disk incident left a zero-byte current receipt. Publish only a
+# fully flushed document; a failed write must preserve the last good receipt.
+write_pg_backup_summary() {
+    "$PY" - "$PROJECT_ROOT" "$1" "$BACKUP_FILE" "$BYTES" <<'PY'
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from scripts.lib.atomic_json_store import atomic_write_json
+
+atomic_write_json(Path(sys.argv[2]), dict(
+    cadence="backup",
+    run_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    steps=dict(pg_dump="OK"),
+    dump_file=sys.argv[3],
+    dump_bytes=int(sys.argv[4]),
+    exit_code=0,
+    note="run_pg_backup.sh single-flight max_count=1",
+))
+PY
+}
+
 PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 BACKUP_DIR="/home/johnclaw/db_backups"
 ENV_FILE="$PROJECT_ROOT/.env"
@@ -135,15 +158,5 @@ fi
     # Refresh cadence summary so collect_backup_health clears without waiting for full pipeline
     SUMMARY_DIR="$PROJECT_ROOT/data/runtime"
     mkdir -p "$SUMMARY_DIR"
-    cat > "$SUMMARY_DIR/portfolio_maintenance_backup_last_run.json" <<EOF
-{
-  "cadence": "backup",
-  "run_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-  "steps": {"pg_dump": "OK"},
-  "dump_file": "$BACKUP_FILE",
-  "dump_bytes": $BYTES,
-  "exit_code": 0,
-  "note": "run_pg_backup.sh single-flight max_count=1"
-}
-EOF
+    write_pg_backup_summary "$SUMMARY_DIR/portfolio_maintenance_backup_last_run.json"
 } >> "$LOG_FILE" 2>&1
