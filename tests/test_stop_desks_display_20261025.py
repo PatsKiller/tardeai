@@ -84,7 +84,8 @@ def test_defense_book_uses_the_same_categories_and_links_each_position(tmp_path)
     assert rows["bk-filled"]["value"] == "1 · FILD"
     assert rows["bk-unknown"]["value"] == "1 · UNKN"
     assert rows["bk-PEND-fixture_ira"]["value"].endswith("stop pending activation")
-    assert rows["bk-FILD-fixture_roth"]["value"].endswith("stop filled · awaiting holdings sync")
+    # 2026-10-31: the row carries cio_truth's dated note; without a ledger it says the fill is unchecked, never "awaiting sync".
+    assert rows["bk-FILD-fixture_roth"]["value"].endswith("· sale not yet checked against the trade ledger")
     assert rows["bk-NONE-fixture_ira"]["value"].endswith("no stop")
     assert "bk-DUST-fixture_ira" not in rows
     assert rows["bk-PEND-fixture_ira"]["detail"]["href"] == "/risk?tab=exposure&detail=position:fixture_ira:PEND"
