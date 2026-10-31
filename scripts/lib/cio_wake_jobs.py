@@ -383,11 +383,23 @@ class CIOWakeJobStore:
             quarantine = self.event_store_path.with_suffix(
                 self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
             )
-            if removed:
-                _write_fsync(quarantine, b"\n".join(reversed(removed)))
             tmp = self.event_store_path.with_suffix(".tmp")
-            _write_fsync(tmp, kept)
-            os.replace(tmp, self.event_store_path)
+            replaced = False
+            try:
+                if removed:
+                    _write_fsync(quarantine, b"\n".join(reversed(removed)))
+                _write_fsync(tmp, kept)
+                os.replace(tmp, self.event_store_path)
+                replaced = True
+            finally:
+                if not replaced:
+                    # ENOSPC mid-write: never leave a partial .tmp (up to the store size) or a quarantine copy
+                    # of a trim that did not happen on a nearly full disk; the caller sees the original error.
+                    for leftover in (tmp, quarantine):
+                        try:
+                            leftover.unlink(missing_ok=True)
+                        except OSError as cleanup_exc:
+                            _log.warning("cio_wake_jobs: could not remove %s after failed trim: %s", leftover, cleanup_exc)
             return {
                 "ok": True,
                 "removed": len(removed),

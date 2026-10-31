@@ -177,6 +177,13 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         out["errors"].append(f"wake_store_repair:{exc}")
     enqueued_n, recent_types = process_event_bus(bus, wake_store, out=out, max_wakes=max_wakes)
 
+    # The wake store refused a write (lock timeout, corrupt tail, OSError): every tail below writes to the same
+    # store and each write can wait the full lock timeout. Stop here; the hard error is already in out["errors"]
+    # and the run exits 1 (2026-10-31 review of #2344).
+    if any(str(e).startswith("wake_store_unavailable:") for e in out["errors"]):
+        out["stopped_early"] = "wake_store_unavailable"
+        return out
+
     # Goal-due / event-linked wakes
     try:
         from scripts.lib.cio_wake_dispatcher import CIOWakeDispatcher
