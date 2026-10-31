@@ -50,8 +50,9 @@ the exact approval text. Finviz items that use already-registered writers are bu
 - **Endpoint:** `/marketdata/v1/pricehistory`.
 - **Engine input:** technical / breadth / sector attribution (XLC, XLRE, XLK… read UNKNOWN live today).
 - **Clause:** §0 rule 2 + §7A (writer into `market_ohlcv_bars`, which has no registry row — flagged by PR #2348).
-- **Alternative without a grant:** PR #2348's public-data refresh plus the companion PR's provisional
-  chain-snapshot closes. **Recommendation: use the alternative; S3 only if the public source proves unreliable.**
+- **Alternative without a grant:** PR #2348's public-data refresh. The companion PR's provisional chain-snapshot
+  close only exists when a chain snapshot lands in the 16:00–16:15 ET window; today's 10:00/17:35 schedule produces
+  none, so it is not a substitute. **Recommendation: use #2348; S3 only if the public source proves unreliable.**
 
 ### S4 — Extended-hours cross-check (Schwab or moomoo pre/post quotes vs the Alpaca SIP feed)
 - **Endpoint:** Schwab `/marketdata/v1/quotes` (extended fields) or moomoo `get_market_snapshot` (pre/after prices).
@@ -78,6 +79,7 @@ the exact approval text. Finviz items that use already-registered writers are bu
 
 ## Built without a grant (companion PR)
 
-`scripts/lib/market_risk/registered_sources.py`: implied moves and provisional sector closes from the existing
-`option_chain_snapshots` rows, and positioning (institutional/insider transaction %, short float, trend) from the
-registered Finviz enrichment cache. No new fetch, no broker call.
+`scripts/lib/market_risk/registered_sources.py`: implied moves (with IV data-quality flags) and provisional sector
+closes (close window only) from the existing `option_chain_snapshots` rows, and positioning (institutional/insider
+transaction %, short float, trend) from the Finviz enrichment cache file, knowable only when both `cached_at` and
+`hot_cached_at` are at or before the evaluation time. No new fetch, no broker call.
