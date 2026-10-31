@@ -6,7 +6,7 @@
   ],
   "anchor": "CIO_WAKE_QUARANTINE_NAME_20261031",
   "comment": [
-    "ANCHOR: CIO_WAKE_QUARANTINE_NAME_20261031 \u2014 follow-up to #2360: corrupt-tail quarantine names carry ns + pid (and a",
+    "ANCHOR: CIO_WAKE_QUARANTINE_NAME_20261031 — follow-up to #2360: corrupt-tail quarantine names carry ns + pid (and a",
     "bump if taken), and a failed trim's cleanup never removes an earlier trim's copy. Hermetic: temp dirs."
   ]
 }
