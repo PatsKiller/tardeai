@@ -32392,7 +32392,7 @@
         "verify": [
           "python3 scripts/cio_prospect_shadow_build.py --dry-run   # read-only; prints counts, sources, store status, top prospects",
           "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='cio-prospect-shadow' ORDER BY requested_at DESC LIMIT 10\"",
-          "jq '.produced_count, .conflicts, .store_status' data/runtime/cio-prospect-shadow_last.json"
+          "jq '.produced_count, .summary.conflicts, .summary.store_status' data/runtime/cio-prospect-shadow_last.json"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
         "expected_output_basis": "expected_output 2026-10-22 from scripts/cio_prospect_shadow_build.py main(): produced = prospects assembled; zero prospects is exit 1 (dependency_unavailable), never an allowed empty."
@@ -34599,8 +34599,8 @@
     "target_reason": "stage:canary",
     "stage": "canary",
     "owner": "cio",
-    "reviewer": "cursor-independent-review-20261028",
-    "reviewed_at": "2026-10-28T20:00:00Z",
+    "reviewer": "adversarial-review-2368",
+    "reviewed_at": "2026-10-31T00:00:00Z",
     "purpose": {
       "text": "Evaluate the W10 conflict engine over canonical W1 truth and the unchanged rulebook at canary: the ledger-writing --shadow mode reconciles the conflict ledger (data/conflicts/conflict_events.jsonl), writes CIO memory and emits a ConflictResolverReceipt@v1 comparison report plus the LaneRunReceipt (ok_at); it never sends a notification.",
       "business_function": "learning",
@@ -34741,7 +34741,17 @@
       "reviewed_by": "cursor-independent-review-20261028 2026-10-28 (independent no-self-review gate: verified baseline 300/72/96, r1_class_admission learn, dry-run write-free)",
       "prepared_on": "2026-10-28",
       "prepared_by": "worker",
-      "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission."
+      "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission.",
+      "amendments": [
+        {
+          "on": "2026-10-31",
+          "by": "adversarial-review-2368",
+          "scope": "expected_output + healthy.output_produced + failed.empty_output",
+          "change": "added the min_produced expected_output rule and its healthy/failed checks; the lane runs live with allowlist output_receipt v2 (#2293) and without a rule every live run ended RUN_FAILED output_unverifiable (rule_missing). The 2026-10-28 review above remains the record for the rest of the body.",
+          "contract_body_sha256": "3e9754ac74291f8f10fee1de0f85ec83efc73483f5414ef0af60b9d7a4e54230",
+          "decision_ref": "https://github.com/PatsKiller/tardeai/pull/2368 (independent adversarial review: real 10-30 runs re-judge to produced; constructed empty, failed and missing runs are still caught)"
+        }
+      ]
     },
     "class_note": "learn (R1 dispatcher class; memory/learning writer lane, AGENTS.md 4.3.0 §23.18)"
   }
