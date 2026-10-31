@@ -6,6 +6,7 @@ Learning spines *link* subject_key / workflow_id into existing cognition fields.
 
 AUTHORITY: READ_ONLY_ADVISORY · MBI_BEHAVIOR=0 (cognition fields only on apply).
 """
+
 from __future__ import annotations
 
 import json
@@ -18,8 +19,11 @@ from typing import Any
 
 try:
     from .atomic_json_store import atomic_write_json
-except ImportError:  # pragma: no cover - flat import layout
-    from atomic_json_store import atomic_write_json  # type: ignore[no-redef]
+except ImportError:  # pragma: no cover - loaded by file path (no parent package) or with scripts/ on sys.path
+    try:
+        from scripts.lib.atomic_json_store import atomic_write_json  # type: ignore[no-redef]
+    except ImportError:
+        from lib.atomic_json_store import atomic_write_json  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
@@ -94,8 +98,16 @@ def append_fact(
         raise ValueError(f"unknown spine={spine!r}; expected one of {SPINES}")
     # Behavior rail
     forbidden = {
-        "recommended_delta_usd", "size_usd", "shares", "qty", "order", "stop",
-        "limit", "target_weight_pct", "trade", "execution",
+        "recommended_delta_usd",
+        "size_usd",
+        "shares",
+        "qty",
+        "order",
+        "stop",
+        "limit",
+        "target_weight_pct",
+        "trade",
+        "execution",
     }
     bad = forbidden.intersection(fact)
     if bad:

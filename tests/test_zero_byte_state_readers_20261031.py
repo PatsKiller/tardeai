@@ -8,6 +8,7 @@ atomically (temp + fsync + rename). Fixtures only; synthetic symbols; no DB, no 
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import sys
@@ -18,7 +19,21 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from scripts.lib import aec_memory_spines as spines  # noqa: E402
+
+def _load_spines():
+    # Unit test of the memory-spine module itself: load it by file path, the convention the existing
+    # aec_memory_spines tests use (tests/test_aec_narrator_20260919.py). Production readers still go through
+    # scripts/lib/intelligence_client.py (memory chokepoint ratchet).
+    spec = importlib.util.spec_from_file_location("aec_memory_spines", ROOT / "scripts/lib/aec_memory_spines.py")
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = mod
+    sys.path.insert(0, str(ROOT))
+    spec.loader.exec_module(mod)
+    return mod
+
+
+spines = _load_spines()
 
 
 def test_aec_spines_empty_file_is_missing_and_save_is_atomic(tmp_path, caplog):
