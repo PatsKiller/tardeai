@@ -41,12 +41,16 @@ ASSESS = {
     "tier": "RED",
     "score": 83,
     "confirming": {"n": 5, "of": 9},
-    "contributors": [{"name": "Futures", "points": 18}],
+    # the contributor's displayed figures are the ONLY grounding material besides the score (review of #2362, B3)
+    "contributors": [{"name": "Futures", "points": 18, "detail": "NQ -1.6% after hours · QQQ P/C vol 3.31"}],
 }
 
 
 def _cfg(**over):
     cfg = cur.load_config()
+    # The shipped config never curates ORANGE/RED (review of #2362, B3); these tests exercise the lexicon and grounding
+    # on a RED fixture card, so they lift the skip explicitly. test_market_risk_review_fixes pins the shipped default.
+    cfg["skip_tiers"] = []
     cfg.update(over)
     return cfg
 

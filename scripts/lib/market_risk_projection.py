@@ -20,8 +20,112 @@ from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA = "MarketRiskProjection@v1"
+SNAPSHOT_SCHEMA = "MarketRiskSnapshot@v1"
+ASSESSMENT_SCHEMA = "MarketRiskAssessment@v1"
 TIERS = ("GREEN", "BLUE", "YELLOW", "ORANGE", "RED")
 ACTIONABLE = ("ORANGE", "RED")
+# The ONE path the engine writes and every consumer reads, relative to a project root whose data/runtime is the
+# persistent-state runtime dir (release dirs symlink it). Review of #2362, B1: the evaluator wrote
+# data/runtime/market_risk/latest.json while the CIO, the API and Home read data/runtime/market_risk_latest.json.
+SNAPSHOT_REL = "data/runtime/market_risk_latest.json"
+
+
+def _label(category: str) -> str:
+    return str(category or "").replace("_", " ").strip().capitalize() or "Unknown"
+
+
+def _detail(headline: str | None, category: str) -> str | None:
+    """Contributor detail without the repeated "Category: " prefix the engine's headlines carry."""
+    if not headline:
+        return None
+    h = str(headline)
+    for pre in (f"{_label(category)}:", f"{category}:"):
+        if h.lower().startswith(pre.lower()):
+            return h[len(pre) :].strip() or None
+    return h
+
+
+def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
+    """MarketRiskAssessment@v1 (the evaluator's output) -> MarketRiskSnapshot@v1 (what Home, Risk, the CIO and
+    Ask-the-CIO read). Field mapping: contributor ``category`` -> ``name`` and ``headline`` -> ``detail``; observations
+    -> ``categories``; portfolio -> ``book`` (symbols, stop distances, budget names). Never invents a tier."""
+    contributors = []
+    for c in (doc.get("contributors") or [])[:5]:
+        if not isinstance(c, dict):
+            continue
+        cat = str(c.get("category") or c.get("name") or "")
+        contributors.append(
+            {
+                "name": _label(cat),
+                "category": cat,
+                "points": c.get("points"),
+                "detail": c.get("detail") or _detail(c.get("headline"), cat),
+                "as_of": c.get("as_of"),
+            }
+        )
+    categories = []
+    for o in doc.get("observations") or []:
+        if not isinstance(o, dict):
+            continue
+        cat = str(o.get("category") or "")
+        categories.append(
+            {
+                "name": _label(cat),
+                "category": cat,
+                "state": o.get("state"),
+                "score": o.get("score"),
+                "detail": _detail(o.get("headline"), cat) if o.get("state") != "UNKNOWN" else o.get("reason_unknown"),
+                "as_of": o.get("observed_at"),
+            }
+        )
+    conf = doc.get("confirming")
+    port = doc.get("portfolio") if isinstance(doc.get("portfolio"), dict) else {}
+    book = None
+    if port:
+        book = {
+            "vulnerability": port.get("vulnerability"),
+            "budgets": [
+                {
+                    "budget": b.get("budget"),
+                    "actual": b.get("actual"),
+                    "limit": b.get("limit"),
+                    "unit": b.get("unit") or "%",
+                    "breached": True,
+                }
+                for b in port.get("budget_breaches") or []
+                if isinstance(b, dict)
+            ],
+            "positions": [
+                {"symbol": d.get("symbol"), "stop_distance_pct": d.get("stop_distance_pct"), "note": None}
+                for d in port.get("drivers") or []
+                if isinstance(d, dict) and d.get("symbol")
+            ],
+            "note": port.get("note") or None,
+        }
+    up = doc.get("uplift") if isinstance(doc.get("uplift"), dict) else None
+    probs = doc.get("probabilities")
+    return {
+        "schema": SNAPSHOT_SCHEMA,
+        "source_schema": doc.get("schema"),
+        "as_of": doc.get("as_of"),
+        "tier": doc.get("tier"),
+        "market_tier": doc.get("market_tier"),
+        "score": doc.get("score"),
+        "market_score": doc.get("market_score"),
+        "confirming": {"n": int(conf), "of": len(categories) or 9} if isinstance(conf, (int, float)) else None,
+        "contributors": contributors,
+        "categories": categories,
+        "deescalates_if": doc.get("deescalates_if"),
+        "uplift": (
+            {"market_score": up.get("market_score"), "vulnerability": up.get("vulnerability"), "note": up.get("note")}
+            if up
+            else None
+        ),
+        "book": book,
+        "probabilities": probs if isinstance(probs, list) and probs else None,
+        "history": list(history or [])[-30:],
+        "episode": None,
+    }
 
 
 def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
@@ -57,7 +161,9 @@ def build(
             "priority": flow.get("priority"),
             "session": flow.get("session"),
         }
-    if not isinstance(snapshot, dict) or snapshot.get("schema") != "MarketRiskSnapshot@v1":
+    if isinstance(snapshot, dict) and snapshot.get("schema") == ASSESSMENT_SCHEMA:
+        snapshot = snapshot_from_assessment(snapshot)
+    if not isinstance(snapshot, dict) or snapshot.get("schema") != SNAPSHOT_SCHEMA:
         return {
             "schema": SCHEMA,
             "state": "not_evaluated",

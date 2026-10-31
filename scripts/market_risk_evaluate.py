@@ -5,11 +5,14 @@
   python3 scripts/market_risk_evaluate.py
   # replay an instant from a fixture directory (one JSON list per DataReader method, e.g. fred.json):
   python3 scripts/market_risk_evaluate.py --fixture tests/fixtures/market_risk/x --as-of 2026-10-29T22:15:00Z --json
-  # write the assessment (latest.json + a dated receipt) under persistent-state data/runtime/market_risk/:
+  # evaluate, write, alert: the assessment (data/runtime/market_risk/latest.json + a dated receipt), the snapshot every
+  # consumer reads (data/runtime/market_risk_latest.json, market_risk_projection.SNAPSHOT_REL), then the sends:
   python3 scripts/market_risk_evaluate.py --apply
 
-Advisory only (MBI_BEHAVIOR = 0). No sends here: alerting is a separate module that reads the assessment. The DB
-table waits for the §7A registry grant; until then --apply writes JSON atomically. Exit codes: 0 ok, 2 no reader.
+Advisory only (MBI_BEHAVIOR = 0). On --apply the assessment and the snapshot are written BEFORE any card is sent, and
+every card's dedupe key is claimed in the sent-key ledger before the send, so a crash cannot re-send (review of #2362,
+B5d). The DB table waits for the §7A registry grant; until then JSON is written atomically. Exit codes: 0 ok, 2 no
+reader.
 """
 
 from __future__ import annotations
@@ -30,15 +33,42 @@ for p in (ROOT, ROOT / "scripts"):
 
 from scripts.lib.atomic_json_store import atomic_write_json  # noqa: E402
 from scripts.lib.market_risk import contract as c  # noqa: E402
+from scripts.lib.market_risk.fixture_reader import FixtureReader  # noqa: E402  (as-of-correct; review of #2362, M1)
 from scripts.lib.market_risk import explain, registry, scoring  # noqa: E402
 from scripts.lib.market_risk.policy import POLICY_PATH, load_policy  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 
 
+def state_root() -> Path:
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+
+
 def state_dir() -> Path:
-    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
-    return root / "data" / "runtime" / "market_risk"
+    return state_root() / "data" / "runtime" / "market_risk"
+
+
+def snapshot_path() -> Path:
+    """The one file Home, Risk, the CIO and Ask-the-CIO read (market_risk_projection.SNAPSHOT_REL)."""
+    from scripts.lib.market_risk_projection import SNAPSHOT_REL
+
+    return state_root() / SNAPSHOT_REL
+
+
+def persist(doc: dict, now: datetime) -> str:
+    """Write the assessment (prior for the next run + dated receipt) and the consumers' snapshot. Atomic."""
+    from scripts.lib.market_risk_projection import snapshot_from_assessment
+
+    d = state_dir()
+    stamp = now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    body = {k: v for k, v in doc.items() if k != "cycle"}
+    atomic_write_json(d / "receipts" / f"{stamp}.json", body)
+    atomic_write_json(d / "latest.json", body)
+    prev = _read_prior(snapshot_path()) or {}
+    hist = [h for h in (prev.get("history") or []) if isinstance(h, dict)]
+    hist.append({"as_of": doc.get("as_of"), "score": doc.get("score"), "tier": doc.get("tier")})
+    atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))
+    return str(d / "latest.json")
 
 
 def session_of(now: datetime) -> str:
@@ -53,57 +83,6 @@ def session_of(now: datetime) -> str:
     if 16 * 60 <= hm < 20 * 60:
         return "afterhours"
     return "closed"
-
-
-class FixtureReader:
-    """Replay reader over ``<dir>/<method>.json`` lists. Rows newer than ``end`` are never returned."""
-
-    def __init__(self, directory: Path | str):
-        self.dir = Path(directory)
-        if not self.dir.is_dir():
-            raise FileNotFoundError(f"fixture directory not found: {self.dir}")
-
-    def _rows(self, name: str, end: datetime | None = None, symbols: Iterable[str] | None = None) -> list[dict]:
-        f = self.dir / f"{name}.json"
-        rows = json.loads(f.read_text(encoding="utf-8")) if f.exists() else []
-        want = {s.upper() for s in symbols} if symbols else None
-        out = []
-        for r in rows:
-            if (
-                want is not None
-                and str(r.get("symbol", "")).upper() not in want
-                and str(r.get("series", "")).upper() not in want
-            ):
-                continue
-            at = scoring._parse(r.get("as_of") or r.get("observed_at") or r.get("date"))
-            if end is not None and at is not None and at > end:
-                continue
-            out.append(r)
-        return out
-
-    def quotes(self, symbols, *, start, end):
-        return [r for r in self._rows("quotes", end, symbols) if (scoring._parse(r.get("as_of")) or end) >= start]
-
-    def daily_bars(self, symbols, *, sessions, end):
-        return self._rows("daily_bars", end, symbols)
-
-    def regime_indicators(self, *, end):
-        return self._rows("regime_indicators", end)
-
-    def fred(self, series, *, observations, end):
-        return self._rows("fred", end, series)
-
-    def option_snapshots(self, symbols, *, sessions, end):
-        return self._rows("option_snapshots", end, symbols)
-
-    def sector_states(self, *, end):
-        return self._rows("sector_states", end)
-
-    def earnings_calendar(self, *, start, end):
-        return self._rows("earnings_calendar")
-
-    def macro_calendar(self, *, start, end):
-        return self._rows("macro_calendar")
 
 
 def production_reader() -> Any:
@@ -147,9 +126,12 @@ def run_cycle(
     portfolio: c.PortfolioContext | None = None,
     episodes_path: Path | None = None,
     call_model: Any = None,
+    on_assessed: Any = None,
+    ledger_path: Path | None = None,
 ) -> dict[str, Any]:
-    """One full evaluation: categories -> compose -> uplift -> explain -> alert intent -> episode -> repeats -> curation
-    -> send. Dry run computes every step against a scratch copy of the episode store and sends nothing."""
+    """One full evaluation: categories -> compose -> uplift -> explain -> ``on_assessed`` (apply: persist the prior
+    and the snapshot BEFORE any send) -> alert intent -> episode -> repeats -> curation -> claim key -> send. Dry run
+    computes every step against scratch copies of the episode store and sent-key ledger and sends nothing."""
     import shutil
     import tempfile
 
@@ -157,13 +139,30 @@ def run_cycle(
 
     a = evaluate(now, reader, policy, prior, portfolio)
     doc = a.to_dict()
+    if apply and on_assessed is not None:
+        on_assessed(doc)
     real_store = episodes_path or escalation.store_path()
-    store = real_store
-    if not apply:  # never touch the live episode ledger in a dry run
-        tmpdir = Path(tempfile.mkdtemp(prefix="mre-dry-"))
-        store = tmpdir / "episodes.json"
-        if real_store.exists():
-            shutil.copy2(real_store, store)
+    real_ledger = ledger_path or alerts.sent_ledger_path()
+    store, ledger, tmpdir = real_store, real_ledger, None
+    if not apply:  # never touch the live episode ledger or sent keys in a dry run; scratch on disk, removed after
+        base = os.environ.get("TMPDIR") or str(Path.home() / ".cache" / "agent-tmp")
+        Path(base).mkdir(parents=True, exist_ok=True)
+        tmpdir = Path(tempfile.mkdtemp(prefix="mre-dry-", dir=base))
+        store, ledger = tmpdir / "episodes.json", tmpdir / "sent_keys.json"
+        for src, dst in ((real_store, store), (real_ledger, ledger)):
+            if src.exists():
+                shutil.copy2(src, dst)
+    try:
+        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model)
+    finally:
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model) -> dict[str, Any]:
+    from scripts.lib.market_risk import alerts, escalation
+
+    esc_cfg = policy.get("escalation") or {}
     out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
     ep = escalation.observe(doc, now=now, policy=policy, path=store)
     out["episode_event"] = ep["event"]
@@ -171,13 +170,15 @@ def run_cycle(
     pending: list[tuple[str, dict, str, str | None]] = []
     intent = alerts.intent_for(doc, prior, policy)
     if intent:
+        if out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
+            intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # once per episode transition
         pending.append((alerts.render(doc), intent, "initial", out["episode_id"]))
     for rep in escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already in this cycle
         rintent = {
-            "priority": "P1",
-            "dedupe_minutes": 0,
+            "priority": str(esc_cfg.get("repeat_priority") or "P1"),
+            "dedupe_minutes": int(esc_cfg.get("repeat_dedupe_minutes") or 0),
             "dedupe_key": f"market_risk:repeat:{rep['episode_id']}:{rep['repeat_number']}",
             "tier": rep["tier"],
             "transition": rep["kind"],
@@ -185,10 +186,17 @@ def run_cycle(
         pending.append((alerts.render(doc, repeat=rep), rintent, rep["kind"], rep["episode_id"]))
     for text, it, kind, ep_id in pending:
         cur = _curate(text, doc, call_model=call_model, live=apply)
-        res = alerts.deliver(cur["text"], it, policy, dry_run=not apply)
+        res = alerts.deliver(cur["text"], it, policy, dry_run=not apply, now=now, ledger=ledger)
         res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"])
-        if ep_id:
-            escalation.record_send(ep_id, now=now, kind=kind, ok=bool(res.get("sent")) or not apply, path=store)
+        if ep_id and not res.get("deduped"):
+            escalation.record_send(
+                ep_id,
+                now=now,
+                kind=kind,
+                ok=bool(res.get("sent")) or not apply,
+                path=store,
+                policy_escalation=esc_cfg,
+            )
         out["sends"].append(res)
     out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
     return out
@@ -208,9 +216,13 @@ def _curate(text: str, doc: dict, *, call_model: Any, live: bool) -> dict[str, A
 
 
 def _read_prior(path: Path) -> dict | None:
+    """The previous assessment, or None. A torn file is treated as "no prior" (bootstrap), logged, never a crash."""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        print(f"market_risk_evaluate: prior {path} unreadable ({type(exc).__name__}); bootstrapping", file=sys.stderr)
         return None
 
 
@@ -219,7 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true", help="write latest.json + dated receipt")
     ap.add_argument("--dry-run", action="store_true", help="default; overrides --apply")
     ap.add_argument("--as-of", help="ISO-8601 instant to evaluate (replay)")
-    ap.add_argument("--fixture", help="fixture directory for a replay reader")
+    ap.add_argument("--fixture", help="fixture directory for a replay reader (scripts/lib/market_risk/fixture_reader)")
+    ap.add_argument("--overlay", help="overlay fixture directory (e.g. tests/fixtures/market_risk_scenarios/oct2026)")
     ap.add_argument("--prior", help="prior assessment JSON (default: latest.json when not replaying)")
     ap.add_argument("--policy", default=str(POLICY_PATH))
     ap.add_argument("--json", action="store_true", dest="as_json")
@@ -231,25 +244,28 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"--as-of {a.as_of!r} is not ISO-8601")
     policy = load_policy(a.policy)
     try:
-        reader = FixtureReader(a.fixture) if a.fixture else production_reader()
+        reader = FixtureReader(a.fixture, overlay=a.overlay) if a.fixture else production_reader()
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2
     prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / "latest.json")
     prior = _read_prior(prior_path) if prior_path else None
     portfolio = None if a.no_portfolio else portfolio_context(now)
-    cycle = run_cycle(now, reader, policy, prior, apply=apply, portfolio=portfolio)
+    written: dict[str, str] = {}
+
+    def _persist(d: dict) -> None:
+        d["mode"] = "apply"
+        d["session"] = session_of(now)
+        written["latest"] = persist(d, now)
+
+    cycle = run_cycle(now, reader, policy, prior, apply=apply, portfolio=portfolio, on_assessed=_persist)
     doc = cycle["assessment"]
     assessment = cycle["object"]
     doc["cycle"] = {k: v for k, v in cycle.items() if k not in ("assessment", "object")}
     doc["mode"] = "apply" if apply else "dry_run"
     doc["session"] = session_of(now)
     if apply:
-        d = state_dir()
-        stamp = now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        atomic_write_json(d / "receipts" / f"{stamp}.json", doc)
-        atomic_write_json(d / "latest.json", doc)
-        doc["written"] = str(d / "latest.json")
+        doc["written"] = written.get("latest") or str(state_dir() / "latest.json")
     if a.as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:

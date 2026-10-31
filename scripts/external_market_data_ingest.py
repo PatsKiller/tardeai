@@ -776,12 +776,14 @@ def ingest_fred(dry_run: bool = False) -> dict:
                 data = json.loads(resp.read())
 
             rows = _fred_rows(series_id, name, data.get("observations", []))
+            # fetched_at is the FIRST time an observation was seen: a re-upsert updates the value (FRED revision) but
+            # never the timestamp, so replays can filter on what was knowable (review of #2362, M1).
             if rows:
                 if cur is not None:
                     cur.executemany("""
                         INSERT INTO fred_economic_series (series_id, series_name, value, observation_date)
                         VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (series_id, observation_date) DO UPDATE SET value=EXCLUDED.value, fetched_at=NOW()
+                        ON CONFLICT (series_id, observation_date) DO UPDATE SET value=EXCLUDED.value
                     """, rows)
                 fetched += 1
                 rows_total += len(rows)
