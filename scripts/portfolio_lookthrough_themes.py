@@ -36,6 +36,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+
+from lib.atomic_json_store import atomic_write_json  # noqa: E402
+
 LANE_ID = "portfolio-lookthrough-themes"
 _STATE_REL = "data/portfolios/state"
 
@@ -110,6 +113,9 @@ _STATIC_THEMES = {
 
 def _load(p, d):
     try:
+        if Path(p).is_file() and Path(p).stat().st_size == 0:
+            print(f"[lookthrough] {p} is empty (0 bytes); treating it as missing", file=sys.stderr)
+            return d
         return json.loads(Path(p).read_text())
     except Exception:
         return d
@@ -150,7 +156,7 @@ def _write_state_json(name: str, doc) -> list[str]:
     for i, d in enumerate(_state_write_targets()):
         try:
             d.mkdir(parents=True, exist_ok=True)
-            (d / name).write_text(json.dumps(doc, indent=2))
+            atomic_write_json(d / name, doc)  # temp + fsync + rename: a full disk can no longer leave 0 bytes
             written.append(str(d / name))
         except Exception:
             if i == 0:

@@ -164,6 +164,10 @@ def _json_clean(obj):
 
 def _load_json(path: Path):
     try:
+        if path.exists() and path.stat().st_size == 0:
+            # 2026-10-30: the disk-full night left state files at 0 bytes; say so instead of silently reading nothing.
+            log.warning("%s is empty (0 bytes); treating it as missing", path)
+            return None
         return json.loads(path.read_text()) if path.exists() else None
     except Exception:
         return None
