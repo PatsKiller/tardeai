@@ -34,7 +34,8 @@ def test_live_table_declares_the_shared_finding_code():
     declared = {s["step_id"]: s.get("finding_rc") for s in table["steps"] if s.get("finding_rc")}
     assert declared == {"system-health-agent": [codes.EXIT_FINDING],
                         "moomoo-opend-health": [codes.EXIT_FINDING],
-                        "pipeline-liveness-report": [codes.EXIT_FINDING]}
+                        "pipeline-liveness-report": [codes.EXIT_FINDING],
+                        "premarket-delivery-deadman": [codes.EXIT_FINDING]}  # 2026-10-31 P0-T4
 
 
 # ── pipeline_liveness_report --fail-on-finding ──────────────────────────────

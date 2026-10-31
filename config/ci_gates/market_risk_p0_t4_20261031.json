@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_t4_20261031",
+  "files": [
+    "tests/test_check_premarket_delivery_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_T4_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_T4_20261031 — pre-market stack dead-man (health-tick step premarket-delivery-deadman),",
+    "from the 2026-10-30 selloff RCA finding 7 (docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md): the 05:45",
+    "premarket pipeline died on ENOSPC, the 07:30 brief failed, nothing paged. Pins deadlines, P1 dedupe-0 intent,",
+    "hourly repeats capped, dry-run sends nothing, weekend silent, unknown ledger reported as unknown.",
+    "Hermetic: tmp state root; telegram_alert, db_adapter, market_session, lane receipt stubbed."
+  ]
+}
