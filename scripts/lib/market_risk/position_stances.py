@@ -58,7 +58,8 @@ def reentry_conditions(
         bool(flagged_groups)
         and len(recent) >= n
         and all(
-            all(_group_state(h.get("sectors") or {}, g) not in ("STRESS", "WEAK") for g in flagged_groups)
+            # recovered = MEASURED and not stressed; an UNKNOWN or missing group is never recovered
+            all(_group_state(h.get("sectors") or {}, g) not in ("STRESS", "WEAK", "UNKNOWN") for g in flagged_groups)
             for h in recent
         )
     )
@@ -161,16 +162,18 @@ def stances(
         fired = [k for k in or_any if met.get(k)] or (
             [k for k in req_all if met.get(k)] if all(met.get(k) for k in req_all) else []
         )
-        if not groups:
-            st, why = "HOLD", ["look-through unknown: " + (ex.get("note") or "no data")]
-        elif defensive_up:
-            st, why = "HOLD", ["defensive group holding up"]
-        elif evening_hit:
+        if evening_hit:
+            # checked FIRST: an implied open at or near the broker stop is an exit review whatever the look-through
+            # says (unknown look-through and defensive groups included) — the stop does not know the sector
             st = "EXIT"
             why = [
                 f"after hours: {ev.get('text') or 'implied open'} — {float(room):.1f}% left before the broker stop",
                 *reasons,
             ]
+        elif not groups:
+            st, why = "HOLD", ["look-through unknown: " + (ex.get("note") or "no data")]
+        elif defensive_up:
+            st, why = "HOLD", ["defensive group holding up"]
         elif prev_st in ("TRIM", "EXIT", "RE_ENTER_IF") and fired and str(tier) != "RED":
             # stated rule: the re-entry conditions are themselves the recovery evidence, so they are checked before the
             # tier flag (an elevated-but-not-RED tier can lag the recovery by months); never re-enter at RED
@@ -196,8 +199,10 @@ def stances(
             st, why = TIER_STANCE[str(tier)], reasons
         else:
             st = "HOLD"
-            holding_up = any(_group_state(sectors_block, g) == "RESILIENT" for g in groups) or (
-                main in defensive_keys and _group_state(sectors_block, main) not in ("STRESS", "WEAK", "UNKNOWN")
+            main_state = _group_state(sectors_block, main)
+            # the MAIN group decides; the reason only ever names a group that is actually RESILIENT
+            holding_up = main_state == "RESILIENT" or (
+                main in defensive_keys and main_state not in ("STRESS", "WEAK", "UNKNOWN")
             )
             label_of = {r.get("key"): r.get("label") for r in (sectors_block or {}).get("groups") or []}
             # M3: a group the engine did not measure is an unknown exposure, never "not exposed"
@@ -208,7 +213,7 @@ def stances(
             ]
             if holding_up and main in defensive_keys:
                 why = ["defensive group holding up"]
-            elif holding_up:
+            elif holding_up:  # main_state == RESILIENT here
                 why = [f"{label_of.get(main) or main} holding up"]
             elif unmeasured:
                 why = [f"{label_of.get(g) or g} not measured: exposure unknown" for g in unmeasured]

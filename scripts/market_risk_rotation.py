@@ -210,7 +210,7 @@ def fanout(payload: dict, policy: dict, root: Path, now: datetime, block: dict) 
         policy=policy,
         brave_status=brave_status,
         already=set(prev.get("trigger_ids") or []),
-        used_today=((prev.get("days") or {}).get(day) or {}),
+        used_today=F.used_counts((prev.get("days") or {}).get(day)),
     )
     memory = F.plan_memory(
         trigs,

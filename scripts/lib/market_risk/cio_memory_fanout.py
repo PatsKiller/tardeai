@@ -54,23 +54,51 @@ LEADERSHIP_CAVEAT = (
 # is refused, as is sizing language (the shared buy_ready_cio_review guard).
 _DATES = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?)?\b|\b(?:19|20)\d{2}\b")
 _PRICE_TEXT = re.compile(
-    r"\$\s*\d|\d\.\d|\d\s*%|\b\d{3,}\b|\d{1,3},\d{3}"
-    r"|\b(?:at|@|stop|stops|price|priced|limit|target|level|closed|close|trail|trailing|shares?)\s+"
-    r"(?:at\s+|of\s+|near\s+|to\s+)?\$?\d",
+    r"\$\s*\d|\d\.\d|\d\s*%|\b\d{3,}\b|\d{1,3},\d{3}|\d\s*/\s*\d"
+    r"|\b(?:usd|eur|gbp|dollars?|cents?|bucks)\s*\d|\d\s*(?:usd|dollars?|cents?|bucks)\b"
+    r"|(?:\b(?:at|stop|stops|price|priced|limit|target|level|closed|close|trail|trailing|shares?|cost|basis|entry|exit)"
+    r"|@)\s*[:=@]?\s*(?:at\s+|of\s+|near\s+|to\s+)?\$?\d",
     re.I,
 )
+_NUM_WORDS = (
+    r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
+    r"seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million)"
+)
+_SPELLED = re.compile(
+    rf"\b{_NUM_WORDS}(?:[-\s]+{_NUM_WORDS})+\b"  # "one-three-four", "thirty-seven", "one hundred"
+    rf"|\b{_NUM_WORDS}\s+(?:dollars?|cents?|bucks|percent|per\s*cent|points?|shares?)\b"
+    r"|\b(?:stop|price|limit|target|level|closed|close|trail|cost|basis)\s*[:=@]?\s*(?:at\s+|of\s+|near\s+)?"
+    + _NUM_WORDS
+    + r"\b",
+    re.I,
+)
+_FRACTION_SIZE = re.compile(
+    r"\b(?:half|a\s+third|a\s+quarter|two\s+thirds|three\s+quarters|a\s+fraction|some|most|all)\s+(?:of\s+)?"
+    r"(?:the\s+|my\s+|your\s+)?(?:position|book|stake|holding|shares|exposure|allocation)\b"
+    r"|\b(?:of|the)\s+(?:book|position|portfolio)\b.*\b(?:half|third|quarter)\b",
+    re.I,
+)
+_ZERO_WIDTH = re.compile("[\u00ad\u180e\u200b-\u200f\u2060-\u2064\ufeff]")
+
+
+def _normalize(text: str) -> str:
+    """NFKC (superscript/fullwidth digits become ASCII digits) with zero-width and soft-hyphen characters removed."""
+    import unicodedata
+
+    return _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text))
 
 
 def text_refusal(text: Any) -> Optional[str]:
     """Why a memory text is refused (price, number or sizing), or None when it is clean."""
     if text is None:
         return None
-    t = str(text)
+    t = _normalize(str(text))
     from scripts.lib import buy_ready_cio_review as br
 
-    if br._SIZING_TEXT.search(t):  # noqa: SLF001 — the shared sizing-text guard
+    if br._SIZING_TEXT.search(t) or _FRACTION_SIZE.search(t):  # noqa: SLF001 — the shared sizing-text guard
         return "sizing text"
-    m = _PRICE_TEXT.search(_DATES.sub(" ", t))
+    bare = _DATES.sub(" ", t)
+    m = _PRICE_TEXT.search(bare) or _SPELLED.search(bare)
     return f"price or number in memory text ({m.group(0).strip()!r})" if m else None
 
 
@@ -246,6 +274,24 @@ def tiered_candidates(
 # --------------------------------------------------------------------------- research fan-out
 
 
+def _cap(v: Any, default: int) -> int:
+    """A configured cap: 0 means 0 (provider off for the day); only an absent value takes the default."""
+    return default if v is None else max(0, int(v))
+
+
+def used_counts(entry: Any) -> dict[str, int]:
+    """Today's enqueued job counts from a rotation-ledger day entry. The entry also carries ``trigger_ids`` (a list) and
+    may carry other keys; only the integer counts are read."""
+    e = entry if isinstance(entry, dict) else {}
+    out = {}
+    for k in ("hermes", "brave"):
+        try:
+            out[k] = max(0, int(e.get(k) or 0))
+        except (TypeError, ValueError):
+            out[k] = 0
+    return out
+
+
 def plan_research(
     trigs: list[dict[str, Any]],
     *,
@@ -258,7 +304,7 @@ def plan_research(
 ) -> dict[str, Any]:
     """Jobs per provider. Deduped per trigger id; capped per DAY (``used_today`` = jobs already enqueued today, from the
     rotation ledger, so several runs in one day share one cap) and by the provider's own budget headroom."""
-    used = {k: int(v or 0) for k, v in (used_today or {}).items()}
+    used = used_counts(used_today)
     fc = (_cfg(policy).get("fanout")) or {}
     hc, bc, yc = fc.get("hermes") or {}, fc.get("brave") or {}, fc.get("youcom") or {}
     already = already or set()
@@ -334,12 +380,12 @@ def plan_research(
         if k not in seen:
             seen.add(k)
             hj.append(j)
-    hcap = max(0, int(hc.get("daily_cap") or 12) - used.get("hermes", 0))
+    hcap = max(0, _cap(hc.get("daily_cap"), 12) - used["hermes"])
     hermes = hj[:hcap] if hc.get("enabled", True) else []
     headroom = None
     if brave_status:
         headroom = int(brave_status.get("daily_limit") or 0) - int(brave_status.get("daily_used") or 0)
-    bcap = max(0, int(bc.get("daily_cap") or 10) - used.get("brave", 0))
+    bcap = max(0, _cap(bc.get("daily_cap"), 10) - used["brave"])
     if headroom is not None:
         bcap = max(0, min(bcap, headroom - int(bc.get("min_daily_headroom") or 0)))
     elif brave_status is None:

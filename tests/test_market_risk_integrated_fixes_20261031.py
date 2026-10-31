@@ -7,6 +7,7 @@ the bars and the trade ledger are injected fakes; state goes to tmp_path.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sys
 import types
 from datetime import date, datetime, timedelta, timezone
@@ -576,3 +577,205 @@ def test_hermes_daily_cap_is_per_day_across_runs(tmp_path):
     assert plan["research"]["hermes"] == [] and plan["research"]["hermes_cap_applied"] == 0
     rot, now, plan = _fan_plan(tmp_path, prev={"days": {"2026-10-29": {"hermes": cap, "brave": 0}}})
     assert len(plan["research"]["hermes"]) == 1  # yesterday's count never spends today's cap
+
+
+# --------------------------------------------------------------------------- review of #2412 (blockers + same-pass fixes)
+
+
+def _rotation_env(monkeypatch, tmp_path):
+    import scripts.market_risk_rotation as rot
+    from scripts.lib import cio_watch_instrument_admit as wia
+    from scripts.lib import search_budget
+
+    monkeypatch.setattr(rot, "_instrument_records", lambda root: {})
+    monkeypatch.setattr(wia, "load_watchlist", lambda *a, **k: {})
+    monkeypatch.setattr(search_budget, "status", lambda provider: {"daily_limit": 100, "daily_used": 0})
+    monkeypatch.setattr(F, "apply_memory", lambda plans, root=None, done=None: [])
+    monkeypatch.setattr(F, "apply_research", lambda plan, conn_factory, policy: {"hermes": None, "brave": None})
+    return rot
+
+
+def _lead_block(cls: str) -> dict:
+    return {
+        "as_of": "2026-10-30",
+        "groups": {"energy": {"label": "Energy", "class": cls, "symbols": ["XLE"], "evidence": []}},
+    }
+
+
+def test_second_fanout_run_on_the_same_day_reads_the_real_ledger(monkeypatch, tmp_path):
+    """Blocker 1: the ledger apply_fanout writes carries trigger_ids (a list) beside the counts; the next run on the
+    same ET day must read only the counts (it raised TypeError) and spend the remaining cap only."""
+    rot = _rotation_env(monkeypatch, tmp_path)
+    now = datetime(2026, 10, 30, 20, 0, tzinfo=UTC)
+    p1 = rot.fanout({}, POLICY, tmp_path, now, _lead_block("LEADERSHIP_CONFIRMED"))
+    rot.apply_fanout(p1, POLICY, now, conn_factory=lambda: None)
+    led = json.loads(Path(p1["state_file"]).read_text())
+    day = led["days"]["2026-10-30"]
+    assert isinstance(day["trigger_ids"], list) and day["hermes"] == len(p1["research"]["hermes"]) >= 1
+    later = now + timedelta(hours=1)
+    p2 = rot.fanout({}, POLICY, tmp_path, later, _lead_block("LEADERSHIP_FADING"))  # raised TypeError before
+    cap = int(POLICY["leadership"]["fanout"]["hermes"]["daily_cap"])
+    assert p2["research"]["used_today"] == {"hermes": day["hermes"], "brave": day["brave"]}
+    assert p2["research"]["hermes_cap_applied"] == cap - day["hermes"]
+    rot.apply_fanout(p2, POLICY, later, conn_factory=lambda: None)
+    led2 = json.loads(Path(p1["state_file"]).read_text())
+    assert led2["days"]["2026-10-30"]["hermes"] == day["hermes"] + len(p2["research"]["hermes"])
+
+
+def test_zero_daily_cap_means_zero():
+    import copy
+
+    pol = copy.deepcopy(POLICY)
+    pol["leadership"]["fanout"]["hermes"]["daily_cap"] = 0
+    pol["leadership"]["fanout"]["brave"]["daily_cap"] = 0
+    trigs = [{"kind": "reentry_flip", "key": "ZZEX", "from": "RE_ENTER_IF", "to": "RE_ENTER", "id": "mrt_z"}]
+    plan = F.plan_research(
+        trigs, groups={}, tiers_by_group={}, policy=pol, brave_status={"daily_limit": 100, "daily_used": 0}
+    )
+    assert plan["hermes"] == [] and plan["brave"] == [] and plan["hermes_cap_applied"] == 0
+
+
+def test_used_counts_reads_only_integer_counts():
+    assert F.used_counts({"hermes": 3, "brave": "2", "trigger_ids": ["mrt_a"], "x": None}) == {"hermes": 3, "brave": 2}
+    assert F.used_counts(None) == {"hermes": 0, "brave": 0}
+
+
+@pytest.mark.parametrize("hist_sectors", [{}, {"groups": [{"key": "tech", "label": "Technology", "state": "UNKNOWN"}]}])
+def test_unknown_or_missing_group_never_reenters(hist_sectors):
+    """Blocker 2: TRIM on tech, two sessions where tech is missing / UNKNOWN, index and VIX conditions met -> not
+    RE_ENTER, so no reentry_flip memory and no Hermes job."""
+    cfg = POLICY["positions"]
+    hist = [{"session": d, "tier": "YELLOW", "sectors": hist_sectors} for d in ("2026-10-28", "2026-10-29")]
+    cond = ps.reentry_conditions(
+        flagged_groups=["tech"],
+        sectors_block=hist_sectors,
+        history=hist,
+        index_above_50d=True,
+        vix_below_20d=True,
+        engine_tier="YELLOW",
+        cfg=cfg,
+    )
+    assert [c["met"] for c in cond if c["key"] == "group_recovered"] == [False]
+    out = ps.stances(
+        positions=["ZZTECH"],
+        exposures={"ZZTECH": {"groups": {"tech": 1.0}}},
+        tier="YELLOW",
+        shock={"class": "SECTOR"},
+        sectors_block=hist_sectors,
+        prior={"ZZTECH": {"stance": "TRIM", "flagged_groups": ["tech"], "since": "2026-10-27"}},
+        reentry=cond,
+        stop_distance_pct=None,
+        policy=POLICY,
+        as_of="2026-10-29",
+    )
+    assert out["ZZTECH"]["stance"] == "RE_ENTER_IF"
+    trigs = F.triggers({"reentry": {"ZZTECH": "TRIM"}}, {"reentry": {"ZZTECH": out["ZZTECH"]["stance"]}})
+    assert not [t for t in trigs if t["kind"] == "reentry_flip"]
+
+
+@pytest.mark.parametrize(
+    "groups,block",
+    [
+        ({}, {"groups": []}),  # look-through unknown
+        ({"staples": 1.0}, {"groups": [{"key": "staples", "label": "Staples", "state": "RESILIENT", "r5": 1.0}]}),
+    ],
+)
+def test_evening_exit_review_runs_before_the_hold_rules(groups, block):
+    """Blocker 3: implied open 0.5 points above the broker stop at YELLOW is an EXIT review even when the look-through
+    is unknown or the position sits in a defensive group holding up."""
+    out = ps.stances(
+        positions=["ZZPOS"],
+        exposures={"ZZPOS": {"groups": groups, "note": "no data"}},
+        tier="YELLOW",
+        shock={"class": "SECTOR"},
+        sectors_block=block,
+        prior=None,
+        reentry=[],
+        stop_distance_pct={"ZZPOS": 1.5},
+        policy=POLICY,
+        as_of="2026-10-29",
+        evening_risk={"ZZPOS": {"room_to_stop_pct": 0.5, "text": "implied open -1.00%"}},
+    )
+    assert out["ZZPOS"]["stance"] == "EXIT" and out["ZZPOS"]["reasons"][0].startswith("after hours:")
+
+
+def test_holding_up_reason_names_only_a_resilient_main_group():
+    """Fix 4: {comm 0.9 UNKNOWN, staples 0.1 RESILIENT} never reads 'Communications holding up'."""
+    out = ps.stances(
+        positions=["ZZCOM"],
+        exposures={"ZZCOM": {"groups": {"comm": 0.9, "staples": 0.1}}},
+        tier="GREEN",
+        shock={},
+        sectors_block={
+            "groups": [
+                {"key": "comm", "label": "Communications", "state": "UNKNOWN"},
+                {"key": "staples", "label": "Staples", "state": "RESILIENT"},
+            ]
+        },
+        prior=None,
+        reentry=[],
+        stop_distance_pct=None,
+        policy=POLICY,
+        as_of="2026-10-29",
+    )
+    assert out["ZZCOM"]["reasons"] == ["Communications not measured: exposure unknown"]
+    res = ps.stances(
+        positions=["ZZCOM"],
+        exposures={"ZZCOM": {"groups": {"comm": 0.9}}},
+        tier="GREEN",
+        shock={},
+        sectors_block={"groups": [{"key": "comm", "label": "Communications", "state": "RESILIENT"}]},
+        prior=None,
+        reentry=[],
+        stop_distance_pct=None,
+        policy=POLICY,
+        as_of="2026-10-29",
+    )
+    assert res["ZZCOM"]["reasons"] == ["Communications holding up"]
+
+
+def test_premarket_run_never_records_the_session_early():
+    """Fix 5: a pre-market / intraday evaluation adds no session, so one recovered close is one session, not two."""
+    rec = {"groups": [{"key": "tech", "label": "Technology", "state": "NEUTRAL"}]}
+    h = bp.session_history(
+        None, now=datetime.fromisoformat("2026-10-28T20:30:00+00:00"), tier="YELLOW", sectors_block=rec
+    )
+    for t in ("2026-10-29T12:00:00+00:00", "2026-10-29T17:00:00+00:00"):  # 08:00 and 13:00 ET
+        h = bp.session_history({"session_history": h}, now=datetime.fromisoformat(t), tier="YELLOW", sectors_block=rec)
+    assert [x["session"] for x in h] == ["2026-10-28"]
+    cond = ps.reentry_conditions(
+        flagged_groups=["tech"],
+        sectors_block=rec,
+        history=h,
+        index_above_50d=True,
+        vix_below_20d=True,
+        engine_tier="YELLOW",
+        cfg=POLICY["positions"],
+    )
+    assert [c["met"] for c in cond if c["key"] == "group_recovered"] == [False]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "closed at one-three-four",
+        "stop thirty-seven",
+        "stop ³⁷",
+        "stop at 1​37",
+        "stop=37",
+        "stop @37",
+        "price: 37",
+        "USD 99",
+        "1/8 of book",
+        "half the position",
+        "a third of the position",
+        "thirty seven dollars",
+    ],
+)
+def test_memory_guard_refuses_obfuscated_numbers(text):
+    assert F.text_refusal(text), text
+
+
+def test_memory_guard_passes_every_template():
+    for p in _plan(exits=[{"symbol": "ZZEX", "date": "2026-10-30", "stressed_groups": ["Technology"]}]):
+        assert not p.get("refused"), p

@@ -205,14 +205,15 @@ def compact_sectors(block: dict[str, Any] | None) -> dict[str, Any]:
 
 def session_history(prior: dict | None, *, now: datetime, tier: Any, sectors_block: dict | None) -> list[dict]:
     """B3: per-session ``{session, tier, sectors}`` history, newest last, carried in the assessment (``prior`` is the
-    previous assessment). Each evaluation upserts its own session (the latest evaluation of a session wins), so the
-    entry for a completed session holds its close-of-session state. Non-trading days add nothing."""
+    previous assessment). A session is recorded only once its close has passed (``sessions.completed_session``): an
+    evaluation after the close upserts that session (the latest post-close evaluation wins); pre-market, intraday,
+    weekend and holiday evaluations add nothing, so "N sessions" counts N recovered CLOSES."""
     from scripts.lib.market_risk import sessions as ss
 
     hist = [h for h in ((prior or {}).get("session_history") or []) if isinstance(h, dict) and h.get("session")]
-    day = now.astimezone(ss.ET).date()
-    if ss.is_trading_day(day):
-        entry = {"session": day.isoformat(), "tier": str(tier), "sectors": compact_sectors(sectors_block)}
+    done = ss.completed_session(now)
+    if done:
+        entry = {"session": done, "tier": str(tier), "sectors": compact_sectors(sectors_block)}
         hist = [h for h in hist if h["session"] != entry["session"]] + [entry]
         hist.sort(key=lambda h: h["session"])
     return hist[-SESSION_HISTORY_MAX:]
