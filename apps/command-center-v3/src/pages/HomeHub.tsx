@@ -25,7 +25,8 @@ import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import HomeDoNow from './HomeDoNow'
-import { TOKENS } from '../lib/designTokens'
+import { factLine, unwrapMarketRisk } from '../lib/marketRisk'
+import { TOKENS, toneVars } from '../lib/designTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -71,6 +72,8 @@ function HomeClassic({ onDrill }: Props) {
   const { data: overview, loading: overviewLoading, receivedAt: overviewReceivedAt, transport: overviewTransport } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime, loading: regimeLoading } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  const { data: mrResp } = useApi<any>('/api/v2/market-risk/latest', 60_000)
+  const mrFact = factLine(unwrapMarketRisk(mrResp))
   // Home only reads header scalars (vix, counts, run label) — the ~500B summary endpoint,
   // not the multi-MB full payload (server-busy 500 loop, 2026-07-17).
   const { data: tradeAi, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
@@ -175,7 +178,8 @@ function HomeClassic({ onDrill }: Props) {
       drill: { title: 'Portfolio', subtitle: '/api/v2/overview', endpoint: '/api/v2/overview', rows: overview ? [{ portfolio_value: pv, today_change: todayChg, position_count: overview.position_count, as_of: overview.as_of }] : [] } },
     { label: 'PAPER WIN RATE', value: paperWr.value != null ? `${paperWr.value}%` : '—', sub: `${paperWr.trades ?? 0} closed usable · ${paperWr.basis ?? 'paper_trade_statistics'}`, color: paperWr.value == null ? 'var(--text3)' : paperWr.value >= 50 ? BB.green : BB.amber,
       drill: { title: 'Paper validation win rate', subtitle: `paper_trade_statistics · ${paperWr.window ?? 'all_time'} · /api/v2/paper-trade-readiness`, endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable, source: paperWr.source, basis: paperWr.basis, window: paperWr.window, as_of: paperWr.asOf }] : [] } },
-    { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? TOKENS.danger : regimeLabel === 'risk_on' ? TOKENS.success : TOKENS.warning,
+    // Design home/v002 §4: the classic hero tile REGIME is renamed MARKET RISK (tier + score, top contributor).
+    { label: 'MARKET RISK', value: mrFact.value, sub: mrFact.sub, color: mrFact.tone === 'neutral' ? 'var(--text0)' : toneVars(mrFact.tone).color,
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
     { label: 'SETUPS', value: scanStale ? 'STALE' : setupRun.degraded ? `${setupRun.counts} · ${setupRun.integrity}` : setupRun.counts, sub: scanStale ? setupRun.counts : `${setupRun.population}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}${setupRun.runTimestamp ? ` · ${setupRun.runTimestamp}` : ''}`, color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       drill: { title: 'Trade Setups', subtitle: `Latest scanner run · ${setupRun.population || '—'}${setupRun.integrity !== 'RECONCILED' ? ` · ${setupRun.integrity}` : ''}`, endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, vix, run_label: tradeAi.run_label, run_date: tradeAi.run_date }] : [] } },

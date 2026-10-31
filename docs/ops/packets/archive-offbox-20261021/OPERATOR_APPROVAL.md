@@ -28,7 +28,7 @@ executor.
 
 ```
 $ .venv/bin/python scripts/archive_offbox_sync.py
-[archive-offbox-sync] DRY RUN — nothing uploaded, nothing written. archive=/home/johnclaw/trade-ai-releases/persistent-state/archive
+[archive-offbox-sync] DRY RUN — nothing uploaded, nothing written. archive=~/trade-ai-releases/persistent-state/archive
 [archive-offbox-sync] already uploaded: 0 file(s); pending: 4757 file(s), 1022354984 bytes (0.952 GiB); new 4757, changed 0
 [archive-offbox-sync]   abandoned-branches-20261009              72 file(s)      235805600 bytes
 [archive-offbox-sync]   comms_lifecycle                        1580 file(s)       34039505 bytes
