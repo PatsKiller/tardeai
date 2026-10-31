@@ -217,7 +217,8 @@
     "_why": "Watched lanes page; all other ACTIVE lanes past cadence x multiplier + margin are counted in one P3 summary. Market-day-only lanes (e.g. premarket-delivery-deadman) are not watched here because they are silent every weekend by design; they carry their own dead-man.",
     "ledger_liveness_stages": [
       "shadow",
-      "canary"
+      "canary",
+      "cutover"
     ],
     "_ledger_why": "Coordinator 2026-10-31 (sweep-fix PR #2375): 13 of 16 'missing receipt' ACTIVE lanes are shadow/canary lanes that by design never write the live *_last.json; making dry runs write live receipts would falsify output. Their liveness is the coordination ledger's newest RUN_DONE."
   },
@@ -231,26 +232,16 @@
         "match": "remediation ineffective",
         "key_field": "type"
       }
-    ]
+    ],
+    "quiet_min": 30,
+    "backup_max_age_h": 72,
+    "_heals_why": "heals_enabled stays false. reconcile_lock is \u00a728.14's stale-lock reconcile. repair_tail and restore_backup are NOT in \u00a728.14's four deterministic fixes: they may be enabled only after the operator ratifies a \u00a728.14 amendment naming them (review 2026-10-31). Every heal re-checks at act time under the store's flock: file quiet for quiet_min, mtime unchanged since the finding, no holder; a restore needs a backup younger than backup_max_age_h whose JSON still parses; the original is archived first; a tail repair truncates in place, never replaces the file."
   },
   "stale_release": {
-    "_why": "Coordinator 2026-10-31, found live: tradeai-ops-applier ran release f7c1e96cb from 10-22 until the operator restarted it at 10:43 ET 10-31, refusing every newer Ops Controls kind as KIND_UNKNOWN. A unit resolves CURRENT once at start. The deploy script restarts a fixed list (scripts/cio_phase2_exact_main_deploy.sh restart_root_frozen_units, TRADEAI_CURRENT_BOUND_UNITS) that does not include the applier. Restart heal is allowlist-only and empty by default: this pages until the operator adds units.",
+    "_why": "Coordinator 2026-10-31, found live: tradeai-ops-applier ran release f7c1e96cb from 10-22 until the operator restarted it at 10:43 ET 10-31, refusing every newer Ops Controls kind as KIND_UNKNOWN. A unit resolves CURRENT once at start. PAGE ONLY (review 2026-10-31): a restart ends a run and AGENTS.md \u00a728.1 names the only four automations that may. The real fix is the deploy script's CURRENT-bound unit list (scripts/cio_phase2_exact_main_deploy.sh restart_root_frozen_units), which misses the applier, both OAuth proxies and heartbeat-receiver.",
     "current_link": "~/trade-ai-releases/portfolio-server/CURRENT",
     "releases_dir": "~/trade-ai-releases/portfolio-server",
-    "grace_min": 20,
-    "restart_allowlist": [],
-    "never_restart_globs": [
-      "portfolio-server*",
-      "*broker*",
-      "*schwab*",
-      "*alpaca*",
-      "*moomoo*",
-      "*order*",
-      "*execution*",
-      "*active-trader*",
-      "*stop*",
-      "*trading*"
-    ]
+    "grace_min": 20
   },
   "market_windows": [
     {
@@ -259,13 +250,6 @@
       "grace_min": 60,
       "signal_path": "data/runtime/pipeline_premarket_premarket_last.json",
       "severity": "P1"
-    },
-    {
-      "lane": "premarket-delivery-deadman",
-      "due_et": "06:45",
-      "grace_min": 30,
-      "signal_path": "data/runtime/premarket-delivery-deadman_last.json",
-      "severity": "P2"
     }
   ],
   "claims": {
@@ -287,5 +271,8 @@
       "/tmp/tradeai_*.lock"
     ]
   },
-  "poison_quarantine_rel": "data/runtime/poison_quarantine.json"
+  "poison_quarantine_rel": "data/runtime/poison_quarantine.json",
+  "never_act_extra": [],
+  "_never_act_why": "Additions only: scripts/lib/stuck_work.py NEVER_ACT is the code floor (portfolio-server, broker, order, stop, position, account, paper, scalp, sender, telegram, secret, guard, deploy, release, retention, agent-loop, dof, ...); config can add patterns here, never remove one.",
+  "_market_windows_why": "premarket-delivery-deadman is not a window lane: it writes no signal file on a quiet morning (it is itself the dead-man), so checking it would page a missed window every trading day (review 2026-10-31)."
 }

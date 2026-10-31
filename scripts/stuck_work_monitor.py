@@ -18,6 +18,8 @@ a DB write (the session is read-only). Exit 0 = no finding, 3 = findings (script
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import glob
 from fnmatch import fnmatch
 import json
@@ -238,7 +240,11 @@ def collect_files(cfg: dict, project: Path, state: Path, locks: list[dict]) -> l
                 "kind": "jsonl",
                 "size": st.st_size,
                 "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
-                "tail": SW.tail_state(_tail_bytes(real, int(f["tail_bytes"]))) if st.st_size else {"ok": True},
+                "tail": SW.tail_state(
+                    _tail_bytes(real, int(f["tail_bytes"])), whole_file=st.st_size <= int(f["tail_bytes"])
+                )
+                if st.st_size
+                else {"ok": True},
                 "locked": str(real) in held or f"{real}.lock" in held,
             }
         )
@@ -264,6 +270,8 @@ def collect_files(cfg: dict, project: Path, state: Path, locks: list[dict]) -> l
                 "size": st.st_size,
                 "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
                 "backup": backup,
+                "backup_mtime": datetime.fromtimestamp(os.path.getmtime(backup), tz=timezone.utc) if backup else None,
+                "locked": str(p) in held or f"{p}.lock" in held,
             }
         )
     return out
@@ -364,7 +372,8 @@ def collect_lanes(cfg: dict, project: Path) -> list[dict]:
             or sig.get("kind") not in ("file_mtime", "json_key")
         ):
             continue
-        p = project / sig["path"]
+        raw_path = str(sig["path"])
+        p = Path(os.path.expanduser(raw_path)) if raw_path.startswith("~") else project / raw_path
         at, missing = None, None
         if not p.exists():
             missing = "signal file does not exist"
@@ -660,6 +669,7 @@ def evaluate(cfg: dict, *, now: datetime, project: Path, state: Path) -> dict:
             SW.finding(
                 "zero_byte_state",
                 f"{len(zb)} other zero-byte JSON files",
+                key="other_zero_byte_json",
                 since=None,
                 now=now,
                 severity="P3",
@@ -680,10 +690,10 @@ def evaluate(cfg: dict, *, now: datetime, project: Path, state: Path) -> dict:
     findings += SW.queue_findings(queues, cfg, now)
     findings += SW.heartbeat_findings(beats, cfg, now)
     breakers = collect_breakers(cfg, state)
-    findings += SW.breaker_findings(breakers, cfg, now)
     open_b = {r["lane_id"]: r["raw_opened_at"] for r in breakers if r.get("released_at") is None}
     probes, poison, unver = collect_ledger_extras(cfg, state, open_b)
-    findings += SW.ledger_findings(probes, poison, unver, cfg, now, open_b)
+    findings += SW.breaker_findings(breakers, cfg, now, probes)
+    findings += SW.ledger_findings(poison, unver, cfg, now)
     findings += SW.lane_findings(lanes, cfg, now)
     findings += SW.quarantine_findings(collect_quarantined(cfg, state), now)
     windows, trading = collect_windows(cfg, project, now)
@@ -724,56 +734,69 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
-def restart_unit(unit: str) -> dict:
-    """Restart one allowlisted unit and read its cwd back (activeness cannot detect a stale release)."""
-    cfg = load_config()
-    if unit not in set(cfg["stale_release"].get("restart_allowlist") or []) or any(
-        fnmatch(unit, g) for g in cfg["stale_release"].get("never_restart_globs") or []
-    ):
-        return {"action": "restart", "unit": unit, "result": "refused", "why": "not allowlisted or never-restart"}
-    rc, _ = _run(["systemctl", "--user", "restart", unit], timeout=60)
-    time.sleep(3)
-    _, pid = _run(["systemctl", "--user", "show", unit, "-p", "MainPID", "--value"])
-    cwd = os.path.realpath(f"/proc/{pid.strip()}/cwd") if pid.strip().isdigit() and pid.strip() != "0" else ""
-    current = str(Path(os.path.expanduser(cfg["stale_release"]["current_link"])).resolve())
-    ok = rc == 0 and cwd == current
-    return {
-        "action": "restart",
-        "unit": unit,
-        "result": "restarted" if ok else "error",
-        "cwd": cwd,
-        "current": current,
-        "rc": rc,
-    }
-
-
-def do_heal(plan: dict, state: Path, project: Path) -> dict:
-    """Archive first, then act. Re-checks the condition on the live bytes so a heal never acts on a stale plan."""
-    if plan["action"] == "restart":
-        return restart_unit(plan["unit"])
+def do_heal(plan: dict, state: Path, project: Path, cfg: dict) -> dict:
+    """Act on one heal plan. Every condition is re-checked at act time on the live file, under the store's real
+    flock (``<file>.lock`` when present, and the file itself), held across archive-and-act; the original is archived
+    before any change. Review 2026-10-31: never os.replace a store a writer may be appending to; truncate in place
+    to the last good newline instead, only after the file has been quiet for ``quiet_min``."""
     src = Path(plan["path"])
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     arch = Path(_expand(plan["archive_dir"], project, state)) / stamp / src.name
-    arch.parent.mkdir(parents=True, exist_ok=True)
-    if plan["action"] == "reconcile_lock":
-        held = {str(r.get("path") or "") for r in collect_locks()}
-        if Path(f"/proc/{int(plan['pid'])}").exists() or str(src) in held:
-            return {**plan, "result": "skipped", "why": "pid alive or lock held now"}
-        os.replace(src, arch)  # archived, not deleted (AGENTS.md §0 rule 6)
-        return {**plan, "result": "reconciled", "archive": str(arch)}
-    shutil.copy2(src, arch)
-    if plan["action"] == "repair_tail":
-        data = src.read_bytes()
-        fixed = SW.repaired_bytes(data)
-        if fixed is None:
-            return {**plan, "result": "skipped", "why": "condition no longer holds or not safe", "archive": str(arch)}
-        _atomic_write(src, fixed)
-        return {**plan, "result": "repaired", "dropped_bytes": len(data) - len(fixed), "archive": str(arch)}
-    if plan["action"] == "restore_backup":
-        if src.stat().st_size != 0:
-            return {**plan, "result": "skipped", "why": "target no longer empty", "archive": str(arch)}
-        _atomic_write(src, Path(plan["from"]).read_bytes())
-        return {**plan, "result": "restored", "archive": str(arch)}
+    h = cfg["heals"]
+    with contextlib.ExitStack() as stack:
+        for lk in [p for p in (Path(f"{src}.lock"), src) if p.exists()]:
+            fh = stack.enter_context(lk.open("rb+" if lk == src else "a+b"))
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return {**plan, "result": "skipped", "why": f"lock held: {lk.name}"}
+            stack.callback(fcntl.flock, fh.fileno(), fcntl.LOCK_UN)
+        if not src.exists():
+            return {**plan, "result": "skipped", "why": "file gone"}
+        st = src.stat()
+        quiet_min = (time.time() - st.st_mtime) / 60.0
+        if plan["action"] == "reconcile_lock":
+            if Path(f"/proc/{int(plan['pid'])}").exists():
+                return {**plan, "result": "skipped", "why": "pid alive now"}
+            arch.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(src, arch)  # archived, not deleted (AGENTS.md §0 rule 6), under the held flock
+            return {**plan, "result": "reconciled", "archive": str(arch)}
+        if plan.get("mtime") and datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(
+            timespec="seconds"
+        ) != str(plan["mtime"]):
+            return {**plan, "result": "skipped", "why": "file changed since the finding"}
+        if quiet_min < float(h["quiet_min"]):
+            return {**plan, "result": "skipped", "why": f"written {quiet_min:.1f} min ago"}
+        if plan["action"] == "repair_tail":
+            data = src.read_bytes()
+            off = SW.truncate_offset(data)
+            if off is None:
+                return {**plan, "result": "skipped", "why": "condition no longer holds or not safe"}
+            arch.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, arch)
+            fd = os.open(src, os.O_WRONLY)
+            try:
+                os.ftruncate(fd, off)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            return {**plan, "result": "repaired", "dropped_bytes": len(data) - off, "archive": str(arch)}
+        if plan["action"] == "restore_backup":
+            if st.st_size != 0:
+                return {**plan, "result": "skipped", "why": "target no longer empty"}
+            b = Path(plan["from"])
+            b_age_h = (time.time() - b.stat().st_mtime) / 3600.0
+            if b_age_h > float(h["backup_max_age_h"]):
+                return {**plan, "result": "skipped", "why": f"backup {b_age_h:.0f} h old"}
+            raw = b.read_bytes()
+            try:
+                json.loads(raw)
+            except ValueError:
+                return {**plan, "result": "skipped", "why": "backup is not valid JSON now"}
+            arch.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, arch)
+            _atomic_write(src, raw)
+            return {**plan, "result": "restored", "archive": str(arch), "backup_age_h": round(b_age_h, 1)}
     return {**plan, "result": "skipped", "why": "unknown action"}
 
 
@@ -826,7 +849,7 @@ def apply(receipt: dict, cfg: dict, *, now: datetime, project: Path, state: Path
             if len(actions["heals"]) >= int(cfg["heals"]["max_per_tick"]):
                 break
             try:
-                res = do_heal(plan, state, project)
+                res = do_heal(plan, state, project, cfg)
             except OSError as exc:
                 res = {**plan, "result": "error", "why": f"{type(exc).__name__}: {exc}"}
                 actions["errors"].append(res["why"])

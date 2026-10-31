@@ -16,8 +16,11 @@ from __future__ import annotations
 COVERS = ["scripts/stuck_work_monitor.py"]
 
 import copy
+import fcntl
 import json
+import os
 import sys
+import time
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -110,20 +113,44 @@ def test_tail_state_and_repair_only_the_final_line():
 
 
 def test_file_findings_lock_guard_and_backup():
-    tail = SW.tail_state(b'{"a":1}\n{"b')
+    tail = SW.tail_state(b'{"a":1}\n{"b', whole_file=True)
+    old, young = NOW - timedelta(hours=1), NOW - timedelta(minutes=5)
     rows = [
-        {"path": "/s/a.jsonl", "kind": "jsonl", "size": 10, "mtime": NOW, "tail": tail, "locked": False},
-        {"path": "/s/b.jsonl", "kind": "jsonl", "size": 10, "mtime": NOW, "tail": tail, "locked": True},
-        {"path": "/s/t.json", "kind": "state", "size": 0, "mtime": NOW, "backup": "/s/t.bak"},
-        {"path": "/s/u.json", "kind": "state", "size": 0, "mtime": NOW, "backup": None},
-        {"path": "/s/v.json", "kind": "state", "size": 9, "mtime": NOW, "backup": None},
+        {"path": "/s/a.jsonl", "kind": "jsonl", "size": 10, "mtime": old, "tail": tail, "locked": False},
+        {"path": "/s/b.jsonl", "kind": "jsonl", "size": 10, "mtime": old, "tail": tail, "locked": True},
+        {"path": "/s/c.jsonl", "kind": "jsonl", "size": 10, "mtime": young, "tail": tail, "locked": False},
+        {"path": "/s/t.json", "kind": "state", "size": 0, "mtime": old, "backup": "/s/t.bak", "backup_mtime": old},
+        {"path": "/s/u.json", "kind": "state", "size": 0, "mtime": old, "backup": None},
+        {"path": "/s/w.json", "kind": "state", "size": 0, "mtime": young, "backup": "/s/t.bak", "backup_mtime": old},
+        {
+            "path": "/s/x.json",
+            "kind": "state",
+            "size": 0,
+            "mtime": old,
+            "backup": "/s/t.bak",
+            "backup_mtime": NOW - timedelta(hours=200),
+        },
+        {
+            "path": "/s/y.json",
+            "kind": "state",
+            "size": 0,
+            "mtime": old,
+            "backup": "/s/t.bak",
+            "backup_mtime": old,
+            "locked": True,
+        },
+        {"path": "/s/v.json", "kind": "state", "size": 9, "mtime": old, "backup": None},
     ]
     got = {f["item"]: f["heal"] for f in SW.file_findings(rows, CFG, NOW)}
     assert got == {
         "/s/a.jsonl": "repair_tail",
         "/s/b.jsonl": "page",
+        "/s/c.jsonl": "page",
         "/s/t.json": "restore_backup",
         "/s/u.json": "page",
+        "/s/w.json": "page",
+        "/s/x.json": "page",
+        "/s/y.json": "page",
     }
 
 
@@ -177,9 +204,9 @@ def test_breakers_heartbeats_and_lanes():
 REL = "/" + "/".join(["srv", "trade-ai-releases", "portfolio-server"])
 
 
-def _sr_cfg(allow=()):
+def _sr_cfg():
     c = _cfg()
-    c["stale_release"] = {**c["stale_release"], "releases_dir": REL, "restart_allowlist": list(allow)}
+    c["stale_release"] = {**c["stale_release"], "releases_dir": REL}
     return c
 
 
@@ -188,27 +215,16 @@ def test_stale_release_positive_control_and_policy():
     units = [
         {"unit": "tradeai-ops-applier.service", "pid": 1, "cwd": f"{REL}/f7c1e96cb-main"},
         {"unit": "portfolio-server.service", "pid": 2, "cwd": f"{REL}/f7c1e96cb-main"},
-        {"unit": "tradeai-active-trader-motion.service", "pid": 3, "cwd": f"{REL}/aaa"},
         {"unit": "fresh.service", "pid": 4, "cwd": cur},
+        {"unit": "inside.service", "pid": 6, "cwd": f"{cur}/apps/command-center-v3"},  # inside CURRENT: current
         {"unit": "elsewhere.service", "pid": 5, "cwd": "/srv/other"},
     ]
     promoted = NOW - timedelta(hours=1)
     got = {f["item"]: f for f in SW.stale_release_findings(units, cur, promoted, _sr_cfg(), NOW)}
-    assert set(got) == {
-        "tradeai-ops-applier.service",
-        "portfolio-server.service",
-        "tradeai-active-trader-motion.service",
-    }
-    assert all(f["heal"] == "page" for f in got.values())  # empty allowlist pages only
-    got = {
-        f["item"]: f
-        for f in SW.stale_release_findings(
-            units, cur, promoted, _sr_cfg(["tradeai-ops-applier.service", "portfolio-server.service"]), NOW
-        )
-    }
-    assert got["tradeai-ops-applier.service"]["heal"] == "restart"
-    assert got["portfolio-server.service"]["heal"] == "page"  # never restarted even when allowlisted
-    assert got["tradeai-active-trader-motion.service"]["heal"] == "page"
+    assert set(got) == {"tradeai-ops-applier.service", "portfolio-server.service"}
+    assert all(f["heal"] == "page" for f in got.values())  # page only: a restart ends a run (§28.1)
+    assert got["tradeai-ops-applier.service"]["evidence"]["serving"] == "f7c1e96cb-main"
+    assert got["portfolio-server.service"]["evidence"]["never_auto_act"] is True
     assert SW.stale_release_findings(units, cur, NOW - timedelta(minutes=5), _sr_cfg(), NOW) == []  # inside grace
 
 
@@ -231,27 +247,37 @@ def _receipt(findings):
     return {"schema": "StuckWorkReceipt@v1", "at": SW._iso(NOW), "db_error": None, "findings": findings, "counts": {}}
 
 
-def _tail_finding(path):
+def _tail_finding(path, *, now=None):
+    """A finding built from the real file (its real mtime), the way the monitor builds it."""
+    st = path.stat()
+    mtime = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
     return SW.file_findings(
         [
             {
                 "path": str(path),
                 "kind": "jsonl",
-                "size": 5,
-                "mtime": NOW,
-                "tail": SW.tail_state(path.read_bytes()),
+                "size": st.st_size,
+                "mtime": mtime,
+                "tail": SW.tail_state(path.read_bytes(), whole_file=True),
                 "locked": False,
             }
         ],
         CFG,
-        NOW,
+        now or datetime.now(timezone.utc),
     )
+
+
+def _age(path, minutes):
+    t = time.time() - minutes * 60
+    os.utime(path, (t, t))
 
 
 def test_apply_alerts_once_per_day_and_heals_and_intake(tmp_path, sent):
     store = tmp_path / "data" / "cio" / "cio_wake_jobs.jsonl"
     store.parent.mkdir(parents=True)
     store.write_bytes(b'{"a":1}\n{"b":2}\n{"c":"trunc')
+    _age(store, 90)
+    ino = store.stat().st_ino
     deadlock = SW.lock_findings(
         [{"pid": 7, "mode": "WRITE", "path": LOCK}, {"pid": 7, "mode": "WRITE*", "path": LOCK}],
         _proc(7, "python3 scripts/cio_wake_dispatch_entrypoint.py"),
@@ -265,18 +291,15 @@ def test_apply_alerts_once_per_day_and_heals_and_intake(tmp_path, sent):
     assert len(sent) == 1 and sent[0]["priority"] == "P1" and "STUCK WORK" in sent[0]["message"]
     assert sent[0]["message_class"] == cfg["message_class"]
     assert store.read_bytes() == b'{"a":1}\n{"b":2}\n'  # repaired
+    assert store.stat().st_ino == ino  # truncated IN PLACE: a writer's open fd still points at this file
     assert out["actions"]["heals"][0]["result"] == "repaired"
     archived = list((tmp_path / "archive" / "heals").rglob("cio_wake_jobs.jsonl"))
     assert archived and archived[0].read_bytes().endswith(b'"trunc')  # archived before the repair
     defects = [json.loads(x) for x in (tmp_path / cfg["fixer_defects_rel"]).read_text().splitlines()]
     assert [d["code_defect"]["lane"] for d in defects] == ["cio-wake-dispatch"]
-    d = defects[0]["code_defect"]
-    assert (
-        d["schema"] == "N8nCodeDefect@v1"
-        and d["consumer"] == "claude_code_iterative_fix"
-        and d["kind"] == "code_defect"
-    )
-    # same day again: no second alert, no second hand-off, no second heal
+    d = defects[0]
+    assert d["code_defect"]["schema"] == "N8nCodeDefect@v1" and d["code_defect"]["kind"] == "code_defect"
+    assert d["receipt"]["stderr_tail"].startswith("self_deadlock")  # the fixer reads the TOP-LEVEL receipt (#2129)
     swm.apply(_receipt(findings), cfg, now=NOW + timedelta(minutes=5), project=tmp_path, state=tmp_path)
     assert len(sent) == 1
     assert len((tmp_path / cfg["fixer_defects_rel"]).read_text().splitlines()) == 1
@@ -301,11 +324,11 @@ def test_send_failure_is_loud(tmp_path, monkeypatch):
     assert out["actions"]["alerts"]["sent"] is False and out["actions"]["errors"]
 
 
-def test_restart_refuses_non_allowlisted(monkeypatch):
-    calls = []
-    monkeypatch.setattr(swm, "_run", lambda argv, timeout=20: (calls.append(argv), (0, ""))[1])
-    res = swm.restart_unit("portfolio-server.service")
-    assert res["result"] == "refused" and calls == []
+def test_no_restart_capability_exists():
+    """Review 2026-10-31 (§28.1): restarting a unit ends a run; this monitor never restarts anything."""
+    assert not hasattr(swm, "restart_unit") and "restart" not in SW.HEAL_KEYS
+    src = (ROOT / "scripts" / "stuck_work_monitor.py").read_text()
+    assert '"restart"' not in src and 'systemctl", "--user", "restart' not in src
 
 
 def test_dry_run_main_writes_nothing(tmp_path, monkeypatch, sent, capsys):
@@ -324,8 +347,30 @@ def test_dry_run_main_writes_nothing(tmp_path, monkeypatch, sent, capsys):
 
 def test_config_defaults_are_off():
     assert CFG["alerts_enabled"] is False and CFG["heals_enabled"] is False and CFG["fixer_intake_enabled"] is False
-    assert CFG["stale_release"]["restart_allowlist"] == []
-    assert any(g.startswith("portfolio-server") for g in CFG["stale_release"]["never_restart_globs"])
+    assert "restart_allowlist" not in CFG["stale_release"]
+    for word in (
+        "portfolio-server",
+        "broker",
+        "order",
+        "stop",
+        "position",
+        "account",
+        "paper",
+        "scalp",
+        "sender",
+        "telegram",
+        "secret",
+        "guard",
+        "deploy",
+        "release",
+        "retention",
+        "agent-loop",
+        "dof",
+    ):
+        assert word in SW.NEVER_ACT
+    assert SW.never_act("Tradeai-SCALP-Hot.service")  # case-insensitive
+    assert SW.never_act("x-broker-y", {"never_act_extra": []})  # config cannot remove the code floor
+    assert SW.never_act("custom-unit", {"never_act_extra": ["custom"]}) and not SW.never_act("custom-unit")
 
 
 # ---------------------------------------------------------------- sweep classes (coordinator 2026-10-31, 18 classes)
@@ -399,15 +444,13 @@ def test_process_classes_spin_orphan_deleted_zombie():
 
 def test_ledger_classes_probe_poison_verifier():
     got = SW.ledger_findings(
-        {"a": 0, "b": 2},
-        [{"lane_id": "c", "slot_key": "s1", "attempts": 15}],
-        [{"lane_id": "d", "count": 4}],
-        CFG,
-        NOW,
-        ["a", "b"],
+        [{"lane_id": "c", "slot_key": "s1", "attempts": 15}], [{"lane_id": "d", "count": 4}], CFG, NOW
     )
-    kinds = sorted((f["class"], f["item"]) for f in got)
-    assert kinds == [("breaker_no_probe", "a"), ("poison_item", "c:s1"), ("verifier_blind", "d")]
+    assert sorted((f["class"], f["item"]) for f in got) == [("poison_item", "c:s1"), ("verifier_blind", "d")]
+    br = [{"lane_id": "a", "opened_at": NOW - timedelta(hours=30), "released_at": None}]
+    (b,) = SW.breaker_findings(br, CFG, NOW, {"a": 0})  # one finding per breaker; "never probed" is evidence
+    assert b["evidence"]["never_probed"] is True and b["heal"] == "page"
+    assert SW.fixer_defect(b, NOW, receipt="r") is None  # a breaker is a symptom, never sent to the fixer
 
 
 def test_registry_drift_is_not_silence():
@@ -458,24 +501,29 @@ def test_heal_loop_precursors_and_stale_lock():
     assert lk["item"] == "/s/self_heal_fixer.lock" and SW.heal_plan(lk, CFG)["action"] == "reconcile_lock"
 
 
-def test_reconcile_lock_heal_archives_and_rechecks(tmp_path, monkeypatch):
+def test_reconcile_lock_heal_archives_and_rechecks(tmp_path):
     lock = tmp_path / "self_heal_fixer.lock"
     lock.write_text('{"pid": 999999999}')
-    monkeypatch.setattr(swm, "collect_locks", lambda: [])
     plan = {"action": "reconcile_lock", "path": str(lock), "pid": 999999999, "archive_dir": str(tmp_path / "arch")}
-    res = swm.do_heal(plan, tmp_path, tmp_path)
+    holder = lock.open("a")  # someone holds the flock: an active flock-style lock is never moved (M3)
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["result"] == "skipped" and lock.exists()
+    fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+    holder.close()
+    res = swm.do_heal(plan, tmp_path, tmp_path, CFG)
     assert res["result"] == "reconciled" and not lock.exists() and Path(res["archive"]).read_text().startswith("{")
     lock.write_text('{"pid": 1}')  # pid 1 is alive: never reconciled
-    assert swm.do_heal({**plan, "pid": 1}, tmp_path, tmp_path)["result"] == "skipped" and lock.exists()
+    assert swm.do_heal({**plan, "pid": 1}, tmp_path, tmp_path, CFG)["result"] == "skipped" and lock.exists()
 
 
 def test_heal_loop_suppresses_the_heal(tmp_path, sent):
     store = tmp_path / "x.jsonl"
-    store.write_bytes(b'{"a":1}\n{"b')
+    store.write_bytes(b'{"a":1}\n{"b":2}\n{"c')
+    _age(store, 90)
     rec = _receipt(_tail_finding(store))
     rec["heal_counts_24h"] = {str(store): 3}
     out = swm.apply(rec, _cfg(heals_enabled=True), now=NOW, project=tmp_path, state=tmp_path)
-    assert out["actions"]["heals"][0]["result"] == "suppressed" and store.read_bytes().endswith(b'{"b')
+    assert out["actions"]["heals"][0]["result"] == "suppressed" and store.read_bytes().endswith(b'{"c')
 
 
 def test_shadow_lane_alive_by_ledger_run_done_without_a_receipt():
@@ -510,3 +558,118 @@ def test_quarantined_items_are_poison_findings_for_the_fixer(tmp_path):
     assert f["class"] == "poison_item" and f["heal"] == "code" and f["lane"] == "cio-ask-lifecycle"
     assert SW.fixer_defect(f, NOW, receipt="r")["code_defect"]["lane"] == "cio-ask-lifecycle"
     assert swm.collect_quarantined(CFG, tmp_path / "nowhere") == []
+
+
+# ---------------------------------------------------------------- review 2026-10-31: every failing input is a test
+def test_m1_m2_and_blank_tail():
+    assert SW.tail_state(b'{"a":1}\n\n\n', whole_file=True)["ok"] is True  # trailing blank lines are not damage
+    mid = SW.tail_state(b'{"a":1}\n{broken\n{"b":2}\n{"c', whole_file=True)
+    assert mid["ok"] is False and mid["repairable"] is False  # any bad complete line refuses (M1)
+    assert SW.truncate_offset(b'{"a":1}\n{broken\n{"b":2}\n{"c') is None
+    one = SW.tail_state(b'{"only', whole_file=True)
+    assert one["repairable"] is False and SW.truncate_offset(b'{"only') is None  # fewer than two records (M2)
+    assert SW.truncate_offset(b'{"a":1}\n{"b":2}\n{"c') == len(b'{"a":1}\n{"b":2}\n')
+    window = SW.tail_state(b'tial-cut-record"}\n{"a":1}\n{"c')  # first line of a window may be cut: ignored
+    assert window["repairable"] is True
+
+
+def test_h1_repair_refuses_live_writer_young_file_and_changed_file(tmp_path):
+    store = tmp_path / "s.jsonl"
+    store.write_bytes(b'{"a":1}\n{"b":2}\n{"c')
+    _age(store, 90)
+    (f,) = _tail_finding(store)
+    plan = SW.heal_plan(f, CFG)
+    lockf = tmp_path / "s.jsonl.lock"
+    lockf.write_text("")
+    holder = lockf.open("a")  # the store's real flock held by a writer
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["result"] == "skipped"
+    fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+    holder.close()
+    with store.open("ab") as fh:  # a writer appended after the finding: mtime changed -> refuse
+        fh.write(b'\n{"d":4}\n')
+    _age(store, 60)
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "file changed since the finding"
+    young = tmp_path / "y.jsonl"
+    young.write_bytes(b'{"a":1}\n{"b":2}\n{"c')
+    (fy,) = _tail_finding(young)
+    assert fy["heal"] == "page" and "min ago" in fy["evidence"]["why_not_auto"]
+
+
+def test_h2_restore_rechecks_mtime_backup_age_and_json(tmp_path):
+    target = tmp_path / "t.json"
+    target.write_bytes(b"")
+    _age(target, 120)
+    bak = tmp_path / "t.json.bak"
+    bak.write_text('{"lots": []}')
+    _age(bak, 60)
+    mt = SW._iso(datetime.fromtimestamp(target.stat().st_mtime, tz=timezone.utc))
+    plan = {
+        "action": "restore_backup",
+        "path": str(target),
+        "from": str(bak),
+        "archive_dir": str(tmp_path / "a"),
+        "mtime": mt,
+    }
+    bak.write_text("{not json")
+    _age(bak, 60)
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "backup is not valid JSON now"
+    bak.write_text('{"lots": []}')
+    _age(bak, 60 * 200)
+    assert "backup" in swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"]  # older than backup_max_age_h
+    _age(bak, 60)
+    _age(target, 30)  # touched since the finding
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "file changed since the finding"
+    _age(target, 120)
+    plan["mtime"] = SW._iso(datetime.fromtimestamp(target.stat().st_mtime, tz=timezone.utc))
+    res = swm.do_heal(plan, tmp_path, tmp_path, CFG)
+    assert res["result"] == "restored" and json.loads(target.read_text()) == {"lots": []}
+
+
+def test_dedupe_keys_never_carry_counts_or_pids():
+    with pytest.raises(ValueError):
+        SW.finding("process_stuck", "pid 12", since=None, now=NOW, severity="P2", heal="page", evidence={})
+    a = SW.claim_findings([{"claim_id": "c", "status": "active", "heartbeat_at": NOW - timedelta(days=9)}], CFG, NOW)
+    b = SW.claim_findings(
+        [{"claim_id": c, "status": "active", "heartbeat_at": NOW - timedelta(days=9)} for c in ("c", "d")], CFG, NOW
+    )
+    assert a[0]["dedupe_key"] == b[0]["dedupe_key"]  # 1 claim or 2: one daily alert
+    p1 = SW.proc_extra_findings(
+        _p(1, args="python3 scripts/cio_delivery.py --run 111", cpu_s=2 * 3600 * 0.95), CFG, NOW
+    )
+    p2 = SW.proc_extra_findings(
+        _p(2, args="python3 scripts/cio_delivery.py --run 222", cpu_s=2 * 3600 * 0.95), CFG, NOW
+    )
+    assert p1[0]["dedupe_key"] == p2[0]["dedupe_key"]
+
+
+def test_cutover_lane_alive_by_ledger_and_tilde_signal_paths(tmp_path, monkeypatch):
+    row = {
+        "lane_id": "c",
+        "stage": "cutover",
+        "cadence_hours": 1,
+        "signal_at": None,
+        "signal_missing": "signal file does not exist",
+        "ledger_done_at": NOW - timedelta(minutes=30),
+    }
+    assert SW.lane_findings([row], CFG, NOW) == []
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "sig.json").write_text("{}")
+    reg = {
+        "lanes": [
+            {
+                "lane_id": "t",
+                "state": "ACTIVE",
+                "expected_cadence_hours": 1,
+                "output_signal": {"kind": "file_mtime", "path": "~/sig.json"},
+            }
+        ]
+    }
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "lane_registry.json").write_text(json.dumps(reg))
+    (got,) = swm.collect_lanes(CFG, tmp_path)
+    assert got["signal_missing"] is None and got["signal_at"] is not None
+
+
+def test_deadman_is_not_a_window_lane():
+    assert "premarket-delivery-deadman" not in {w["lane"] for w in CFG["market_windows"]}

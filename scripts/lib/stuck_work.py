@@ -9,14 +9,16 @@ eight n8n breakers stayed open and the overnight LLM queue completed nothing —
 opened read-only, the lane registry) and hands them here. This module decides:
 
 * ``StuckFinding@v1`` per item: class, item, since, evidence, severity, heal key;
-* which findings may get a deterministic heal (AGENTS.md §28.14: only reruns, generated files, the disk re-pin and
-  the stale-lock reconcile; here the reconcile siblings are a truncated-final-line JSONL repair and a zero-byte
-  restore from the newest valid backup) — and the plan for it, never the act;
+* which findings may get a deterministic heal, and the plan for it (never the act). AGENTS.md §28.14 allows four
+  deterministic fixes: an infra-flake rerun, a regenerated file, the disk re-pin and the stale-lock reconcile. Only
+  the stale-lock reconcile is used here. The truncated-final-record JSONL repair and the zero-byte restore from a
+  backup are NOT covered by §28.14: they are built and tested, but stay disabled until the operator ratifies a §28.14
+  amendment that names them;
 * which findings are code defects for the Claude Code fixer (``N8nCodeDefect@v1``, the contract
   ``scripts/self_heal_fixer.py`` consumes).
 
-Never here: ending a process. §28.1 names the four automations that end a run; a stuck process gets a page and, when
-it is a code defect, a fixer intake — the kill stays with ``process_reaper.py`` rules whose caps are measured.
+Never here: ending a process or restarting a unit. §28.1 names the four automations that may end a run; a stuck
+process or a unit on an old release gets a page and, when it is a code defect, a fixer intake.
 MBI_BEHAVIOR = 0: nothing here touches a broker, an order, a stop or a size.
 """
 
@@ -53,7 +55,6 @@ CLASSES = (
     "orphan_runaway",
     "deleted_open_space",
     "zombie",
-    "breaker_no_probe",
     "poison_item",
     "registry_drift",
     "missed_window",
@@ -66,9 +67,49 @@ CLASSES = (
 )
 #: heal keys: what may follow a finding. "page" = alert only; "repair_tail" / "restore_backup" = deterministic heal;
 #: "code" = Claude Code fixer intake; "reaper" = needs a measured process_reaper rule (never killed here);
-#: "restart" = systemctl --user restart, only for a unit on the stale_release allowlist (never a broker/server unit);
 #: "reconcile_lock" = archive a pid-file lock whose pid is dead and that nobody holds (§28.14 stale-lock reconcile).
-HEAL_KEYS = ("page", "repair_tail", "restore_backup", "code", "reaper", "restart", "reconcile_lock")
+HEAL_KEYS = ("page", "repair_tail", "restore_backup", "code", "reaper", "reconcile_lock")
+
+
+#: Units/lanes no automation here may ever act on (restart, heal, release). A code constant: config may ADD patterns
+#: (``never_act_extra``), never remove these. Case-insensitive substring match. AGENTS.md §23.14 + review 2026-10-31.
+NEVER_ACT = (
+    "portfolio-server",
+    "broker",
+    "order",
+    "stop",
+    "position",
+    "account",
+    "paper",
+    "scalp",
+    "sender",
+    "telegram",
+    "secret",
+    "guard",
+    "deploy",
+    "release",
+    "retention",
+    "agent-loop",
+    "dof",
+    "schwab",
+    "alpaca",
+    "moomoo",
+    "execution",
+    "active-trader",
+    "options-lifecycle",
+)
+
+
+def never_act(name: str, cfg: Optional[Mapping[str, Any]] = None) -> bool:
+    low = str(name or "").lower()
+    extra = [str(x).lower() for x in ((cfg or {}).get("never_act_extra") or [])]
+    return any(p in low for p in (*NEVER_ACT, *extra))
+
+
+def cmd_key(cmd: str) -> str:
+    """A stable identity for a command line: digits (pids, timestamps, hashes in argv) removed, then hashed."""
+    norm = re.sub(r"[0-9]+", "#", " ".join(str(cmd or "").split()))[:400]
+    return "cmd:" + hashlib.sha256(norm.encode()).hexdigest()[:12]
 
 
 def _iso(dt: datetime) -> str:
@@ -91,11 +132,18 @@ def finding(
     heal: str,
     evidence: Mapping[str, Any],
     lane: Optional[str] = None,
+    key: Optional[str] = None,
 ) -> dict:
+    """``key`` is the stable identity used for the once-a-day alert dedupe. It must never contain a count, a pid or a
+    timestamp (review 2026-10-31: "32 other zero-byte files" and "pid 123" made a new alert every time they changed);
+    it defaults to ``item`` only for items that are already stable (a path, a unit, a lane)."""
     if cls not in CLASSES:
         raise ValueError(f"unknown class {cls!r}")
     if heal not in HEAL_KEYS:
         raise ValueError(f"unknown heal key {heal!r}")
+    stable = key if key is not None else item
+    if re.search(r"\bpid [0-9]+|^[0-9]+ ", str(stable)):
+        raise ValueError(f"unstable dedupe key {stable!r}: pass key= without counts or pids")
     return {
         "schema": SCHEMA_FINDING,
         "class": cls,
@@ -106,7 +154,7 @@ def finding(
         "severity": severity,
         "heal": heal,
         "evidence": dict(evidence),
-        "dedupe_key": f"{cls}|{item}",
+        "dedupe_key": f"{cls}|{stable}",
     }
 
 
@@ -153,6 +201,7 @@ def lock_findings(
                 finding(
                     cls,
                     f"pid {pid} on {path}",
+                    key=str(ln.get("lane") or path),
                     since=started,
                     now=now,
                     severity="P1" if self_dead or ln.get("production") else "P2",
@@ -194,6 +243,7 @@ def process_findings(
                 finding(
                     "process_stuck",
                     f"pid {pid}",
+                    key=str(ln.get("lane") or cmd_key(cmd)),
                     since=p.get("started"),
                     now=now,
                     severity="P2",
@@ -215,6 +265,7 @@ def process_findings(
                     finding(
                         "process_stuck",
                         f"pid {pid}",
+                        key=str(w.get("lane") or cmd_key(cmd)),
                         since=p.get("started"),
                         now=now,
                         severity=str(w.get("severity", "P2")),
@@ -308,39 +359,70 @@ def unit_findings(units: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], no
 
 
 # ---------------------------------------------------------------- state files
-def tail_state(data: bytes) -> dict:
-    """The end of a JSONL store: is the final record parseable, and is the damage confined to the final line?
-    ``data`` is the file's last bytes (the monitor reads at most ``tail_bytes``). Splits on b"\\n" only."""
-    if not data:
-        return {"empty": True, "ok": True}
-    body = data[:-1] if data.endswith(b"\n") else data
+def tail_state(data: bytes, *, whole_file: bool = False) -> dict:
+    """The end of a JSONL store, split on b"\\n" only. Trailing blank lines are not damage. ``ok`` = the last
+    non-blank record parses. ``repairable`` = the damage is confined to that one final record: every OTHER complete
+    line in the window parses, and the file has at least two records. ``data`` is the file's last bytes; unless
+    ``whole_file``, the first line of the window may be cut mid-record and is ignored."""
+    body = data.rstrip(b"\n")
+    if not body.strip():
+        return {"empty": True, "ok": True, "repairable": False}
     lines = body.split(b"\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
     last = lines[-1]
     try:
         json.loads(last)
-        return {"ok": True, "ends_newline": data.endswith(b"\n")}
+        return {"ok": True, "ends_newline": data.endswith(b"\n"), "repairable": False}
     except ValueError:
         pass
-    prev_ok = True
-    if len(lines) >= 2:
+    complete = lines[:-1] if whole_file else lines[1:-1]
+    bad_before = 0
+    for ln in complete:
+        if not ln.strip():
+            continue
         try:
-            json.loads(lines[-2])
+            json.loads(ln)
         except ValueError:
-            prev_ok = False
-    return {"ok": False, "bad_bytes": len(last), "prev_ok": prev_ok, "ends_newline": data.endswith(b"\n")}
+            bad_before += 1
+    enough = len(lines) >= 2
+    return {
+        "ok": False,
+        "bad_bytes": len(last),
+        "prev_ok": enough and bad_before == 0,
+        "bad_complete_lines": bad_before,
+        "line_count_ge_2": enough,
+        "repairable": enough and bad_before == 0,
+        "ends_newline": data.endswith(b"\n"),
+    }
 
 
 def file_findings(facts: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], now: datetime) -> list[dict]:
-    """``facts`` rows: {path, kind: jsonl|state, size, mtime, tail: tail_state(...), locked: bool, backup: path|None}.
-    A truncated final JSONL line is repairable only when the line before it parses and no process holds the
-    store's lock right now; otherwise it is paged (a middle-of-file corruption is never auto-repaired)."""
+    """``facts`` rows: {path, kind: jsonl|state, size, mtime, tail: tail_state(...), locked: bool, backup: path|None,
+    backup_mtime}. A truncated final JSONL record is a repair candidate only when ``tail.repairable`` (every other
+    complete line in the window parses, at least two records), no process holds the store or its lock, and the file
+    has been quiet for ``quiet_min``. A zero-byte state file is a restore candidate only when it has been empty and
+    unchanged for ``quiet_min``, no lock is held, and the newest valid backup is younger than ``backup_max_age_h``.
+    Both heals stay disabled until an operator-ratified §28.14 amendment names them (config ``heals_enabled``)."""
+    h = cfg["heals"]
+    quiet = float(h["quiet_min"])
     out: list[dict] = []
     for f in facts or []:
         path, kind = str(f["path"]), f.get("kind")
         ln = lane_for(path, cfg) or {}
+        age = _age_min(f.get("mtime"), now)
+        settled = age is not None and age >= quiet
         if kind == "jsonl" and f.get("size") and not (f.get("tail") or {}).get("ok", True):
             t = f["tail"]
-            safe = bool(t.get("prev_ok")) and not f.get("locked")
+            why = (
+                "store or its lock is held"
+                if f.get("locked")
+                else "damage beyond the final record"
+                if not t.get("repairable")
+                else f"written {age:.0f} min ago (< {quiet:.0f})"
+                if not settled
+                else None
+            )
             out.append(
                 finding(
                     "jsonl_truncated_tail",
@@ -348,19 +430,31 @@ def file_findings(facts: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], no
                     since=f.get("mtime"),
                     now=now,
                     severity="P1",
-                    heal="repair_tail" if safe else "page",
+                    heal="page" if why else "repair_tail",
                     lane=ln.get("lane"),
                     evidence={
                         "bad_bytes": t.get("bad_bytes"),
-                        "prev_line_ok": t.get("prev_ok"),
+                        "bad_complete_lines": t.get("bad_complete_lines"),
                         "locked": bool(f.get("locked")),
-                        "why_not_auto": None
-                        if safe
-                        else ("store lock held" if f.get("locked") else "damage beyond the final line"),
+                        "why_not_auto": why,
+                        "mtime": _iso(f["mtime"]) if f.get("mtime") else None,
                     },
                 )
             )
         elif kind == "state" and f.get("size") == 0:
+            bage = _age_min(f.get("backup_mtime"), now)
+            fresh = bage is not None and bage <= float(h["backup_max_age_h"]) * 60
+            why = (
+                "no valid backup found"
+                if not f.get("backup")
+                else f"newest backup is {bage / 60:.0f} h old (> {h['backup_max_age_h']} h)"
+                if not fresh
+                else "file or its lock is held"
+                if f.get("locked")
+                else f"empty for {age:.0f} min only (< {quiet:.0f})"
+                if not settled
+                else None
+            )
             out.append(
                 finding(
                     "zero_byte_state",
@@ -368,11 +462,12 @@ def file_findings(facts: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], no
                     since=f.get("mtime"),
                     now=now,
                     severity="P1",
-                    heal="restore_backup" if f.get("backup") else "page",
+                    heal="page" if why else "restore_backup",
                     lane=ln.get("lane"),
                     evidence={
                         "backup": f.get("backup"),
-                        "why_not_auto": None if f.get("backup") else "no valid backup found",
+                        "why_not_auto": why,
+                        "mtime": _iso(f["mtime"]) if f.get("mtime") else None,
                     },
                 )
             )
@@ -416,6 +511,7 @@ def queue_findings(rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], no
                 finding(
                     "stuck_claim",
                     f"{r['name']}: {stuck} rows processing",
+                    key=str(r["name"]),
                     since=None,
                     now=now,
                     severity="P2",
@@ -457,26 +553,33 @@ def queue_findings(rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], no
     return out
 
 
-def breaker_findings(rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], now: datetime) -> list[dict]:
+def breaker_findings(
+    rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], now: datetime, probes: Optional[Mapping[str, int]] = None
+) -> list[dict]:
+    """One finding per open breaker (the "never probed" fact is evidence on it, not a second alert). Page only: the
+    breaker is a symptom; the lane's own failure is what a fix PR addresses, so it is never sent to the fixer."""
     c = cfg["breakers"]
     out: list[dict] = []
     for r in rows or []:
         opened = r.get("opened_at")
         age = _age_min(opened, now)
         if r.get("released_at") is None and age is not None and age >= float(c["open_hours"]) * 60:
+            lane = str(r["lane_id"])
+            n = None if probes is None else int(probes.get(lane, 0))
             out.append(
                 finding(
                     "breaker_open",
-                    str(r["lane_id"]),
+                    lane,
                     since=opened,
                     now=now,
                     severity="P2",
-                    heal="code",
-                    lane=str(r["lane_id"]),
+                    heal="page",
+                    lane=lane,
                     evidence={
                         "consecutive": r.get("consecutive"),
-                        "last_error": r.get("last_error"),
-                        "release_cmd": c["release_cmd"].replace("{lane}", str(r["lane_id"])),
+                        "probes_since_open": n,
+                        "never_probed": n == 0,
+                        "release_cmd": c["release_cmd"].replace("{lane}", lane),
                     },
                 )
             )
@@ -573,6 +676,7 @@ def lane_findings(rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], now
             finding(
                 "registry_drift",
                 f"{len(drift)} ACTIVE lanes with a missing signal",
+                key="registry_drift",
                 since=None,
                 now=now,
                 severity="P3",
@@ -585,6 +689,7 @@ def lane_findings(rows: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], now
             finding(
                 "lane_silent",
                 f"{len(silent)} unwatched lanes",
+                key="unwatched_lanes",
                 since=None,
                 now=now,
                 severity="P3",
@@ -614,36 +719,46 @@ def render(findings: list[dict], when: str) -> str:
 
 
 def heal_plan(f: Mapping[str, Any], cfg: Mapping[str, Any]) -> Optional[dict]:
-    """The deterministic heal for a finding, as a plan (the monitor executes it only with heals_enabled + --apply)."""
+    """The deterministic heal for a finding, as a plan; the monitor re-checks every condition at act time and runs it
+    only with ``heals_enabled`` and ``--apply``. repair_tail and restore_backup additionally need the operator's
+    ratified §28.14 amendment naming them before heals_enabled may be set (config ``_heals_why``)."""
     arch = cfg["heals"]["archive_dir"]
+    ev = f.get("evidence") or {}
     if f["heal"] == "repair_tail":
-        return {"action": "repair_tail", "path": f["item"], "archive_dir": arch, "drop": "final unparseable line only"}
-    if f["heal"] == "restart":
-        return {"action": "restart", "unit": f["item"], "path": f["item"]}
+        return {
+            "action": "repair_tail",
+            "path": f["item"],
+            "archive_dir": arch,
+            "mtime": ev.get("mtime"),
+            "drop": "final unparseable record only",
+        }
     if f["heal"] == "restore_backup":
-        return {"action": "restore_backup", "path": f["item"], "from": f["evidence"]["backup"], "archive_dir": arch}
+        return {
+            "action": "restore_backup",
+            "path": f["item"],
+            "from": ev["backup"],
+            "archive_dir": arch,
+            "mtime": ev.get("mtime"),
+        }
     if f["heal"] == "reconcile_lock":
-        return {"action": "reconcile_lock", "path": f["item"], "pid": f["evidence"]["pid"], "archive_dir": arch}
+        return {"action": "reconcile_lock", "path": f["item"], "pid": ev["pid"], "archive_dir": arch}
     return None
 
 
+def truncate_offset(data: bytes) -> Optional[int]:
+    """Byte length to keep: through the last newline that ends a parseable record, when the damage is only the
+    final record and every other line parses (``data`` is the WHOLE file). None = not safe or nothing to do."""
+    st = tail_state(data, whole_file=True)
+    if st.get("ok") or not st.get("repairable"):
+        return None
+    cut = data.rstrip(b"\n").rfind(b"\n")
+    return cut + 1 if cut >= 0 else None
+
+
 def repaired_bytes(data: bytes) -> Optional[bytes]:
-    """The store with only its final unparseable line removed, or None when that would not be safe (the line
-    before it does not parse, or the file is fine)."""
-    body = data[:-1] if data.endswith(b"\n") else data
-    lines = body.split(b"\n")
-    try:
-        json.loads(lines[-1])
-        return None
-    except ValueError:
-        pass
-    if len(lines) < 2:
-        return b""
-    try:
-        json.loads(lines[-2])
-    except ValueError:
-        return None
-    return b"\n".join(lines[:-1]) + b"\n"
+    """The store with only its final unparseable record removed (see ``truncate_offset``), or None."""
+    off = truncate_offset(data)
+    return None if off is None else data[:off]
 
 
 def signature(f: Mapping[str, Any]) -> str:
@@ -654,14 +769,27 @@ def signature(f: Mapping[str, Any]) -> str:
 
 def fixer_defect(f: Mapping[str, Any], now: datetime, *, receipt: str) -> Optional[dict]:
     """A ``N8nCodeDefect@v1`` hand-off record for ``scripts/self_heal_fixer.py`` (store
-    ``data/self_heal/fixer_defects.jsonl``, the same contract the n8n diagnoser publishes). Only heal == "code" with
-    a known lane; the fixer applies its own refusal patterns (broker, order, stop, execution …) on top."""
+    ``data/self_heal/fixer_defects.jsonl``). Contract with the fixer's train intake (#2129 ``train_incidents``): the
+    record's TOP-LEVEL ``receipt`` is read as the failed run's receipt, so the evidence goes there
+    (``stderr_tail`` = what the model reads), not only under ``code_defect.evidence``. Only heal == "code" with a known
+    lane; the fixer applies its own refusal patterns on top."""
     if f["heal"] != "code" or not f.get("lane"):
         return None
     sig = signature(f)
+    ev = dict(f.get("evidence") or {})
+    tail = ev.get("journal_tail") or json.dumps({k: v for k, v in ev.items() if k != "journal_tail"}, default=str)
     return {
         "at": _iso(now),
         "source": "stuck-work-monitor",
+        "receipt": {
+            "schema": "StuckWorkEvidence@v1",
+            "lane_id": f["lane"],
+            "status": f["class"],
+            "stderr_tail": f"{f['class']} {f['item']}: " + str(tail)[-3500:],
+            "argv": [ev["command"]] if ev.get("command") else [],
+            "monitor_receipt": receipt,
+            "finding": dict(f),
+        },
         "code_defect": {
             "schema": SCHEMA_DEFECT,
             "consumer": DEFECT_CONSUMER,
@@ -673,7 +801,7 @@ def fixer_defect(f: Mapping[str, Any], now: datetime, *, receipt: str) -> Option
             "episode": 1,
             "failure_kind": f["class"],
             "failure_class": "code_error",
-            "evidence": {"receipt": receipt, "finding": dict(f), "incident_key": f["dedupe_key"]},
+            "evidence": {"receipt": receipt, "incident_key": f["dedupe_key"]},
         },
     }
 
@@ -688,24 +816,21 @@ def stale_release_findings(
 ) -> list[dict]:
     """A long-lived unit resolves ``.../portfolio-server/CURRENT`` once at start and keeps that release after every
     promote (2026-10-31: tradeai-ops-applier served f7c1e96cb from 10-22 and refused every newer Ops Controls kind as
-    KIND_UNKNOWN). ``units`` rows: {unit, pid, cwd (resolved)}. Flagged when the cwd is a release directory other
-    than CURRENT's target for more than ``grace_min`` after the promote. Heal = restart only for units on
-    ``restart_allowlist`` and never for a name matching ``never_restart_globs`` (portfolio-server, broker and
-    execution units, AGENTS.md §23.14)."""
+    KIND_UNKNOWN). ``units`` rows: {unit, pid, cwd (resolved)}. Flagged when the cwd is inside a release directory
+    other than CURRENT's target (a cwd INSIDE the current release is current) for more than ``grace_min`` after the
+    promote. PAGE ONLY: a restart ends a run, and AGENTS.md §28.1 names the only four automations that may — the real
+    fix is the deploy script restarting every CURRENT-bound unit after a promote."""
     c = cfg["stale_release"]
-    releases = os.path.expanduser(str(c["releases_dir"]))
+    releases = os.path.expanduser(str(c["releases_dir"])).rstrip("/")
     if not current or promoted_at is None or (now - promoted_at).total_seconds() / 60.0 < float(c["grace_min"]):
         return []
-    allow = set(c.get("restart_allowlist") or [])
-    never = [str(g) for g in c.get("never_restart_globs") or []]
+    cur = current.rstrip("/")
     out: list[dict] = []
     for u in units or []:
-        cwd, name = str(u.get("cwd") or ""), str(u.get("unit") or "")
-        if not cwd.startswith(releases.rstrip("/") + "/") or cwd == current:
+        cwd, name = str(u.get("cwd") or "").rstrip("/"), str(u.get("unit") or "")
+        if not cwd.startswith(releases + "/") or cwd == cur or cwd.startswith(cur + "/"):
             continue
-        blocked = any(fnmatch(name, g) for g in never)
-        heal = "restart" if name in allow and not blocked else "page"
-        ln = lane_for(name, cfg) or {}
+        release = cwd[len(releases) + 1 :].split("/", 1)[0]
         out.append(
             finding(
                 "stale_release",
@@ -713,16 +838,16 @@ def stale_release_findings(
                 since=promoted_at,
                 now=now,
                 severity="P2",
-                heal=heal,
-                lane=ln.get("lane"),
+                heal="page",
+                lane=(lane_for(name, cfg) or {}).get("lane"),
                 evidence={
                     "unit": name,
                     "pid": u.get("pid"),
-                    "serving": cwd.rsplit("/", 1)[-1],
-                    "current": current.rsplit("/", 1)[-1],
-                    "why_not_auto": None
-                    if heal == "restart"
-                    else ("never restarted by policy (§23.14)" if blocked else "not on restart_allowlist"),
+                    "serving": release,
+                    "current": cur.rsplit("/", 1)[-1],
+                    "never_auto_act": never_act(name, cfg),
+                    "why_not_auto": "a restart ends a run (§28.1); restart it after review, and add "
+                    "it to the deploy script's CURRENT-bound unit list",
                 },
             )
         )
@@ -764,6 +889,7 @@ def unit_lint_findings(units: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any
             finding(
                 "unit_no_timeout",
                 f"{len(lint)} oneshot units without a start timeout",
+                key="oneshot_lint",
                 since=None,
                 now=now,
                 severity="P3",
@@ -794,6 +920,7 @@ def proc_extra_findings(procs: Mapping[int, Mapping[str, Any]], cfg: Mapping[str
                 finding(
                     "orphan_runaway",
                     f"pid {pid}",
+                    key=cmd_key(cmd),
                     since=p.get("started"),
                     now=now,
                     severity="P2",
@@ -816,6 +943,7 @@ def proc_extra_findings(procs: Mapping[int, Mapping[str, Any]], cfg: Mapping[str
                 finding(
                     "cpu_spin",
                     f"pid {pid}",
+                    key=cmd_key(cmd),
                     since=p.get("started"),
                     now=now,
                     severity="P2",
@@ -830,6 +958,7 @@ def proc_extra_findings(procs: Mapping[int, Mapping[str, Any]], cfg: Mapping[str
                 finding(
                     "deleted_open_space",
                     f"pid {pid}",
+                    key=cmd_key(cmd),
                     since=p.get("started"),
                     now=now,
                     severity="P2",
@@ -848,6 +977,7 @@ def proc_extra_findings(procs: Mapping[int, Mapping[str, Any]], cfg: Mapping[str
                 finding(
                     "zombie",
                     f"parent pid {parent}",
+                    key="zombie-parent:" + cmd_key(str((procs.get(parent) or {}).get("args") or "")),
                     since=None,
                     now=now,
                     severity="P3",
@@ -864,32 +994,16 @@ def proc_extra_findings(procs: Mapping[int, Mapping[str, Any]], cfg: Mapping[str
 
 # ---------------------------------------------------------------- sweep classes 9, 10, 18 (n8n ledger)
 def ledger_findings(
-    probes: Mapping[str, int],
     poison: Iterable[Mapping[str, Any]],
     unverifiable: Iterable[Mapping[str, Any]],
     cfg: Mapping[str, Any],
     now: datetime,
-    open_breakers: Iterable[str],
 ) -> list[dict]:
-    """``probes``: lane -> runs started after its breaker opened (0 = nobody ever retried: class 9). ``poison``:
-    {lane_id, slot_key, attempts} dead letters of one item over and over (class 10). ``unverifiable``: {lane_id,
-    count} runs that exited 0 with reason ``output_unverifiable`` — a verifier bug, not a lane failure (class 18)."""
+    """``poison``: {lane_id, slot_key, attempts} dead letters of one item over and over (class 10). ``unverifiable``:
+    {lane_id, count} runs that exited 0 with reason ``output_unverifiable`` — a verifier bug, not a lane failure
+    (class 18). (Breakers never probed: evidence on ``breaker_open``, not a separate alert.)"""
     c = cfg["breakers"]
     out: list[dict] = []
-    for lane in sorted(open_breakers):
-        if int(probes.get(lane, 0)) == 0:
-            out.append(
-                finding(
-                    "breaker_no_probe",
-                    lane,
-                    since=None,
-                    now=now,
-                    severity="P2",
-                    heal="page",
-                    lane=lane,
-                    evidence={"probes_since_open": 0, "why": "breaker never half-open probed"},
-                )
-            )
     for row in poison or []:
         if int(row.get("attempts") or 0) >= int(c["poison_min"]):
             out.append(
@@ -978,6 +1092,7 @@ def claim_findings(claims: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], 
         finding(
             "stuck_claim",
             f"{len(stale)} claim-board claims",
+            key="claim_board",
             since=None,
             now=now,
             severity="P3",
