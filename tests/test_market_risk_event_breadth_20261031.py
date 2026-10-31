@@ -121,10 +121,13 @@ def test_reader_failure_is_unknown():
 
 
 def test_ai_sensitivity_alone_sets_event_stress():
-    now = et(2026, 11, 10, 9)
+    # Not the week of 11-11: Veterans Day is an NYSE session, but the no-calendar-library fallback table (CI) treats it
+    # as a holiday, so a window spanning it differs by backend. 12-01/12-02 are sessions under every backend and sit
+    # outside an options-expiration week (which would lift concentration alone past warn).
+    now = et(2026, 12, 1, 9)
     rows = [
-        {"symbol": "NVDA", "earnings_date": "2026-11-10", "timing": "AMC"},
-        {"symbol": "AMD", "earnings_date": "2026-11-11", "timing": "AMC"},
+        {"symbol": "NVDA", "earnings_date": "2026-12-01", "timing": "AMC"},
+        {"symbol": "AMD", "earnings_date": "2026-12-02", "timing": "AMC"},
     ]
     w = {"NVDA": 0.12, "AMD": 0.04}
     conc = event_calendar.evaluate_concentration(now, rows, [], w, POLICY["event"])
