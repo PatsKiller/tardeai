@@ -9,6 +9,8 @@ fell 1.6%). An opening-shock verdict in ``ctx.extras["opening_shock"]`` of ``pan
 
 from __future__ import annotations
 
+import sys
+
 from datetime import date, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -39,13 +41,23 @@ def _gap_moves(ctx: EvalContext, cfg: dict[str, Any], proxies: list[str]) -> dic
         prior = [b for b in bars.get(s, []) if date.fromisoformat(str(b["date"])) < today]
         if len(prior) < n_atr + 1:
             continue
-        prev = float(prior[-1]["close"])
+        try:
+            prev = float(prior[-1]["close"])
+            gap = 100.0 * (float(o["open"]) - prev) / prev if prev else None
+        except (TypeError, ValueError, KeyError):
+            continue
         trs = []
         for a, b in zip(prior[-n_atr - 1 : -1], prior[-n_atr:]):
-            hi, lo, pc = float(b["high"]), float(b["low"]), float(a["close"])
+            # quote-derived bars carry a close but no high/low: skip them for the ATR rather than blank the whole
+            # category (review of #2383, N4)
+            try:
+                hi, lo, pc = float(b["high"]), float(b["low"]), float(a["close"])
+            except (TypeError, ValueError, KeyError):
+                continue
             trs.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+        if len(trs) < max(3, n_atr // 2):
+            continue  # too few full OHLC bars for an honest ATR
         atr_pct = 100.0 * (sum(trs) / len(trs)) / prev if prev else None
-        gap = 100.0 * (float(o["open"]) - prev) / prev if prev else None
         if gap is None or not atr_pct:
             continue
         out[s] = {"gap_pct": gap, "gap_atr": gap / atr_pct, "as_of": o["as_of"], "prev_close": prev}
@@ -79,7 +91,11 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     latest = _latest(ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now))
     shock = (ctx.extras or {}).get("opening_shock") or {}
     moves = {s: _move(latest[s]) for s in proxies if s in latest and _move(latest[s]) is not None}
-    gaps = _gap_moves(ctx, cfg, proxies)
+    try:
+        gaps = _gap_moves(ctx, cfg, proxies)
+    except Exception as exc:  # noqa: BLE001 — the gap proxy failing must not blank the live-quote evidence
+        print(f"market_risk: extended_hours gap proxy failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        gaps = {}
     if not moves and not shock.get("shock") and not gaps:
         return unknown(CATEGORY, ctx.now, "no extended-session quotes and no opening print for the index proxies")
     warn, stress = float(cfg.get("warn_pct", -0.75)), float(cfg.get("stress_pct", -1.5))

@@ -112,6 +112,31 @@ def _raw_tier(score: float | None, eff: list[dict], policy: dict) -> tuple[str, 
     return tier, why
 
 
+def _green_guard(
+    raw: str, why: dict, eff: list[dict], coverage: float, prior: dict | None, now: datetime, policy: dict
+) -> tuple[str, str | None]:
+    """GREEN needs enough measured evidence and a clean recent past (review of #2383, N2): at least
+    ``green.min_coverage`` of the category weight measured, and no STRESS observation in the last
+    ``green.no_stress_hours`` (carried forward between evaluations as ``hysteresis.last_stress_at``)."""
+    g = policy["tiers"]["green"]
+    hours = float(g.get("no_stress_hours", 24))
+    recent = [e for e in eff if e["obs"].state == "STRESS" and e["age_hours"] is not None and e["age_hours"] < hours]
+    prev = ((prior or {}).get("hysteresis") or {}).get("last_stress_at")
+    last_stress = now.isoformat() if recent else prev
+    if raw != "GREEN":
+        return raw, last_stress
+    blockers = []
+    if coverage < float(g.get("min_coverage", 0.7)):
+        blockers.append(f"coverage {coverage:.2f} below {float(g.get('min_coverage', 0.7)):.2f}")
+    ls = _parse(last_stress) if last_stress else None
+    if ls is not None and (now - ls).total_seconds() < hours * 3600:
+        blockers.append(f"STRESS within {hours:g}h")
+    if blockers:
+        why["green_blocked"] = blockers
+        return "NONE", last_stress
+    return raw, last_stress
+
+
 def _session_date(now: datetime) -> str:
     return now.astimezone(ET).date().isoformat()
 
@@ -134,7 +159,9 @@ def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: 
     }
     if raw == cur:
         return cur, state
-    green_move = "GREEN" in (raw, cur)
+    # Only NONE <-> GREEN moves take the two-evaluation path. BLUE-or-above falling to GREEN is a de-escalation and
+    # goes through the closed-session count below (review of #2383, N2: RED reached GREEN in two evaluations).
+    green_move = "GREEN" in (raw, cur) and cur in ("GREEN", "NONE")
     if SEVERITY[raw] > SEVERITY[cur] or green_move:
         if raw == "RED" and why.get("shock"):
             state["immediate"] = "extended_hours shock"
@@ -243,10 +270,13 @@ def compose(
     known_w = sum(e["weight"] for e in known)
     points, score = _composite(known, known_w, policy)
     raw, why = _raw_tier(score, eff, policy)
+    coverage = known_w / total_w
+    raw, last_stress = _green_guard(raw, why, eff, coverage, prior, now, policy)
     tier, hyst = _hysteresis(raw, why, prior, now, policy)
     hyst.update(
         {
-            "coverage": round(known_w / total_w, 4),
+            "last_stress_at": last_stress,
+            "coverage": round(coverage, 4),
             "points": {k: round(v, 4) for k, v in points.items()},
             "decay": {e["obs"].category: e["decay"] for e in eff},
             "age_hours": {
@@ -273,6 +303,24 @@ def _lift(tier: str) -> str:
     return order[min(SEVERITY[tier] + 1, len(order) - 1)]
 
 
+def budget_uplift_breaches(portfolio: c.PortfolioContext, cfg: dict) -> list[dict]:
+    """Breaches that may lift the tier (review of #2383, N1). A whole-book breach counts at its ratio. An account
+    breach counts at ``1 + (ratio - 1) * book_share``, so a small single-name account over its sector or style limit
+    (ratio 3.2 on 5% of the book -> 1.11) never lifts the tier on its own."""
+    floor = float(cfg["budget_ratio_uplift"])
+    out = []
+    for b in portfolio.budget_breaches:
+        ratio = float(b.get("ratio") or 0)
+        if b.get("scope", "book") != "book":
+            share = b.get("book_share")
+            if share is None:
+                continue  # an account breach with no known weight never lifts the tier
+            ratio = 1.0 + (ratio - 1.0) * float(share)
+        if ratio >= floor:
+            out.append(b)
+    return out
+
+
 def apply_uplift(assessment: c.RiskAssessment, portfolio: c.PortfolioContext | None, policy: dict) -> c.RiskAssessment:
     """Exposure-aware severity: lift the tier at most ``max_tiers`` (one) for vulnerability or budget breach."""
     assessment.portfolio = portfolio
@@ -287,15 +335,16 @@ def apply_uplift(assessment: c.RiskAssessment, portfolio: c.PortfolioContext | N
         for rule in cfg["vulnerability_rules"]:
             if base == rule["from"] and float(v) >= float(rule["min_vulnerability"]):
                 target = rule["to"]
-                reasons.append(f"portfolio vulnerability {v:.0f} >= {rule['min_vulnerability']}")
+                reasons.append("portfolio vulnerability high")
                 break
-    ratio_floor = float(cfg["budget_ratio_uplift"])
-    hard = [b for b in portfolio.budget_breaches if float(b.get("ratio") or 0) >= ratio_floor]
-    if hard and base in cfg["budget_uplift_from"]:
+    hard = budget_uplift_breaches(portfolio, cfg)
+    min_v = float(cfg.get("budget_uplift_min_vulnerability") or 0)
+    if hard and base in cfg["budget_uplift_from"] and v is not None and float(v) >= min_v:
         lifted = _lift(base)
         if SEVERITY[lifted] > SEVERITY[target]:
             target = lifted
-        reasons.append("; ".join(f"{b.get('budget')} at {float(b['ratio']):.2f}x its limit" for b in hard))
+        # names only — no book percentages or ratios on a card (review of #2383, M3)
+        reasons.append("budget breach: " + ", ".join(sorted({str(b.get("budget")) for b in hard})))
     cap = SEVERITY[base] + int(cfg["max_tiers"])
     if SEVERITY[target] > cap:
         target = c.TIERS[cap]
@@ -307,7 +356,7 @@ def apply_uplift(assessment: c.RiskAssessment, portfolio: c.PortfolioContext | N
             "market_score": assessment.market_score,
             "vulnerability": v,
             "reasons": reasons,
-            "note": f"Market {base} {_fmt(assessment.market_score)} -> {target} after " + "; ".join(reasons),
+            "note": f"Market {base} -> {target} after " + "; ".join(reasons),
         }
     c.assert_no_behavior_fields(assessment.to_dict())
     return assessment

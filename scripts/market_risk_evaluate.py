@@ -72,15 +72,21 @@ def persist(doc: dict, now: datetime) -> str:
 
 
 def session_of(now: datetime) -> str:
+    """NYSE session of ``now``: weekends and exchange holidays are ``closed``, and an early-close day's regular
+    session ends at its early close (sessions.py; review of #2383)."""
+    from scripts.lib.market_risk import sessions
+
     et = now.astimezone(ET)
-    if et.weekday() >= 5:
+    if not sessions.is_trading_day(et.date()):
         return "closed"
     hm = et.hour * 60 + et.minute
+    close = sessions.close_time(et.date())
+    close_m = close.hour * 60 + close.minute
     if 4 * 60 <= hm < 9 * 60 + 30:
         return "premarket"
-    if 9 * 60 + 30 <= hm < 16 * 60:
+    if 9 * 60 + 30 <= hm < close_m:
         return "regular"
-    if 16 * 60 <= hm < 20 * 60:
+    if close_m <= hm < 20 * 60:
         return "afterhours"
     return "closed"
 
@@ -139,8 +145,6 @@ def run_cycle(
 
     a = evaluate(now, reader, policy, prior, portfolio)
     doc = a.to_dict()
-    if apply and on_assessed is not None:
-        on_assessed(doc)
     real_store = episodes_path or escalation.store_path()
     real_ledger = ledger_path or alerts.sent_ledger_path()
     store, ledger, tmpdir = real_store, real_ledger, None
@@ -153,29 +157,49 @@ def run_cycle(
             if src.exists():
                 shutil.copy2(src, dst)
     try:
-        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model)
+        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed)
     finally:
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model) -> dict[str, Any]:
+def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed=None) -> dict[str, Any]:
+    """Crash-safe order (review of #2383, B5d):
+
+    1. ``observe`` folds the evaluation into the episode store;
+    2. every card this cycle owes (the transition card and any due repeat) is queued in the outbox (``outbox_put``);
+    3. only then are the prior and the snapshot persisted (``on_assessed``) — a crash before this point leaves the
+       prior unpersisted, so the next cycle recomputes the same transition and queues the same deterministic key;
+    4. the outbox is drained: pending and stale-claimed cards are sent, and sent cards are recorded in the episode
+       store idempotently (``record_send(key=...)``), so a crash at any step delays a card by one cycle at most and
+       never loses or wedges it. A crash between the transport accepting a card and ``settle`` can send it twice;
+       at-least-once is the chosen trade for a RED alarm."""
     from scripts.lib.market_risk import alerts, escalation
 
     esc_cfg = policy.get("escalation") or {}
+    ttl = float(esc_cfg.get("claim_ttl_min") or 10)
     out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
     ep = escalation.observe(doc, now=now, policy=policy, path=store)
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
-    pending: list[tuple[str, dict, str, str | None]] = []
     intent = alerts.intent_for(doc, prior, policy)
     if intent:
-        if out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
-            intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # once per episode transition
-        pending.append((alerts.render(doc), intent, "initial", out["episode_id"]))
+        if out["episode_id"]:
+            intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # deterministic for this episode
+        alerts.outbox_put(
+            {
+                "key": intent["dedupe_key"],
+                "text": alerts.render(doc),
+                "intent": intent,
+                "kind": "initial",
+                "episode_id": out["episode_id"],
+            },
+            now=now,
+            path=ledger,
+        )
     for rep in escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
-            continue  # the initial card of this episode is already in this cycle
+            continue  # the initial card of this episode is already queued this cycle
         rintent = {
             "priority": str(esc_cfg.get("repeat_priority") or "P1"),
             "dedupe_minutes": int(esc_cfg.get("repeat_dedupe_minutes") or 0),
@@ -183,19 +207,54 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model) -> dict
             "tier": rep["tier"],
             "transition": rep["kind"],
         }
-        pending.append((alerts.render(doc, repeat=rep), rintent, rep["kind"], rep["episode_id"]))
-    for text, it, kind, ep_id in pending:
-        cur = _curate(text, doc, call_model=call_model, live=apply)
-        res = alerts.deliver(cur["text"], it, policy, dry_run=not apply, now=now, ledger=ledger)
-        res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"])
-        if ep_id and not res.get("deduped"):
+        alerts.outbox_put(
+            {
+                "key": rintent["dedupe_key"],
+                "text": alerts.render(doc, repeat=rep),
+                "intent": rintent,
+                "kind": rep["kind"],
+                "episode_id": rep["episode_id"],
+            },
+            now=now,
+            path=ledger,
+        )
+    if apply and on_assessed is not None:
+        on_assessed(doc)
+    for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):
+        key, ep_id, kind = ent["key"], ent.get("episode_id"), ent.get("kind") or "initial"
+        if ent.get("status") == "sent":  # sent before a crash, never recorded: record it now, idempotently
+            if ep_id:
+                escalation.record_send(
+                    ep_id,
+                    now=now,
+                    kind=kind,
+                    ok=True,
+                    path=store,
+                    policy_escalation=esc_cfg,
+                    key=key,
+                    detail="recorded after restart",
+                )
+            alerts.mark_recorded(key, path=ledger)
+            continue
+        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+        res = alerts.deliver(
+            cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
+        )
+        res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"], key=key)
+        if not apply and not res.get("deduped"):
+            alerts.settle(key, True, path=ledger)  # scratch ledger only: a dry run behaves as if delivered
+        if ep_id and not res.get("deduped") and (res.get("sent") or not apply):
+            escalation.record_send(ep_id, now=now, kind=kind, ok=True, path=store, policy_escalation=esc_cfg, key=key)
+            alerts.mark_recorded(key, path=ledger)
+        elif ep_id and apply and not res.get("deduped") and not res.get("sent"):
             escalation.record_send(
                 ep_id,
                 now=now,
                 kind=kind,
-                ok=bool(res.get("sent")) or not apply,
+                ok=False,
                 path=store,
                 policy_escalation=esc_cfg,
+                detail=str(res.get("error") or "")[:200],
             )
         out["sends"].append(res)
     out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)

@@ -92,7 +92,10 @@ def build_portfolio_context(
     breaches = rb.breaches(book, rb.limits_for(policy, None), policy, scope="book")
     for acct in sorted({str(p.get("account_key") or "") for p in positions} - {""}):
         scoped = [p for p in positions if p.get("account_key") == acct]
-        breaches += rb.breaches(rb.measure(scoped, **kw), rb.limits_for(policy, acct), policy, scope=acct)
+        share = sum(float(p.get("market_value") or 0) for p in scoped) / total
+        for b in rb.breaches(rb.measure(scoped, **kw), rb.limits_for(policy, acct), policy, scope=acct):
+            # an account's breach matters to the book in proportion to the account's share of it (review #2383, N1)
+            breaches.append({**b, "book_share": round(share, 4)})
 
     # --- components -------------------------------------------------------------------------------------------
     points: dict[str, float] = {}

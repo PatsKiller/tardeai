@@ -291,15 +291,21 @@ tiers:
   # Shock: an extended-hours STRESS at or above shock_min_score while the market is already ORANGE-or-worse makes
   # RED on that one evaluation (the 10-29 18:15 ET case: NQ futures -1.5%..-2% after AMZN/INTC prints).
   red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
-  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0}
+  # GREEN also needs >= 70% of the category weight measured and no STRESS observation in the last 24 hours; a move to
+  # GREEN from BLUE-or-above is a de-escalation and waits for the closed-session count (review of #2383, N2).
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0, min_coverage: 0.7, no_stress_hours: 24}
   # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
   uplift:
     max_tiers: 1
     vulnerability_rules:
       - {from: ORANGE, min_vulnerability: 70, to: RED}
       - {from: YELLOW, min_vulnerability: 80, to: ORANGE}
-    budget_ratio_uplift: 1.25      # any risk-budget breach at >= 1.25x its limit lifts one tier
+    # A breach lifts one tier only at >= 1.25x its limit. A whole-book breach counts at its ratio; an account breach
+    # counts at 1 + (ratio - 1) x the account's share of the book, so a small single-name account never lifts the tier
+    # alone (review of #2383, N1). The book must also be at least moderately vulnerable.
+    budget_ratio_uplift: 1.25
     budget_uplift_from: [YELLOW, ORANGE]
+    budget_uplift_min_vulnerability: 50
 
 hysteresis:
   escalate_consecutive: 2          # evaluations in a row at the higher tier before it is adopted
@@ -349,6 +355,9 @@ escalation:
   resolve_after_sessions_below: 3        # below YELLOW for 3 closed NYSE trading sessions (sessions.py) -> RESOLVED
   resolve_below_tier: YELLOW
   stalled_after_min: 75                  # OPEN RED with no repeat receipt this long -> health_tick pages
+  # A card claimed but never settled (a crash between claim and send) is retried after this long; the outbox keeps
+  # its text, so a crash delays a card by one cycle and never loses or wedges it (review of #2383, B5d).
+  claim_ttl_min: 10
   repeat_priority: P1                    # repeats of an open ORANGE/RED episode (were hardcoded in the evaluator)
   repeat_dedupe_minutes: 0               # repeat keys are unique per episode and repeat number
 
