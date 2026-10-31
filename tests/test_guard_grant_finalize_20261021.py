@@ -216,7 +216,10 @@ def test_archive_is_idempotent(adir):
 
 
 def test_crash_between_append_and_ledger_rewrite_recovers_without_duplicates(adir, tmp_path):
-    now = int(time.time())
+    # Seed an hour in the past: the archive subprocess and the recovery call read the real clock, and with rows seeded
+    # at the current second the 90-day boundary row became due when the clock ticked between them, so the recovery
+    # appended it (appended == 1; flaked ~1 in 15). An hour back, every closed row is already due for both calls.
+    now = int(time.time()) - 3600
     _seed(adir, now)
     before = (adir / "grants.json").read_bytes()
     env = {
