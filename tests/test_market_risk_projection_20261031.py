@@ -3,7 +3,7 @@
 Pins: without an engine snapshot the projection says not_evaluated / NOT_EVALUATED and never infers a tier from the one
 live source (the P0 options-flow block); with a MarketRiskSnapshot@v1 it passes tier, score, five contributors, episode
 and book through and marks staleness by age; the Home banner rule is evaluated-and-ORANGE/RED only; acknowledgment is
-refused honestly until the episodes store exists. Hermetic: dicts only.
+written to the episode ledger and refused when no episode is open. Hermetic: dicts only.
 """
 
 from __future__ import annotations
@@ -79,13 +79,20 @@ def test_green_and_yellow_show_no_banner():
     assert mp.banner_visible(mp.build(dict(SNAP, tier="ORANGE"), None, now=NOW)) is True
 
 
-def test_ack_is_refused_honestly_until_the_store_exists():
-    code, body = mp.ack_outcome(mp.build(None, None, now=NOW), {"episode_id": "EP-1"})
-    assert code == 409 and "no open" in body["error"] and "P3-T7" in body["detail"]
-    code, body = mp.ack_outcome(mp.build(SNAP, None, now=NOW), {"episode_id": "EP-9"})
+def test_ack_writes_the_episode_ledger_and_refuses_without_an_open_episode(tmp_path):
+    from lib.market_risk import escalation as esc
+
+    store = tmp_path / "episodes.json"
+    code, body = mp.ack_outcome(mp.build(None, None, now=NOW), {"episode_id": "EP-1"}, actor="tailnet:op", path=store)
+    assert code == 409 and "no open" in body["error"]
+    pol = {"escalation": {"opens_at": ["ORANGE", "RED"]}}
+    ep = esc.observe({"tier": "RED", "score": 83, "observations": []}, now=NOW, policy=pol, path=store)["episode"]
+    code, body = mp.ack_outcome(mp.build(SNAP, None, now=NOW), {"episode_id": "EP-9"}, actor="tailnet:op", path=store)
     assert code == 409 and "EP-9" in body["error"]
-    code, body = mp.ack_outcome(mp.build(SNAP, None, now=NOW), {"episode_id": "EP-1"})
-    assert code == 501 and body["ok"] is False and body["episode_id"] == "EP-1"
+    code, body = mp.ack_outcome(mp.build(None, None, now=NOW), {"episode_id": ep["id"]}, actor="", path=store)
+    assert code == 403
+    code, body = mp.ack_outcome(mp.build(None, None, now=NOW, episode=ep), {}, actor="tailnet:op", path=store, now=NOW)
+    assert code == 200 and body["episode"]["status"] == "ACKED" and body["episode"]["acknowledged_by"] == "tailnet:op"
 
 
 # ── CIO wiring (operator 2026-10-31: "The CIO agent needs to know about everything, including this market information") ──
