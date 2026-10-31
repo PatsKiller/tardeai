@@ -72,9 +72,9 @@ def test_streak_threshold_reset_receipt_and_p2(tmp_path, sent):
     assert q.save() == []
     assert sent == []  # the lane never sends; the incident fan-in carries the P2
     findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
-    assert note == "ok:held=1" and [f["item"] for f in findings] == ["cio-ask-lifecycle:thr_a"]
+    assert note == "ok:held=1" and [f["item"] for f in findings] == ["cio-ask-lifecycle:thr_a@20261031T1500Z"]
     assert findings[0]["source"] == "poison_quarantine" and findings[0]["severity"] == CFG["alert_priority"] == "P2"
-    assert "release --lane cio-ask-lifecycle --item thr_a" in findings[0]["detail"]
+    assert findings[0]["detail"].startswith("scripts/poison_quarantine.py release --key cio-ask-lifecycle:thr_a ")
     rec = [json.loads(x) for x in (tmp_path / CFG["receipts_rel"]).read_text().splitlines()]
     assert rec[0]["item"] == "thr_a" and rec[0]["reason"] == DET
     assert _q(tmp_path).is_quarantined("thr_a") and not _q(tmp_path).is_quarantined("thr_b")
@@ -140,8 +140,18 @@ def test_expiry_rechecks_once(tmp_path, sent):
     assert "thr_a" not in _q(tmp_path, now=later).doc["quarantined"]
 
 
+def _cli():
+    # By file path: in one process with the 7.0.0 policy test, `import poison_quarantine` resolves to scripts/lib.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("poison_quarantine_cli", ROOT / "scripts" / "poison_quarantine.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_release_cli(tmp_path, monkeypatch, sent):
-    import poison_quarantine as CLI
+    CLI = _cli()
 
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     monkeypatch.setattr(PQ, "load_config", lambda path=None: {**CFG, "enabled": True})
@@ -190,8 +200,11 @@ def test_held_findings_source(tmp_path):
     (d / "lane-b.json").write_text("{half")
     (d / "lane-a.json.lock").write_text("")
     findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
-    assert note == "ok:held=1"
-    assert [(f["item"], f["severity"]) for f in findings] == [("lane-a:x", "P2"), ("lane-b:store_corrupt", "P2")]
+    assert note == "ok:held=1,corrupt=1"
+    assert [(f["item"], f["severity"]) for f in findings] == [
+        ("lane-a:x@20261031T1000Z", "P2"),
+        ("lane-b:store_corrupt", "P2"),
+    ]
     assert findings[0]["detected_at"] == "2026-10-31T10:00:00+00:00" and "streak" not in findings[0]["detail"]
 
 
@@ -213,7 +226,7 @@ def test_lifecycle_quarantines_the_poison_thread_and_runs_on(tmp_path, monkeypat
     assert results[3].get("quarantined_skipped") == [H.TID] and results[3]["ok"] is True  # then skipped
     assert sent == []
     findings, _ = PQ.held_findings(state, CFG)
-    assert [f["item"] for f in findings] == [f"cio-ask-lifecycle:{H.TID}"]
+    assert [f["item"] for f in findings] == [f"cio-ask-lifecycle:{H.TID}@20261026T1600Z"]
 
 
 def test_lifecycle_outage_is_never_poison(tmp_path, monkeypatch, sent):
@@ -273,3 +286,129 @@ def test_single_item_lane_never_quarantines_its_only_item(tmp_path, sent):
     for _ in range(4):
         assert q.record_run({"thr_only": True}, reasons={"thr_only": DET}) == []
     assert q.systemic == {"failing": 1, "items": 1}
+
+
+# ---------------------------------------------------------------- review round 3 (2026-10-31): fan-in delivery
+GOOD = {
+    "schema": "PoisonQuarantineStore@v1",
+    "streaks": {},
+    "quarantined": {"thr_good": {"at": "2026-10-31T10:00:00+00:00", "consecutive_failures": 3, "reason": DET}},
+}
+
+
+def _mode_000(p):
+    p.write_text(json.dumps(GOOD))
+    p.chmod(0)
+
+
+BAD_STORES = {
+    "non_utf8_bytes": lambda p: p.write_bytes(b"\xff\xfe garbage"),
+    "unreadable_mode_000": _mode_000,
+    "directory_named_json": lambda p: p.mkdir(),
+    "half_json": lambda p: p.write_text("{half"),
+    "empty_file": lambda p: p.write_text(""),
+}
+
+
+@pytest.mark.parametrize("kind", sorted(BAD_STORES))
+def test_one_unreadable_store_is_its_own_finding_and_never_hides_another_lane(tmp_path, kind):
+    import os
+
+    if kind == "unreadable_mode_000" and os.geteuid() == 0:
+        pytest.skip("root reads mode-000 files")
+    d = tmp_path / CFG["store_dir_rel"]
+    d.mkdir(parents=True)
+    (d / "cio-ask-lifecycle.json").write_text(json.dumps(GOOD))
+    bad = d / "cio-ask-material-events.json"
+    BAD_STORES[kind](bad)
+    try:
+        with pytest.raises(PQ.PoisonStoreCorrupt):  # what the lane catches (cio_ask_lifecycle: loud, not a crash)
+            PQ.read_store(bad)
+        findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
+    finally:
+        if bad.is_file():
+            bad.chmod(0o600)
+    assert [f["item"] for f in findings] == [
+        "cio-ask-lifecycle:thr_good@20261031T1000Z",  # still held: never "settled" because a neighbour broke
+        "cio-ask-material-events:store_corrupt",
+    ]
+    assert note == "ok:held=1,corrupt=1"
+
+
+def test_store_dir_that_is_not_a_directory_is_a_finding(tmp_path):
+    p = tmp_path / CFG["store_dir_rel"]
+    p.parent.mkdir(parents=True)
+    p.write_text("x")
+    findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
+    assert note == "store_dir_unreadable" and [f["item"] for f in findings] == ["store_dir:unreadable"]
+
+
+def test_lifecycle_non_utf8_store_fails_the_run_loudly(tmp_path, monkeypatch):
+    import test_cio_ask_hourly_20261026 as H
+
+    state = tmp_path / "state"
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    monkeypatch.setattr(PQ, "load_config", lambda path=None: {**CFG, "enabled": True})
+    p = state / CFG["store_dir_rel"] / "cio-ask-lifecycle.json"
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"\xff\xfe garbage")
+    r = H.run(H.fixture(tmp_path))
+    assert r["ok"] is False and any(e.startswith("quarantine_store:") for e in r["source_errors"])
+
+
+def test_save_returns_an_error_when_the_store_broke_after_load(tmp_path):
+    q = _q(tmp_path, threshold=1)
+    q.record_run(_h({"x": True}), reasons={"x": DET})
+    q.path.parent.mkdir(parents=True, exist_ok=True)
+    q.path.write_bytes(b"\xff\xfe")
+    errs = q.save()
+    assert len(errs) == 1 and errs[0].startswith("store: ") and "UnicodeDecodeError" in errs[0]
+
+
+def test_requarantine_soon_after_release_is_a_new_incident(tmp_path):
+    # The notifier's flap cooldown (60 min, keyed by source+item) must not swallow a re-quarantine: a */5 lane
+    # released at 15:55 and quarantined again by 16:10 is a NEW incident key.
+    lane, t0 = "cio-ask-material-events", datetime(2026, 11, 2, 15, 40, tzinfo=timezone.utc)
+
+    def quarantine(start):
+        for i in range(3):
+            q = PQ.Quarantine(lane, {**CFG, "enabled": True}, tmp_path, now=start + timedelta(minutes=5 * i))
+            q.record_run(_h({"thr_p": True}), reasons={"thr_p": DET})
+            assert q.save() == []
+
+    quarantine(t0)
+    first = [f["item"] for f in PQ.held_findings(tmp_path, CFG)[0]]
+    assert PQ.release(lane, "thr_p", note="t", apply=True, cfg=CFG, root=tmp_path)["ok"]
+    quarantine(t0 + timedelta(minutes=15))  # 15:55 .. 16:05
+    second = [f["item"] for f in PQ.held_findings(tmp_path, CFG)[0]]
+    assert first == [f"{lane}:thr_p@20261102T1550Z"] and second == [f"{lane}:thr_p@20261102T1605Z"]
+    import scripts.incident_notifier as N
+
+    assert N.incident_key("poison_quarantine", first[0]) != N.incident_key("poison_quarantine", second[0])
+
+
+def test_release_command_survives_the_notifier_detail_cut(tmp_path):
+    import scripts.incident_notifier as N
+
+    d = tmp_path / CFG["store_dir_rel"]
+    d.mkdir(parents=True)
+    tid = "thr_b00c8806cf63a6bf"  # a real thread id shape (cio_ask_contract.make_thread_id)
+    rec = {"at": "2026-10-31T10:00:00+00:00", "consecutive_failures": 3, "reason": DET * 5}
+    (d / "cio-ask-material-events.json").write_text(json.dumps({"streaks": {}, "quarantined": {tid: rec}}))
+    (f,), _ = PQ.held_findings(tmp_path, CFG, now=NOW)
+    line = N._line(f)
+    cmd = f"scripts/poison_quarantine.py release --key cio-ask-material-events:{tid} --note WHY"
+    assert cmd in f["detail"][: N.DETAIL_MAX] and cmd in line
+
+
+def test_cli_key_accepts_the_incident_item(tmp_path, monkeypatch, sent):
+    CLI = _cli()
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setattr(PQ, "load_config", lambda path=None: {**CFG, "enabled": True})
+    _runs(tmp_path, {"thr_a": True}, {"thr_a": DET}, 3)
+    (f,), _ = PQ.held_findings(tmp_path, CFG)
+    assert CLI.main(["release", "--key", f["item"], "--note", "fixed", "--apply"]) == 0
+    assert not _q(tmp_path).is_quarantined("thr_a")
+    assert PQ.parse_key("cio-ask-lifecycle:thr_a") == ("cio-ask-lifecycle", "thr_a")
+    with pytest.raises(ValueError):
+        PQ.parse_key("no-colon")

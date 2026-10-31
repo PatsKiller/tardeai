@@ -64,10 +64,15 @@ def _lane_file(root: Path, cfg: Mapping[str, Any], lane: str) -> Path:
 
 
 def read_store(path: Path) -> dict:
+    """A missing store is empty. ANY other read failure is ``PoisonStoreCorrupt`` (review 2026-10-31): bad JSON, a wrong
+    shape, non-UTF-8 bytes, no read permission, a directory where the file should be. The lanes catch exactly that
+    exception and fail loudly; the fan-in turns it into a per-file finding. Never read as empty."""
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {"schema": SCHEMA_STORE, "streaks": {}, "quarantined": {}}
+    except (OSError, UnicodeDecodeError) as exc:  # PermissionError, IsADirectoryError, non-UTF-8 bytes ...
+        raise PoisonStoreCorrupt(f"{path}: {type(exc).__name__}: {exc}") from exc
     try:
         doc = json.loads(raw)
     except ValueError as exc:
@@ -82,55 +87,88 @@ def read_store(path: Path) -> dict:
 
 
 FINDING_SOURCE = "poison_quarantine"
+RELEASE_CMD = "scripts/poison_quarantine.py release --key {key} --note WHY"
+
+
+def _stamp(at: Any) -> str:
+    """Compact UTC stamp of a quarantine's ``at`` (``20261031T1610Z``); the raw value when it does not parse."""
+    try:
+        dt = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+        dt = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
+    except ValueError:
+        return re.sub(r"[^0-9A-Za-z]", "", str(at))[:20] or "unknown"
+
+
+def finding_item(lane: str, item: str, at: Any) -> str:
+    """``<lane>:<id>@<quarantined at>``. The stamp makes each quarantine its own incident: a re-quarantine soon after a
+    release is a NEW key, so the notifier's flap cooldown (keyed by source+item) cannot swallow it (review 2026-10-31:
+    a */5 lane released at 15:55 and re-quarantined at 16:10 went unpaged for ~23 h)."""
+    return f"{lane}:{item}@{_stamp(at)}"
+
+
+def parse_key(key: str) -> tuple[str, str]:
+    """``<lane>:<id>`` or a finding item ``<lane>:<id>@<stamp>`` -> (lane, id)."""
+    m = re.fullmatch(r"([a-z0-9][a-z0-9._-]{0,80}):(.+?)(?:@\d{8}T\d{4}Z)?", key.strip())
+    if not m:
+        raise ValueError(f"bad key {key!r}; expected <lane>:<item>")
+    return m.group(1), m.group(2)
 
 
 def held_findings(
     root: Path, cfg: Optional[Mapping[str, Any]] = None, *, now: Optional[datetime] = None
 ) -> tuple[list[dict[str, Any]], str]:
-    """Incident fan-in source (scripts/n8n_incident_fanin.py): one finding per quarantined item, item ``<lane>:<id>``,
-    at ``alert_priority``; an unreadable store is a finding of its own. Returns ``(findings, note)``. Reads only."""
+    """Incident fan-in source (scripts/n8n_incident_fanin.py, source 3o). One finding per quarantined item (item
+    ``finding_item``, at ``alert_priority``); the release command opens the detail so it survives the notifier's
+    100-character cut. Never raises for one bad file: an unreadable store (any read error) is a finding of its own and
+    every other lane's items are still reported, so a held item is never "settled" because a neighbour broke. An
+    unreadable store directory is one finding. Returns ``(findings, note)``. Reads only."""
     cfg = cfg or load_config()
     now = now or datetime.now(timezone.utc)
     store_dir = Path(root) / cfg["store_dir_rel"]
-    if not store_dir.is_dir():
+    base = {"source": FINDING_SOURCE, "severity": cfg["alert_priority"], "store": "persistent-state"}
+
+    def _broken(item: str, rel: str, what: str) -> dict[str, Any]:
+        return {**base, "item": item, "artifact_rel": rel, "detail": what[:200], "detected_at": now.isoformat()}
+
+    if not store_dir.exists():
         return [], "no_store"
+    try:
+        if not store_dir.is_dir():
+            raise NotADirectoryError(f"{store_dir} is not a directory")
+        files = sorted(store_dir.glob("*.json"))
+    except OSError as exc:
+        return [
+            _broken("store_dir:unreadable", cfg["store_dir_rel"], f"poison quarantine store dir unreadable: {exc}")
+        ], "store_dir_unreadable"
     out: list[dict[str, Any]] = []
-    held = 0
-    for p in sorted(store_dir.glob("*.json")):
-        base = {
-            "source": FINDING_SOURCE,
-            "severity": cfg["alert_priority"],
-            "artifact_rel": f"{cfg['store_dir_rel']}/{p.name}",
-            "store": "persistent-state",
-        }
+    held = broken = 0
+    for p in files:
+        rel = f"{cfg['store_dir_rel']}/{p.name}"
         try:
             doc = read_store(p)
-        except PoisonStoreCorrupt as exc:
-            out.append(
-                {
-                    **base,
-                    "item": f"{p.stem}:store_corrupt",
-                    "detail": f"poison quarantine store unreadable: {exc}"[:200],
-                    "detected_at": now.isoformat(),
-                }
-            )
+        except Exception as exc:  # noqa: BLE001 - PoisonStoreCorrupt and anything else: this file only
+            broken += 1
+            out.append(_broken(f"{p.stem}:store_corrupt", rel, f"poison quarantine store unreadable: {exc}"))
             continue
         for item, rec in sorted(doc["quarantined"].items()):
             rec = rec if isinstance(rec, dict) else {}
             held += 1
+            at = rec.get("at") or "unknown"
             out.append(
                 {
                     **base,
-                    "item": f"{p.stem}:{item}",
+                    "item": finding_item(p.stem, item, at),
+                    "artifact_rel": rel,
                     "detail": (
-                        f"{p.stem}: {item} quarantined after {rec.get('consecutive_failures', '?')} identical failures "
-                        f"({rec.get('reason') or 'n/a'}); the lane runs on without it. Release: "
-                        f"scripts/poison_quarantine.py release --lane {p.stem} --item {item} --note '<why>' --apply"
+                        RELEASE_CMD.format(key=f"{p.stem}:{item}")
+                        + f" (dry run; add --apply) · {rec.get('consecutive_failures', '?')} identical failures "
+                        f"({rec.get('reason') or 'n/a'}); the lane runs on without it"
                     )[:300],
                     "detected_at": rec.get("at") or now.isoformat(),
                 }
             )
-    return out, f"ok:held={held}"
+    return out, f"ok:held={held}" + (f",corrupt={broken}" if broken else "")
 
 
 def counts_as_poison(reason: Optional[str], cfg: Mapping[str, Any]) -> bool:
@@ -251,7 +289,10 @@ class Quarantine:
         with open(f"{self.path}.lock", "a+") as lk:
             fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
             try:
-                doc = read_store(self.path)  # another run may have written since we loaded
+                try:
+                    doc = read_store(self.path)  # another run may have written since we loaded
+                except PoisonStoreCorrupt as exc:
+                    return [f"store: {exc}"[:300]]
                 self._apply(doc)
                 doc["schema"] = SCHEMA_STORE
                 tmp = self.path.with_name(f".{self.path.name}.tmp-{os.getpid()}")

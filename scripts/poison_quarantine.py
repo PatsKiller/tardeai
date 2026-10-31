@@ -3,6 +3,9 @@
 
 python3 scripts/poison_quarantine.py list [--lane cio-ask-lifecycle]
 python3 scripts/poison_quarantine.py release --lane cio-ask-lifecycle --item thr_x --note "fixed in #NNNN" [--apply]
+python3 scripts/poison_quarantine.py release --key cio-ask-lifecycle:thr_x --note "fixed in #NNNN" [--apply]
+
+``--key`` takes ``<lane>:<item>`` or the incident's item as the P2 shows it (``<lane>:<item>@<stamp>``).
 """
 
 from __future__ import annotations
@@ -25,8 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     ls = sub.add_parser("list")
     ls.add_argument("--lane")
     rel = sub.add_parser("release")
-    rel.add_argument("--lane", required=True)
-    rel.add_argument("--item", required=True)
+    rel.add_argument("--lane")
+    rel.add_argument("--item")
+    rel.add_argument("--key", help="<lane>:<item>, as the incident shows it (replaces --lane/--item)")
     rel.add_argument("--note", required=True)
     rel.add_argument("--apply", action="store_true")
     a = ap.parse_args(argv)
@@ -37,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
         out = {f.stem: PQ.read_store(f)["quarantined"] for f in files if f.exists()}
         print(json.dumps(out, indent=1))
         return 0
+    if a.key:
+        a.lane, a.item = PQ.parse_key(a.key)
+    if not (a.lane and a.item):
+        ap.error("release needs --key, or both --lane and --item")
     res = PQ.release(a.lane, a.item, note=a.note, apply=a.apply, cfg=cfg, root=root, by=getpass.getuser())
     print(json.dumps(res, indent=1, default=str))
     return 0 if res.get("ok") else 1
