@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -61,13 +62,29 @@ class EpisodeStoreCorrupt(ValueError):
 
 
 def load(path: Path | None = None) -> dict[str, Any]:
+    """Read the ledger. A torn file raises ``EpisodeStoreCorrupt`` (display readers report it); the message names the
+    file, never its absolute path, because API callers may echo it."""
     p = path or store_path()
     if not p.exists():
         return {"schema": "MarketRiskEpisodeStore@v1", "episodes": []}
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except ValueError as exc:
-        raise EpisodeStoreCorrupt(f"{p}: {exc}") from exc
+        raise EpisodeStoreCorrupt(f"{p.name} is unreadable ({type(exc).__name__})") from exc
+
+
+def load_for_write(path: Path | None = None) -> dict[str, Any]:
+    """The writers' read. A torn ledger is moved aside to ``<name>.corrupt-<UTC>`` (kept for inspection, never
+    deleted) and the writer starts a fresh ledger, so a torn file can never stop every send (review of #2383, M2) —
+    the same rule as the sent-key ledger (``alerts._load_ledger``). The move is logged."""
+    p = path or store_path()
+    try:
+        return load(p)
+    except EpisodeStoreCorrupt as exc:
+        dest = p.with_name(f"{p.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%fZ}")
+        p.replace(dest)
+        print(f"market_risk escalation: {exc}; moved aside to {dest.name}, starting a fresh ledger", file=sys.stderr)
+        return {"schema": "MarketRiskEpisodeStore@v1", "episodes": [], "recovered_from": dest.name}
 
 
 def save(data: dict[str, Any], path: Path | None = None) -> None:
@@ -109,7 +126,7 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
     opens = {str(t).upper() for t in cfg.get("opens_at") or ["ORANGE", "RED"]}
     tier = str(assessment.get("tier") or "NONE").upper()
     stress = _stress_set(assessment)
-    data = load(path)
+    data = load_for_write(path)
     ep = open_episode(data)
     event = "none"
     if ep is None:
@@ -142,10 +159,18 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
             ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_sessions=[])
             event = "upgraded"
         elif new_stress and ep["status"] in ("ACKED", "CAPPED"):
-            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0)
+            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_open=False)
+            event = "reopened"
+        elif tier in opens and ep.get("below_open") and ep["status"] in ("ACKED", "CAPPED"):
+            # the market left the episode's opening range and came back: a fresh alarm, not a stale ack
+            # (review of #2383, N3: a RED two weeks after an acked RED stayed silent)
+            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_open=False)
+            ep["tier_history"].append({"at": _iso(now), "tier": tier, "reentered": True})
             event = "reopened"
         else:
             event = "unchanged"
+        if tier not in opens:
+            ep["below_open"] = True
         ep["stress_categories"] = sorted(set(ep.get("stress_categories") or []) | stress)
         below = str(cfg.get("resolve_below_tier") or "YELLOW").upper()
         if _rank(tier) < _rank(below):
@@ -163,7 +188,8 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
 
 
 def _last_send(ep: dict[str, Any]) -> datetime | None:
-    sends = ep.get("sends") or []
+    """The last DELIVERED send. A failed attempt is not a send: a dead transport must still read as stalled."""
+    sends = [x for x in ep.get("sends") or [] if x.get("ok", True)]
     return _parse(sends[-1]["at"]) if sends else None
 
 
@@ -218,7 +244,7 @@ def _next_due(ep: dict[str, Any], cfg: dict[str, Any], now: datetime) -> tuple[d
 def due_repeats(*, now: datetime, policy: dict[str, Any], path: Path | None = None) -> list[dict[str, Any]]:
     """Repeat intents due now for the open, unacknowledged episode. Pure read; call ``record_send`` after sending."""
     cfg = policy.get("escalation") or {}
-    ep = open_episode(load(path))
+    ep = open_episode(load_for_write(path))
     if ep is None or ep.get("status") != "OPEN":
         return []
     last = _last_send(ep)
@@ -250,12 +276,21 @@ def record_send(
     detail: str = "",
     path: Path | None = None,
     policy_escalation: dict[str, Any] | None = None,
+    key: str | None = None,
 ):
-    """Append a send receipt; a successful repeat advances the repeat counter."""
-    data = load(path)
+    """Append a send receipt; a successful repeat advances the repeat counter. Idempotent on ``key`` (the dedupe key
+    of the card): recording the same key twice — a retry after a crash between the send and this write — is a no-op,
+    so the counter advances exactly once per card (review of #2383, B5d)."""
+    data = load_for_write(path)
     for ep in data.get("episodes") or []:
         if ep.get("id") == episode_id:
+            done = ep.setdefault("recorded_keys", [])
+            if key and key in done:
+                return ep
             ep.setdefault("sends", []).append({"at": _iso(now), "kind": kind, "ok": bool(ok), "detail": detail[:200]})
+            if key and ok:
+                done.append(key)
+                del done[:-200]
             if ok and kind != "initial":
                 ep["repeats"] = int(ep.get("repeats") or 0) + 1
                 cap = repeat_cap(effective_tier(ep), policy_escalation or {})
@@ -271,7 +306,7 @@ def acknowledge(
     episode_id: str | None, *, actor: str, channel: str, now: datetime, path: Path | None = None
 ) -> tuple[int, dict[str, Any]]:
     """Operator acknowledgment (safe direction, one click, AGENTS §27.3). Returns (http_status, body)."""
-    data = load(path)
+    data = load_for_write(path)
     ep = open_episode(data)
     if ep is None:
         return 409, {"ok": False, "error": "no open market-risk episode to acknowledge"}

@@ -277,8 +277,11 @@ def test_morning_brief_carries_the_tier_line(monkeypatch):
 
 def test_ask_the_cio_facts_contain_the_tier(monkeypatch):
     from scripts.lib import cio_operator_desk_loop as dl
+    from scripts.lib.data_broker import cio_portfolio
 
     _patch_loader(monkeypatch, _mr("ORANGE"))
+    # hermetic: the CIO snapshot read is a live DB call; this test is about the market-risk block only (review #2383 N6)
+    monkeypatch.setattr(cio_portfolio, "get_cio_snapshot", lambda max_age_s=60: {})
     ev = dl.gather_freeform_context({"symbols": [], "text": ""})
     facts = ev["available"]["freeform_context"]
     assert facts["market_risk"]["tier"] == "ORANGE" and facts["market_risk"]["score"] == 63

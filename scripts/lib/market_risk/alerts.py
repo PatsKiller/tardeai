@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import re
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -205,33 +206,113 @@ def _save_ledger(path: Path, data: dict[str, Any]) -> None:
         raise
 
 
-def claim(key: str, dedupe_minutes: int, *, now: datetime, path: Path) -> bool:
-    """Claim ``key`` BEFORE sending (review of #2362, B5c/d). False when the key was already sent or claimed inside
-    its window — ``dedupe_minutes`` 0 means once per key ever (repeat and episode keys are unique). A claim is written
-    before the send, so a crash between send and the next write cannot re-send the same card every cycle."""
+def claim(key: str, dedupe_minutes: int, *, now: datetime, path: Path, claim_ttl_min: float = 10.0) -> bool:
+    """Claim ``key`` BEFORE sending (review of #2362, B5c/d; #2383, B5d). True when this caller may send now:
+
+    * the key is new, or outside its ``dedupe_minutes`` window (0 = once per key ever);
+    * the key is queued in the outbox (``pending``) — written by ``outbox_put`` before the prior was persisted;
+    * the key was ``claimed`` more than ``claim_ttl_min`` ago and never settled (a crash between claim and send):
+      a stale claim expires, so a crash can delay a card by one cycle but never wedge it.
+
+    False when the key is already ``sent``, or freshly claimed by another run."""
     data = _load_ledger(path)
-    prev = (data.get("keys") or {}).get(key)
-    if prev and prev.get("status") in ("claimed", "sent"):
-        if int(dedupe_minutes) <= 0:
-            return False
-        at = datetime.fromisoformat(str(prev["at"]))
-        if now - at < timedelta(minutes=int(dedupe_minutes)):
-            return False
-    data.setdefault("keys", {})[key] = {"at": now.astimezone(timezone.utc).isoformat(), "status": "claimed"}
+    keys = data.setdefault("keys", {})
+    prev = keys.get(key)
+    if prev:
+        st = prev.get("status")
+        if st == "pending":
+            pass
+        elif st == "claimed":
+            at = datetime.fromisoformat(str(prev.get("claimed_at") or prev["at"]))
+            if now - at < timedelta(minutes=float(claim_ttl_min)):
+                return False
+            prev["stale_claims"] = int(prev.get("stale_claims") or 0) + 1
+        elif st == "sent":
+            if int(dedupe_minutes) <= 0:
+                return False
+            at = datetime.fromisoformat(str(prev["at"]))
+            if now - at < timedelta(minutes=int(dedupe_minutes)):
+                return False
+            prev = None
+    rec = dict(prev or {})
+    rec.update(status="claimed", claimed_at=now.astimezone(timezone.utc).isoformat())
+    rec.setdefault("at", now.astimezone(timezone.utc).isoformat())
+    keys[key] = rec
     _save_ledger(path, data)
     return True
 
 
 def settle(key: str, ok: bool, *, path: Path) -> None:
+    """A sent key becomes ``sent``; a failed send goes back to ``pending`` so the next cycle retries it (the outbox
+    keeps the text), up to ``max_attempts`` recorded on the entry, then ``failed``."""
     data = _load_ledger(path)
     rec = (data.get("keys") or {}).get(key)
     if rec is None:
         return
     if ok:
         rec["status"] = "sent"
-    else:  # a failed send releases the key so the next cycle may try again
-        data["keys"].pop(key, None)
+        rec["sent_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        rec["attempts"] = int(rec.get("attempts") or 0) + 1
+        if "text" not in rec:  # a bare claim with nothing queued: release it, as before
+            data["keys"].pop(key, None)
+        else:
+            rec["status"] = "failed" if rec["attempts"] >= int(rec.get("max_attempts") or 8) else "pending"
     _save_ledger(path, data)
+
+
+def outbox_put(entry: dict[str, Any], *, now: datetime, path: Path) -> bool:
+    """Queue one intent in the sent-key ledger as ``pending`` (the outbox). Written BEFORE the prior and snapshot are
+    persisted (market_risk_evaluate._cycle), so a crash after it leaves the card queued, and a crash before it leaves
+    the prior unpersisted so the next cycle recomputes the same transition (review of #2383, B5d). False when the
+    key is already queued, claimed or sent inside its window."""
+    key = str(entry["key"])
+    data = _load_ledger(path)
+    keys = data.setdefault("keys", {})
+    prev = keys.get(key)
+    dm = int((entry.get("intent") or {}).get("dedupe_minutes") or 0)
+    if prev and prev.get("status") in ("pending", "claimed", "sent", "failed"):
+        if dm <= 0 or prev.get("status") != "sent":
+            return False
+        if now - datetime.fromisoformat(str(prev["at"])) < timedelta(minutes=dm):
+            return False
+    keys[key] = {
+        "at": now.astimezone(timezone.utc).isoformat(),
+        "status": "pending",
+        "text": entry["text"],
+        "intent": entry["intent"],
+        "kind": entry.get("kind"),
+        "episode_id": entry.get("episode_id"),
+        "recorded": False,
+        "attempts": 0,
+        "max_attempts": int(entry.get("max_attempts") or 8),
+    }
+    _save_ledger(path, data)
+    return True
+
+
+def outbox_due(*, now: datetime, path: Path, claim_ttl_min: float = 10.0) -> list[dict[str, Any]]:
+    """Entries to act on this cycle, oldest first: ``pending``, stale ``claimed``, and ``sent`` but not yet recorded
+    in the episode store (a crash between the send and ``record_send``)."""
+    out = []
+    for key, rec in (_load_ledger(path).get("keys") or {}).items():
+        if "text" not in rec:
+            continue
+        st = rec.get("status")
+        stale = st == "claimed" and now - datetime.fromisoformat(str(rec.get("claimed_at") or rec["at"])) >= timedelta(
+            minutes=float(claim_ttl_min)
+        )
+        if st == "pending" or stale or (st == "sent" and rec.get("episode_id") and not rec.get("recorded")):
+            out.append({"key": key, **rec})
+    return sorted(out, key=lambda r: str(r.get("at")))
+
+
+def mark_recorded(key: str, *, path: Path) -> None:
+    data = _load_ledger(path)
+    rec = (data.get("keys") or {}).get(key)
+    if rec is not None:
+        rec["recorded"] = True
+        _save_ledger(path, data)
 
 
 def deliver(
@@ -256,21 +337,26 @@ def deliver(
             out["deduped"] = True
         return out
     path = ledger or sent_ledger_path()
-    if key and not claim(key, int(intent.get("dedupe_minutes") or 0), now=now, path=path):
+    ttl = float((policy.get("escalation") or {}).get("claim_ttl_min") or 10)
+    if key and not claim(key, int(intent.get("dedupe_minutes") or 0), now=now, path=path, claim_ttl_min=ttl):
         out.update(sent=False, deduped=True)
         return out
     from telegram_alert import send_telegram
 
-    ok = send_telegram(
-        message,
-        priority=intent["priority"],
-        dedupe_minutes=int(intent["dedupe_minutes"]),
-        producer=producer,
-        message_class="market_risk",
-    )
+    try:
+        ok = send_telegram(
+            message,
+            priority=intent["priority"],
+            dedupe_minutes=int(intent["dedupe_minutes"]),
+            producer=producer,
+            message_class="market_risk",
+        )
+    except Exception as exc:  # noqa: BLE001 — a transport error is a failed send: returned, logged, retried next cycle
+        print(f"market_risk alerts: send failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        ok, out["error"] = False, f"send raised {type(exc).__name__}"
     out["sent"] = bool(ok)
     if key:
         settle(key, bool(ok), path=path)
     if not ok:
-        out["error"] = "send_telegram returned False"
+        out.setdefault("error", "send_telegram returned False")
     return out
