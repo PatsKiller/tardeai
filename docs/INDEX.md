@@ -2621,6 +2621,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results |
+| `docs/proposals/MARKET_RISK_BROKER_DATA_SOURCES_20261031.md` | Proposal — broker market data for the Market Risk Engine (Schwab, moomoo) |
 | `docs/proposals/REGISTRY_ROW_index_constituent_caps_20261031.md` | Registry-row proposal: index constituent market caps (Market Risk Engine, event concentration) |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover |
 | `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module |
