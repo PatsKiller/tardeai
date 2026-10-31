@@ -46,11 +46,18 @@ def _q(tmp_path, now=NOW, **over):
     return PQ.Quarantine("cio-ask-lifecycle", {**CFG, "enabled": True, **over}, tmp_path, now=now)
 
 
+HEALTHY = {f"thr_ok{i}": False for i in range(9)}  # healthy neighbours: a failing item is a minority, not systemic
+
+
+def _h(outcomes):
+    return {**HEALTHY, **outcomes}
+
+
 def _runs(tmp_path, outcomes, reasons, n, **kw):
     out = []
     for i in range(n):
         q = _q(tmp_path, now=NOW + timedelta(hours=i), **kw)
-        out.append(q.record_run(outcomes, reasons=reasons))
+        out.append(q.record_run(_h(outcomes), reasons=reasons))
         assert q.save() == []
     return out
 
@@ -58,10 +65,10 @@ def _runs(tmp_path, outcomes, reasons, n, **kw):
 def test_streak_threshold_reset_receipt_and_p2(tmp_path, sent):
     _runs(tmp_path, {"thr_a": True, "thr_b": True}, {"thr_a": DET, "thr_b": DET}, 2, max_share=1.0, max_per_run=5)
     q = _q(tmp_path)
-    q.record_run({"thr_b": False})  # a success resets thr_b only
+    q.record_run(_h({"thr_b": False}))  # a success resets thr_b only
     q.save()
     q = _q(tmp_path, max_share=1.0, max_per_run=5)
-    newly = q.record_run({"thr_a": True, "thr_b": True}, reasons={"thr_a": DET, "thr_b": DET})
+    newly = q.record_run(_h({"thr_a": True, "thr_b": True}), reasons={"thr_a": DET, "thr_b": DET})
     assert [r["item"] for r in newly] == ["thr_a"] and newly[0]["consecutive_failures"] == 3
     assert q.save() == []
     assert len(sent) == 1 and sent[0]["priority"] == "P2" and sent[0]["message_class"] == CFG["message_class"]
@@ -85,15 +92,19 @@ def test_transient_errors_never_count_or_reset(tmp_path, sent):
     _runs(tmp_path, {"thr_a": True}, {"thr_a": "ConnectionError: refused"}, 5)  # an outage: no count, no reset
     q = _q(tmp_path)
     assert q.doc["streaks"]["thr_a"] == 2 and not q.is_quarantined("thr_a")
-    assert [r["item"] for r in q.record_run({"thr_a": True}, reasons={"thr_a": DET})] == ["thr_a"]
+    assert [r["item"] for r in q.record_run(_h({"thr_a": True}), reasons={"thr_a": DET})] == ["thr_a"]
 
 
-def test_cap_per_run_keeps_an_outage_visible(tmp_path, sent):
-    items = {f"thr_{i}": True for i in range(10)}
-    reasons = {k: DET for k in items}
-    runs = _runs(tmp_path, items, reasons, 3)
-    assert len(runs[2]) == 1  # max_per_run 1 (and max_share 0.2): the other nine keep failing the run
-    assert _q(tmp_path).doc["streaks"] and len(_q(tmp_path).doc["quarantined"]) == 1
+def test_cap_per_run_and_systemic_failure(tmp_path, sent):
+    items = {f"thr_{i}": i < 2 for i in range(10)}  # 2 of 10 fail: a minority
+    reasons = {k: DET for k, v in items.items() if v}
+    runs = _runs(tmp_path / "minority", items, reasons, 3)
+    assert len(runs[2]) == 1  # max_per_run 1: the other one keeps failing the run
+    many = {f"thr_{i}": i < 5 for i in range(10)}  # 5 of 10 fail: systemic (> max_share)
+    q = _q(tmp_path / "systemic")
+    for _ in range(4):
+        assert q.record_run(many, reasons={k: DET for k in many}) == []
+    assert q.systemic == {"failing": 5, "items": 10} and q.doc["streaks"] == {}  # nothing moves; the lane fails
 
 
 def test_corrupt_store_raises_never_empty(tmp_path):
@@ -106,8 +117,8 @@ def test_corrupt_store_raises_never_empty(tmp_path):
 
 def test_concurrent_writers_merge_under_the_flock(tmp_path):
     a, b = _q(tmp_path), _q(tmp_path)  # two runs loaded the same (empty) store
-    a.record_run({"thr_a": True}, reasons={"thr_a": DET})
-    b.record_run({"thr_b": True}, reasons={"thr_b": DET})
+    a.record_run(_h({"thr_a": True}), reasons={"thr_a": DET})
+    b.record_run(_h({"thr_b": True}), reasons={"thr_b": DET})
     a.save()
     b.save()  # read-modify-write: b must not erase a's streak
     assert _q(tmp_path).doc["streaks"] == {"thr_a": 1, "thr_b": 1}
@@ -118,10 +129,10 @@ def test_expiry_rechecks_once(tmp_path, sent):
     later = NOW + timedelta(hours=CFG["expire_hours"] + 3)
     q = _q(tmp_path, now=later)
     assert not q.is_quarantined("thr_a")  # expired: processed once more
-    assert [r["item"] for r in q.record_run({"thr_a": True}, reasons={"thr_a": DET})] == ["thr_a"]  # fails: again
+    assert [r["item"] for r in q.record_run(_h({"thr_a": True}), reasons={"thr_a": DET})] == ["thr_a"]  # fails: again
     q.save()
     q2 = _q(tmp_path, now=later + timedelta(hours=CFG["expire_hours"] + 1))
-    q2.record_run({"thr_a": False})  # passes on its re-check: released
+    q2.record_run(_h({"thr_a": False}))  # passes on its re-check: released
     q2.save()
     assert "thr_a" not in _q(tmp_path, now=later).doc["quarantined"]
 
@@ -144,7 +155,7 @@ def test_disabled_and_dry_run_are_inert(tmp_path, sent):
     q = PQ.Quarantine("lane", CFG, tmp_path)
     assert CFG["enabled"] is False
     for _ in range(5):
-        assert q.record_run({"x": True}, reasons={"x": DET}) == []
+        assert q.record_run(_h({"x": True}), reasons={"x": DET}) == []
     assert q.save() == [] and not q.is_quarantined("x") and list(tmp_path.iterdir()) == []
     d = PQ.Quarantine("lane", {**CFG, "enabled": True}, tmp_path, dry_run=True)
     for _ in range(3):
@@ -157,7 +168,7 @@ def test_send_failure_is_returned(tmp_path, monkeypatch):
     mod.send_telegram = lambda message, **kw: False
     monkeypatch.setitem(sys.modules, "telegram_alert", mod)
     q = _q(tmp_path, threshold=1)
-    q.record_run({"x": True}, reasons={"x": DET})
+    q.record_run(_h({"x": True}), reasons={"x": DET})
     assert q.save() == ["send_telegram returned falsy"]
 
 
@@ -203,3 +214,37 @@ def test_lifecycle_corrupt_store_fails_the_run_loudly(tmp_path, monkeypatch):
     p.write_text("{half")
     r = H.run(H.fixture(tmp_path))
     assert r["ok"] is False and any(e.startswith("quarantine_store:") for e in r["source_errors"])
+
+
+# ---------------------------------------------------------------- review round 2 (2026-10-31)
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "OSError: [Errno 5]",
+        "httpx.ConnectError",
+        "socket.gaierror",
+        "ssl.SSLError",
+        "JSONDecodeError: Expecting value",
+        "BrokenPipeError",
+        "RemoteProtocolError",
+        "anthropic.APIStatusError: 529",
+        None,
+        "",
+        "SomethingNew",
+    ],
+)
+def test_unknown_or_outage_reasons_never_count(reason):
+    assert PQ.counts_as_poison(reason, CFG) is False
+
+
+def test_known_deterministic_reasons_count_unless_transient():
+    assert PQ.counts_as_poison("CHECK_FAILED:ValueError: fact rejected", CFG)
+    assert PQ.counts_as_poison("KeyError: 'symbol'", CFG)
+    assert not PQ.counts_as_poison("CHECK_FAILED:ValueError:SOURCE_CHECK_INCOMPLETE", CFG)  # transient wins
+
+
+def test_single_item_lane_never_quarantines_its_only_item(tmp_path, sent):
+    q = _q(tmp_path)
+    for _ in range(4):
+        assert q.record_run({"thr_only": True}, reasons={"thr_only": DET}) == []
+    assert q.systemic == {"failing": 1, "items": 1}

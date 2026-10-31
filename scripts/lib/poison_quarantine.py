@@ -7,11 +7,11 @@ the n8n breaker opened, and every other thread's hourly check stopped for a day.
 
 Rules (independent review 2026-10-31):
 
-* Only deterministic per-item errors count. A transient error (connection, timeout, rate limit, 5xx, provider or
-  database outage — ``transient_patterns``) neither counts nor resets: an outage must stay visible as a failing lane
-  and still open its breaker.
-* At most ``max_per_run`` items (and at most ``max_share`` of the items seen) are quarantined in one run; the rest
-  keep failing the run.
+* Only deterministic per-item errors count: an ALLOWLIST (``deterministic_patterns``). An unknown or missing reason,
+  or a transient one (``transient_patterns``), neither counts nor resets: an outage must stay visible as a failing
+  lane and still open its breaker.
+* If more than ``max_share`` of the items fail in one run, the failure is systemic: nothing is quarantined. Otherwise
+  at most ``max_per_run`` items (and at most ``max_share`` of them) are quarantined in one run.
 * One store per lane (``store_dir_rel/<lane>.json``), updated read-modify-write under an exclusive flock.
 * A corrupt store raises ``PoisonStoreCorrupt`` — never read as empty.
 * A quarantine expires after ``expire_hours``: the item is re-checked once; a pass releases it, a deterministic
@@ -76,6 +76,17 @@ def read_store(path: Path) -> dict:
     return doc
 
 
+def counts_as_poison(reason: Optional[str], cfg: Mapping[str, Any]) -> bool:
+    """ALLOWLIST (review round 2): a failure counts only when its reason names a known deterministic error type
+    (``deterministic_patterns``) and is not also transient. An unknown reason, or none at all, never counts — a new
+    kind of outage (OSError, ConnectError, gaierror, SSLError, JSONDecodeError, BrokenPipeError, an API status
+    error …) must never quarantine an item."""
+    text = str(reason or "").strip()
+    if not text or is_transient(text, cfg):
+        return False
+    return any(re.search(p, text) for p in cfg.get("deterministic_patterns") or [])
+
+
 def is_transient(reason: Optional[str], cfg: Mapping[str, Any]) -> bool:
     text = str(reason or "")
     return any(re.search(p, text, re.I) for p in cfg.get("transient_patterns") or [])
@@ -92,7 +103,8 @@ class Quarantine:
         self.doc = read_store(self.path) if self.enabled else {"streaks": {}, "quarantined": {}}  # raises if corrupt
         self.newly: list[dict] = []
         self.released: list[dict] = []
-        self.deltas: list[tuple[str, str, Any]] = []  # replayed under the flock at save time
+        self.deltas: list[tuple[str, str, Any]] = []
+        self.systemic: Optional[dict] = None  # replayed under the flock at save time
 
     @classmethod
     def for_lane(
@@ -118,16 +130,21 @@ class Quarantine:
         if not self.enabled:
             return []
         reasons = reasons or {}
-        share = max(1, int(float(self.cfg["max_share"]) * len(outcomes)))  # at least one; a small share of many
-        cap = min(int(self.cfg["max_per_run"]), share)
+        failing = sum(1 for f in outcomes.values() if f)
+        if failing > float(self.cfg["max_share"]) * len(outcomes):
+            # systemic (review round 2): more than max_share of the items failed together — quarantining them one by
+            # one would hide the bug, so nothing is quarantined and the lane fails; streaks do not move either
+            self.systemic = {"failing": failing, "items": len(outcomes)}
+            return []
+        cap = min(int(self.cfg["max_per_run"]), int(float(self.cfg["max_share"]) * len(outcomes)))
         for item, failed in outcomes.items():
             item = str(item)
             reason = reasons.get(item)
             held = self.doc["quarantined"].get(item)
             if held and not self._expired(held):
                 continue
-            if failed and is_transient(reason, self.cfg):
-                continue  # an outage is not poison: no count, no reset
+            if failed and not counts_as_poison(reason, self.cfg):
+                continue  # not a known deterministic error: no count, no reset
             if not failed:
                 if held:  # an expired quarantine re-checked and passed: released
                     self.released.append({"item": item, "action": "released_by_recheck"})
