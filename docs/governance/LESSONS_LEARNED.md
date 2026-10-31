@@ -1430,6 +1430,12 @@ The operator asked for an emergency path that bypasses Mergify: "in an emergency
 
 *Rule:* §25.10 "Emergency merge and deploy"; §17. AGENTS.md 26.0.0 §25.10.
 
+### L25-08 · The operator's word in-session is a merge approval, not only the Telegram tap (2026-10-31)
+
+Eight green PRs from the 2026-10-30 selloff RCA sat unmerged while the operator, in the coordinator's own session, had already approved everything; the only recognised merge approval was a Telegram digest tap, and the operator had not seen the digest. The operator directed, verbatim: "No merge digest went to Telegram and you are allowed to merge on my word and via the command center. Make sure that's in the agents.md. You're not able to merge on your own, but with operator approval you are able to merge." 28.0.0 adds §25.10.3: the agent records that in-session (or Command Center) approval as the same `PrMergeDigestApproval@v1` row the tap would have written, head-SHA bound, and applies `operator-merge` through the same host helper; Mergify still merges under the same checks and windows. What does not change: an agent never merges on its own, never runs `gh pr merge`, never covers a held-class PR with "everything", and §0 rules 1–2 / §24.7 are never overridable.
+
+*Rule:* §25.10.3; §28.4; §17. AGENTS.md 28.0.0.
+
 ### L29-01 · Runs that hit a cap mid-way (2026-10-27)
 
 A paid lane died for three days and nothing said so (§12); runs that hit a cap mid-way leave partial state.
