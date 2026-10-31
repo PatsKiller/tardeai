@@ -511,10 +511,7 @@ def process_event_bus(
 def _is_wake_lock_timeout(exc: BaseException) -> bool:
     """The wake store could not take this write (lock timeout, damaged tail it could not trim, disk error).
     Unlike a duplicate or a bad payload, the event itself is fine and must be retried, not skipped."""
-    try:
-        from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt
-    except ImportError:  # pragma: no cover - flat import layout
-        from lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt  # type: ignore[no-redef]
+    from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt  # root-only script (G2)
     return isinstance(exc, (CIOWakeLockTimeout, CIOWakeStoreCorrupt, OSError))
 
 

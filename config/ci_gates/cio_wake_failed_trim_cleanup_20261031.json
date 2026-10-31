@@ -7,7 +7,7 @@
   ],
   "anchor": "CIO_WAKE_FAILED_TRIM_CLEANUP_20261031",
   "comment": [
-    "ANCHOR: CIO_WAKE_FAILED_TRIM_CLEANUP_20261031 \u2014 follow-up to #2344: a corrupt-tail trim that fails mid-write",
+    "ANCHOR: CIO_WAKE_FAILED_TRIM_CLEANUP_20261031 — follow-up to #2344: a corrupt-tail trim that fails mid-write",
     "(ENOSPC, failed rename) leaves no partial .tmp and no .corrupt-tail copy; run_once stops after a",
     "wake_store_unavailable error instead of running the goal-wake/dispatch tails. Hermetic: temp dirs, no DB.",
     "Also registers #2344's own test file, which #2344 left unregistered (ci_test_coverage_gate)."
