@@ -134,7 +134,9 @@ def record_refs(ctx: Mapping, kind: str) -> list[tuple[str, str]]:
     co = data["coordination"]
     refs = list(ctx["refs"])
     refs += [("processes", json.dumps(data["processes"])), ("open_pr", json.dumps(data["prs"]))]
-    fields = ("references", "live_claims", "live_worklogs") if kind in ("rtc_scratch", "agent_scratch") else ("live_claims", "live_worklogs")
+    # rtc scratch is shared lane scratch, so any retained mention holds it. Agent scratch belongs to one task: only a
+    # live claim/worklog (plus processes, PRs, units, cron, pointers) holds it, never closed history (2026-10-31).
+    fields = ("references", "live_claims", "live_worklogs") if kind == "rtc_scratch" else ("live_claims", "live_worklogs")
     refs += [("coordination:" + k, json.dumps(co[k])) for k in fields]
     return refs
 

@@ -95,6 +95,8 @@ GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
 DOT_GIT = ".git"
+#: Marks a registered linked worktree inside agent scratch in rule T's ``bundles`` list (archived, not bundled).
+NESTED_WORKTREE = "worktree:"
 #: Known board-state documents that live in coordination/claims/ but are not claims (exact names, never a pattern).
 NON_CLAIM_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 
@@ -271,6 +273,36 @@ def never_touch_reason(path: Path, rules: Mapping[str, Any]) -> Optional[str]:
                 if fnmatch.fnmatch(part.lower(), g.lower()):
                     return f"never_touch_glob:{g}:{part}"
     return None
+
+
+#: Directory names under which credential-named files are generated test fixtures, not credentials.
+SCRATCH_FIXTURE_DIRS = ("pytest-of-*", "pytest-*", "basetemp*")
+
+
+def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
+    """Rule T: does this entry inside an agent scratch dir hold the whole dir (2026-10-31)?
+
+    A symlink never holds: removal unlinks the link, never its target. A never-touch PATH always holds. A
+    never-touch NAME or credential-like GLOB holds only outside a repo copy or a pytest temp tree: there it is a
+    tracked repo file (``secret_registry.yaml``, ``check_no_secrets.py``) or a synthetic fixture, not a credential.
+    """
+    if path.is_symlink():
+        return False
+    why = never_touch_reason(path, rules)
+    if not why:
+        return False
+    if why.startswith(("never_touch_path:", "contains_never_touch_path:")):
+        return True
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return True
+    probe = root
+    for part in rel.parts[:-1]:
+        probe = probe / part
+        if any(fnmatch.fnmatch(part, g) for g in SCRATCH_FIXTURE_DIRS) or os.path.lexists(probe / DOT_GIT):
+            return False
+    return True
 
 
 def protected_reason(path: Path, rules: Mapping[str, Any], *, own_work_tree: bool = False) -> Optional[str]:
@@ -863,6 +895,48 @@ def _opaque_process(process: Path) -> Optional[dict]:
             "comm": (fields.get("Name") or "").strip()[:64]}
 
 
+def _ppid(proc_root: Path, pid: str) -> Optional[str]:
+    try:
+        status = (proc_root / pid / "status").read_text(errors="replace")
+    except OSError:
+        return None
+    return next((line.split(":", 1)[1].strip() for line in status.splitlines() if line.startswith("PPid:")), None)
+
+
+def _resolve_opaque(processes: list[dict], proc_root: Path) -> list[dict]:
+    """Narrow OPAQUE to the processes that could actually sit inside a candidate (2026-10-31).
+
+    A kernel thread (pid 2 or child of kthreadd) has no cwd here. Any other unreadable process inherits its cwd
+    from the session that started it: one with a readable ancestor is recorded with that ancestor's cwd (``sudo``
+    from a worktree holds that worktree); one whose whole ancestry is unreadable was started by the system (a unit,
+    a container, a login manager), so its cwd comes from unit/container configuration, which the ``units`` and
+    ``cron`` references already cover. Only an ancestry that cannot be read at all stays opaque and refuses apply.
+    """
+    readable = {p["pid"]: p for p in processes if not p.get("opaque")}
+    out = []
+    for p in processes:
+        if not p.get("opaque"):
+            out.append(p)
+            continue
+        pid, seen, cwd = p["pid"], set(), None
+        parent = _ppid(proc_root, pid)
+        if pid == "2" or parent == "2":
+            continue
+        while parent and parent not in ("0", "1") and parent not in seen:
+            seen.add(parent)
+            if parent in readable:
+                cwd = readable[parent].get("cwd")
+                break
+            parent = _ppid(proc_root, parent)
+        if parent is None:
+            out.append(p)  # ancestry unreadable: still opaque
+        elif cwd is not None:
+            out.append({"pid": pid, "cwd": cwd, "fds": [], "inherited_from": parent, "uid": p.get("uid"), "comm": p.get("comm")})
+        else:
+            out.append({"pid": pid, "fds": [], "system_started": True, "uid": p.get("uid"), "comm": p.get("comm")})
+    return out
+
+
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
     """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
 
@@ -948,7 +1022,7 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
                 opaque = _opaque_process(process)
                 if opaque is not None:
                     out.append(opaque | ({"cwd": cwd} if cwd else {}))
-        return out
+        return _resolve_opaque(out, rules["_proc_root"])
 
     def coordination():
         base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
@@ -1053,7 +1127,7 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
     registered linked worktree is rule W's), a repo with tracked changes or untracked files, a repo or reference
     check git cannot answer, and an unbounded scan. A ``.git`` file whose gitdir is gone is an orphan: plain files.
     """
-    found, count, pending = [], 0, [path]
+    found, count, pending, bundles = [], 0, [path], []
     while pending:
         p = pending.pop()
         try:
@@ -1068,7 +1142,6 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
                         pending.append(Path(e.path))
         except OSError:
             return [], "nested_repo_scan_unreadable"
-    bundles = []
     for dot in sorted(found):
         repo = dot.parent
         if dot.is_symlink():
@@ -1078,8 +1151,11 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
                 target = dot.read_text().strip().removeprefix("gitdir:").strip()
             except OSError:
                 return [], "nested_repo_unreadable"
-            if not target or os.path.lexists(target if os.path.isabs(target) else repo / target):
-                return [], "nested_worktree_registered"
+            if not target:
+                return [], "nested_repo_unreadable"
+            if os.path.lexists(target if os.path.isabs(target) else repo / target):
+                # A proof worktree an agent made inside its scratch: archived (ref) then removed with the dir (2026-10-31).
+                bundles.append(NESTED_WORKTREE + str(repo.relative_to(path)))
             continue
         rc, status = _nested_git(repo, "status", "--porcelain", "--untracked-files=normal")
         if rc != 0:
@@ -1105,6 +1181,19 @@ def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
     """Before rule T removes a dir: bundle each nested repo holding unique commits, verified; None when all held."""
     root, bdir = Path(item["path"]), Path(item["bundle_dir"])
     for rel in item.get("bundles") or []:
+        if rel.startswith(NESTED_WORKTREE):
+            wt = root / rel.removeprefix(NESTED_WORKTREE)
+            rc, common = _nested_git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
+            if rc != 0:
+                return f"nested_worktree_unreadable:{rel}"
+            arc, err = WC.archive_worktree(wt, item["archive_ns"], "disk_hygiene rule T (AGENTS.md §24.13): proof worktree "
+                                           f"inside agent scratch {root.name}, archived before removal")
+            if err:
+                return f"nested_worktree_archive_failed:{rel}:{err}"
+            ok, how = WC.remove_worktree(wt, Path(common.strip()).parent)
+            if not ok:
+                return f"nested_worktree_remove_failed:{rel}:{how}"
+            continue
         out = bdir / root.name / (rel.replace("/", "__") + ".bundle")
         out.parent.mkdir(parents=True, exist_ok=True)
         rc, _ = _nested_git(root / rel, "bundle", "create", str(out), "--all", timeout=600)
@@ -1345,7 +1434,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             if nested_why:
                 item["reasons"].append(nested_why)
             item["bundles"], item["bundle_dir"] = bundles, str(bundle_dir)
-            activity, why = SR.activity(path, protected=lambda p: p.is_symlink() or bool(never_touch_reason(p, rules)),
+            item["archive_ns"] = (cfg.get("abandoned_worktree") or {}).get("archive_ns", "refs/archive/closeout")
+            activity, why = SR.activity(path, protected=lambda p, root=path: scratch_protected(p, root, rules),
                                         now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)

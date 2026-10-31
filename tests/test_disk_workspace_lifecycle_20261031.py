@@ -433,3 +433,56 @@ def test_pressure_flags_are_usage_errors_outside_standing_apply(world, argv):
     home, _, rules_path, _ = world
     lifecycle(world)
     assert DH.main([*argv, "--rules", str(rules_path), "--home", str(home), "--now", NOW.isoformat()]) == 2
+
+
+# --- 2026-10-31: rule T holds only what is really live or really a credential -------------------------------------
+
+@pytest.mark.parametrize("rel, holds", [
+    ("notes/.env", True),                                      # a real credential-named file at large in scratch
+    ("wt/.git", False),                                        # (marker: the dir below is a repo copy)
+    ("wt/config/secret_registry.yaml", False),                 # tracked repo file inside a repo copy
+    ("pytest-of-u/pytest-3/t0/.env", False),                   # synthetic test fixture
+    ("link.env", False),                                       # a symlink: removal unlinks the link only
+])
+def test_scratch_protected_holds_only_real_credentials(world, rel, holds):
+    home, rules, _, _ = world
+    root = home / ".cache" / "agent-tmp" / "task"
+    (root / "wt").mkdir(parents=True)
+    (root / "wt" / ".git").write_text("gitdir: /nonexistent")
+    target = root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if rel == "link.env":
+        target.symlink_to(root / "notes-target")
+    elif not target.exists():
+        target.write_text("fixture")
+    assert DH.scratch_protected(target, root, rules) is holds
+
+
+def test_scratch_protected_never_touch_path_always_holds(world):
+    home, rules, _, _ = world
+    root = home / ".cache" / "agent-tmp" / "task"
+    root.mkdir(parents=True)
+    assert DH.scratch_protected(home / "db_backups" / "x", root, rules) is True
+
+
+def _proc(tmp_path, pid, ppid, uid=0):
+    d = tmp_path / "proc" / str(pid)
+    d.mkdir(parents=True)
+    (d / "status").write_text(f"Name:\tp{pid}\nPPid:\t{ppid}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
+    return {"pid": str(pid), "opaque": True, "uid": uid, "comm": f"p{pid}"}
+
+
+def test_opaque_processes_resolve_by_ancestry(tmp_path):
+    shell = {"pid": "10", "cwd": "/w/tree", "fds": []}
+    _proc(tmp_path, 10, 1, 1000)
+    kthread = _proc(tmp_path, 20, 2)
+    sudo = _proc(tmp_path, 30, 10)                 # sudo started from the shell in /w/tree
+    daemon = _proc(tmp_path, 40, 1)                # started by the system
+    container = _proc(tmp_path, 50, 41)
+    _proc(tmp_path, 41, 1)
+    orphan = {"pid": "60", "opaque": True, "uid": 0}  # status unreadable: ancestry unknown
+    out = {p["pid"]: p for p in DH._resolve_opaque([shell, kthread, sudo, daemon, container, orphan], tmp_path / "proc")}
+    assert "20" not in out
+    assert out["30"]["cwd"] == "/w/tree" and not out["30"].get("opaque")
+    assert out["40"]["system_started"] and out["50"]["system_started"]
+    assert out["60"]["opaque"] is True

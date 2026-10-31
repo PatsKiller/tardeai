@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -195,7 +196,9 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     fresh = paths[2] / "nested" / "evidence.txt"
     os.utime(fresh, (NOW.timestamp(), NOW.timestamp()))
     doc = evidence()
-    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[1] / "body.md")}], "live_claims": [], "live_worklogs": []})
+    # 2026-10-31: only a LIVE claim/worklog holds agent scratch; closed history naming it does not (paths[0]).
+    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[0] / "body.md")}],
+                                     "live_claims": [{"scratch": str(paths[1] / "body.md")}], "live_worklogs": []})
     result = DH.standing_plan(rules, NOW, doc)
     assert {r["path"] for r in result["items"]} == {str(paths[0])}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
@@ -962,18 +965,23 @@ def test_agent_scratch_is_plan_only_until_rule_t_is_listed(world):
     assert any("rule_plan_only_not_authorized:T" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(path))
 
 
-def test_agent_scratch_never_takes_a_worktree(world):
+def test_agent_scratch_never_takes_a_worktree(world, monkeypatch):
     home, rules, _, _ = world
     rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
     (path,) = _scratch_dirs(home, ("task-with-worktree",))
     (path / "wt").mkdir()
     admin = home / "fixture-repo" / ".git" / "worktrees" / "wt"
     admin.mkdir(parents=True)
-    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it: rule W's, never T's
+    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it
     for child in (path / "wt" / ".git", path / "wt", path):
         old(child)
     result = DH.standing_plan(rules, NOW, evidence())
-    assert str(path) not in {r["path"] for r in result["items"]}
+    # 2026-10-31: a registered proof worktree inside scratch is archived then removed with the dir, never left behind
+    item = next(r for r in result["items"] if r["path"] == str(path))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)  # the fake admin dir is no repo: archive cannot run, so nothing is removed
+    assert not ok and how.startswith("nested_worktree_unreadable") and (path / "wt" / ".git").exists()
 
 
 @pytest.mark.parametrize("patch, error", [
@@ -1110,9 +1118,30 @@ def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypat
     assert (restored / "b.txt").read_text() == "only here"
 
 
+def test_nested_registered_worktree_is_archived_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-registered-worktree",))
+    _git_fixture(ref, "worktree", "add", "-q", "-b", "proof", str(scratch / "wt"))
+    (scratch / "wt" / "a.txt").write_text("edited in proof")
+    (scratch / "wt" / "new.txt").write_text("untracked proof output")
+    _age_tree(scratch)
+    item = next(r for r in DH.standing_plan(rules, NOW, evidence())["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and not scratch.exists()
+    refs = subprocess.run(["git", "-C", str(ref), "for-each-ref", "--format=%(refname)", item["archive_ns"]],
+                          capture_output=True, text=True, check=True).stdout.split()
+    assert len(refs) == 1
+    restored = home / "restored-proof"
+    _git_fixture(ref, "worktree", "add", "-q", "--detach", str(restored), refs[0])
+    assert (restored / "a.txt").read_text() == "edited in proof"
+    assert (restored / "new.txt").read_text() == "untracked proof output"
+    assert subprocess.run(["git", "-C", str(ref), "rev-parse", "--verify", "refs/heads/proof"], capture_output=True).returncode == 0
+
+
 @pytest.mark.parametrize("make, reason", [
     ("dirty", "nested_repo_dirty"),
-    ("registered_worktree", "nested_worktree_registered"),
 ])
 def test_nested_repo_holds(world, make, reason):
     home, rules, ref = _nested_world(world)
