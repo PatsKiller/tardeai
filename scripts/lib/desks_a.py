@@ -623,7 +623,8 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     for p in sorted(shown, key=lambda p: -(_num(p.get("market_value")) or 0))[:MAX_ROWS]:
         sym = str(p.get("symbol") or "?")
         cat = _stop_category(p)
-        state = BOOK_STOP_TEXT[cat]
+        # A dated cio_truth note (filled / settled fill) beats the generic category text (2026-10-31 stale V).
+        state = p.get("stop_note") if cat in ("filled", "none") and p.get("stop_note") else BOOK_STOP_TEXT[cat]
         dist = next((p.get(k) for k in ("distance_to_stop_pct", "resting_stop_distance_pct", "planned_stop_distance_pct")
                      if _num(p.get(k)) is not None), None)
         book.append(_row(f"bk-{sym}-{p.get('account_id')}", f"{sym} · {p.get('account_label') or p.get('account_id')}",
