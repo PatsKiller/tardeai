@@ -182,7 +182,7 @@ def evaluate(ctx: EvalContext) -> dict[str, Any]:
     series = _series(rows)
     tech = technical_signal(series, cfg, weights)
     earn = ctx.reader.earnings_calendar(
-        start=ctx.now, end=ctx.now + timedelta(days=int(cfg.get("earnings_lookahead_days", 10)))
+        start=ctx.now, end=ctx.now + timedelta(days=int(cfg.get("earnings_lookahead_days", 10))), now=ctx.now
     )
     sens = earnings_sensitivity(ctx.now, earn, weights, cfg, ctx.policy["event"], ctx.extras.get("implied_moves"))
     out = {"technical": tech, "earnings_sensitivity": sens}

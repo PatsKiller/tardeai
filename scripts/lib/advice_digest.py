@@ -496,7 +496,10 @@ def market_risk_header() -> str:
         from scripts.lib.market_risk import cio_context as _mr_cio
     except ImportError:  # pragma: no cover — cron path
         from lib.market_risk import cio_context as _mr_cio  # type: ignore
-    return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    try:
+        return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    except Exception as exc:  # noqa: BLE001 — the brief/digest always goes out; the line says what failed
+        return f"Market risk: not yet evaluated (tier line failed: {type(exc).__name__})"
 
 
 def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: dict[str, Any],

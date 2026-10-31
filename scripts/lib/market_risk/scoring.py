@@ -1,10 +1,11 @@
 """Composite score, tier, hysteresis, confidence decay and portfolio uplift (plan §5.2, §5.9, §5.11, §5.13).
 
 Deterministic and model-free. Every number comes from ``config/market_risk_policy.yaml`` (keys ``weights``,
-``tiers``, ``hysteresis``, ``decay``). The composite is the weighted mean of the KNOWN, decayed category scores, so
-each category's point contribution is ``weight * score * decay / sum(known weights)`` and the contributions sum to
-the score exactly (``explain.attribute`` relies on this). UNKNOWN categories are excluded and reported as lost
-``coverage``; they are never zero. Advisory only: nothing here sizes, orders or stops (MBI_BEHAVIOR = 0).
+``tiers``, ``hysteresis``, ``decay``, ``composite``). The shipped composite is ``composite.method`` (noisy-OR since the
+2026-10-31 integration: only WARN/STRESS categories add risk and confirmations stack; see ``compose``); the old
+weighted mean is kept as ``method: mean`` for comparison runs. Either way the per-category point contributions sum to
+the score exactly (``explain.attribute`` relies on this). UNKNOWN categories are reported as lost ``coverage``, never
+as zero. Sessions for hysteresis are closed NYSE trading days (``sessions.py``). Advisory only (MBI_BEHAVIOR = 0).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from scripts.lib.market_risk import contract as c
+from scripts.lib.market_risk import sessions
 
 ET = ZoneInfo("America/New_York")
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN 0 < NONE 1 < BLUE 2 < YELLOW 3 < ORANGE 4 < RED 5
@@ -114,14 +116,8 @@ def _session_date(now: datetime) -> str:
     return now.astimezone(ET).date().isoformat()
 
 
-def _session_closed(now: datetime) -> bool:
-    local = now.astimezone(ET)
-    return local.weekday() >= 5 or local.time() >= SESSION_CLOSE_ET
-
-
 def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: dict) -> tuple[str, dict[str, Any]]:
     cfg = policy["hysteresis"]
-    today = _session_date(now)
     if not prior or prior.get("tier") not in SEVERITY:
         if cfg.get("bootstrap_adopts_raw", True):
             return raw, {"bootstrap": True, "raw_tier": raw, "candidate": None, "count": 0, "below_sessions": []}
@@ -150,10 +146,12 @@ def _hysteresis(raw: str, why: dict, prior: dict | None, now: datetime, policy: 
         state.update(candidate=raw, count=count, need=need)
         return cur, state
     below = list(h.get("below_sessions") or [])
-    # A session counts toward de-escalation only once it has closed: a calm morning print must not complete the
-    # count on the day hedging demand surges (2026-10-31 integration: 10-29 10:15 dropped ORANGE -> YELLOW).
-    if today not in below and _session_closed(now):
-        below.append(today)
+    # A session counts toward de-escalation only once it has closed, and only on an NYSE trading day (sessions.py):
+    # a calm morning print must not complete the count on the day hedging demand surges (10-29 10:15), and a weekend
+    # or holiday is never a session (review of #2362, B4).
+    closed = sessions.completed_session(now)
+    if closed and closed not in below:
+        below.append(closed)
     need = int(cfg["deescalate_sessions"])
     if len(below) >= need:
         return raw, state
