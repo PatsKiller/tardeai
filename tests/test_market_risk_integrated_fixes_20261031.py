@@ -247,6 +247,29 @@ def test_reentry_watch_group_recovered_across_cycles():
     assert met == [False, False, True]
 
 
+def test_unknown_group_states_never_count_as_recovered():
+    from scripts.lib.market_risk import reentry_watch as rw
+
+    rec = rw.card(
+        symbol="ZZEX",
+        exit_date="2026-10-20",
+        breakdown_close=None,
+        closes=[],
+        last_date=None,
+        group_label="Technology",
+        group_history=["UNKNOWN", "UNKNOWN"],
+        earnings_next=None,
+        earnings_last=None,
+        sessions_since_earnings=None,
+        sessions_to_earnings=None,
+        market_tier="YELLOW",
+        options_flow_state="CALM",
+        taxable_loss_days_ago=None,
+        policy=POLICY,
+    )
+    assert [c["met"] for c in rec["conditions"] if c["key"] == "group_recovered"] == [False]
+
+
 def test_reentry_watch_unknown_group_is_never_recovered():
     rows = [("ZZEX", "Synthetic Roth IRA", date(2026, 10, 20), True)]
     now = datetime(2026, 10, 29, 20, 30, tzinfo=UTC)
@@ -390,7 +413,11 @@ def test_track_record_summary_includes_the_2026_holdout():
 
 def test_card_line_and_cio_facts_carry_the_holdout():
     line = ra.track_record_holdout_line(TR)
-    assert "0.35 vs 0.542" in line and "strategic calls 0 of 6" in line and "65% false confirmations" in line
+    assert line == (
+        "2026 holdout: confirmed leaders 0.35 vs 0.542 for plain momentum (n=20); strategic calls 0 of 6; "
+        "65% false confirmations."
+    )
+    assert line in ra.render_card({"track_record": TR})
     from scripts.lib.market_risk import cio_context
 
     facts = cio_context._leadership_facts({"state": "evaluated", "as_of": "2026-10-30", "groups": {}})
