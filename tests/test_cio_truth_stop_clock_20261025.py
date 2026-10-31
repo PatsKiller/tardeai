@@ -63,9 +63,12 @@ def test_stale_read_keeps_counts_and_names_their_age(tmp_path):
 def test_filled_stop_still_in_holdings_is_awaiting_holdings_sync(tmp_path):
     doc = _resolve(SUNDAY, _broker(), tmp=tmp_path)
     rows = _stops(doc)["filled_awaiting_sync"]
-    assert [(r["symbol"], r["reason"]) for r in rows] == [("BBB", "stop filled · awaiting holdings sync")]
+    # 2026-10-31: without the trade ledger the note says what it has not checked and since when (never a bare
+    # "awaiting holdings sync", which stayed on screen for weeks after a re-buy).
+    assert [r["symbol"] for r in rows] == ["BBB"]
+    assert rows[0]["reason"] == "stop filled (broker read Fri Mar 7 20:55 ET) · sale not yet checked against the trade ledger"
     reasons = {i["title"].split(" ")[0]: i["why"] for i in doc["do_now"]["items"]}
-    assert reasons["BBB"] == "Stop filled · awaiting holdings sync"
+    assert reasons["BBB"] == "Stop filled (broker read Fri Mar 7 20:55 ET) · sale not yet checked against the trade ledger"
     assert reasons["CCC"] == "No active broker stop observed"
 
 
