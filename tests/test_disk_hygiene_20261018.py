@@ -636,6 +636,165 @@ def test_monitor_summary_carries_consumers_and_the_manifest_reclaimable(mon):
     assert "in 1 items per hygiene manifest" in summary and len(summary) <= 300
 
 
+def test_consumer_timeout_preserves_partial_category_and_unknown_beyond_rank_cap(world, monkeypatch):
+    cache, npm, models = [world.home / name for name in ("cache", "npm", "models")]
+    for p in (cache, npm, models):
+        p.mkdir()
+    mon = {"consumer_categories": [{"category": "cache", "path": str(cache)},
+                                    {"category": "cache", "path": str(npm)},
+                                    {"category": "models", "path": str(models)}],
+           "du_timeout_s": 90, "top_consumers": 1}
+    monkeypatch.setattr(DH, "du_bytes", lambda p, _: {cache: None, npm: 4096, models: 8192}[p])
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    row = next(r for r in snapshot["categories"] if r["category"] == "cache")
+    assert row["status"] == "partial" and row["bytes"] is None and row["known_bytes"] == 4096
+    assert [p["status"] for p in row["paths"]] == ["unavailable", "measured"]
+    assert snapshot["complete"] is False and snapshot["captured_at"] == NOW.isoformat()
+    consumers = DM.top_consumers({"_home": world.home}, mon, None, snapshot)
+    assert consumers == [("models", 8192), ("cache", None)]
+    _, text = DM.intent_text({"mount": "/", "used_pct": 97, "avail_bytes": 100, "size_bytes": 1000},
+                             "critical", {**mon, "critical_pct": 90}, consumers, None, snapshot["captured_at"])
+    assert "unmeasured: cache" in text and "cache 0.0G" not in text and NOW.isoformat() in text
+
+
+def test_consumer_exact_zero_is_measured_and_missing_paths_are_explicit(world, monkeypatch):
+    empty = world.home / "empty"
+    empty.mkdir()
+    mon = {"consumer_categories": [{"category": "zero", "path": str(empty)},
+                                    {"category": "missing", "path": str(world.home / "missing")} ]}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: 0)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    rows = {r["category"]: r for r in snapshot["categories"]}
+    assert rows["zero"]["status"] == "measured" and rows["zero"]["bytes"] == 0
+    assert rows["missing"]["status"] == "unknown" and rows["missing"]["bytes"] is None
+    assert rows["missing"]["paths"][0]["status"] == "unavailable"
+
+
+@pytest.mark.parametrize("rc,stdout,expected", [(0, "0\tfixture\n", 0), (0, "4096\tfixture\n", 4096),
+                                               (1, "4096\tfixture\n", None), (124, "4096\tfixture\n", None),
+                                               (0, "-1\tfixture\n", None), (0, "not-a-size\n", None),
+                                               (0, "", None)])
+def test_real_du_helper_rejects_partial_failed_and_invalid_output(world, monkeypatch, rc, stdout, expected):
+    monkeypatch.setattr(DH.subprocess, "run", lambda *a, **k: types.SimpleNamespace(
+        returncode=rc, stdout=stdout, stderr="fixture permission error" if rc else ""))
+    assert DH.du_bytes(world.home, 1) == expected
+
+
+def test_consumer_shared_deadline_fairly_clamps_all_du_timeouts(world, monkeypatch):
+    paths = [world.home / f"size-{i}" for i in range(3)]
+    for p in paths:
+        p.mkdir()
+    mon = {"consumer_categories": [{"category": p.name, "path": str(p)} for p in paths], "du_timeout_s": 9999}
+    clock, calls = {"t": 0.0}, []
+    monkeypatch.setattr(DM.time, "monotonic", lambda: clock["t"])
+    def timeout(p, seconds):
+        calls.append((p, seconds))
+        clock["t"] += seconds
+        return None
+    monkeypatch.setattr(DH, "du_bytes", timeout)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW, deadline=11)
+    assert len(calls) == 3 and sum(c[1] for c in calls) == pytest.approx(11)
+    assert all(0 < c[1] <= DM.CONSUMER_PATH_MAX_SECONDS for c in calls)
+    assert snapshot["elapsed_seconds"] == 11 and snapshot["budget_seconds"] == 11
+    assert all(r["status"] == "unknown" for r in snapshot["categories"])
+    assert snapshot["finished_at"] == (NOW + timedelta(seconds=11)).isoformat()
+
+
+def test_consumer_exhausted_budget_preserves_unstarted_categories(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}]}
+    monkeypatch.setattr(DM.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: pytest.fail("du started after shared deadline"))
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW, deadline=99)
+    assert snapshot["budget_seconds"] == 0 and snapshot["complete"] is False
+    assert snapshot["categories"][0]["paths"][0]["status"] == "budget_exhausted"
+    assert DM.top_consumers({"_home": world.home}, mon, None, snapshot) == [("cache", None)]
+
+
+def test_consumer_zero_path_budget_never_falls_back_to_a_larger_timeout(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}], "du_timeout_s": 0}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: pytest.fail("zero timeout widened"))
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    assert snapshot["categories"][0]["paths"][0]["status"] == "budget_exhausted"
+
+
+@pytest.mark.parametrize("second_size", [8192, None, 0])
+def test_same_critical_band_refreshes_snapshot_without_duplicate_intents(mon, monkeypatch, second_size):
+    models = mon.world.home / "llama-cpp-vulkan"
+    models.mkdir()
+    calls = []
+    def measure(p, _):
+        calls.append(p)
+        return 4096 if len(calls) == 1 else second_size
+    monkeypatch.setattr(DH, "du_bytes", measure)
+    assert mon.run(92) == 0
+    initial_intents = mon.intents()
+    state_path = mon.world.state / "data/runtime/disk_usage_monitor_state.json"
+    first = json.loads(state_path.read_text())["consumer_snapshot"]
+    for pct in (91, 93, 94):
+        assert mon.run(pct) == 0
+    assert len(calls) == 1 and mon.intents() == initial_intents
+    assert mon.run(95) == 0  # Exactly one hour after the first capture.
+    latest = json.loads(state_path.read_text())["consumer_snapshot"]
+    receipt = json.loads((mon.world.state / "data/runtime/disk-usage-monitor_last.json").read_text())
+    assert len(calls) == 2 and mon.intents() == initial_intents
+    assert latest["captured_at"] != first["captured_at"] and latest["categories"][0]["bytes"] == second_size
+    if second_size is None:
+        assert latest["categories"][0]["known_bytes"] == 0 and latest["complete"] is False
+    assert receipt["summary"]["consumer_snapshot"] == latest
+    assert receipt["summary"]["consumer_snapshot_refreshed"] is True
+
+
+def test_consumer_snapshot_is_shared_across_alerting_mounts(mon, monkeypatch):
+    (mon.world.home / "llama-cpp-vulkan").mkdir()
+    mon.world.rules["monitor"]["mounts"] = ["/", "/tmp"]
+    mon.world.write_rules()
+    monkeypatch.setattr(DM, "measure", lambda mount: {"mount": mount, "used_pct": 92,
+                                                       "used_bytes": 920, "avail_bytes": 80, "size_bytes": 1000})
+    calls = []
+    monkeypatch.setattr(DH, "du_bytes", lambda *args: calls.append(args) or 4096)
+    assert mon.run(92) == 0 and len(calls) == 1
+
+
+def test_partial_consumer_snapshot_is_preserved_in_state_receipt_and_intent(mon, monkeypatch):
+    cache, npm = mon.world.home / "cache", mon.world.home / "npm"
+    cache.mkdir()
+    npm.mkdir()
+    mon.world.rules["monitor"]["consumer_categories"] = [{"category": "cache", "path": str(cache)},
+                                                         {"category": "cache", "path": str(npm)}]
+    mon.world.write_rules()
+    def fake_du_process(argv, **kwargs):
+        assert argv[0] == "du"
+        failed = argv[-1] == str(cache)
+        return types.SimpleNamespace(returncode=1 if failed else 0, stdout="4096\tfixture\n",
+                                     stderr="fixture permission error" if failed else "")
+    monkeypatch.setattr(DH.subprocess, "run", fake_du_process)
+    assert mon.run(97) == 0
+    state = json.loads((mon.world.state / "data/runtime/disk_usage_monitor_state.json").read_text())
+    receipt = json.loads((mon.world.state / "data/runtime/disk-usage-monitor_last.json").read_text())
+    snapshot = state["consumer_snapshot"]
+    assert snapshot == receipt["summary"]["consumer_snapshot"] and snapshot["complete"] is False
+    assert snapshot["categories"][0]["known_bytes"] == 4096
+    assert snapshot["categories"][0]["bytes"] is None
+    assert "unmeasured: cache" in mon.intents()[0][3]
+
+
+def test_legacy_future_changed_and_malformed_snapshots_are_not_reused(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}]}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: 123)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW + timedelta(minutes=59)) is False
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW + timedelta(hours=1)) is True
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW - timedelta(seconds=1)) is True
+    assert DM.consumer_snapshot_due({"size_bytes": 123456}, mon, NOW) is True
+    assert DM.consumer_snapshot_due({**snapshot, "categories": []}, mon, NOW) is True
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [{"category": "cache", "status": "measured", "bytes": 0}]}, mon, NOW) is True
+    bad_row = {**snapshot["categories"][0], "category": []}
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [bad_row]}, mon, NOW) is True
+    bad_row = {**snapshot["categories"][0], "known_bytes": 99999, "bytes": 99999}
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [bad_row]}, mon, NOW) is True
+    assert DM.consumer_snapshot_due(snapshot, {"consumer_categories": []}, NOW) is True
+
+
 def test_a_queue_failure_does_not_record_the_band_so_the_next_run_retries(mon, tmp_path):
     missing = tmp_path / "no-ledger.sqlite"
     assert mon.run(50.0) == 0  # band ok recorded, nothing due
