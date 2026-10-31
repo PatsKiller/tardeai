@@ -37,12 +37,60 @@ HISTORY_REL = "data/runtime/current_bound_units_history.jsonl"
 DEDUPE_MINUTES = 1440  # one page per identical unit set per day; the body carries no release name
 
 
+HARNESS_VARS = ("TRADE_AI_CI", "PYTEST_CURRENT_TEST", "TRADEAI_TEST_HARNESS")
+DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
+
+
+def harness_reason() -> str | None:
+    """Non-None under a test or CI harness: no live Telegram send and no write under a production state root."""
+    for var in HARNESS_VARS:
+        if os.environ.get(var):
+            return var
+    return None
+
+
 def _state_root(arg: str | None) -> Path:
     if arg:
         return Path(arg)
+    env = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    if env:
+        return Path(env)
     from lib.persistent_state_root import good_persistent_root
 
     return good_persistent_root()
+
+
+def protected_roots() -> list[Path]:
+    """Every root a harness must never write under: the env root, the resolved production root, the default."""
+    roots = [DEFAULT_STATE_ROOT]
+    env = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    if env:
+        roots.append(Path(env))
+    try:
+        from lib.persistent_state_root import good_persistent_root
+
+        roots.append(Path(good_persistent_root()))
+    except Exception:  # noqa: BLE001 — the default and env roots still protect
+        pass
+    out = []
+    for r in roots:
+        try:
+            out.append(r.expanduser().resolve())
+        except OSError:
+            out.append(r)
+    return out
+
+
+def write_refused(root: Path) -> str | None:
+    """Why a receipt write under ``root`` is refused, or None. Only under a harness, only for protected roots."""
+    why = harness_reason()
+    if not why:
+        return None
+    rr = root.expanduser().resolve()
+    for pr in protected_roots():
+        if rr == pr or pr in rr.parents or rr in pr.parents:
+            return f"{why} set: refusing to write under the persistent-state root {pr}"
+    return None
 
 
 def _split(raw: str | None) -> list[str]:
@@ -79,6 +127,14 @@ def render_page(event: str, day: str, failed: list[str], restart_failed: list[st
 def deliver(message: str) -> tuple[bool, str | None]:
     try:
         from telegram_alert import send_telegram
+
+        why = harness_reason()
+        if why and getattr(send_telegram, "__module__", "") == "telegram_alert":
+            # A harness may exercise this path with a test double, never with the real sender.
+            print(
+                f"current_bound_units: {why} set — live Telegram send refused (behaving as --dry-run)", file=sys.stderr
+            )
+            return False, f"refused: {why} set (no live send under a test harness)"
 
         ok = send_telegram(
             message, priority="P1", dedupe_minutes=DEDUPE_MINUTES, producer=PRODUCER, message_class="operator_alert"
@@ -119,9 +175,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     failed = sorted({*restart_failed, *(k for k, v in checks.items() if not v["ok"])})
     p = cbu.plan(args.current)
     stale_page_only = [
-        {"name": u.name, "cwd": u.cwd, "reason": u.reason}
+        {"name": u.name, "cwd": u.cwd, "reason": u.reason if u.action == "page_only" else "not_in_this_deploy_list"}
         for u in p.units
-        if u.action == "page_only" and u.stale and u.name not in restarted and u.name not in restart_failed
+        if u.stale and u.name not in restarted and u.name not in restart_failed
     ]
     now = datetime.now(timezone.utc)
     out: dict = {
@@ -138,6 +194,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "paged": False,
         "page_error": None,
     }
+    if harness_reason() and not args.dry_run:
+        print(f"current_bound_units: {harness_reason()} set — sends and production writes are refused", file=sys.stderr)
     if failed or stale_page_only:
         msg = render_page(args.event, now.strftime("%Y-%m-%d"), failed, restart_failed, stale_page_only)
         out["page_key"] = hashlib.sha256(msg.encode()).hexdigest()[:16]
@@ -146,8 +204,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         else:
             ok, err = deliver(msg)
             out["paged"], out["page_error"] = ok, err
-    if not args.dry_run:
-        root = _state_root(args.state_root)
+    root = _state_root(args.state_root)
+    refused_write = None if args.dry_run else write_refused(root)
+    if refused_write:
+        print(f"current_bound_units: {refused_write} (behaving as --dry-run)", file=sys.stderr)
+        out["receipt_refused"] = refused_write
+    if not args.dry_run and not refused_write:
         _atomic_write(root / RECEIPT_REL, json.dumps(out, indent=2) + "\n")
         hist = root / HISTORY_REL
         hist.parent.mkdir(parents=True, exist_ok=True)
