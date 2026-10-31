@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 64 domains · 22 providers.
+Registry as of 2026-10-31T11:55:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 64 domains · 26 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -153,6 +153,10 @@ module every other writer must call.
 | **google_news** | live_external | active | news_feed | `news.google.com` | operator 2026-09-13 |
 | **moomoo** | live_external | service_down | positions, order_book, tape, intraday_bars | `moomoo`, `futu`, `OpenD` | operator 2026-09-13 |
 | **fidelity** | manual | no_api_manual | positions | `fidelity`, `snaptrade` | operator 2026-09-13 |
+| **squeezemetrics** | live_external | granted_unwired | institutional_flow | `squeezemetrics.com` | operator 2026-10-31 |
+| **cftc** | live_external | granted_unwired | institutional_flow | `publicreporting.cftc.gov`, `cftc.gov` | operator 2026-10-31 |
+| **ici** | live_external | granted_unwired | institutional_flow | `ici.org` | operator 2026-10-31 |
+| **options_flow_paid** | paid_external | not_funded |  |  | operator 2026-10-31 |
 
 ## Approval records
 
@@ -161,6 +165,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep** — 41 rows: provider `alpaca`, provider `schwab`, provider `yfinance`, provider `yahoo`, provider `finviz`, provider `sec_edgar`, provider `fred`, provider `brave`, provider `searxng`, provider `tavily`, provider `ollama`, provider `deepseek`, provider `stocktwits`, provider `reddit`, provider `google_news`, provider `moomoo`, provider `fidelity`, domain `quote_price`, domain `symbol_identity`, domain `analyst_opinion`, domain `catalyst_news`, domain `technicals`, domain `sector_momentum`, domain `industry_momentum`, domain `market_regime`, domain `earnings_date`, domain `holdings_accounts`, domain `options_iv`, domain `research_thesis`, domain `watch_directives`, domain `watch_discovery`, domain `web_search`, domain `private_company`, domain `dividends`, domain `macro`, domain `fundamentals`, domain `agent_opinion`, domain `agent_debate`, domain `ai_reports`, domain `redeploy_analytics`, domain `inverse_stoplights`
 - **Operator 2026-10-10 ~18:40 ET, verbatim "Yes, from one to six" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: "let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense"** — 3 rows: provider `alpha_vantage`, domain `earnings_calendar`, domain `news_sentiment`
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE** — 4 rows: provider `finnhub`, provider `polygon`, provider `fmp`, provider `newsapi`
+- **Operator 2026-10-31 in-session (verbatim): "I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything." — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1** — 4 rows: provider `squeezemetrics`, provider `cftc`, provider `ici`, provider `options_flow_paid`
 - **Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md** — 1 rows: domain `positions_store`
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
 - **Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID ("yes connect chat memory recall per guid"); shipped in PR #1001 (branch feat/chat-memory-recall)** — 1 rows: domain `operator_conversation`

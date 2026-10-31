@@ -221,44 +221,84 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     if apply and on_assessed is not None:
         on_assessed(doc)
     for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):
-        key, ep_id, kind = ent["key"], ent.get("episode_id"), ent.get("kind") or "initial"
-        if ent.get("status") == "sent":  # sent before a crash, never recorded: record it now, idempotently
-            if ep_id:
-                escalation.record_send(
-                    ep_id,
-                    now=now,
-                    kind=kind,
-                    ok=True,
-                    path=store,
-                    policy_escalation=esc_cfg,
-                    key=key,
-                    detail="recorded after restart",
-                )
-            alerts.mark_recorded(key, path=ledger)
-            continue
-        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
-        res = alerts.deliver(
-            cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
-        )
-        res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"], key=key)
-        if not apply and not res.get("deduped"):
-            alerts.settle(key, True, path=ledger)  # scratch ledger only: a dry run behaves as if delivered
-        if ep_id and not res.get("deduped") and (res.get("sent") or not apply):
-            escalation.record_send(ep_id, now=now, kind=kind, ok=True, path=store, policy_escalation=esc_cfg, key=key)
-            alerts.mark_recorded(key, path=ledger)
-        elif ep_id and apply and not res.get("deduped") and not res.get("sent"):
+        try:  # one bad entry never stops the others or crashes the cycle (review round 3, H2)
+            res = _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
+        except Exception as exc:  # noqa: BLE001 — logged and reported; the entry stays queued for the next cycle
+            print(
+                f"market_risk_evaluate: outbox entry {ent.get('key')} failed ({type(exc).__name__}: {exc})",
+                file=sys.stderr,
+            )
+            res = {
+                "key": ent.get("key"),
+                "kind": ent.get("kind"),
+                "sent": False,
+                "error": f"drain raised {type(exc).__name__}",
+            }
+        if res is not None:
+            out["sends"].append(res)
+    out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
+    return out
+
+
+def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg) -> dict[str, Any] | None:
+    """Send or reconcile one outbox entry. Returns the send result, or None when the entry was only reconciled."""
+    from scripts.lib.market_risk import alerts, escalation
+
+    key, ep_id, kind = ent["key"], ent.get("episode_id"), ent.get("kind") or "initial"
+    data = escalation.load(store) if store.exists() else {"episodes": []}
+    episodes = {e.get("id"): e for e in data.get("episodes") or []}
+    current = escalation.open_episode(data)
+    orphan = bool(ep_id) and ep_id not in episodes
+    if ent.get("status") == "sent":  # sent before a crash, never recorded: record it now, idempotently
+        if ep_id and not orphan:
             escalation.record_send(
                 ep_id,
                 now=now,
                 kind=kind,
-                ok=False,
+                ok=True,
                 path=store,
                 policy_escalation=esc_cfg,
-                detail=str(res.get("error") or "")[:200],
+                key=key,
+                detail="recorded after restart",
             )
-        out["sends"].append(res)
-    out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
-    return out
+            alerts.mark_recorded(key, path=ledger)
+        else:
+            alerts.mark_superseded(key, path=ledger, reason="episode no longer in the ledger")
+        return None
+    if kind != "initial":
+        # a repeat ("acknowledgment required") is owed only while its episode is the OPEN one (H4): an ACK, a
+        # resolution or a replaced ledger retires it instead of paging the operator after they acknowledged
+        ep = episodes.get(ep_id)
+        if ep is None or current is None or current.get("id") != ep_id or ep.get("status") != "OPEN":
+            why = "episode acknowledged or closed" if ep is not None else "episode no longer in the ledger"
+            alerts.mark_superseded(key, path=ledger, reason=why)
+            return None
+    cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+    res = alerts.deliver(
+        cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
+    )
+    res.update(kind=kind, curated=cur["curated"], curation_reason=cur["reason"], text=cur["text"], key=key)
+    if not apply and not res.get("deduped"):
+        alerts.settle(key, True, path=ledger, now=now)  # scratch ledger only: a dry run behaves as if delivered
+    if res.get("deduped"):
+        return res
+    delivered = bool(res.get("sent")) or not apply
+    if ep_id and not orphan:
+        escalation.record_send(
+            ep_id,
+            now=now,
+            kind=kind,
+            ok=delivered,
+            path=store,
+            policy_escalation=esc_cfg,
+            key=key if delivered else None,
+            detail="" if delivered else str(res.get("error") or ""),
+        )
+        if delivered:
+            alerts.mark_recorded(key, path=ledger)
+    elif delivered and orphan:
+        alerts.mark_superseded(key, path=ledger, reason="sent; its episode was replaced (torn ledger)")
+    return res
 
 
 def _curate(text: str, doc: dict, *, call_model: Any, live: bool) -> dict[str, Any]:
@@ -298,6 +338,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
     a = ap.parse_args(argv)
     apply = a.apply and not a.dry_run
+    if apply:
+        # one evaluator at a time (review round 3, H5): an overlapping cron/manual --apply exits cleanly instead of
+        # racing the first one into a second RED initial
+        import fcntl
+
+        lock_path = state_dir() / "evaluate.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(lock_fd)
+            print("market_risk_evaluate: another --apply run holds the lock; exiting", file=sys.stderr)
+            return 0
     now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
     if now is None:
         ap.error(f"--as-of {a.as_of!r} is not ISO-8601")
