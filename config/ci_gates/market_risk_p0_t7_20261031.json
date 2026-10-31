@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_t7_20261031",
+  "files": [
+    "tests/test_defense_stoplight_notify_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_T7_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_T7_20261031 — inverse-hedge stoplight desk promoted out of SHADOW (operator 2026-10-31,",
+    "design §11 item 4). PSQ went THESIS GREEN at 17:55 ET on 10-29 and nothing was sent (RCA finding 4). Pins: listed",
+    "transitions reach the transport with policy priority/dedupe/producer, unlisted and disabled never send, dry run",
+    "sends nothing, transport failure surfaces, card is advisory only, promote decision recorded. Hermetic: stubs."
+  ]
+}
