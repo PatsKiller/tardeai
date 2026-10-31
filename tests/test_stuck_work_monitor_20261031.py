@@ -290,11 +290,10 @@ def test_apply_alerts_once_per_day_and_heals_and_intake(tmp_path, sent):
     out = swm.apply(_receipt(findings), cfg, now=NOW, project=tmp_path, state=tmp_path)
     assert len(sent) == 1 and sent[0]["priority"] == "P1" and "STUCK WORK" in sent[0]["message"]
     assert sent[0]["message_class"] == cfg["message_class"]
-    assert store.read_bytes() == b'{"a":1}\n{"b":2}\n'  # repaired
-    assert store.stat().st_ino == ino  # truncated IN PLACE: a writer's open fd still points at this file
-    assert out["actions"]["heals"][0]["result"] == "repaired"
-    archived = list((tmp_path / "archive" / "heals").rglob("cio_wake_jobs.jsonl"))
-    assert archived and archived[0].read_bytes().endswith(b'"trunc')  # archived before the repair
+    # heals_enabled does NOT run an unratified heal (review round 2): the store is untouched
+    assert out["actions"]["heals"][0]["result"] == "not_ratified"
+    assert store.read_bytes().endswith(b'"trunc') and store.stat().st_ino == ino
+    assert not (tmp_path / "archive").exists()
     defects = [json.loads(x) for x in (tmp_path / cfg["fixer_defects_rel"]).read_text().splitlines()]
     assert [d["code_defect"]["lane"] for d in defects] == ["cio-wake-dispatch"]
     d = defects[0]
@@ -552,8 +551,9 @@ def test_quarantined_items_are_poison_findings_for_the_fixer(tmp_path):
             },
         }
     }
-    (tmp_path / "data" / "runtime").mkdir(parents=True)
-    (tmp_path / CFG["poison_quarantine_rel"]).write_text(json.dumps(doc))
+    d = tmp_path / CFG["poison_quarantine_dir_rel"]
+    d.mkdir(parents=True)
+    (d / "cio-ask-lifecycle.json").write_text(json.dumps(doc["cio-ask-lifecycle"]))  # #2380: one store per lane
     (f,) = SW.quarantine_findings(swm.collect_quarantined(CFG, tmp_path), NOW)
     assert f["class"] == "poison_item" and f["heal"] == "code" and f["lane"] == "cio-ask-lifecycle"
     assert SW.fixer_defect(f, NOW, receipt="r")["code_defect"]["lane"] == "cio-ask-lifecycle"
@@ -583,13 +583,13 @@ def test_h1_repair_refuses_live_writer_young_file_and_changed_file(tmp_path):
     lockf.write_text("")
     holder = lockf.open("a")  # the store's real flock held by a writer
     fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["result"] == "skipped"
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)["result"] == "skipped"
     fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
     holder.close()
     with store.open("ab") as fh:  # a writer appended after the finding: mtime changed -> refuse
         fh.write(b'\n{"d":4}\n')
     _age(store, 60)
-    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "file changed since the finding"
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)["why"] == "file changed since the finding"
     young = tmp_path / "y.jsonl"
     young.write_bytes(b'{"a":1}\n{"b":2}\n{"c')
     (fy,) = _tail_finding(young)
@@ -613,16 +613,18 @@ def test_h2_restore_rechecks_mtime_backup_age_and_json(tmp_path):
     }
     bak.write_text("{not json")
     _age(bak, 60)
-    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "backup is not valid JSON now"
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)["why"] == "backup is not valid JSON now"
     bak.write_text('{"lots": []}')
     _age(bak, 60 * 200)
-    assert "backup" in swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"]  # older than backup_max_age_h
+    assert (
+        "backup" in swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)["why"]
+    )  # older than backup_max_age_h
     _age(bak, 60)
     _age(target, 30)  # touched since the finding
-    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["why"] == "file changed since the finding"
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)["why"] == "file changed since the finding"
     _age(target, 120)
     plan["mtime"] = SW._iso(datetime.fromtimestamp(target.stat().st_mtime, tz=timezone.utc))
-    res = swm.do_heal(plan, tmp_path, tmp_path, CFG)
+    res = swm.do_heal(plan, tmp_path, tmp_path, CFG, allow_unratified=True)
     assert res["result"] == "restored" and json.loads(target.read_text()) == {"lots": []}
 
 
@@ -673,3 +675,31 @@ def test_cutover_lane_alive_by_ledger_and_tilde_signal_paths(tmp_path, monkeypat
 
 def test_deadman_is_not_a_window_lane():
     assert "premarket-delivery-deadman" not in {w["lane"] for w in CFG["market_windows"]}
+
+
+# ---------------------------------------------------------------- review round 2 (2026-10-31)
+def test_only_ratified_heals_can_run(tmp_path):
+    assert SW.RATIFIED_HEALS == frozenset({"reconcile_lock"})
+    store = tmp_path / "s.jsonl"
+    store.write_bytes(b'{"a":1}\n{"b":2}\n{"c')
+    _age(store, 90)
+    (f,) = _tail_finding(store)
+    plan = SW.heal_plan(f, CFG)
+    assert swm.do_heal(plan, tmp_path, tmp_path, CFG)["result"] == "refused"  # not ratified: refused in code
+    assert store.read_bytes().endswith(b'{"c')
+
+
+def test_never_act_is_enforced_on_heals(tmp_path):
+    lock = tmp_path / "broker_session.lock"
+    lock.write_text('{"pid": 999999999}')
+    plan = {"action": "reconcile_lock", "path": str(lock), "pid": 999999999, "archive_dir": str(tmp_path / "a")}
+    res = swm.do_heal(plan, tmp_path, tmp_path, CFG)
+    assert res["result"] == "refused" and "NEVER_ACT" in res["why"] and lock.exists()
+
+
+def test_corrupt_quarantine_store_is_reported_not_empty(tmp_path):
+    d = tmp_path / CFG["poison_quarantine_dir_rel"]
+    d.mkdir(parents=True)
+    (d / "cio-ask-lifecycle.json").write_text("{half")
+    (row,) = swm.collect_quarantined(CFG, tmp_path)
+    assert row["item"] == "<store unreadable>" and row["lane"] == "cio-ask-lifecycle"
