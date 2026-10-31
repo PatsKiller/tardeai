@@ -101,6 +101,12 @@ def tier_line(mr: Optional[dict[str, Any]]) -> str:
         names = _contributor_names(mr)
         if names:
             line += " — " + ", ".join(names)
+        shock = mr.get("shock_type") if isinstance(mr.get("shock_type"), dict) else {}
+        if shock.get("class") and shock.get("class") not in ("UNKNOWN", "MIXED"):
+            line += f" · {shock['class'].lower()}"
+            hit = (mr.get("sectors") or {}).get("stressed") if isinstance(mr.get("sectors"), dict) else None
+            if hit:
+                line += f" ({', '.join(hit[:3])})"
         line += f"; as of {_et_hhmm(mr.get('as_of'))}"
         if mr.get("state") == "stale":
             line += " (stale)"
@@ -165,6 +171,17 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             else None,
             "probabilities": mr.get("probabilities"),
             "stale": bool(mr.get("stale")),
+            "shock_type": {k: (mr.get("shock_type") or {}).get(k) for k in ("class", "headline", "confidence", "evidence", "as_of")}
+            if isinstance(mr.get("shock_type"), dict)
+            else None,
+            "sectors": {k: (mr.get("sectors") or {}).get(k) for k in ("stressed", "weak", "resilient", "rotating", "as_of")}
+            if isinstance(mr.get("sectors"), dict)
+            else None,
+            "position_stances": {
+                s: {k: p.get(k) for k in ("stance", "label", "reasons", "re_enter_if", "as_of")}
+                for s, p in (mr.get("positions") or {}).items()
+                if isinstance(p, dict)
+            },
         }
     )
     return out

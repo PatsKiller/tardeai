@@ -397,3 +397,94 @@ composite:
   max_per_category: 0.95
   # No coverage extrapolation (review of #2362, B2): an UNKNOWN category never raises the score or the tier; the card
   # shows the lost coverage instead. The former coverage_extrapolation_max knob is removed.
+
+sectors:
+  # scripts/lib/market_risk/sectors.py — sector and theme attribution + heat map (precision PR, operator 2026-10-31:
+  # "aware of which sectors got hit because [staples/healthcare] did not get affected"). STATED RULE, not fitted to
+  # October: every threshold is a standard-score band of the group's own trailing z_window_sessions history (z -1.5 is
+  # about the worst 7% of 5-session moves; -1.0 about the worst 16%). Groups are equal-weight indexes of their symbols.
+  benchmark: SPY
+  z_window_sessions: 252
+  corr_window_sessions: 10
+  stress_z: -1.5            # 5-session return z vs its own history ...
+  rs_stress_z: -1.0         # ... AND relative return vs SPY z (lagging the market, not just falling with it)
+  weak_z: -1.0
+  stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
+  weak_z_1d: -1.5
+  resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  defensive_key: defensive
+  growth_keys: [tech, semis, ai_basket, comm]
+  factor_symbols: [IWF, IWD, IWM, HYG, TLT]
+  factor_pairs:
+    growth_value: [IWF, IWD]
+    small_large: [IWM, SPY]
+    credit: [HYG, TLT]
+  groups:
+    - {key: tech, label: Technology, kind: sector, symbols: [XLK]}
+    - {key: comm, label: Communications, kind: sector, symbols: [XLC]}
+    - {key: discretionary, label: Discretionary, kind: sector, symbols: [XLY]}
+    - {key: staples, label: Staples, kind: sector, symbols: [XLP]}
+    - {key: healthcare, label: Healthcare, kind: sector, symbols: [XLV]}
+    - {key: utilities, label: Utilities, kind: sector, symbols: [XLU]}
+    - {key: energy, label: Energy, kind: sector, symbols: [XLE]}
+    - {key: financials, label: Financials, kind: sector, symbols: [XLF]}
+    - {key: industrials, label: Industrials, kind: sector, symbols: [XLI]}
+    - {key: materials, label: Materials, kind: sector, symbols: [XLB]}
+    - {key: real_estate, label: Real estate, kind: sector, symbols: [XLRE]}
+    - {key: semis, label: Semis, kind: theme, symbols: [SMH, SOXX]}
+    - {key: ai_basket, label: AI basket, kind: theme, symbols: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]}
+    - {key: defensive, label: Defensives, kind: defensive, symbols: [XLP, XLV, XLU]}
+    - {key: rates, label: Long Treasuries, kind: macro, symbols: [TLT]}
+    - {key: dollar, label: Dollar, kind: macro, symbols: [UUP]}
+
+shock_type:
+  # scripts/lib/market_risk/shock_type.py — what KIND of stress (operator 2026-10-31: "whether it's a pandemic or is
+  # it a certain sector related"). Each class is a list of indicators; its score is the share that hold; the top
+  # score at or above min_confidence wins (ties by priority), else MIXED. Same standard-score rule as sectors:.
+  min_confidence: 0.6
+  priority: [SYSTEMIC, CREDIT, SECTOR, FACTOR, RATES, EVENT]
+  systemic:
+    min_frac_sectors_down: 0.8      # 9 of 11 sectors down over 5 sessions
+    min_corr_z: 1.0                 # cross-sector correlation 1 sd above its own year
+  sector:
+    max_stressed_groups: 5
+    min_resilient_sectors: 3
+    min_dispersion_z: 1.0
+  factor:
+    min_abs_z: 2.0
+  rates:
+    bond_stress_z: -1.5
+    dollar_z: 1.5
+  credit:
+    hy_rel_z: -1.5
+
+positions:
+  # scripts/lib/market_risk/position_stances.py — per-position CIO stances (operator 2026-10-31: "advised me I would
+  # have got out earlier ... advise me when to get back in"). Advisory stances only; never size/price/stop.
+  # STATED RULE: a position is flagged when at least a quarter of it (look-through) sits in the stressed groups, or
+  # the whole book when the shock type is SYSTEMIC. Re-entry needs the flagged groups out of stress for 2 completed
+  # sessions AND the index back above its 50-day AND VIX below its 20-day — or the engine reaching GREEN.
+  min_exposure: 0.25
+  recovered_sessions: 2
+  reclaim_symbol: QQQ
+  reenter_require_all: [group_recovered, index_reclaimed_50d, vix_below_20d]
+  reenter_or_any: [engine_green]
+
+  playbook:
+    # scripts/lib/market_risk/protection_playbook.py — DISPLAY ONLY. Stop and trail percentages come from
+    # config/stop_policy.yaml via scripts/holding_family.py; nothing here decides or places a stop (MBI_BEHAVIOR = 0).
+    # tier_posture is an OPERATOR-SET proposal (§17): at ORANGE/RED show the house band with stop_policy.yaml's own
+    # risk_off regime adjustment (caps shrink 1 point). Set a tier to null to show the unadjusted band.
+    tier_posture: {YELLOW: null, ORANGE: risk_off, RED: risk_off}
+    gap_lookback_sessions: 500
+    near_stop_pct: 2.0           # flag when the implied open leaves 2 points or less before the stop
+    min_cluster_corr: 0.8        # positions whose daily returns correlate this much move together in this shock
+    # Verified 2026-10-31 from schwab.com/stocks/extended-hours-trading (fetched, quoted):
+    session_facts:
+      - "Schwab: stop orders are not eligible for execution during an extended-hours session; only limit orders are accepted (schwab.com/stocks/extended-hours-trading). A stop placed today triggers no earlier than the 09:30 open, possibly far through its level after an overnight gap."
+      - "Schwab: EXTO (extended + overnight, 24 hours, Day or GTC) covers all S&P 500, Nasdaq 100 and Dow 30 stocks plus 600+ ETFs on thinkorswim — limit orders only (schwab.com/stocks/extended-hours-trading; schwab.com/learn/story/can-i-trade-pre-and-after-hours-markets)."
+    session_alternatives:
+      - "Information, not instruction: an extended-hours limit order is a manual action you would enter yourself."
+      - "Hedge eligibility follows the inverse-hedge stoplight (PSQ for Nasdaq / tech)."
+      - "Reducing exposure before the close is the only way to be out before an after-hours shock."
+    wash_sale_note: "Taxable account: a re-buy within 30 days of a loss sale is a wash sale (the loss is deferred into the new lot). Not applicable in IRAs."

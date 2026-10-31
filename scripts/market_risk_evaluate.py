@@ -102,7 +102,23 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     a = scoring.compose(obs, policy, prior=prior, now=now)
     a = scoring.apply_uplift(a, portfolio, policy)
     a = explain.explain(a, policy)
+    attach_precision(a, ctx, policy)
     return a
+
+
+def attach_precision(a: Any, ctx: c.EvalContext, policy: dict) -> None:
+    """Sector attribution, shock type and the heat map (precision PR). A failure here is reported in the block and never
+    blocks the tier: the market assessment stands on its own."""
+    from scripts.lib.market_risk import sectors, shock_type
+
+    try:
+        block = sectors.measure(ctx)
+        a.sectors = block
+        a.shock_type = shock_type.classify(block, [o.to_dict() for o in a.observations], policy)
+        a.heatmap = sectors.heatmap(block)
+    except Exception as exc:  # noqa: BLE001 — precision is additive; an error is an honest unknown in the payload
+        a.sectors = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+        a.shock_type = {"class": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
 
 
 def portfolio_context(now: datetime) -> c.PortfolioContext | None:

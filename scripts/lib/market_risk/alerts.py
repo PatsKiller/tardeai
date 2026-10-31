@@ -65,6 +65,17 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     if a.get("confirming") is not None:
         head += f" · {a.get('confirming')} of 9 categories confirm"
     lines.append(head)
+    shock = a.get("shock_type") or {}
+    if shock.get("headline"):
+        lines.append(str(shock["headline"]))
+    from scripts.lib.market_risk import sectors as _sectors
+
+    sec_line = _sectors.card_line(a.get("sectors"))
+    if sec_line:
+        lines.append(sec_line)
+    flagged = [p for p in (a.get("positions") or {}).values() if p.get("stance") not in (None, "HOLD")]
+    for p in flagged[:6]:
+        lines.append(f"{p['symbol']}: CIO {p['label']} — {'; '.join(p.get('reasons') or [])[:160]}")
     up = a.get("uplift") or None
     if up:
         why = "; ".join(str(r) for r in (up.get("reasons") or [])) or (
