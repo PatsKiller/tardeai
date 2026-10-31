@@ -1,6 +1,7 @@
 """Explainability (plan §5.10): the top five contributors with point attribution, and the de-escalation sentence.
 
-The composite from ``scoring.compose`` is a weighted mean whose per-category points sum to the score. This module
+The composite from ``scoring.compose`` (noisy-OR by default, ``composite.method``) attributes per-category points that
+sum to the score. This module
 lists the five largest, folds the rest into one "other" line, and asserts the lines sum to the score. It also
 derives "De-escalates if …" from the next-lower tier's thresholds in policy. No model writes any of this.
 """

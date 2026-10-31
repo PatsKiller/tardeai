@@ -24,7 +24,9 @@ def _weights(ctx: EvalContext) -> tuple[dict[str, float] | None, str | None]:
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy["event"]
     try:
-        earn = ctx.reader.earnings_calendar(start=ctx.now - timedelta(days=1), end=ctx.now + timedelta(days=10))
+        earn = ctx.reader.earnings_calendar(
+            start=ctx.now - timedelta(days=1), end=ctx.now + timedelta(days=10), now=ctx.now
+        )
         macro = ctx.reader.macro_calendar(start=ctx.now - timedelta(days=1), end=ctx.now + timedelta(days=10))
     except Exception as exc:  # reader outage -> UNKNOWN with the reason, never a silent zero
         return unknown(CATEGORY, ctx.now, f"calendar read failed: {type(exc).__name__}: {exc}"[:200])

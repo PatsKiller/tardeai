@@ -23,8 +23,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 try:
+    from lib.market_risk import sessions
     from lib.market_risk.contract import TIERS, assert_no_behavior_fields
 except ImportError:  # pragma: no cover - imported as scripts.lib
+    from scripts.lib.market_risk import sessions
     from scripts.lib.market_risk.contract import TIERS, assert_no_behavior_fields
 
 SCHEMA = "MarketRiskEpisode@v1"
@@ -54,11 +56,18 @@ def _parse(s: str | None) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
+class EpisodeStoreCorrupt(ValueError):
+    """The episode ledger exists but cannot be parsed (a torn write). Readers that only display report it."""
+
+
 def load(path: Path | None = None) -> dict[str, Any]:
     p = path or store_path()
     if not p.exists():
         return {"schema": "MarketRiskEpisodeStore@v1", "episodes": []}
-    return json.loads(p.read_text(encoding="utf-8"))
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise EpisodeStoreCorrupt(f"{p}: {exc}") from exc
 
 
 def save(data: dict[str, Any], path: Path | None = None) -> None:
@@ -80,7 +89,7 @@ def save(data: dict[str, Any], path: Path | None = None) -> None:
 
 def open_episode(data: dict[str, Any]) -> dict[str, Any] | None:
     for ep in reversed(data.get("episodes") or []):
-        if ep.get("status") in ("OPEN", "ACKED"):
+        if ep.get("status") in ("OPEN", "ACKED", "CAPPED"):
             return ep
     return None
 
@@ -119,18 +128,20 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
                 "repeats": 0,
                 "acks": [],
                 "below_sessions": [],
+                "current_tier": tier,
             }
             data.setdefault("episodes", []).append(ep)
             event = "opened"
     else:
         ep["score"] = assessment.get("score")
+        ep["current_tier"] = tier
         new_stress = stress - set(ep.get("stress_categories") or [])
         if _rank(tier) > _rank(ep["tier"]):
             ep["tier"] = tier
             ep["tier_history"].append({"at": _iso(now), "tier": tier})
             ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_sessions=[])
             event = "upgraded"
-        elif new_stress and ep["status"] == "ACKED":
+        elif new_stress and ep["status"] in ("ACKED", "CAPPED"):
             ep.update(status="OPEN", anchor_at=_iso(now), repeats=0)
             event = "reopened"
         else:
@@ -138,8 +149,9 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
         ep["stress_categories"] = sorted(set(ep.get("stress_categories") or []) | stress)
         below = str(cfg.get("resolve_below_tier") or "YELLOW").upper()
         if _rank(tier) < _rank(below):
-            day = now.astimezone(ET).date().isoformat()
-            if day not in ep["below_sessions"]:
+            # only a closed NYSE trading session counts (sessions.py; review of #2362, B4)
+            day = sessions.completed_session(now)
+            if day and day not in ep["below_sessions"]:
                 ep["below_sessions"].append(day)
             if len(ep["below_sessions"]) >= int(cfg.get("resolve_after_sessions_below") or 3):
                 ep.update(status="RESOLVED", resolved_at=_iso(now))
@@ -155,17 +167,35 @@ def _last_send(ep: dict[str, Any]) -> datetime | None:
     return _parse(sends[-1]["at"]) if sends else None
 
 
+def effective_tier(ep: dict[str, Any]) -> str:
+    """The tier repeats follow: the episode tier, or the current market tier when the market has fallen below it
+    (review of #2362, B5a: a RED episode kept paging "ALERT ACTIVE" for ten hours after the market fell to YELLOW)."""
+    cur = ep.get("current_tier")
+    if cur and _rank(cur) < _rank(ep.get("tier")):
+        return str(cur).upper()
+    return str(ep.get("tier") or "NONE").upper()
+
+
+def repeat_cap(tier: str, cfg: dict[str, Any]) -> int:
+    if tier == "RED":
+        return int(cfg.get("red_repeat_cap") or 12)
+    if tier == "ORANGE":
+        return int(cfg.get("orange_repeat_cap") or 4)
+    return 0
+
+
 def _next_due(ep: dict[str, Any], cfg: dict[str, Any], now: datetime) -> tuple[datetime | None, str]:
     anchor = _parse(ep.get("anchor_at")) or _parse(ep.get("opened_at"))
     n = int(ep.get("repeats") or 0)
-    if ep["tier"] == "RED":
+    tier = effective_tier(ep)
+    if tier == "RED":
         if n >= int(cfg.get("red_repeat_cap") or 12):
             return None, "cap"
         offs = [int(x) for x in cfg.get("red_repeat_offsets_min") or [15, 30, 60]]
         every = int(cfg.get("red_repeat_every_min") or 60)
         minutes = offs[n] if n < len(offs) else offs[-1] + every * (n - len(offs) + 1)
         return anchor + timedelta(minutes=minutes), "red"
-    if ep["tier"] == "ORANGE":
+    if tier == "ORANGE":
         if n >= int(cfg.get("orange_repeat_cap") or 4):
             return None, "cap"
         offs = [int(x) for x in cfg.get("orange_repeat_offsets_min") or [60]]
@@ -173,8 +203,10 @@ def _next_due(ep: dict[str, Any], cfg: dict[str, Any], now: datetime) -> tuple[d
             return anchor + timedelta(minutes=offs[n]), "orange"
         last = _last_send(ep) or anchor
         local = last.astimezone(ET)
-        for day in range(0, 4):
+        for day in range(0, 8):
             d = (local + timedelta(days=day)).date()
+            if not sessions.is_trading_day(d):  # no 05:00 repeat on a weekend or holiday (review of #2362, Low)
+                continue
             for hhmm in cfg.get("orange_session_boundaries_et") or ["05:00", "09:45", "16:30"]:
                 h, m = (int(x) for x in str(hhmm).split(":"))
                 cand = datetime(d.year, d.month, d.day, h, m, tzinfo=ET)
@@ -199,7 +231,8 @@ def due_repeats(*, now: datetime, policy: dict[str, Any], path: Path | None = No
     return [
         {
             "episode_id": ep["id"],
-            "tier": ep["tier"],
+            "tier": effective_tier(ep),
+            "episode_tier": ep["tier"],
             "kind": kind,
             "repeat_number": int(ep.get("repeats") or 0) + 1,
             "elapsed_min": int((now - opened).total_seconds() // 60),
@@ -208,7 +241,16 @@ def due_repeats(*, now: datetime, policy: dict[str, Any], path: Path | None = No
     ]
 
 
-def record_send(episode_id: str, *, now: datetime, kind: str, ok: bool, detail: str = "", path: Path | None = None):
+def record_send(
+    episode_id: str,
+    *,
+    now: datetime,
+    kind: str,
+    ok: bool,
+    detail: str = "",
+    path: Path | None = None,
+    policy_escalation: dict[str, Any] | None = None,
+):
     """Append a send receipt; a successful repeat advances the repeat counter."""
     data = load(path)
     for ep in data.get("episodes") or []:
@@ -216,6 +258,10 @@ def record_send(episode_id: str, *, now: datetime, kind: str, ok: bool, detail: 
             ep.setdefault("sends", []).append({"at": _iso(now), "kind": kind, "ok": bool(ok), "detail": detail[:200]})
             if ok and kind != "initial":
                 ep["repeats"] = int(ep.get("repeats") or 0) + 1
+                cap = repeat_cap(effective_tier(ep), policy_escalation or {})
+                if cap and ep["repeats"] >= cap and ep.get("status") == "OPEN":
+                    # terminal for repeats: still acknowledgeable, never repeats again, never reads as "stalled"
+                    ep.update(status="CAPPED", capped_at=_iso(now))
             save(data, path)
             return ep
     raise KeyError(f"episode {episode_id} not found")
@@ -244,7 +290,9 @@ def stalled(*, now: datetime, policy: dict[str, Any], path: Path | None = None) 
     """An OPEN RED episode with no send receipt for ``stalled_after_min`` → a finding for health_tick to page."""
     cfg = policy.get("escalation") or {}
     ep = open_episode(load(path))
-    if ep is None or ep.get("status") != "OPEN" or ep.get("tier") != "RED":
+    if ep is None or ep.get("status") != "OPEN" or effective_tier(ep) != "RED":
+        return None
+    if int(ep.get("repeats") or 0) >= repeat_cap("RED", cfg):  # a finished cap is not a stall (review B5b)
         return None
     last = _last_send(ep) or _parse(ep.get("anchor_at"))
     limit = float(cfg.get("stalled_after_min") or 75)

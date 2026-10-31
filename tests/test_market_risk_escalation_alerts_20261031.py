@@ -74,7 +74,8 @@ def test_red_card_has_tier_uplift_five_contributors_book_and_advisory():
     assert "Market 76 (ORANGE) → RED because portfolio vulnerability 78" in card
     assert card.count("\n") >= 8 and "sixth contributor" not in card
     assert "extended_hours +18" in card and "10-29 18:15 ET" in card
-    assert "Your book: growth style 85 vs 50 · ETF-A stop 4.1% below" in card
+    # budget NAMES only, never the actual/limit numbers (review of #2362, M3)
+    assert "Your book: over budget: growth style · ETF-A stop 4.1% below (top holdings report)" in card
     assert "Not measured: macro_credit" in card and "De-escalates if:" in card
     assert "ACK RED" in card and card.rstrip().endswith(alerts.ADVISORY)
 
@@ -118,10 +119,10 @@ def _fake_transport(monkeypatch, ok=True):
     return calls
 
 
-def test_deliver_reaches_the_chokepoint_with_market_risk_class(monkeypatch):
+def test_deliver_reaches_the_chokepoint_with_market_risk_class(monkeypatch, tmp_path):
     calls = _fake_transport(monkeypatch)
     intent = alerts.intent_for(RED, {"tier": "ORANGE"}, POLICY)
-    out = alerts.deliver(alerts.render(RED), intent, POLICY, dry_run=False)
+    out = alerts.deliver(alerts.render(RED), intent, POLICY, dry_run=False, ledger=tmp_path / "keys.json")
     assert out["sent"] is True and len(calls) == 1
     kw = calls[0][1]
     assert kw == {
@@ -132,11 +133,11 @@ def test_deliver_reaches_the_chokepoint_with_market_risk_class(monkeypatch):
     }
 
 
-def test_deliver_dry_run_sends_nothing_and_a_refused_send_is_reported(monkeypatch):
+def test_deliver_dry_run_sends_nothing_and_a_refused_send_is_reported(monkeypatch, tmp_path):
     calls = _fake_transport(monkeypatch, ok=False)
     intent = alerts.intent_for(RED, {"tier": "ORANGE"}, POLICY)
     assert alerts.deliver("x", intent, POLICY)["sent"] is False and calls == []
-    out = alerts.deliver("x", intent, POLICY, dry_run=False)
+    out = alerts.deliver("x", intent, POLICY, dry_run=False, ledger=tmp_path / "keys.json")
     assert out["sent"] is False and "returned False" in out["error"] and len(calls) == 1
 
 
@@ -211,8 +212,10 @@ def test_resolves_after_three_sessions_below_yellow(tmp_path):
     store = tmp_path / "e.json"
     esc.observe(_red(), now=T0, policy=POLICY, path=store)
     calm = {"tier": "BLUE", "score": 20, "observations": []}
-    events = [esc.observe(calm, now=T0 + timedelta(days=d), policy=POLICY, path=store)["event"] for d in (1, 1, 2, 3)]
-    assert events == ["unchanged", "unchanged", "unchanged", "resolved"]
+    # T0 is Thu 10-29 18:15 ET; Fri 10-30 is a session, the weekend is not, Mon 11-02 and Tue 11-03 are (sessions.py)
+    days = (1, 1, 2, 3, 4, 5)
+    events = [esc.observe(calm, now=T0 + timedelta(days=d), policy=POLICY, path=store)["event"] for d in days]
+    assert events == ["unchanged", "unchanged", "unchanged", "unchanged", "unchanged", "resolved"]
     assert esc.open_episode(esc.load(store)) is None
 
 

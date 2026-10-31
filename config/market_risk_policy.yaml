@@ -218,9 +218,10 @@ seasonal:
   warn_score: 25
   stale_after_hours: 24
 # ── Composite scoring (scripts/lib/market_risk/scoring.py, builder A, P2-T1/P2-T10) ──────────────────────────
-# The composite is the weighted mean of the KNOWN category scores (each 0-100, decayed by age), so the five
-# contributors' points sum to the score exactly. UNKNOWN categories are excluded and reported as lost coverage,
-# never counted as zero. Proposed defaults; the operator owns the numbers (design §11 item 3).
+# The composite is set by composite.method (noisy-OR: only WARN/STRESS categories add risk; "mean" = the original
+# weighted mean of KNOWN category scores, kept for comparison). Either way the contributors' points sum to the score
+# exactly; UNKNOWN categories are reported as lost coverage, never counted as zero. The operator owns the numbers
+# (design §11 item 3).
 weights:
   technical: 1.0
   breadth: 1.0
@@ -297,9 +298,11 @@ escalation:
   orange_session_boundaries_et: ["05:00", "09:45", "16:30"]
   orange_repeat_cap: 4
   min_seconds_between_sends: 60          # never two sends of one episode inside a minute
-  resolve_after_sessions_below: 3        # tier below YELLOW for 3 distinct session dates -> RESOLVED
+  resolve_after_sessions_below: 3        # below YELLOW for 3 closed NYSE trading sessions (sessions.py) -> RESOLVED
   resolve_below_tier: YELLOW
   stalled_after_min: 75                  # OPEN RED with no repeat receipt this long -> health_tick pages
+  repeat_priority: P1                    # repeats of an open ORANGE/RED episode (were hardcoded in the evaluator)
+  repeat_dedupe_minutes: 0               # repeat keys are unique per episode and repeat number
 
 opening_shock:
   # 09:16-09:46 ET opening-shock detector (scripts/lib/market_risk/opening_shock.py, plan §5.14).

@@ -22,6 +22,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -56,15 +57,48 @@ def split_why(card_text: str, prefix: str) -> tuple[list[str], Optional[int]]:
     return lines, None
 
 
+def normalize(text: str) -> str:
+    """NFKC-normalised text (full-width digits become ASCII digits, so they are grounded like any other)."""
+    return unicodedata.normalize("NFKC", str(text or ""))
+
+
+def non_ascii_digits(text: str) -> list[str]:
+    """Digits outside 0-9 that survive NFKC (Arabic-Indic, Devanagari, ...): invisible to grounding, so refused."""
+    return sorted({ch for ch in normalize(text) if ch.isdigit() and not ("0" <= ch <= "9")})
+
+
 def behaviour_hits(text: str, patterns: list[str]) -> list[str]:
-    return [p for p in patterns if re.search(p, text, flags=re.IGNORECASE)]
+    t = normalize(text)
+    return [p for p in patterns if re.search(p, t, flags=re.IGNORECASE)]
+
+
+def allowed_figures(assessment: dict[str, Any]) -> str:
+    """The ONLY figures the model may repeat: the score, the market score, the confirming count and each displayed
+    contributor's points and headline (review of #2362, B3). Dates, evidence prices and the rest of the JSON are not
+    grounding material — "any number anywhere" let a stop under 712.5 through."""
+    parts: list[str] = []
+    for k in ("score", "market_score"):
+        v = assessment.get(k)
+        if isinstance(v, (int, float)):
+            parts.append(str(round(float(v))))
+    if isinstance(assessment.get("confirming"), (int, float)):
+        parts.append(str(int(assessment["confirming"])))
+    for c in (assessment.get("contributors") or [])[:5]:
+        if not isinstance(c, dict):
+            continue
+        if isinstance(c.get("points"), (int, float)):
+            parts.append(str(round(float(c["points"]))))
+        for k in ("headline", "detail"):  # assessment shape and projection shape
+            if c.get(k):
+                parts.append(str(c[k]))
+    return "\n".join(parts)
 
 
 def ungrounded_numbers(sentence: str, card_text: str, assessment: dict[str, Any]) -> list[str]:
-    """Numbers in ``sentence`` that neither the card nor the assessment supplies. Zero tolerance."""
+    """Numbers in ``sentence`` that the allow-list (``allowed_figures``) does not supply. Zero tolerance.
+    ``card_text`` is accepted for signature compatibility and deliberately not used as grounding."""
     g = _grounding()
-    supplied = card_text + "\n" + json.dumps(assessment, default=str, sort_keys=True)
-    res = g.check_grounding([sentence], supplied, min_unsupported=1, max_share=0.0)
+    res = g.check_grounding([normalize(sentence)], allowed_figures(assessment), min_unsupported=1, max_share=0.0)
     return list(res.get("unsupported") or [])
 
 
@@ -157,6 +191,10 @@ def curate(
         return _result(card_text, curated=False, lane=lane, reason="empty answer")
     if len(sentence) > int(cfg.get("max_why_chars") or 280):
         return _result(card_text, curated=False, lane=lane, reason="answer longer than max_why_chars")
+    odd = non_ascii_digits(sentence)
+    if odd:
+        return _result(card_text, curated=False, lane=lane, reason="non-ASCII digits rejected", rejected=odd)
+    sentence = normalize(sentence)
     hits = behaviour_hits(sentence, list(cfg.get("behaviour_patterns") or []))
     if hits:
         return _result(card_text, curated=False, lane=lane, reason="behaviour wording rejected", rejected=hits)

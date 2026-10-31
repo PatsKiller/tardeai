@@ -215,14 +215,23 @@ def collect_vol_complex(snapshot_id, conn=None, vix=None):
     else:
         missing.append("vix_close_unavailable")
         if conn is not None:
-            cur = conn.cursor()
-            cur.execute("SELECT DISTINCT ON (symbol) symbol, day_change_pct, fetched_at FROM market_quotes "
-                        "WHERE symbol = ANY(%s) AND fetched_at > now() - interval '24 hours' "
-                        "ORDER BY symbol, fetched_at DESC", [list(VOL_ETF_FALLBACK)])
-            for sym, chg, at in cur.fetchall():
-                out.append(_ind(snapshot_id, f"vol_proxy_{sym.lower()}_change_pct", _f(chg), "proxy",
-                                "market_quotes", {"fetched_at": str(at)}))
-            cur.close()
+            # A proxy lookup must never abort the collector (the 16:05 run is chained to the classifier with &&).
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT DISTINCT ON (symbol) symbol, day_change_pct, fetched_at FROM market_quotes "
+                            "WHERE symbol = ANY(%s) AND fetched_at > now() - interval '24 hours' "
+                            "ORDER BY symbol, fetched_at DESC", [list(VOL_ETF_FALLBACK)])
+                for sym, chg, at in cur.fetchall():
+                    out.append(_ind(snapshot_id, f"vol_proxy_{sym.lower()}_change_pct", _f(chg), "proxy",
+                                    "market_quotes", {"fetched_at": str(at)}))
+                cur.close()
+            except Exception as exc:  # noqa: BLE001 — named in missing_data and logged, the run continues
+                print(f"[regime_collector] vol proxy lookup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                missing.append(f"vol_proxy_unavailable:{type(exc).__name__}")
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001 — best effort to clear an aborted transaction
+                    pass
     return out, missing
 
 
@@ -300,7 +309,11 @@ def main(argv=None):
         vix_ind = collect_vix(snapshot_id)
         if vix_ind:
             indicators.append(vix_ind)
-        vol_inds, missing = collect_vol_complex(snapshot_id, conn, (vix_ind or {}).get("value"))
+        try:
+            vol_inds, missing = collect_vol_complex(snapshot_id, conn, (vix_ind or {}).get("value"))
+        except Exception as exc:  # noqa: BLE001 — the vol complex is additive; it can never stop the classifier
+            print(f"[regime_collector] vol complex failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            vol_inds, missing = [], [f"vol_complex_unavailable:{type(exc).__name__}"]
         indicators.extend(vol_inds)
 
         for sym in INDEX_SYMBOLS:
