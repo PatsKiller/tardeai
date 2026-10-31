@@ -4,7 +4,7 @@
   "files": [
     "tests/test_disk_workspace_lifecycle_20261031.py",
     "tests/test_n_plus_one_backups_20261031.py",
-    "tests/test_alarm_fires_backup_enforcer_20261031.py"
+    "tests/test_alarm_fires_dump_enforcer_20261031.py"
   ],
   "anchor": "DISK_WORKSPACE_LIFECYCLE_20261031",
   "comment": [
