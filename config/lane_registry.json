@@ -18826,6 +18826,24 @@
       "adopted_reason": "SHADOW-stage dispatcher-row proposal (AGENTS.md §23.11): a hand-maintained row carrying a reviewed dispatch block; reconcile_lane_registry.py re-derives generated rows and would drop the block, so this row carries no generated_by. New lane (no prior cron line); the operator's digest approval is the admission decision."
     },
     {
+      "lane_id": "premarket-delivery-deadman",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer step premarket-delivery-deadman (*/15 06-11 ET Mon-Fri, market_day_gate)",
+        "match": "scripts/check_premarket_delivery.py"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "state_since": "2026-10-31",
+      "state_reason": "New health-tick step (config/health_tick_steps.json) added by DSN-20261031-market-risk-engine-P0-T4 after the 2026-10-30 selloff RCA finding 7 (premarket pipeline ENOSPC + morning brief failure, zero operator sends 06:00-09:45 ET). It is served the moment this PR's table is promoted; the digest approval of the PR is the AGENTS.md §17 decision for the schedule (§28.15 item 2). Runs only 06:00-11:59 ET on market days.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/premarket-delivery-deadman_last.json"
+      },
+      "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -25620,24 +25638,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "premarket-delivery-deadman",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-health-tick.timer step premarket-delivery-deadman (*/15 06-11 ET Mon-Fri, market_day_gate)",
-        "match": "scripts/check_premarket_delivery.py"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "ACTIVE",
-      "state_since": "2026-10-31",
-      "state_reason": "New health-tick step (config/health_tick_steps.json) added by DSN-20261031-market-risk-engine-P0-T4 after the 2026-10-30 selloff RCA finding 7 (premarket pipeline ENOSPC + morning brief failure, zero operator sends 06:00-09:45 ET). It is served the moment this PR's table is promoted; the digest approval of the PR is the AGENTS.md §17 decision for the schedule (§28.15 item 2). Runs only 06:00-11:59 ET on market days.",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/premarket-delivery-deadman_last.json"
-      },
-      "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
     }
   ],
   "freshness_contracts": [

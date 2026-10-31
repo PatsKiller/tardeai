@@ -9,6 +9,9 @@ Hermetic: tmp state root, telegram_alert and db_adapter stubbed via sys.modules,
 
 from __future__ import annotations
 
+#: C1 firing coverage — this module injects the condition and asserts the message reaches the (stubbed) transport.
+COVERS = ["scripts/check_premarket_delivery.py"]
+
 import json
 import sys
 import types
