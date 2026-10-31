@@ -20,3 +20,120 @@ options_flow:
     warn: P2
   dedupe_minutes: 240         # one card per symbol-state per four hours
   producer: options_chain_snapshot
+
+# ── P2 market-data categories (scripts/lib/market_risk/categories/{technical,volatility,options_flow,macro_credit,
+#    cross_asset}.py, scripts/lib/market_risk/correlations.py). Each category sums the points of the sub-signals that
+#    fire (capped at 100); state = STRESS at stress_score, WARN at warn_score, else CALM. Missing inputs are UNKNOWN,
+#    never zero. Proposed defaults, operator-owned (§11 item 3). RCA fixture values quoted beside each rule.
+technical:
+  symbols: [QQQ, SPY, SMH, SOXX, IWM]
+  semis_symbols: [SMH, SOXX]
+  history_sessions: 260          # enough for a 52-week high and a 200-day average
+  min_sessions: 25
+  stale_after_hours: 96          # a Friday close is still current on Monday morning
+  warn_score: 30
+  stress_score: 60
+  drawdown_52w_pct: 8.0          # NDX was 10% off its 10-06 record on 10-30
+  drawdown_20d_pct: 4.0
+  losing_streak_sessions: 5      # SOX lost 8 straight sessions into 10-16
+  retest_window_sessions: 5
+  retest_reference_sessions: 20
+  retest_tolerance_pct: 0.25     # QQQ 725.59 on 10-28 = the 10-21 high
+  retest_fail_pct: 1.5           # then closed 2.7% lower on 10-29
+  semis_mtd_pct: -10.0           # SOX -15% month to date
+  points:
+    drawdown_52w: 15
+    drawdown_20d: 10
+    losing_streak: 15
+    failed_retest: 20
+    below_dma50: 8
+    below_dma200: 12
+    semis_mtd: 15
+
+volatility:
+  vix_symbol: "^VIX"
+  index_symbol: QQQ
+  realized_symbol: SPY
+  term_symbols: {vix9d: "^VIX9D", vix3m: "^VIX3M", vvix: "^VVIX", skew: "^SKEW"}
+  history_sessions: 30
+  stale_after_hours: 96
+  warn_score: 30
+  stress_score: 60
+  vix_warn: 20.0
+  vix_stress: 25.0
+  vix_5d_change_pct: 20.0
+  divergence_index_drop_pct: -1.5   # 10-29: QQQ -2.7% while VIX fell to 16.59
+  divergence_vix_max_change_pct: 0.0
+  vvix_warn: 110.0
+  skew_warn: 150.0
+  realized_window: 10
+  realized_over_implied: 1.0        # 10-day realized (annualised, %) above VIX
+  points:
+    vix_warn: 15
+    vix_stress: 30
+    vix_jump: 15
+    divergence: 30             # alone it is WARN: the 10-29 signal
+    term_inversion_front: 15        # VIX9D above VIX
+    term_inversion_back: 20         # VIX above VIX3M
+    vvix: 10
+    skew: 10
+    realized_over_implied: 10
+
+options_flow_category:
+  # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
+  history_extra_sessions: 1
+  stale_after_hours: 96
+  score: {CALM: 10, WARN: 50, STRESS: 85}
+
+macro_credit:
+  series: {hy_oas: BAMLH0A0HYM2, ust10: DGS10, curve: T10Y2Y, wti: DCOILWTICO, dxy: DTWEXBGS}
+  observations: 400
+  stale_after_hours: 120            # FRED publishes with a one-to-two-day lag
+  warn_score: 30
+  stress_score: 60
+  hy_oas_5d_bp: 15                  # 3.18 -> 3.40 over 10-15..10-22 = +22bp
+  hy_oas_20d_bp: 30
+  hy_oas_z: 2.0
+  ust10_level: 5.0                  # 5.19% on 10-14
+  ust10_20d_bp: 30
+  curve_20d_bp: 25                  # fast move either way
+  wti_20d_pct: 15.0                 # 96 -> 110 over 10-14..10-19
+  dxy_20d_pct: 3.0
+  points:
+    hy_oas_5d: 20
+    hy_oas_20d: 15
+    hy_oas_z: 15
+    ust10_level: 10
+    ust10_move: 10
+    curve_move: 10
+    wti: 10
+    dxy: 10
+
+correlations:
+  window: 20
+  lookback_sessions: 252
+  min_sessions: 60
+  z_anomaly: 2.0
+  sign_flip_sessions: 3
+  min_abs_mean_for_flip: 0.2
+  pairs:
+    - [SPY, "^VIX"]
+    - [SPY, TLT]
+    - [SPY, UUP]
+    - [SPY, HYG]
+    - [QQQ, SMH]
+    - [SPY, RSP]
+    - [SPY, GLD]
+
+cross_asset:
+  history_sessions: 280
+  stale_after_hours: 96
+  warn_score: 30
+  stress_score: 60
+  hyg_5d_pct: -1.5
+  flight_to_safety_spy_5d_pct: -2.0
+  flight_to_safety_tlt_5d_pct: 1.0
+  points:
+    anomaly: 20
+    hyg_drop: 15
+    flight_to_safety: 15
