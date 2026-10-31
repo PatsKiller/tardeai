@@ -1,0 +1,22 @@
+# Market Risk Engine policy — operator-owned thresholds (AGENTS.md §1 "trading policy lives under config/").
+# Born from the 2026-10-30 selloff RCA (docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md), design
+# DSN-20261031-market-risk-engine. Every detector reads its numbers from here; none are hardcoded. Advisory only.
+schema: MarketRiskPolicy@v1
+as_of: 2026-10-31
+
+options_flow:
+  # Index put/call open interest and volume versus their own trailing median (scripts/lib/market_risk/options_flow.py),
+  # evaluated by scripts/options_chain_snapshot.py on each snapshot. 2026-10-29 10:00 ET fixture: QQQ put/call volume
+  # 3.31 = 3.4x its median (0.96) -> STRESS; put/call OI 2.86 = 1.7x -> WARN; SPY OI 1.51 = 1.5x -> WARN.
+  index_symbols: [SPY, QQQ]
+  lookback_sessions: 20
+  min_history_sessions: 5
+  warn_factor: 1.5            # ratio / trailing median -> WARN
+  stress_factor: 2.0          # ratio / trailing median -> STRESS
+  absolute_pc_vol_stress: 2.5 # put/call volume at or above this is STRESS whatever the median
+  priority:
+    stress_market_hours: P1   # premarket or regular session: operator-action intent, delivered now
+    stress_after_hours: P2
+    warn: P2
+  dedupe_minutes: 240         # one card per symbol-state per four hours
+  producer: options_chain_snapshot
