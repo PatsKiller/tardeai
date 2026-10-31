@@ -33,11 +33,14 @@ def _harness() -> bool:
     return any(os.environ.get(k) for k in HARNESS_ENV)
 
 
-def message_for(e: dict) -> str:
+def message_for(e: dict, today: date | None = None) -> str:
+    """The body carries today's date, so the daily page is not swallowed by the body-hash dedupe (review #2399 F9)."""
+    day = (today or date.today()).isoformat()
     if e.get("error"):
-        return f"⚠️ *Disabled feature unreadable*: {e['name']} ({e['file']}) — {e['error']}"
+        due = e.get("review_by") or "no valid date"
+        return f"⚠️ *Disabled feature unreadable* ({day}): {e['name']} ({e['file']}), due {due}"
     return (
-        f"⏰ *Disabled feature overdue*: {e['name']}\n"
+        f"⏰ *Disabled feature overdue* ({day}): {e['name']}\n"
         f"Off since {e.get('disabled_at')}, review was due {e.get('review_by')} (owner {e.get('owner')}).\n"
         f"Why off: {e.get('reason')}\nTo re-enable: {e.get('reenable_plan')}"
     )
@@ -51,19 +54,20 @@ def deliver(message: str, sender=None) -> bool:
         from scripts import telegram_alert as ta  # type: ignore
 
         sender = ta.send_telegram
-    return bool(sender(message, priority="P2", dedupe_minutes=1440, producer=PRODUCER, message_class="report"))
+    return bool(sender(message, priority="P2", dedupe_minutes=1380, producer=PRODUCER, message_class="report"))
 
 
 def run(*, apply: bool, config_dir: Path = df.CONFIG_DIR, today: date | None = None, sender=None) -> int:
     entries = df.scan(config_dir, today=today)
     due = [e for e in entries if e.get("overdue") or e.get("error")]
     for e in entries:
-        print(f"[disabled-features] {df.note(e, e['name'])}{'  ERROR ' + e['error'] if e.get('error') else ''}")
+        err = "  ERROR " + e["error"] if e.get("error") else ""
+        print(f"[disabled-features] {df.note(e, e['name'])}{err}")
     if not due:
         print(f"[disabled-features] {len(entries)} disabled feature(s), none overdue")
         return 0
     for e in due:
-        msg = message_for(e)
+        msg = message_for(e, today)
         if apply:
             sent = deliver(msg, sender=sender)
             print(f"[disabled-features] P2 {'sent' if sent else 'NOT sent'}: {e['name']}")
