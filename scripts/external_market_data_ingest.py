@@ -97,13 +97,33 @@ def _dict_cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
+# 2026-10-31: the Market Risk Engine reads index, credit, dollar and volatility ETFs (HYG, UUP, VIXY …)
+# whether or not anyone holds or watches them; builder H's audit (PR #2341) found three absent from this
+# universe. The list is config, not code: config/market_reference_symbols.json.
+REFERENCE_SYMBOLS_PATH = PROJECT_ROOT / "config" / "market_reference_symbols.json"
+
+
+def _reference_symbols(path: Path = REFERENCE_SYMBOLS_PATH) -> list:
+    """Always-quoted market reference symbols. A missing or malformed file is logged and yields none
+    (the DB universe still refreshes); it never raises into the quote run."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        if doc.get("schema") != "MarketReferenceSymbols@v1":
+            raise ValueError(f"schema {doc.get('schema')!r}")
+        return [str(s).strip().upper() for s in doc.get("symbols") or [] if str(s).strip()]
+    except (OSError, ValueError) as exc:
+        print(f"[quotes] WARNING market reference symbols unavailable ({type(exc).__name__}: {exc}) at {path}")
+        return []
+
+
 def _get_symbols() -> list:
     conn = _get_conn()
     cur = _dict_cursor(conn)
     cur.execute(UNIVERSE_SQL)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
-    return [s for s in symbols if "-" not in s and len(s) <= 5]
+    merged = list(dict.fromkeys([*symbols, *_reference_symbols()]))
+    return [s for s in merged if "-" not in s and len(s) <= 5]
 
 
 # ── yfinance ─────────────────────────────────────────────────────────
