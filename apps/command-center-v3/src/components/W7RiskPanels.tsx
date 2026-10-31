@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import type { DrillContext } from './DetailDrawer'
 import { W7Gap, W7Metric, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, pct, text, usd, when } from './W7PagePanels'
 import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
+import { toneVars } from '../lib/designTokens'
+import { bannerVisible, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -130,3 +132,95 @@ export function W7RiskRecovery({ data, error }: { data: any, error?: unknown }) 
 }
 
 export function W7RiskStyles() { return <style>{`.w7-position-head{display:grid}.w7-position-row{display:grid;grid-template-columns:80px minmax(130px,1.4fr) repeat(6,minmax(65px,1fr)) 128px;gap:10px;padding:8px 0;border-top:1px solid var(--border-subtle);align-items:center;font-size:12px}.w7-field-label{display:none}@media(max-width:1000px){.w7-position-head{display:none}.w7-position-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;align-items:start}.w7-position-action{grid-column:1/-1}.w7-field-label{display:block;color:var(--text-2);font:11px var(--font-sans)}}`}</style> }
+
+/** Design risk/v002: the "Market risk" tab — tier card, contributors, nine categories, your book vs budget, probabilities,
+ *  score history, alert episodes, and the kept legacy regime panel as the last block. Advisory only; no size, order or
+ *  stop control. A tier the engine did not compute renders NOT EVALUATED, never a guess. */
+export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any, error?: unknown }) {
+  const mr: MarketRisk | null = unwrapMarketRisk(resp)
+  const [ack, setAck] = useState<string | null>(null)
+  const tone = mr ? (mr.state === 'not_evaluated' ? 'neutral' : tierTone(mr.tier)) : 'neutral'
+  const tv = toneVars(tone)
+  const chip = (state: string) => {
+    const t = state === 'STRESS' ? 'danger' : state === 'WARN' ? 'warning' : state === 'CALM' ? 'success' : 'neutral'
+    const v = toneVars(t)
+    return <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '0.04em', borderRadius: RADIUS.pill, padding: '3px 8px', color: TOKENS.bg[0], background: t === 'neutral' ? TOKENS.text[3] : v.color }}>{state}</span>
+  }
+  const acknowledge = async () => {
+    try {
+      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr?.episode?.id ?? null }) })
+      const j: any = await r.json().catch(() => ({}))
+      setAck(r.ok ? `Acknowledged ${shortTime(new Date().toISOString())}` : `Not recorded: ${j?.error ?? `HTTP ${r.status}`}${j?.detail ? ` — ${j.detail}` : ''}`)
+    } catch (e) { setAck(`Not recorded: ${String(e)}`) }
+  }
+  const row: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'baseline', minHeight: 34, borderTop: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }
+  return <>
+    <W7Panel title="Market risk" testId="risk-market-risk">
+      {error ? <W7Gap>Market risk unavailable: {String(error)}</W7Gap> : null}
+      {!mr && !error && <p style={{ color: TOKENS.text[2] }}>Loading…</p>}
+      {mr && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span data-testid="risk-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tone === 'neutral' ? TOKENS.text[3] : tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.state === 'not_evaluated' ? 'NOT EVALUATED' : mr.tier}</span>
+          <span style={{ ...mono, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
+          {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
+        </div>
+        <p style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.base }}>
+          {mr.state === 'not_evaluated' ? mr.reason : <>{episodeLine(mr) || 'no open episode'} · evaluated {shortTime(mr.as_of)}{mr.state === 'stale' ? ' · STALE' : ''}</>}
+        </p>
+        {mr.deescalates_if && <p style={{ margin: 0, fontSize: TYPE.base, color: TOKENS.text[2] }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {mr.deescalates_if}</p>}
+        {bannerVisible(mr) && !mr.episode?.acknowledged_at && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" data-testid="risk-market-risk-ack" onClick={acknowledge} style={{ minHeight: 44, padding: '0 20px', borderRadius: RADIUS.md, border: 0, background: tv.color, color: TOKENS.bg[0], fontSize: TYPE.md, fontWeight: 800, cursor: 'pointer' }}>Acknowledge</button>
+          <Link to="/risk?tab=exposure" style={{ ...linkStyle, minHeight: 44, display: 'inline-flex', alignItems: 'center', padding: '0 14px', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }}>Review stops</Link>
+        </div>}
+        {ack && <p role="status" style={{ margin: 0, fontSize: TYPE.base, color: ack.startsWith('Not recorded') ? toneVars('warning').color : toneVars('success').color }}>{ack}</p>}
+        <p style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[3] }}>Advisory. No order, size or stop level is implied.</p>
+      </div>}
+    </W7Panel>
+
+    {mr && mr.contributors.length > 0 && <W7Panel title="Contributors" testId="risk-market-risk-contributors">
+      {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color }}>{c.points >= 0 ? '+' : ''}{Math.round(c.points)}</span></div>)}
+      {mr.uplift && <div style={{ ...row, color: TOKENS.text[2] }}><span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span><span style={{ ...mono, color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span></div>}
+      {!mr.uplift && pointsSum(mr) != null && mr.score != null && Math.round(pointsSum(mr)!) !== Math.round(mr.score) && <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(pointsSum(mr)!)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</p>}
+    </W7Panel>}
+
+    {mr && mr.categories.length > 0 && <W7Panel title="Nine categories" testId="risk-market-risk-categories">
+      {mr.categories.map((c, i) => <div key={i} data-testid="risk-market-risk-category" style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}{c.weight != null && c.weight < 1 && c.state !== 'UNKNOWN' ? <span style={{ color: TOKENS.text[3] }}> · weight {c.weight}</span> : null}</span>{chip(c.state)}</div>)}
+      <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: TOKENS.text[3] }}>UNKNOWN = a source not read since its stale window; never counted as calm.</p>
+    </W7Panel>}
+
+    {mr?.book?.budgets?.length ? <W7Panel title="Your book vs budget" testId="risk-market-risk-book">
+      {mr.book.budgets.map((b, i) => {
+        const ratio = b.limit > 0 ? b.actual / b.limit : 0
+        const t = b.breached || ratio >= 1 ? 'danger' : ratio >= 0.9 ? 'warning' : 'success'
+        return <div key={i} data-testid="risk-market-risk-budget" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 0', borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: TYPE.base }}><span>{b.budget}</span><span style={{ ...mono, color: toneVars(t).color }}>{b.actual}{b.unit ?? '%'} / {b.limit}{b.unit ?? '%'}</span></div>
+          <div style={{ height: 8, borderRadius: RADIUS.sm, background: TOKENS.bg[3] }}><div style={{ width: `${Math.min(100, Math.round(ratio * 100))}%`, height: 8, borderRadius: RADIUS.sm, background: toneVars(t).color }} /></div>
+        </div>
+      })}
+      {mr.book.positions?.length ? <p style={{ margin: '8px 0 0', fontSize: TYPE.base, color: TOKENS.text[2] }}>Driving positions: {mr.book.positions.map(p => `${p.symbol}${p.stop_distance_pct != null ? ` stop ${fmtPct(p.stop_distance_pct / 100)} below` : ''}${p.note ? ` (${p.note})` : ''}`).join(' · ')}. Symbols and stop distance only; the limits are yours.</p> : null}
+    </W7Panel> : null}
+
+    {mr?.probabilities?.length ? <W7Panel title="Probabilities" testId="risk-market-risk-probabilities">
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ ...mono, borderCollapse: 'collapse', fontSize: TYPE.base, minWidth: 460, width: '100%', color: TOKENS.text[1] }}>
+          <thead><tr style={{ color: TOKENS.text[2] }}><th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `1px solid ${TOKENS.border}` }}>Horizon</th>{['Move ≥1.5%', 'Move ≥3%', 'Up', 'Down', 'VIX +20%', 'Trend continues'].map(h => <th key={h} style={{ padding: '6px 8px', borderBottom: `1px solid ${TOKENS.border}` }}>{h}</th>)}</tr></thead>
+          <tbody>{mr.probabilities.map((r, i) => <tr key={i}><td style={{ padding: '6px 8px' }}>{r.horizon}</td>{[r.move_1_5, r.move_3, r.up, r.down, r.vix_up_20, r.trend_continues].map((v, j) => <td key={j} style={{ padding: '6px 8px', textAlign: 'center' }}>{fmtPct(v)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+      <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: TOKENS.text[3] }}>Empirical frequencies by tier × category state over the scenario library; analogs explain, never score.</p>
+    </W7Panel> : null}
+
+    {mr?.history?.length ? <W7Panel title={`Score, last ${mr.history.length} sessions`} testId="risk-market-risk-history">
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 96, borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 4 }}>
+        {mr.history.map((h, i) => <div key={i} title={`${shortTime(h.as_of)} · ${h.tier} ${h.score}${h.sent ? ` · ${h.sent} sent` : ''}`} style={{ flex: 1, height: `${Math.max(2, Math.min(100, h.score))}%`, background: toneVars(tierTone(h.tier)).color, borderRadius: RADIUS.sm }} />)}
+      </div>
+      <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: TOKENS.text[3] }}>Bars coloured by tier; alerts sent are in each bar's tooltip.</p>
+    </W7Panel> : null}
+
+    {mr?.episode && <W7Panel title="Alert episodes" testId="risk-market-risk-episodes">
+      <div style={row}><span>{chip(mr.episode.tier)} {shortTime(mr.episode.opened_at)}{mr.episode.repeats != null ? ` · ${mr.episode.repeats} repeats` : ''}</span><span style={{ color: mr.episode.acknowledged_at ? TOKENS.text[2] : tv.color, fontSize: TYPE.base }}>{mr.episode.acknowledged_at ? `acknowledged ${shortTime(mr.episode.acknowledged_at)}` : (mr.episode.status ?? 'open').toLowerCase()}</span></div>
+    </W7Panel>}
+
+    <div data-testid="risk-market-risk-legacy-regime"><W7RiskRegime data={data} /></div>
+  </>
+}

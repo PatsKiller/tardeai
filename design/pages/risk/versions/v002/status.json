@@ -1,0 +1,48 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "risk",
+  "version": "v002",
+  "state": "PROPOSED",
+  "title": "Risk: 'Regime' tab renamed 'Market risk' with categories, budget, probabilities, episodes; legacy panel kept",
+  "created": "2026-10-31",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "awaiting the operator's one-tap decision in Approvals -> Designs (design DSN-20261031-market-risk-ui); prose never counts",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "depends_on": [
+    "DSN-20261031-market-risk-engine-P2-T1",
+    "DSN-20261031-market-risk-engine-P3-T7"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/risk",
+    "note": "Private store, never committed (design/README.md rule 7). Synthetic data only; bracketed values are placeholders. Viewing copy: claude.ai artifact Dy7ELR7nznuHV8DcJ1XpLZ (private; the operator's viewing copy). Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v002/mockups/RiskPhone.dc.html",
+        "sha256": "dd4f2524a1489c0e180cf841c3002142e0238ac06be88e83c6dc5d66e2dc1203",
+        "bytes": 15073,
+        "role": "mockups"
+      },
+      {
+        "path": "v002/mockups/RiskDesktop.dc.html",
+        "sha256": "266c9620dda99d7c8aa119ad2a9aa6a9b4c37225cf7f29c694ce8bb00cb793aa",
+        "bytes": 18537,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": [
+    {
+      "kind": "rename",
+      "what": "tab 'Regime' -> 'Market risk'; W7RiskRegime panel kept as the last block"
+    }
+  ]
+}
