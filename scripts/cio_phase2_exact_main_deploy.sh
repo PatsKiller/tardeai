@@ -1026,7 +1026,10 @@ restart_root_frozen_units() {
   local filtered="" have_py=0
   if [[ -n "${VENV_PYTHON:-}" && -n "${ROOT:-}" && -x "${VENV_PYTHON}" ]]; then
     have_py=1
-    read -ra add <<<"$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    # An operator override REPLACES the list (still filtered below); only without one are the named units added.
+    if [[ -z "${!key:-}" ]]; then
+      read -ra add <<<"$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    fi
     filtered="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" filter --units "${cand[*]} ${add[*]}" 2>/dev/null)" \
       || { log "  WARN current-bound filter failed — restarting only names on the literal default list"; have_py=0; }
   fi
@@ -1063,9 +1066,16 @@ restart_root_frozen_units() {
   done
   # The single judge: receipt + P1 for failed restarts, stale restarted units and stale page-only units.
   if [[ "$have_py" == "1" ]]; then
-    "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
-      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" \
-      || log "  WARN current-bound verify reported stale units (receipt: data/runtime/current_bound_units_last.json)"
+    # The deploy is never a test: strip leaked harness variables so a real P1 and receipt cannot be suppressed.
+    local vrc=0
+    env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS -u PYTEST_CURRENT_TEST \
+      "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
+      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" || vrc=$?
+    case "$vrc" in
+      0) ;;
+      4) log "  ERROR current-bound verify REFUSED to page or write its receipt (harness guard) — check the deploy env" ;;
+      *) log "  WARN current-bound verify reported stale units rc=$vrc (receipt: data/runtime/current_bound_units_last.json)" ;;
+    esac
   fi
   [[ "$failures" == "0" ]]
 }

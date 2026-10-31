@@ -508,7 +508,7 @@ def test_harness_refuses_real_send_and_production_root_write(monkeypatch, tmp_pa
         cli.cbu, "verify", lambda cur, names, **kw: ov(cur, names, run=fake_run(units), cwd_of=fake_cwd(units))
     )
     rc = cli.main(["verify", "--current", NEW, "--restarted", "heartbeat-receiver.service", "--json"])
-    assert rc == 2  # still judged stale
+    assert rc == 4  # the alarm itself was suppressed: distinct exit code
     assert called == []
     assert not any(realish.rglob("*")), "nothing may be written under the production state root"
     # the default root (TRADEAI_PERSISTENT_STATE_ROOT) is used when --state-root is absent
@@ -666,3 +666,75 @@ def test_receipt_records_harness_reason(monkeypatch, tmp_path):
     _cli(monkeypatch, tmp_path, ["verify", "--current", NEW, "--restarted", "tradeai-health-agent.service"], sent)
     rec = json.loads((tmp_path / "data/runtime/current_bound_units_last.json").read_text())
     assert "harness_reason" in rec and rec["harness_reason"]
+
+
+# ------------------------------------------------------------------ follow-up 3: reviewer B's should-fix notes
+def test_parent_of_protected_root_is_refused(monkeypatch, tmp_path):
+    import scripts.current_bound_units as cli
+
+    prod = tmp_path / "releases" / "persistent-state"
+    prod.mkdir(parents=True)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(prod))
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    assert cli.write_refused(tmp_path / "releases") is not None  # root is a PARENT of the protected root
+
+
+def test_force_variable_survives_and_ci_vars_do_not(monkeypatch):
+    import scripts.current_bound_units as cli
+
+    for v in ("TRADE_AI_CI", "TRADEAI_TEST_HARNESS", "PYTEST_CURRENT_TEST"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("TRADEAI_TEST_HARNESS_FORCE", "1")
+    assert cli.harness_reason() == "TRADEAI_TEST_HARNESS_FORCE"
+
+
+def test_deploy_strips_leaked_harness_vars_before_verify(tmp_path):
+    """A leaked TRADE_AI_CI in a real deploy shell must not suppress the P1: the deploy calls verify under env -u."""
+    _, _, calls = _bash_env(tmp_path, {"TRADE_AI_CI": "1", "TRADEAI_TEST_HARNESS": "1", "PYTEST_CURRENT_TEST": "x"})
+    verify = [ln for ln in calls.splitlines() if " verify " in f" {ln} "][0]
+    assert "CI=<unset>" in verify and "HARNESS=<unset>" in verify and "PYT=<unset>" in verify
+
+
+def test_deploy_logs_error_on_refusal_exit_4(tmp_path):
+    r, _, _ = _bash_env(tmp_path, {}, verify_rc=4)
+    assert "ERROR current-bound verify REFUSED" in r.stdout
+
+
+def test_override_replaces_the_list_no_union(tmp_path):
+    r, restarted, calls = _bash_env(
+        tmp_path, {"TRADEAI_CURRENT_BOUND_UNITS": "tradeai-health-agent.service"}, plan_names="grok-oauth-proxy.service"
+    )
+    assert " plan " not in f" {calls} "  # no union with the derived names
+    assert restarted == ["tradeai-health-agent.service"]
+
+
+def _bash_env(tmp_path, env_extra, *, plan_names="", verify_rc=0):
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    log = tmp_path / "restarts"
+    (fake / "systemctl").write_text(
+        "#!/bin/bash\n"
+        f'if [[ "$1 $2" == "--user restart" ]]; then echo "$3" >> "{log}"; exit 0; fi\n'
+        'if [[ "$*" == *"MainPID"* ]]; then echo 123; fi\nexit 0\n'
+    )
+    (fake / "sleep").write_text("#!/bin/bash\nexit 0\n")
+    (fake / "readlink").write_text(f"#!/bin/bash\necho {NEW}\n")
+    calls = tmp_path / "pycalls"
+    pyf = tmp_path / "py"
+    pyf.write_text(
+        "#!/bin/bash\n"
+        f'echo "$* CI=${{TRADE_AI_CI-<unset>}} HARNESS=${{TRADEAI_TEST_HARNESS-<unset>}} '
+        f'PYT=${{PYTEST_CURRENT_TEST-<unset>}}" >> "{calls}"\n'
+        f'case "$2" in plan) echo "{plan_names}";; filter) shift 3; echo "$*";; verify) exit {verify_rc};; esac\nexit 0\n'
+    )
+    for f in (*fake.iterdir(), pyf):
+        f.chmod(0o755)
+    script = (
+        f'set -euo pipefail\nlog() {{ echo "LOG $*"; }}\nROOT=/x\nVENV_PYTHON={pyf}\n'
+        + _fn("restart_root_frozen_units")
+        + f"restart_root_frozen_units {NEW} promote && echo RC0 || echo RCNZ\n"
+    )
+    env = {"PATH": f"{fake}:/usr/bin:/bin", **env_extra}
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
+    restarted = log.read_text().split() if log.exists() else []
+    return r, restarted, (calls.read_text() if calls.exists() else "")

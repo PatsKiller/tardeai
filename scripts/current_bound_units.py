@@ -50,7 +50,8 @@ def harness_reason() -> str | None:
     ``TRADE_AI_CI`` / ``TRADEAI_TEST_HARNESS`` count only when "1" or "true" (any case), so a stray ``=0`` in
     production can never suppress a real P1. ``PYTEST_CURRENT_TEST`` is set only by pytest (to the test id), so any
     non-empty value counts."""
-    for var in ("TRADE_AI_CI", "TRADEAI_TEST_HARNESS"):
+    # TRADEAI_TEST_HARNESS_FORCE is set only by tests; the deploy strips the other three before calling verify.
+    for var in ("TRADEAI_TEST_HARNESS_FORCE", "TRADE_AI_CI", "TRADEAI_TEST_HARNESS"):
         if os.environ.get(var, "").strip().lower() in TRUTHY:
             return var
     if os.environ.get("PYTEST_CURRENT_TEST", "").strip():
@@ -243,6 +244,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
         else f"verify[{args.event}]: {len(checks) - len([k for k, v in checks.items() if not v['ok']])}/{len(checks)} "
         f"on new release; failed={failed} stale_page_only={[u['name'] for u in stale_page_only]} paged={out['paged']}"
     )
+    refused = bool(out.get("receipt_refused")) or str(out.get("page_error") or "").startswith("refused")
+    if refused and not args.dry_run:
+        print(
+            "current_bound_units: ERROR verify refused to page and/or write its receipt (harness guard)",
+            file=sys.stderr,
+        )
+        return 4  # distinct: the alarm itself was suppressed
     if failed:
         return 2
     if out["page_error"]:
