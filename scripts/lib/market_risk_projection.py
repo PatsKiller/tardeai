@@ -232,6 +232,14 @@ def ack_outcome(
     shown = (projection or {}).get("episode") or {}
     if wanted is None and shown.get("id"):
         wanted = str(shown.get("id"))
+    # the episode tier the page showed (not the market tier, which can sit below an open RED episode); checked under
+    # the ledger lock so an upgrade that lands after the page rendered is refused, not silently acknowledged
+    shown_tier = str(shown.get("tier") or "") or None
     return esc.acknowledge(
-        wanted, actor=actor, channel="command_center", now=now or datetime.now(timezone.utc), path=path
+        wanted,
+        actor=actor,
+        channel="command_center",
+        now=now or datetime.now(timezone.utc),
+        path=path,
+        expected_tier=shown_tier,
     )

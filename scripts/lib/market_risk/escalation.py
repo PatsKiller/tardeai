@@ -393,7 +393,13 @@ def _record_send(
 
 
 def acknowledge(
-    episode_id: str | None, *, actor: str, channel: str, now: datetime, path: Path | None = None
+    episode_id: str | None,
+    *,
+    actor: str,
+    channel: str,
+    now: datetime,
+    path: Path | None = None,
+    expected_tier: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Operator acknowledgment (safe direction, one click, AGENTS §27.3). Returns (http_status, body).
 
@@ -401,11 +407,17 @@ def acknowledge(
     writer that drops it from the ledger cannot lose it (H5). It clears ``below_open`` (H3)."""
     p = path or store_path()
     with locked(p):
-        return _acknowledge(episode_id, actor=actor, channel=channel, now=now, path=p)
+        return _acknowledge(episode_id, actor=actor, channel=channel, now=now, path=p, expected_tier=expected_tier)
 
 
 def _acknowledge(
-    episode_id: str | None, *, actor: str, channel: str, now: datetime, path: Path
+    episode_id: str | None,
+    *,
+    actor: str,
+    channel: str,
+    now: datetime,
+    path: Path,
+    expected_tier: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     data = load_for_write(path)
     ep = open_episode(data)
@@ -415,6 +427,14 @@ def _acknowledge(
         return 409, {"ok": False, "error": f"episode {episode_id} is not the open episode {ep['id']}"}
     if not actor:
         return 403, {"ok": False, "error": "acknowledgment needs an authenticated operator principal"}
+    if expected_tier and str(expected_tier).upper() != str(ep.get("tier") or "").upper():
+        # checked under the ledger lock: an ORANGE->RED upgrade that lands after the operator read ORANGE must not
+        # let "ACK ORANGE" silence the RED (review of #2354, race)
+        return 409, {
+            "ok": False,
+            "error": f"the open episode is {ep.get('tier')}, not {str(expected_tier).upper()}",
+            "episode_tier": ep.get("tier"),
+        }
     ack = {
         "ack_id": f"ack-{secrets.token_hex(4)}",
         "at": _iso(now),

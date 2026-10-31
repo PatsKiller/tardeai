@@ -406,7 +406,9 @@ def _handle_market_risk_ack(msg, text, chat_id, allowed):
     except ImportError:
         from lib import market_risk_ack_telegram as _mra  # type: ignore
     from_id = (msg.get("from") or {}).get("id")
-    reply = _mra.handle_ack_text(text, chat_id=chat_id, from_id=from_id, allowed_chats=allowed)
+    reply = _mra.handle_ack_text(
+        text, chat_id=chat_id, from_id=from_id, allowed_chats=allowed, reply_to=msg.get("reply_to_message")
+    )
     if reply and not _post_message(chat_id, reply, reply_to_message_id=msg.get("message_id")):
         log.error("market-risk ack reply send failed")
 

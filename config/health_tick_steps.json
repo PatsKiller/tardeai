@@ -267,7 +267,7 @@
     {
       "step_id": "market-risk-escalation-stall",
       "finding_rc": [3],
-      "finding_note": "exits 3 (EXIT_FINDING) when an OPEN unacknowledged RED market-risk episode has had no repeat send for escalation.stalled_after_min; the step pages P1 itself (hourly while it persists). rc 1 = delivery failed or crashed.",
+      "finding_note": "exits 3 (EXIT_FINDING) when an OPEN unacknowledged RED market-risk episode exists and the evaluator missed a scheduled run (its run receipt is older than the latest slot overdue_after_min old); silent outside the evaluator schedule; pages P1 itself, hourly, at most 3 per episode. rc 1 = delivery failed or crashed.",
       "command": ["$PY", "scripts/check_market_risk_escalation.py"],
       "cadence_minutes": 15,
       "minute_offset": 5,
@@ -278,7 +278,7 @@
       "needs_env": false,
       "market_day_gate": false,
       "log": "logs/market_risk_escalation_stall.log",
-      "note": "2026-10-31 DSN-20261031-market-risk-engine-P3-T7 (new step, no crontab ancestor). Plan §5.8: a RED episode repeats until acknowledged; if the evaluator that sends repeats dies, this step pages 'escalation stalled'. Reads the episode store only (escalation.stalled); silent when no RED episode is OPEN. Operator approved design §11 items 5 and 8 on 2026-10-31. Placed before pipeline-watchdog, which must stay last."
+      "note": "2026-10-31 DSN-20261031-market-risk-engine-P3-T7 (new step, no crontab ancestor). Plan §5.8: a RED episode repeats until acknowledged; if the evaluator that sends repeats dies, this step pages 'escalation stalled'. Reads the episode store and the evaluator run receipt (data/runtime/market_risk/run_last.json); silent when no RED episode is OPEN or outside the evaluator schedule (config/market_risk_escalation_stall.json). Operator approved design §11 items 5 and 8 on 2026-10-31. Placed before pipeline-watchdog, which must stay last."
     },
     {
       "step_id": "pipeline-watchdog",

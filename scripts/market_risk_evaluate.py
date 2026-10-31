@@ -71,6 +71,32 @@ def persist(doc: dict, now: datetime) -> str:
     return str(d / "latest.json")
 
 
+RUN_RECEIPT_NAME = "run_last.json"
+
+
+def run_receipt_path() -> Path:
+    """``data/runtime/market_risk/run_last.json``: written by EVERY scheduled run, dry or apply (not by a replay), so
+    the lane's output signal and the stalled-escalation check see the evaluator alive during the shadow period."""
+    return state_dir() / RUN_RECEIPT_NAME
+
+
+def write_run_receipt(doc: dict, *, started: datetime, finished: datetime) -> str:
+    receipt = {
+        "schema": "MarketRiskRunReceipt@v1",
+        "lane_id": "market-risk-evaluate",
+        "started_at": started.astimezone(timezone.utc).isoformat(),
+        "finished_at": finished.astimezone(timezone.utc).isoformat(),
+        "mode": doc.get("mode"),
+        "session": doc.get("session"),
+        "as_of": doc.get("as_of"),
+        "tier": doc.get("tier"),
+        "score": doc.get("score"),
+        "sends": len(((doc.get("cycle") or {}).get("sends")) or []),
+    }
+    atomic_write_json(run_receipt_path(), receipt)
+    return str(run_receipt_path())
+
+
 def session_of(now: datetime) -> str:
     """NYSE session of ``now``: weekends and exchange holidays are ``closed``, and an early-close day's regular
     session ends at its early close (sessions.py; review of #2383)."""
@@ -352,7 +378,8 @@ def main(argv: list[str] | None = None) -> int:
             os.close(lock_fd)
             print("market_risk_evaluate: another --apply run holds the lock; exiting", file=sys.stderr)
             return 0
-    now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
+    started = datetime.now(timezone.utc)
+    now = scoring._parse(a.as_of) if a.as_of else started
     if now is None:
         ap.error(f"--as-of {a.as_of!r} is not ISO-8601")
     policy = load_policy(a.policy)
@@ -379,6 +406,9 @@ def main(argv: list[str] | None = None) -> int:
     doc["session"] = session_of(now)
     if apply:
         doc["written"] = written.get("latest") or str(state_dir() / "latest.json")
+    if not a.as_of and not a.fixture:
+        # a scheduled run (dry or apply) leaves its receipt; a replay never does
+        doc["run_receipt"] = write_run_receipt(doc, started=started, finished=datetime.now(timezone.utc))
     if a.as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:

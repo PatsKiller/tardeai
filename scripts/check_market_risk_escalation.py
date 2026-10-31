@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """check_market_risk_escalation.py — page when a RED market-risk escalation has stalled (health-tick step).
 
-A RED episode must repeat until the operator acknowledges it (DSN-20261031-market-risk-engine plan §5.8). If the
-evaluator that sends those repeats dies, the operator would hear nothing more — the 2026-10-30 failure shape. This
-step asks ``escalation.stalled`` whether an OPEN RED episode has had no send receipt for ``stalled_after_min``
-(config/market_risk_policy.yaml) and, if so, pages P1 through ``telegram_alert.send_telegram``, re-paging at most every
-``repeat_minutes`` (config/market_risk_escalation_stall.json) while the stall persists.
+A RED episode must repeat until the operator acknowledges it (DSN-20261031-market-risk-engine plan §5.8). The repeats
+are sent by the evaluator (scripts/market_risk_evaluate.py); if it dies, the operator hears nothing more — the
+2026-10-30 failure shape. This step pages P1 when BOTH hold:
 
-Exit codes (scripts/lib/monitor_exit_codes.py): 0 ok · 3 finding · 1 crash. ``--dry-run`` evaluates and prints what it
-would send; it sends nothing and writes no state. Advisory only (MBI_BEHAVIOR = 0).
+* an OPEN, unacknowledged RED episode exists whose repeats are not finished (``escalation.effective_tier`` RED, under
+  ``escalation.repeat_cap``), and
+* the evaluator missed a run it was scheduled to make: its run receipt (``evaluator_receipt_rel``, written by every
+  scheduled dry or apply run) is older than the latest scheduled slot that is at least ``overdue_after_min`` old.
+
+Outside the evaluator's schedule (nights, weekends, holidays on the trading-day windows) it is silent: send age alone
+paged 46 times over one weekend while the evaluator was simply not scheduled (review of #2354). At most
+``max_pages_per_episode`` pages per episode, at most one per ``repeat_minutes`` (config/market_risk_escalation_stall.json).
+
+Exit codes (scripts/lib/monitor_exit_codes.py): 0 ok · 3 finding · 1 delivery failed or crash. ``--dry-run`` evaluates
+and prints what it would send; it sends nothing and writes no state. Advisory only (MBI_BEHAVIOR = 0).
 """
 
 from __future__ import annotations
@@ -18,7 +25,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -33,6 +40,70 @@ CONFIG_PATH = PROJECT_ROOT / "config" / "market_risk_escalation_stall.json"
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _hm(s: str) -> time:
+    h, m = (int(x) for x in str(s).split(":"))
+    return time(h, m)
+
+
+def _parse(s) -> datetime | None:
+    if not s:
+        return None
+    t = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def last_due_slot(now: datetime, cfg: dict) -> datetime | None:
+    """The latest evaluator slot that is at least ``overdue_after_min`` old, if ``now`` is inside a scheduled window
+    (from its first slot + overdue to its last slot + overdue). None outside the schedule."""
+    from lib.market_risk.sessions import is_trading_day
+
+    local = now.astimezone(ET)
+    lag = timedelta(minutes=float(cfg["overdue_after_min"]))
+    best = None
+    for win in cfg["schedule"]:
+        day = local.date()
+        if day.weekday() not in win["weekdays"]:
+            continue
+        if win.get("trading_days_only") and not is_trading_day(day):
+            continue
+        start = datetime.combine(day, _hm(win["start"]), ET)
+        end = datetime.combine(day, _hm(win["end"]), ET)
+        if not (start + lag <= local <= end + lag):
+            continue
+        step = timedelta(minutes=float(win.get("every_min") or 15))
+        slot, latest = start, None
+        while slot <= end and slot <= local - lag:
+            latest, slot = slot, slot + step
+        if latest and (best is None or latest > best):
+            best = latest
+    return best
+
+
+def find(now: datetime, cfg: dict, *, state_root: Path, episodes: Path | None) -> dict | None:
+    from lib.market_risk import escalation
+    from lib.market_risk.policy import load_policy
+
+    ep = escalation.open_episode(escalation.load(episodes))
+    if ep is None or ep.get("status") != "OPEN" or escalation.effective_tier(ep) != "RED":
+        return None
+    if int(ep.get("repeats") or 0) >= escalation.repeat_cap("RED", load_policy().get("escalation") or {}):
+        return None
+    due = last_due_slot(now, cfg)
+    if due is None:
+        return None
+    rp = state_root / cfg["evaluator_receipt_rel"]
+    receipt = json.loads(rp.read_text(encoding="utf-8") or "{}") if rp.exists() else {}
+    ran = _parse(receipt.get("finished_at") or receipt.get("started_at"))
+    if ran is not None and ran >= due:
+        return None
+    return {
+        "episode_id": ep["id"],
+        "tier": "RED",
+        "due_slot": due.isoformat(),
+        "evaluator_last_run": ran.isoformat() if ran else None,
+    }
 
 
 def _state_path(state_root: Path, cfg: dict) -> Path:
@@ -58,20 +129,24 @@ def save_state(state_root: Path, cfg: dict, state: dict) -> None:
 
 
 def due_to_send(finding: dict, state: dict, now: datetime, cfg: dict) -> bool:
-    last = (state.get(finding["episode_id"]) or {}).get("paged_at")
-    if not last:
-        return True
-    return now - datetime.fromisoformat(last) >= timedelta(minutes=float(cfg["repeat_minutes"]))
+    rec = state.get(finding["episode_id"]) or {}
+    if int(rec.get("pages") or 0) >= int(cfg["max_pages_per_episode"]):
+        return False
+    last = rec.get("paged_at")
+    return not last or now - datetime.fromisoformat(last) >= timedelta(minutes=float(cfg["repeat_minutes"]))
 
 
-def render(finding: dict, now: datetime) -> str:
+def render(finding: dict, now: datetime, page_no: int, cfg: dict) -> str:
+    ran = _parse(finding.get("evaluator_last_run"))
+    ran_txt = ran.astimezone(ET).strftime("%a %H:%M ET") if ran else "never"
+    due_txt = _parse(finding["due_slot"]).astimezone(ET).strftime("%H:%M ET")
     return (
         "🚨 *MARKET RISK ESCALATION STALLED* — "
         + now.astimezone(ET).strftime("%a %m-%d %H:%M ET")
-        + f"\nRED episode {finding['episode_id']} is OPEN and unacknowledged, and no repeat has gone out for "
-        f"{finding['minutes_since_last_send']} min (limit {finding['limit_min']} min). The market-risk evaluator may be "
-        "down. Open the Risk page, or reply ACK RED once you have seen the alert.\n"
-        "Advisory. No order, size or stop level is implied."
+        + f" (page {page_no} of {cfg['max_pages_per_episode']})"
+        + f"\nRED episode {finding['episode_id']} is OPEN and unacknowledged, but the market-risk evaluator that sends "
+        f"its repeats missed its {due_txt} run (last run {ran_txt}). Open the Risk page, or reply ACK RED once you "
+        "have seen the alert.\nAdvisory. No order, size or stop level is implied."
     )
 
 
@@ -105,28 +180,26 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=ET)
+    if args.state_root:
+        state_root = Path(args.state_root)
+    else:
+        from lib.persistent_state_root import good_persistent_root
 
-    from lib.market_risk import escalation
-    from lib.market_risk.policy import load_policy
+        state_root = good_persistent_root()
 
-    finding = escalation.stalled(now=now, policy=load_policy(), path=Path(args.episodes) if args.episodes else None)
+    finding = find(now, cfg, state_root=state_root, episodes=Path(args.episodes) if args.episodes else None)
     out: dict = {"now": now.isoformat(), "finding": finding, "sent": False, "dry_run": bool(args.dry_run)}
     if finding:
-        if args.state_root:
-            state_root = Path(args.state_root)
-        else:
-            from lib.persistent_state_root import good_persistent_root
-
-            state_root = good_persistent_root()
         state = load_state(state_root, cfg)
         if due_to_send(finding, state, now, cfg):
-            message = render(finding, now)
+            page_no = int((state.get(finding["episode_id"]) or {}).get("pages") or 0) + 1
+            message = render(finding, now, page_no, cfg)
             out["would_send"] = {"priority": cfg["priority"], "message": message}
             if not args.dry_run:
                 ok, err = deliver(message, cfg)
                 out["sent"], out["delivery_error"] = ok, err
                 if ok:
-                    state[finding["episode_id"]] = {"paged_at": now.isoformat()}
+                    state[finding["episode_id"]] = {"paged_at": now.isoformat(), "pages": page_no}
                     save_state(state_root, cfg, state)
     if args.json:
         print(json.dumps(out, indent=2, default=str))
