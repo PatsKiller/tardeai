@@ -20,3 +20,53 @@ options_flow:
     warn: P2
   dedupe_minutes: 240         # one card per symbol-state per four hours
   producer: options_chain_snapshot
+
+# ── Composite scoring (scripts/lib/market_risk/scoring.py, builder A, P2-T1/P2-T10) ──────────────────────────
+# The composite is the weighted mean of the KNOWN category scores (each 0-100, decayed by age), so the five
+# contributors' points sum to the score exactly. UNKNOWN categories are excluded and reported as lost coverage,
+# never counted as zero. Proposed defaults; the operator owns the numbers (design §11 item 3).
+weights:
+  technical: 1.0
+  breadth: 1.0
+  volatility: 1.0
+  options_flow: 1.2
+  macro_credit: 0.6
+  cross_asset: 0.8
+  event: 1.2
+  seasonal: 0.3
+  extended_hours: 1.3
+
+tiers:
+  # A tier holds when score >= min_score, OR when at least min_warn categories are WARN/STRESS and (if listed) one
+  # of require_stress_any is at STRESS. The highest tier that holds wins. Plan §5.2.
+  blue:   {min_score: 25, min_warn: 1}
+  yellow: {min_score: 40, min_warn: 3}
+  orange: {min_score: 60, min_warn: 4, require_stress_any: [options_flow, cross_asset, event]}
+  red:    {min_score: 75, min_warn: 5, require_stress_any: [extended_hours, breadth]}
+  # Shock: an extended-hours STRESS at or above shock_min_score while the market is already ORANGE-or-worse makes
+  # RED on that one evaluation (the 10-29 18:15 ET case: NQ futures -1.5%..-2% after AMZN/INTC prints).
+  red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 1, max_warn: 0}
+  # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
+  uplift:
+    max_tiers: 1
+    vulnerability_rules:
+      - {from: ORANGE, min_vulnerability: 70, to: RED}
+      - {from: YELLOW, min_vulnerability: 80, to: ORANGE}
+    budget_ratio_uplift: 1.25      # any risk-budget breach at >= 1.25x its limit lifts one tier
+    budget_uplift_from: [YELLOW, ORANGE]
+
+hysteresis:
+  escalate_consecutive: 2          # evaluations in a row at the higher tier before it is adopted
+  deescalate_sessions: 3           # distinct ET session dates below the current tier before it drops
+  bootstrap_adopts_raw: true       # no prior assessment -> adopt the raw tier (recorded as bootstrap)
+
+decay:
+  # Contribution weight by age of the observation (hours): weight of the first step whose max_age >= age.
+  steps:
+    - {max_age_hours: 12, weight: 1.0}
+    - {max_age_hours: 24, weight: 0.8}
+    - {max_age_hours: 48, weight: 0.6}
+    - {max_age_hours: 72, weight: 0.4}
+  default_stale_after_hours: 96    # beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
+  confirm_min_weight: 0.8          # a WARN/STRESS older than ~24h (weight < 0.8) no longer confirms a tier
