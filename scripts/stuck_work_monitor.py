@@ -79,7 +79,7 @@ def _boot_time() -> float:
 
 
 def collect_procs() -> dict[int, dict]:
-    """pid -> {args, stat, wchan, uid, started} for every process this user can see (from /proc)."""
+    """pid -> {args, stat, ppid, wchan, uid, started, cpu_s, cwd, deleted_open} for this user's processes (/proc)."""
     hz = os.sysconf("SC_CLK_TCK")
     me = os.getuid()
     out: dict[int, dict] = {}
@@ -93,12 +93,31 @@ def collect_procs() -> dict[int, dict]:
             raw = (d / "stat").read_text()
             fields = raw[raw.rindex(")") + 2 :].split()
             start = _boot_time() + int(fields[19]) / hz
+            try:
+                cwd = os.readlink(d / "cwd")
+            except OSError:
+                cwd = ""
+            deleted = []
+            try:
+                for fd in (d / "fd").iterdir():
+                    try:
+                        target = os.readlink(fd)
+                        if target.endswith(" (deleted)") and target.startswith("/"):
+                            deleted.append({"path": target, "size": os.stat(fd).st_size})
+                    except OSError:
+                        continue
+            except OSError:
+                pass
             out[int(d.name)] = {
                 "args": (d / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip(),
                 "stat": fields[0],
+                "ppid": int(fields[1]),
                 "wchan": (d / "wchan").read_text().strip(),
                 "uid": st.st_uid,
                 "started": datetime.fromtimestamp(start, tz=timezone.utc),
+                "cpu_s": (int(fields[11]) + int(fields[12])) / hz,
+                "cwd": cwd,
+                "deleted_open": deleted,
             }
         except (OSError, ValueError, IndexError):
             continue
@@ -133,46 +152,63 @@ def _ts(text: str) -> datetime | None:
 
 
 def collect_units() -> list[dict]:
+    """Every user service: state, exit status, type, start timeout and the last run's wall/CPU time (one
+    ``systemctl show`` call for all units)."""
     rc, out = _run(["systemctl", "--user", "list-units", "--all", "--no-legend", "--plain", "--type=service"])
     if rc != 0:
         return []
-    names = []
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) >= 4 and parts[2] in ("activating", "failed"):
-            names.append(parts[0])
+    names = [ln.split()[0] for ln in out.splitlines() if ln.split()]
+    if not names:
+        return []
+    props = [
+        "Id",
+        "ActiveState",
+        "SubState",
+        "Result",
+        "StateChangeTimestamp",
+        "TimeoutStartUSec",
+        "Type",
+        "ExecMainStatus",
+        "ExecMainStartTimestampMonotonic",
+        "ExecMainExitTimestampMonotonic",
+        "CPUUsageNSec",
+    ]
+    argv = ["systemctl", "--user", "show", *names]
+    for p in props:
+        argv += ["-p", p]
+    _, show = _run(argv, timeout=60)
     units = []
-    for name in names:
-        rc, show = _run(
-            [
-                "systemctl",
-                "--user",
-                "show",
-                name,
-                "-p",
-                "ActiveState",
-                "-p",
-                "SubState",
-                "-p",
-                "Result",
-                "-p",
-                "StateChangeTimestamp",
-                "-p",
-                "TimeoutStartUSec",
-            ]
-        )
-        props = dict(line.split("=", 1) for line in show.splitlines() if "=" in line)
+    for block in show.split("\n\n"):
+        kv = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+        if not kv.get("Id"):
+            continue
+        try:
+            t0, t1 = (
+                int(kv.get("ExecMainStartTimestampMonotonic") or 0),
+                int(kv.get("ExecMainExitTimestampMonotonic") or 0),
+            )
+            wall = (t1 - t0) / 1e6 if t0 and t1 > t0 else None
+        except ValueError:
+            wall = None
+        try:
+            cpu = int(kv["CPUUsageNSec"]) / 1e9 if kv.get("CPUUsageNSec", "").isdigit() else None
+        except ValueError:
+            cpu = None
         tail = ""
-        if props.get("ActiveState") == "failed":
-            _, tail = _run(["journalctl", "--user", "-u", name, "-n", "15", "--no-pager", "-o", "cat"])
+        if kv.get("ActiveState") == "failed":
+            _, tail = _run(["journalctl", "--user", "-u", kv["Id"], "-n", "15", "--no-pager", "-o", "cat"])
         units.append(
             {
-                "unit": name,
-                "active": props.get("ActiveState"),
-                "sub": props.get("SubState"),
-                "result": props.get("Result"),
-                "since": _ts(props.get("StateChangeTimestamp", "")),
-                "timeout_start": props.get("TimeoutStartUSec"),
+                "unit": kv["Id"],
+                "active": kv.get("ActiveState"),
+                "sub": kv.get("SubState"),
+                "result": kv.get("Result"),
+                "since": _ts(kv.get("StateChangeTimestamp", "")),
+                "timeout_start": kv.get("TimeoutStartUSec"),
+                "type": kv.get("Type"),
+                "exit_status": kv.get("ExecMainStatus"),
+                "last_wall_s": wall,
+                "last_cpu_s": cpu,
                 "journal_tail": tail,
             }
         )
@@ -239,17 +275,22 @@ def _aware(v):
     return v
 
 
-def collect_db(cfg: dict) -> tuple[list[dict], list[dict], str | None]:
-    """(queue rows, heartbeat rows, error). Read-only session; every SQL in config must be a SELECT."""
+def collect_db(cfg: dict) -> tuple[list[dict], list[dict], str | None, bool | None]:
+    """(queue rows, heartbeat rows, error, postgres in recovery). Read-only session; every SQL is a SELECT."""
     try:
         from lib.cio_market_context_state import connect_trade_ai_readonly
 
         conn = connect_trade_ai_readonly()
     except Exception as exc:  # noqa: BLE001 — reported as unknown, never as zero
         err = f"{type(exc).__name__}: {exc}"
-        return [{"name": q["name"], "error": err} for q in cfg.get("queues") or []], [], err
-    queues, beats = [], []
+        return [{"name": q["name"], "error": err} for q in cfg.get("queues") or []], [], err, None
+    queues, beats, recovery = [], [], None
     with conn.cursor() as cur:
+        try:
+            cur.execute("SELECT pg_is_in_recovery()")
+            recovery = bool(cur.fetchone()[0])
+        except Exception:  # noqa: BLE001 — unknown, reported as None
+            recovery = None
         for q in cfg.get("queues") or []:
             row = {"name": q["name"]}
             try:
@@ -279,7 +320,7 @@ def collect_db(cfg: dict) -> tuple[list[dict], list[dict], str | None]:
             except Exception as exc:  # noqa: BLE001
                 beats = [{"agent_id": "heartbeat-query", "last_seen": None, "status": f"unknown: {exc}"}]
     conn.close()
-    return queues, beats, None
+    return queues, beats, None, recovery
 
 
 def _parse_iso(s):
@@ -300,7 +341,16 @@ def collect_breakers(cfg: dict, state: Path) -> list[dict]:
         rows = con.execute("SELECT lane_id, opened_at, consecutive, released_at FROM breakers").fetchall()
     finally:
         con.close()
-    return [{"lane_id": r[0], "opened_at": _parse_iso(r[1]), "consecutive": r[2], "released_at": r[3]} for r in rows]
+    return [
+        {
+            "lane_id": r[0],
+            "opened_at": _parse_iso(r[1]),
+            "raw_opened_at": r[1],
+            "consecutive": r[2],
+            "released_at": r[3],
+        }
+        for r in rows
+    ]
 
 
 def collect_lanes(cfg: dict, project: Path) -> list[dict]:
@@ -315,14 +365,20 @@ def collect_lanes(cfg: dict, project: Path) -> list[dict]:
         ):
             continue
         p = project / sig["path"]
-        at = None
-        try:
-            if sig["kind"] == "file_mtime":
-                at = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
-            else:
-                at = _parse_iso((json.loads(p.read_text(encoding="utf-8")) or {}).get(sig["key"]))
-        except (OSError, ValueError, AttributeError):
-            at = None
+        at, missing = None, None
+        if not p.exists():
+            missing = "signal file does not exist"
+        else:
+            try:
+                if sig["kind"] == "file_mtime":
+                    at = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+                else:
+                    doc = json.loads(p.read_text(encoding="utf-8")) or {}
+                    if sig["key"] not in doc:
+                        missing = f"key {sig['key']!r} absent"
+                    at = _parse_iso(doc.get(sig["key"]))
+            except (OSError, ValueError, AttributeError) as exc:
+                missing = f"unreadable: {type(exc).__name__}"
         out.append(
             {
                 "lane_id": lane["lane_id"],
@@ -330,8 +386,222 @@ def collect_lanes(cfg: dict, project: Path) -> list[dict]:
                 "signal_at": at,
                 "signal": sig,
                 "state_since": _parse_iso(lane.get("state_since")),
+                "signal_missing": missing,
+                "stage": (lane.get("scheduler") or {}).get("stage"),
             }
         )
+    return out
+
+
+def collect_zero_byte(cfg: dict, project: Path, state: Path, already: set[str]) -> list[dict]:
+    """Class 7 beyond the critical list: every zero-byte JSON under the scan roots (one P3 summary)."""
+    z = cfg["files"].get("zero_byte_scan") or {}
+    hits = []
+    for root in z.get("roots") or []:
+        base = Path(_expand(root, project, state))
+        for p in base.rglob("*.json") if base.is_dir() else []:
+            try:
+                if (
+                    p.is_file()
+                    and p.stat().st_size == 0
+                    and str(p) not in already
+                    and not any(fnmatch(p.name, g) for g in z.get("ignore_globs") or [])
+                ):
+                    hits.append(str(p))
+            except OSError:
+                continue
+    return sorted(hits)
+
+
+def collect_ledger_extras(cfg: dict, state: Path, open_breakers: dict) -> tuple[dict, list, list]:
+    """(probes since open per open breaker, poison items, exit-0 output_unverifiable counts) — ledger opened ro."""
+    path = state / cfg["breakers"]["ledger_rel"]
+    if not path.is_file():
+        return {}, [], []
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+    try:
+        probes = {}
+        for lane, opened in open_breakers.items():
+            probes[lane] = con.execute(
+                "SELECT count(*) FROM runs WHERE lane_id = ? AND requested_at > ?", (lane, opened)
+            ).fetchone()[0]
+        poison = [
+            {"lane_id": r[0], "slot_key": r[1], "attempts": r[2], "last_reason": r[3]}
+            for r in con.execute(
+                "SELECT lane_id, slot_key, max(attempts), max(last_reason) FROM dead_letters "
+                "WHERE released_at IS NULL GROUP BY lane_id, slot_key HAVING max(attempts) >= ?",
+                (int(cfg["breakers"]["poison_min"]),),
+            ).fetchall()
+        ]
+        since = datetime.now(timezone.utc).timestamp() - 86400 * float(cfg["breakers"]["unverifiable_days"])
+        unver = [
+            {"lane_id": r[0], "count": r[1]}
+            for r in con.execute(
+                "SELECT lane_id, count(*) FROM run_outcomes WHERE reason = 'output_unverifiable' AND exit_code = 0 "
+                "AND recorded_at >= ? GROUP BY lane_id",
+                (datetime.fromtimestamp(since, tz=timezone.utc).isoformat(),),
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+    return probes, poison, unver
+
+
+def collect_windows(cfg: dict, project: Path, now: datetime) -> tuple[list[dict], bool]:
+    """Market windows (class 13): today's due time per lane and its signal time; trading day from the NYSE calendar."""
+    try:
+        from lib.cio_market_session import is_trading_day
+
+        trading = bool(is_trading_day(now))
+    except Exception:  # noqa: BLE001 — unknown calendar: weekday rule, stated in the receipt
+        trading = now.astimezone(ET).weekday() < 5
+    today = now.astimezone(ET).date()
+    rows = []
+    for w in cfg.get("market_windows") or []:
+        hh, mm = (int(x) for x in w["due_et"].split(":"))
+        due = datetime(today.year, today.month, today.day, hh, mm, tzinfo=ET).astimezone(timezone.utc)
+        p = project / w["signal_path"]
+        try:
+            at = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            at = None
+        rows.append(
+            {
+                "lane": w["lane"],
+                "due": due,
+                "grace_min": w["grace_min"],
+                "signal_at": at,
+                "severity": w.get("severity", "P1"),
+            }
+        )
+    return rows, trading
+
+
+def collect_claims(cfg: dict, state: Path) -> list[dict]:
+    out = []
+    for f in glob.glob(str(state / cfg["claims"]["dir_rel"] / "*.json")):
+        try:
+            d = json.loads(Path(f).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and d.get("schema") == "AgentClaim@v1":
+            out.append(
+                {
+                    "claim_id": d.get("claim_id"),
+                    "status": d.get("status"),
+                    "branch": d.get("branch"),
+                    "heartbeat_at": _parse_iso(d.get("heartbeat_at") or d.get("started_at")),
+                }
+            )
+    return out
+
+
+def collect_heal_counts(cfg: dict, state: Path, project: Path, now: datetime) -> dict[str, int]:
+    """Heals attempted in the last 24 h per item: this monitor's history plus other healers' ledgers."""
+    counts: dict[str, int] = {}
+    cut = now.timestamp() - 86400
+    hist = state / cfg["history_rel"]
+    for path, key_of in [(hist, None)] + [
+        (Path(_expand(x["path"], project, state)), x) for x in cfg["heals"].get("foreign_ledgers") or []
+    ]:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-5000:]
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            at = _parse_iso(d.get("at") or d.get("ts"))
+            if at is None or at.timestamp() < cut:
+                continue
+            if key_of is None:
+                for h in (d.get("actions") or {}).get("heals") or []:
+                    counts[str(h.get("path"))] = counts.get(str(h.get("path")), 0) + 1
+            elif key_of["match"] in json.dumps(d):
+                k = str(d.get(key_of["key_field"]) or key_of["match"])
+                counts[k] = counts.get(k, 0) + 1
+    return counts
+
+
+def collect_resources(cfg: dict) -> dict:
+    res: dict = {"disk_pct": {}}
+    for m in cfg["resources"]["mounts"]:
+        try:
+            u = shutil.disk_usage(m)
+            res["disk_pct"][m] = round(100.0 * u.used / u.total, 1)
+        except OSError:
+            continue
+    try:
+        mem = dict(ln.split(":", 1) for ln in Path("/proc/meminfo").read_text().splitlines())
+        tot, free = int(mem["SwapTotal"].split()[0]), int(mem["SwapFree"].split()[0])
+        res["swap_pct"] = round(100.0 * (tot - free) / tot, 1) if tot else None
+    except (OSError, KeyError, ValueError):
+        res["swap_pct"] = None
+    return res
+
+
+def collect_pid_locks(cfg: dict, project: Path, state: Path, locks: list[dict]) -> list[dict]:
+    """pid-file locks on the configured globs: JSON {"pid": N} or a bare integer."""
+    held = {str(r.get("path") or "") for r in locks}
+    out = []
+    for g in cfg["stale_locks"]["globs"]:
+        for f in glob.glob(_expand(g, project, state)):
+            try:
+                txt = Path(f).read_text(encoding="utf-8").strip()
+                pid = (json.loads(txt) or {}).get("pid") if txt.startswith("{") else int(txt.split()[0])
+                pid = int(pid)
+            except (OSError, ValueError, TypeError, AttributeError, IndexError):
+                continue
+            out.append(
+                {
+                    "path": f,
+                    "pid": pid,
+                    "pid_alive": Path(f"/proc/{pid}").exists(),
+                    "held": f in held,
+                    "mtime": datetime.fromtimestamp(os.path.getmtime(f), tz=timezone.utc),
+                }
+            )
+    return out
+
+
+def collect_ledger_done(cfg: dict, state: Path, lanes: list[str]) -> dict[str, datetime | None]:
+    """Newest RUN_DONE per lane from the coordination ledger (read-only) — liveness for shadow/canary lanes."""
+    path = state / cfg["breakers"]["ledger_rel"]
+    if not path.is_file() or not lanes:
+        return {}
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+    try:
+        marks = ",".join("?" * len(lanes))
+        rows = con.execute(
+            f"SELECT lane_id, max(finished_at) FROM runs WHERE state = 'RUN_DONE' AND lane_id IN ({marks})"
+            " GROUP BY lane_id",
+            lanes,
+        ).fetchall()
+    finally:
+        con.close()
+    return {r[0]: _parse_iso(r[1]) for r in rows}
+
+
+def collect_quarantined(cfg: dict, state: Path) -> list[dict]:
+    try:
+        doc = json.loads((state / cfg["poison_quarantine_rel"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for lane, st in (doc or {}).items():
+        for item, rec in ((st or {}).get("quarantined") or {}).items():
+            rec = rec or {}
+            out.append(
+                {
+                    "lane": lane,
+                    "item": item,
+                    "at": _parse_iso(rec.get("at")),
+                    "consecutive_failures": rec.get("consecutive_failures"),
+                    "reason": rec.get("reason"),
+                }
+            )
     return out
 
 
@@ -365,23 +635,75 @@ def collect_unit_releases(cfg: dict) -> tuple[list[dict], str, datetime | None]:
 # ---------------------------------------------------------------- evaluate
 def evaluate(cfg: dict, *, now: datetime, project: Path, state: Path) -> dict:
     procs = collect_procs()
+    d_pids = [pid for pid, p in procs.items() if str(p.get("stat") or "").startswith("D")]
+    if d_pids:  # false-positive guard: D state must still hold on a second sample
+        time.sleep(float(cfg["processes"].get("d_resample_s", 2)))
+        for pid in d_pids:
+            try:
+                raw = Path(f"/proc/{pid}/stat").read_text()
+                procs[pid]["d_confirmed"] = raw[raw.rindex(")") + 2 :].split()[0].startswith("D")
+            except (OSError, ValueError):
+                procs[pid]["d_confirmed"] = False
     locks = collect_locks()
     findings = SW.lock_findings(locks, procs, cfg, now)
     seen_pids = {f["evidence"]["pid"] for f in findings}
     findings += SW.process_findings(procs, cfg, now, seen_pids)
-    findings += SW.unit_findings(collect_units(), cfg, now)
-    findings += SW.file_findings(collect_files(cfg, project, state, locks), cfg, now)
-    queues, beats, db_err = collect_db(cfg)
+    findings += SW.proc_extra_findings({k: v for k, v in procs.items() if k not in seen_pids}, cfg, now)
+    units = collect_units()
+    findings += SW.unit_findings(units, cfg, now)
+    findings += SW.unit_lint_findings(units, cfg, now)
+    files = collect_files(cfg, project, state, locks)
+    findings += SW.file_findings(files, cfg, now)
+    zb = collect_zero_byte(cfg, project, state, {f["path"] for f in files})
+    if zb:
+        findings.append(
+            SW.finding(
+                "zero_byte_state",
+                f"{len(zb)} other zero-byte JSON files",
+                since=None,
+                now=now,
+                severity="P3",
+                heal="page",
+                evidence={"files": zb[:60], "count": len(zb)},
+            )
+        )
+    lanes = collect_lanes(cfg, project)
+    stages = set(cfg["lanes"].get("ledger_liveness_stages") or [])
+    done = collect_ledger_done(cfg, state, [r["lane_id"] for r in lanes if r.get("stage") in stages])
+    for r in lanes:
+        r["ledger_done_at"] = done.get(r["lane_id"])
+    lane_at = {r["lane_id"]: r.get("signal_at") for r in lanes}
+    queues, beats, db_err, pg_recovery = collect_db(cfg)
+    for q, qc in zip(queues, cfg.get("queues") or []):
+        at = lane_at.get(qc.get("consumer_lane") or "")
+        q["consumer_fresh"] = bool(at and (now - at).total_seconds() < 3600 * float(qc.get("stale_hours", 24)))
     findings += SW.queue_findings(queues, cfg, now)
     findings += SW.heartbeat_findings(beats, cfg, now)
-    findings += SW.breaker_findings(collect_breakers(cfg, state), cfg, now)
-    findings += SW.lane_findings(collect_lanes(cfg, project), cfg, now)
-    units, current, promoted = collect_unit_releases(cfg)
-    findings += SW.stale_release_findings(units, current, promoted, cfg, now)
+    breakers = collect_breakers(cfg, state)
+    findings += SW.breaker_findings(breakers, cfg, now)
+    open_b = {r["lane_id"]: r["raw_opened_at"] for r in breakers if r.get("released_at") is None}
+    probes, poison, unver = collect_ledger_extras(cfg, state, open_b)
+    findings += SW.ledger_findings(probes, poison, unver, cfg, now, open_b)
+    findings += SW.lane_findings(lanes, cfg, now)
+    findings += SW.quarantine_findings(collect_quarantined(cfg, state), now)
+    windows, trading = collect_windows(cfg, project, now)
+    findings += SW.missed_window_findings(windows, now, trading)
+    findings += SW.claim_findings(collect_claims(cfg, state), cfg, now)
+    heal_counts = collect_heal_counts(cfg, state, project, now)
+    findings += SW.heal_loop_findings(heal_counts, cfg, now)
+    res = collect_resources(cfg)
+    res["pg_in_recovery"] = pg_recovery
+    findings += SW.precursor_findings(res, cfg, now)
+    findings += SW.stale_lock_findings(collect_pid_locks(cfg, project, state, locks), now)
+    units_rel, current, promoted = collect_unit_releases(cfg)
+    findings += SW.stale_release_findings(units_rel, current, promoted, cfg, now)
     return {
         "schema": "StuckWorkReceipt@v1",
         "at": SW._iso(now),
         "db_error": db_err,
+        "trading_day": trading,
+        "heal_counts_24h": heal_counts,
+        "resources": res,
         "findings": findings,
         "counts": {c: sum(1 for f in findings if f["class"] == c) for c in SW.CLASSES},
     }
@@ -433,6 +755,12 @@ def do_heal(plan: dict, state: Path, project: Path) -> dict:
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     arch = Path(_expand(plan["archive_dir"], project, state)) / stamp / src.name
     arch.parent.mkdir(parents=True, exist_ok=True)
+    if plan["action"] == "reconcile_lock":
+        held = {str(r.get("path") or "") for r in collect_locks()}
+        if Path(f"/proc/{int(plan['pid'])}").exists() or str(src) in held:
+            return {**plan, "result": "skipped", "why": "pid alive or lock held now"}
+        os.replace(src, arch)  # archived, not deleted (AGENTS.md §0 rule 6)
+        return {**plan, "result": "reconciled", "archive": str(arch)}
     shutil.copy2(src, arch)
     if plan["action"] == "repair_tail":
         data = src.read_bytes()
@@ -490,6 +818,10 @@ def apply(receipt: dict, cfg: dict, *, now: datetime, project: Path, state: Path
         for f in receipt["findings"]:
             plan = SW.heal_plan(f, cfg)
             if not plan or healed.get(f["dedupe_key"]) == f.get("since"):
+                continue
+            loops = int((receipt.get("heal_counts_24h") or {}).get(str(plan.get("path")), 0))
+            if loops >= int(cfg["heals"]["loop_min"]):
+                actions["heals"].append({**plan, "result": "suppressed", "why": f"heal loop: {loops} tries in 24 h"})
                 continue
             if len(actions["heals"]) >= int(cfg["heals"]["max_per_tick"]):
                 break

@@ -68,9 +68,12 @@ def test_lock_wait_needs_a_live_kernel_wait_and_age():
 
 def test_d_state_process_is_reaper_never_killed_here():
     procs = _proc(9, "python3 scripts/thing.py", wchan="io_schedule", stat="D", minutes=60)
+    procs[9]["d_confirmed"] = True
     (f,) = SW.process_findings(procs, CFG, NOW, set())
     assert f["class"] == "process_stuck" and f["heal"] == "reaper"
     assert SW.process_findings(_proc(9, "python3 scripts/thing.py", stat="S", wchan="io"), CFG, NOW, set()) == []
+    once = _proc(9, "python3 scripts/thing.py", wchan="io_schedule", stat="D", minutes=60)  # one D sample only
+    assert SW.process_findings(once, CFG, NOW, set()) == []
 
 
 # ---------------------------------------------------------------- units
@@ -133,7 +136,11 @@ def test_queue_stalled_unknown_and_stuck_processing():
         {"name": "watchlist_agent_jobs", "error": "OperationalError: down"},
     ]
     got = SW.queue_findings(rows, CFG, NOW)
-    assert [f["item"] for f in got] == ["deep_overnight_llm_queue", "agent_event_queue", "watchlist_agent_jobs"]
+    assert [(f["class"], f["item"]) for f in got] == [
+        ("queue_stalled", "deep_overnight_llm_queue"),
+        ("stuck_claim", "agent_event_queue: 7 rows processing"),
+        ("queue_stalled", "watchlist_agent_jobs"),
+    ]
     assert got[0]["lane"] == "deep-overnight-llm-drain" and got[0]["heal"] == "code"
     assert got[2]["evidence"]["unknown"] is True  # an error is unknown, never zero
 
@@ -319,3 +326,187 @@ def test_config_defaults_are_off():
     assert CFG["alerts_enabled"] is False and CFG["heals_enabled"] is False and CFG["fixer_intake_enabled"] is False
     assert CFG["stale_release"]["restart_allowlist"] == []
     assert any(g.startswith("portfolio-server") for g in CFG["stale_release"]["never_restart_globs"])
+
+
+# ---------------------------------------------------------------- sweep classes (coordinator 2026-10-31, 18 classes)
+def _p(pid, **kw):
+    base = {
+        "args": "python3 scripts/x.py",
+        "stat": "S",
+        "ppid": 100,
+        "wchan": "do_wait",
+        "uid": 1000,
+        "started": NOW - timedelta(hours=2),
+        "cpu_s": 0.0,
+        "cwd": "/srv/x",
+        "deleted_open": [],
+    }
+    return {pid: {**base, **kw}}
+
+
+def test_unit_lint_overrun_and_expected_refusal():
+    units = [
+        {"unit": "tradeai-cio-reactive.service", "type": "oneshot", "timeout_start": "infinity"},
+        {"unit": "tradeai-ok.service", "type": "oneshot", "timeout_start": "5min"},
+        {"unit": "other.service", "type": "oneshot", "timeout_start": "infinity"},  # not a Trade AI unit
+        {"unit": "tradeai-daemon.service", "type": "simple", "timeout_start": "infinity"},  # a daemon: fine
+        {
+            "unit": "tradeai-cio-delivery.service",
+            "type": "oneshot",
+            "timeout_start": "10min",
+            "last_wall_s": 273,
+            "last_cpu_s": 239,
+        },
+    ]
+    got = {f["class"]: f for f in SW.unit_lint_findings(units, CFG, NOW)}
+    assert got["unit_no_timeout"]["evidence"]["units"] == ["tradeai-cio-reactive.service"]
+    assert got["unit_overrun"]["evidence"]["cpu_bound"] is True
+    refused = [
+        {
+            "unit": "tradeai-disk-hygiene-enforcer.service",
+            "active": "failed",
+            "exit_status": "77",
+            "since": NOW - timedelta(hours=7),
+        }
+    ]
+    (f,) = SW.unit_findings(refused, CFG, NOW)
+    assert f["severity"] == "P3" and f["evidence"]["expected_refusal"] is True
+    refused[0]["exit_status"] = "1"  # any other failure still pages
+    assert SW.unit_findings(refused, CFG, NOW)[0]["severity"] == "P2"
+
+
+def test_process_classes_spin_orphan_deleted_zombie():
+    procs = {}
+    procs.update(_p(1, args="python3 scripts/cio_delivery.py", cpu_s=2 * 3600 * 0.95))  # spin
+    procs.update(
+        _p(
+            2,
+            args="git rev-parse 1163^{commit}",
+            ppid=1,
+            cwd="/srv/wt (deleted)",
+            started=NOW - timedelta(days=11),
+            cpu_s=11 * 86400 * 0.9,
+        )
+    )  # runaway orphan
+    procs.update(_p(3, args="bash killwatch.sh", deleted_open=[{"path": "/tmp/x.log (deleted)", "size": 408 << 20}]))
+    procs.update(_p(4, stat="Z", ppid=50))
+    procs.update(_p(5, args="python3 scripts/calm.py", cpu_s=60))  # quiet: no finding
+    got = {f["class"]: f for f in SW.proc_extra_findings(procs, CFG, NOW)}
+    assert set(got) == {"cpu_spin", "orphan_runaway", "deleted_open_space", "zombie"}
+    assert got["orphan_runaway"]["heal"] == "reaper" and got["deleted_open_space"]["evidence"]["bytes"] == 408 << 20
+    assert got["zombie"]["evidence"]["zombies"] == [4]
+
+
+def test_ledger_classes_probe_poison_verifier():
+    got = SW.ledger_findings(
+        {"a": 0, "b": 2},
+        [{"lane_id": "c", "slot_key": "s1", "attempts": 15}],
+        [{"lane_id": "d", "count": 4}],
+        CFG,
+        NOW,
+        ["a", "b"],
+    )
+    kinds = sorted((f["class"], f["item"]) for f in got)
+    assert kinds == [("breaker_no_probe", "a"), ("poison_item", "c:s1"), ("verifier_blind", "d")]
+
+
+def test_registry_drift_is_not_silence():
+    rows = [{"lane_id": "x", "cadence_hours": 1, "signal_at": None, "signal_missing": "signal file does not exist"}]
+    (f,) = SW.lane_findings(rows, CFG, NOW)
+    assert f["class"] == "registry_drift" and f["severity"] == "P3"
+
+
+def test_missed_window_only_on_trading_days():
+    due = NOW - timedelta(hours=3)
+    w = [{"lane": "premarket-pipeline", "due": due, "grace_min": 60, "signal_at": due - timedelta(days=1)}]
+    assert SW.missed_window_findings(w, NOW, trading_day=True)[0]["class"] == "missed_window"
+    assert SW.missed_window_findings(w, NOW, trading_day=False) == []
+    w[0]["signal_at"] = due + timedelta(minutes=5)
+    assert SW.missed_window_findings(w, NOW, trading_day=True) == []
+
+
+def test_claim_board_and_starved_consumer():
+    claims = [
+        {"claim_id": "c1", "status": "active", "heartbeat_at": NOW - timedelta(days=6)},
+        {"claim_id": "c2", "status": "active", "heartbeat_at": NOW - timedelta(hours=1)},
+        {"claim_id": "c3", "status": "done", "heartbeat_at": NOW - timedelta(days=9)},
+    ]
+    (f,) = SW.claim_findings(claims, CFG, NOW)
+    assert f["evidence"]["count"] == 1
+    rows = [
+        {"name": "deep_overnight_llm_queue", "pending": 9, "last_done": NOW - timedelta(days=3), "consumer_fresh": True}
+    ]
+    assert SW.queue_findings(rows, CFG, NOW)[0]["class"] == "starved_consumer"
+
+
+def test_heal_loop_precursors_and_stale_lock():
+    (f,) = SW.heal_loop_findings({"trade_ai_session_stale": 189, "once": 1}, CFG, NOW)
+    assert f["item"] == "trade_ai_session_stale" and f["severity"] == "P1"
+    got = SW.precursor_findings({"disk_pct": {"/": 95.0}, "swap_pct": 100.0, "pg_in_recovery": True}, CFG, NOW)
+    assert [(x["item"], x["severity"]) for x in got] == [
+        ("disk /", "P1"),
+        ("swap", "P2"),
+        ("postgres in recovery", "P1"),
+    ]
+    assert SW.precursor_findings({"disk_pct": {"/": 73.0}, "swap_pct": 10.0, "pg_in_recovery": False}, CFG, NOW) == []
+    locks = [
+        {"path": "/s/self_heal_fixer.lock", "pid": 182522, "pid_alive": False, "held": False, "mtime": NOW},
+        {"path": "/s/live.lock", "pid": 1, "pid_alive": True, "held": False, "mtime": NOW},
+        {"path": "/s/held.lock", "pid": 9, "pid_alive": False, "held": True, "mtime": NOW},
+    ]
+    (lk,) = SW.stale_lock_findings(locks, NOW)
+    assert lk["item"] == "/s/self_heal_fixer.lock" and SW.heal_plan(lk, CFG)["action"] == "reconcile_lock"
+
+
+def test_reconcile_lock_heal_archives_and_rechecks(tmp_path, monkeypatch):
+    lock = tmp_path / "self_heal_fixer.lock"
+    lock.write_text('{"pid": 999999999}')
+    monkeypatch.setattr(swm, "collect_locks", lambda: [])
+    plan = {"action": "reconcile_lock", "path": str(lock), "pid": 999999999, "archive_dir": str(tmp_path / "arch")}
+    res = swm.do_heal(plan, tmp_path, tmp_path)
+    assert res["result"] == "reconciled" and not lock.exists() and Path(res["archive"]).read_text().startswith("{")
+    lock.write_text('{"pid": 1}')  # pid 1 is alive: never reconciled
+    assert swm.do_heal({**plan, "pid": 1}, tmp_path, tmp_path)["result"] == "skipped" and lock.exists()
+
+
+def test_heal_loop_suppresses_the_heal(tmp_path, sent):
+    store = tmp_path / "x.jsonl"
+    store.write_bytes(b'{"a":1}\n{"b')
+    rec = _receipt(_tail_finding(store))
+    rec["heal_counts_24h"] = {str(store): 3}
+    out = swm.apply(rec, _cfg(heals_enabled=True), now=NOW, project=tmp_path, state=tmp_path)
+    assert out["actions"]["heals"][0]["result"] == "suppressed" and store.read_bytes().endswith(b'{"b')
+
+
+def test_shadow_lane_alive_by_ledger_run_done_without_a_receipt():
+    """Coordinator 2026-10-31: shadow/canary lanes never write the live receipt; a RUN_DONE in the ledger is life."""
+    base = {
+        "cadence_hours": 1,
+        "signal_at": None,
+        "signal_missing": "signal file does not exist",
+        "state_since": NOW - timedelta(days=9),
+    }
+    alive = {"lane_id": "x-shadow", "stage": "shadow", "ledger_done_at": NOW - timedelta(minutes=40), **base}
+    assert SW.lane_findings([alive], CFG, NOW) == []  # no receipt, but a fresh RUN_DONE: not flagged, not drift
+    dead = {**alive, "lane_id": "y-canary", "stage": "canary", "ledger_done_at": NOW - timedelta(days=2)}
+    (f,) = SW.lane_findings([dead], CFG, NOW)
+    assert f["class"] == "lane_silent" and f["evidence"]["lanes"][0]["lane"] == "y-canary"
+    live = {**alive, "lane_id": "z-live", "stage": None}  # a live lane with no receipt is still drift
+    assert SW.lane_findings([live], CFG, NOW)[0]["class"] == "registry_drift"
+
+
+def test_quarantined_items_are_poison_findings_for_the_fixer(tmp_path):
+    doc = {
+        "cio-ask-lifecycle": {
+            "streaks": {},
+            "quarantined": {
+                "thr_b00c8806cf63a6bf": {"at": NOW.isoformat(), "consecutive_failures": 3, "reason": "CHECK_FAILED"}
+            },
+        }
+    }
+    (tmp_path / "data" / "runtime").mkdir(parents=True)
+    (tmp_path / CFG["poison_quarantine_rel"]).write_text(json.dumps(doc))
+    (f,) = SW.quarantine_findings(swm.collect_quarantined(CFG, tmp_path), NOW)
+    assert f["class"] == "poison_item" and f["heal"] == "code" and f["lane"] == "cio-ask-lifecycle"
+    assert SW.fixer_defect(f, NOW, receipt="r")["code_defect"]["lane"] == "cio-ask-lifecycle"
+    assert swm.collect_quarantined(CFG, tmp_path / "nowhere") == []

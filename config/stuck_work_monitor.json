@@ -82,7 +82,13 @@
       "scripts/"
     ],
     "owner_uids": [],
-    "watched": []
+    "watched": [],
+    "spin_min": 30,
+    "spin_cpu_ratio": 0.9,
+    "orphan_min_age_h": 6,
+    "orphan_cpu_ratio": 0.3,
+    "deleted_open_bytes": 104857600,
+    "zombie_min": 1
   },
   "units": {
     "activating_min": 45,
@@ -99,7 +105,26 @@
       "dbus-*",
       "pipewire*",
       "wireplumber*"
-    ]
+    ],
+    "expected_failures": {
+      "tradeai-disk-hygiene-enforcer.service": [
+        77
+      ]
+    },
+    "lint_globs": [
+      "tradeai-*",
+      "recovery-watch*",
+      "db-retention*",
+      "cio-*",
+      "hermes-*"
+    ],
+    "periods_s": {
+      "tradeai-cio-delivery.service": 300,
+      "tradeai-cio-reactive.service": 300
+    },
+    "overrun_ratio": 0.8,
+    "spin_cpu_ratio": 0.7,
+    "_why": "Hung oneshot (activating), failed past grace with an expected-refusal list, oneshot lint (TimeoutStartUSec=infinity, sweep: 38 units), and overrun/CPU-bound runs for units with a known timer period (cio-delivery: 3 min 59 s CPU of 4 min 33 s every 5 min, 0 delivered)."
   },
   "files": {
     "tail_bytes": 65536,
@@ -122,7 +147,17 @@
         "path": "{state}/data/cio/aec_memory_spines.json",
         "backups": null
       }
-    ]
+    ],
+    "zero_byte_scan": {
+      "roots": [
+        "{state}/data"
+      ],
+      "ignore_globs": [
+        "*.lock",
+        "*.tmp*",
+        ".*"
+      ]
+    }
   },
   "queues": [
     {
@@ -159,7 +194,9 @@
   "breakers": {
     "ledger_rel": "data/governance/n8n_coordination_ledger.sqlite",
     "open_hours": 6,
-    "release_cmd": "python3 scripts/n8n_dlq.py release --lane {lane} --note \"root cause fixed: <PR>\" --dry-run"
+    "release_cmd": "python3 scripts/n8n_dlq.py release --lane {lane} --note \"root cause fixed: <PR>\" --dry-run",
+    "poison_min": 3,
+    "unverifiable_days": 7
   },
   "heartbeats": {
     "sql": "SELECT agent_id, last_seen, status, error_count FROM agent_heartbeat",
@@ -177,11 +214,24 @@
     "watched": [
       "cio-wake-dispatch"
     ],
-    "_why": "Watched lanes page; all other ACTIVE lanes past cadence x multiplier + margin are counted in one P3 summary. Market-day-only lanes (e.g. premarket-delivery-deadman) are not watched here because they are silent every weekend by design; they carry their own dead-man."
+    "_why": "Watched lanes page; all other ACTIVE lanes past cadence x multiplier + margin are counted in one P3 summary. Market-day-only lanes (e.g. premarket-delivery-deadman) are not watched here because they are silent every weekend by design; they carry their own dead-man.",
+    "ledger_liveness_stages": [
+      "shadow",
+      "canary"
+    ],
+    "_ledger_why": "Coordinator 2026-10-31 (sweep-fix PR #2375): 13 of 16 'missing receipt' ACTIVE lanes are shadow/canary lanes that by design never write the live *_last.json; making dry runs write live receipts would falsify output. Their liveness is the coordination ledger's newest RUN_DONE."
   },
   "heals": {
     "archive_dir": "{state}/archive/stuck-work-heals",
-    "max_per_tick": 3
+    "max_per_tick": 3,
+    "loop_min": 3,
+    "foreign_ledgers": [
+      {
+        "path": "{project}/logs/health_agent_remediation.jsonl",
+        "match": "remediation ineffective",
+        "key_field": "type"
+      }
+    ]
   },
   "stale_release": {
     "_why": "Coordinator 2026-10-31, found live: tradeai-ops-applier ran release f7c1e96cb from 10-22 until the operator restarted it at 10:43 ET 10-31, refusing every newer Ops Controls kind as KIND_UNKNOWN. A unit resolves CURRENT once at start. The deploy script restarts a fixed list (scripts/cio_phase2_exact_main_deploy.sh restart_root_frozen_units, TRADEAI_CURRENT_BOUND_UNITS) that does not include the applier. Restart heal is allowlist-only and empty by default: this pages until the operator adds units.",
@@ -201,5 +251,41 @@
       "*stop*",
       "*trading*"
     ]
-  }
+  },
+  "market_windows": [
+    {
+      "lane": "premarket-pipeline",
+      "due_et": "05:45",
+      "grace_min": 60,
+      "signal_path": "data/runtime/pipeline_premarket_premarket_last.json",
+      "severity": "P1"
+    },
+    {
+      "lane": "premarket-delivery-deadman",
+      "due_et": "06:45",
+      "grace_min": 30,
+      "signal_path": "data/runtime/premarket-delivery-deadman_last.json",
+      "severity": "P2"
+    }
+  ],
+  "claims": {
+    "dir_rel": "data/coordination/claims",
+    "stale_hours": 72,
+    "summary_max": 40
+  },
+  "resources": {
+    "mounts": [
+      "/"
+    ],
+    "disk_pct": 85,
+    "disk_pct_p1": 92,
+    "swap_pct": 90
+  },
+  "stale_locks": {
+    "globs": [
+      "{state}/data/runtime/*.lock",
+      "/tmp/tradeai_*.lock"
+    ]
+  },
+  "poison_quarantine_rel": "data/runtime/poison_quarantine.json"
 }
