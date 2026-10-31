@@ -7,8 +7,8 @@
  */
 import type { CSSProperties } from 'react'
 
-export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'ai' | 'neutral'
-export const TONES: readonly Tone[] = ['success', 'warning', 'danger', 'info', 'ai', 'neutral'] as const
+export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'ai' | 'neutral' | 'elevated'
+export const TONES: readonly Tone[] = ['success', 'warning', 'danger', 'info', 'ai', 'neutral', 'elevated'] as const
 
 /** What each tone MEANS (the standard, not a suggestion). */
 export const TONE_MEANING: Record<Tone, string> = {
@@ -16,6 +16,7 @@ export const TONE_MEANING: Record<Tone, string> = {
   warning: 'watch, caution, needs review',
   danger: 'risk, breach, loss, error',
   info: 'informational, links, neutral emphasis',
+  elevated: 'market-risk ORANGE: high risk, hedge and stop evaluation (between warning and danger)',
   ai: 'AI-sourced insight or decision',
   neutral: 'nothing notable',
 }
@@ -47,6 +48,7 @@ export function toneFromVerdict(v?: string | null): Tone {
   const s = String(v || '').toUpperCase()
   if (s === 'READY' || s === 'GO' || s === 'APPROVE' || s === 'BUY' || s === 'GREEN' || s === 'FAVORABLE') return 'success'
   if (s === 'WAIT' || s === 'WATCH' || s === 'AMBER' || s === 'ATTENTION' || s === 'MONITOR_ONLY' || s === 'HOLD') return 'warning'
+  if (s === 'ORANGE' || s === 'ELEVATED') return 'elevated'  // market-risk ORANGE tier (design home/v002)
   if (s === 'FIX' || s === 'BLOCKED' || s === 'REJECT' || s === 'RED' || s === 'BREACH' || s === 'AVOID' || s === 'NO TRADE') return 'danger'
   if (s === 'AI' || s === 'LLM' || s === 'HERMES' || s === 'GPT' || s === 'GROK') return 'ai'
   if (s === 'INFO' || s === 'BLUE' || s === 'LINK') return 'info'

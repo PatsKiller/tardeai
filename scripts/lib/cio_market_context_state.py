@@ -1,10 +1,12 @@
 """Deterministic MarketContextState@v1 from governed structured sources."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 import os
 from datetime import date, datetime, timezone
+from pathlib import Path
 from decimal import Decimal
 from typing import Any
 
@@ -13,6 +15,9 @@ SCHEMA = "MarketContextState@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 FRED_MAX_AGE_DAYS = 7
 FRED_MAX_AGE_DAYS_BY_SERIES = {"CPIAUCSL": 62, "UNRATE": 62, "MORTGAGE30US": 14}
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _plain(value: Any) -> Any:
@@ -52,8 +57,115 @@ def _fred_field(row: dict[str, Any] | None, *, evaluated_at: datetime) -> dict[s
     max_age = FRED_MAX_AGE_DAYS_BY_SERIES.get(str(row.get("series_id")), FRED_MAX_AGE_DAYS)
     state = "STALE" if age_days is None or age_days > max_age else "VERIFIED"
     result = _field(row.get("value"), source="FRED", as_of=row.get("observation_date"), state=state)
-    result.update({"series_id": row.get("series_id"), "fetched_at": _plain(row.get("fetched_at")), "age_days": round(age_days, 2) if age_days is not None else None, "max_age_days": max_age})
+    result.update(
+        {
+            "series_id": row.get("series_id"),
+            "fetched_at": _plain(row.get("fetched_at")),
+            "age_days": round(age_days, 2) if age_days is not None else None,
+            "max_age_days": max_age,
+        }
+    )
     return result
+
+
+def _market_risk_field(mr: dict[str, Any] | None) -> dict[str, Any]:
+    """One market-context field from the market-risk projection (scripts/lib/market_risk_projection.build)."""
+    if not isinstance(mr, dict) or mr.get("state") in (None, "not_evaluated"):
+        # Always a value: _field() reads a None value as UNAVAILABLE, and "not evaluated" is a different fact.
+        value: dict[str, Any] = {"tier": "NOT_EVALUATED", "reason": "no market-risk projection", "options_flow": None}
+        if isinstance(mr, dict):
+            flow = (mr.get("sources") or {}).get("options_flow") or {}
+            findings = [
+                f for f in (flow.get("findings") or []) if isinstance(f, dict) and f.get("state") in ("WARN", "STRESS")
+            ]
+            value = {
+                "tier": "NOT_EVALUATED",
+                "reason": mr.get("reason"),
+                "options_flow": [
+                    {
+                        "symbol": f.get("symbol"),
+                        "state": f.get("state"),
+                        "pc_vol_ratio": f.get("pc_vol_ratio"),
+                        "pc_oi_ratio": f.get("pc_oi_ratio"),
+                    }
+                    for f in findings
+                ]
+                or None,
+            }
+        return _field(
+            value,
+            source="market_risk_projection",
+            as_of=(mr or {}).get("generated_at") if isinstance(mr, dict) else None,
+            state="NOT_EVALUATED",
+        )
+    contributors = [
+        {"name": c.get("name"), "points": c.get("points"), "detail": c.get("detail")}
+        for c in (mr.get("contributors") or [])[:5]
+        if isinstance(c, dict)
+    ]
+    value = {
+        "tier": mr.get("tier"),
+        "score": mr.get("score"),
+        "confirming": mr.get("confirming"),
+        "contributors": contributors,
+        "deescalates_if": mr.get("deescalates_if"),
+        "uplift": mr.get("uplift"),
+        "episode": {k: (mr.get("episode") or {}).get(k) for k in ("id", "tier", "opened_at", "acknowledged_at")}
+        if mr.get("episode")
+        else None,
+        "book_vulnerability": (
+            (mr.get("book") or {}).get("vulnerability") if isinstance(mr.get("book"), dict) else None
+        ),
+        "probabilities": mr.get("probabilities"),
+    }
+    return _field(
+        value, source="market_risk_projection", as_of=mr.get("as_of"), state="STALE" if mr.get("stale") else "VERIFIED"
+    )
+
+
+def load_market_risk_projection(project_root: Path | None = None) -> dict[str, Any] | None:
+    """Read the engine snapshot and the hedging radar from the served runtime dir and build the projection.
+    Returns None when neither file can be read (the caller then records NOT_EVALUATED)."""
+    import json as _json
+
+    root = project_root or PROJECT_ROOT
+
+    def _load(rel: str):
+        try:
+            return _json.loads((root / rel).read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 — a missing or torn file is "not evaluated", never a crash of the CIO
+            return None
+
+    snap = _load("data/runtime/market_risk_latest.json")
+    radar = _load("data/runtime/hedging_radar_latest.json")
+    if snap is None and radar is None:
+        return None
+    from lib.market_risk_projection import build
+
+    return build(snap, radar)
+
+
+def _market_risk_summary(field: dict[str, Any]) -> dict[str, Any]:
+    v = field.get("value") if isinstance(field.get("value"), dict) else {}
+    tier = v.get("tier") or "NOT_EVALUATED"
+    top = (v.get("contributors") or [None])[0] if v.get("contributors") else None
+    why = (
+        f"{top['name']}" + (f" · {top['detail']}" if top and top.get("detail") else "")
+        if top
+        else (v.get("reason") or "")
+    )
+    line = (
+        f"Market risk: {tier}"
+        + (f" {round(v['score'])}/100" if isinstance(v.get("score"), (int, float)) else "")
+        + (f" — {why}" if why else "")
+    )
+    return {
+        "tier": tier,
+        "score": v.get("score"),
+        "state": field.get("state"),
+        "as_of": field.get("as_of"),
+        "line": line,
+    }
 
 
 def build_market_context_state(
@@ -64,6 +176,7 @@ def build_market_context_state(
     macro_calendar: list[dict[str, Any]] | None = None,
     portfolio_earnings_calendar: list[dict[str, Any]] | None = None,
     evaluated_at: datetime | None = None,
+    market_risk: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = evaluated_at or datetime.now(timezone.utc)
     regime = regime_snapshot or {}
@@ -72,13 +185,27 @@ def build_market_context_state(
     fred = {str(row.get("series_id")): row for row in (fred_rows or []) if isinstance(row, dict)}
 
     fields = {
-        "regime": _field(regime.get("regime_label"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "trend": _field(regime.get("trend_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "breadth": _field(regime.get("breadth_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "volatility": _field(regime.get("volatility_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "liquidity": _field(regime.get("liquidity_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "sector_leadership": _field(regime.get("leadership_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
-        "risk_appetite": _field(regime.get("risk_appetite_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state),
+        "regime": _field(
+            regime.get("regime_label"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "trend": _field(
+            regime.get("trend_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "breadth": _field(
+            regime.get("breadth_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "volatility": _field(
+            regime.get("volatility_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "liquidity": _field(
+            regime.get("liquidity_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "sector_leadership": _field(
+            regime.get("leadership_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
+        "risk_appetite": _field(
+            regime.get("risk_appetite_state"), source="market_regime_snapshots", as_of=regime_as_of, state=regime_state
+        ),
         "style_factor_leadership": _field(None, source="market_regime_indicators", as_of=regime_as_of),
         "fed_funds_rate_pct": _fred_field(fred.get("DFF"), evaluated_at=now),
         "ten_two_spread_pct": _fred_field(fred.get("T10Y2Y"), evaluated_at=now),
@@ -86,8 +213,17 @@ def build_market_context_state(
         "cpi_index": _fred_field(fred.get("CPIAUCSL"), evaluated_at=now),
         "unemployment_rate_pct": _fred_field(fred.get("UNRATE"), evaluated_at=now),
         "vix_close": _fred_field(fred.get("VIXCLS"), evaluated_at=now),
-        "valuation": _field((valuation or {}).get("value"), source=(valuation or {}).get("source") or "valuation_state", as_of=(valuation or {}).get("as_of")),
+        "valuation": _field(
+            (valuation or {}).get("value"),
+            source=(valuation or {}).get("source") or "valuation_state",
+            as_of=(valuation or {}).get("as_of"),
+        ),
         "earnings_regime": _field(None, source="earnings_state", as_of=None),
+        # Market Risk Engine (operator 2026-10-31: "The CIO agent needs to know about everything, including this market
+        # information"). The projection's tier/score/contributors, provenance D. NOT_EVALUATED until the engine is live
+        # (DSN-20261031-market-risk-engine P2-T1) — a distinct state, never UNAVAILABLE, so it cannot be mistaken for an
+        # outage of a source that exists, and never a tier the engine did not compute.
+        "market_risk": _market_risk_field(market_risk),
     }
     macro_events = list(macro_calendar or [])
     earnings_events = list(portfolio_earnings_calendar or [])
@@ -126,10 +262,15 @@ def build_market_context_state(
         "confidence": _plain(regime.get("confidence")),
         "missing_data": regime.get("missing_data") or [],
         "llm_generated_state": False,
+        # Top-level summary for CIO prompts and the morning brief (the field above is the record of truth).
+        "market_risk": _market_risk_summary(fields["market_risk"]),
     }
-    payload["version"] = "market_context_" + hashlib.sha256(
-        json.dumps({"fields": fields, "quality": quality}, sort_keys=True, default=str).encode()
-    ).hexdigest()[:16]
+    payload["version"] = (
+        "market_context_"
+        + hashlib.sha256(
+            json.dumps({"fields": fields, "quality": quality}, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16]
+    )
     return payload
 
 
