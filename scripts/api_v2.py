@@ -37520,9 +37520,11 @@ def _data_source_health(query=None):
             out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
 
     _feed(  # last_seen_at (2026_10_31 migration) else fetched_at, which is now first-fetch only (review of #2383, N5)
-        "FRED macro", "macro",
+        "FRED macro",
+        "macro",
         "SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)), count(*) "
-        "FROM fred_economic_series f", 72,
+        "FROM fred_economic_series f",
+        72,
     )
     _feed(
         "Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24
