@@ -40,6 +40,9 @@ consensus:
   news_tone_band: 0.10                  # mean sentiment beyond +/- this is a directional read
   analyst_target_band: 0.02             # mean 20-day consensus price-target change beyond +/- this is a read
   social_bullish_hi: 0.60               # bullish share above this reads as complacent retail
+  # CIO posture is rendered only when it is one of these names (review of #2410 r3, B3); anything else is withheld
+  posture_names: [DEFENSIVE, RISK_OFF, CAUTIOUS, HOLD, NEUTRAL, NORMAL, MODERATE, SELECTIVE, CONSTRUCTIVE, RISK_ON]
+  posture_risk_up: [DEFENSIVE, RISK_OFF, CAUTIOUS, HOLD]   # postures that vote risk_up (was: contains DEFENSIVE or HOLD)
   pc_vol_warn_factor: 1.5               # index put/call volume / trailing median at or above this reads as hedging
 sections:                               # the model may order facts in these six; "Your exposure" is always deterministic
   - What's happening

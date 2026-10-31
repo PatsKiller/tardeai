@@ -735,3 +735,25 @@ def test_shock_brief_never_overtakes_an_unsent_initial_card(state, monkeypatch):
     ]
     assert pending_cards == []
     assert sum(m.startswith("MARKET RISK DEEP BRIEF") for m in delivered) == 2, "tier brief + shock-type brief"
+
+
+@pytest.mark.parametrize(
+    "posture",
+    B1_PHRASES + ["Trim half above one ninety, cut to underweight", "DEFENSIVE then sell at 190"],
+)
+def test_cio_posture_free_text_never_ships(posture):
+    """Review of #2410 round 3, B3: the CIO posture is free text from another store; only a fixed name renders."""
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot={"cio": {"posture": posture}}, cfg=CFG)
+    cons = [f["text"] for f in pack["facts"] if f["section"] == "consensus"]
+    brief = deep_brief.render_deterministic(pack, CFG)
+    assert any("CIO posture unrecognised (1 detail withheld)" in t for t in cons)
+    assert posture.upper() not in brief.upper()
+
+
+@pytest.mark.parametrize(
+    "posture,shown", [("defensive", "DEFENSIVE"), ("risk-off", "RISK OFF"), ("Neutral", "NEUTRAL")]
+)
+def test_cio_posture_known_names_still_render(posture, shown):
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot={"cio": {"posture": posture}}, cfg=CFG)
+    cons = [f["text"] for f in pack["facts"] if f["section"] == "consensus"]
+    assert any(f"CIO posture {shown}" in t for t in cons)
