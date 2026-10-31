@@ -6,6 +6,8 @@ All durable business state is appended through AskEventStore. No broker mutation
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -829,10 +831,14 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
 
         collect = collect_current_evidence
     slot = stamp(now.replace(minute=0, second=0, microsecond=0))
-    from scripts.lib.poison_quarantine import Quarantine
+    from scripts.lib.poison_quarantine import PoisonStoreCorrupt, Quarantine, load_config as _pq_config
 
     lane_id = "cio-ask-material-events" if events_only else "cio-ask-lifecycle"
-    quarantine = Quarantine.for_lane(lane_id, dry_run=dry_run, now=now)
+    try:
+        quarantine = Quarantine.for_lane(lane_id, dry_run=dry_run, now=now)
+    except PoisonStoreCorrupt as exc:  # loud: the run fails and says why; never read as an empty store
+        report["source_errors"].append(f"quarantine_store:{str(exc)[:200]}")
+        quarantine = Quarantine(lane_id, {**_pq_config(), "enabled": False}, Path("."), dry_run=True, now=now)
     for snapshot in tracked:
         tid = snapshot["thread_id"]
         if quarantine.is_quarantined(tid):  # a poison item: skipped so the lane serves every other thread
@@ -1083,11 +1089,17 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
 def _apply_quarantine(quarantine, report: dict) -> None:
     """Record this run's per-thread outcome; a thread that just reached the poison threshold is quarantined and its
     failure no longer fails the run (the lane carries on; the quarantine receipt and P2 carry the failure)."""
-    failed = {str(e).split(":", 1)[0] for e in report["source_errors"]} | {
+    ids = {t["thread_id"] for t in report["threads"]}
+    errs = [str(e).split(":", 1) for e in report["source_errors"]]
+    by_thread = {e[0]: e[-1] for e in errs if e[0] in ids or e[0].startswith("thr_")}  # never "quarantine_store"
+    failed = set(by_thread) | {
         t["thread_id"] for t in report["threads"] if (t.get("lifecycle") or {}).get("state") == "failed"
     }
-    seen = {t["thread_id"] for t in report["threads"]} | failed
-    reasons = {str(e).split(":", 1)[0]: str(e).split(":", 1)[-1] for e in report["source_errors"]}
+    seen = ids | failed
+    reasons = {
+        **{t["thread_id"]: (t.get("lifecycle") or {}).get("reason") for t in report["threads"]},
+        **by_thread,
+    }
     newly = quarantine.record_run({tid: tid in failed for tid in seen}, reasons=reasons)
     for rec in newly:
         tid = rec["item"]
