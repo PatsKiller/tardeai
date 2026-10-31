@@ -30,6 +30,9 @@ from typing import Any
 
 from scripts.lib.market_risk import contract as c
 
+# Condition id named once (the literal ``"key": "<id>"`` shape trips gitleaks' default generic-api-key rule, #2412).
+COND_HEDGING_NORMAL = "hedging_normal"
+
 
 def _sma(v: list[float], n: int) -> float | None:
     return mean(v[-n:]) if len(v) >= n else None
@@ -124,7 +127,7 @@ def card(
     )
     conds.append(
         {
-            "key": "hedging_normal",
+            "key": COND_HEDGING_NORMAL,
             "met": str(options_flow_state).upper() not in ("STRESS",),
             "text": "index options hedging back to normal",
         }

@@ -219,22 +219,28 @@ def session_history(prior: dict | None, *, now: datetime, tier: Any, sectors_blo
     return hist[-SESSION_HISTORY_MAX:]
 
 
-HOLDINGS_STORE_ID = "portfolio.holdings.current"  # data/portfolios/state/holdings.json — the file Home reads
+HOLDINGS_STORE_ID = "portfolio.holdings.current"  # the position store Home reads (lib/portfolio_positions.STORE_REL)
 
 
 def current_book(policy: dict[str, Any], *, doc: dict | None = None, path: Any = None) -> dict[str, Any]:
-    """The CURRENT holdings (canonical store ``portfolio.holdings.current``, the same holdings.json Home reads), split
+    """The CURRENT holdings (canonical store ``portfolio.holdings.current``, the same position store Home reads), split
     into material positions and residuals, with closed_today excluded. Freshness is ``data_as_of`` /
     ``aggregate_published_at`` — the top-level ``as_of`` of that file is a stale legacy field and is never used."""
     src = None
     if doc is None:
+        from pathlib import Path as _Path
+
         from scripts.lib import canonical_store_registry as reg
+        from scripts.lib import portfolio_positions as pp
 
         res = reg.resolve_store(HOLDINGS_STORE_ID)
         src = str(res.get("path"))
-        import json as _json
-
-        doc = _json.loads(open(res["path"], encoding="utf-8").read())
+        # Read through the sanctioned position-store reader (tests/test_portfolio_price_truth_20261005.py ratchet).
+        # load_store() returns {} for a missing or unreadable store; fail closed here as the direct read did,
+        # rather than report an empty book.
+        doc = pp.load_store(_Path(res["path"]))
+        if not doc:
+            raise FileNotFoundError(f"position store missing or unreadable: {src}")
     cfg = (policy.get("positions") or {}).get("materiality") or {}
     min_shares = float(cfg.get("min_shares", 1.0))
     min_mv = float(cfg.get("min_market_value", 1000.0))

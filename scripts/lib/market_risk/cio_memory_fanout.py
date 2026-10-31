@@ -8,7 +8,7 @@ separate Hermes searches and Brave and you.com searches related to all of this. 
 Architecture: no new store, no new queue, no new provider. Everything goes through paths that already exist:
 
 * **Market-level memory.** Tier episodes and shock-type changes go to the governed durable memory
-  (``agent_memory_admission.admit_candidate`` into ``data/cio/aif_memory.jsonl``, EPISODIC). Admission refuses
+  (``intelligence_client.admit_memory`` -> the admission gate, into ``data/cio/aif_memory.jsonl``, EPISODIC). Admission refuses
   forbidden-authoritative subjects (price, holdings, policy...), so the text names states, groups and dates only.
 * **Group-level memory.** A leadership transition goes onto the CIO's ``SECTOR:<label>`` InstrumentRecord via
   ``apply_cognition``. It sets ``next_research_question`` (``MBI_COGNITION = 1``) and appends a lesson.
@@ -530,10 +530,9 @@ def apply_memory(
         done.add(key)
         try:
             if p["target"] == "aif_memory":
-                from scripts.lib.agent_durable_memory import get_durable_provider
-                from scripts.lib.agent_memory_admission import admit_candidate
+                from scripts.lib import intelligence_client as ic  # the one door to platform memory (Ring 1)
 
-                r = admit_candidate(p["record"], provider=get_durable_provider(root), admitted_by=PRODUCER)
+                r = ic.admit_memory(p["record"], root=root, admitted_by=PRODUCER)
                 receipts.append(
                     {
                         "trigger_id": p["trigger_id"],

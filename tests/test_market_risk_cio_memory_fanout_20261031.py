@@ -141,7 +141,9 @@ def test_trigger_dedupe_skips_already_enqueued():
 
 
 def test_memory_plan_passes_memory_admission_rules():
-    from scripts.lib.agent_memory_governance import is_forbidden_authoritative
+    from scripts.lib import intelligence_client as ic  # silos are reached through the façade (Ring 1)
+
+    is_forbidden_authoritative = ic._lib("agent_memory_governance").is_forbidden_authoritative  # noqa: SLF001
 
     trigs, cur = _trigs()
     mem = F.plan_memory(
@@ -178,7 +180,9 @@ def test_apply_memory_writes_and_the_cio_recalls_the_episode(tmp_path, monkeypat
     )
     receipts = F.apply_memory(mem, root=tmp_path)
     assert all(not r.get("error") for r in receipts), receipts
-    from scripts.lib.agent_durable_memory import DurableJsonlMemoryProvider
+    from scripts.lib import intelligence_client as ic
+
+    DurableJsonlMemoryProvider = ic._lib("agent_durable_memory").DurableJsonlMemoryProvider  # noqa: SLF001, N806
 
     found = DurableJsonlMemoryProvider(tmp_path / "data" / "cio" / "aif_memory.jsonl").search(
         query="market regime episode", top_k=5

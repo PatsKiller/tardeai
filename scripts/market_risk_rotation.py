@@ -35,12 +35,18 @@ def state_root() -> Path:
     return Path(env or Path.home() / "trade-ai-releases" / "persistent-state")
 
 
+def _store_path(root: Path) -> Path:
+    """The position store under ``root`` — the path is owned by lib/portfolio_positions (STORE_REL), not copied here."""
+    from scripts.lib import portfolio_positions as pp
+
+    return pp.store_path(root)
+
+
 def load_holdings(path: Path) -> list[dict]:
     """Current holdings (the file Home reads). Market value = shares x price when the row has no market_value."""
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
+    from scripts.lib import portfolio_positions as pp
+
+    doc = pp.load_store(Path(path))  # the sanctioned position-store reader; {} when missing or unreadable
     out = []
     for h in doc.get("holdings") or []:
         if not isinstance(h, dict) or not h.get("symbol"):
@@ -84,7 +90,7 @@ def build(now: datetime, reader, policy: dict, root: Path) -> dict:
         policy=policy,
         tier=current_tier(root),
         candidates=rotation_advice.load_candidates(root / "data" / "cio" / "cio_opportunity_projection.json"),
-        holdings=load_holdings(root / "data" / "portfolios" / "state" / "holdings.json"),
+        holdings=load_holdings(_store_path(root)),
         earnings=earnings_map(reader, now, int(cfg.get("earnings_window_sessions") or 10)),
     )
     tr = ROOT / str(cfg.get("track_record_path") or "")
@@ -125,9 +131,10 @@ def _instrument_records(root: Path) -> dict[str, dict]:
 
 def _exits(root: Path, snapshot: dict) -> list[dict]:
     """Names exited recently (holdings closed_today), with the groups stressed at the time (from the snapshot)."""
-    try:
-        doc = json.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    from scripts.lib import portfolio_positions as pp
+
+    doc = pp.load_store(_store_path(root))
+    if not doc:
         return []
     stressed = (
         list(((snapshot.get("sectors") or {}).get("stressed") or []))

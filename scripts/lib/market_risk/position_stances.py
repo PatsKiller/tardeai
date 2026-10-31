@@ -31,6 +31,10 @@ STANCE_LABEL = {
     "UNKNOWN": "unknown",
 }
 RANK = {"NONE": 0, "GREEN": 0, "BLUE": 1, "YELLOW": 2, "ORANGE": 3, "RED": 4}
+# Re-entry condition ids. Named once here and referenced below: the literal ``"key": "<id with digits>"`` shape is
+# what gitleaks' default generic-api-key rule matches (3 false positives on #2412, 2026-10-31).
+REENTRY_INDEX_RECLAIMED_50D = "index_reclaimed_50d"
+REENTRY_VIX_BELOW_20D = "vix_below_20d"
 
 
 def _group_state(block: dict[str, Any], key: str) -> str:
@@ -72,13 +76,13 @@ def reentry_conditions(
         },
         {"key": "market_below_yellow", "met": tier_ok, "text": f"market risk below YELLOW for {n} sessions"},
         {
-            "key": "index_reclaimed_50d",
+            "key": REENTRY_INDEX_RECLAIMED_50D,
             "met": bool(index_above_50d),
             "known": index_above_50d is not None,
             "text": f"{cfg.get('reclaim_symbol', 'QQQ')} back above its 50-day average",
         },
         {
-            "key": "vix_below_20d",
+            "key": REENTRY_VIX_BELOW_20D,
             "met": bool(vix_below_20d),
             "known": vix_below_20d is not None,
             "text": "VIX below its 20-day average",

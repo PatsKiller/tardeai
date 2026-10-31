@@ -176,7 +176,7 @@ def test_playbook_band_comes_from_house_policy_not_literals(oct30):
 
 
 def test_playbook_gap_implied_open_wash_sale_and_guards():
-    stance = {"stance": "TRIM", "re_enter_if": [{"key": "vix_below_20d", "met": False, "text": "VIX below its 20-day"}]}
+    stance = {"stance": "TRIM", "re_enter_if": [{"key": ps.REENTRY_VIX_BELOW_20D, "met": False, "text": "VIX below its 20-day"}]}
     bars = _bars([0.1] * 100 + [-5.0, 0.2, -4.5] + [0.1] * 50)
     hold = [
         {"holding": "AMZN", "weight": 0.05},
