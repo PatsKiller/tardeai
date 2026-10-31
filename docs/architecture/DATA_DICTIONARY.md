@@ -46,6 +46,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
+| Extended-session prints | **quote_extended_session** | PROPOSED | `market_quotes_extended` (table) | `scripts/lib/writers/market_quotes_extended_writer.py` | host: market-quotes-extended | 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; otherwise the newest print is the previous extended session's | scripts/lib/market_risk/reader.py (PgReader.extended_quotes) |
 
 ## Entity by entity
 
@@ -393,6 +394,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Refresh lane:** host: operator-controls-applier (to build) · n8n never-list → host — operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
+
+### Pre-market / after-hours prints (Market Risk Engine) — `quote_extended_session` (PROPOSED)
+
+**Operator decision (§17):** operator approved new stores as design §11 item 1 on 2026-10-31; grant recorded at promotion (activation PR)
+
+- **Facts:** price, reference_close, change_pct, session, bar_end
+- **Store of record:** `market_quotes_extended` (table)
+- **Single writer:** `scripts/lib/writers/market_quotes_extended_writer.py`
+- **Cadence:** */15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days · stale after 0.5 h
+- **Freshness SLA:** 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; otherwise the newest print is the previous extended session's
+- **Refresh lane:** host: market-quotes-extended — Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under §25.10.2.
+- **Read path (projection):** `none`
+- **Readers:** scripts/lib/market_risk/reader.py (PgReader.extended_quotes)
 
 ## Field level
 
