@@ -379,7 +379,8 @@ def _intent_router():
 
 
 def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | None = None,
-                 producer: str | None = None, hold_text: str | None = None) -> bool:
+                 producer: str | None = None, hold_text: str | None = None,
+                 message_class: str | None = None) -> bool:
     """Route one notification intent, then send it when the route says DELIVER. Returns delivered.
 
     The priority replaces bypass_router=True: P1 is never capped or quiet-held but is deduped (exact body,
@@ -392,7 +393,8 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
     except ImportError:
         print("[telegram] intent router unavailable — delivering")
         return bool(send_fn())
-    route = router.route_intent(message, priority, dedupe_minutes=dedupe_minutes, producer=producer)
+    route = router.route_intent(message, priority, dedupe_minutes=dedupe_minutes, producer=producer,
+                                message_class=message_class)
     if route["decision"] == "DEDUPED":
         print(f"[telegram] intent {route['priority']} deduped ({route['window_minutes']}m): {message[:60]}...")
         router.record_intent_receipt(route, delivered=False)
@@ -438,6 +440,7 @@ def _legacy_send(
     dedupe_minutes: int | None = None,
     producer: str | None = None,
     reply_to_message_ids: dict | None = None,
+    message_class: str | None = None,
 ) -> bool:
     """Pre-normalization behaviour, unchanged. Requires no new table.
 
@@ -456,7 +459,7 @@ def _legacy_send(
                 message, targets, reply_markup=reply_markup, thread_id=thread_id,
                 link_preview_options=link_preview_options,
                 **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {})).get("ok"),
-            dedupe_minutes=dedupe_minutes, producer=producer)
+            dedupe_minutes=dedupe_minutes, producer=producer, message_class=message_class)
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
@@ -502,7 +505,8 @@ def _legacy_send(
 def publish_operator_message(message: str, *, bypass_router: bool = False,
                              source_producer: str = "legacy_send_telegram",
                              resolving: bool = False, priority: str | None = None,
-                             dedupe_minutes: int | None = None, producer: str | None = None) -> dict:
+                             dedupe_minutes: int | None = None, producer: str | None = None,
+                             message_class: str | None = None) -> dict:
     """Mode-aware publish. Returns the structured PublishResult mapping.
 
     OFF     legacy router + legacy sender; the normalized tables are never touched.
@@ -516,7 +520,8 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
     mode = get_mode()
 
     # Only an intent passes intent kwargs, so every non-intent call keeps its exact pre-intent shape.
-    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer}
+    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer,
+               "message_class": message_class}
               if priority else {})
     # ACTIVE/SHADOW persist the declared priority beside the observation; a P1 intent asks for immediate
     # delivery exactly as bypass_router=True did.
@@ -918,7 +923,8 @@ def send_telegram(
     _LAST_INTENT_ROUTE.clear()
     _attempts_bucket()["attempts"] = []  # WS3-21: this call's transport attempts only
     # Only an intent passes intent kwargs, so every non-intent call keeps its exact pre-intent shape.
-    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer}
+    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer,
+               "message_class": message_class}
               if priority else {})
     # Investment Command Center (operator 2026-10-08): opportunity/risk alerts that name a curated symbol carry one
     # line from CIO memory — conviction, rank, R:R, upside, stance + a link. Read-only; returns the message

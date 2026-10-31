@@ -702,6 +702,58 @@ _QUIET_TZ_ENV = ("TRADEAI_INCIDENT_NOTIFIER_TZ", "America/New_York")
 
 _intent_sent: dict = {}
 
+# Quiet-hours exemptions by message class (operator 2026-10-31, design DSN-20261031-market-risk-engine P3-T1,
+# §11 item 5): a P2 ``market_risk`` intent raised in the pre-market window is delivered, not archived. The 10-30
+# selloff RCA (finding 3): the only market-level warning of the week fired at 05:52 ET and was held for the digest.
+# The window, classes and priorities live in config, never here.
+QUIET_EXEMPTIONS_ENV = "TRADEAI_INTENT_QUIET_EXEMPTIONS_PATH"
+_QUIET_EXEMPTIONS_DEFAULT = PROJ / "config" / "notification_intent_quiet_exemptions.json"
+QUIET_EXEMPTIONS_SCHEMA = "NotificationIntentQuietExemptions@v1"
+
+
+def load_quiet_exemptions() -> list[dict]:
+    """The reviewed exemption rows (schema-checked). Unreadable or malformed config means no exemption."""
+    path = Path(os.environ.get(QUIET_EXEMPTIONS_ENV) or _QUIET_EXEMPTIONS_DEFAULT)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(doc, dict) or doc.get("schema") != QUIET_EXEMPTIONS_SCHEMA:
+        return []
+    rows = doc.get("exemptions") or []
+    return [r for r in rows if isinstance(r, dict) and r.get("id") and r.get("message_classes")
+            and isinstance(r.get("window"), dict)]
+
+
+def quiet_exemption_for(message_class: str | None, priority: str, now=None) -> str | None:
+    """The id of the exemption that lets this intent through the quiet window right now, else None."""
+    from datetime import datetime as _dt, timezone as _tz
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    mc = str(message_class or "").strip()
+    if not mc:
+        return None
+    for row in load_quiet_exemptions():
+        if mc not in [str(x) for x in row.get("message_classes") or []]:
+            continue
+        if priority not in [str(x).upper() for x in row.get("priorities") or [INTENT_P2]]:
+            continue
+        win = row["window"]
+        start = _hhmm(str(win.get("start") or ""), "00:00")
+        end = _hhmm(str(win.get("end") or ""), "00:00")
+        if start == end:
+            continue
+        try:
+            tz = ZoneInfo(str(win.get("tz") or _QUIET_TZ_ENV[1]))
+        except (ZoneInfoNotFoundError, ValueError):
+            tz = ZoneInfo(_QUIET_TZ_ENV[1])
+        t = (now or _dt.now(_tz.utc)).astimezone(tz)
+        m = t.hour * 60 + t.minute
+        inside = (start <= m < end) if start < end else (m >= start or m < end)
+        if inside:
+            return str(row["id"])
+    return None
+
 
 def _hhmm(text: str, default: str) -> int:
     for candidate in (text, default):
@@ -746,7 +798,8 @@ def _intent_receipts_path() -> Path:
 def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
     """Append the route decision and its outcome. Best-effort: a receipt failure never blocks a send."""
     row = {"schema": INTENT_RECEIPT_SCHEMA, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer")},
+           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer",
+                                        "quiet_exemption")},
            "delivered": delivered, "archived_report_type": archived,
            "preview": str(route.get("preview") or "")[:80]}
     try:
@@ -759,13 +812,15 @@ def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
 
 
 def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = None,
-                 producer: str | None = None, now=None) -> dict:
+                 producer: str | None = None, now=None, message_class: str | None = None) -> dict:
     """Decide one notification intent. Pure apart from reading the durable dedupe store.
 
     Returns {priority, decision, deliver, dedupe_key, window_minutes, producer, preview}; decision is one of
     DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only),
     DIGEST (P3 only: archived for the digest, never an interrupt).
     ``dedupe_minutes=0`` turns dedupe off for a producer that already keeps its own send ledger.
+    ``message_class`` lets a reviewed quiet-hours exemption (config/notification_intent_quiet_exemptions.json)
+    deliver a P2 inside the quiet window; the route then carries ``quiet_exemption``.
     """
     pr = str(priority or "").strip().upper()
     if pr not in INTENT_PRIORITIES:
@@ -780,6 +835,9 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     if pr == INTENT_P3:
         return {**route, "decision": "DIGEST", "deliver": False}
     if pr == INTENT_P2 and intent_in_quiet_hours(now):
+        exemption = quiet_exemption_for(message_class, pr, now)
+        if exemption:
+            return {**route, "decision": "DELIVER", "deliver": True, "quiet_exemption": exemption}
         return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
     return {**route, "decision": "DELIVER", "deliver": True}
 
