@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_reference_bars_refresh_20261031",
+  "files": [
+    "tests/test_market_reference_bars_refresh_20261031.py"
+  ],
+  "anchor": "MARKET_REFERENCE_BARS_REFRESH_20261031",
+  "comment": [
+    "ANCHOR: MARKET_REFERENCE_BARS_REFRESH_20261031 — scripts/market_reference_bars_refresh.py refreshes daily market_ohlcv_bars for config/market_reference_symbols.json through the existing loader (fetch_yfinance_bars + store_bars); dry run is the default and never stores; incremental window from the last stored bar, backfill converts sessions to calendar days; an empty symbol is named and exits 1. Fakes only; no network, no DB."
+  ]
+}
