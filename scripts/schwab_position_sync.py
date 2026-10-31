@@ -36,6 +36,7 @@ from lib.holdings_sanity import (  # noqa: E402
     REASON_VALID_COMPLETE,
     validate_payload,
 )
+from lib.atomic_json_store import atomic_write_bytes  # noqa: E402
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
@@ -385,7 +386,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         os.replace(tmp, HP)
     except Exception as e:
         if backup is not None:
-            HP.write_bytes(backup)
+            atomic_write_bytes(HP, backup)
         _record(account_key, "rejected_postwrite", f"[{source}] write error, restored backup: {str(e)[:120]}")
         _alert(f"🛑 holdings write FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}", source)
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
@@ -395,7 +396,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         v, n = canonical_assert(HP, last_good=prior_doc)
     except Exception as e:
         if backup is not None:
-            HP.write_bytes(backup)
+            atomic_write_bytes(HP, backup)
         _record(account_key, "rejected_postwrite", f"[{source}] post-write assert failed, restored backup: {str(e)[:120]}")
         _alert(f"🛑 holdings post-write assert FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}", source)
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
