@@ -29,10 +29,11 @@ import { useApi } from '../hooks/useApi'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
-  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, detailNextLine, drawers, etStamp, headerChips, laneById,
-  proposeSeed, stanceLabel, stanceTone, stepTone, tieAlerts, unwrap,
+  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionPlainText, convictionTone, detailNextLine, drawers, etStamp,
+  freshnessLine, headerChips, laneById, proposeSeed, stanceLabel, stancePlainText, stanceTone, stepTone, tieAlerts, unwrap,
   type LaneId, type ProspectRow, type ProspectsPayload, type TiedAlerts,
 } from '../lib/watchProspectsModel'
+import WatchWorkflowStrip from '../components/watch/WatchWorkflowStrip'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
@@ -215,6 +216,9 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
     setup={<>
       <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
       {r.stale && <StaleBadge expiresAt={r.expires_at} />}
+      <span data-testid="watch-row-freshness" title={TOOLTIPS.freshness} style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.35 }}>
+        {freshnessLine(r)}
+      </span>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
       {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
         border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
@@ -229,9 +233,11 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
     </>}
     market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}
     conviction={<>
-      <div><span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }} data-testid="watch-conviction">{score == null ? 'n/a' : score.toFixed(0)}</span> <span className="watch-card-score-denominator" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>/ 100</span></div>
+      <div><span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }} data-testid="watch-conviction" title={TOOLTIPS.conviction}>{score == null ? 'n/a' : score.toFixed(0)}</span> <span className="watch-card-score-denominator" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>/ 100</span></div>
       {score != null && <div className="watch-card-score-bar" aria-label={`Conviction ${score} of 100`}><span style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: score >= 75 ? TOKENS.success : TOKENS.warning }} /></div>}
-      <span className="watch-card-stance" style={{ color: stance.color, background: stance.bg, borderRadius: RADIUS.sm, fontSize: TYPE.base, fontWeight: 600, padding: '3px 8px' }}>{r.stance ? stanceLabel(r.stance) : 'no stance'}</span>
+      <span className="watch-card-stance" title={TOOLTIPS.stance} style={{ color: stance.color, background: stance.bg, borderRadius: RADIUS.sm, fontSize: TYPE.base, fontWeight: 600, padding: '3px 8px' }}>{r.stance ? stanceLabel(r.stance) : 'no stance'}</span>
+      {stancePlainText(r.stance) && <span data-testid="watch-row-stance-plain" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], lineHeight: 1.35 }}>{stancePlainText(r.stance)}</span>}
+      <span data-testid="watch-row-conviction-plain" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], lineHeight: 1.35 }}>{convictionPlainText(score)}</span>
     </>}
     primary={<StepButton row={r} onStep={onStep} />}
     secondary={<>{onAlert && <button type="button" onClick={() => onAlert(r)} style={{ ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Set alert</button>}{extra}
@@ -270,6 +276,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         ))}
         {r.conviction_missing.length > 0 && <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>Not scored: {r.conviction_missing.join(', ')}</span>}
       </div>
+      <WatchWorkflowStrip row={r} />
       <section aria-label="What disagrees">
         <h2 tabIndex={-1} data-detail-focus style={{fontSize: TYPE.lg}}>What disagrees</h2>
         <ConflictLine section={conflictSection(r)} onOpen={onOpenConflict ?? sheet.open} />
@@ -298,10 +305,11 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         {(asksCio(r.next_action.kind) || currentReviewState(r, cio)?.publication_verified) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
         {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
-      <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
-        Evidence {fmtAsOf(r.evidence_at) || '—'} · expires {fmtAsOf(r.expires_at) || '—'}
-        {r.stale ? ' · stale' : ''}. The CIO sets stance and priority; it never sizes or places orders.
-      </span>
+      <div data-testid="watch-detail-freshness" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={label} title={TOOLTIPS.freshness}>What's current now</span>
+        <span data-testid="watch-detail-freshness-line" style={{ fontSize: TYPE.base, color: TOKENS.text[1], lineHeight: 1.4 }}>{freshnessLine(r)}</span>
+        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>The CIO sets stance and priority; it never sizes or places orders.</span>
+      </div>
     </div>
   )
 }

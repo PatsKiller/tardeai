@@ -249,6 +249,22 @@
       "note": "crontab line 178: 10 12,15 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1 | lock added by health_tick (cron line had none); market_day_gate=true prefixes `bash scripts/market_day_gate.sh` exactly as the line did (the gate skips weekends/holidays and FAILS OPEN on a broken session check)"
     },
     {
+      "step_id": "premarket-delivery-deadman",
+      "finding_rc": [3],
+      "finding_note": "exits 3 (EXIT_FINDING) when the premarket pipeline receipt or the morning brief delivery is missing on a market day; the step pages P1 itself. rc 1 or a traceback = crashed.",
+      "command": ["$PY", "scripts/check_premarket_delivery.py"],
+      "cadence_minutes": 15,
+      "minute_offset": 0,
+      "hours": [6, 7, 8, 9, 10, 11],
+      "weekdays": [1, 2, 3, 4, 5],
+      "lock": "/tmp/health_tick_premarket_delivery_deadman.lock",
+      "timeout_s": 120,
+      "needs_env": false,
+      "market_day_gate": true,
+      "log": "logs/premarket_delivery_deadman.log",
+      "note": "2026-10-31 DSN-20261031-market-risk-engine-P0-T4 (new step, no crontab ancestor). 2026-10-30 RCA finding 7: the 05:45 premarket pipeline died on ENOSPC and the 07:30 morning brief failed; nothing paged; zero operator sends 06:00-09:45 ET. Pages P1 after 06:45 ET (pipeline receipt) and 07:45 ET (brief delivery), repeats hourly up to 4x, silent after 12:00 ET and on non-market days (config/premarket_delivery_deadman.json). Reads the receipt file and communication_events; sends via telegram_alert.send_telegram; writes LaneRunReceipt premarket-delivery-deadman. Placed before pipeline-watchdog, which must stay last."
+    },
+    {
       "step_id": "pipeline-watchdog",
       "command": ["$PY", "scripts/pipeline_watchdog.py"],
       "cadence_minutes": 120,
