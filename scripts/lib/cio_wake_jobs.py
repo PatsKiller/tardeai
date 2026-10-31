@@ -17,7 +17,9 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -203,6 +205,35 @@ ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class CIOWakeStoreCorrupt(RuntimeError):
+    """The store's tail could not be made whole; appending would lose the next record."""
+
+
+def _write_fsync(path: Path, data: bytes) -> None:
+    with open(path, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+class CIOWakeLockTimeout(TimeoutError):
+    """The wake-job store lock was not acquired in time; the caller fails loudly instead of hanging."""
+
+
+_log = logging.getLogger(__name__)
+_HELD: dict[tuple[int, int, str], list[int]] = {}
+_HELD_GUARD = threading.Lock()
+
+
+def _lock_timeout_s() -> float:
+    """Bounded lock wait. Longest measured clean hold is well under a second (one append + fsync); the 120 s default
+    leaves room for a full-store quarantine rewrite. Override with CIO_WAKE_JOBS_LOCK_TIMEOUT_S."""
+    try:
+        return max(1.0, float(os.environ.get("CIO_WAKE_JOBS_LOCK_TIMEOUT_S", "120")))
+    except ValueError:
+        return 120.0
+
+
 class CIOWakeJobStore:
     """Deterministic append-only wake job store backed by a JSONL file.
 
@@ -227,12 +258,46 @@ class CIOWakeJobStore:
 
     # ── Locking ────────────────────────────────────────────────────────────
 
+    # flock() locks belong to an open file description, so a second os.open() of the same lock file inside one
+    # process blocks on the first forever. 2026-10-30 05:00 ET: `_append_event` held the lock, a truncated tail
+    # (disk full) sent `_get_last_event` into `quarantine_corrupt_trailing_events`, which opened a second fd and
+    # waited on itself; the reactive cycle and every wake dispatch queued behind it for 31 hours. The lock is now
+    # re-entrant per (process, thread, lock path) and every wait is bounded.
+
     def _acquire_lock(self) -> int:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None:
+                held[1] += 1
+                return held[0]
         lock_fd = os.open(str(self._lock_path), os.O_CREAT | os.O_RDWR)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + _lock_timeout_s()
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    os.close(lock_fd)
+                    raise CIOWakeLockTimeout(
+                        f"{self._lock_path}: lock not acquired within {_lock_timeout_s():.0f}s "
+                        "(another process holds it; see lslocks)"
+                    ) from None
+                time.sleep(0.05)
+        with _HELD_GUARD:
+            _HELD[key] = [lock_fd, 1]
         return lock_fd
 
     def _release_lock(self, lock_fd: int) -> None:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None and held[0] == lock_fd:
+                held[1] -= 1
+                if held[1] > 0:
+                    return
+                del _HELD[key]
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
@@ -279,14 +344,22 @@ class CIOWakeJobStore:
         Rewrites the store under lock only when the final record(s) fail to parse.
         Intact interior corruption is left for operator forensics — we only trim a
         bad *suffix*, which is what blocks `_get_last_event` / enqueue.
+
+        Works on bytes split on b"\n" only (str.splitlines also breaks on U+2028/U+2029/U+0085, which can sit
+        inside a valid JSON string and would wrongly cut a good record). The quarantine copy and the rewritten
+        store are fsynced before the rename. Failures raise: on the write path a failed trim must stop the
+        append, never let it glue a new record onto a half-written one (2026-10-31 review).
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
         lock_fd = self._acquire_lock()
         try:
-            raw = self.event_store_path.read_text(encoding="utf-8", errors="replace")
-            lines = raw.splitlines(keepends=True)
-            removed: list[str] = []
+            raw = self.event_store_path.read_bytes()
+            lines = raw.split(b"\n")
+            trailing_newline = raw.endswith(b"\n")
+            if trailing_newline:
+                lines.pop()  # the empty segment after the final newline
+            removed: list[bytes] = []
             while lines:
                 candidate = lines[-1]
                 if not candidate.strip():
@@ -294,28 +367,78 @@ class CIOWakeJobStore:
                     lines.pop()
                     continue
                 try:
-                    json.loads(candidate.strip())
-                    break
-                except json.JSONDecodeError:
+                    row = json.loads(candidate.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
                     removed.append(candidate)
                     lines.pop()
-            if not removed:
+                    continue
+                if not isinstance(row, dict):
+                    removed.append(candidate)
+                    lines.pop()
+                    continue
+                break
+            kept = b"\n".join(lines) + (b"\n" if lines else b"")
+            if not removed and kept == raw:
                 return {"ok": True, "removed": 0, "reason": "clean"}
             quarantine = self.event_store_path.with_suffix(
-                self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
+                # ns + pid: unique per call, so a cleanup can never remove an earlier trim's copy (two trims
+                # inside one second used to share a name; 2026-10-31 round-3 review).
+                self.event_store_path.suffix + f".corrupt-tail-{time.time_ns()}-{os.getpid()}"
             )
-            quarantine.write_text("".join(removed), encoding="utf-8")
+            base_name = quarantine.name
+            bump = 0
+            while quarantine.exists():  # never overwrite an earlier trim's copy, even on a frozen clock
+                bump += 1
+                quarantine = quarantine.with_name(f"{base_name}-{bump}")
             tmp = self.event_store_path.with_suffix(".tmp")
-            tmp.write_text("".join(lines), encoding="utf-8")
-            os.replace(tmp, self.event_store_path)
+            replaced = False
+            quarantine_created = False
+            try:
+                if removed:
+                    quarantine_created = not quarantine.exists()
+                    _write_fsync(quarantine, b"\n".join(reversed(removed)))
+                _write_fsync(tmp, kept)
+                os.replace(tmp, self.event_store_path)
+                replaced = True
+            finally:
+                if not replaced:
+                    # ENOSPC mid-write: never leave a partial .tmp (up to the store size) or a quarantine copy
+                    # of a trim that did not happen on a nearly full disk; the caller sees the original error.
+                    for leftover in (tmp, quarantine) if quarantine_created else (tmp,):
+                        try:
+                            leftover.unlink(missing_ok=True)
+                        except OSError as cleanup_exc:
+                            _log.warning("cio_wake_jobs: could not remove %s after failed trim: %s", leftover, cleanup_exc)
             return {
                 "ok": True,
                 "removed": len(removed),
-                "quarantine": str(quarantine),
+                "quarantine": str(quarantine) if removed else None,
                 "bytes_removed": sum(len(x) for x in removed),
             }
         finally:
             self._release_lock(lock_fd)
+
+    def _ensure_clean_tail(self) -> None:
+        """Write path: the store must end on a complete record before anything is appended. Trims a damaged tail
+        under the (re-entrant) lock and raises if it cannot -- never appends onto a partial line."""
+        try:
+            size = self.event_store_path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size == 0:
+            return
+        with open(self.event_store_path, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            last = f.read(1)
+        if last == b"\n" and self._tail_last_event() is not None:
+            return
+        self.quarantine_corrupt_trailing_events()
+        size = self.event_store_path.stat().st_size
+        if size:
+            with open(self.event_store_path, "rb") as f:
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    raise CIOWakeStoreCorrupt(f"{self.event_store_path}: tail still not newline-terminated after trim")
 
     def _tail_last_event(self, chunk: int = 65536) -> Optional[dict[str, Any]]:
         """Last event from the end of the file, or None if the last record does
@@ -358,11 +481,13 @@ class CIOWakeJobStore:
             last = row
             corrupt_suffix = False
         if corrupt_suffix:
-            # Best-effort auto-trim so the next enqueue is not permanently wedged.
+            # Best-effort auto-trim on the READ path so the next enqueue is not wedged. The write path does its
+            # own strict trim (_ensure_clean_tail) and never proceeds past a failure.
             try:
                 self.quarantine_corrupt_trailing_events()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("%s: corrupt-tail trim failed on read: %s: %s", self.event_store_path,
+                             type(exc).__name__, exc)
         return last
 
     def _get_last_event_hash(self) -> str:
@@ -374,6 +499,7 @@ class CIOWakeJobStore:
     def _append_event(self, event: dict[str, Any]) -> None:
         lock_fd = self._acquire_lock()
         try:
+            self._ensure_clean_tail()
             current_head_hash = self._get_last_event_hash()
             event["prev_event_hash"] = current_head_hash
 
