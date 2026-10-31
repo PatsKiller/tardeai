@@ -149,6 +149,10 @@ def _format_trigger_summary(event: dict) -> str:
 
 # ── Job Creation ─────────────────────────────────────────────────────────
 
+def _is_topic_subject(symbol) -> bool:
+    return isinstance(symbol, str) and symbol.upper().startswith("TOPIC:")
+
+
 def create_agent_jobs(conn, event: dict, dry_run: bool = False) -> list:
     """Create watchlist_agent_jobs for each agent in agents_to_notify. Returns job IDs."""
     symbol = event.get("symbol")
@@ -159,6 +163,12 @@ def create_agent_jobs(conn, event: dict, dry_run: bool = False) -> list:
 
     if not symbol:
         _log(f"  Event {event_id} has no symbol — skipping agent jobs (portfolio-level event)")
+        return []
+    if _is_topic_subject(symbol):
+        # topic_curator files TOPIC_INTELLIGENCE events with symbol "TOPIC:<id>". That is a research topic, not a
+        # security: a per-symbol research job for it is refused by the watchlist processor as invalid_symbol
+        # (most of the 53 failed + 40 expired watchlist_agent_jobs in the 72 h to 2026-10-31).
+        _log(f"  Event {event_id} is a topic ({symbol}) — no per-symbol agent jobs")
         return []
 
     job_ids = []
@@ -563,7 +573,7 @@ def drain_queue(dry_run: bool = False) -> int:
             handle_sec_debate(conn, event)
 
         # Any event + all agents RESEARCH_MORE: auto-search + enrich + re-queue
-        if symbol and symbol != "\u2014" and not dry_run:
+        if symbol and symbol != "\u2014" and not _is_topic_subject(symbol) and not dry_run:
             try:
                 # First try demand-driven search (RESEARCH_MORE → new content)
                 if not handle_research_more_demand(conn, symbol):

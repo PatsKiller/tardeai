@@ -69,3 +69,17 @@ def test_stale_reclaim_dry_run_writes_nothing():
     conn = Conn(log, rows=[(4825,)])
     assert R.reclaim_stale_processing(conn, dry_run=True) == 1
     assert not [s for s, _ in log if s.startswith("UPDATE")] and conn.commits == 0
+
+
+def test_topic_events_create_no_per_symbol_jobs():
+    log = []
+    conn = Conn(log)
+    ev = {
+        "id": 9,
+        "symbol": "TOPIC:ai_datacenter_buildout",
+        "agents_to_notify": ["Maria", "Steph"],
+        "event_type": "TOPIC_INTELLIGENCE",
+    }
+    assert R.create_agent_jobs(conn, ev, dry_run=False) == []
+    assert log == []
+    assert R._is_topic_subject("topic:x") and not R._is_topic_subject("TOPS") and not R._is_topic_subject(None)
