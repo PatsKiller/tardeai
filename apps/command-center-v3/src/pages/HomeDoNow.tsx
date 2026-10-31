@@ -318,7 +318,7 @@ export default function HomeDoNow() {
           {stops && <div style={{ color: TOKENS.text[2], fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>
             <span data-testid="home-stops-as-of">As of last broker read {stops.last_broker_read_label ?? readableTime(stops.last_broker_read_at ?? stops.as_of) ?? 'time unavailable'}</span>
             {stopsGap && <p role="status" style={{ color: TOKENS.warning }}>{stopsGap}</p>}
-            {!!stops.filled_awaiting_sync?.length && <p data-testid="home-filled-awaiting-sync">{stops.filled_awaiting_sync.map((p: any) => `${p.symbol}: stop filled · awaiting holdings sync`).join('; ')}</p>}
+            {!!stops.filled_awaiting_sync?.length && <p data-testid="home-filled-awaiting-sync">{stops.filled_awaiting_sync.map((p: any) => `${p.symbol}: ${p.reason || 'stop filled · awaiting holdings sync'}`).join('; ')}</p>}
           </div>}
         </aside>
       </div>
