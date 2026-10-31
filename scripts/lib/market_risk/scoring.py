@@ -128,6 +128,14 @@ def _green_guard(
     blockers = []
     if coverage < float(g.get("min_coverage", 0.7)):
         blockers.append(f"coverage {coverage:.2f} below {float(g.get('min_coverage', 0.7)):.2f}")
+    # the categories that see a selloff coming must be measured, unless almost everything is (review round 3, M-B)
+    must = [str(k) for k in g.get("must_measure") or []]
+    measured = {e["obs"].category for e in eff if e["obs"].state != "UNKNOWN"}
+    missing = [k for k in must if k not in measured]
+    if missing and coverage < float(g.get("min_coverage_if_missing_must", 0.85)):
+        blockers.append("not measured: " + ", ".join(missing))
+    if not prior or prior.get("tier") not in SEVERITY:
+        blockers.append("bootstrap evaluation (no prior)")  # GREEN is never the first word (M-B)
     ls = _parse(last_stress) if last_stress else None
     if ls is not None and (now - ls).total_seconds() < hours * 3600:
         blockers.append(f"STRESS within {hours:g}h")
@@ -308,6 +316,7 @@ def budget_uplift_breaches(portfolio: c.PortfolioContext, cfg: dict) -> list[dic
     breach counts at ``1 + (ratio - 1) * book_share``, so a small single-name account over its sector or style limit
     (ratio 3.2 on 5% of the book -> 1.11) never lifts the tier on its own."""
     floor = float(cfg["budget_ratio_uplift"])
+    book_level = {b.get("budget") for b in portfolio.budget_breaches if b.get("scope", "book") == "book"}
     out = []
     for b in portfolio.budget_breaches:
         ratio = float(b.get("ratio") or 0)
@@ -315,6 +324,8 @@ def budget_uplift_breaches(portfolio: c.PortfolioContext, cfg: dict) -> list[dic
             share = b.get("book_share")
             if share is None:
                 continue  # an account breach with no known weight never lifts the tier
+            if b.get("budget") not in book_level:
+                continue  # an account breach counts only when the book breaches the same budget (round 3, L1)
             ratio = 1.0 + (ratio - 1.0) * float(share)
         if ratio >= floor:
             out.append(b)

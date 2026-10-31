@@ -293,7 +293,10 @@ tiers:
   red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
   # GREEN also needs >= 70% of the category weight measured and no STRESS observation in the last 24 hours; a move to
   # GREEN from BLUE-or-above is a de-escalation and waits for the closed-session count (review of #2383, N2).
-  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0, min_coverage: 0.7, no_stress_hours: 24}
+  # ...and options_flow, volatility and breadth measured (or >= 85% of the weight measured), and never on a bootstrap
+  # evaluation with no prior (review of #2383 round 3, M-B).
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0, min_coverage: 0.7, no_stress_hours: 24,
+           must_measure: [options_flow, volatility, breadth], min_coverage_if_missing_must: 0.85}
   # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
   uplift:
     max_tiers: 1

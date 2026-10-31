@@ -44,7 +44,11 @@ class FakeCursor:
 
 class FakeConn:
     def __init__(self, routes):
-        self.routes, self.log, self.closed = routes, [], False
+        self.routes, self.log, self.closed, self.readonly = routes, [], False, None
+
+    def set_session(self, readonly=False):  # psycopg2 API: applies before the first transaction begins
+        assert not self.log, "set_session after a statement"
+        self.readonly = readonly
 
     def cursor(self):
         return FakeCursor(self)
@@ -64,7 +68,8 @@ QCOLS = ["symbol", "price", "prev_close", "fetched_at"]
 def test_session_is_read_only_before_any_query():
     r, conn = make({})
     r.quotes(["SPY"], start=et(2026, 10, 29, 4), end=et(2026, 10, 29, 20))
-    assert conn.log[0][0] == "SET default_transaction_read_only = on"
+    # read-only from the first transaction (data-feed review of #2383): set_session, not a later-only SET
+    assert conn.readonly is True and not any("default_transaction_read_only" in q for q, _ in conn.log)
 
 
 def test_naive_instant_refused():

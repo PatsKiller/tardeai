@@ -68354,6 +68354,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
 
+            # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
+            # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
+            _mr_csrf_ok, _mr_csrf_why = _mr_auth.command_csrf_check(_mr_auth.load_config(), method, base_path)
+            if not _mr_csrf_ok:
+                return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
+
             _snap = _load_json(PROJECT_ROOT / _MR_REL)
             try:
                 _ep = _mr_esc.open_episode(_mr_esc.load())

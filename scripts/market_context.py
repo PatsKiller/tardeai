@@ -128,6 +128,43 @@ def _current_session(now=None) -> str:
     return "closed"
 
 
+def _now_utc() -> datetime:
+    """Clock seam for tests."""
+    return datetime.now(timezone.utc)
+
+
+def _previous_close_from_bars(chart_result: Dict, session: str, now=None) -> Optional[float]:
+    """The close the header compares against, read from the daily bars Yahoo returns.
+
+    ``meta.chartPreviousClose`` is the close BEFORE THE FIRST BAR OF THE REQUESTED RANGE, not yesterday's close: with
+    range=2d it is two sessions back (2026-10-31 live: SPY 772.31 = 10-28 close, while the 10-29 close was 769.36 and
+    the 10-30 close 755.72). So the reference is taken from the bars themselves: during premarket/regular/afterhours
+    the last completed session strictly before today (ET); when the market is closed, the newest completed session.
+    Returns None when the response carries no usable bars (the caller then falls back to the meta fields).
+    """
+    from zoneinfo import ZoneInfo as _Z
+
+    ts = chart_result.get("timestamp") or []
+    quote = ((chart_result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+    closes = quote.get("close") or []
+    tz = _Z("America/New_York")
+    today = (now or _now_utc()).astimezone(tz).date()
+    bars = []
+    for t, c in zip(ts, closes):
+        if c is None:
+            continue
+        try:
+            bars.append((datetime.fromtimestamp(int(t), tz).date(), float(c)))
+        except (TypeError, ValueError, OSError):
+            continue
+    if not bars:
+        return None
+    if session == "closed":
+        return bars[-1][1]
+    before = [c for d, c in bars if d < today]
+    return before[-1] if before else None
+
+
 def _env(k: str) -> str:
     if k in ("FINVIZ_COOKIE", "FINVIZ_API_TOKEN", "FINVIZ_USER_AGENT"):
         try:
@@ -166,14 +203,14 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             resp = requests.get(
                 url,
                 headers=_YAHOO_HEADERS,
-                params={"interval": "1d", "range": "2d"},
+                params={"interval": "1d", "range": "5d"},
                 timeout=10,
             )
             if resp.status_code != 200:
                 # Try query2 host as backup
                 url2 = url.replace("query1.", "query2.")
                 resp = requests.get(url2, headers=_YAHOO_HEADERS,
-                                    params={"interval": "1d", "range": "2d"}, timeout=8)
+                                    params={"interval": "1d", "range": "5d"}, timeout=8)
                 if resp.status_code != 200:
                     continue
 
@@ -187,7 +224,16 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             pre_price   = meta.get("preMarketPrice")   or 0.0
             post_price  = meta.get("postMarketPrice")  or 0.0
             reg_price   = meta.get("regularMarketPrice") or 0.0
-            prev_close  = meta.get("chartPreviousClose") or meta.get("previousClose") or reg_price
+            # Previous close from the daily bars (see _previous_close_from_bars: chartPreviousClose is the close
+            # before the requested RANGE, two sessions back with range=2d — the live header showed SPY "prev close
+            # 772.31" on 2026-10-31 when the real last close was 755.72). Meta fields only when bars are absent.
+            session = _current_session()
+            prev_close = (
+                _previous_close_from_bars(chart_result[0], session)
+                or meta.get("previousClose")
+                or meta.get("chartPreviousClose")
+                or reg_price
+            )
 
             # SESSION-AWARE selection (2026-07-20). The old chain was
             #   pre_price or reg_price or post_price or prev_close
@@ -197,7 +243,6 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             # Same for change%. Now the session picks the field, and a missing
             # field for the CURRENT session degrades to the previous close
             # LABELLED stale rather than silently substituting another session.
-            session = _current_session()
             if session == "premarket":
                 live_price, px_field = (pre_price or 0.0), "preMarketPrice"
             elif session == "regular":
