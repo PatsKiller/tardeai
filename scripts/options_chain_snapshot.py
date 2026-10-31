@@ -288,6 +288,17 @@ def main() -> int:
         syms = syms[: args.limit]
     covered, failed = [], []
     rows = {}
+    # 2026-10-31: keep every run, not just the latest of the day (lib/option_chain_runs.py; the 17:35 run used to
+    # replace the 10:00 reading the Market Risk Engine needs).
+    from lib import option_chain_runs as ocr
+
+    run_as_of, run_slot = ocr.slot_et()
+    runs_ok = (not args.dry_run) and ocr.table_present(cur)
+    if not args.dry_run and not runs_ok:
+        print(
+            f"[radar] {ocr.TABLE} absent (migration 2026_10_31_option_chain_snapshot_runs.sql not applied): "
+            "run history not recorded; latest-of-day table written as before"
+        )
     for sym in syms:
         try:
             agg = aggregate(get_option_chain(sym, strike_count=CFG["strike_count"]))
@@ -323,8 +334,14 @@ def main() -> int:
                     agg["underlying_price"],
                 ),
             )
+            if runs_ok:
+                ocr.record_run(cur, sym, agg, as_of=run_as_of, slot=run_slot)
     if not args.dry_run:
         conn.commit()
+    print(
+        f"[radar] run slot {run_as_of} {run_slot} ET; run history "
+        f"{'recorded' if runs_ok else 'not recorded (dry run)' if args.dry_run else 'not recorded'}"
+    )
 
     # deltas vs prior snapshot date + P/C vol vs mean over available history (n stated)
     radar = []
