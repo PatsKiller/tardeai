@@ -143,19 +143,37 @@ def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
 
 def curation_status(config_dir=None) -> dict:
     """Whether LLM curation of the alert prose is on, and when its review is due (operator 2026-10-31: "there needs
-    to be a reminder to switch it back on"). Never raises: an unreadable config reads as OFF with the error."""
+    to be a reminder to switch it back on"). ON/OFF comes from the curation config itself (``enabled`` and
+    ``skip_tiers``), the due date from its ``disabled_until`` block (review #2399 F11). Never raises."""
     try:
         try:
             from lib import disabled_features as df  # type: ignore
+            from lib.market_risk import curation as cur  # type: ignore
         except ImportError:  # pragma: no cover - imported as scripts.lib
             from scripts.lib import disabled_features as df  # type: ignore
+            from scripts.lib.market_risk import curation as cur  # type: ignore
         root = Path(config_dir) if config_dir else df.CONFIG_DIR
-        entry = df.entry_for(root / "market_risk_curation.yaml")
+        path = root / "market_risk_curation.yaml"
+        cfg = cur.load_config(path)
+        skipped = {str(t).upper() for t in cfg.get("skip_tiers") or []}
+        on_tiers = sorted({"BLUE", "YELLOW", "GREEN"} - skipped) if cfg.get("enabled") else []
+        entry = df.entry_for(path)
+        due = (entry or {}).get("review_by")
+        if on_tiers:
+            note = "curation: ON for " + ", ".join(on_tiers)
+            if entry:
+                note += " (review block still present)"
+        elif entry and not entry.get("error"):
+            word = "OVERDUE since" if entry.get("overdue") else "pending review, due"
+            note = f"curation: OFF — {word} {due}"
+        else:
+            note = "curation: OFF — no valid review date set"
         return {
-            "state": "OFF" if entry else "ON",
-            "note": df.note(entry, "curation"),
-            "review_by": (entry or {}).get("review_by"),
-            "overdue": bool((entry or {}).get("overdue")),
+            "state": "ON" if on_tiers else "OFF",
+            "tiers_on": on_tiers,
+            "note": note,
+            "review_by": due,
+            "overdue": (not on_tiers) and (entry is None or bool(entry.get("overdue")) or bool(entry.get("error"))),
             "reenable_plan": (entry or {}).get("reenable_plan"),
         }
     except Exception as exc:  # noqa: BLE001 - a status line must never break the projection

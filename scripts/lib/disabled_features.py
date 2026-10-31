@@ -48,50 +48,66 @@ def _load(path: Path) -> Any:
     return yaml.safe_load(text)
 
 
+def _error(name: str, file: str, error: str, review: Optional[date] = None) -> dict[str, Any]:
+    """An error entry carries only the name, the file and the due date: never the block's other text (review #2399
+    F13 — a malformed block may hold anything)."""
+    return {
+        "name": name,
+        "file": file,
+        "review_by": review.isoformat() if review else None,
+        "error": error,
+        "overdue": True,
+    }
+
+
 def entry_for(path: Path | str, *, today: Optional[date] = None, data: Any = None) -> Optional[dict[str, Any]]:
-    """The ``disabled_until`` entry of one config file, or None. A malformed block is reported, never skipped."""
+    """The ``disabled_until`` entry of one config file, or None. A malformed block is reported, never skipped, and no
+    exception from one file ever escapes (review #2399 F12: binary, deep nesting, tags, directories, broken links)."""
     p = Path(path)
     today = today or date.today()
-    if data is None:
-        try:
+    try:
+        if data is None:
+            if not p.is_file():
+                return None
             data = _load(p)
-        except (OSError, ValueError, yaml.YAMLError) as exc:
-            return {"name": p.stem, "file": p.name, "error": f"unreadable: {type(exc).__name__}", "overdue": True}
-    if not isinstance(data, dict) or "disabled_until" not in data:
-        return None
-    blk = data.get("disabled_until")
-    name = p.stem
-    if not isinstance(blk, dict):
-        return {"name": name, "file": p.name, "error": "disabled_until is not a mapping", "overdue": True}
-    missing = [k for k in REQUIRED if not blk.get(k)]
-    review = _as_date(blk.get("review_by"))
-    out = {
-        "name": str(blk.get("name") or name),
-        "file": p.name,
-        "reason": blk.get("reason"),
-        "disabled_at": str(blk.get("disabled_at") or ""),
-        "review_by": review.isoformat() if review else None,
-        "owner": blk.get("owner"),
-        "reenable_plan": blk.get("reenable_plan"),
-        "days_left": (review - today).days if review else None,
-        "overdue": review is None or review < today,
-    }
-    if missing or review is None:
-        out["error"] = "missing " + ", ".join(missing or ["review_by date"])
-    return out
+        if not isinstance(data, dict) or "disabled_until" not in data:
+            return None
+        blk = data.get("disabled_until")
+        raw_name = blk.get("name") if isinstance(blk, dict) else None
+        name = raw_name if isinstance(raw_name, str) and raw_name.strip() else p.stem
+        if not isinstance(blk, dict):
+            return _error(name, p.name, "disabled_until is not a mapping")
+        review = _as_date(blk.get("review_by"))
+        missing = [k for k in REQUIRED if not blk.get(k)]
+        if missing or review is None:
+            return _error(name, p.name, "missing or invalid " + ", ".join(missing or ["review_by"]), review)
+        return {
+            "name": name,
+            "file": p.name,
+            "reason": str(blk.get("reason")),
+            "disabled_at": str(blk.get("disabled_at") or ""),
+            "review_by": review.isoformat(),
+            "owner": str(blk.get("owner")),
+            "reenable_plan": str(blk.get("reenable_plan")),
+            "days_left": (review - today).days,
+            "overdue": review < today,
+        }
+    except Exception as exc:  # noqa: BLE001 — one bad file must never stop the scan (F12)
+        return _error(p.stem, p.name, f"unreadable: {type(exc).__name__}")
 
 
 def scan(config_dir: Path | str = CONFIG_DIR, *, today: Optional[date] = None) -> list[dict[str, Any]]:
-    """Every ``disabled_until`` block under ``config_dir`` (top level and one directory down), sorted by due date."""
+    """Every ``disabled_until`` block under ``config_dir`` (top level and one directory down), sorted by due date.
+    Dotfiles (``.env`` and friends) are never read (F13)."""
     root = Path(config_dir)
-    files: Iterable[Path] = sorted(
-        [
-            *root.glob("*.yaml"),
-            *root.glob("*.yml"),
-            *root.glob("*.json"),
-            *root.glob("*/*.yaml"),
-            *root.glob("*/*.json"),
-        ]
+    pats = ("*.yaml", "*.yml", "*.json", "*/*.yaml", "*/*.json")
+    files = sorted(
+        {
+            f
+            for pat in pats
+            for f in root.glob(pat)
+            if not any(part.startswith(".") for part in f.relative_to(root).parts)
+        }
     )
     found = [e for e in (entry_for(f, today=today) for f in files) if e]
     return sorted(found, key=lambda e: (e.get("review_by") or "0000", e["name"]))
