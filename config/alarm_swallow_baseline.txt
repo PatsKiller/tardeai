@@ -47,7 +47,7 @@ scripts/lib/cio_operator_renderers.py 1
 scripts/lib/cio_plan_enrichment.py 1
 scripts/lib/cio_theses.py 0
 scripts/lib/gain_guardian_publish.py 1
-scripts/market_regime_classifier.py 1
+scripts/market_regime_classifier.py 0
 scripts/moomoo/opend_health.py 1
 scripts/nightly_integrity_sweep.py 1
 scripts/oauth_lane_keepalive.py 1
