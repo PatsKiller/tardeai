@@ -28,8 +28,9 @@ COLUMNS: tuple[str, ...] = (
 )
 SESSIONS = frozenset({"premarket", "afterhours"})
 INSERT_SQL = (
-    f"INSERT INTO {TABLE} ({', '.join(COLUMNS)}) VALUES ({', '.join(['%s'] * len(COLUMNS))}) "
-    "ON CONFLICT (symbol, bar_start, feed) DO NOTHING"
+    "INSERT INTO market_quotes_extended (symbol, session, session_date, bar_start, bar_end, price, volume, "
+    "reference_close, reference_date, reference_basis, change_pct, feed) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (symbol, bar_start, feed) DO NOTHING"
 )
 
 

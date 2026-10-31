@@ -106,8 +106,8 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             label=f"{s} extended-session move vs previous close",
             value=round(m, 2),
             as_of=latest[s].get("as_of"),
-            source="market_quotes",
-            detail=f"{m:+.1f}%",
+            source=str(latest[s].get("source") or "market_quotes"),
+            detail=f"{m:+.1f}%" + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else ""),
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
     ]

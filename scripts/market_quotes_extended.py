@@ -37,6 +37,16 @@ CONFIG_PATH = ROOT / "config" / "market_quotes_extended.json"
 BARS_URL = "https://data.alpaca.markets/v2/stocks/bars"
 
 
+DOMAIN = "quote_extended_session"
+AUTHORITY_PATH = ROOT / "config" / "data_source_authority.json"
+
+
+def domain_promoted(path: Path = AUTHORITY_PATH) -> bool:
+    """True only when the store's §7A row sits in ``domains`` (granted), not ``proposed_domains``."""
+    d = json.loads(Path(path).read_text(encoding="utf-8"))
+    return any(r.get("domain") == DOMAIN for r in d.get("domains") or [])
+
+
 def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     cfg = json.loads(Path(path).read_text(encoding="utf-8"))
     if cfg.get("schema") != "MarketQuotesExtended@v2":
@@ -74,10 +84,16 @@ def _start(b: dict[str, Any]) -> datetime:
 
 
 def rows_from_bars(
-    bars: dict[str, list[dict]], daily: dict[str, list[dict]], cfg: dict[str, Any], *, now: datetime
+    bars: dict[str, list[dict]],
+    daily: dict[str, list[dict]],
+    cfg: dict[str, Any],
+    *,
+    now: datetime,
+    refused_out: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     step = timedelta(minutes=int(cfg.get("bar_timeframe_minutes", 5)))
     out: list[dict[str, Any]] = []
+    refused = refused_out if refused_out is not None else []
     for sym, series in sorted((bars or {}).items()):
         done = [b for b in series if _start(b) + step <= now and session_of(_start(b), cfg)]
         if not done:
@@ -85,15 +101,15 @@ def rows_from_bars(
         last = max(done, key=_start)
         start = _start(last)
         sess = session_of(start, cfg)
-        # reference: the daily close of the last session whose close is before the bar
-        closes = []
-        for db in (daily or {}).get(sym) or []:
-            dd = _start(db).date()
-            if is_trading_day(dd) and datetime.combine(dd, close_time(dd), ET) <= start:
-                closes.append((dd, float(db["c"])))
-        if not closes:
-            continue  # no reference close known before the bar: refuse rather than guess
-        ref_date, ref = max(closes)
+        # reference: the close of exactly the session this print moves from -- the same trading day for after-hours,
+        # the previous NYSE session for pre-market. A missing or late daily bar refuses the row; it never falls back
+        # to an older close (review of #2384 round 2: QQQ read -2.86% instead of -1.47% at 10-29 18:15).
+        want = start.date() if sess == "afterhours" else previous_session(start.date())
+        refs = [float(db["c"]) for db in (daily or {}).get(sym) or [] if _start(db).date() == want]
+        if not refs:
+            refused.append({"symbol": sym, "reason": f"no daily close for {want.isoformat()}"})
+            continue
+        ref_date, ref = want, refs[-1]
         price = float(last["c"])
         if price <= 0 or ref <= 0:
             continue
@@ -212,16 +228,23 @@ def run(
         bars, daily = saved["bars"], saved.get("daily") or {}
     else:
         bars, daily = (fetcher or fetch)(cfg, now=now)
-    rows = rows_from_bars(bars, daily, cfg, now=now)
+    refused: list[dict[str, Any]] = []
+    rows = rows_from_bars(bars, daily, cfg, now=now, refused_out=refused)
     out: dict[str, Any] = {
         "now": now.isoformat(),
         "apply": apply,
         "candidates": len(rows),
         "inserted": 0,
+        "refused": refused,
         "rows": [{k: (v.isoformat() if isinstance(v, (datetime, date)) else v) for k, v in r.items()} for r in rows],
     }
     if not apply or not rows:
         return out
+    if not domain_promoted():
+        raise SystemExit(
+            "refusing --apply: §7A domain quote_extended_session is still in proposed_domains "
+            "(config/data_source_authority.json); promote it in the activation PR first"
+        )
     from lib.writers.market_quotes_extended_writer import write_extended_quotes
 
     own = conn is None

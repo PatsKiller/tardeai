@@ -108,7 +108,8 @@ class _Conn:
         pass
 
 
-def test_apply_writes_only_market_quotes_extended(tmp_path):
+def test_apply_writes_only_market_quotes_extended(tmp_path, monkeypatch):
+    monkeypatch.setattr(mqe, "domain_promoted", lambda *a, **k: True)
     bars, daily = _fx()
     saved = tmp_path / "b.json"
     saved.write_text(json.dumps({"bars": bars, "daily": daily}))
@@ -160,14 +161,18 @@ def test_engine_reader_reads_extended_prints_only_when_knowable():
 
     class Rd(PgReader):
         def _rows(self, sql, params):
+            if "to_regclass" in sql:
+                return [{"present": True}]
             if EXTENDED_TABLE in sql:
                 seen["sql"], seen["params"] = sql, params
                 return [
                     {
                         "symbol": "QQQ",
                         "session": "afterhours",
+                        "session_date": date(2026, 10, 29),
                         "price": 704.45,
                         "reference_close": 715.34,
+                        "reference_date": date(2026, 10, 29),
                         "change_pct": -1.52,
                         "volume": 9,
                         "bar_end": datetime(2026, 10, 29, 22, 15, tzinfo=timezone.utc),
@@ -183,3 +188,91 @@ def test_engine_reader_reads_extended_prints_only_when_knowable():
     assert seen["params"][-1] == end and seen["params"][-2] == end
     ext = [r for r in rows if r["session"] == "afterhours"]
     assert ext and ext[0]["prev_close"] == 715.34 and ext[0]["source"].startswith(EXTENDED_TABLE)
+    assert ext[0]["reference_date"] == "2026-10-29"
+
+
+def test_reference_close_is_never_taken_from_an_older_session():
+    """No 10-29 daily bar: the 10-29 after-hours print must be refused, not measured against 10-28 (review round 2)."""
+    bars, daily = _fx()
+    daily = {s: [d for d in v if not d["t"].startswith("2026-10-29")] for s, v in daily.items()}
+    refused = []
+    rows = mqe.rows_from_bars(bars, daily, CFG, now=datetime(2026, 10, 29, 18, 15, tzinfo=ET), refused_out=refused)
+    assert rows == [] and {r["symbol"] for r in refused} == {"QQQ", "INTC", "SPY"}
+    assert all("2026-10-29" in r["reason"] for r in refused)
+
+
+def test_apply_refuses_until_the_domain_is_promoted(tmp_path):
+    bars, daily = _fx()
+    saved = tmp_path / "b.json"
+    saved.write_text(json.dumps({"bars": bars, "daily": daily}))
+    assert mqe.domain_promoted() is False  # this PR adds the row under proposed_domains
+    try:
+        mqe.run(apply=True, bars_json=str(saved), now=datetime(2026, 10, 29, 18, 15, tzinfo=ET), conn=_Conn())
+    except SystemExit as exc:
+        assert "proposed_domains" in str(exc)
+    else:
+        raise AssertionError("--apply wrote without a promoted §7A domain")
+
+
+class _ROConn:
+    """Fake psycopg connection tracking the session read-only flag the way Postgres does: SET applies to the
+    session, but a rollback of the transaction that issued it undoes it."""
+
+    def __init__(self, table_present, fail_select=False):
+        self.present, self.fail, self.read_only, self.pending_ro, self.rollbacks = (
+            table_present,
+            fail_select,
+            False,
+            False,
+            0,
+        )
+        conn = self
+
+        class Cur:
+            description = [("present",)]
+
+            def execute(self, sql, params=None):
+                if sql.startswith("SET default_transaction_read_only"):
+                    conn.pending_ro = True
+                    conn.read_only = True
+                    return
+                if "to_regclass" in sql:
+                    self.description, self._rows = [("present",)], [(conn.present,)]
+                    return
+                if not conn.present:
+                    raise RuntimeError('relation "market_quotes_extended" does not exist')
+                if conn.fail:
+                    raise RuntimeError("boom")
+                self.description, self._rows = [("symbol",)], []
+
+            def fetchall(self):
+                return self._rows
+
+            def close(self):
+                pass
+
+        self.Cur = Cur
+
+    def cursor(self):
+        return self.Cur()
+
+    def rollback(self):
+        self.rollbacks += 1
+        if self.pending_ro:  # the SET was in the rolled-back transaction
+            self.read_only = False
+
+
+def test_read_only_survives_a_missing_table_and_a_failed_read():
+    from scripts.lib.market_risk.reader import PgReader
+
+    for present, fail in ((False, False), (True, True)):
+        c = _ROConn(present, fail)
+        r = PgReader(conn_factory=lambda c=c: c)
+        assert (
+            r.extended_quotes(
+                ["QQQ"], start=datetime(2026, 10, 29, tzinfo=ET), end=datetime(2026, 10, 29, 18, tzinfo=ET)
+            )
+            == []
+        )
+        assert c.read_only is True, (present, fail)
+        assert c.rollbacks == (1 if fail else 0)
