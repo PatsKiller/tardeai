@@ -298,3 +298,21 @@ def test_row_without_tz_uses_the_quiet_window_tz_env(quiet, monkeypatch, tmp_pat
     # 05:30 ET is 09:30 UTC: outside both the UTC quiet window and the UTC exemption window
     r = TR.route_intent("probe", "P2", message_class="market_risk", now=_et("01:30"))  # 05:30 UTC
     assert r["decision"] == "DELIVER" and r["quiet_exemption"] == "probe"
+
+
+def test_an_older_router_without_message_class_still_delivers():
+    """Served-copy skew: telegram_alert.py newer than telegram_alert_router.py must not raise TypeError."""
+
+    class OldRouter:
+        @staticmethod
+        def route_intent(message, priority, dedupe_minutes=None, producer=None):
+            return {"decision": "DELIVER"}
+
+    class NewRouter:
+        @staticmethod
+        def route_intent(message, priority, dedupe_minutes=None, producer=None, now=None, message_class=None):
+            return {"decision": "DELIVER"}
+
+    assert TA._router_takes_message_class(OldRouter) is False
+    assert TA._router_takes_message_class(NewRouter) is True
+    assert TA._router_takes_message_class(TR) is True

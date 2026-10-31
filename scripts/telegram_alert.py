@@ -378,6 +378,17 @@ def _intent_router():
     return router
 
 
+def _router_takes_message_class(router) -> bool:
+    """True when ``router.route_intent`` accepts ``message_class`` (or **kwargs)."""
+    import inspect
+
+    try:
+        params = inspect.signature(router.route_intent).parameters
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return "message_class" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
 def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | None = None,
                  producer: str | None = None, hold_text: str | None = None,
                  message_class: str | None = None) -> bool:
@@ -393,8 +404,10 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
     except ImportError:
         print("[telegram] intent router unavailable — delivering")
         return bool(send_fn())
-    route = router.route_intent(message, priority, dedupe_minutes=dedupe_minutes, producer=producer,
-                                message_class=message_class)
+    # message_class goes only to a router that declares it: telegram_alert.py and telegram_alert_router.py can be
+    # served at different versions during a hot reload, and a TypeError here used to drop to SEND_FAILED.
+    extra = {"message_class": message_class} if message_class and _router_takes_message_class(router) else {}
+    route = router.route_intent(message, priority, dedupe_minutes=dedupe_minutes, producer=producer, **extra)
     if route["decision"] == "DEDUPED":
         print(f"[telegram] intent {route['priority']} deduped ({route['window_minutes']}m): {message[:60]}...")
         router.record_intent_receipt(route, delivered=False)
