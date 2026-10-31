@@ -184,8 +184,12 @@ def _happening(p: Pack, doc: dict, snap: dict, bars: dict[str, list[dict]]) -> N
     if isinstance(sectors, dict) and (sectors.get("stressed") or sectors.get("resilient")):
         for key in ("stressed", "resilient", "rotating"):
             names = [
-                str(x.get("name") or x.get("group") or x) if isinstance(x, dict) else str(x)
-                for x in sectors.get(key) or []
+                n
+                for n in (
+                    str(x.get("name") or x.get("group") or x) if isinstance(x, dict) else str(x)
+                    for x in sectors.get(key) or []
+                )
+                if _SECTOR_NAME.match(n)  # a label, never free text with figures
             ]
             if names:
                 p.add(
@@ -508,13 +512,18 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
     cats = _safe(lambda: sources.catalysts(names, now - timedelta(hours=72), now)) or []
     if cats:
         top = sorted(cats, key=lambda c: -(_f(c.get("impact_score")) or _f(c.get("severity")) or 0))[:5]
+        labels = cfg.get("catalyst_labels") or {}
+        parts = [
+            f"{c.get('symbol')} {labels.get(str(c.get('catalyst_type') or ''), 'other event')}"
+            for c in top
+            if _SYMBOL.match(str(c.get("symbol") or ""))
+        ]
+        # headlines are never rendered (review of #2410, N3: advice words, targets, $ and % ride in them); counted
+        hidden = sum(1 for c in top if str(c.get("headline") or "").strip())
         p.add(
             "catalysts",
             "company catalysts",
-            "Company catalysts in 72h: "
-            + "; ".join(
-                f"{c.get('symbol')} {c.get('catalyst_type')}: {str(c.get('headline') or '')[:80]}" for c in top
-            ),
+            "Company catalysts in 72h: " + "; ".join(parts) + _withheld(hidden, "headline"),
             source="catalyst_events",
             as_of=max(str(c.get("created_at")) for c in top),
         )
@@ -526,7 +535,11 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
             "catalysts",
             "material changes",
             "Material changes in 72h: "
-            + "; ".join(f"{m.get('symbol')} {m.get('kind')} (authority {m.get('authority')})" for m in mc[:5]),
+            + "; ".join(
+                f"{m.get('symbol')} {(cfg.get('material_change_labels') or {}).get(str(m.get('kind') or ''), 'other change')}"
+                for m in mc[:5]
+                if _SYMBOL.match(str(m.get("symbol") or ""))
+            ),
             source="material_changes",
             as_of=max(str(m.get("created_at")) for m in mc),
         )
@@ -724,66 +737,30 @@ def _change(p: Pack, doc: dict) -> None:
         )
 
 
-KNOWN_STANCES = frozenset(
-    {
-        "ADD",
-        "HOLD",
-        "TRIM",
-        "EXIT",
-        "AVOID",
-        "WATCH",
-        "WATCH_CLOSELY",
-        "RE_ENTER",
-        "RE_ENTER_IF",
-        "HOLD_CASH_FOR",
-        "TRIM_REVIEW",
-        "EXIT_REVIEW",
-        "EXITED",
-    }
-)
 _SYMBOL = re.compile(r"^[A-Z][A-Z0-9._-]{0,9}$")
-_ALLOWED_NUMERIC = re.compile(r"\b\d{1,3}-(?:day|session|week)s?\b", re.I)
+_SECTOR_NAME = re.compile(r"^[A-Za-z][A-Za-z &/-]{0,39}$")
 
 
-def safe_phrase(text: Any, max_len: int = 120) -> Optional[str]:
-    """A CIO reason / re-entry condition as it may appear in the brief, or None. Refused when, after removing the
-    allowed "50-day"-style tokens, any digit, currency or percent sign remains (a price, size or level could ride along:
-    "trim 25% above $190"), when a character is not plain ASCII, or when the phrase carries advice wording
-    (review of #2393, item 5). Never rewritten — kept verbatim or withheld."""
-    from . import brief_guard
-
-    clean, bad = brief_guard.clean(str(text or ""))
-    if bad or not clean.strip():
-        return None
-    probe = _ALLOWED_NUMERIC.sub("", clean)
-    if re.search(r"[0-9$%€£¥]", probe):
-        return None
-    if brief_guard.MODAL.search(clean) or brief_guard.PERSON.search(clean) or brief_guard.ACTION.search(clean):
-        return None
-    if brief_guard.IMPERATIVE_START.match(clean.strip()):
-        return None
-    return clean.strip()[:max_len]
+def _withheld(n: int, what: str = "detail") -> str:
+    return f" ({n} {what}{'s' if n > 1 else ''} withheld)" if n else ""
 
 
-def _exposure(p: Pack, doc: dict, snap: dict) -> list[dict]:
+def _exposure(p: Pack, doc: dict, snap: dict, cfg: dict) -> list[dict]:
     stances = snap.get("stances") or snap.get("positions_stances") or doc.get("stances")
     out: list[dict] = []
     if isinstance(stances, list) and stances:
         for s in stances[:12]:
             if not isinstance(s, dict) or not _SYMBOL.match(str(s.get("symbol") or "")):
                 continue
+            # Allowlist (review of #2410, B1): the stance NAME from a fixed vocabulary and nothing else. Free-text
+            # reasons and re-entry conditions are never rendered — "Half position until earnings clear" or "Price back
+            # above one ninety-five" carry sizing or levels no filter can be trusted to catch. They are counted.
             stance = str(s.get("stance") or "").upper()
-            stance = stance if stance in KNOWN_STANCES else "unrecognised (withheld)"
-            reasons = [r for r in (safe_phrase(x) for x in (s.get("reasons") or [])[:3]) if r]
-            withheld = len((s.get("reasons") or [])[:3]) - len(reasons)
-            text = f"{s['symbol']}: CIO stance {stance}" + (f" — {'; '.join(reasons)}" if reasons else "")
-            cond = safe_phrase(s.get("re_enter_if"), 160) if isinstance(s.get("re_enter_if"), str) else None
-            if cond:
-                text += f"; re-entry conditions: {cond}"
-            elif s.get("re_enter_if"):
-                withheld += 1
-            if withheld:
-                text += f" ({withheld} detail{'s' if withheld > 1 else ''} withheld: figures or advice wording)"
+            known = {str(x).upper() for x in cfg.get("stance_names") or []}
+            withheld = len([r for r in (s.get("reasons") or []) if str(r).strip()]) + int(bool(s.get("re_enter_if")))
+            if stance not in known:
+                stance, withheld = "unrecognised", withheld + 1
+            text = f"{s['symbol']}: CIO stance {stance}{_withheld(withheld)}"
             p.add(
                 "exposure",
                 f"stance {s['symbol']}",
@@ -848,7 +825,7 @@ def build_fact_pack(
     cat = _catalysts(p, reader, now, held, sources, doc, cfg)
     cons = _consensus(p, doc, reads, cat, snap, cfg)
     _change(p, doc)
-    exposure = _exposure(p, doc, snap)
+    exposure = _exposure(p, doc, snap, cfg)
     return {
         "schema": SCHEMA,
         "as_of": now.isoformat(),

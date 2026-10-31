@@ -48,3 +48,50 @@ sections:                               # the model may order facts in these six
   - Catalysts ahead
   - Where sources agree and disagree
   - What would change the picture
+# Free text from other stores never reaches the brief (review of #2410, B1/N3): a CIO stance renders as its stance
+# name only, and a catalyst or material change as symbol + a label from these fixed maps; anything else is counted as
+# withheld. Labels are descriptive nouns only (no trade verbs: "insider_buy" -> "insider purchase filing").
+stance_names: [ADD, HOLD, TRIM, EXIT, AVOID, WATCH, WATCH_CLOSELY, RE_ENTER, RE_ENTER_IF, HOLD_CASH_FOR, TRIM_REVIEW, EXIT_REVIEW, EXITED]
+catalyst_labels:
+  news_momentum: news momentum
+  analyst_upgrade: analyst upgrade
+  analyst_downgrade: analyst downgrade
+  analyst: analyst note
+  earnings_beat: earnings above estimates
+  earnings_miss: earnings below estimates
+  earnings: earnings
+  earnings_release: earnings release
+  earnings_report: earnings report
+  earnings_call: earnings call
+  merger_acquisition: merger or acquisition
+  contract_win: contract award
+  contract: contract
+  geopolitical: geopolitical event
+  insider_buy: insider purchase filing
+  insider_sell: insider sale filing
+  buyback: share repurchase program
+  offering_dilution: share offering
+  fda_approval: FDA approval
+  dividend_increase: dividend increase
+  dividend_cut: dividend cut
+  guidance_raise: guidance raised
+  guidance_lower: guidance lowered
+  regulatory_disclosure: regulatory disclosure
+  regulatory: regulatory event
+  ceo_change: CEO change
+  executive_change: executive change
+  material_agreement: material agreement
+  filing_quarterly: quarterly filing
+  filing_annual: annual filing
+  stock_split: stock split
+  clinical_trial: clinical trial
+  product_launch: product launch
+  legal: legal matter
+  lawsuit: lawsuit
+  partnership: partnership
+material_change_labels:
+  news_burst: news burst
+  catalyst_new: new catalyst
+  price_excursion: price excursion
+  sec_filing: SEC filing
+  sector_move: sector move

@@ -325,21 +325,18 @@ def _queue_deep_brief(doc, prior, now, ledger, episode_id, initial_intent) -> No
 
 
 def _drain_deep_brief(ent, now, doc, policy, apply, ledger, call_model, reader) -> dict[str, Any] | None:
-    """Send a queued deep brief once its initial card is ``sent``; built now from the current assessment (read-only
+    """Send a queued deep brief once no card of its episode is unsent (``deep_brief.drain_gate``); built now from the current assessment (read-only
     fact pack; the model only when enabled, in a daemon thread with a hard timeout). A failed send is retried like
     any other card (``settle`` reschedules it with backoff)."""
     from scripts.lib.market_risk import alerts, deep_brief
 
     key = ent["key"]
-    after = (ent.get("intent") or {}).get("after_key")
-    if after:
-        rec = (alerts._load_ledger(ledger).get("keys") or {}).get(after) or {}  # noqa: SLF001
-        st = rec.get("status")
-        if st == "superseded":
-            alerts.mark_superseded(key, path=ledger, reason="its initial card was superseded")
-            return None
-        if st != "sent":
-            return None  # wait: the initial card goes first, and only a sent initial card earns a follow-up
+    verdict, why = deep_brief.drain_gate(ent, doc, alerts._load_ledger(ledger).get("keys") or {})  # noqa: SLF001
+    if verdict == "retire":
+        alerts.mark_superseded(key, path=ledger, reason=why)
+        return {"key": key, "kind": "deep_brief", "sent": False, "retired": why}
+    if verdict == "wait":
+        return None  # every card of its episode goes first; the brief stays queued
     sources = None
     if hasattr(reader, "_rows"):  # production PgReader: the other stores through the same read-only session
         from scripts.lib.market_risk.deep_brief_facts import PgSources

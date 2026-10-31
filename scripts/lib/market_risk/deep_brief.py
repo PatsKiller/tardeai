@@ -10,10 +10,11 @@ How it stays honest (rebuilt after review of #2393, item 3):
 * The FACT PACK (``deep_brief_facts.build_fact_pack``) is deterministic; every fact carries its rendered text.
 * ``render_deterministic`` is the brief with no model at all, always ready.
 * The model never writes prose. It may only COORDINATE: for each section it returns an ordered list of
-  ``{"t": template_id, "f": fact_id}`` picks (JSON). ``TEMPLATES`` is a fixed bank of lead-ins; the system renders
-  ``template.format(text=fact["text"])`` — every value, sign and unit is the fact's own deterministic text. A pick is
-  refused if its template is not in the bank, its fact does not exist or belongs to another section, or the section
-  has too many picks; any refusal sends the deterministic brief. Free text from the model is never sent.
+  ``{"t": template_id, "f": fact_id}`` picks (JSON). ``TEMPLATES`` is a fixed bank of lead-ins, each allowed only in
+  its own sections; the system renders ``template.format(text=fact["text"])`` — every value, sign and unit is the
+  fact's own deterministic text. An answer is refused if a template is not in the bank or not allowed in that section,
+  a fact does not exist or belongs to another section, a section it includes is incomplete, or the JSON is malformed
+  or too deeply nested; any refusal sends the deterministic brief. Free text from the model is never sent.
 * "Your exposure" is never chosen by the model; stance text is sanitised (``deep_brief_facts._exposure``).
 * The model runs in a DAEMON thread with a hard timeout: a slow lane can never hold the evaluator past it (item 2).
 * Delivery goes through the outbox (``alerts.outbox_put``, kind ``deep_brief``), queued with the initial card,
@@ -34,7 +35,8 @@ SCHEMA = "MarketRiskDeepBrief@v1"
 SECTION_KEYS = ("happening", "next", "hedging", "catalysts", "consensus", "change")
 TIER_RANK = {"GREEN": -1, "NONE": 0, "BLUE": 0, "YELLOW": 1, "ORANGE": 2, "RED": 3}
 ADVISORY = "Advisory. No order, size or stop level is implied; the decision is yours."
-#: the ONLY wording the model can cause to appear; ``{text}`` is the fact's deterministic text
+#: the ONLY wording the model can cause to appear; ``{text}`` is the fact's deterministic text. Each lead-in is tied
+#: to the sections where it is true ("Historically:" never labels a hedging fact) — review of #2410, N4.
 TEMPLATES: dict[str, str] = {
     "plain": "{text}",
     "lead": "Main driver: {text}",
@@ -44,9 +46,17 @@ TEMPLATES: dict[str, str] = {
     "ahead": "Ahead: {text}",
     "agree": "Sources: {text}",
     "watch": "Would change the picture: {text}",
-    "gap": "Not measured: {text}",
 }
-MAX_PICKS = 5
+TEMPLATE_SECTIONS: dict[str, frozenset] = {
+    "plain": frozenset(SECTION_KEYS),
+    "also": frozenset(SECTION_KEYS),
+    "lead": frozenset({"happening"}),
+    "history": frozenset({"next"}),
+    "hedge": frozenset({"hedging"}),
+    "ahead": frozenset({"catalysts"}),
+    "agree": frozenset({"consensus"}),
+    "watch": frozenset({"change"}),
+}
 
 
 def _rank(t: Any) -> int:
@@ -99,8 +109,54 @@ def outbox_entry(
             "tier": doc.get("tier"),
             "transition": f"deep_brief:{why}",
             "after_key": (initial_intent or {}).get("dedupe_key"),
+            "episode": episode_id,
         },
     }
+
+
+UNSENT = ("pending", "claimed", "failed")
+
+
+def _was_sent(rec: dict) -> bool:
+    """A card the transport accepted: ``sent``, or superseded AFTER it was sent (a torn episode store retires a sent
+    card's bookkeeping, not the fact that it went out — review of #2410, N2)."""
+    return rec.get("status") == "sent" or bool(rec.get("sent_at"))
+
+
+def drain_gate(ent: dict, doc: dict, ledger_keys: dict, cfg: Optional[dict] = None) -> tuple[str, str]:
+    """``("send" | "wait" | "retire", reason)`` for a queued brief at drain time. Pure; the evaluator acts on it.
+
+    * retire when the market has fallen out of the trigger: a tier brief needs the current tier to still be a trigger
+      tier, a shock-type brief needs the current tier at or above the shock minimum (N1 — no "DEEP BRIEF — BLUE");
+    * retire when its own initial card was superseded without ever being sent;
+    * wait while ANY card of its episode is unsent (B2: a shock-type brief has no initial card of its own, and an
+      earlier ORANGE card of the same episode may still be retrying), or while its own initial card is unsent;
+    * otherwise send."""
+    cfg = cfg if cfg is not None else load_config()
+    intent = ent.get("intent") or {}
+    trig = cfg.get("triggers") or {}
+    tier = str(doc.get("tier") or "NONE").upper()
+    why = str(intent.get("transition") or "")
+    if why.endswith(":shock_type"):
+        if _rank(tier) < _rank(str(trig.get("shock_type_change_min_tier") or "YELLOW").upper()):
+            return "retire", f"tier {tier} is below the shock-type brief minimum"
+    elif tier not in {str(t).upper() for t in trig.get("tiers") or ["ORANGE", "RED"]}:
+        return "retire", f"tier {tier} is no longer a brief trigger tier"
+    after = intent.get("after_key")
+    if after:
+        rec = ledger_keys.get(after) or {}
+        if rec.get("status") == "superseded" and not _was_sent(rec):
+            return "retire", "its initial card was superseded unsent"
+        if not _was_sent(rec):
+            return "wait", "its initial card is not sent yet"
+    ep = intent.get("episode")
+    if ep:
+        for k, rec in ledger_keys.items():
+            if k == ent.get("key") or rec.get("kind") == "deep_brief" or rec.get("episode_id") != ep:
+                continue
+            if rec.get("status") in UNSENT:
+                return "wait", f"card {k} of this episode is not sent yet"
+    return "send", "ok"
 
 
 def _sections(pack: dict) -> dict[str, list[dict]]:
@@ -158,10 +214,12 @@ def build_prompt(pack: dict, cfg: dict) -> str:
     ]
     body = json.dumps({"facts": facts}, default=str)[: int(cfg.get("max_input_chars") or 14000)]
     return (
-        "You coordinate a follow-up market-risk brief. You do NOT write sentences. For each section pick, in the "
-        f"order a reader should see them, at most {MAX_PICKS} facts from THAT section, each with one template id.\n"
+        "You coordinate a follow-up market-risk brief. You do NOT write sentences. For each section you include, list "
+        "EVERY fact of that section exactly once, in the order a reader should see them, each with one template id "
+        "allowed for that section.\n"
         f"Sections: {json.dumps({k: titles[k] for k in SECTION_KEYS})}\n"
         f"Template ids: {json.dumps(TEMPLATES)}\n"
+        f"Allowed sections per template: {json.dumps({k: sorted(v) for k, v in TEMPLATE_SECTIONS.items()})}\n"
         'Answer with JSON only, e.g. {"happening": [{"t": "lead", "f": "now-b"}], "next": [{"t": "history", "f": "hist-c"}]}. '
         "Lead with what matters most for risk; leave out repeats.\n\n"
         f"FACTS:\n{body}\n"
@@ -177,7 +235,7 @@ def parse_picks(answer: str, pack: dict) -> dict[str, Any]:
         raw = raw.strip("`").split("\n", 1)[-1] if "\n" in raw else ""
     try:
         data = json.loads(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):  # RecursionError: deeply nested JSON (review of #2410, N4)
         return {"ok": False, "picks": {}, "reasons": ["not JSON"]}
     if not isinstance(data, dict):
         return {"ok": False, "picks": {}, "reasons": ["not a JSON object"]}
@@ -186,8 +244,8 @@ def parse_picks(answer: str, pack: dict) -> dict[str, Any]:
         if sec not in SECTION_KEYS:
             reasons.append(f"unknown section {str(sec)[:30]!r}")
             continue
-        if not isinstance(items, list) or len(items) > MAX_PICKS:
-            reasons.append(f"section {sec}: not a list of at most {MAX_PICKS}")
+        if not isinstance(items, list):
+            reasons.append(f"section {sec}: not a list")
             continue
         seen: set[str] = set()
         for it in items:
@@ -197,6 +255,8 @@ def parse_picks(answer: str, pack: dict) -> dict[str, Any]:
             t, f = str(it.get("t")), str(it.get("f"))
             if t not in TEMPLATES:
                 reasons.append(f"unknown template {t[:20]!r}")
+            elif sec not in TEMPLATE_SECTIONS[t]:
+                reasons.append(f"template {t} is not allowed in {sec}")
             elif f not in by_id:
                 reasons.append(f"unknown fact {f[:20]!r}")
             elif by_id[f]["section"] != sec:
@@ -206,6 +266,11 @@ def parse_picks(answer: str, pack: dict) -> dict[str, Any]:
             else:
                 seen.add(f)
                 picks.setdefault(sec, []).append((t, f))
+    for sec, chosen in picks.items():  # the model orders and labels a section; it never drops part of one (N4)
+        want = {f["id"] for f in pack.get("facts") or [] if f["section"] == sec}
+        missing = want - {f for _, f in chosen}
+        if missing:
+            reasons.append(f"section {sec}: omits {sorted(missing)[:5]}")
     if not any(picks.values()):
         reasons.append("no picks")
     return {"ok": not reasons, "picks": picks, "reasons": reasons}
