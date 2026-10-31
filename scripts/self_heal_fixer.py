@@ -40,7 +40,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -295,6 +295,80 @@ def checkout_digest(root: Path) -> str:
                 with open(p, "rb") as fh:
                     h.update(f"F {rel} {st.st_mode & 0o777:o} {hashlib.sha256(fh.read()).hexdigest()}\n".encode())
     return h.hexdigest()
+
+
+#: The scanners and their rules. The fix commit may not touch any of them (also refused by the diff guard); they are
+#: run as they are at the BASE commit, the way .github/workflows/secret-scan.yml runs check_no_pii from the base.
+SCAN_GUARDED = (
+    "scripts/check_no_pii.py",
+    "scripts/check_no_secrets.py",
+    "config/pii_baseline.json",
+    ".gitleaks.toml",
+    ".gitleaksignore",
+)
+
+
+def scan_range(fix_wt: Path, base: str, commit: str, rules_dir: Path, environ: Mapping[str, str]) -> list[str]:
+    """Pre-hand-off scan of base..commit (review 2026-10-31, H6 and round 2). The candidate never controls its own
+    scan: (1) a commit that changes any SCAN_GUARDED path is refused; (2) check_no_pii.py with its baseline, and the
+    gitleaks config and ignore file, are taken from BASE into ``rules_dir`` and run against the range; (3) without
+    gitleaks the repo's check_no_secrets.py runs over the checked-out tree, byte-identical to BASE's copy by (1).
+    Any finding, or a scanner missing at BASE, is returned as a refusal."""
+    env = {k: v for k, v in environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
+    env["TRADE_AI_CI"] = "1"
+    changed = git(fix_wt, "diff", "--name-only", base, commit, "--", *SCAN_GUARDED)
+    if changed["rc"] != 0:
+        return [f"scan_diff_failed:{changed['err'][-200:]}"]
+    if changed["out"].strip():
+        return [f"scanner_or_rules_changed:{','.join(changed['out'].split())}"]
+    errs: list[str] = []
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    have: dict[str, Path] = {}
+    for rel in SCAN_GUARDED:
+        r = git(fix_wt, "show", f"{base}:{rel}")
+        if r["rc"] == 0:
+            dst = rules_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(r["out"], encoding="utf-8")
+            have[rel] = dst
+    if "scripts/check_no_pii.py" not in have:
+        errs.append("scanner_missing:check_no_pii.py at base")
+    else:
+        argv = [
+            sys.executable,
+            str(have["scripts/check_no_pii.py"]),
+            "--repo",
+            str(fix_wt),
+            "--range",
+            f"{base}..{commit}",
+        ]
+        if "config/pii_baseline.json" in have:
+            argv += ["--baseline", str(have["config/pii_baseline.json"])]
+        r = run(argv, cwd=fix_wt, env=env, timeout=600)
+        if r["rc"] != 0:
+            errs.append(f"check_no_pii:{(r['out'] + r['err'])[-300:]}")
+    gl = shutil.which("gitleaks")
+    if gl:
+        argv = [gl, "detect", "--no-banner", "--redact", "--source", str(fix_wt), "--log-opts", f"{base}..{commit}"]
+        if ".gitleaks.toml" in have:
+            argv += ["--config", str(have[".gitleaks.toml"])]
+        if ".gitleaksignore" in have:
+            argv += ["--gitleaks-ignore-path", str(have[".gitleaksignore"])]
+        r = run(argv, cwd=fix_wt, env=env, timeout=600)
+        if r["rc"] != 0:
+            errs.append(f"gitleaks:{(r['out'] + r['err'])[-300:]}")
+    elif "scripts/check_no_secrets.py" not in have:
+        errs.append("scanner_missing:check_no_secrets.py at base")
+    else:
+        r = run(
+            [sys.executable, str(Path(fix_wt) / "scripts" / "check_no_secrets.py"), "--tree"],
+            cwd=fix_wt,
+            env=env,
+            timeout=600,
+        )
+        if r["rc"] != 0:
+            errs.append(f"check_no_secrets:{(r['out'] + r['err'])[-300:]}")
+    return errs
 
 
 class Attempt:
@@ -751,50 +825,7 @@ class Attempt:
         )
 
     def scan_commit(self, commit: str) -> list[str]:
-        """Review 2026-10-31 (H6): before the fix branch is handed off, the evaluated commit must pass the repo's own
-        personal-data check (check_no_pii over base..commit) and a secret scan (gitleaks over the range when it is
-        installed, else scripts/check_no_secrets.py over the checked-out tree). Any failure, or a missing scanner,
-        refuses the hand-off; nothing is pushed in any case (§24.5)."""
-        errs: list[str] = []
-        env = {k: v for k, v in self.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
-        env["TRADE_AI_CI"] = "1"
-        pii = self.fix_wt / "scripts" / "check_no_pii.py"
-        if not pii.is_file():
-            errs.append("scanner_missing:check_no_pii.py")
-        else:
-            r = run(
-                [sys.executable, str(pii), "--range", f"{self.base}..{commit}"], cwd=self.fix_wt, env=env, timeout=600
-            )
-            if r["rc"] != 0:
-                errs.append(f"check_no_pii:{(r['out'] + r['err'])[-300:]}")
-        gl = shutil.which("gitleaks")
-        if gl:
-            r = run(
-                [
-                    gl,
-                    "detect",
-                    "--no-banner",
-                    "--redact",
-                    "--source",
-                    str(self.fix_wt),
-                    "--log-opts",
-                    f"{self.base}..{commit}",
-                ],
-                cwd=self.fix_wt,
-                env=env,
-                timeout=600,
-            )
-            if r["rc"] != 0:
-                errs.append(f"gitleaks:{(r['out'] + r['err'])[-300:]}")
-        else:
-            sec = self.fix_wt / "scripts" / "check_no_secrets.py"
-            if not sec.is_file():
-                errs.append("scanner_missing:check_no_secrets.py")
-            else:
-                r = run([sys.executable, str(sec), "--tree"], cwd=self.fix_wt, env=env, timeout=600)
-                if r["rc"] != 0:
-                    errs.append(f"check_no_secrets:{(r['out'] + r['err'])[-300:]}")
-        return errs
+        return scan_range(self.fix_wt, self.base, commit, self.dir / "scan_rules", self.environ)
 
     def land_local(self, commit: str) -> dict:
         """Point the job branch at the evaluated commit (compare-and-swap from base) and write fix.patch from it."""
@@ -802,62 +833,6 @@ class Attempt:
         patch = git(self.repo, "format-patch", "-1", "--stdout", commit)["out"]
         (self.dir / "fix.patch").write_text(patch, encoding="utf-8")
         return {"rc": r["rc"], "head": commit, "err": r["err"][-300:]}
-
-    def push_and_pr(self, body: str, commit: str, gh_view: Optional[Callable[[list[str]], dict]] = None) -> dict:
-        env = dict(self.environ)
-        env.pop("TRADEAI_REMOTE_PUSH_OVERRIDE", None)  # never an override: the budget binds
-        env["TRADEAI_REMOTE_PUSH_AUTHORIZED"] = "1"
-        # push the evaluated SHA itself, never "whatever the branch points at now"
-        p = run(
-            ["git", "-C", str(self.fix_wt), "push", self.cfg["repo"]["remote"], f"{commit}:refs/heads/{self.branch}"],
-            env=env,
-            timeout=600,
-        )
-        if p["rc"] != 0:
-            return {"ok": False, "why": f"push_failed:{(p['err'] or p['out'])[-300:]}"}
-        body_path = self.dir / "pr_body.md"
-        body_path.write_text(body, encoding="utf-8")
-        title = f"fix({self.job['lane']}): self-heal fix ({self.job['job_id']})"
-        base_args = [
-            "gh",
-            "pr",
-            "create",
-            "--base",
-            self.cfg["repo"]["base_branch"],
-            "--head",
-            self.branch,
-            "--title",
-            title,
-            "--body-file",
-            str(body_path),
-        ]
-        pr = run(base_args + ["--label", self.cfg["repo"]["pr_label"]], cwd=self.fix_wt, env=env, timeout=120)
-        label = True
-        if pr["rc"] != 0:
-            label = False
-            pr = run(base_args, cwd=self.fix_wt, env=env, timeout=120)
-        if pr["rc"] != 0:
-            return {"ok": False, "why": f"pr_create_failed:{pr['err'][-300:]}", "pushed": True}
-        url = pr["out"].strip().splitlines()[-1] if pr["out"].strip() else ""
-        num = url.rstrip("/").rsplit("/", 1)[-1]
-        out = {"ok": True, "pr_url": url, "pr_number": int(num) if num.isdigit() else None, "labelled": label}
-        # the PR head MUST be the evaluated commit
-        view = run(
-            ["gh", "pr", "view", url or self.branch, "--json", "headRefOid"], cwd=self.fix_wt, env=env, timeout=60
-        )
-        try:
-            head = str(json.loads(view["out"] or "{}").get("headRefOid") or "")
-        except ValueError:
-            head = ""
-        out["pr_head"] = head
-        if head != commit:
-            out.update(
-                ok=False,
-                why=f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}",
-                pushed=True,
-                head_mismatch=True,
-            )
-        return out
 
 
 @_job_deadline
@@ -975,39 +950,9 @@ def attempt_job(
         }
         body = F.pr_body(job, evidence)
         (evidence_dir / "pr_body.md").write_text(body, encoding="utf-8")
-        if may_push:
-            pr = a.push_and_pr(body, commit)
-            if pr.get("ok") or pr.get("pushed"):
-                try:
-                    log_push(state_root(environ), job, now=now(), branch=a.branch, commit=commit, pr=pr)
-                except OSError as exc:  # the push happened; a log write failure is recorded, never hidden
-                    job["fix_log_error"] = f"{type(exc).__name__}: {exc}"[:200]
-            if pr.get("ok"):
-                F.transition(
-                    job,
-                    F.FIX_PR_OPENED,
-                    now(),
-                    pr_url=pr["pr_url"],
-                    pr_number=pr["pr_number"],
-                    labelled=pr["labelled"],
-                    pr_head=pr.get("pr_head"),
-                    updated_at=now().isoformat(),
-                )
-            elif pr.get("head_mismatch"):
-                F.transition(
-                    job,
-                    F.FIX_REFUSED,
-                    now(),
-                    reason=pr["why"],
-                    pr_url=pr.get("pr_url"),
-                    pr_number=pr.get("pr_number"),
-                    pr_head=pr.get("pr_head"),
-                    updated_at=now().isoformat(),
-                )
-            else:
-                F.transition(job, F.FIX_READY_LOCAL, now(), reason=pr["why"], updated_at=now().isoformat())
-        else:
-            F.transition(job, F.FIX_READY_LOCAL, now(), reason="push_not_allowed", updated_at=now().isoformat())
+        # AGENTS.md §24.5: the fixer stops at this local branch (fix.patch and pr_body.md beside it); a person pushes it.
+        # The push/PR path is deleted, not just disabled (review 2026-10-31 round 2).
+        F.transition(job, F.FIX_READY_LOCAL, now(), reason="push_not_allowed", updated_at=now().isoformat())
         a.teardown(keep_branch=True)
         return job
     new = F.FIX_REFUSED if stop == "guard_refused" else F.FIX_FAILED

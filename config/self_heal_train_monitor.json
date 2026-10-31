@@ -130,23 +130,6 @@
         "docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json",
         "docs/ops/packets/disk-standing-apply-20261024/review.required.json"
       ]
-    },
-    {
-      "id": "train_stale_reconcile",
-      "source": "train",
-      "kind": "train_reconcile",
-      "_why": "A train left non-terminal (trains/<id>/state.json with no outcome.json) longer than sources.stale_train_after_minutes. Runs the controller's documented restart reconcile: release_window.py train-reconcile (dry run) and, only when every train's disposition is decided (none AMBIGUOUS), train-reconcile --live. Ambiguity is never forced: it escalates.",
-      "dry_argv": [
-        "{python}",
-        "scripts/release_window.py",
-        "train-reconcile"
-      ],
-      "live_argv": [
-        "{python}",
-        "scripts/release_window.py",
-        "train-reconcile",
-        "--live"
-      ]
     }
   ],
   "regen_pr": {
@@ -269,5 +252,6 @@
     "heartbeat_rel": "data/runtime/self-heal-train-monitor_last.json",
     "fixer_defects_rel": "data/self_heal/fixer_defects.jsonl",
     "lock_rel": "data/self_heal/train_monitor.lock"
-  }
+  },
+  "_train_stale_why": "2026-10-31 review round 2: the train_stale_reconcile rule called 'release_window.py train-reconcile', which does not exist (subcommands: plan, run, status, clear-stop). Removed: a stale train now goes to the coordinator (release machinery is the coordinator's), never to an invented command."
 }
