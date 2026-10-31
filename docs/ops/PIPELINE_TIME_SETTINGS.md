@@ -29,6 +29,11 @@ documentation with the proper time settings. So another agent doesn't come behin
 | `orphan_wait_s` | `config/health_tick_steps.json`, `DEFAULT_ORPHAN_WAIT_S` in `scripts/health_tick.py` | **30 s** | unchanged | Legacy fire-and-forget children only |
 | `tick_budget_s` / `tick_deadline_s` | `config/health_tick_steps.json` | **280 / 300 s** | unchanged | Below the unit timeout |
 | `TimeoutStartSec` | `tradeai-health-tick.service` (`config/systemd/user/`) | **330 s** | unchanged | 300 + `KILL_GRACE_S` 10 + receipt |
+| `max_runtime_min` for `cio_reactive_cycle` | `config/process_reaper_policy.json` + `DEFAULT_RULES` | **15** (900 s) | none | Reactive cycle max 325 s over 9,300 runs (p99 22 s) |
+| `TimeoutStartSec` | `tradeai-cio-reactive.service` drop-in `40-timeout.conf` | **15 min** | infinity | Same measurement; a hung oneshot froze its 2-minute timer for 31 h |
+| `max_runtime_min` for `cio_event_detector` | `config/process_reaper_policy.json` + `DEFAULT_RULES` | **20** (1200 s) | none | 91 s on 10-29 (single receipt, floor) |
+| `max_runtime_min` for `cio_wake_dispatch` | `config/process_reaper_policy.json` + `DEFAULT_RULES` | **20** (1200 s) | none | Backstop above the cron `timeout 15m`; slot spans p99 204 s (censored at 300 s) |
+| `CIO_WAKE_JOBS_LOCK_TIMEOUT_S` | `scripts/lib/cio_wake_jobs.py` | **120 s** | unbounded | One append + fsync is sub-second; covers a full-store tail quarantine |
 
 ## 1. Orchestrator reaper cap: 30 minutes
 
@@ -154,6 +159,19 @@ then `error`, then `note || ' by ' || cleared_by`. The alert reads
 `Error: zombie run cleared by remediate_pipeline_failures`. The run was verified read-only against the
 live table for the 36 h to 2026-10-22. It produced 18 such orchestrator rows, 15 for symbol_enrichment
 and 32 for finviz_screener_runner.
+
+## 4. CIO wake store: re-entrant lock, bounded waits (2026-10-31)
+
+On 2026-10-30 at 05:00 ET the disk-full night had left a truncated last record in `data/cio/cio_wake_jobs.jsonl`.
+`cio-event-detector` held the store lock inside `_append_event`; reading the head hash found the corrupt tail and
+called `quarantine_corrupt_trailing_events`, which opened a second descriptor on the same lock file and waited on its
+own lock forever (flock locks belong to an open file description). `tradeai-cio-reactive` (oneshot, no timeout) then
+sat "activating" and its timer stopped firing; every `*/5` wake dispatch timed out at 15 minutes (92 times) and the
+last successful dispatch was 10-30 00:45 ET. The process reaper had no rule for any of the three.
+
+Now: the lock is re-entrant per process, thread and lock path; every wait is bounded (`CIOWakeLockTimeout`); the
+reactive unit has `TimeoutStartSec=15min`; and the reaper caps all three. Regression test
+`tests/test_cio_wake_jobs_lock_reentrant_20261031.py` reproduces the self-deadlock (hangs on the old code).
 
 ## How to change any of this
 

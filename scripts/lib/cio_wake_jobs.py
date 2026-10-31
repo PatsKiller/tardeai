@@ -18,6 +18,7 @@ import fcntl
 import hashlib
 import json
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -203,6 +204,23 @@ ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class CIOWakeLockTimeout(TimeoutError):
+    """The wake-job store lock was not acquired in time; the caller fails loudly instead of hanging."""
+
+
+_HELD: dict[tuple[int, int, str], list[int]] = {}
+_HELD_GUARD = threading.Lock()
+
+
+def _lock_timeout_s() -> float:
+    """Bounded lock wait. Longest measured clean hold is well under a second (one append + fsync); the 120 s default
+    leaves room for a full-store quarantine rewrite. Override with CIO_WAKE_JOBS_LOCK_TIMEOUT_S."""
+    try:
+        return max(1.0, float(os.environ.get("CIO_WAKE_JOBS_LOCK_TIMEOUT_S", "120")))
+    except ValueError:
+        return 120.0
+
+
 class CIOWakeJobStore:
     """Deterministic append-only wake job store backed by a JSONL file.
 
@@ -227,12 +245,46 @@ class CIOWakeJobStore:
 
     # ── Locking ────────────────────────────────────────────────────────────
 
+    # flock() locks belong to an open file description, so a second os.open() of the same lock file inside one
+    # process blocks on the first forever. 2026-10-30 05:00 ET: `_append_event` held the lock, a truncated tail
+    # (disk full) sent `_get_last_event` into `quarantine_corrupt_trailing_events`, which opened a second fd and
+    # waited on itself; the reactive cycle and every wake dispatch queued behind it for 31 hours. The lock is now
+    # re-entrant per (process, thread, lock path) and every wait is bounded.
+
     def _acquire_lock(self) -> int:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None:
+                held[1] += 1
+                return held[0]
         lock_fd = os.open(str(self._lock_path), os.O_CREAT | os.O_RDWR)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + _lock_timeout_s()
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    os.close(lock_fd)
+                    raise CIOWakeLockTimeout(
+                        f"{self._lock_path}: lock not acquired within {_lock_timeout_s():.0f}s "
+                        "(another process holds it; see lslocks)"
+                    ) from None
+                time.sleep(0.05)
+        with _HELD_GUARD:
+            _HELD[key] = [lock_fd, 1]
         return lock_fd
 
     def _release_lock(self, lock_fd: int) -> None:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None and held[0] == lock_fd:
+                held[1] -= 1
+                if held[1] > 0:
+                    return
+                del _HELD[key]
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
