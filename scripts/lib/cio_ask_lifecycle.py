@@ -24,6 +24,23 @@ AUTO_PROCESS = "cio_ask_reanswer"
 REQUEST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 
 
+# A source that ran and answered counts as checked. ``rejected`` means the source answered but its fact failed the
+# validation gate (cio_ask_research.gather: FactRejected -> gap FACT_REJECTED); the gap is already recorded, so it must
+# not fail the whole check. Before 2026-10-31 it did: internal.thesis returned ``rejected`` for every tracked subject,
+# so each hourly check raised SOURCE_CHECK_INCOMPLETE, three in a row opened the n8n breakers for cio-ask-lifecycle and
+# cio-ask-material-events (10-30 16:25Z / 17:00Z) and Ask-the-CIO stopped tracking anything.
+SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "rejected"})
+_REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def _check_failed_reason(exc: BaseException) -> str:
+    """``CHECK_FAILED:<Type>`` plus the message when it is a machine token (``SOURCE_CHECK_INCOMPLETE``): the event
+    ledger said only ``ValueError`` for six failed checks on 10-30, which hid the cause. Free text never lands here."""
+    msg = str(exc).strip()
+    tail = ":" + msg if _REASON_TOKEN.match(msg) else ""
+    return "CHECK_FAILED:" + type(exc).__name__ + tail
+
+
 def clock(value=None):
     value = value or datetime.now(timezone.utc)
     if isinstance(value, str):
@@ -868,9 +885,9 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 evidence = collect(_request(thread, turn))
                 fingerprint = _fingerprint(evidence)
                 source_rows = evidence.get("source_runs") or []
-                errors = [x for x in source_rows if x.get("status") not in ("ok", "no_data", "not_applicable")]
+                errors = [x for x in source_rows if x.get("status") not in SOURCE_ANSWERED_STATUSES]
                 if errors:
-                    raise ValueError("SOURCE_CHECK_INCOMPLETE")
+                    raise ValueError("SOURCE_CHECK_INCOMPLETE")  # names land in the report via _check_failed_reason
                 prior_checks = [
                     e
                     for e in tevents
@@ -1042,12 +1059,12 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     now=now,
                     outcome="failed",
                     state="failed",
-                    reason="CHECK_FAILED:" + type(exc).__name__,
+                    reason=_check_failed_reason(exc),
                     checked=False,
                     automated=True,
                 )
                 report["failed_count"] += 1
-                report["source_errors"].append(tid + ":" + type(exc).__name__)
+                report["source_errors"].append(tid + ":" + _check_failed_reason(exc).removeprefix("CHECK_FAILED:"))
                 report["threads"].append(
                     {"thread_id": tid, "lifecycle": life, "consumer_readback": {"state": "not_measured"}}
                 )
