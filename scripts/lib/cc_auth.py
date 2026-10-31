@@ -39,6 +39,9 @@ CONFIG_ENV = "TRADEAI_CC_AUTH_CONFIG"
 ENFORCE_ENV = "TRADEAI_CC_AUTH_ENFORCE"
 REPORT_ONLY_ENV = "TRADEAI_CC_AUTH_REPORT_ONLY"
 TOKEN_FILE_ENV = "TRADEAI_CC_SERVICE_TOKEN_FILE"
+READER_TOKEN_FILE_ENV = "TRADEAI_CC_AGENT_READER_TOKEN_FILE"
+AGENT_READER = "agent-reader"
+READ_METHODS = frozenset({"GET", "HEAD"})
 
 LISTENER_SERVICE = "service"
 LISTENER_SERVE_PROXY = "serve_proxy"
@@ -95,6 +98,10 @@ class CCAuthConfig:
     csrf_stop_routes: tuple[StepUpRoute, ...] = ()
     csrf_form_routes: tuple[StepUpRoute, ...] = ()
     always_refuse_routes: tuple[StepUpRoute, ...] = ()
+    # Read-only agent identity for automated checks (2026-10-25). Service listener only; GET/HEAD only.
+    reader_enabled: bool = False
+    reader_header: str = "X-TradeAI-Agent-Reader"
+    reader_token_file: Path | None = None
     source: str = ""
     load_error: str = ""
 
@@ -140,6 +147,8 @@ def config_from_mapping(raw: Mapping[str, Any], *, source: str = "", load_error:
     enforce = bool(sec.get("enforce", True))
     report_only = bool(sec.get("report_only", False))
     token_file = _path_or_none(tok.get("file"))
+    reader = dict(sec.get("agent_reader") or {})
+    reader_file = _path_or_none(reader.get("file"))
     if apply_env:
         e = _env_bool(ENFORCE_ENV)
         if e is not None:
@@ -149,6 +158,8 @@ def config_from_mapping(raw: Mapping[str, Any], *, source: str = "", load_error:
             report_only = r
         if os.environ.get(TOKEN_FILE_ENV):
             token_file = Path(os.environ[TOKEN_FILE_ENV]).expanduser()
+        if os.environ.get(READER_TOKEN_FILE_ENV):
+            reader_file = Path(os.environ[READER_TOKEN_FILE_ENV]).expanduser()
     mode = str(su.get("mode", "enforce")).strip().lower()
     if mode not in {"enforce", "report_only", "off"}:
         mode = "enforce"
@@ -179,6 +190,9 @@ def config_from_mapping(raw: Mapping[str, Any], *, source: str = "", load_error:
         csrf_stop_routes=_routes(csrf.get("stop_routes")),
         csrf_form_routes=_routes(csrf.get("form_routes")),
         always_refuse_routes=_routes(sec.get("always_refuse")),
+        reader_enabled=bool(reader.get("enabled", False)),
+        reader_header=str(reader.get("header") or "X-TradeAI-Agent-Reader"),
+        reader_token_file=reader_file,
         source=source,
         load_error=load_error,
     )
@@ -422,9 +436,61 @@ def command_csrf_check(cfg: CCAuthConfig, method: str, path: str) -> tuple[bool,
 
 
 def authenticated_principal(d: "Decision") -> str:
-    if d.allowed and not d.would_deny and (d.principal.startswith("tailnet:") or d.principal == "service-token"):
+    if d.allowed and not d.would_deny and (d.principal.startswith("tailnet:") or d.principal in ("service-token", AGENT_READER)):
         return d.principal
     return ""
+
+
+def is_agent_reader() -> bool:
+    """True when this request authenticated as the read-only agent identity. Read access only; never an operator."""
+    return current_principal() == AGENT_READER
+
+
+_READER_STORES: dict[tuple[str, int], ServiceTokenStore] = {}
+_READER_STORES_LOCK = threading.Lock()
+
+
+def _reader_store(cfg: CCAuthConfig) -> ServiceTokenStore:
+    key = (str(cfg.reader_token_file), cfg.token_min_length)
+    with _READER_STORES_LOCK:
+        store = _READER_STORES.get(key)
+        if store is None:
+            store = _READER_STORES[key] = ServiceTokenStore(cfg.reader_token_file, cfg.token_min_length)
+        return store
+
+
+def _agent_reader(cfg: CCAuthConfig, listener: str, method: str, headers: Any,
+                  token_store: ServiceTokenStore) -> Decision | None:
+    """The read-only agent identity, or None when the request does not present it.
+
+    * Only the loopback service listener honours it; the tailnet listener ignores the header entirely.
+    * Any method other than GET/HEAD that presents the header is refused outright (403), whatever enforce,
+      report_only or the token's validity -- a reader request can never ride report_only into a write.
+    * Presenting it together with the service token is refused as ambiguous.
+    * The token lives in its own 0600 file (agent_reader.file), never the service token.
+    """
+    if listener == LISTENER_SERVE_PROXY:
+        return None
+    vals = _header_values(headers, cfg.reader_header)
+    if not vals:
+        return None
+    m = (method or "").upper()
+    if m not in READ_METHODS:
+        return Decision(False, 403, "agent reader is read-only: only GET/HEAD are allowed", listener,
+                        principal=AGENT_READER, kind="agent_reader")
+    if _token_presented(cfg, headers):
+        return Decision(False, 403, "agent reader and service token presented together", listener, kind="agent_reader")
+    if not cfg.reader_enabled:
+        return Decision(False, 401, "agent reader disabled (cc_auth.agent_reader.enabled)", listener, kind="agent_reader")
+    expected = _reader_store(cfg).token()
+    presented = vals[0].strip() if len(vals) == 1 else ""
+    if expected and presented and hmac.compare_digest(presented.encode(), expected.encode()):
+        if expected == token_store.token():
+            return Decision(False, 403, "agent reader token equals the service token; mint a separate one", listener,
+                            kind="agent_reader")
+        return Decision(True, 200, "agent reader (read-only)", listener, principal=AGENT_READER, kind="agent_reader")
+    why = "agent reader token mismatch" if expected else f"agent reader token not configured ({_reader_store(cfg).problem})"
+    return Decision(False, 401, why, listener, kind="agent_reader")
 
 
 def require_step_up(request: Any, action: str) -> Decision:
@@ -508,6 +574,18 @@ def evaluate_request(cfg: CCAuthConfig, listener: str, method: str, path: str, h
     if refused:
         return Decision(False, 403, REFUSED_MESSAGE, listener, step_up_action=refused, kind="refused")
 
+    # Read-only agent identity (2026-10-25): decided here, before report_only/enforce can soften anything.
+    reader = _agent_reader(cfg, listener, method, headers, token_store)
+    if reader is not None:
+        if not reader.allowed:
+            return reader
+        action = step_up_action(cfg, method, path)
+        if action and cfg.step_up_mode != "off":  # never a step-up bypass
+            su = require_step_up(request, action)
+            su.listener, su.principal = listener, AGENT_READER
+            return su
+        return reader
+
     # CSRF (WS4-03). Hard-class routes are enforced even in report_only and with enforce:false.
     csrf_would_deny = None
     ok, why = csrf_check(cfg, listener, method, path, headers)
@@ -558,11 +636,11 @@ _LOG_LOCK = threading.Lock()
 def record_decision(cfg: CCAuthConfig, d: Decision, method: str, path: str, client: str = "",
                     user_agent: str = "") -> None:
     """Append non-plain-allow decisions as JSONL and to stdout. Never raises; never logs a token."""
-    if d.allowed and not d.would_deny:
+    if d.allowed and not d.would_deny and d.kind != "agent_reader":
         return
     row = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "outcome": "would_deny" if d.would_deny else "deny",
+        "outcome": "would_deny" if d.would_deny else "allow" if d.allowed else "deny",
         "kind": d.kind,
         "status": d.status,
         "listener": d.listener,
@@ -576,7 +654,8 @@ def record_decision(cfg: CCAuthConfig, d: Decision, method: str, path: str, clie
         **d.detail,
     }
     try:
-        print(f"  [cc-auth] {row['outcome']} {d.kind} {d.status} {d.listener} {method} {row['path']} — {d.reason}", flush=True)
+        if row["outcome"] != "allow":  # allowed reader reads go to the decision log only, not the server log
+            print(f"  [cc-auth] {row['outcome']} {d.kind} {d.status} {d.listener} {method} {row['path']} — {d.reason}", flush=True)
     except Exception:
         pass
     if cfg.decision_log is None:
@@ -671,6 +750,9 @@ def _main(argv: list[str]) -> int:
             "serve_proxy": serve_proxy_target(cfg) if cfg.serve_proxy_enabled else None,
             "serve_proxy_bind_ok": serve_proxy_bind_ok(cfg),
             "token_file": str(cfg.token_file), "token_status": _token_status(cfg),
+            "agent_reader": {"enabled": cfg.reader_enabled, "header": cfg.reader_header,
+                             "file": str(cfg.reader_token_file or ""),
+                             "status": "ok" if _reader_store(cfg).token() else _reader_store(cfg).problem},
             "step_up_mode": cfg.step_up_mode,
             "step_up_routes": [list(r) for r in iter_step_up_routes(cfg)],
             "always_refuse": [[r.action, ",".join(sorted(r.methods)), r.pattern.pattern] for r in cfg.always_refuse_routes],
@@ -679,8 +761,43 @@ def _main(argv: list[str]) -> int:
             "csrf_stop_routes": [[r.action, r.pattern.pattern] for r in cfg.csrf_stop_routes],
         }, indent=2))
         return 0
-    print("usage: cc_auth.py --client-settings | --describe")
+    if argv[1:2] == ["--reader-settings"]:
+        # For automated checks: header, token-file path, service port, enabled (one per line; never the token).
+        print(cfg.reader_header)
+        print(str(cfg.reader_token_file or ""))
+        print(cfg.service_port)
+        print("enabled" if cfg.reader_enabled else "disabled")
+        return 0
+    if argv[1:2] == ["--mint-agent-reader-token"]:
+        return mint_agent_reader_token(cfg)
+    print("usage: cc_auth.py --client-settings | --reader-settings | --mint-agent-reader-token | --describe")
     return 2
+
+
+def mint_agent_reader_token(cfg: CCAuthConfig) -> int:
+    """Create the read-only agent token file once (0600, exclusive create). Prints the path, never the value.
+
+    Refuses to overwrite: rotating is archive-the-old-file then mint (AGENTS.md: never delete).
+    """
+    import secrets as _secrets
+
+    path = cfg.reader_token_file
+    if path is None:
+        print("refused: cc_auth.agent_reader.file is not configured")
+        return 2
+    if cfg.token_file is not None and Path(path).expanduser().resolve() == Path(cfg.token_file).expanduser().resolve():
+        print("refused: the agent reader file must not be the service token file")
+        return 2
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        print(f"exists (unchanged): {path}")
+        return 0
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(_secrets.token_urlsafe(48) + "\n")
+    print(f"minted: {path} (0600)")
+    return 0
 
 
 if __name__ == "__main__":

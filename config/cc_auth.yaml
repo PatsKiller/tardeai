@@ -62,6 +62,17 @@ cc_auth:
     min_length: 32
     accept_bearer: true        # also accept "Authorization: Bearer <token>"
 
+  # Read-only agent identity for automated checks of authenticated pages (2026-10-25, docs/ops/CC_AGENT_READER.md).
+  # Service listener (loopback) only; the tailnet listener ignores the header. GET/HEAD only: any other method that
+  # presents the header is refused 403 whatever enforce/report_only say. Principal "agent-reader" is never an
+  # operator: every decision/approval/POST path keeps requiring a tailnet operator identity. Every reader request
+  # is written to decision_log. Its token is a SEPARATE file from the service token (agents may read it; it grants
+  # reads only). Activation = minting the file: python3 scripts/lib/cc_auth.py --mint-agent-reader-token
+  agent_reader:
+    enabled: true
+    header: X-TradeAI-Agent-Reader
+    file: ~/.local/state/tradeai/agent_reader/token
+
   # Service-listener paths answered WITHOUT a token (GET only, exact match). Liveness only — no
   # portfolio data. The serve_proxy listener has NO exemptions.
   service_exempt_paths:
