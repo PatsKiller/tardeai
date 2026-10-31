@@ -11,6 +11,7 @@ Findings this test pins (docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md):
   of `except: pass`.
 Hermetic: fake DB connection, telegram_alert / alert_dispatcher stubbed via sys.modules.
 """
+
 from __future__ import annotations
 
 import sys
@@ -155,8 +156,14 @@ def _stub_senders(monkeypatch):
 
 
 def _snap(label, vol="high_vol"):
-    return {"regime_label": label, "volatility_state": vol, "trend_state": "bearish",
-            "breadth_state": "not_measured", "confidence": 0.5, "inputs": {"vix_close": "high"}}
+    return {
+        "regime_label": label,
+        "volatility_state": vol,
+        "trend_state": "bearish",
+        "breadth_state": "not_measured",
+        "confidence": 0.5,
+        "inputs": {"vix_close": "high"},
+    }
 
 
 @pytest.mark.parametrize("label", ["risk_off", "high_volatility"])
