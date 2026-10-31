@@ -2241,10 +2241,12 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   clearing STOP are operator-only (§17). *Cause: 2026-10-27 — per-SHA grant wait (LESSONS L25-05).*
 - **After a healthy promote or rollback (any path) the deploy restarts the bound units and verifies them.** Restarted:
   its long-standing list plus grok-/chatgpt-oauth-proxy and heartbeat-receiver, WorkingDirectory=`CURRENT` installed units
-  only, cap 12. The long-standing list skips the §23.14 `lane_dispatch` matcher (its "telegram"/"executor" words name
-  daemons restarted every promote since 2026-09), never the code never-list. Paged if stale, never restarted: ops-applier, portfolio-server, §23.14 tokens in name/argv/env (code
-  constant; config only adds), callback-poller during any session, all others. Each cwd is read back and receipted; a
-  failure pages P1 and the deploy continues. Not a §28.1 run-ender. *Cause: 2026-10-31 — stale applier (LESSONS L25-09).*
+  only, cap 12; an operator `TRADEAI_CURRENT_BOUND_UNITS` replaces that list, still filtered. The long-standing list skips
+  the §23.14 `lane_dispatch` matcher (its "telegram"/"executor" words name daemons restarted every promote since
+  2026-09), never the code never-list. Paged if stale, never restarted: ops-applier, portfolio-server, §23.14 tokens in
+  name/argv/env (code constant; config only adds), callback-poller during any session, all others. Each cwd is read back
+  and receipted; a failure pages P1 and the deploy continues. Not a §28.1 run-ender. *Cause: 2026-10-31 — stale applier
+  (LESSONS L25-09).*
 - **The emergency promote (`scripts/emergency_manual_promote.sh`, §24.8) and rollback are the operator's.** A
   coordinator agent may run it only on the operator's explicit instruction given in that coordinator's own session
   (§28.4), quoted verbatim in the receipt. Agents revert by PR. *Cause: 2026-10-27 — review L5 (LESSONS L25-06).*

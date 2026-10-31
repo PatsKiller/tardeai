@@ -875,6 +875,8 @@ staged_units_step() {
 }
 
 cmd_promote() {
+  # A real deploy, never a test: the bound-unit verify strips leaked CI/harness variables only under this marker.
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
   [[ -n "$dir" ]] || die "no release — run prepare first"
@@ -1026,7 +1028,10 @@ restart_root_frozen_units() {
   local filtered="" have_py=0
   if [[ -n "${VENV_PYTHON:-}" && -n "${ROOT:-}" && -x "${VENV_PYTHON}" ]]; then
     have_py=1
-    read -ra add <<<"$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    # An operator override REPLACES the list (still filtered below); only without one are the named units added.
+    if [[ -z "${!key:-}" ]]; then
+      read -ra add <<<"$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    fi
     filtered="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" filter --units "${cand[*]} ${add[*]}" 2>/dev/null)" \
       || { log "  WARN current-bound filter failed — restarting only names on the literal default list"; have_py=0; }
   fi
@@ -1063,9 +1068,22 @@ restart_root_frozen_units() {
   done
   # The single judge: receipt + P1 for failed restarts, stale restarted units and stale page-only units.
   if [[ "$have_py" == "1" ]]; then
-    "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
-      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" \
-      || log "  WARN current-bound verify reported stale units (receipt: data/runtime/current_bound_units_last.json)"
+    # Only inside a real promote/rollback (cmd_promote/cmd_rollback set CBU_DEPLOY_CONTEXT=1) are leaked CI/harness
+    # variables stripped, so a real P1 and receipt cannot be suppressed. A harness that sources this function keeps
+    # its guard; PYTEST_CURRENT_TEST is never stripped (only pytest sets it).
+    local vrc=0
+    local -a vpre=()
+    # Honoured only as a NON-exported shell variable: a harness that exports CBU_DEPLOY_CONTEXT cannot disable the guard.
+    if [[ "${CBU_DEPLOY_CONTEXT:-}" == "1" && "$(declare -p CBU_DEPLOY_CONTEXT 2>/dev/null)" != "declare -x"* ]]; then
+      vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
+    fi
+    "${vpre[@]}" "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
+      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" || vrc=$?
+    case "$vrc" in
+      0) ;;
+      4) log "  ERROR current-bound verify REFUSED to page or write its receipt (harness guard) — check the deploy env" ;;
+      *) log "  WARN current-bound verify reported stale units rc=$vrc (receipt: data/runtime/current_bound_units_last.json)" ;;
+    esac
   fi
   [[ "$failures" == "0" ]]
 }
@@ -1076,6 +1094,8 @@ cmd_bound_units() {
 }
 
 cmd_rollback() {
+  # A real rollback, never a test (see cmd_promote).
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local target="${1:-${PREV_RELEASE:-}}"
   [[ -n "$target" && -d "$target" ]] || die "rollback target missing"

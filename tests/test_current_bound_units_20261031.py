@@ -271,6 +271,8 @@ def _cli(monkeypatch, tmp_path, argv, sent, units=None, deliver=None):
         sent.append((message, kw))
         return True
 
+    fake_send._tradeai_test_double = True
+
     import telegram_alert
 
     monkeypatch.setattr(telegram_alert, "send_telegram", fake_send)
@@ -506,7 +508,7 @@ def test_harness_refuses_real_send_and_production_root_write(monkeypatch, tmp_pa
         cli.cbu, "verify", lambda cur, names, **kw: ov(cur, names, run=fake_run(units), cwd_of=fake_cwd(units))
     )
     rc = cli.main(["verify", "--current", NEW, "--restarted", "heartbeat-receiver.service", "--json"])
-    assert rc == 2  # still judged stale
+    assert rc == 4  # the alarm itself was suppressed: distinct exit code
     assert called == []
     assert not any(realish.rglob("*")), "nothing may be written under the production state root"
     # the default root (TRADEAI_PERSISTENT_STATE_ROOT) is used when --state-root is absent
@@ -567,3 +569,293 @@ def test_word_tokens_are_components_not_substrings_and_skip_env_names():
         is_market_open=False,
     )
     assert ok, reason
+
+
+# ------------------------------------------------------------------ follow-up 2: the bypasses reviewer A found
+def _real_sender_reached(monkeypatch):
+    import telegram_alert
+
+    reached: list = []
+
+    def no_network(*a, **k):
+        reached.append(a)
+        raise AssertionError("real sender reached")
+
+    # Stub the real sender's transport so a bypass is detected without any network.
+    monkeypatch.setattr(telegram_alert, "_legacy_send", no_network, raising=False)
+    monkeypatch.setattr(telegram_alert, "_intent_send", no_network, raising=False)
+    return telegram_alert, reached
+
+
+@pytest.mark.parametrize("kind", ["mock_wraps", "partial", "lambda", "scripts_module", "unmarked_mock"])
+def test_wrapped_or_reexported_real_sender_is_refused(monkeypatch, kind):
+    import functools
+    from unittest import mock
+
+    import scripts.current_bound_units as cli
+
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    ta, reached = _real_sender_reached(monkeypatch)
+    real = ta.send_telegram
+    if kind == "mock_wraps":
+        wrapper = mock.Mock(wraps=real)
+    elif kind == "partial":
+        wrapper = functools.partial(real)
+    elif kind == "lambda":
+        wrapper = lambda m, **k: real(m, **k)  # noqa: E731
+    elif kind == "unmarked_mock":
+        wrapper = mock.Mock(return_value=True)  # auto-attributes are truthy; only an explicit marker counts
+    else:
+        import scripts.telegram_alert as sta
+
+        wrapper = sta.send_telegram
+    monkeypatch.setattr(ta, "send_telegram", wrapper)
+    ok, err = cli.deliver("x")
+    assert ok is False and err.startswith("refused"), kind
+    assert reached == []
+
+
+def test_marked_test_double_is_allowed(monkeypatch):
+    import scripts.current_bound_units as cli
+    import telegram_alert
+
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    calls = []
+
+    def double(message, **kw):
+        calls.append(message)
+        return True
+
+    double._tradeai_test_double = True
+    monkeypatch.setattr(telegram_alert, "send_telegram", double)
+    assert cli.deliver("x") == (True, None) and calls == ["x"]
+
+
+def test_symlinked_runtime_dir_into_production_is_refused(monkeypatch, tmp_path):
+    import scripts.current_bound_units as cli
+
+    prod = tmp_path / "prod-state"
+    (prod / "data" / "runtime").mkdir(parents=True)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(prod))
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    scratch = tmp_path / "scratch"
+    (scratch / "data").mkdir(parents=True)
+    (scratch / "data" / "runtime").symlink_to(prod / "data" / "runtime")
+    assert cli.write_refused(scratch) is not None
+    # a plain scratch root with no symlink is fine
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert cli.write_refused(plain) is None
+
+
+@pytest.mark.parametrize(
+    "value,expect",
+    [("1", True), ("true", True), ("TRUE", True), ("0", False), ("false", False), ("", False), ("yes", False)],
+)
+def test_harness_env_parsing_is_strict(monkeypatch, value, expect):
+    import scripts.current_bound_units as cli
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("TRADEAI_TEST_HARNESS", raising=False)
+    monkeypatch.setenv("TRADE_AI_CI", value)
+    assert (cli.harness_reason() is not None) is expect
+
+
+def test_receipt_records_harness_reason(monkeypatch, tmp_path):
+    sent: list = []
+    _cli(monkeypatch, tmp_path, ["verify", "--current", NEW, "--restarted", "tradeai-health-agent.service"], sent)
+    rec = json.loads((tmp_path / "data/runtime/current_bound_units_last.json").read_text())
+    assert "harness_reason" in rec and rec["harness_reason"]
+
+
+# ------------------------------------------------------------------ follow-up 3: reviewer B's should-fix notes
+def test_parent_of_protected_root_is_refused(monkeypatch, tmp_path):
+    import scripts.current_bound_units as cli
+
+    prod = tmp_path / "releases" / "persistent-state"
+    prod.mkdir(parents=True)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(prod))
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    assert cli.write_refused(tmp_path / "releases") is not None  # root is a PARENT of the protected root
+
+
+def test_force_variable_survives_and_ci_vars_do_not(monkeypatch):
+    import scripts.current_bound_units as cli
+
+    for v in ("TRADE_AI_CI", "TRADEAI_TEST_HARNESS", "PYTEST_CURRENT_TEST"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("TRADEAI_TEST_HARNESS_FORCE", "1")
+    assert cli.harness_reason() == "TRADEAI_TEST_HARNESS_FORCE"
+
+
+def test_deploy_strips_leaked_ci_vars_only_in_deploy_context(tmp_path):
+    """Inside cmd_promote/cmd_rollback (CBU_DEPLOY_CONTEXT=1) leaked TRADE_AI_CI/TRADEAI_TEST_HARNESS are stripped;
+    PYTEST_CURRENT_TEST never is."""
+    _, _, calls = _bash_env(
+        tmp_path,
+        {"TRADE_AI_CI": "1", "TRADEAI_TEST_HARNESS": "1", "PYTEST_CURRENT_TEST": "x"},
+        local_marker=True,
+    )
+    verify = [ln for ln in calls.splitlines() if " verify " in f" {ln} "][0]
+    assert "CI=<unset>" in verify and "HARNESS=<unset>" in verify and "PYT=x" in verify
+
+
+def test_harness_sourcing_the_function_keeps_its_guard(tmp_path):
+    """B-R4: a harness that sources restart_root_frozen_units outside a deploy must NOT have its guard stripped."""
+    _, _, calls = _bash_env(tmp_path, {"TRADE_AI_CI": "1", "TRADEAI_TEST_HARNESS": "1", "PYTEST_CURRENT_TEST": "x"})
+    verify = [ln for ln in calls.splitlines() if " verify " in f" {ln} "][0]
+    assert "CI=1" in verify and "HARNESS=1" in verify and "PYT=x" in verify
+
+
+def test_deploy_context_marker_is_set_in_promote_and_rollback():
+    for fn in ("cmd_promote", "cmd_rollback"):
+        assert "local +x CBU_DEPLOY_CONTEXT=1" in _fn(fn), fn
+
+
+def _real_cli_harness(tmp_path, extra_env, *, local_marker=False):
+    """The REAL restart function and the REAL current_bound_units CLI, with an UNMARKED stub sender that records any
+    call to a file (no network possible), a fake systemctl, and a real-looking scratch state root."""
+    import os
+    import sys
+
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "systemctl").write_text(
+        "#!/bin/bash\n"
+        'if [[ "$1 $2" == "--user restart" ]]; then exit 0; fi\n'
+        'if [[ "$*" == *"list-units"* ]]; then echo "stale-x.service loaded active running x"; exit 0; fi\n'
+        f'if [[ "$*" == *" show "* ]]; then printf "WorkingDirectory={BASE}/CURRENT\\nExecStart=\\nMainPID=0\\n'
+        f'Environment=\\nEnvironmentFiles=\\nFragmentPath=\\nTransient=no\\n"; exit 0; fi\n'
+        "exit 0\n"
+    )
+    (fake / "sleep").write_text("#!/bin/bash\nexit 0\n")
+    (fake / "readlink").write_text(f"#!/bin/bash\necho {OLD}\n")
+    sends = tmp_path / "sends.log"
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir(exist_ok=True)
+    wrap = tmp_path / "wrap.py"
+    wrap.write_text(
+        "import runpy, sys, types\n"
+        "m = types.ModuleType('telegram_alert')\n"
+        "def send_telegram(message, **kw):\n"
+        f"    open({str(sends)!r}, 'a').write(message + '\\n')\n"
+        "    return True\n"
+        "m.send_telegram = send_telegram  # UNMARKED on purpose: a harness must refuse it\n"
+        "sys.modules['telegram_alert'] = m\n"
+        "script = sys.argv[1]; sys.argv = sys.argv[1:]\n"
+        "runpy.run_path(script, run_name='__main__')\n"
+    )
+    pyw = tmp_path / "pyw"
+    pyw.write_text(f'#!/bin/bash\nexec {sys.executable} {wrap} "$@"\n')
+    for f in (*fake.iterdir(), pyw):
+        f.chmod(0o755)
+    realish = tmp_path / "trade-ai-releases" / "persistent-state"
+    realish.mkdir(parents=True, exist_ok=True)
+    script = (
+        f'set -euo pipefail\nlog() {{ echo "LOG $*"; }}\nROOT={ROOT}\nVENV_PYTHON={pyw}\n'
+        + _fn("restart_root_frozen_units")
+        + (
+            f"w() {{ local +x CBU_DEPLOY_CONTEXT=1; restart_root_frozen_units {NEW} promote || true; }}\nw\n"
+            if local_marker
+            else f"restart_root_frozen_units {NEW} promote || true\n"
+        )
+    )
+    env = {
+        "PATH": f"{fake}:/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", str(tmp_path)),
+        "TRADEAI_PERSISTENT_STATE_ROOT": str(realish),
+        "TRADEAI_RELEASES_BASE": BASE,
+        "TRADEAI_CURRENT_BOUND_UNITS": "tradeai-health-agent.service",
+        **extra_env,
+    }
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
+    return r, (sends.read_text() if sends.exists() else ""), realish
+
+
+def test_real_cli_under_ci_harness_never_sends_or_writes(tmp_path):
+    """B-R4 regression: TRADE_AI_CI=1, no FORCE, real function + real CLI: no send, no receipt under the root."""
+    r, sent, realish = _real_cli_harness(tmp_path, {"TRADE_AI_CI": "1"})
+    assert sent == "", r.stdout + r.stderr
+    assert not any(realish.rglob("*")), "nothing may be written under the real-looking state root"
+    assert "REFUSED" in r.stdout or "refused" in r.stderr, r.stdout + r.stderr
+
+
+def test_real_cli_in_deploy_context_keeps_pytest_guard(tmp_path):
+    """Even inside a deploy context, PYTEST_CURRENT_TEST is never stripped, so a pytest run cannot page."""
+    r, sent, realish = _real_cli_harness(
+        tmp_path, {"TRADE_AI_CI": "1", "PYTEST_CURRENT_TEST": "t::x"}, local_marker=True
+    )
+    assert sent == "", r.stdout + r.stderr
+    assert not any(realish.rglob("*"))
+
+
+def test_deploy_logs_error_on_refusal_exit_4(tmp_path):
+    r, _, _ = _bash_env(tmp_path, {}, verify_rc=4)
+    assert "ERROR current-bound verify REFUSED" in r.stdout
+
+
+def test_override_replaces_the_list_no_union(tmp_path):
+    r, restarted, calls = _bash_env(
+        tmp_path, {"TRADEAI_CURRENT_BOUND_UNITS": "tradeai-health-agent.service"}, plan_names="grok-oauth-proxy.service"
+    )
+    assert " plan " not in f" {calls} "  # no union with the derived names
+    assert restarted == ["tradeai-health-agent.service"]
+
+
+def _bash_env(tmp_path, env_extra, *, plan_names="", verify_rc=0, local_marker=False):
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    log = tmp_path / "restarts"
+    (fake / "systemctl").write_text(
+        "#!/bin/bash\n"
+        f'if [[ "$1 $2" == "--user restart" ]]; then echo "$3" >> "{log}"; exit 0; fi\n'
+        'if [[ "$*" == *"MainPID"* ]]; then echo 123; fi\nexit 0\n'
+    )
+    (fake / "sleep").write_text("#!/bin/bash\nexit 0\n")
+    (fake / "readlink").write_text(f"#!/bin/bash\necho {NEW}\n")
+    calls = tmp_path / "pycalls"
+    pyf = tmp_path / "py"
+    pyf.write_text(
+        "#!/bin/bash\n"
+        f'echo "$* CI=${{TRADE_AI_CI-<unset>}} HARNESS=${{TRADEAI_TEST_HARNESS-<unset>}} '
+        f'PYT=${{PYTEST_CURRENT_TEST-<unset>}}" >> "{calls}"\n'
+        f'case "$2" in plan) echo "{plan_names}";; filter) shift 3; echo "$*";; verify) exit {verify_rc};; esac\nexit 0\n'
+    )
+    for f in (*fake.iterdir(), pyf):
+        f.chmod(0o755)
+    script = (
+        f'set -euo pipefail\nlog() {{ echo "LOG $*"; }}\nROOT=/x\nVENV_PYTHON={pyf}\n'
+        + _fn("restart_root_frozen_units")
+        + (
+            f"w() {{ local +x CBU_DEPLOY_CONTEXT=1; restart_root_frozen_units {NEW} promote; }}\nw && echo RC0 || echo RCNZ\n"
+            if local_marker
+            else f"restart_root_frozen_units {NEW} promote && echo RC0 || echo RCNZ\n"
+        )
+    )
+    env = {"PATH": f"{fake}:/usr/bin:/bin", **env_extra}
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
+    restarted = log.read_text().split() if log.exists() else []
+    return r, restarted, (calls.read_text() if calls.exists() else "")
+
+
+def test_real_cli_positive_control_without_harness_reaches_the_stub(tmp_path):
+    """Positive control: with no harness variable the same setup DOES call the (stub) sender and writes the
+    receipt, so the two tests above prove the guard and not a broken harness."""
+    r, sent, realish = _real_cli_harness(tmp_path, {})
+    assert "RELEASE NOT REACHED" in sent, r.stdout + r.stderr
+    assert (realish / "data/runtime/current_bound_units_last.json").exists()
+
+
+def test_exported_deploy_marker_cannot_disable_the_guard(tmp_path):
+    """A harness that EXPORTS CBU_DEPLOY_CONTEXT=1 with TRADE_AI_CI=1 and sources the function: nothing is sent."""
+    r, sent, realish = _real_cli_harness(tmp_path, {"TRADE_AI_CI": "1", "CBU_DEPLOY_CONTEXT": "1"})
+    assert sent == "", r.stdout + r.stderr
+    assert not any(realish.rglob("*"))
+
+
+def test_local_deploy_marker_strips_ci_and_sends(tmp_path):
+    """Positive control for the marker: a real non-exported local marker (as in cmd_promote) strips a leaked
+    TRADE_AI_CI, so the (stub) sender IS reached and the receipt IS written."""
+    r, sent, realish = _real_cli_harness(tmp_path, {"TRADE_AI_CI": "1"}, local_marker=True)
+    assert "RELEASE NOT REACHED" in sent, r.stdout + r.stderr
+    assert (realish / "data/runtime/current_bound_units_last.json").exists()
