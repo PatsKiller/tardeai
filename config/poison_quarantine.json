@@ -32,5 +32,20 @@
     "SOURCE_CHECK_INCOMPLETE"
   ],
   "_rules_why": "Review 2026-10-31: only deterministic per-item errors count (transient_patterns never count or reset); at most max_per_run items and max_share of a run's items are quarantined so an outage stays visible and the breaker can still open; one store per lane under a flock; a corrupt store raises; a quarantine expires after expire_hours and is re-checked once; release with scripts/poison_quarantine.py.",
-  "_transient_why": "SOURCE_CHECK_INCOMPLETE is what Ask-the-CIO reports when a source refused or was capped (e.g. SEARCH_CAP): the source, not the thread, is the problem, so it never counts toward poison."
+  "_transient_why": "SOURCE_CHECK_INCOMPLETE is what Ask-the-CIO reports when a source refused or was capped (e.g. SEARCH_CAP): the source, not the thread, is the problem, so it never counts toward poison.",
+  "deterministic_patterns": [
+    "\\bValueError\\b",
+    "\\bKeyError\\b",
+    "\\bTypeError\\b",
+    "\\bAttributeError\\b",
+    "\\bIndexError\\b",
+    "\\bZeroDivisionError\\b",
+    "\\bAssertionError\\b",
+    "\\bNotImplementedError\\b",
+    "\\bRecursionError\\b",
+    "\\bUnicodeDecodeError\\b",
+    "QUEUED_ASK_NOT_FOUND"
+  ],
+  "_deterministic_why": "Review round 2 (2026-10-31): an ALLOWLIST of deterministic error types. Anything else (OSError, ConnectError, gaierror, SSLError, JSONDecodeError, BrokenPipeError, RemoteProtocolError, APIStatusError, a reason of None, a new error kind) never counts. transient_patterns still wins over a match (e.g. 'CHECK_FAILED:ValueError:SOURCE_CHECK_INCOMPLETE').",
+  "_share_why": "If more than max_share of a run's items fail, the failure is systemic: nothing is quarantined and the lane fails (a 1-item lane therefore never quarantines its only item)."
 }
