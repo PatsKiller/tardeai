@@ -18844,6 +18844,44 @@
       "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
     },
     {
+      "lane_id": "mcporter-token-refresh",
+      "owner": "portfolio",
+      "state": "RETIRED",
+      "state_since": "2026-10-31",
+      "state_reason": "Operator, in the coordinator session 2026-10-31 ~10:58 ET, verbatim: \"turn off the mcporter job, we don't need it\". The coordinator ran systemctl --user disable --now mcporter-token-refresh.timer and reset-failed; unit files stay in place (archived, never deleted).",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "mcporter-token-refresh.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "output_signal": {
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: retired; no output or freshness is expected"
+      },
+      "consumer": "none (retired)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OBSERVED_HOST 2026-10-31: systemctl --user is-enabled mcporter-token-refresh.timer -> disabled; last failure 'gcloud auth ... returned empty' (stuck sweep row 16).",
+      "unit_enabled_state": "disabled",
+      "service": "mcporter-token-refresh.service",
+      "value_class": "Technical Debt",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "mcporter-token-refresh.timer",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN (service account)",
+        "event_driven_candidate": false,
+        "f_evidence": "276 failures since 10-01, none since 09-21"
+      },
+      "stay_on_cron": {
+        "class": "secret",
+        "token": "token",
+        "source": "n8n_coordination_gateway.SECRET_KEYS"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -24167,47 +24205,6 @@
       "exec_start": "find ~/.launchpadlib/api.launchpad.net/cache -type f -mtime +30 -delete",
       "flags": [
         "SIGNAL_FREE_EXEMPT"
-      ]
-    },
-    {
-      "lane_id": "mcporter-token-refresh",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "mcporter-token-refresh.timer"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "mcporter-token-refresh.timer",
-        "pipeline": "P14",
-        "value_class": "Technical Debt",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "REDESIGN (service account)",
-        "event_driven_candidate": false,
-        "f_evidence": "276 failures since 10-01, none since 09-21"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "mcporter-token-refresh.service",
-      "cadence_basis": "unknown schedule: placeholder 168 h",
-      "exec_start": "/bin/bash ~/.config/mcporter/refresh_token.sh",
-      "stay_on_cron": {
-        "class": "secret",
-        "token": "token",
-        "source": "n8n_coordination_gateway.SECRET_KEYS"
-      },
-      "flags": [
-        "UNVERIFIED_OUTPUT"
       ]
     },
     {

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "mcporter_retired_20261031",
+  "files": [
+    "tests/test_mcporter_retired_20261031.py"
+  ],
+  "anchor": "MCPORTER_RETIRED_20261031",
+  "comment": [
+    "ANCHOR: MCPORTER_RETIRED_20261031 — operator retired mcporter-token-refresh 2026-10-31 (\"turn off the mcporter job, we don't need it\"); iris-taxonomy (O-4) and db-retention (§17) stay unruled."
+  ]
+}
