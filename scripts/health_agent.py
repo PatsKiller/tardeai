@@ -5200,6 +5200,32 @@ def collect_broker_token_health() -> list[dict]:
     return out
 
 
+def expected_setups_run_date(now: datetime | None = None) -> str:
+    """The SETUPS business run date that should be current at ``now`` (ET).
+
+    Today on a trading day once ``setups_session.first_full_scan_et`` has passed; otherwise the previous trading
+    day. Weekends and NYSE holidays therefore expect the last session, not the calendar date: the scanner does not
+    run then, and heal_trade_ai_session_cache.py deliberately never rewrites run_date (0b22fdfac), so a
+    calendar-date comparison could never clear (2026-10-31 stuck sweep: heal "ineffective" since 10-26).
+    """
+    from zoneinfo import ZoneInfo
+
+    from scripts.lib.cio_market_session import is_trading_day
+
+    tz = ZoneInfo("America/New_York")
+    now = (now or datetime.now(tz)).astimezone(tz)
+    cfg = (load_policy() or {}).get("setups_session") or {}
+    hh, mm = (int(x) for x in str(cfg.get("first_full_scan_et") or "00:00").split(":"))
+    day = now.date()
+    if is_trading_day(now) and (now.hour, now.minute) >= (hh, mm):
+        return day.isoformat()
+    for _ in range(14):
+        day = day - timedelta(days=1)
+        if is_trading_day(datetime(day.year, day.month, day.day, 12, tzinfo=tz)):
+            return day.isoformat()
+    return day.isoformat()
+
+
 def collect_trade_ai_session() -> list[dict]:
     """CC SETUPS session freshness (run_date), not cache mtime.
 
@@ -5249,15 +5275,17 @@ def collect_trade_ai_session() -> list[dict]:
                 )
             )
             return out
-        if run_date < today:
+        expected = expected_setups_run_date()
+        if run_date < expected:
             out.append(
                 _f(
                     "pipeline_freshness",
                     "trade_ai_session_stale",
                     "critical",
-                    f"SETUPS session stale: run_date={run_date} (today ET {today}) — "
-                    f"CC header will show STALE until cache is healed",
+                    f"SETUPS session stale: run_date={run_date} (expected {expected}, today ET {today}) — "
+                    f"CC header will show STALE until a scanner run lands",
                     run_date=run_date,
+                    expected_run_date=expected,
                     today_et=today,
                     cache=used,
                     surfaced="CC SETUPS header",
