@@ -89,7 +89,8 @@ def test_judge_pass_fail_timeout_neutral():
     assert BP.decide(released, runs("RUN_DONE"), probing, CFG, NOW)[0]["action"] == "pass"
     bad = BP.decide(released, runs("RUN_FAILED"), probing, CFG, NOW)
     assert bad[0]["action"] == "fail" and bad[0]["consecutive"] == 3
-    assert BP.decide(released, runs("RUN_SKIPPED_LOCK"), probing, CFG, NOW)[0]["action"] == "wait"
+    # a lock-skipped run still means the probe slot was requested: the gate closes; no verdict yet (round 2)
+    assert BP.decide(released, runs("RUN_SKIPPED_LOCK"), probing, CFG, NOW)[0]["action"] == "gate"
     old = {"lane": {**probing["lane"], "probing_since": (NOW - timedelta(hours=7)).isoformat()}}
     assert BP.decide(released, {}, old, CFG, NOW)[0]["action"] == "timeout"
     st = BP.next_state(probing, bad[0], NOW)
@@ -188,15 +189,21 @@ def test_judges_exactly_one_probe_slot():
             "open": False,
         }
     ]
+    runs = {"lane": [{"run_id": "a", "slot_key": "s1", "state": "RUN_REQUESTED"}]}
+    assert BP.decide(rel, runs, probing, CFG, NOW)[0]["action"] == "gate"  # slot requested: close the gate now
+    gate_at = (NOW - timedelta(minutes=5)).isoformat()
+    gated = [{"lane_id": "lane", "opened_at": gate_at, "released_by": None, "open": True}]
+    st = {"lane": {**probing["lane"], "gate_opened_at": gate_at}}
     runs = {
         "lane": [
             {"run_id": "a", "slot_key": "s1", "state": "RUN_SKIPPED_LOCK"},
             {"run_id": "b", "slot_key": "s2", "state": "RUN_DONE"},
         ]
     }  # a LATER slot never decides
-    assert BP.decide(rel, runs, probing, CFG, NOW)[0]["action"] == "wait"
-    runs["lane"].insert(1, {"run_id": "c", "slot_key": "s1", "state": "RUN_FAILED"})
-    assert BP.decide(rel, runs, probing, CFG, NOW)[0]["action"] == "fail"
+    assert BP.decide(gated, runs, st, CFG, NOW)[0]["action"] == "wait"
+    runs["lane"].insert(1, {"run_id": "c", "slot_key": "s1", "state": "RUN_DONE"})
+    (p,) = BP.decide(gated, runs, st, CFG, NOW)
+    assert p["action"] == "pass" and p["gated"] is True  # the CLI releases the gated breaker for good
 
 
 def test_state_written_before_release_and_failed_action_receipted(env, monkeypatch):
@@ -215,3 +222,61 @@ def test_state_written_before_release_and_failed_action_receipted(env, monkeypat
     assert "lane-w" not in json.loads((root / CFG["state_rel"]).read_text())  # rolled back: nothing was released
     (rec,) = [json.loads(x) for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
     assert rec["action"] == "probe" and rec["applied"] is False and "ledger busy" in rec["error"]
+
+
+# ---------------------------------------------------------------- review round 2 (2026-10-31)
+def test_yield_keeps_the_backoff():
+    st = {"lane": {"probes": 2, "probing_since": NOW.isoformat()}}
+    after = BP.next_state(st, {"lane": "lane", "action": "yield"}, NOW)
+    assert after["lane"]["probes"] == 2 and after["lane"]["probing_since"] is None
+
+
+def test_at_most_one_lane_probing_at_once():
+    st = {"busy": {"probes": 0, "probing_since": NOW.isoformat()}}
+    rows = [
+        _br("other", 90),
+        {
+            "lane_id": "busy",
+            "opened_at": (NOW - timedelta(hours=99)).isoformat(),
+            "released_by": CFG["released_by"],
+            "open": False,
+        },
+    ]
+    acts = {a["lane"]: a for a in BP.decide(rows, {}, st, CFG, NOW)}
+    assert acts["other"]["action"] == "wait" and "max_concurrent" in acts["other"]["why"]
+
+
+def test_unreadable_holds_or_registry_fail_closed(tmp_path):
+    assert BP.decide([_br("x", 90)], {}, {}, CFG, NOW, holds=None)[0]["why"] == "holds file unreadable"
+    assert BP.decide([_br("x", 90)], {}, {}, CFG, NOW, stages=None)[0]["why"] == "lane registry unreadable"
+    p = tmp_path / "holds.json"
+    p.write_text("{not json")
+    assert cli.read_holds(p) is None and cli.read_holds(tmp_path / "absent.json") == []
+
+
+def test_end_to_end_gate_closes_after_the_first_slot_then_pass_reopens(env):
+    root, led, sent, cfg_p = env
+    store = LedgerRunStore(led)
+    store.open_breaker("lane-g", 3, (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp())
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
+    assert store.breaker("lane-g")["open"] is False  # probe released
+    t = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+    led._conn.execute(
+        "INSERT INTO runs (run_id, lane_id, mode, state, requested_at, slot_key) VALUES (?,?,?,?,?,?)",
+        ("r1", "lane-g", "live", "RUN_REQUESTED", t, "s1"),
+    )
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
+    assert store.breaker("lane-g")["open"] is True  # gate: no second slot can start
+    led._conn.execute("UPDATE runs SET state = 'RUN_DONE', finished_at = ? WHERE run_id = 'r1'", (t,))
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
+    assert store.breaker("lane-g")["open"] is False  # the one slot passed: released for good
+    assert "lane-g" not in json.loads((root / CFG["state_rel"]).read_text())
+    kinds = [json.loads(x)["action"] for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
+    assert kinds == ["probe", "gate", "pass"]
+
+
+def test_unreadable_registry_returns_none(tmp_path, monkeypatch):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "lane_registry.json").write_text("{broken")
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    assert cli.lane_stages() is None  # fail closed: decide() then starts no probe

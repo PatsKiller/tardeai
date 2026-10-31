@@ -85,17 +85,29 @@ def collect(led, state: dict) -> tuple[list[dict], dict]:
     return rows, runs
 
 
-def lane_stages() -> dict[str, str]:
+def lane_stages() -> dict[str, str] | None:
     """lane -> scheduler stage from the lane registry (live canary lanes are never probed)."""
     try:
         reg = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        return None  # fail closed: without the registry no canary can be told apart, so nothing is probed
     return {
         str(r.get("lane_id")): str((r.get("scheduler") or {}).get("stage") or "")
         for r in reg.get("lanes") or []
         if (r.get("scheduler") or {}).get("stage")
     }
+
+
+def read_holds(path: Path) -> list[str] | None:
+    """The operator hold marker {lane: reason}. Absent = no holds; present but unreadable = None (fail closed: the
+    prober then starts no probe at all, review round 2)."""
+    if not path.exists():
+        return []
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return list(doc) if isinstance(doc, dict) else None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     state_p, rec_p = root / cfg["state_rel"], root / cfg["receipts_rel"]
     state = _read_json(state_p, {})
     breakers, runs = collect(led, state)
-    holds = list(_read_json(root / cfg["holds_rel"], {}) or {})
+    holds = read_holds(root / cfg["holds_rel"])
     acts = BP.decide(breakers, runs, state, cfg, now, holds=holds, stages=lane_stages())
     errors: list[str] = []
 
@@ -132,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         store = LedgerRunStore(led)
         for act in acts:
             kind = act["action"]
-            if kind not in ("probe", "pass", "fail", "timeout", "exhausted", "yield"):
+            if kind not in ("probe", "gate", "pass", "fail", "timeout", "exhausted", "yield"):
                 continue
             new_state = BP.next_state(state, act, now)
             if kind == "probe":  # write-ahead: a crash after the release still knows the lane is probing
@@ -140,7 +152,13 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 if kind == "probe":
                     store.release_breaker(act["lane"], cfg["released_by"], now.timestamp())
-                elif kind in ("fail", "timeout"):
+                elif kind == "gate":  # the probe slot was requested: close the gate so no second slot runs
+                    store.open_breaker(act["lane"], int(act.get("consecutive") or 1), now.timestamp())
+                    row = store.breaker(act["lane"]) or {}
+                    new_state = BP.next_state(state, act, now, gate_opened_at=row.get("opened_at"))
+                elif kind == "pass" and act.get("gated"):  # the one slot passed: open the lane for good
+                    store.release_breaker(act["lane"], cfg["released_by"], now.timestamp())
+                elif kind in ("fail", "timeout") and not act.get("gated"):
                     store.open_breaker(act["lane"], int(act.get("consecutive") or 1), now.timestamp())
             except Exception as exc:  # noqa: BLE001 — receipted and returned, never swallowed
                 err = f"{act['lane']}: {type(exc).__name__}: {exc}"

@@ -25,10 +25,12 @@ Never probed: NEVER_PROBE (code; config may add, never remove) and live canary l
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Optional
 
 SCHEMA_RECEIPT = "N8nBreakerProbeReceipt@v1"
 PASS_STATES = frozenset({"RUN_DONE"})
+_NO_STAGES: Mapping[str, str] = MappingProxyType({})  # "no lane has a stage"; None means "registry unreadable"
 FAIL_STATES = frozenset({"RUN_FAILED", "RUN_TIMEOUT"})
 #: Code floor (case-insensitive substrings). Config ``never_probe_extra`` may only add.
 NEVER_PROBE = (
@@ -86,19 +88,31 @@ def decide(
     cfg: Mapping[str, Any],
     now: datetime,
     *,
-    holds: Iterable[str] = (),
-    stages: Optional[Mapping[str, str]] = None,
+    holds: Optional[Iterable[str]] = (),
+    stages: Optional[Mapping[str, str]] = _NO_STAGES,
 ) -> list[dict]:
-    """Actions: probe (at most one per tick) | pass | fail | timeout | yield | wait | exhausted | blocked | held.
+    """Actions: probe | gate | pass | fail | timeout | yield | wait | exhausted | blocked | held.
 
-    ``breakers``: ledger rows {lane_id, opened_at, released_at, released_by, consecutive, open}. ``runs_after``:
-    lane -> runs requested after the probe release, oldest first ({run_id, slot_key, state, finished_at}). ``state``:
-    lane -> {probes, probing_since, last_result, consecutive}."""
+    Exactly one probe slot (review round 2): ``probe`` releases the breaker; as soon as the first run after the
+    release is REQUESTED, ``gate`` re-opens the breaker so no second slot can start; that one slot's verdict decides —
+    ``pass`` releases the breaker for good, ``fail`` keeps it open with backoff. At most ``max_concurrent_probes`` lanes
+    probe at once. ``holds`` None (holds file unreadable) or ``stages`` None (lane registry unreadable) = fail closed:
+    nothing new is probed.
+
+    ``breakers``: rows {lane_id, opened_at, released_at, released_by, consecutive, open}. ``runs_after``: lane -> runs
+    requested after the probe release, oldest first ({run_id, slot_key, state}). ``state``: lane -> {probes,
+    probing_since, gate_opened_at, consecutive, exhausted_at}."""
+    fail_closed = None
+    if holds is None:
+        fail_closed = "holds file unreadable"
+    elif stages is None:
+        fail_closed = "lane registry unreadable"
     hold = set(holds or ())
     stages = stages or {}
     acts: list[dict] = []
     candidates: list[tuple[datetime, dict]] = []
-    released_by = cfg["released_by"]
+    ours = cfg["released_by"]
+    probing_now = sum(1 for v in (state or {}).values() if (v or {}).get("probing_since"))
     for b in breakers or []:
         lane = str(b["lane_id"])
         st = dict(state.get(lane) or {})
@@ -108,8 +122,14 @@ def decide(
             continue
         if st.get("probing_since"):
             since = parse_ts(st["probing_since"])
-            opened = parse_ts(b.get("opened_at"))
-            if b.get("released_by") != released_by or (opened and since and opened > since):
+            gate = st.get("gate_opened_at")
+            opened_raw = str(b.get("opened_at") or "")
+            if gate:
+                someone_else = (b.get("released_by") not in (None, ours)) or (opened_raw and opened_raw != gate)
+            else:
+                opened = parse_ts(opened_raw)
+                someone_else = b.get("released_by") != ours or bool(opened and since and opened > since)
+            if someone_else:
                 acts.append(
                     {
                         "lane": lane,
@@ -121,11 +141,18 @@ def decide(
                 continue
             runs = list(runs_after.get(lane, []))
             slot = runs[0].get("slot_key") if runs else None
-            mine = [r for r in runs if r.get("slot_key") == slot] if slot else runs[:1]
+            mine = [r for r in runs if r.get("slot_key") == slot] if slot else []
             verdict = next((r for r in mine if r.get("state") in PASS_STATES | FAIL_STATES), None)
             if verdict and verdict["state"] in PASS_STATES:
                 acts.append(
-                    {"lane": lane, "action": "pass", "run_id": verdict.get("run_id"), "slot": slot, "probes": probes}
+                    {
+                        "lane": lane,
+                        "action": "pass",
+                        "run_id": verdict.get("run_id"),
+                        "slot": slot,
+                        "probes": probes,
+                        "gated": bool(gate),
+                    }
                 )
             elif verdict:
                 acts.append(
@@ -136,6 +163,17 @@ def decide(
                         "slot": slot,
                         "probes": probes,
                         "run_state": verdict["state"],
+                        "gated": bool(gate),
+                        "consecutive": st.get("consecutive") or 1,
+                    }
+                )
+            elif runs and not gate:
+                acts.append(
+                    {
+                        "lane": lane,
+                        "action": "gate",
+                        "slot": slot,
+                        "probes": probes,
                         "consecutive": st.get("consecutive") or 1,
                     }
                 )
@@ -146,6 +184,7 @@ def decide(
                         "action": "timeout",
                         "probes": probes,
                         "slot": slot,
+                        "gated": bool(gate),
                         "consecutive": st.get("consecutive") or 1,
                     }
                 )
@@ -154,7 +193,7 @@ def decide(
             continue
         if not b.get("open"):
             continue
-        why = blocked(lane, cfg, stage=stages.get(lane))
+        why = fail_closed or blocked(lane, cfg, stage=stages.get(lane))
         if why:
             acts.append({"lane": lane, "action": "blocked", "probes": probes, "why": why})
             continue
@@ -180,27 +219,44 @@ def decide(
             )
         else:
             acts.append({"lane": lane, "action": "wait", "probes": probes, "interval_hours": need})
+    room = max(0, int(cfg["max_concurrent_probes"]) - probing_now)
     candidates.sort(key=lambda c: c[0])
     for i, (_, act) in enumerate(candidates):
-        acts.append(act if i == 0 else {**act, "action": "wait", "why": "one probe per tick (oldest first)"})
+        if i == 0 and room > 0:
+            acts.append(act)
+        else:
+            why = "one probe per tick (oldest first)" if room > 0 else "another lane is probing (max_concurrent_probes)"
+            acts.append({**act, "action": "wait", "why": why})
     return acts
 
 
-def next_state(state: Mapping[str, Any], act: Mapping[str, Any], now: datetime) -> dict:
-    """The probe state after an action (for a probe: written BEFORE the release)."""
+def next_state(state: Mapping[str, Any], act: Mapping[str, Any], now: datetime, *, gate_opened_at: Any = None) -> dict:
+    """The probe state after an action (a probe's state is written BEFORE the release). On ``yield`` the backoff is
+    KEPT (``probes``) and only ``probing_since``/``gate_opened_at`` are dropped (review round 2: clearing it made the
+    lane probe every open_hours forever)."""
     st = {k: dict(v) for k, v in (state or {}).items()}
     lane = act["lane"]
     cur = st.get(lane, {})
     a = act["action"]
     if a == "probe":
-        cur.update(probing_since=now.isoformat(), consecutive=act.get("consecutive"))
-    elif a in ("pass", "yield"):
+        cur.update(probing_since=now.isoformat(), gate_opened_at=None, consecutive=act.get("consecutive"))
+    elif a == "gate":
+        cur.update(gate_opened_at=gate_opened_at)
+    elif a == "pass":
         st.pop(lane, None)
         return st
+    elif a == "yield":
+        cur.update(probing_since=None, gate_opened_at=None)
     elif a == "exhausted":
         cur.update(exhausted_at=now.isoformat())
     elif a in ("fail", "timeout"):
-        cur.update(probes=int(cur.get("probes") or 0) + 1, probing_since=None, last_result=a, last_at=now.isoformat())
+        cur.update(
+            probes=int(cur.get("probes") or 0) + 1,
+            probing_since=None,
+            gate_opened_at=None,
+            last_result=a,
+            last_at=now.isoformat(),
+        )
     else:
         return st
     st[lane] = cur
