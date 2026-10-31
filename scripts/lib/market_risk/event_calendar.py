@@ -87,10 +87,12 @@ def earnings_share(
 ) -> dict[str, Any]:
     """Index-cap share (0-1) reporting within ``sessions``; optionally restricted to ``symbols``."""
     window = next_sessions(now, sessions)
-    keep = {s.upper() for s in symbols} if symbols is not None else None
-    reporters: dict[str, float] = {}
+    aliases = {str(k).upper(): str(v).upper() for k, v in (cfg.get("issuer_aliases") or {}).items()}
+    keep = {aliases.get(s.upper(), s.upper()) for s in symbols} if symbols is not None else None
+    reporters: dict[str, float] = {}  # keyed by ISSUER: GOOG and GOOGL rows count Alphabet once
     for r in rows:
         sym = str(r.get("symbol") or "").upper()
+        sym = aliases.get(sym, sym)
         if not sym or (keep is not None and sym not in keep):
             continue
         if _earnings_counts(r, now, window, cfg):

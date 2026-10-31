@@ -181,9 +181,15 @@ event:
   stale_after_hours: 24
   # Earnings share is measured over the largest index constituents only (registry._covered_weights); the share is of
   # this universe's combined cap. Below min_cap_coverage of the list with a known cap, earnings read "not measured".
-  index_universe: [AAPL, MSFT, NVDA, AMZN, GOOGL, GOOG, META, AVGO, TSLA, BRK.B, JPM, LLY, V, WMT, ORCL, MA, XOM,
+  # One entry per ISSUER (review of #2385, B3): GOOG and GOOGL are one company; listing both counted Alphabet twice
+  # (16% instead of ~8%). Share classes map to the listed ticker through issuer_aliases.
+  index_universe: [AAPL, MSFT, NVDA, AMZN, GOOGL, META, AVGO, TSLA, BRK.B, JPM, LLY, V, WMT, ORCL, MA, XOM,
                    NFLX, COST, JNJ, HD, PG, ABBV, BAC, AMD, PLTR, KO, CVX, CSCO, UNH, IBM, INTC, MU, CRM, GE]
+  issuer_aliases: {GOOG: GOOGL, BRK-B: BRK.B}
   min_cap_coverage: 0.8
+  # Coverage is judged by cap mass, not name count (review M4): a missing name among these largest issuers makes the
+  # earnings share UNKNOWN whatever the count, because the share would silently drop a big reporter.
+  required_issuers: [AAPL, NVDA, MSFT, GOOGL, AMZN, META, AVGO, TSLA]
   # AI-basket earnings sensitivity (P2-T6): basket index-cap share reporting within this many sessions.
   ai_sensitivity_window_sessions: 2
   ai_sensitivity_stress_share: 0.15

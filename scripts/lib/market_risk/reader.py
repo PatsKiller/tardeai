@@ -386,20 +386,22 @@ class PgReader:
         return out
 
     def index_weights(
-        self, *, end: datetime, lookback_days: int = 30, universe: Iterable[str] | None = None
+        self, *, end: datetime, lookback_days: int = 10, universe: Iterable[str] | None = None
     ) -> dict[str, Any] | None:
-        """Cap weights {symbol: share} from the newest non-null ``market_quotes.market_cap`` per symbol fetched in
-        the ``lookback_days`` before ``end``. The share is of the covered universe (``coverage`` symbols), not of the
-        S&P 500; the event card says so. None when no caps are known (event earnings then read "not measured")."""
+        """Cap weights {symbol: share} from ``fundamental_data`` metric ``MarketCap`` (registry domain of the Finviz
+        fundamentals writer, ``external_market_data_ingest.ingest_finviz_fundamentals``), newest row per symbol
+        fetched in the ``lookback_days`` before ``end`` and no later than ``end`` (knowable then). Caps never come from
+        ``market_quotes``: that table is the latest-quote ledger and a cap-only row there would become someone's live
+        quote (review of #2385). The share is of the covered universe; None when no caps are known."""
         hi = _aware(end)
         rows = self._rows(
-            "SELECT DISTINCT ON (symbol) symbol, market_cap, fetched_at FROM market_quotes "
-            "WHERE market_cap > 0 AND fetched_at <= %s AND fetched_at > %s "
+            "SELECT DISTINCT ON (symbol) symbol, metric_value, fetched_at FROM fundamental_data "
+            "WHERE metric_name = 'MarketCap' AND metric_value > 0 AND fetched_at <= %s AND fetched_at > %s "
             + ("AND symbol = ANY(%s) " if universe is not None else "")
             + "ORDER BY symbol, fetched_at DESC",
             [hi, hi - timedelta(days=int(lookback_days))] + ([[u.upper() for u in universe]] if universe else []),
         )
-        caps = {r["symbol"]: float(r["market_cap"]) for r in rows if r.get("market_cap")}
+        caps = {r["symbol"]: float(r["metric_value"]) for r in rows if r.get("metric_value")}
         total = sum(caps.values())
         if not caps or total <= 0:
             return None
@@ -408,7 +410,7 @@ class PgReader:
             "weights": {k: v / total for k, v in caps.items()},
             "as_of": _iso(newest),
             "coverage": len(caps),
-            "source": "market_quotes.market_cap",
+            "source": "fundamental_data.MarketCap (finviz)",
         }
 
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:

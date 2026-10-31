@@ -10236,6 +10236,23 @@
       }
     },
     {
+      "lane_id": "index-constituent-caps",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "state_reason": "Declared, not scheduled. Daily market caps for the Market Risk Engine's index issuers (config/market_risk_policy.yaml event.index_universe, one entry per issuer) through the EXISTING Finviz fundamentals writer (external_market_data_ingest.ingest_finviz_fundamentals -> fundamental_data metric MarketCap; stored Finviz via the data broker, zero provider calls); runner scripts/index_constituent_caps.py. No new store, provider or writer; caps never go to market_quotes. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after this PR merges.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line or timer runs scripts/index_constituent_caps.py. Measured 2026-10-31 (dry run, nothing written): MarketCap for 33 of 34 issuers from the Finviz cache; BRK.B is not in the Finviz enrichment cache. Freshness SLA 24 h; the engine reads caps fetched within 10 days.",
+      "note": "Proposed host crontab line: '20 6 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/index_constituent_caps.lock bash scripts/market_day_gate.sh $PY scripts/index_constituent_caps.py --apply >> logs/index_constituent_caps.log 2>&1'."
+    },
+    {
       "lane_id": "refresh-symbol-cards",
       "owner": "portfolio",
       "scheduler": {
