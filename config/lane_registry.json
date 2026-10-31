@@ -18852,13 +18852,13 @@
       "expected_cadence_hours": 0.25,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled. Extended-session (pre-market / after-hours) quotes for the Market Risk Engine's extended_hours category (scripts/market_quotes_extended.py, DSN-20261031-market-risk-engine P1-T4); one Alpaca IEX bars request per run through the quote ingest's existing credentials, rows written through the single market_quotes writer with source alpaca_ext. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after this PR merges.",
+      "state_reason": "Declared, not scheduled. Pre-market / after-hours prints for the Market Risk Engine's extended_hours category (scripts/market_quotes_extended.py, DSN-20261031-market-risk-engine P1-T4) into their own store market_quotes_extended (single writer scripts/lib/writers/market_quotes_extended_writer.py; never market_quotes). Alpaca SIP 5-minute bars ending 16 minutes before now, through the quote ingest's existing credentials. The operator approved the store, provider and schedule as design §11 items 1-2 on 2026-10-31; activation (migration apply + crontab) is a §25.10.2 in-session step after this PR merges.",
       "output_signal": {
         "kind": "none"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py. Measured 2026-10-31 (one read-only bars call 10-29 16:00 -> 10-30 09:30 ET): the free IEX feed prints 16:00-17:00 and 08:00-09:30 ET only; runs outside those windows write nothing.",
-      "note": "Proposed host crontab lines: '5,20,35,50 4-9 * * 1-5' and '5,20,35,50 16-19 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
+      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py and the table is created by migrations/2026_10_31_market_quotes_extended.sql (not applied). Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
+      "note": "Proposed host crontab lines: '*/15 4-9 * * 1-5' and '*/15 16-20 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

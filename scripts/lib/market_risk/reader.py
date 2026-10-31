@@ -24,6 +24,7 @@ of the next session; the newest session's close is its last regular-hours quote,
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -89,22 +90,7 @@ def _default_conn():
     return get_conn()
 
 
-EXTENDED_SOURCE = "alpaca_ext"  # scripts/market_quotes_extended.py (config/market_quotes_extended.json source_tag)
-
-
-def quote_session(row: dict[str, Any]) -> str:
-    """premarket / afterhours for an extended-session print, else regular. Only rows the extended-hours writer
-    produced are labelled extended: a regular-session producer's 07:15 quote may carry yesterday's last print, and
-    labelling it by clock time would invent an overnight move."""
-    if str(row.get("source") or "") != EXTENDED_SOURCE:
-        return "regular"
-    ts = row.get("fetched_at")
-    if isinstance(ts, str):
-        ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    if not isinstance(ts, datetime):
-        return "regular"
-    t = _aware(ts).astimezone(ET).timetz().replace(tzinfo=None)
-    return "premarket" if t <= time(9, 30) else "afterhours"
+EXTENDED_TABLE = "market_quotes_extended"  # scripts/lib/writers/market_quotes_extended_writer.py
 
 
 class PgReader:
@@ -156,10 +142,38 @@ class PgReader:
             [list(symbols), _aware(start), _aware(end)],
         )
         for r in rows:
-            r["session"] = quote_session(r)
+            r["session"] = "regular"
             r["as_of"] = _iso(r["fetched_at"])
             r["fetched_at"] = r["as_of"]
-        return rows
+        return rows + self.extended_quotes(symbols, start=start, end=end)
+
+    def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Pre-market / after-hours prints from their own store (never market_quotes, the latest-quote ledger). A row
+        is returned only when its bar had ended AND it had been inserted by ``end`` (replays see what existed then).
+        A missing table (migration not yet applied) yields no rows, so extended_hours reads "not measured"."""
+        try:
+            rows = self._rows(
+                f"SELECT symbol, session, price, reference_close, change_pct, volume, bar_end, feed, reference_basis "
+                f"FROM {EXTENDED_TABLE} WHERE symbol = ANY(%s) AND bar_end >= %s AND bar_end <= %s "
+                f"AND inserted_at <= %s ORDER BY symbol, bar_end",
+                [[s.upper() for s in symbols], _aware(start), _aware(end), _aware(end)],
+            )
+        except Exception as exc:  # noqa: BLE001 - the store may not exist yet; reported via the category as UNKNOWN
+            if self._conn is not None:
+                self._conn.rollback()
+            self.extended_quotes_error = f"{type(exc).__name__}"
+            logging.getLogger(__name__).warning("market_quotes_extended unreadable (%s): extended_hours reads UNKNOWN",
+                                                type(exc).__name__)
+            return []
+        out = []
+        for r in rows:
+            out.append({
+                "symbol": r["symbol"], "source": f"{EXTENDED_TABLE}:{r['feed']}", "session": r["session"],
+                "price": float(r["price"]), "prev_close": float(r["reference_close"]),
+                "day_change_pct": float(r["change_pct"]), "volume": r["volume"],
+                "reference_basis": r["reference_basis"], "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
+            })
+        return out
 
     def daily_bars(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
         syms = [s.upper() for s in symbols]

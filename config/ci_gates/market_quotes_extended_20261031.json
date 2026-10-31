@@ -1,9 +1,14 @@
 {
   "schema": "CiGate@v1",
   "name": "market_quotes_extended_20261031",
-  "files": ["tests/test_market_quotes_extended_20261031.py"],
+  "files": [
+    "tests/test_market_quotes_extended_20261031.py"
+  ],
   "anchor": "MARKET_QUOTES_EXTENDED_20261031",
-  "comment": ["ANCHOR: MARKET_QUOTES_EXTENDED_20261031 — extended-session quotes for the Market Risk Engine (P1-T4):",
-              "regular-close reference, knowable-at-bar-end timestamps, dedupe on apply, dry run writes nothing, and the",
-              "reader labels only the extended writer's rows. Hermetic: saved bars fixture, fake cursor."]
+  "comment": [
+    "ANCHOR: MARKET_QUOTES_EXTENDED_20261031 — extended-session prints for the Market Risk Engine (P1-T4) in their own",
+    "store market_quotes_extended (never the latest-quote ledger): SIP with the 16-min delay, NYSE trading-day session bounds incl.",
+    "early closes, official daily-close reference with its basis, knowability by bar end and insert time, latest_quote unaffected,",
+    "retry/backoff. Hermetic: saved public SIP bars, fake cursor, fake HTTP."
+  ]
 }
