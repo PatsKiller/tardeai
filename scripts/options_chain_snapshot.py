@@ -300,10 +300,63 @@ def main() -> int:
         "inference_label": "positioning INFERENCE from OI/volume/skew — never order-flow claims",
         "radar": radar,
     }
+    # Index options-flow detector (2026-10-31, DSN-20261031-market-risk-engine-P0-T6): the 2026-10-29 10:00 ET
+    # snapshot held QQQ put/call volume 0.96 -> 3.31 and nothing read it. Thresholds: config/market_risk_policy.yaml.
+    snap["options_flow"] = _flow_alerts(cur, rows, dry_run=args.dry_run)
     if not args.dry_run:
         SNAP.write_text(json.dumps(snap, default=str))
     print(f"[radar] covered {len(covered)}/{len(syms)} ({', '.join(failed) or 'no failures'}) → {SNAP.name}")
     return 0
+
+
+def _flow_history(cur, symbol: str, lookback: int) -> list:
+    cur.execute("""SELECT as_of, pc_oi_ratio, pc_vol_ratio, underlying_price FROM option_chain_snapshots
+                   WHERE symbol=%s AND as_of < CURRENT_DATE ORDER BY as_of DESC LIMIT %s""", (symbol, lookback))
+    return [{"as_of": r[0], "pc_oi_ratio": r[1], "pc_vol_ratio": r[2], "underlying_price": r[3]} for r in cur.fetchall()]
+
+
+def _flow_alerts(cur, rows: dict, *, dry_run: bool, now=None) -> dict:
+    """Evaluate index put/call flow against policy and send ONE intent when it crosses a threshold.
+
+    Returns what the dashboard needs: findings, the priority chosen, whether it was accepted, any error.
+    A dry run evaluates and prints the card; it sends nothing. Errors are returned, never swallowed.
+    """
+    from lib.market_risk import options_flow as of
+    from lib.market_risk.policy import load_policy
+
+    try:
+        cfg = load_policy()["options_flow"]
+    except Exception as e:  # noqa: BLE001 — a missing policy is a finding on the snapshot, not a crash of the radar
+        print(f"[flow] policy unavailable: {type(e).__name__}: {e}")
+        return {"findings": [], "priority": None, "accepted": None, "error": f"policy: {e}"}
+    today = {s: dict(rows[s], as_of=datetime.now(timezone.utc).date().isoformat()) for s in cfg["index_symbols"] if s in rows}
+    history = {s: _flow_history(cur, s, int(cfg["lookback_sessions"])) for s in today}
+    findings = of.evaluate(today, history, cfg)
+    try:
+        from market_session import current_market_session
+        session = current_market_session(now)
+    except Exception:  # noqa: BLE001
+        session = "unknown"
+    priority = of.priority_for(findings, session, cfg)
+    out = {"findings": findings, "session": session, "priority": priority, "accepted": None, "error": None}
+    if not priority:
+        print(f"[flow] {len(findings)} finding(s), none actionable")
+        return out
+    when_et = (now or datetime.now(timezone.utc)).astimezone().strftime("%a %m-%d %H:%M %Z")
+    message = of.render(findings, session, when_et)
+    out["message"] = message
+    if dry_run:
+        print(f"[flow] DRY RUN would send {priority}:\n{message}")
+        return out
+    try:
+        from telegram_alert import send_telegram
+        out["accepted"] = bool(send_telegram(message, priority=priority, dedupe_minutes=int(cfg["dedupe_minutes"]),
+                                             producer=cfg["producer"], message_class="market_risk"))
+    except Exception as e:  # noqa: BLE001
+        out["accepted"] = False
+        out["error"] = f"{type(e).__name__}: {e}"
+        print(f"[flow] WARNING send failed: {out['error']}", file=sys.stderr)
+    return out
 
 
 if __name__ == "__main__":
