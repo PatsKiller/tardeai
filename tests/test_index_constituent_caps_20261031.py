@@ -79,3 +79,45 @@ def test_coverage_withholds_weights_when_a_largest_issuer_is_missing():
     ok = dict(w, NVDA=1.0 / len(uni))
     ctx2 = c.EvalContext(now=ctx.now, reader=_R(ok), policy=pol)
     assert registry._covered_weights(ctx2, ctx2.reader.index_weights) is not None
+
+
+def test_runner_requests_the_finviz_cache_key_for_brk():
+    pol = {
+        "index_universe": ["AAPL", "BRK.B"],
+        "issuer_aliases": {"BRK-B": "BRK.B"},
+        "required_issuers": [],
+        "min_cap_coverage": 0.5,
+    }
+    ing = _ingest({"AAPL": 5e12, "BRK-B": 1e12})
+    out = icc.run(apply=False, ingest=ing, policy=pol)
+    assert ing.called["symbols"] == ["AAPL", "BRK-B"] and out["missing"] == [] and out["with_cap"] == 2
+
+
+def test_alias_keys_fold_into_the_issuer_and_reader_filters_finviz():
+    pol = load_policy()
+    uni = pol["event"]["index_universe"]
+    seen = {}
+
+    class R:
+        def index_weights(self, *, end, universe=None):
+            seen["universe"] = list(universe)
+            w = {s: 1.0 for s in uni if s != "BRK.B"}
+            w["BRK-B"] = 1.0
+            return {"weights": w}
+
+    ctx = c.EvalContext(now=datetime(2026, 10, 28, 16, 30, tzinfo=ET), reader=R(), policy=pol)
+    w = registry._covered_weights(ctx, ctx.reader.index_weights)
+    assert "BRK-B" in seen["universe"] and "BRK.B" in w["weights"] and "BRK-B" not in w["weights"]
+    src = open("scripts/lib/market_risk/reader.py").read()
+    assert "source = 'finviz'" in src
+
+
+def test_non_universe_reporters_never_appear():
+    ev = load_policy()["event"]
+    now = datetime(2026, 10, 27, 17, 0, tzinfo=ET)
+    rows = [
+        {"symbol": s, "earnings_date": "2026-10-28", "earnings_timing": "amc", "as_of": "2026-10-20T00:00:00+00:00"}
+        for s in ("ABG", "ACGL", "MSFT")
+    ]
+    r = event_calendar.earnings_share(now, rows, {"MSFT": 0.1}, 3, ev)
+    assert list(r["reporters"]) == ["MSFT"]
