@@ -334,7 +334,7 @@ def _drain_deep_brief(ent, now, doc, policy, apply, ledger, call_model, reader) 
     verdict, why = deep_brief.drain_gate(ent, doc, alerts._load_ledger(ledger).get("keys") or {})  # noqa: SLF001
     if verdict == "retire":
         alerts.mark_superseded(key, path=ledger, reason=why)
-        return {"key": key, "kind": "deep_brief", "sent": False, "retired": why}
+        return None  # reconciled, not sent (same contract as _drain_one)
     if verdict == "wait":
         return None  # every card of its episode goes first; the brief stays queued
     sources = None
