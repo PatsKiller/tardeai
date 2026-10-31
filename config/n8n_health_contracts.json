@@ -34648,6 +34648,10 @@
       {
         "check": "live_ledger_reconciles",
         "text": "every dispatcher fire ends RUN_DONE in mode live, the LaneRunReceipt data/runtime/conflict-resolver_last.json ok_at advances, and the ConflictResolverReceipt@v1 comparison report (data/conflicts/reports/<run>.json) is written with a ledger reconcile; notifications == 0."
+      },
+      {
+        "check": "output_produced",
+        "text": "a live run writes one comparison report (receipt produced_count = 1)"
       }
     ],
     "degraded": [
@@ -34664,6 +34668,10 @@
       {
         "check": "no_receipt",
         "text": "a finished run left no LaneRunReceipt (exit 0 is not evidence)."
+      },
+      {
+        "check": "empty_output",
+        "text": "no comparison report written -> RUN_FAILED empty_output"
       }
     ],
     "baseline": {
@@ -34702,6 +34710,30 @@
         "jq '.ok_at' data/runtime/conflict-resolver_last.json"
       ],
       "expected_output_basis": "The canary live run (--shadow) reconciles the conflict ledger, writes CIO memory and a ConflictResolverReceipt@v1 comparison report, and writes a LaneRunReceipt with ok_at; it sends no notification."
+    },
+    "expected_output": {
+      "schema": "N8nExpectedOutput@v1",
+      "unit": "one conflict comparison report written to data/conflicts (receipt produced_count = 1 per run)",
+      "rule": "min_produced",
+      "min_produced": 1,
+      "window_h": null,
+      "produced_field": "produced_count",
+      "fatal_skip_reasons": [
+        "no_runner",
+        "dependency_unavailable"
+      ],
+      "empty_allowed_reasons": [],
+      "evidence": [
+        {
+          "kind": "receipt_field",
+          "ref": "data/runtime/conflict-resolver_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/conflict-resolver/<run_id>.json)"
+        }
+      ],
+      "on_violation": {
+        "run_state": "RUN_FAILED",
+        "reason": "empty_output",
+        "notifier_priority": "P2"
+      }
     },
     "review": {
       "status": "REVIEWED",
