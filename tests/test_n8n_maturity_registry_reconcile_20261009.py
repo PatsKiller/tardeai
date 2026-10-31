@@ -422,7 +422,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # incident INC-20261014-SPCX), and desk truth 2026-10-22 adopts schwab-position-sync (state PAUSED: its cron
     # line is commented; f09_staged record; tests/test_registry_runtime_truth_20261018.py), or the generator would
     # re-derive them ACTIVE: 209 - 13 - 1 = 195.
-    assert len(gen) >= 195
+    # Operator 2026-10-31 ("turn off the mcporter job, we don't need it") hand-curates mcporter-token-refresh as
+    # RETIRED (unit disabled on the host by the coordinator; unit files kept): 195 - 1 = 194.
+    assert len(gen) >= 194
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
