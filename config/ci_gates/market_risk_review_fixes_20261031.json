@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_review_fixes_20261031",
+  "files": [
+    "tests/test_market_risk_review_fixes_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_REVIEW_FIXES_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_REVIEW_FIXES_20261031 — regression tests for the adversarial review of #2362 (round 1):",
+    "B1 evaluator -> snapshot -> projection -> CIO/Ask-the-CIO/gate/API/Home end to end (no loader mocks); B3 curation",
+    "lexicon, non-ASCII digits, allow-list grounding, ORANGE/RED never curated; B4 NYSE trading sessions only; B5 RED",
+    "repeats stop when the market falls, CAPPED is not stalled, sent-key dedupe, persist-before-send crash safety;",
+    "B6 VIXCLS over the 16:05 snapshot; M1 FRED/earnings knowability; M2 guards; M3 book lines; M4 gate overlay.",
+    "Hermetic: stubbed transport, temp state root, no DB, no network."
+  ]
+}

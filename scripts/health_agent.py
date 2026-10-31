@@ -1086,7 +1086,9 @@ def collect_data_quality() -> list[dict]:
                 wk or 48,
                 True,
             ),
-            ("fred_data", _db_age_h("SELECT MAX(fetched_at) FROM fred_economic_series"), wk or 168, True),
+            # last_seen_at when the 2026_10_31 migration is applied, else fetched_at (review of #2383, N5: fetched_at is now
+            # the first-fetch time and would read every series as stale)
+            ("fred_data", _db_age_h("SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)) FROM fred_economic_series f"), wk or 168, True),
             ("sec_data", _db_age_h("SELECT MAX(created_at) FROM sec_form4"), wk or 168, True),
             ("social_data", _db_age_h("SELECT MAX(observed_at) FROM social_sentiment_history"), wk or 48, True),
             ("youtube", _db_age_h("SELECT MAX(ingested_at) FROM youtube_transcripts"), wk or 168, True),
