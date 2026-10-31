@@ -61,7 +61,8 @@ def harness_reason() -> str | None:
 
 def is_test_double(fn) -> bool:
     """Only a callable that explicitly declares ``_tradeai_test_double = True`` counts (Mock auto-attributes,
-    wrappers, partials and re-exports of the real sender do not)."""
+    wrappers, partials and re-exports of the real sender do not). Never mark a wrapper of the real sender as
+    ``_tradeai_test_double``: the marker asserts the callable cannot reach Telegram."""
     try:
         return object.__getattribute__(fn, "__dict__").get("_tradeai_test_double") is True
     except (AttributeError, TypeError):
