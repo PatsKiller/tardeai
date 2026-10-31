@@ -177,6 +177,13 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         out["errors"].append(f"wake_store_repair:{exc}")
     enqueued_n, recent_types = process_event_bus(bus, wake_store, out=out, max_wakes=max_wakes)
 
+    # The wake store refused a write (lock timeout, corrupt tail, OSError): every tail below writes to the same
+    # store and each write can wait the full lock timeout. Stop here; the hard error is already in out["errors"]
+    # and the run exits 1 (2026-10-31 review of #2344).
+    if any(str(e).startswith("wake_store_unavailable:") for e in out["errors"]):
+        out["stopped_early"] = "wake_store_unavailable"
+        return out
+
     # Goal-due / event-linked wakes
     try:
         from scripts.lib.cio_wake_dispatcher import CIOWakeDispatcher
@@ -359,6 +366,7 @@ def process_event_bus(
         # newest event this cycle actually handled.
         events = sorted(events, key=_event_sort_key)
         last_id = None
+        lock_timed_out = False
         for ev in events:
             if enqueued_n >= max_wakes:
                 break
@@ -473,6 +481,13 @@ def process_event_bus(
                 })
                 enqueued_n += 1
             except Exception as exc:
+                if _is_wake_lock_timeout(exc):
+                    # The wake store cannot take writes (lock held -- 2026-10-30 31 h deadlock -- or disk). Do NOT advance
+                    # past this event -- it would be lost -- and stop the whole pass; the run fails hard (exit 1)
+                    # so the receipt and the timer show it, and the next run retries from the same cursor.
+                    out["errors"].append(f"wake_store_unavailable:{wake_job_id}:{type(exc).__name__}:{str(exc)[:160]}")
+                    lock_timed_out = True
+                    break
                 # treat duplicate as skip
                 msg = str(exc)
                 if "already" in msg.lower() or "duplicate" in msg.lower() or "exists" in msg.lower():
@@ -487,8 +502,20 @@ def process_event_bus(
                 out["cursor_advanced"].append({"consumer": f"reactive:{agent_id}", "event_id": last_id})
             except Exception as exc:
                 out["errors"].append(f"cursor:{agent_id}:{exc}")
+        if lock_timed_out:
+            break
 
     return enqueued_n, recent_types
+
+
+def _is_wake_lock_timeout(exc: BaseException) -> bool:
+    """The wake store could not take this write (lock timeout, damaged tail it could not trim, disk error).
+    Unlike a duplicate or a bad payload, the event itself is fine and must be retried, not skipped."""
+    try:
+        from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt
+    except ImportError:  # pragma: no cover - flat import layout
+        from lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt  # type: ignore[no-redef]
+    return isinstance(exc, (CIOWakeLockTimeout, CIOWakeStoreCorrupt, OSError))
 
 
 def _event_sort_key(ev: Any) -> tuple[str, str]:
