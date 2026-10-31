@@ -1,0 +1,205 @@
+{
+  "schema": "StuckWorkMonitor@v1",
+  "as_of": "2026-10-31",
+  "_why": "Operator 2026-10-31 (verbatim): \"validate all stuck agents and processes fix montior and make auto healings with claude code\". After the 2026-10-30 disk-full the CIO wake pipeline self-deadlocked for 31 h, tradeai-cio-reactive sat 'activating' forever, zero-byte state files failed units, eight n8n breakers stayed open and the overnight LLM queue completed nothing; nothing said so. scripts/stuck_work_monitor.py reads; heals and the fixer hand-off run only when switched on below (AGENTS.md \u00a725.10.2). Ending a process is never done here (\u00a728.1).",
+  "alerts_enabled": false,
+  "heals_enabled": false,
+  "fixer_intake_enabled": false,
+  "producer": "stuck_work_monitor",
+  "message_class": "ops_stuck_work",
+  "receipt_rel": "data/runtime/stuck-work-monitor_last.json",
+  "state_rel": "data/runtime/stuck_work_monitor_state.json",
+  "history_rel": "data/runtime/stuck_work_monitor_history.jsonl",
+  "fixer_defects_rel": "data/self_heal/fixer_defects.jsonl",
+  "code_lanes": [
+    {
+      "match": "cio_wake_jobs\\.jsonl|cio_wake_dispatch",
+      "lane": "cio-wake-dispatch",
+      "production": true
+    },
+    {
+      "match": "cio_reactive_cycle|tradeai-cio-reactive",
+      "lane": "cio-reactive",
+      "production": true
+    },
+    {
+      "match": "cio_event_detector",
+      "lane": "cio-event-detector",
+      "production": true
+    },
+    {
+      "match": "persistent_wake",
+      "lane": "persistent-agent-wake",
+      "production": false
+    },
+    {
+      "match": "anthropic_credit",
+      "lane": "anthropic-credit",
+      "production": false
+    },
+    {
+      "match": "tax_lots|tax-lots",
+      "lane": "tax-lots-rebuild",
+      "production": false
+    },
+    {
+      "match": "aec_memory_spines|aec-command-center",
+      "lane": "aec-command-center-cycle",
+      "production": false
+    },
+    {
+      "match": "deep_overnight_llm_queue",
+      "lane": "deep-overnight-llm-drain",
+      "production": false
+    },
+    {
+      "match": "agent_event_queue",
+      "lane": "agent-event-processor",
+      "production": false
+    }
+  ],
+  "locks": {
+    "_why": "A waiter older than lock_wait_min that is in a kernel lock wait now. A pid holding and waiting the same path is a self-deadlock (code defect).",
+    "lock_wait_min": 20,
+    "lock_wait_wchans": [
+      "locks_lock_inode_wait",
+      "flock_lock_inode_wait",
+      "posix_lock_inode_wait"
+    ],
+    "ignore_path_globs": [
+      "/run/user/*",
+      "*/.com.moomoo.OpenD/*",
+      "*/.cache/*",
+      "*/node_modules/*"
+    ]
+  },
+  "processes": {
+    "_why": "D state past d_state_min, or a watched command past its MEASURED cap (cap_source cites the measurement; none are measured yet, so watched is empty \u2014 \u00a728.1).",
+    "d_state_min": 30,
+    "command_patterns": [
+      "trade-ai",
+      "tradeai",
+      "scripts/"
+    ],
+    "owner_uids": [],
+    "watched": []
+  },
+  "units": {
+    "activating_min": 45,
+    "failed_grace_min": 30,
+    "production_globs": [
+      "tradeai-cio-*",
+      "portfolio-server.service",
+      "tradeai-health-tick.service",
+      "tradeai-deploy-on-main.service"
+    ],
+    "ignore_globs": [
+      "snap.*",
+      "mcporter-*",
+      "dbus-*",
+      "pipewire*",
+      "wireplumber*"
+    ]
+  },
+  "files": {
+    "tail_bytes": 65536,
+    "jsonl": [
+      "{state}/data/cio/cio_wake_jobs.jsonl",
+      "{state}/data/runtime/provider_cost/anthropic_credit.jsonl",
+      "{state}/data/cio/cio_ask_events.jsonl",
+      "{project}/data/persistent_wake/state/wakes.jsonl"
+    ],
+    "state": [
+      {
+        "path": "{state}/data/portfolios/state/tax_lots.json",
+        "backups": "{state}/data/portfolios/state/backups/tax_lots.json.bak-*"
+      },
+      {
+        "path": "{state}/data/portfolios/state/fund_holdings_cache.json",
+        "backups": null
+      },
+      {
+        "path": "{state}/data/cio/aec_memory_spines.json",
+        "backups": null
+      }
+    ]
+  },
+  "queues": [
+    {
+      "name": "deep_overnight_llm_queue",
+      "lane": "deep-overnight-llm-drain",
+      "stale_hours": 24,
+      "severity": "P2",
+      "heal": "code",
+      "pending_sql": "SELECT count(*) FROM deep_overnight_llm_queue WHERE status = 'pending'",
+      "last_done_sql": "SELECT max(completed_at) FROM deep_overnight_llm_queue WHERE status = 'done'",
+      "stuck_sql": null
+    },
+    {
+      "name": "agent_event_queue",
+      "lane": "agent-event-processor",
+      "stale_hours": 24,
+      "severity": "P2",
+      "heal": "code",
+      "pending_sql": "SELECT count(*) FROM agent_event_queue WHERE status = 'pending'",
+      "last_done_sql": "SELECT max(processed_at) FROM agent_event_queue WHERE status = 'done'",
+      "stuck_sql": "SELECT count(*) FROM agent_event_queue WHERE status = 'processing' AND created_at < now() - interval '6 hours'"
+    },
+    {
+      "name": "watchlist_agent_jobs",
+      "lane": null,
+      "stale_hours": 24,
+      "severity": "P2",
+      "heal": "page",
+      "pending_sql": "SELECT count(*) FROM watchlist_agent_jobs WHERE status = 'queued'",
+      "last_done_sql": "SELECT max(completed_at) FROM watchlist_agent_jobs WHERE status = 'completed'",
+      "stuck_sql": null
+    }
+  ],
+  "breakers": {
+    "ledger_rel": "data/governance/n8n_coordination_ledger.sqlite",
+    "open_hours": 6,
+    "release_cmd": "python3 scripts/n8n_dlq.py release --lane {lane} --note \"root cause fixed: <PR>\" --dry-run"
+  },
+  "heartbeats": {
+    "sql": "SELECT agent_id, last_seen, status, error_count FROM agent_heartbeat",
+    "default_stale_hours": 24,
+    "stale_hours_by_agent": {},
+    "ignore_agents": [
+      "test_agent"
+    ]
+  },
+  "lanes": {
+    "registry_rel": "config/lane_registry.json",
+    "cadence_multiplier": 2.0,
+    "margin_hours": 1.0,
+    "summary_max": 40,
+    "watched": [
+      "cio-wake-dispatch"
+    ],
+    "_why": "Watched lanes page; all other ACTIVE lanes past cadence x multiplier + margin are counted in one P3 summary. Market-day-only lanes (e.g. premarket-delivery-deadman) are not watched here because they are silent every weekend by design; they carry their own dead-man."
+  },
+  "heals": {
+    "archive_dir": "{state}/archive/stuck-work-heals",
+    "max_per_tick": 3
+  },
+  "stale_release": {
+    "_why": "Coordinator 2026-10-31, found live: tradeai-ops-applier ran release f7c1e96cb from 10-22 until the operator restarted it at 10:43 ET 10-31, refusing every newer Ops Controls kind as KIND_UNKNOWN. A unit resolves CURRENT once at start. The deploy script restarts a fixed list (scripts/cio_phase2_exact_main_deploy.sh restart_root_frozen_units, TRADEAI_CURRENT_BOUND_UNITS) that does not include the applier. Restart heal is allowlist-only and empty by default: this pages until the operator adds units.",
+    "current_link": "~/trade-ai-releases/portfolio-server/CURRENT",
+    "releases_dir": "~/trade-ai-releases/portfolio-server",
+    "grace_min": 20,
+    "restart_allowlist": [],
+    "never_restart_globs": [
+      "portfolio-server*",
+      "*broker*",
+      "*schwab*",
+      "*alpaca*",
+      "*moomoo*",
+      "*order*",
+      "*execution*",
+      "*active-trader*",
+      "*stop*",
+      "*trading*"
+    ]
+  }
+}
