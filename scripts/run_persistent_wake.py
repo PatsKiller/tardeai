@@ -329,6 +329,67 @@ def _maybe_cortex_shadow_after_wake(
         return None
 
 
+QUARANTINE_FILE = "memory_quarantine.json"
+
+
+def _store_fingerprint(memory_backend: Any) -> str:
+    """size:mtime of the memory store; a changed store lifts a quarantine (the record may be fixed)."""
+    try:
+        st = Path(memory_backend).stat()
+        return f"{st.st_size}:{int(st.st_mtime)}"
+    except (OSError, TypeError):
+        return "none"
+
+
+def _quarantined_subjects(root: Path, memory_backend: Any) -> set[str]:
+    """Subjects refused MEMORY_MALFORMED against the CURRENT memory store; skipped until the store changes.
+
+    2026-10-31: one subject was refused every hour (26 times) and its unconsumed operator turn kept selecting it,
+    so the wake did nothing else in that slot. A quarantined subject no longer blocks the others.
+    """
+    try:
+        data = json.loads((Path(root) / QUARANTINE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    fp = _store_fingerprint(memory_backend)
+    return {sg for sg, rec in (data.get("subjects") or {}).items() if rec.get("store_fingerprint") == fp}
+
+
+def _quarantine_subject(root: Path, subject_guid: str, error: str, memory_backend: Any, when: datetime) -> None:
+    """Record the quarantine and page once per subject per memory error (P2)."""
+    path = Path(root) / QUARANTINE_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {"schema": "PersistentWakeMemoryQuarantine@v1", "subjects": {}}
+    prev = (data.get("subjects") or {}).get(subject_guid) or {}
+    data.setdefault("subjects", {})[subject_guid] = {
+        "error": error,
+        "store_fingerprint": _store_fingerprint(memory_backend),
+        "first_at": prev.get("first_at") or when.isoformat(),
+        "last_at": when.isoformat(),
+        "alerted_error": prev.get("alerted_error"),
+    }
+    if prev.get("alerted_error") != error:
+        from scripts.telegram_alert import send_telegram
+
+        ok = send_telegram(
+            "⚠️ *PERSISTENT WAKE — subject quarantined*\n"
+            f"Subject `{subject_guid}` refused: malformed memory ({error}).\n"
+            "Other subjects continue; this one is retried when the memory store changes "
+            "(scripts/lib/persistent_agent_wake.py _fold_record_versions explains which duplicates are refused).",
+            priority="P2",
+            dedupe_minutes=1440,
+            producer="run_persistent_wake",
+            message_class="persistent_wake",
+        )
+        if ok:
+            data["subjects"][subject_guid]["alerted_error"] = error
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _process_one_subject(
     *,
     agent_id: str,
@@ -446,6 +507,10 @@ def _process_one_subject(
     elif state in {"MEMORY_MALFORMED", "STALE", "MEMORY_UNAVAILABLE"}:
         outcome = "refused"
         detail = f"memory_state={state}"
+        if state == "MEMORY_MALFORMED" and not dry_run:
+            mem_err = ((wake.get("provenance") or {}).get("memory_error")) or "unknown"
+            detail = f"memory_state={state} error={mem_err}"
+            _quarantine_subject(state_root, subject_guid, mem_err, memory_backend, when)
     elif result.get("memory_empty") and state == "LOADED":
         outcome = "refused"
         detail = "no_relevant_memory"
@@ -617,12 +682,15 @@ def run_once(
             instrument_records=inputs.get("instrument_records") or [],
             operator_turns=inputs.get("operator_turns") or [],
         )
+        held = _quarantined_subjects(root, memory_backend)
+        if held:
+            selection_meta = [c for c in selection_meta if c.subject_guid not in held]
         if not selection_meta:
             _emit({
                 **base,
                 "outcome": "nothing_due",
                 "wake_id": "none",
-                "detail": "selector returned no candidates",
+                "detail": "selector returned no candidates" + (f" (quarantined: {len(held)})" if held else ""),
                 "limit": limit,
             })
             return 0
