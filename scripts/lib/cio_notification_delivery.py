@@ -240,14 +240,42 @@ class CIONotificationDeliveryWorker:
         chats = cio_chat_ids()
         return chats[0] if chats else None
 
+    def _expire_overdue(self, notifications: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Expire PENDING notes past ``expires_at``, every class, at most the configured cap per run.
+
+        Until 2026-10-31 the expiry call passed no ``reason`` (``expire()`` requires one), the TypeError was
+        swallowed, and nothing ever expired. A failure here is logged, never swallowed silently.
+        """
+        cap = int(_delivery_config().get("max_expiries_per_run", 0))
+        now = datetime.now(timezone.utc)
+        out: list[dict[str, Any]] = []
+        for notif in notifications:
+            if len(out) >= cap:
+                break
+            if not _is_overdue(notif, now):
+                continue
+            nid = notif.get("notification_id", "")
+            try:
+                self.outbox.expire(nid, reason=f"expires_at {notif.get('expires_at')} passed before delivery")
+                out.append({"notification_id": nid, "message_class": notif.get("message_class")})
+            except ValueError as exc:  # already terminal or claimed by another worker
+                log.warning("expire %s refused: %s", nid, exc)
+        return out
+
     def poll_and_deliver(self, max_deliveries: int = 10) -> dict[str, Any]:
         """Poll for pending notifications and deliver them.
 
         Returns a summary of deliveries.
         """
-        notifications = self.outbox.list_notifications(status="PENDING")
+        # Every PENDING note, not the newest 50: the old default limit was applied before the advisory hold, so 50
+        # held advisory notes hid everything older, and nothing ever expired (2026-10-31: 1,208 PENDING, 0 delivered).
+        notifications = self.outbox.list_notifications(status="PENDING", limit=None)
         delivered: list[dict[str, Any]] = []
         failed: list[dict[str, Any]] = []
+        expired = self._expire_overdue(notifications)
+        if expired:
+            expired_ids = {e["notification_id"] for e in expired}
+            notifications = [n for n in notifications if n.get("notification_id") not in expired_ids]
 
         # 2026-10-08 operator: CIO advisory notes (re-entry notes, CIO advisory actions) wait for the 10:00 / 15:00 /
         # 17:00 advice digest, which delivers them and marks them DELIVERED. They stay PENDING here (nothing lost).
@@ -264,19 +292,9 @@ class CIONotificationDeliveryWorker:
         for notif in notifications[:max_deliveries]:
             nid = notif.get("notification_id", "")
 
-            # Skip expired notifications
-            expires_at = notif.get("expires_at")
-            if expires_at:
-                try:
-                    exp_dt = datetime.fromisoformat(expires_at)
-                    if exp_dt.tzinfo is None:
-                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-                    if exp_dt < datetime.now(timezone.utc):
-                        log.info("Notification %s expired, skipping", nid)
-                        self.outbox.expire(nid) if hasattr(self.outbox, "expire") else None
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            # Expired notes past the per-run expiry cap are skipped now and expired on a later run.
+            if _is_overdue(notif, datetime.now(timezone.utc)):
+                continue
 
             # Dedupe check — if already delivered, skip
             current = self.outbox.get_notification(nid) if hasattr(self.outbox, "get_notification") else None
@@ -317,8 +335,36 @@ class CIONotificationDeliveryWorker:
         return {
             "delivered_count": len(delivered),
             "failed_count": len(failed),
+            "expired_count": len(expired),
+            "pending_seen": len(notifications),
             "delivered": delivered,
             "failed": failed,
             "mode": self.mode,
             "adapter_live": self.adapter.is_live,
         }
+
+
+_DELIVERY_CONFIG = Path(__file__).resolve().parents[2] / "config" / "cio_delivery.json"
+
+
+def _delivery_config() -> dict[str, Any]:
+    """config/cio_delivery.json (thresholds live in config, never in code)."""
+    try:
+        return json.loads(_DELIVERY_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log.warning("cio delivery config unreadable (%s); expiry disabled this run", exc)
+        return {}
+
+
+def _is_overdue(notif: dict[str, Any], now: datetime) -> bool:
+    raw = notif.get("expires_at")
+    if not raw:
+        return False
+    try:
+        exp = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    return exp < now
+
