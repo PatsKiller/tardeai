@@ -3,16 +3,14 @@ make auto healings with claude code"). Example: Ask-the-CIO thread thr_b00c8806c
 three runs in a row on 2026-10-30, opened the n8n breaker and stopped every other thread for a day.
 
 Pins (incl. the independent review of 2026-10-31): deterministic errors only (transient ones neither count nor
-reset); a success resets; threshold -> quarantine with a receipt and one P2 (message_class passed); at most
+reset); a success resets; threshold -> quarantine with a receipt, and the P2 rides the incident fan-in (the lane
+itself never sends, AGENTS.md §23.3: held_findings is the fan-in source); at most
 max_per_run / max_share quarantined per run so an outage still fails the lane; one store per lane under a flock with
 read-modify-write; a corrupt store raises (and the lifecycle run fails loudly); expiry re-checks once; release CLI;
 disabled and dry run are inert. End to end through the real cio_ask_lifecycle.run_once. Hermetic, TRADE_AI_CI=1.
 """
 
 from __future__ import annotations
-
-#: C1 firing coverage — this module injects the condition and asserts the message reaches the (stubbed) transport.
-COVERS = ["scripts/lib/poison_quarantine.py"]
 
 import json
 import sys
@@ -35,6 +33,7 @@ DET = "CHECK_FAILED:ValueError: fact rejected"
 
 @pytest.fixture
 def sent(monkeypatch):
+    """Tripwire: a stub transport. The quarantine never sends (its lanes are n8n-dispatched, §23.3), so it stays empty."""
     box: list[dict] = []
     mod = types.ModuleType("telegram_alert")
     mod.send_telegram = lambda message, **kw: box.append({"message": message, **kw}) or True
@@ -71,7 +70,11 @@ def test_streak_threshold_reset_receipt_and_p2(tmp_path, sent):
     newly = q.record_run(_h({"thr_a": True, "thr_b": True}), reasons={"thr_a": DET, "thr_b": DET})
     assert [r["item"] for r in newly] == ["thr_a"] and newly[0]["consecutive_failures"] == 3
     assert q.save() == []
-    assert len(sent) == 1 and sent[0]["priority"] == "P2" and sent[0]["message_class"] == CFG["message_class"]
+    assert sent == []  # the lane never sends; the incident fan-in carries the P2
+    findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
+    assert note == "ok:held=1" and [f["item"] for f in findings] == ["cio-ask-lifecycle:thr_a"]
+    assert findings[0]["source"] == "poison_quarantine" and findings[0]["severity"] == CFG["alert_priority"] == "P2"
+    assert "release --lane cio-ask-lifecycle --item thr_a" in findings[0]["detail"]
     rec = [json.loads(x) for x in (tmp_path / CFG["receipts_rel"]).read_text().splitlines()]
     assert rec[0]["item"] == "thr_a" and rec[0]["reason"] == DET
     assert _q(tmp_path).is_quarantined("thr_a") and not _q(tmp_path).is_quarantined("thr_b")
@@ -163,13 +166,33 @@ def test_disabled_and_dry_run_are_inert(tmp_path, sent):
     assert d.save() == [] and list(tmp_path.iterdir()) == [] and sent == []
 
 
-def test_send_failure_is_returned(tmp_path, monkeypatch):
-    mod = types.ModuleType("telegram_alert")
-    mod.send_telegram = lambda message, **kw: False
-    monkeypatch.setitem(sys.modules, "telegram_alert", mod)
-    q = _q(tmp_path, threshold=1)
-    q.record_run(_h({"x": True}), reasons={"x": DET})
-    assert q.save() == ["send_telegram returned falsy"]
+def test_the_quarantine_never_reaches_a_sender():
+    # cio-ask-lifecycle / cio-ask-material-events are n8n-dispatched: no sender in reach (AGENTS.md §23.3,
+    # tests/test_agents_policy_7_0_0_advisory_market_data.py). The P2 is the fan-in's job.
+    src = (ROOT / "scripts/lib/poison_quarantine.py").read_text(encoding="utf-8")
+    assert "telegram_alert" not in src and "send_telegram(" not in src
+    fanin = (ROOT / "scripts/n8n_incident_fanin.py").read_text(encoding="utf-8")
+    assert "from scripts.lib.poison_quarantine import held_findings" in fanin
+
+
+def test_held_findings_source(tmp_path):
+    assert PQ.held_findings(tmp_path, CFG, now=NOW) == ([], "no_store")
+    d = tmp_path / CFG["store_dir_rel"]
+    d.mkdir(parents=True)
+    (d / "lane-a.json").write_text(
+        json.dumps(
+            {
+                "streaks": {"y": 1},
+                "quarantined": {"x": {"at": "2026-10-31T10:00:00+00:00", "consecutive_failures": 3, "reason": DET}},
+            }
+        )
+    )
+    (d / "lane-b.json").write_text("{half")
+    (d / "lane-a.json.lock").write_text("")
+    findings, note = PQ.held_findings(tmp_path, CFG, now=NOW)
+    assert note == "ok:held=1"
+    assert [(f["item"], f["severity"]) for f in findings] == [("lane-a:x", "P2"), ("lane-b:store_corrupt", "P2")]
+    assert findings[0]["detected_at"] == "2026-10-31T10:00:00+00:00" and "streak" not in findings[0]["detail"]
 
 
 # ---------------------------------------------------------------- end to end: the real Ask-the-CIO lifecycle
@@ -188,7 +211,9 @@ def test_lifecycle_quarantines_the_poison_thread_and_runs_on(tmp_path, monkeypat
     assert [r["ok"] for r in results[:2]] == [False, False]  # failing, not yet poison
     assert results[2].get("quarantined_now") == [H.TID] and results[2]["ok"] is True  # third: quarantined, lane ok
     assert results[3].get("quarantined_skipped") == [H.TID] and results[3]["ok"] is True  # then skipped
-    assert len(sent) == 1 and H.TID in sent[0]["message"]
+    assert sent == []
+    findings, _ = PQ.held_findings(state, CFG)
+    assert [f["item"] for f in findings] == [f"cio-ask-lifecycle:{H.TID}"]
 
 
 def test_lifecycle_outage_is_never_poison(tmp_path, monkeypatch, sent):

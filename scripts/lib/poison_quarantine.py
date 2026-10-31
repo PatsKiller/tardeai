@@ -1,6 +1,11 @@
 """Poison-item quarantine: an item that fails a lane with the SAME DETERMINISTIC error in N consecutive runs is set
 aside (receipt + one P2) so the lane carries on with every other item.
 
+This module never sends. The lanes that use it are n8n-dispatched, and a dispatched lane may not reach a sender
+(AGENTS.md §23.3; tests/test_agents_policy_7_0_0_advisory_market_data.py). The P2 travels the incident route instead:
+scripts/n8n_incident_fanin.py reads the per-lane stores (one finding per held item) and scripts/incident_notifier.py,
+the only sender, delivers it once per item.
+
 Coordinator 2026-10-31, under the operator's "validate all stuck agents and processes fix montior and make auto
 healings with claude code": Ask-the-CIO thread thr_b00c8806cf63a6bf failed cio-ask-lifecycle three runs in a row,
 the n8n breaker opened, and every other thread's hourly check stopped for a day.
@@ -74,6 +79,58 @@ def read_store(path: Path) -> dict:
     ):
         raise PoisonStoreCorrupt(f"{path}: not a {SCHEMA_STORE} document")
     return doc
+
+
+FINDING_SOURCE = "poison_quarantine"
+
+
+def held_findings(
+    root: Path, cfg: Optional[Mapping[str, Any]] = None, *, now: Optional[datetime] = None
+) -> tuple[list[dict[str, Any]], str]:
+    """Incident fan-in source (scripts/n8n_incident_fanin.py): one finding per quarantined item, item ``<lane>:<id>``,
+    at ``alert_priority``; an unreadable store is a finding of its own. Returns ``(findings, note)``. Reads only."""
+    cfg = cfg or load_config()
+    now = now or datetime.now(timezone.utc)
+    store_dir = Path(root) / cfg["store_dir_rel"]
+    if not store_dir.is_dir():
+        return [], "no_store"
+    out: list[dict[str, Any]] = []
+    held = 0
+    for p in sorted(store_dir.glob("*.json")):
+        base = {
+            "source": FINDING_SOURCE,
+            "severity": cfg["alert_priority"],
+            "artifact_rel": f"{cfg['store_dir_rel']}/{p.name}",
+            "store": "persistent-state",
+        }
+        try:
+            doc = read_store(p)
+        except PoisonStoreCorrupt as exc:
+            out.append(
+                {
+                    **base,
+                    "item": f"{p.stem}:store_corrupt",
+                    "detail": f"poison quarantine store unreadable: {exc}"[:200],
+                    "detected_at": now.isoformat(),
+                }
+            )
+            continue
+        for item, rec in sorted(doc["quarantined"].items()):
+            rec = rec if isinstance(rec, dict) else {}
+            held += 1
+            out.append(
+                {
+                    **base,
+                    "item": f"{p.stem}:{item}",
+                    "detail": (
+                        f"{p.stem}: {item} quarantined after {rec.get('consecutive_failures', '?')} identical failures "
+                        f"({rec.get('reason') or 'n/a'}); the lane runs on without it. Release: "
+                        f"scripts/poison_quarantine.py release --lane {p.stem} --item {item} --note '<why>' --apply"
+                    )[:300],
+                    "detected_at": rec.get("at") or now.isoformat(),
+                }
+            )
+    return out, f"ok:held={held}"
 
 
 def counts_as_poison(reason: Optional[str], cfg: Mapping[str, Any]) -> bool:
@@ -184,8 +241,9 @@ class Quarantine:
                 doc["streaks"].pop(item, None)
 
     def save(self) -> list[str]:
-        """Read-modify-write under an exclusive flock; receipts; one P2 per run that quarantined something. Errors are
-        returned (and belong in the caller's report), never swallowed. Inert on dry run or when disabled."""
+        """Read-modify-write under an exclusive flock, then receipts. Never sends: the incident fan-in reads the store and
+        the incident notifier carries the P2 (module docstring). Errors are returned (and belong in the caller's
+        report), never swallowed. Inert on dry run or when disabled."""
         if not self.enabled or self.dry_run:
             return []
         errors: list[str] = []
@@ -220,31 +278,6 @@ class Quarantine:
                         fh.write(json.dumps(rec) + "\n")
             except OSError as exc:
                 errors.append(f"receipts: {type(exc).__name__}: {exc}")
-        if self.newly:
-            msg = "\n".join(
-                [f"🧪 *Poison item quarantined* — {self.lane}"]
-                + [
-                    f"• {r['item']}: same error {r['consecutive_failures']} runs in a row ({r.get('reason') or 'n/a'})"
-                    for r in self.newly
-                ]
-                + [
-                    "The lane continues without it. Fix the cause; release: scripts/poison_quarantine.py release "
-                    f"--lane {self.lane} --item <id> --note '<why>' --apply (it also expires and is re-checked)."
-                ]
-            )
-            try:
-                from telegram_alert import send_telegram
-
-                if not send_telegram(
-                    msg,
-                    priority=self.cfg["alert_priority"],
-                    dedupe_minutes=0,
-                    producer=self.cfg["producer"],
-                    message_class=self.cfg["message_class"],
-                ):
-                    errors.append("send_telegram returned falsy")
-            except Exception as exc:  # noqa: BLE001 — returned to the caller, never swallowed
-                errors.append(f"send: {type(exc).__name__}: {exc}")
         return errors
 
 
