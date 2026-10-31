@@ -28,6 +28,7 @@ STANCE_LABEL = {
     "RE_ENTER_IF": "re-enter if",
     "RE_ENTER": "re-entry conditions met",
     "HOLD": "hold",
+    "UNKNOWN": "unknown",
 }
 RANK = {"NONE": 0, "GREEN": 0, "BLUE": 1, "YELLOW": 2, "ORANGE": 3, "RED": 4}
 
@@ -196,13 +197,21 @@ def stances(
         else:
             st = "HOLD"
             holding_up = any(_group_state(sectors_block, g) == "RESILIENT" for g in groups) or (
-                main in defensive_keys and _group_state(sectors_block, main) not in ("STRESS", "WEAK")
+                main in defensive_keys and _group_state(sectors_block, main) not in ("STRESS", "WEAK", "UNKNOWN")
             )
             label_of = {r.get("key"): r.get("label") for r in (sectors_block or {}).get("groups") or []}
+            # M3: a group the engine did not measure is an unknown exposure, never "not exposed"
+            unmeasured = [
+                g
+                for g, v in sorted(groups.items(), key=lambda kv: -kv[1])
+                if v and float(v) >= min_exp and _group_state(sectors_block, g) == "UNKNOWN"
+            ]
             if holding_up and main in defensive_keys:
                 why = ["defensive group holding up"]
             elif holding_up:
                 why = [f"{label_of.get(main) or main} holding up"]
+            elif unmeasured:
+                why = [f"{label_of.get(g) or g} not measured: exposure unknown" for g in unmeasured]
             else:
                 why = ["not exposed to the stressed groups"]
         rec = {

@@ -135,6 +135,7 @@ class RiskAssessment:
     leadership: dict[str, Any] = field(default_factory=dict)  # leadership.measure: durable leadership turns
     positions: dict[str, Any] = field(default_factory=dict)  # position_stances.stances (live only)
     reentry_watch: dict[str, Any] = field(default_factory=dict)  # reentry_watch cards (live only)
+    session_history: list[dict[str, Any]] = field(default_factory=list)  # per-session {session, tier, sectors} (live)
     schema: str = SCHEMA_ASSESSMENT
 
     def to_dict(self) -> dict[str, Any]:

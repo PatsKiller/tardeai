@@ -7,7 +7,7 @@
   "anchor": "MARKET_RISK_PRECISION_20261031",
   "comment": [
     "ANCHOR: MARKET_RISK_PRECISION_20261031 — sector attribution (10-30: tech/semis/AI hit, staples/healthcare/utilities",
-    "holding), shock-type classifier (10-30 SECTOR, COVID SYSTEMIC), look-through (stale SPCX fund entry ignored),",
+    "holding), shock-type classifier (10-30 SECTOR, COVID SYSTEMIC), look-through (stale reused-ticker fund entry ignored),",
     "position stances (sector shock flags only exposed positions; re-entry needs every required condition), protection",
     "playbook (house bands from stop_policy.yaml via holding_family; behaviour-field and sizing-text guards). Hermetic."
   ]

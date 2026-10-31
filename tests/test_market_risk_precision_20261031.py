@@ -135,12 +135,12 @@ def test_stance_payload_has_no_behaviour_fields(oct30):
 
 def test_lookthrough_ipo_overrides_stale_fund_entry_and_goog_alias():
     funds = {
-        "SPCX": {"name": "old fund", "lookthrough": "none"},
+        "ZZIPO": {"name": "old fund", "lookthrough": "none"},
         "GROWTH_ETF": {"weights": {"Technology": 0.5}, "industries": {"Semiconductors": 0.2}},
     }
-    ipos = {"lockups": {"SPCX": {}}}
+    ipos = {"lockups": {"ZZIPO": {}}}
     ex = lt.exposure_for(
-        "SPCX", ai_basket=["NVDA"], fund_cfg=funds, ipos=ipos, profiles={"SPCX": {"sector": "Industrials"}}
+        "ZZIPO", ai_basket=["NVDA"], fund_cfg=funds, ipos=ipos, profiles={"ZZIPO": {"sector": "Industrials"}}
     )
     assert ex["groups"] == {"industrials": 1.0} and "stale" in ex["note"]
     hs = {
@@ -152,7 +152,7 @@ def test_lookthrough_ipo_overrides_stale_fund_entry_and_goog_alias():
     }
     g = lt.exposure_for("GROWTH_ETF", ai_basket=["NVDA", "GOOGL"], fund_cfg=funds, ipos=ipos, holdings=hs)
     assert g["ai_share"] == pytest.approx(0.16) and g["groups"]["semis"] == 0.2
-    none = lt.exposure_for("SPCX", ai_basket=[], fund_cfg=funds, ipos={})
+    none = lt.exposure_for("ZZIPO", ai_basket=[], fund_cfg=funds, ipos={})
     assert none["groups"] == {} and none["basis"] == "fund_unknown"
 
 

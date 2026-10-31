@@ -5,7 +5,7 @@ Source: yfinance fund data (provider already granted; free; the top 10 holdings 
 "top-25" is an upper bound, not a promise). Fund holdings only — never a position, amount or account (§2A).
 
   python3 scripts/lib/writers/etf_holdings_writer.py                 # dry run: fetch and print, write nothing
-  python3 scripts/lib/writers/etf_holdings_writer.py --symbols SCHG  # one fund
+  python3 scripts/lib/writers/etf_holdings_writer.py --symbols XLI  # one fund
   python3 scripts/lib/writers/etf_holdings_writer.py --apply         # write — REFUSED until the §7A row is granted
 
 §7A: a store gets its registry row before any write. ``--apply`` checks ``config/data_source_authority.json`` for the

@@ -31,7 +31,8 @@ from scripts.lib.market_risk.policy import load_policy  # noqa: E402
 
 
 def state_root() -> Path:
-    return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+    env = os.environ.get("TRADEAI_STATE_ROOT") or os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    return Path(env or Path.home() / "trade-ai-releases" / "persistent-state")
 
 
 def load_holdings(path: Path) -> list[dict]:
@@ -45,7 +46,7 @@ def load_holdings(path: Path) -> list[dict]:
         if not isinstance(h, dict) or not h.get("symbol"):
             continue
         sh = h.get("shares") or h.get("quantity") or 0
-        px = h.get("current_price") or h.get("price") or 0
+        px = h.get("canonical_mark") or h.get("price") or 0  # never the legacy current_price (R3)
         try:
             mv = float(h.get("market_value") or (float(sh) * float(px)))
         except (TypeError, ValueError):
@@ -173,6 +174,7 @@ def fanout(payload: dict, policy: dict, root: Path, now: datetime, block: dict) 
         prev = json.loads(state_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         prev = {}
+    day = ledger_day(now)
     trigs = F.triggers(prev.get("state") or {}, cur)
     items = _opportunity_items(root)
     recs = _instrument_records(root)
@@ -208,6 +210,7 @@ def fanout(payload: dict, policy: dict, root: Path, now: datetime, block: dict) 
         policy=policy,
         brave_status=brave_status,
         already=set(prev.get("trigger_ids") or []),
+        used_today=((prev.get("days") or {}).get(day) or {}),
     )
     memory = F.plan_memory(
         trigs,
@@ -225,7 +228,74 @@ def fanout(payload: dict, policy: dict, root: Path, now: datetime, block: dict) 
         "memory": memory,
         "state": cur,
         "state_file": str(state_file),
+        "prev": prev,
+        "day": day,
     }
+
+
+LEDGER_KEEP_DAYS = 14
+LEDGER_KEEP_IDS = 2000
+
+
+def ledger_day(now: datetime) -> str:
+    from scripts.lib.market_risk.sessions import ET
+
+    return now.astimezone(ET).date().isoformat()
+
+
+def ledger_after(plan: dict, now: datetime, *, status: str, receipts: dict | None = None) -> dict:
+    """R6: the fan-out ledger once this plan is claimed. Trigger ids and memory keys are recorded, and today's Hermes and
+    Brave job counts are added to the per-day ledger the next run's caps read."""
+    from scripts.lib.market_risk import cio_memory_fanout as F
+
+    prev = plan.get("prev") or {}
+    day = plan["day"]
+    days = {k: dict(v) for k, v in (prev.get("days") or {}).items() if isinstance(v, dict)}
+    today = days.setdefault(day, {"hermes": 0, "brave": 0, "trigger_ids": []})
+    today["hermes"] = int(today.get("hermes") or 0) + len(plan["research"].get("hermes") or [])
+    today["brave"] = int(today.get("brave") or 0) + len(plan["research"].get("brave") or [])
+    today["trigger_ids"] = sorted(set(today.get("trigger_ids") or []) | {t["id"] for t in plan["triggers"]})
+    keep = sorted(days)[-LEDGER_KEEP_DAYS:]
+    ids = list(dict.fromkeys([*(prev.get("trigger_ids") or []), *(t["id"] for t in plan["triggers"])]))
+    applied = list(
+        dict.fromkeys(
+            [*(prev.get("applied") or []), *(F.applied_key(m) for m in plan["memory"] if not m.get("refused"))]
+        )
+    )
+    out = {
+        "state": plan["state"],
+        "trigger_ids": ids[-LEDGER_KEEP_IDS:],
+        "applied": applied[-LEDGER_KEEP_IDS:],
+        "days": {k: days[k] for k in keep},
+        "status": status,
+        "at": now.isoformat(),
+    }
+    if receipts is not None:
+        out["receipts"] = receipts
+    return out
+
+
+def write_ledger(path: Path, doc: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(doc, default=str), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def apply_fanout(plan: dict, policy: dict, now: datetime, *, conn_factory, root=None) -> dict:
+    """R6: claim first, then write. The ledger (state, trigger ids, today's job counts) is written BEFORE any memory or
+    research write, so a crash mid-apply never re-sends the same triggers or exceeds the day's cap on the next run (at
+    most once). Memory writes skip keys already in the ledger (idempotent by trigger id)."""
+    from scripts.lib.market_risk import cio_memory_fanout as F
+
+    sf = Path(plan["state_file"])
+    write_ledger(sf, ledger_after(plan, now, status="claimed"))
+    done = set((plan.get("prev") or {}).get("applied") or [])
+    mem = F.apply_memory(plan["memory"], root=root, done=done)
+    res = F.apply_research(plan["research"], conn_factory=conn_factory, policy=policy)
+    receipts = {"memory_receipts": mem, "research_receipts": res}
+    write_ledger(sf, ledger_after(plan, now, status="applied", receipts=receipts))
+    return receipts
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,25 +321,13 @@ def main(argv: list[str] | None = None) -> int:
         now = datetime.now(timezone.utc)
         block = leadership.measure(c.EvalContext(now=now, reader=PgReader(), policy=policy))
         plan = fanout(payload, policy, root, now, block)
-        print(F.to_json({k: v for k, v in plan.items() if k != "state_file"}))
+        print(F.to_json({k: v for k, v in plan.items() if k not in ("state_file", "prev")}))
         if a.apply:
             from scripts.lib.cio_market_context_state import connect_trade_ai_readonly  # noqa: F401 — read path proof
 
             from db_adapter import _get_conn  # the repo's write connection, used by the existing research-gaps route
 
-            mem = F.apply_memory(plan["memory"])
-            res = F.apply_research(plan["research"], conn_factory=_get_conn, policy=policy)
-            sf = Path(plan["state_file"])
-            sf.parent.mkdir(parents=True, exist_ok=True)
-            tmp = sf.with_suffix(".tmp")
-            tmp.write_text(
-                json.dumps(
-                    {"state": plan["state"], "trigger_ids": [t["id"] for t in plan["triggers"]], "at": now.isoformat()}
-                ),
-                encoding="utf-8",
-            )
-            os.replace(tmp, sf)
-            print(F.to_json({"memory_receipts": mem, "research_receipts": res}))
+            print(F.to_json(apply_fanout(plan, policy, now, conn_factory=_get_conn)))
         else:
             print("DRY RUN: fan-out planned; nothing written, nothing enqueued", file=sys.stderr)
     cfg = policy.get("leadership") or {}

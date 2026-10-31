@@ -246,9 +246,7 @@ def _watch(**over):
         sessions_to_earnings=None,
         market_tier="YELLOW",
         options_flow_state="CALM",
-        account_types=["ira"],
-        loss=True,
-        days_since_exit=10,
+        taxable_loss_days_ago=None,
         policy=POLICY,
     )
     kw.update(over)
@@ -274,9 +272,8 @@ def test_reentry_watch_pending_earnings_blocks_evaluation():
 
 def test_reentry_watch_wash_sale_only_taxable_loss_within_30_days():
     assert _watch()[0]["wash_sale_note"] is None
-    assert _watch(account_types=["taxable"])[0]["wash_sale_note"]
-    assert _watch(account_types=["taxable"], loss=False)[0]["wash_sale_note"] is None
-    assert _watch(account_types=["taxable"], days_since_exit=31)[0]["wash_sale_note"] is None
+    assert "10 days ago" in _watch(taxable_loss_days_ago=10)[0]["wash_sale_note"]
+    assert _watch(taxable_loss_days_ago=31)[0]["wash_sale_note"] is None
 
 
 def test_reentry_base_rate_on_own_history():

@@ -9,6 +9,11 @@
   "periods": {
     "holdout_2026": {
       "baseline_top3_rs60": {
+        "120": {
+          "hit_rate": 0.467,
+          "mean_rel": 0.0667,
+          "n": 15
+        },
         "20": {
           "hit_rate": 0.567,
           "mean_rel": 0.0108,
@@ -18,11 +23,6 @@
           "hit_rate": 0.542,
           "mean_rel": 0.0414,
           "n": 24
-        },
-        "120": {
-          "hit_rate": 0.467,
-          "mean_rel": 0.0667,
-          "n": 15
         }
       },
       "class_counts": {
@@ -33,6 +33,11 @@
         "NEUTRAL": 62
       },
       "detector": {
+        "120": {
+          "hit_rate": 0.389,
+          "mean_rel": 0.0321,
+          "n": 18
+        },
         "20": {
           "hit_rate": 0.545,
           "mean_rel": 0.0064,
@@ -42,14 +47,14 @@
           "hit_rate": 0.35,
           "mean_rel": 0.015,
           "n": 20
-        },
-        "120": {
-          "hit_rate": 0.389,
-          "mean_rel": 0.0321,
-          "n": 18
         }
       },
       "detector_strategic": {
+        "120": {
+          "hit_rate": 0.167,
+          "mean_rel": -0.0742,
+          "n": 6
+        },
         "20": {
           "hit_rate": 0.429,
           "mean_rel": -0.0104,
@@ -59,17 +64,17 @@
           "hit_rate": 0.0,
           "mean_rel": -0.0561,
           "n": 6
-        },
-        "120": {
-          "hit_rate": 0.167,
-          "mean_rel": -0.0742,
-          "n": 6
         }
       },
       "false_confirmation_rate": 0.65
     },
     "in_sample": {
       "baseline_top3_rs60": {
+        "120": {
+          "hit_rate": 0.536,
+          "mean_rel": 0.0342,
+          "n": 321
+        },
         "20": {
           "hit_rate": 0.473,
           "mean_rel": 0.0022,
@@ -79,11 +84,6 @@
           "hit_rate": 0.548,
           "mean_rel": 0.018,
           "n": 330
-        },
-        "120": {
-          "hit_rate": 0.536,
-          "mean_rel": 0.0342,
-          "n": 321
         }
       },
       "class_counts": {
@@ -95,6 +95,11 @@
         "UNKNOWN": 24
       },
       "detector": {
+        "120": {
+          "hit_rate": 0.53,
+          "mean_rel": 0.0205,
+          "n": 283
+        },
         "20": {
           "hit_rate": 0.51,
           "mean_rel": 0.0031,
@@ -104,14 +109,14 @@
           "hit_rate": 0.558,
           "mean_rel": 0.0164,
           "n": 294
-        },
-        "120": {
-          "hit_rate": 0.53,
-          "mean_rel": 0.0205,
-          "n": 283
         }
       },
       "detector_strategic": {
+        "120": {
+          "hit_rate": 0.529,
+          "mean_rel": 0.0246,
+          "n": 155
+        },
         "20": {
           "hit_rate": 0.452,
           "mean_rel": -0.002,
@@ -121,11 +126,6 @@
           "hit_rate": 0.568,
           "mean_rel": 0.0189,
           "n": 162
-        },
-        "120": {
-          "hit_rate": 0.529,
-          "mean_rel": 0.0246,
-          "n": 155
         }
       },
       "false_confirmation_rate": 0.442
@@ -137,6 +137,12 @@
     "confirmed_hit_60": 0.558,
     "confirmed_n_60": 294,
     "false_confirmation_rate": 0.442,
-    "verdict": "no demonstrated edge over top-3 relative-strength momentum"
+    "holdout_baseline_hit_60": 0.542,
+    "holdout_confirmed_hit_60": 0.35,
+    "holdout_confirmed_n_60": 20,
+    "holdout_false_confirmation_rate": 0.65,
+    "holdout_strategic_hits_60": 0,
+    "holdout_strategic_n_60": 6,
+    "verdict": "no demonstrated edge over top-3 relative-strength momentum; worse than it in the 2026 holdout"
   }
 }

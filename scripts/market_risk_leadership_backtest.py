@@ -161,12 +161,21 @@ def main(argv: list[str] | None = None) -> int:
     rep = run(a.step)
     if a.write:
         ins = rep["periods"]["in_sample"]
+        ho = rep["periods"]["holdout_2026"]
+        hs = ho["detector_strategic"][60]
         rep["summary"] = {
             "confirmed_hit_60": ins["detector"][60]["hit_rate"],
             "confirmed_n_60": ins["detector"][60]["n"],
             "baseline_hit_60": ins["baseline_top3_rs60"][60]["hit_rate"],
             "false_confirmation_rate": ins["false_confirmation_rate"],
-            "verdict": "no demonstrated edge over top-3 relative-strength momentum",
+            # R1: the 2026 holdout is part of the track record every surface shows
+            "holdout_confirmed_hit_60": ho["detector"][60]["hit_rate"],
+            "holdout_confirmed_n_60": ho["detector"][60]["n"],
+            "holdout_baseline_hit_60": ho["baseline_top3_rs60"][60]["hit_rate"],
+            "holdout_strategic_hits_60": round((hs["hit_rate"] or 0) * hs["n"]),
+            "holdout_strategic_n_60": hs["n"],
+            "holdout_false_confirmation_rate": ho["false_confirmation_rate"],
+            "verdict": "no demonstrated edge over top-3 relative-strength momentum; worse than it in the 2026 holdout",
         }
         out = ROOT / "docs" / "audits" / "ROTATION_LEADERSHIP_BACKTEST_20261031.json"
         out.write_text(json.dumps(rep, indent=2, sort_keys=True) + "\n", encoding="utf-8")

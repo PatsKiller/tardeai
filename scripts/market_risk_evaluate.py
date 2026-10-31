@@ -110,6 +110,15 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     a = explain.explain(a, policy)
     attach_precision(a, ctx, policy)
     if portfolio is not None and os.environ.get("MRE_BOOK_PRECISION", "1") == "1":
+        try:  # B3: per-session {tier, sectors} history carried in the assessment, read by the multi-session conditions
+            from scripts.lib.market_risk import book_precision
+
+            d0 = a.to_dict()
+            a.session_history = book_precision.session_history(
+                prior, now=now, tier=d0.get("tier"), sectors_block=d0.get("sectors")
+            )
+        except Exception as exc:  # noqa: BLE001 — additive; an empty history only delays the multi-session conditions
+            print(f"market_risk_evaluate: session history unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         try:  # live only: the backtests and replays pass no portfolio context
             from scripts.lib.market_risk import book_precision
             from scripts.lib.market_risk.reader import _default_conn

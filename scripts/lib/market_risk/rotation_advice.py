@@ -218,6 +218,18 @@ HEAD = {
 }
 
 
+def track_record_holdout_line(tr: dict[str, Any]) -> str:
+    """R1: the 2026 holdout, stated wherever the track record is (card, CIO facts)."""
+    if not tr or tr.get("holdout_confirmed_hit_60") is None:
+        return "2026 holdout: not reported."
+    return (
+        f"2026 holdout: confirmed leaders {tr.get('holdout_confirmed_hit_60')} vs "
+        f"{tr.get('holdout_baseline_hit_60')} for plain momentum (n={tr.get('holdout_confirmed_n_60')}); strategic calls "
+        f"{tr.get('holdout_strategic_hits_60')} of {tr.get('holdout_strategic_n_60')}; "
+        f"{round(100 * float(tr.get('holdout_false_confirmation_rate') or 0))}% false confirmations."
+    )
+
+
 def render_card(payload: dict[str, Any]) -> str:
     """Deterministic phone card. No size, weight, price, order or stop."""
     lines = [f"🧭 WHERE LEADERSHIP IS MOVING · as of {payload.get('as_of')}"]
@@ -247,6 +259,7 @@ def render_card(payload: dict[str, Any]) -> str:
             f"Track record 2016-2025: confirmed leaders beat SPY over 60 sessions {tr.get('confirmed_hit_60')} of the "
             f"time (n={tr.get('confirmed_n_60')}) vs {tr.get('baseline_hit_60')} for plain momentum; {tr.get('verdict')}."
         )
+        lines.append(track_record_holdout_line(tr))
     if payload.get("tier"):
         lines.append(f"Market risk: {payload['tier']}.")
     lines.append("Advisory. Your decision; no order, size, weight or price is implied.")

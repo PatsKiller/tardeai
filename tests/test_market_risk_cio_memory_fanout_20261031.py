@@ -79,14 +79,14 @@ def _trigs():
         "leadership": {"energy": "NEUTRAL"},
         "shock_type": None,
         "tier": "YELLOW",
-        "reentry": {"SPCX": "RE_ENTER_IF"},
+        "reentry": {"ZZEX": "RE_ENTER_IF"},
     }
     cur = {
         "as_of": "2026-10-30",
         "leadership": {"energy": "LEADERSHIP_CONFIRMED", "tech": "NEUTRAL"},
         "shock_type": "SECTOR",
         "tier": "ORANGE",
-        "reentry": {"SPCX": "RE_ENTER"},
+        "reentry": {"ZZEX": "RE_ENTER"},
     }
     return F.triggers(prev, cur), cur
 
@@ -117,7 +117,7 @@ def test_research_plan_routes_to_existing_lanes_with_caps():
     )  # stale re-research
     assert ("ticker", "AAA") not in labels  # fresh research is not repeated
     assert all(j["trigger_id"].startswith("mrt_") for j in plan["hermes"] + plan["brave"])
-    assert {j["symbol"] for j in plan["brave"]} >= {"XLE", "SPY", "SPCX"}
+    assert {j["symbol"] for j in plan["brave"]} >= {"XLE", "SPY", "ZZEX"}
     assert plan["youcom"] and all("unavailable" in j["status"] for j in plan["youcom"])
     c.assert_no_behavior_fields(plan)
 
@@ -148,7 +148,7 @@ def test_memory_plan_passes_memory_admission_rules():
         trigs,
         groups=GROUPS,
         cur=cur,
-        exits=[{"symbol": "SPCX", "date": "2026-10-30", "stressed_groups": ["Technology"]}],
+        exits=[{"symbol": "ZZEX", "date": "2026-10-30", "stressed_groups": ["Technology"]}],
         tiers_by_group={"energy": _tiers()},
         snapshot_ref="data/runtime/market_risk_latest.json",
         policy=POLICY,
@@ -202,7 +202,7 @@ def test_ask_the_cio_recalls_market_risk_spine_items(monkeypatch):
             {
                 "ts": "2026-10-31",
                 "kind": "market_risk.event",
-                "summary": "SPCX exited during a SECTOR selloff",
+                "summary": "ZZEX exited during a SECTOR selloff",
                 "artifact_id": "mrt_1",
                 "tags": ["market_risk"],
             },
@@ -210,7 +210,7 @@ def test_ask_the_cio_recalls_market_risk_spine_items(monkeypatch):
         ],
     }
     monkeypatch.setitem(sys.modules, "scripts.lib.cross_asset.security_research_spine", spine)
-    items = am.SpineAskMemory().recall(entity=EntityRef(name="SPCX", symbol="SPCX"))
+    items = am.SpineAskMemory().recall(entity=EntityRef(name="ZZEX", symbol="ZZEX"))
     assert [i["ref"] for i in items] == ["mrt_1"]
 
 

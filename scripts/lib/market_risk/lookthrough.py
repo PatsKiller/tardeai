@@ -1,6 +1,6 @@
 """Look-through exposure of each held position to the engine's sector and theme groups (precision PR).
 
-Operator 2026-10-31: "even the look-throughs on stuff like SCHG or SpaceX that's behind the AI". Sources, in order,
+Operator 2026-10-31: the look-through of growth funds and private-company proxies behind the AI theme. Sources, in order,
 never guessed:
 1. ETF sector and industry weights from ``config/fund_lookthrough.json`` (provider factsheets; the same file the
    Defense desk uses). ``lookthrough: none`` stays UNKNOWN with its reason.
@@ -8,8 +8,8 @@ never guessed:
    give the AI-basket share and the holdings reporting inside the earnings window.
 3. A single stock maps to its own sector (``symbol_profiles``) plus the AI basket and semis when it is a member.
 4. A recent IPO listed in ``config/ipo_lockups.json`` is a single stock, even when ``fund_lookthrough.json`` still
-   carries an older fund under the same ticker (the SPCX case: that entry describes a SPAC ETF; the ticker is now
-   SpaceX equity). The stale entry is reported, never used.
+   carries an older fund under the same ticker (a ticker reused after a fund closed: that entry describes the old
+   fund; the ticker is now an operating company's equity). The stale entry is reported, never used.
 
 Output per symbol: ``{groups: {group_key: share}, ai_share, reporting: [...], basis, note}`` — shares of the position,
 never an amount (MBI_BEHAVIOR = 0; positions arrive as symbols only).

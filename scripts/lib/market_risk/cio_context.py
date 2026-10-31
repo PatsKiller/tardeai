@@ -201,6 +201,9 @@ def _leadership_facts(block: Any) -> Optional[dict[str, Any]]:
     """Durable leadership classes per group (rotation advisor), for Ask-the-CIO; None when not evaluated."""
     if not isinstance(block, dict) or block.get("state") != "evaluated":
         return None
+    from scripts.lib.market_risk import rotation_advice
+
+    tr = leadership_track_record()
     return {
         "as_of": block.get("as_of"),
         "groups": {
@@ -208,7 +211,33 @@ def _leadership_facts(block: Any) -> Optional[dict[str, Any]]:
             for k, g in (block.get("groups") or {}).items()
             if isinstance(g, dict) and g.get("class") not in ("NEUTRAL", "UNKNOWN")
         },
+        # R1/R7: the classes carry their track record, including the 2026 holdout, so the CIO never cites them as edge
+        "track_record": tr,
+        "caveat": (
+            "No demonstrated edge: "
+            + str((tr or {}).get("verdict") or "track record unavailable")
+            + ". "
+            + rotation_advice.track_record_holdout_line(tr or {})
+        ),
     }
+
+
+def leadership_track_record() -> Optional[dict[str, Any]]:
+    """The leadership backtest summary (docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json); None if unreadable."""
+    import json
+
+    root = Path(__file__).resolve().parents[3]
+    try:
+        from scripts.lib.market_risk.policy import load_policy
+
+        rel = str(((load_policy() or {}).get("leadership") or {}).get("track_record_path") or "")
+    except Exception:  # noqa: BLE001 — the default path below still applies
+        rel = ""
+    path = root / (rel or "docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json")
+    try:
+        return dict(json.loads(path.read_text(encoding="utf-8")).get("summary") or {}) or None
+    except (OSError, ValueError):
+        return None
 
 
 def load_gate_config(path: Path | str = GATE_CONFIG_PATH) -> dict[str, Any]:

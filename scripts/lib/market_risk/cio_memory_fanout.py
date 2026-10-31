@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -40,6 +41,58 @@ from scripts.lib.market_risk import contract as c
 
 PRODUCER = "market_risk_rotation"
 SPINE_SILO = "cio"
+
+# R7: every leadership memory carries the track record. The detector did not beat plain relative-strength momentum
+# (docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json); memory text stays number-free (R5), so the caveat is words.
+LEADERSHIP_CAVEAT = (
+    "Caveat: the leadership detector showed no edge over plain relative-strength momentum in its backtest or in the "
+    "held-out year; treat the class as context, not a signal."
+)
+
+# R5: memory text names states, groups, symbols and dates only. After ISO dates/timestamps and four-digit years are
+# removed, any dollar figure, decimal, percentage, a number after a price word, or an integer of three or more digits
+# is refused, as is sizing language (the shared buy_ready_cio_review guard).
+_DATES = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?)?\b|\b(?:19|20)\d{2}\b")
+_PRICE_TEXT = re.compile(
+    r"\$\s*\d|\d\.\d|\d\s*%|\b\d{3,}\b|\d{1,3},\d{3}"
+    r"|\b(?:at|@|stop|stops|price|priced|limit|target|level|closed|close|trail|trailing|shares?)\s+"
+    r"(?:at\s+|of\s+|near\s+|to\s+)?\$?\d",
+    re.I,
+)
+
+
+def text_refusal(text: Any) -> Optional[str]:
+    """Why a memory text is refused (price, number or sizing), or None when it is clean."""
+    if text is None:
+        return None
+    t = str(text)
+    from scripts.lib import buy_ready_cio_review as br
+
+    if br._SIZING_TEXT.search(t):  # noqa: SLF001 — the shared sizing-text guard
+        return "sizing text"
+    m = _PRICE_TEXT.search(_DATES.sub(" ", t))
+    return f"price or number in memory text ({m.group(0).strip()!r})" if m else None
+
+
+def _plan_texts(p: dict[str, Any]) -> list[Any]:
+    rec = p.get("record") or {}
+    lesson = p.get("lesson") or {}
+    return [
+        rec.get("content"),
+        rec.get("subject"),
+        p.get("summary"),
+        p.get("next_research_question"),
+        *(lesson.get("evidence") or []),
+        lesson.get("caveat"),
+    ]
+
+
+def check_plan(p: dict[str, Any]) -> Optional[str]:
+    for t in _plan_texts(p):
+        why = text_refusal(t)
+        if why:
+            return why
+    return None
 
 
 def _cfg(policy: dict[str, Any]) -> dict[str, Any]:
@@ -201,8 +254,11 @@ def plan_research(
     policy: dict[str, Any],
     brave_status: Optional[dict[str, Any]],
     already: set[str] | None = None,
+    used_today: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Jobs per provider. Deduped per trigger id; capped per day and by the provider's own budget headroom."""
+    """Jobs per provider. Deduped per trigger id; capped per DAY (``used_today`` = jobs already enqueued today, from the
+    rotation ledger, so several runs in one day share one cap) and by the provider's own budget headroom."""
+    used = {k: int(v or 0) for k, v in (used_today or {}).items()}
     fc = (_cfg(policy).get("fanout")) or {}
     hc, bc, yc = fc.get("hermes") or {}, fc.get("brave") or {}, fc.get("youcom") or {}
     already = already or set()
@@ -278,11 +334,12 @@ def plan_research(
         if k not in seen:
             seen.add(k)
             hj.append(j)
-    hermes = hj[: int(hc.get("daily_cap") or 12)] if hc.get("enabled", True) else []
+    hcap = max(0, int(hc.get("daily_cap") or 12) - used.get("hermes", 0))
+    hermes = hj[:hcap] if hc.get("enabled", True) else []
     headroom = None
     if brave_status:
         headroom = int(brave_status.get("daily_limit") or 0) - int(brave_status.get("daily_used") or 0)
-    bcap = int(bc.get("daily_cap") or 10)
+    bcap = max(0, int(bc.get("daily_cap") or 10) - used.get("brave", 0))
     if headroom is not None:
         bcap = max(0, min(bcap, headroom - int(bc.get("min_daily_headroom") or 0)))
     elif brave_status is None:
@@ -298,6 +355,8 @@ def plan_research(
         "brave": brave,
         "youcom": youcom if not yc.get("registered") else [],
         "brave_budget": {"headroom_today": headroom, "cap_applied": bcap, "status": brave_status},
+        "hermes_cap_applied": hcap,
+        "used_today": used,
     }
     c.assert_no_behavior_fields(plan)
     return plan
@@ -336,7 +395,8 @@ def plan_memory(
                         "memory_type": mc.get("aif_memory_type") or "EPISODIC",
                         "subject": "market regime episode",
                         "content": f"{what} changed from {t['from'] or 'none'} to {t['to']} as of {as_of}. "
-                        f"Selloff type: {shock or 'unknown'}. Confirmed leading groups: {', '.join(leaders) or 'none'}.",
+                        f"Selloff type: {shock or 'unknown'}. Confirmed leading groups: {', '.join(leaders) or 'none'}."
+                        + (f" {LEADERSHIP_CAVEAT}" if leaders else ""),
                         "symbols": ["SPY", "QQQ"],
                         "source_refs": [f"{snapshot_ref}#{as_of}"],
                         "source_kind": "agent_run",
@@ -356,13 +416,15 @@ def plan_memory(
                     "sector": label,
                     "next_research_question": f"Why is {label} now {t['to'].replace('LEADERSHIP_', '').lower()} "
                     f"(was {str(t['from'] or 'none').replace('LEADERSHIP_', '').lower()}); is it durable; which "
-                    f"researched names lead it ({', '.join(names) or 'none yet'})?",
+                    f"researched names lead it ({', '.join(names) or 'none yet'})? {LEADERSHIP_CAVEAT}",
                     "lesson": {
                         "event": "leadership_transition",
                         "from": t["from"],
                         "to": t["to"],
                         "as_of": as_of,
-                        "evidence": list(g.get("evidence") or [])[:3],
+                        # R5: only number-free evidence lines are remembered (measurements stay in the snapshot)
+                        "evidence": [x for x in list(g.get("evidence") or [])[:3] if text_refusal(x) is None],
+                        "caveat": LEADERSHIP_CAVEAT,
                         "trigger_id": t["id"],
                     },
                 }
@@ -374,7 +436,8 @@ def plan_memory(
         out.append(
             {
                 "target": "spine",
-                "trigger_id": trigger_id("exit", sym, None, e.get("date"), as_of),
+                # stable per exit (not per run): the same exit is remembered once (R5 idempotence)
+                "trigger_id": trigger_id("exit", sym, None, e.get("date"), None),
                 "symbol": sym,
                 "kind": mc.get("spine_kind") or "market_risk.event",
                 "tags": [mc.get("spine_tag") or "market_risk"],
@@ -386,17 +449,39 @@ def plan_memory(
         )
     for p in out:
         c.assert_no_behavior_fields(p)
+        why = check_plan(p)
+        if why:
+            p["refused"] = why  # R5: planned, shown in the dry run, never written
     return out
 
 
 # --------------------------------------------------------------------------- apply (CLI --apply only)
 
 
-def apply_memory(plans: list[dict[str, Any]], *, root: Any = None) -> list[dict[str, Any]]:
+def applied_key(p: dict[str, Any]) -> str:
+    """Ledger key of one memory plan: its trigger id and target (one write per trigger per target)."""
+    return f"{p.get('trigger_id')}|{p.get('target')}|{p.get('symbol') or p.get('sector') or ''}"
+
+
+def apply_memory(
+    plans: list[dict[str, Any]], *, root: Any = None, done: set[str] | None = None
+) -> list[dict[str, Any]]:
     """Write the planned memories through the existing CIO paths. Returns one receipt per plan; never raises for one
-    failed item (the receipt says why)."""
+    failed item (the receipt says why). Every text is checked again here, on every path (aif memory, sector record,
+    spine), and a plan whose ``applied_key`` is in ``done`` (already applied) is skipped: idempotent by trigger id."""
     receipts = []
+    done = set(done or ())
     for p in plans:
+        tid = p.get("trigger_id")
+        why = p.get("refused") or check_plan(p)
+        if why:
+            receipts.append({"trigger_id": tid, "target": p.get("target"), "refused": why})
+            continue
+        key = applied_key(p)
+        if key in done:
+            receipts.append({"trigger_id": tid, "target": p.get("target"), "skipped": "already applied"})
+            continue
+        done.add(key)
         try:
             if p["target"] == "aif_memory":
                 from scripts.lib.agent_durable_memory import get_durable_provider

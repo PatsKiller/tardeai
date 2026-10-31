@@ -1,7 +1,7 @@
 """Re-entry watch for names the operator was stopped out of or sold (precision PR round 2).
 
-Operator 2026-10-31: "SpaceX is down to 134. So my 137 stop was actually good, but I would have liked to get out sooner
-... we also need the system to let me know when is the right time to hop back in."
+Operator 2026-10-31, after a stop-out: they would have liked to get out sooner, and "we also need the system to let me
+know when is the right time to hop back in."
 
 Every symbol exited in the last ``lookback_days`` (trade ledger ``trade_closed`` + holdings ``closed_today``, read-only)
 gets a CIO RE_ENTER_IF stance, held or not, with deterministic per-symbol conditions from
@@ -17,7 +17,8 @@ gets a CIO RE_ENTER_IF stance, held or not, with deterministic per-symbol condit
 
 All met -> RE_ENTER (P2 card). Every card shows k of 5 met, the as_of, and a historical base rate from the symbol's
 own history (how often a re-entry on the same trend-repair condition beat waiting ``horizon_sessions``, with n).
-Taxable account + loss sale within 30 days -> wash-sale note; IRA -> none. MBI_BEHAVIOR = 0: no size, no price to
+A loss sale in a taxable account within 30 days -> wash-sale note, timed from the latest taxable loss sale only; IRA
+sales and gains -> none. MBI_BEHAVIOR = 0: no size, no price to
 pay, no order; behaviour-field and sizing-text guards on every card.
 """
 
@@ -76,9 +77,7 @@ def card(
     sessions_to_earnings: int | None,
     market_tier: str,
     options_flow_state: str,
-    account_types: list[str],
-    loss: bool,
-    days_since_exit: int,
+    taxable_loss_days_ago: int | None,
     policy: dict[str, Any],
 ) -> dict[str, Any]:
     cfg = (policy or {}).get("reentry_watch") or {}
@@ -96,8 +95,13 @@ def card(
     conds.append(
         {
             "key": "group_recovered",
-            "met": len(group_history) >= gs and all(s not in ("STRESS", "WEAK") for s in group_history[-gs:]),
-            "text": f"{group_label or 'its group'} out of stress for {gs} sessions",
+            # an unmeasured group (or no group at all) is unknown, never "recovered"
+            "met": bool(group_label)
+            and len(group_history) >= gs
+            and all(s not in ("STRESS", "WEAK", "UNKNOWN") for s in group_history[-gs:]),
+            "text": f"{group_label} out of stress for {gs} sessions"
+            if group_label
+            else "group not measured: exposure unknown",
         }
     )
     ahead = int(cfg.get("earnings_ahead_sessions", 5))
@@ -135,11 +139,10 @@ def card(
         status, headline = "RE_ENTER", "re-entry conditions met"
     else:
         status, headline = "RE_ENTER_IF", f"{met} of {len(conds)} conditions met"
-    taxable = any(str(t).lower() == "taxable" for t in account_types)
     wash = None
-    if taxable and loss and days_since_exit <= int(cfg.get("wash_sale_days", 30)):
+    if taxable_loss_days_ago is not None and 0 <= taxable_loss_days_ago <= int(cfg.get("wash_sale_days", 30)):
         wash = (
-            f"Taxable account, loss sale {days_since_exit} days ago: a re-buy within 30 days of the loss sale is a "
+            f"Taxable account, loss sale {taxable_loss_days_ago} days ago: a re-buy within 30 days of the loss sale is a "
             "wash sale (the loss is deferred into the new lot)."
         )
     rec = {

@@ -3,7 +3,7 @@
 date range on the public-data fixtures (or an overlay of extra public bars), for a SYNTHETIC book.
 
   python3 scripts/market_risk_stance_replay.py --start 2026-10-14 --end 2026-10-30 \\
-      --book GROWTH_ETF=fund:SCHG,PROXY=stock:industrials,STAPLE=stock:PG,HEALTH=stock:PFE \\
+      --book GROWTH_ETF=fund:XLI,PROXY=stock:industrials,STAPLE=stock:PG,HEALTH=stock:PFE \\
       [--overlay DIR] [--json]
 
 Book entries are ``NAME=fund:<factsheet symbol>`` (look-through from config/fund_lookthrough.json) or
