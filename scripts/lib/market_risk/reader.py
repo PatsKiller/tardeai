@@ -89,6 +89,24 @@ def _default_conn():
     return get_conn()
 
 
+EXTENDED_SOURCE = "alpaca_ext"  # scripts/market_quotes_extended.py (config/market_quotes_extended.json source_tag)
+
+
+def quote_session(row: dict[str, Any]) -> str:
+    """premarket / afterhours for an extended-session print, else regular. Only rows the extended-hours writer
+    produced are labelled extended: a regular-session producer's 07:15 quote may carry yesterday's last print, and
+    labelling it by clock time would invent an overnight move."""
+    if str(row.get("source") or "") != EXTENDED_SOURCE:
+        return "regular"
+    ts = row.get("fetched_at")
+    if isinstance(ts, str):
+        ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    if not isinstance(ts, datetime):
+        return "regular"
+    t = _aware(ts).astimezone(ET).timetz().replace(tzinfo=None)
+    return "premarket" if t <= time(9, 30) else "afterhours"
+
+
 class PgReader:
     """``DataReader`` over Postgres. ``conn_factory`` returns a DB-API connection (default: session13_db)."""
 
@@ -138,6 +156,7 @@ class PgReader:
             [list(symbols), _aware(start), _aware(end)],
         )
         for r in rows:
+            r["session"] = quote_session(r)
             r["as_of"] = _iso(r["fetched_at"])
             r["fetched_at"] = r["as_of"]
         return rows

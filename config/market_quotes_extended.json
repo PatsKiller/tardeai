@@ -1,0 +1,14 @@
+{
+  "schema": "MarketQuotesExtended@v1",
+  "_why": "Extended-session (pre-market / after-hours) prints for the Market Risk Engine's extended_hours category (DSN-20261031-market-risk-engine P1-T4). Operator approved the store/provider/schedule items of design §11 on 2026-10-31 (\"I approve and agree to everything one through eight\"). Advisory data only; MBI_BEHAVIOR = 0.",
+  "source_tag": "alpaca_ext",
+  "feed": "iex",
+  "bar_timeframe": "15Min",
+  "lookback_hours": 40,
+  "regular_close_bar_et": "15:45",
+  "regular_open_et": "09:30",
+  "regular_close_et": "16:00",
+  "symbols": ["SPY", "QQQ", "IWM", "SMH",
+              "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK.B", "JPM", "LLY", "ORCL", "NFLX", "AMD", "INTC"],
+  "_coverage_note": "Measured 2026-10-31 (one read-only call, 15Min IEX bars 10-29 16:00 -> 10-30 09:30 ET): the free IEX feed prints 16:00-17:00 and 08:00-09:30 ET only. 17:00-20:00 and 04:00-08:00 need the paid SIP feed (an operator funding decision). The cron window is the design window; runs with no new extended bar write nothing."
+}
