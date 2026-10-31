@@ -94,10 +94,147 @@ def build(now: datetime, reader, policy: dict, root: Path) -> dict:
     return payload
 
 
+def _opportunity_items(root: Path) -> list[dict]:
+    try:
+        doc = json.loads((root / "data" / "cio" / "cio_opportunity_projection.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    items = doc.get("items") or {}
+    rows = list(items.values()) if isinstance(items, dict) else list(items)
+    for r in rows:
+        r.setdefault("as_of", doc.get("as_of"))
+    return [r for r in rows if isinstance(r, dict) and r.get("symbol")]
+
+
+def _instrument_records(root: Path) -> dict[str, dict]:
+    """symbol -> latest CIO InstrumentRecord (read-only)."""
+    from scripts.lib import cio_instrument_record as ir
+
+    try:
+        st = ir._store_for_root(None)  # noqa: SLF001 — the registered store resolver
+        out = {}
+        for rec in st.all():
+            for sym in rec.get("symbols") or []:
+                out.setdefault(str(sym).upper(), rec)
+        return out
+    except Exception as exc:  # noqa: BLE001 — an unreadable store is reported, never fatal
+        print(f"market_risk_rotation: instrument records unavailable ({type(exc).__name__})", file=sys.stderr)
+        return {}
+
+
+def _exits(root: Path, snapshot: dict) -> list[dict]:
+    """Names exited recently (holdings closed_today), with the groups stressed at the time (from the snapshot)."""
+    try:
+        doc = json.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    stressed = (
+        list(((snapshot.get("sectors") or {}).get("stressed") or []))
+        if isinstance(snapshot.get("sectors"), dict)
+        else []
+    )
+    out, seen = [], set()
+    for rows in (doc.get("closed_today") or {}).values() if isinstance(doc.get("closed_today"), dict) else []:
+        for r in rows or []:
+            sym = str((r or {}).get("symbol") or "").upper()
+            if sym and sym not in seen:
+                seen.add(sym)
+                out.append(
+                    {
+                        "symbol": sym,
+                        "date": str(doc.get("aggregate_published_at") or "")[:10],
+                        "stressed_groups": stressed,
+                    }
+                )
+    return out
+
+
+def fanout(payload: dict, policy: dict, root: Path, now: datetime, block: dict) -> dict:
+    """Plan (never write) the CIO memories and the research jobs for today's transitions."""
+    from scripts.lib.cio_watch_instrument_admit import load_watchlist
+    from scripts.lib.market_risk import cio_memory_fanout as F
+    from scripts.lib.market_risk_projection import SNAPSHOT_REL
+
+    try:
+        snapshot = json.loads((root / SNAPSHOT_REL).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        snapshot = {}
+    groups = block.get("groups") or {}
+    st = snapshot.get("shock_type")
+    cur = {
+        "as_of": block.get("as_of"),
+        "leadership": {k: g.get("class") for k, g in groups.items()},
+        "shock_type": st.get("class") if isinstance(st, dict) else None,
+        "tier": snapshot.get("tier"),
+        "reentry": {s: p.get("stance") for s, p in (snapshot.get("positions") or {}).items() if isinstance(p, dict)},
+    }
+    state_file = root / "data" / "runtime" / "market_risk" / "rotation_fanout_state.json"
+    try:
+        prev = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        prev = {}
+    trigs = F.triggers(prev.get("state") or {}, cur)
+    items = _opportunity_items(root)
+    recs = _instrument_records(root)
+    wl = load_watchlist(None) or {}
+    try:
+        wl = json.loads((root / "data" / "portfolios" / "state" / "watchlist.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    tiers = {}
+    for k, g in groups.items():
+        if g.get("class") in ("LEADERSHIP_CONFIRMED", "LEADERSHIP_EMERGING"):
+            tiers[k] = F.tiered_candidates(
+                k,
+                group_symbols=list(g.get("symbols") or []),
+                opportunity_items=items,
+                watchlist=wl,
+                instrument_records=recs,
+                group_of=lambda it: rotation_advice.group_of(it, groups),
+                policy=policy,
+                now=now,
+            )
+    try:
+        from scripts.lib import search_budget
+
+        brave_status = search_budget.status("brave")
+    except Exception as exc:  # noqa: BLE001 — unknown budget -> no Brave jobs (fail closed in plan_research)
+        print(f"market_risk_rotation: brave budget unavailable ({type(exc).__name__})", file=sys.stderr)
+        brave_status = None
+    research = F.plan_research(
+        trigs,
+        groups=groups,
+        tiers_by_group=tiers,
+        policy=policy,
+        brave_status=brave_status,
+        already=set(prev.get("trigger_ids") or []),
+    )
+    memory = F.plan_memory(
+        trigs,
+        groups=groups,
+        cur=cur,
+        exits=_exits(root, snapshot),
+        tiers_by_group=tiers,
+        snapshot_ref=str(SNAPSHOT_REL),
+        policy=policy,
+    )
+    return {
+        "triggers": trigs,
+        "tiers": tiers,
+        "research": research,
+        "memory": memory,
+        "state": cur,
+        "state_file": str(state_file),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="send the card when enabled and changed")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--fanout", action="store_true", help="plan CIO memories + research jobs (writes only with --apply)"
+    )
     a = ap.parse_args(argv)
     policy = load_policy()
     from scripts.lib.market_risk.reader import PgReader
@@ -108,6 +245,33 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, default=str))
         return 3
     print(json.dumps(payload, indent=2, default=str) if a.json else rotation_advice.render_card(payload))
+    if a.fanout:
+        from scripts.lib.market_risk import cio_memory_fanout as F
+
+        now = datetime.now(timezone.utc)
+        block = leadership.measure(c.EvalContext(now=now, reader=PgReader(), policy=policy))
+        plan = fanout(payload, policy, root, now, block)
+        print(F.to_json({k: v for k, v in plan.items() if k != "state_file"}))
+        if a.apply:
+            from scripts.lib.cio_market_context_state import connect_trade_ai_readonly  # noqa: F401 — read path proof
+
+            from db_adapter import _get_conn  # the repo's write connection, used by the existing research-gaps route
+
+            mem = F.apply_memory(plan["memory"])
+            res = F.apply_research(plan["research"], conn_factory=_get_conn, policy=policy)
+            sf = Path(plan["state_file"])
+            sf.parent.mkdir(parents=True, exist_ok=True)
+            tmp = sf.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps(
+                    {"state": plan["state"], "trigger_ids": [t["id"] for t in plan["triggers"]], "at": now.isoformat()}
+                ),
+                encoding="utf-8",
+            )
+            os.replace(tmp, sf)
+            print(F.to_json({"memory_receipts": mem, "research_receipts": res}))
+        else:
+            print("DRY RUN: fan-out planned; nothing written, nothing enqueued", file=sys.stderr)
     cfg = policy.get("leadership") or {}
     state_file = root / "data" / "runtime" / "market_risk" / "rotation_state.json"
     sig = rotation_advice.signature(payload)
