@@ -137,3 +137,76 @@ cross_asset:
     anomaly: 20
     hyg_drop: 15
     flight_to_safety: 15
+event:
+  # Event concentration (scripts/lib/market_risk/event_calendar.py, categories/event.py). Index-weighted earnings
+  # share in the next N sessions + scheduled macro releases + calendar tags -> event_concentration_score 0-100.
+  # RCA fixture (synthetic weights): FOMC 10-28 14:00, four mega-caps reporting 10-28/10-29 after hours,
+  # month-end 10-30 -> STRESS from 10-26 onward.
+  windows_sessions: [1, 3, 5]
+  earnings_window_sessions: 3     # the window whose share drives the score
+  earnings_share_full: 0.25       # index-cap share reporting in the window that earns all earnings points
+  earnings_max_points: 60
+  amc_cutoff_et: "20:00"          # today's after-close reporters still count until the extended session ends
+  bmo_cutoff_et: "09:30"          # today's before-open reporters stop counting at the open
+  macro_window_sessions: 3
+  macro_points: {fomc: 25, cpi: 15, employment_situation: 15, default: 5}
+  macro_max_points: 30
+  calendar_window_sessions: 5
+  calendar_points: {month_end: 5, quarter_end: 5, options_expiration: 5, election_day: 10}
+  calendar_max_points: 15
+  warn_score: 40
+  stress_score: 60
+  stale_after_hours: 24
+  # AI-basket earnings sensitivity (P2-T6): basket index-cap share reporting within this many sessions.
+  ai_sensitivity_window_sessions: 2
+  ai_sensitivity_stress_share: 0.15
+  ai_sensitivity_stress_score: 80
+
+ai_concentration:
+  # scripts/lib/market_risk/ai_concentration.py. Feeds technical (participation / relative strength) and event
+  # (earnings sensitivity). Basket is operator-owned.
+  basket: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]
+  optional: [AAPL, TSLA, INTC, MU, TSM, ORCL]
+  include_optional: false
+  benchmarks: [RSP, SPY]
+  lookback_sessions: 60
+  rs_sessions: 20
+  participation_calm: 0.70        # share of basket above its 20-day average considered healthy
+  participation_warn: 0.55
+  participation_stress: 0.40
+  rs_warn_pct: -2.5               # basket 20-session return minus benchmark, percentage points
+  rs_stress_pct: -5.0
+  rs_full_pct: -10.0              # relative weakness that earns a full 100 score
+  earnings_lookahead_days: 10     # calendar days of earnings rows read to cover the 5-session window
+  stale_after_hours: 30
+
+breadth:
+  # categories/breadth.py from existing sector_momentum_state rows (style pairs, sector states, sector breadth).
+  # Market-wide breadth (new highs/lows, % above DMAs) comes from market_breadth_daily once that store exists;
+  # until then that sub-signal is UNKNOWN, never zero.
+  style_key: "STYLE:equal_vs_cap"
+  style_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 20, LAGGING: 30}
+  leadership_etfs: [XLK, SMH]
+  leadership_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 15, LAGGING: 20}
+  leadership_max_points: 25
+  weak_breadth_pct: 45            # leadership sector breadth (% of members positive) below this adds points
+  weak_breadth_points: 10
+  deteriorating_states: [WEAKENING, LAGGING]
+  deteriorating_share_points_full: 25   # share of sector ETFs WEAKENING/LAGGING x this
+  warn_score: 35
+  stress_score: 60
+  stale_after_hours: 30
+
+seasonal:
+  # categories/seasonal.py: a low-weight prior from scripts/lib/cio_seasonality_engine.py. It can never by itself
+  # raise the category above WARN (enforced in code, not only by these numbers).
+  points:
+    weak_month: 10
+    worst_six_months: 5
+    midterm_year: 5
+    options_expiration_week: 5
+    quarter_end_window: 3
+    turn_of_month_late: 2
+  max_score: 35
+  warn_score: 25
+  stale_after_hours: 24
