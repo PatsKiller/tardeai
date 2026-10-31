@@ -34,6 +34,10 @@ AGENT_DB_NAME = {
 }
 
 BATCH_LIMIT = 20
+# A row left 'processing' longer than this was abandoned by a crashed or timed-out run (the cron caps a run at 5 min).
+# 2026-10-01..10-23: seven RSI_EXTREME rows stuck forever because the content-gap loop held the DB connection idle
+# for minutes, the server closed it, and the final "mark done" UPDATE died on the closed connection.
+STALE_PROCESSING_HOURS = 2
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -61,6 +65,53 @@ def _get_conn():
         host="localhost", dbname="trade_ai",
         user="trade_ai", password=_env("DB_PASSWORD"),
     )
+
+
+def _set_event_status(eid, status: str) -> bool:
+    """Write one event's status on a fresh short-lived connection. The batch connection can be closed by the server
+    while the content-gap subprocesses run (minutes); a status write must not depend on it. Logs and returns False on
+    failure, never raises (the caller keeps going and the row stays visible as 'processing' for the reclaim)."""
+    try:
+        c = _get_conn()
+        try:
+            with c.cursor() as cur:
+                if status == "processing":
+                    cur.execute("UPDATE agent_event_queue SET status='processing' WHERE id=%s", (eid,))
+                else:
+                    cur.execute(
+                        "UPDATE agent_event_queue SET status=%s, processed_at=NOW() WHERE id=%s", (status, eid)
+                    )
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception as e:  # noqa: BLE001
+        _log(f"  ERROR: could not set event #{eid} -> {status}: {type(e).__name__}: {e}")
+        return False
+
+
+def reclaim_stale_processing(conn, dry_run: bool) -> int:
+    """Mark rows stuck in 'processing' for more than STALE_PROCESSING_HOURS as 'failed' (never re-run: re-running would
+    repeat their Telegram alerts and agent jobs). Returns the count; logged by id so the abandonment is visible."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM agent_event_queue"
+        " WHERE status='processing' AND created_at < NOW() - make_interval(hours => %s)",
+        (STALE_PROCESSING_HOURS,),
+    )
+    ids = [r[0] if not isinstance(r, dict) else r["id"] for r in cur.fetchall()]
+    if not ids:
+        return 0
+    _log(f"Stale 'processing' events (> {STALE_PROCESSING_HOURS} h, abandoned by a crashed run): {ids}")
+    if dry_run:
+        _log(f"  DRY-RUN: would mark {len(ids)} stale events failed")
+        return len(ids)
+    cur.execute(
+        "UPDATE agent_event_queue SET status='failed', processed_at=NOW() WHERE status='processing' AND id = ANY(%s)",
+        (ids,),
+    )
+    conn.commit()
+    return len(ids)
 
 
 def _log(msg: str):
@@ -411,6 +462,7 @@ def drain_queue(dry_run: bool = False) -> int:
     from intel_query import get_market_session_context
 
     conn = _get_conn()
+    reclaim_stale_processing(conn, dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("""
@@ -470,12 +522,15 @@ def drain_queue(dry_run: bool = False) -> int:
         agents = event.get("agents_to_notify") or []
 
         _log(f"Event #{eid}: {etype} {symbol} [{priority}] → {agents}")
+        if getattr(conn, "closed", 0):
+            # The server closed the batch connection during the previous event's content-gap loop (minutes of
+            # subprocesses); reopen it instead of failing every later event in the batch.
+            _log("  DB connection was closed by the server; reopening")
+            conn = _get_conn()
 
         # Mark processing
         if not dry_run:
-            cur2 = conn.cursor()
-            cur2.execute("UPDATE agent_event_queue SET status='processing' WHERE id=%s", (eid,))
-            conn.commit()
+            _set_event_status(eid, "processing")
 
         # Send Telegram alert for urgent events — include session context (#6)
         if priority == "urgent" and not dry_run:
@@ -519,13 +574,8 @@ def drain_queue(dry_run: bool = False) -> int:
 
         # Mark done
         if not dry_run:
-            cur2 = conn.cursor()
-            cur2.execute(
-                "UPDATE agent_event_queue SET status='done', processed_at=NOW() WHERE id=%s",
-                (eid,),
-            )
-            conn.commit()
-            _log(f"  Event #{eid} → done")
+            if _set_event_status(eid, "done"):
+                _log(f"  Event #{eid} → done")
         else:
             _log(f"  DRY-RUN: would mark #{eid} done")
 
