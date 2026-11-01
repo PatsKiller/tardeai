@@ -150,7 +150,7 @@ def test_latest_quote_still_returns_the_regular_alpaca_row_after_hours_and_prema
 def test_writer_rejects_bad_rows():
     good = dict(next(iter(_rows(datetime(2026, 10, 29, 18, 15, tzinfo=ET)).values())))
     assert w.validate(good) is None
-    assert "session" in w.validate(dict(good, session="overnight"))
+    assert "session" in w.validate(dict(good, session="regular"))  # overnight is valid since the overnight migration
     assert "price" in w.validate(dict(good, price=0.0))
 
 
