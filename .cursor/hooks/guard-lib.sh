@@ -30,13 +30,18 @@ tier_scope() {
     frozen-v2)     echo "Edits under command-center-v2 / v2 paths. v2 is frozen; v3 is canonical." ;;
     guard-config)  echo "Edits to .cursor/hooks/* or .cursor/*.json — the guardrails themselves." ;;
     file-delete)   echo "Deleting files." ;;
-    gh-write)      echo "GitHub comment/review writes (gh pr|issue comment, gh pr review, gh api writes to comments/reviews/issues/pulls/graphql). gh is logged in as the operator, so these read as operator approvals (AGENTS.md §28.15 item 8)." ;;
+    gh-write)      echo "GitHub writes as the operator: gh pr|issue comment, gh pr review, gh issue create/edit/reopen/close/..., gh alias set/import, gh api with -f/-F/--input or a write method. gh is logged in as the operator, so these read as operator approvals (AGENTS.md §28.15 item 8)." ;;
     *)             echo "Unknown tier: $1" ;;
   esac
 }
 
 classify_cmd() {
   local cmd="$1" U; U="${cmd^^}"
+  # gh/git tiers by shell tokens (guard_tokens.py), not regex over raw text: quoting ("gh", com\ment, git "push"),
+  # flags before the noun or verb, env/command/path prefixes and $(...) argv[0] all reach the same words the shell
+  # runs. Its answer is checked at each tier's old position, so precedence is unchanged; the regexes below remain a
+  # backstop. If the helper cannot run, any command naming gh or git takes that tier (fail closed).
+  local _tt; _tt=" $(python3 -I "$_GUARD_HOOKS/guard_tokens.py" "$cmd" 2>/dev/null || echo ERR) "
   # The ledger is now the only thing standing between the agent and every
   # guarded scope, so the agent must not be able to issue itself a grant.
   # Operator grants come from a real terminal, which never passes through this
@@ -47,6 +52,7 @@ classify_cmd() {
   [[ "$cmd" =~ (cat|less|more|head|tail|strings|grep|awk|sed|cp|scp|rsync|base64|xxd|env|printenv|source|\.)[[:space:]].*\.env ]] && { echo secret; return; }
   [[ "$cmd" =~ (id_ed25519|id_rsa|authorized_keys|\.ssh/|\.pgpass|credentials) ]] && { echo secret; return; }
   # gh on this host is logged in as the operator: printing its token is reading a secret.
+  [[ "$_tt" == *" secret "* ]] && { echo secret; return; }
   [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+token([[:space:]]|$) ]] && { echo secret; return; }
   [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth[[:space:]].*(-t|--show-token)([[:space:]=]|$) ]] && { echo secret; return; }
   [[ "$cmd" =~ (\>|\>\>|tee)[^|]*(\.env|\.pem|\.key|credentials|\.pgpass) ]] && { echo secret; return; }
@@ -75,6 +81,8 @@ classify_cmd() {
   local _gha='(^|[^[:alnum:]_.-])gh[[:space:]]+api[[:space:]]'
   # Field flags spaced or attached (-f body=x, -fbody=x, -Fbody=@f, --field=..), --input, or a write method.
   local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-f|-F)[^[:space:]]|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
+  [[ "$_tt" == *" gh-write "* ]] && { echo gh-write; return; }
+  [[ "$_tt" == *" ERR "* && "$cmd" == *gh* ]] && { echo gh-write; return; }
   [[ "$cmd" =~ $_ghc ]] && { echo gh-write; return; }
   [[ "$cmd" =~ $_ghi ]] && { echo gh-write; return; }
   [[ "$cmd" =~ $_gha_alias ]] && { echo gh-write; return; }
@@ -87,6 +95,8 @@ classify_cmd() {
   # TRADEAI_SKIP_SECRETS_SCAN, TRADEAI_REMOTE_PUSH_OVERRIDE): treated as a push-scope operation.
   local _envre='(^|[;&|(`[:space:]])(export|declare|typeset|set|unset|env|readonly|local)[[:space:]][^;&|]*(GIT_|TRADEAI_)'
   [[ "$cmd" =~ $_envre ]] && { echo git-push; return; }
+  [[ "$_tt" == *" git-push "* ]] && { echo git-push; return; }
+  [[ "$_tt" == *" ERR "* && "$cmd" == *git* ]] && { echo git-push; return; }
   # git global options (-C dir, -c k=v, --git-dir=.., --no-pager) may sit between "git" and the verb.
   [[ "$cmd" =~ git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
   [[ "$cmd" =~ (psql|psycopg2|sqlalchemy|pg_restore) ]] && [[ "$U" =~ (INSERT|UPDATE|DELETE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE) ]] && { echo db-write; return; }

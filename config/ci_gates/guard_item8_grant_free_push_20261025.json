@@ -3,7 +3,8 @@
   "name": "guard_item8_grant_free_push_20261025",
   "files": [
     "tests/test_guard_item8_grant_free_push_20261025.py",
-    "tests/test_guard_push_standing_approval_20261101.py"
+    "tests/test_guard_push_standing_approval_20261101.py",
+    "tests/test_guard_tokens_20261101.py"
   ],
   "comment": [
     "AGENTS.md 21.0.0 §28.15 item 8 (ratified 2026-10-25, PR #2128), redesigned after two DO-NOT-MERGE reviews of #2148.",
@@ -14,6 +15,7 @@
     "chained guard-log lines. Raw git push keeps the grant path. (b) toolchain runs are never deps; installs are.",
     "Every reviewer exploit (X1-X11, H1-H3, M1-M3, L1-L2) is a regression test here.",
     "(c, 2026-11-01) Standing approval: an operator APPROVE_PUSH_STANDING <glob> until <date> comment on the standing-approval issue meets the plan step for the pusher's own live claim; expiry, glob, author, revoke, prefix and mutation tests.",
-    "(c r2, after the #2450 security review) one operator issue (duplicates refuse), close voids for good, edited comments refuse, lenient revoke, fenced examples ignored, gated on main AGENTS 29.3.0+ ACTIVE; guard-lib.sh gh-write covers gh issue create/edit/reopen/close and attached gh api -f/-F/--input."
+    "(c r2, after the #2450 security review) one operator issue (duplicates refuse), close voids for good, edited comments refuse, lenient revoke, fenced examples ignored, gated on main AGENTS 29.4.0+ ACTIVE; guard-lib.sh gh-write covers gh issue create/edit/reopen/close and attached gh api -f/-F/--input.",
+    "(c r3, after the #2459 security review) gh/git tiers come from shell tokens (.cursor/hooks/guard_tokens.py): quoting, backslashes, flags before the noun or verb, env/command/path prefixes and $(...) argv[0] cannot evade gh-write, secret (gh auth token) or git-push."
   ]
 }
