@@ -553,6 +553,9 @@ overlay_main() {
     --exclude='data/' --exclude='state/' \
     --exclude='logs/' --exclude='exports/' \
     --exclude='.env' --exclude='config/broker_credentials.env' \
+    `# 2026-10-30: only '.env' was excluded, so every .env.* backup (real config and` \
+    `# secret copies) was cloned into each release. Tracked templates still ship.` \
+    --include='.env.example' --exclude='.env.*' \
     --exclude='__pycache__/' --exclude='*.pyc' \
     --exclude='.pytest_cache/' --exclude='.mypy_cache/' --exclude='.ruff_cache/' \
     `# 2026-09-21: .claude is 11,591 MB of Claude Code SESSION data and was` \

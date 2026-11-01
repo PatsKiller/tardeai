@@ -107,7 +107,11 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await tap(page.getByRole('link', { name: 'Read & decide', exact: true }))
     await visible(page.getByRole('heading', { name: 'Policy review fixture', exact: true }))
     const approve = page.getByRole('button', { name: /^Approve/ })
-    await expect(approve).toBeDisabled()
+    // Approve before reading is never a silent no-op (2026-10-31 lost design taps): it says why and records nothing.
+    await tap(approve)
+    // The reason scrolls into view next to the button (smooth scroll on phones): wait for it to settle on screen.
+    await expect(async () => visible(page.getByRole('alert').filter({ hasText: 'Approval not recorded: tap "Start reading" first' }))).toPass({ timeout: 10_000 })
+    expect(decisions).toHaveLength(0)
     await tap(page.getByRole('button', { name: 'Start reading', exact: true }))
     for (const change of changes) {
       await page.locator(`[data-read-target="${change.id}"]`).scrollIntoViewIfNeeded()

@@ -210,6 +210,13 @@ def registry_live_lanes(registry: Any, allowlist: Any, *, cutover_policy: Option
         elif sched.get("kind") == "n8n" and stage in LIVE_STAGES:
             kind = "native_n8n"
         else:
+            if sched.get("kind") == "n8n" and stage is None and row.get("state") == "ACTIVE" \
+                    and (entries.get(lane) or {}).get("live_arg") is not None:
+                # 2026-10-31: four ACTIVE native n8n lanes (incident fan-in, pilot dispatch, research intake,
+                # crontab snapshot) had an allowlist live_arg but no scheduler.stage. The render left them off with
+                # no trace, so the relay refused every fire once the AGENTS.md header read ACTIVE. Still never
+                # widen; but say why, so the render, --check and the deploy log show the drop.
+                excluded[lane] = "native_n8n_no_stage"
             continue
         if stage is not None and stage not in LIVE_STAGES:
             excluded[lane] = f"stage_{stage}"
@@ -289,6 +296,7 @@ def render(root: Path | str = ROOT, out: Path | str | None = None, *, now: Optio
             pass
         raise
     return {"schema": RENDER_SCHEMA, "ok": True, "out": str(out), "lanes": len(lanes), "excluded": len(excluded),
+            "native_n8n_no_stage": sorted(k for k, v in excluded.items() if v == "native_n8n_no_stage"),
             "registry_sha256": doc["registry_sha256"], "build_sha": build}
 
 

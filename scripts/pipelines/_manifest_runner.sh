@@ -165,7 +165,11 @@ _mr_mount() { df -P "$1" 2>/dev/null | awk 'NR==2 {print $6}'; }
 _mr_disk_page() {  # pipeline stage reason avail_mb min_mb mount
   local alert="$_MR_DIR/pipeline_disk_alert.py"
   [ -f "$alert" ] || { echo "[disk] pipeline_disk_alert.py missing beside the runner — cannot page" >&2; return 1; }
-  "${PY:-python3}" "$alert" --pipeline "$1" --stage "$2" --reason "$3" --avail-mb "${4:-0}" ${5:+--min-mb "$5"} --mount "${6:-?}"
+  # A --dry-run of the runner must never page for real (live verification 2026-10-31: it did): the pager gets
+  # --dry-run too and prints the card instead of sending it.
+  local dry=()
+  [ "${DRY_RUN:-1}" = "1" ] && dry=(--dry-run)
+  "${PY:-python3}" "$alert" --pipeline "$1" --stage "$2" --reason "$3" --avail-mb "${4:-0}" ${5:+--min-mb "$5"} --mount "${6:-?}" "${dry[@]}"
 }
 # Below the policy floor: say so in the log, page P1, and KEEP GOING — the steps are the point of the stage.
 _mr_disk_preflight() {  # pipeline stage log_dir
