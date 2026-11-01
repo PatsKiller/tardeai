@@ -6,7 +6,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { SHADOW_MARKER, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
 
@@ -16,7 +17,7 @@ export function ShadowTag({ mr, testid }: { mr: MarketRisk | null; testid: strin
   if (!shadowMarker(mr)) return null
   return <span data-testid={testid}
     style={{ fontSize: TYPE.sm, color: TOKENS.text[1], border: `1px dashed ${toneVars('warning').border}`, borderRadius: RADIUS.pill, padding: '2px 8px' }}>
-    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : 'the tier rests on data from before the market closed; no alert sent'}
+    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · {markerRest(mr)} — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : (mr?.alerts?.sends ?? 0) > 0 ? 'the tier rests on data from before the market closed' : 'the tier rests on data from before the market closed; no alert sent'}
   </span>
 }
 
@@ -30,7 +31,7 @@ export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '0.04em' }}>Market risk</span>
       <span data-testid="home-market-risk-value" style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: f.tone === 'neutral' ? TOKENS.text[0] : tv.color }}>{loading && !mr ? '…' : f.value}</span>
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{loading && !mr ? '' : shadowMarker(mr)
-        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting{f.sub.slice(shadowMarker(mr).length)}</>
+        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · {markerRest(mr)}{f.sub.slice(shadowMarker(mr).length)}</>
         : f.sub}</span>
     </Link>
   )
@@ -66,7 +67,13 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
 /** Full-width banner, visible only for an evaluated ORANGE or RED (design home/v002 §2). Never sticky. */
 export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
   const [ack, setAck] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
+  const [detailsOpen, setDetailsOpen] = useState<boolean | null>(null)
   if (!bannerVisible(mr) || !mr) return null
+  // design home/v005: the banner is extended with the same verdict, exposure, top review item and sections
+  const a = actionableModel(mr)
+  let phone = false
+  try { phone = window.matchMedia(`(max-width: ${SUMMARY_PHONE_MAX_PX}px)`).matches } catch { /* no matchMedia: desktop */ }
+  const open = detailsOpen ?? !phone
   const tv = toneVars(tierTone(mr.tier))
   const sum = pointsSum(mr)
   const acked = !!mr.episode?.acknowledged_at
@@ -92,6 +99,15 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>
         {episodeLine(mr) || `evaluated ${shortTime(mr.as_of)}`}{mr.confirming ? ` · ${mr.confirming.n} of ${mr.confirming.of} categories confirm` : ''} · evaluated {shortTime(mr.as_of)}
       </div>
+      {a && <ActionableHead m={a} />}
+      {a && <TopReview m={a} />}
+      {a && (
+        <button type="button" data-testid="home-market-risk-banner-details" aria-expanded={open} onClick={() => setDetailsOpen(!open)}
+          style={{ ...tap, alignSelf: 'flex-start', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], padding: '0 14px', cursor: 'pointer' }}>
+          {open ? 'Less ▴' : 'Details ▾'}
+        </button>
+      )}
+      {a && open && <ActionableBody m={a} why={null} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: TYPE.md, lineHeight: 1.35 }}>
         {mr.contributors.slice(0, 5).map((c, i) => (
           <div key={i} data-testid="home-market-risk-contributor" style={{ display: 'grid', gridTemplateColumns: '1fr 48px', gap: 8 }}>
@@ -109,7 +125,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
           <div style={{ fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(sum)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</div>
         )}
       </div>
-      {mr.book && (
+      {mr.book && !a && (
         <div data-testid="home-market-risk-book" style={{ fontSize: TYPE.base, lineHeight: 1.45, color: TOKENS.text[1], padding: 10, borderRadius: RADIUS.md, background: TOKENS.bg[0] }}>
           <b style={{ color: TOKENS.text[0] }}>Your book:</b>{' '}
           {(mr.book.budgets ?? []).filter(b => b.breached).map(b => `${b.budget} ${b.actual}${b.unit ?? '%'} vs ${b.limit}${b.unit ?? '%'} budget`).join(' · ')}

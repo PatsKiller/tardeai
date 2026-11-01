@@ -159,7 +159,7 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
         "book": book,
         "sectors": doc.get("sectors") or None,
         "shock_type": doc.get("shock_type") or None,
-        "heatmap": doc.get("heatmap") or [],
+        "heatmap": heatmap_with_sector_fields(doc.get("heatmap"), doc.get("sectors")),
         "leadership": doc.get("leadership") or None,
         "positions": doc.get("positions") or {},
         "reentry_watch": doc.get("reentry_watch") or {},
@@ -170,6 +170,19 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
         # the tier rests only on data carried across a closure: shown, labelled "carried — not alerting" (PR 2431)
         "carried_only": bool((doc.get("hysteresis") or {}).get("carried_only")),
     }
+
+
+def heatmap_with_sector_fields(heatmap: Any, sectors: Any) -> list:
+    """Heat-map rows plus ``rs1`` and ``reason_unknown`` from ``sectors.groups`` (design home/v005: the card shows the
+    1-day move vs SPY and why a group is not measured; ``sectors.heatmap()`` drops both)."""
+    groups = {g.get("key"): g for g in ((sectors or {}).get("groups") or []) if isinstance(g, dict)}
+    out = []
+    for h in heatmap or []:
+        if not isinstance(h, dict):
+            continue
+        g = groups.get(h.get("key")) or {}
+        out.append({**h, "rs1": h.get("rs1", g.get("rs1")), "reason_unknown": h.get("reason_unknown", g.get("reason_unknown"))})
+    return out
 
 
 def snapshot_mode(mode: Any) -> str | None:
@@ -264,7 +277,7 @@ def build(
         "book": snapshot.get("book"),
         "sectors": snapshot.get("sectors"),
         "shock_type": snapshot.get("shock_type"),
-        "heatmap": list(snapshot.get("heatmap") or []),
+        "heatmap": heatmap_with_sector_fields(snapshot.get("heatmap"), snapshot.get("sectors")),
         "leadership": snapshot.get("leadership"),
         "positions": snapshot.get("positions") or {},
         "reentry_watch": snapshot.get("reentry_watch") or {},
