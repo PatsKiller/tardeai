@@ -35,21 +35,49 @@ timeout_s:                               # wall-clock budget per tier; on expiry
 skip_tiers: [RED, ORANGE, YELLOW, BLUE, GREEN, NONE]
 # The allow-list template (review of #2383, B3): the curated "why" may contain ONLY these words, words from the
 # contributors' displayed names and headlines, the category names, and the displayed figures. Anything else rejects
+# the curation. Round 3 removed direction, size and timing words (percent, fell, rose, down, up, high, low, less,
+# more, now, today, only, open, yet, still):
+# grounding checks values, not meaning, so "Index fell 50 percent" reused the score. In template mode these words
+# can only arrive inside an engine-written headline, never from the model.
 # the curation and the deterministic card is sent. No verbs of action, no forecast verbs, no number words.
-why_vocabulary: [a, an, the, and, or, but, with, from, on, in, by, as, at, to, of, for, over, under, than, versus, vs,
-  against, while, both, also, plus, only, not, no, yet, still, now, today, recent, recently, is, are, was, were, has,
-  have, been, be, it, its, this, that, these, those, their, own, risk, risks, score, scores, point, points, category,
-  categories, confirm, confirms, confirming, confirmed, signal, signals, reading, readings, level, levels, picture,
-  driven, driver, drivers, led, mainly, mostly, largely, elevated, stressed, stress, stretched, warning, warn, calm,
-  quiet, steady, mixed, unusual, unusually, heavy, heavier, light, lighter, broad, broader, narrow, narrowing, weak,
-  weaker, weakness, weakening, strong, stronger, strength, surge, surging, surged, jump, jumped, rising, rose,
-  falling, fell, easing, eased, fading, building, persistent, sharp, sharply, high, higher, low, lower, above, below,
-  near, up, down, more, less, most, median, normal, typical, history, times, x, percent, market, markets, index,
-  indexes, sector, sectors, volatility, flow, flows, options, put/call, ratio, open, interest, volume, demand,
-  hedging, breadth, credit, rates, yields, technical, technicals, momentum, trend, leadership, semiconductor,
-  semiconductors, chips, earnings, event, events, concentration, seasonal, extended, hours, overnight, session, data,
-  measured, unmeasured, unknown, macro, cross-asset, asset, correlation, correlations, so, because, after, hit,
-  reached, all, each]
+why_vocabulary: [a, an, the, and, or, but, with, from, on, in, by, as, at, to, of, for, over, under, than, versus,
+  vs, against, while, both, also, plus, not, no, recent, recently, is, are, was, were, has, have, been, be, it,
+  its, this, that, these, those, their, own, risk, risks, score, scores, point, points, category, categories,
+  confirm, confirms, confirming, confirmed, signal, signals, reading, readings, level, levels, picture, driven,
+  driver, drivers, led, mainly, mostly, largely, elevated, stressed, stress, stretched, warning, warn, calm, quiet,
+  steady, mixed, unusual, unusually, heavy, heavier, light, lighter, broad, broader, narrow, narrowing, weak,
+  weaker, weakness, weakening, strong, stronger, strength, surge, surging, surged, jump, jumped, easing, eased,
+  fading, building, persistent, sharp, sharply, above, below, near, most, median, normal, typical, history, times,
+  x, market, markets, index, indexes, sector, sectors, volatility, flow, flows, options, put/call, ratio, interest,
+  volume, demand, hedging, breadth, credit, rates, yields, technical, technicals, momentum, trend, leadership,
+  semiconductor, semiconductors, chips, earnings, event, events, concentration, seasonal, extended, hours,
+  overnight, session, data, measured, unmeasured, unknown, macro, cross-asset, asset, correlation, correlations,
+  so, because, after, hit, reached, all, each]
+# The allow-list TEMPLATE (review of #2383 round 2, B3; operator 2026-10-31 "we got to get it working correctly").
+# The model never writes prose. It returns ONLY a JSON choice of phrase ids from this bank (and which contributors,
+# by their 1-based position on the card, fill {c1}/{c2}); the sentence is rendered here from the engine's own names
+# and displayed figures. Free text, unknown ids, extra keys or out-of-range contributors reject the curation and the
+# deterministic card is sent. Every rendered sentence still passes the character, behaviour, grounding and
+# vocabulary checks below. Slots: {c1} {c2} contributor names; {c1_points} {c2_points} their points; {c1_detail} the
+# displayed headline; {score}; {confirming} {of}; {unmeasured_clause} ("1 category is" / "N categories are unmeasured").
+why_template:
+  max_phrases: 3
+  pair_min_share: 0.5                    # 'pair' needs its two contributors to hold at least this share of the points
+  phrase_bank:
+    lead: "{c1} carries the largest share of the score at {c1_points} points."
+    pair: "{c1} and {c2} carry most of the score."
+    second: "{c2} adds {c2_points} points."
+    detail: "{c1_detail}."
+    score: "The risk score reads {score}, led by {c1}."
+    confirm: "{confirming} of {of} categories confirm."
+    calm_rest: "The other measured categories read calm."
+    unmeasured: "{unmeasured_clause}."
+  requires:                              # phrase preconditions (review #2383 round 3)
+    calm_rest: {tiers: [BLUE, GREEN, NONE], others_calm: true}
+# Sentence-initial verbs of command; a rendered sentence opening with one is refused (review #2383 round 3).
+imperative_openers: [lower, raise, reduce, cut, trim, sell, buy, add, hedge, hedging, exit, close, open, hold, keep,
+  stay, go, get, take, move, avoid, consider, protect, wait, stand, sit, watch, prepare, rotate, switch, lock, book,
+  tighten, trail, set, place, put, use, load, accumulate, unwind, halve, dump, unload, lighten, less, more]
 behaviour_patterns:                      # case-insensitive regexes on NFKC-normalised prose; any match rejects the curation
   - '\b(buy|sell|short|cover|trim|reduce|add to|scale (in|out)|exit|liquidate|hedge with)\b'
   - '\b(lighten|unload|dump|offload|shed|shrink|pare|cut|rotate|de-?risk)\b'

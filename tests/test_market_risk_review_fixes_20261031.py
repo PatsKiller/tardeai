@@ -216,9 +216,11 @@ def test_b3_curation_rejects_behaviour_digits_and_ungrounded_numbers(answer):
 
 def test_b3_grounded_why_still_passes():
     cfg = dict(curation.load_config(), skip_tiers=[])
-    ok = "QQQ P/C OI at 3.97 is 3.85x its median, so hedging demand is surging."
-    r = curation.curate(CARD, DOC, call_model=lambda p, t: ok, cfg=cfg)
-    assert r["curated"] is True and ok in r["text"]
+    choice = '{"phrases": [{"id": "lead"}, {"id": "detail"}]}'  # template mode: a phrase choice, never prose
+    r = curation.curate(CARD, DOC, call_model=lambda p, t: choice, cfg=cfg)
+    assert r["curated"] is True
+    assert "Options flow carries the largest share of the score at 32 points." in r["text"]
+    assert "QQQ P/C OI 3.97 (3.85x median)." in r["text"]
 
 
 def test_b3_orange_and_red_are_never_curated_by_default():
@@ -523,4 +525,5 @@ def test_m4_gate_hold_is_not_a_material_change():
 def test_b3_non_ascii_digits_are_refused_by_their_own_rule():
     cfg = dict(curation.load_config(), skip_tiers=[])
     r = curation.curate(CARD, DOC, call_model=lambda p, t: "Pressure could build toward ٧١٢ on QQQ.", cfg=cfg)
-    assert r["curated"] is False and r["reason"] == "non-ASCII digits rejected" and r["rejected"] == ["١", "٢", "٧"]
+    assert r["curated"] is False and r["text"] == CARD
+    assert curation.non_ascii_digits("Pressure could build toward ٧١٢ on QQQ.") == ["١", "٢", "٧"]

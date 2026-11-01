@@ -183,20 +183,25 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
     intent = alerts.intent_for(doc, prior, policy)
+    built_now: dict[str, str] = {}  # key -> text of cards rendered and queued from THIS cycle's doc (review #2406 F1)
     if intent:
         if out["episode_id"]:
             intent["dedupe_key"] = f"{intent['dedupe_key']}:{out['episode_id']}"  # deterministic for this episode
-        alerts.outbox_put(
+        card_text = alerts.render(doc)
+        if alerts.outbox_put(
             {
                 "key": intent["dedupe_key"],
-                "text": alerts.render(doc),
+                "text": card_text,
                 "intent": intent,
                 "kind": "initial",
                 "episode_id": out["episode_id"],
             },
             now=now,
             path=ledger,
-        )
+        ):
+            # only a card this cycle actually queued may be curated: when the key was already pending, outbox_put
+            # keeps the OLD text, which must never be curated against this doc (review #2406 F1-r2)
+            built_now[intent["dedupe_key"]] = card_text
     for rep in escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already queued this cycle
@@ -222,7 +227,7 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
         on_assessed(doc)
     for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):
         try:  # one bad entry never stops the others or crashes the cycle (review round 3, H2)
-            res = _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
+            res = _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg, built_now)
         except Exception as exc:  # noqa: BLE001 — logged and reported; the entry stays queued for the next cycle
             print(
                 f"market_risk_evaluate: outbox entry {ent.get('key')} failed ({type(exc).__name__}: {exc})",
@@ -240,7 +245,9 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     return out
 
 
-def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg) -> dict[str, Any] | None:
+def _drain_one(
+    ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg, built_now: dict[str, str] | None = None
+) -> dict[str, Any] | None:
     """Send or reconcile one outbox entry. Returns the send result, or None when the entry was only reconciled."""
     from scripts.lib.market_risk import alerts, escalation
 
@@ -273,7 +280,12 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
             why = "episode acknowledged or closed" if ep is not None else "episode no longer in the ledger"
             alerts.mark_superseded(key, path=ledger, reason=why)
             return None
-    cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+    own_tier = str((ent.get("intent") or {}).get("tier") or "").upper()
+    built = (built_now or {}).get(key)
+    if built is not None and ent.get("text") == built and own_tier == str(doc.get("tier") or "").upper():
+        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+    else:  # a retried or repeat card was built from an earlier doc: never curate it against this one (F1, F1-r2)
+        cur = {"text": ent["text"], "curated": False, "reason": "not curated: card built in an earlier cycle"}
     res = alerts.deliver(
         cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
     )

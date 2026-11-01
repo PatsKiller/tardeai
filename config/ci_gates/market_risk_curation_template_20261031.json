@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_curation_template_20261031",
+  "files": [
+    "tests/test_market_risk_curation_template_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_CURATION_TEMPLATE_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_CURATION_TEMPLATE_20261031 — template-mode curation: the model returns only a JSON phrase",
+    "choice; the 'why' sentence is rendered from the card's own names and figures. Every round-2 review probe",
+    "(p_cur2, p_cur3), raw and JSON-smuggled, is refused with curation forced on for every tier. Model stubbed."
+  ]
+}
