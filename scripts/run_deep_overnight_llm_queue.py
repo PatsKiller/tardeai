@@ -1481,6 +1481,22 @@ def main():
         if len(jobs) > cap:
             log(f"Lane flapping ({flaps}): this run takes {cap} of {len(jobs)} jobs.")
             jobs = list(jobs[:cap])
+    struck_deferred = []
+    deferred_ids = set()  # struck jobs released behind this run's first answer (exempt from the bound)
+    if cloud:
+        # Round 15: a job that already carries a live strike runs only after this run's FIRST real answer (right
+        # behind the answered job). Struck jobs stay at the head of the queue, so without this a blip at the start
+        # of every run (a proxy restart, a token refresh) would reject exactly the same jobs again, a later answer
+        # would confirm it, and good jobs would be charged on their second strike. When every fetched job is
+        # struck there is nothing to answer first, so they run in normal order.
+        strike_age = float((drain_policy or {}).get("strike_max_age_days") or 7)
+        live = [r for r in jobs if _strike_is_fresh(_job_meta(dict(zip(columns, r))).get(STRIKE_KEY), run_id,
+                                                    strike_age)]
+        if live and len(live) < len(jobs):
+            live_ids = {id(r) for r in live}
+            jobs = [r for r in jobs if id(r) not in live_ids]
+            struck_deferred = live
+            log(f"{len(live)} struck job(s) wait for this run's first answer (then run in chunks behind answers).")
     if outage_probe and len(jobs) > 1:
         # Probe a job OTHER than the head, rotating with the trip count (jobs[1], then jobs[2], ...): two adjacent
         # bad prompts at the head can no longer wedge the breaker (pre-activation review). The head still runs
@@ -1638,7 +1654,10 @@ def main():
                     # end of a run, is therefore never charged, and a bad job that is always last stays pending.
                     suspects.append((job_id, reason, _job_meta(job)))
                     rejections_in_run += 1
-                    if job_id not in between_ids:
+                    if job_id not in between_ids and job_id not in deferred_ids:
+                        # A released struck job is a known suspect tried once, right after an answer: it never
+                        # trips the bound (after an answer only one probe is allowed, and it would land in the
+                        # same struck block and end the run as systemic).
                         rejections_in_row += 1
                     if cloud and rejections_in_row >= max_rejections:
                         # Round 12: request rejections never count toward an outage and never trip the breaker.
@@ -1701,6 +1720,14 @@ def main():
             if text:
                 confirmed.extend(suspects)
                 suspects = []
+                if struck_deferred:
+                    # Released in chunks of at most the bound, the next chunk after the next real answer: a chunk is
+                    # then confirmed by the answer that follows it before a time budget can end the run (releasing
+                    # every struck block at once could spend the whole budget with no later answer, so nothing is
+                    # ever confirmed and the same blocks return every run).
+                    chunk, struck_deferred = struck_deferred[:max_rejections], struck_deferred[max_rejections:]
+                    deferred_ids |= {dict(zip(columns, r))["id"] for r in chunk}
+                    queue_rows.extendleft(reversed(chunk))
             if cloud and (outage_probe or breaker["outage"]["trips"]):
                 close_breaker(breaker, "outage")
                 save_breaker(bpath, breaker)

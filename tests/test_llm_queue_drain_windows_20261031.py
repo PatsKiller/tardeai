@@ -22,12 +22,21 @@ from lib import llm_queue_drain_policy as dp  # noqa: E402
 
 POLICY = dp.load_policy()
 
+# Alarm-firing coverage (tests/test_alarm_coverage.py): the drain's one send_telegram site, _send_page, is fired by
+# test_the_outage_page_reaches_the_telegram_transport with the transport stubbed.
+COVERS = ["scripts/run_deep_overnight_llm_queue.py"]
+
 
 @pytest.fixture(autouse=True)
 def _isolated_breaker(tmp_path, monkeypatch):
     """Each test gets its own persisted breaker file (round 3: the breaker survives across runs by design)."""
     path = tmp_path / "breaker.json"
     monkeypatch.setenv("TRADEAI_DRAIN_BREAKER_STATE", str(path))
+    # Never the live clock: main() without --drain-window applies the --hard-stop 03:00 default against
+    # datetime.now(), so these tests would pass only between 00:00 and 03:00 local time.
+    import run_deep_overnight_llm_queue as drain
+
+    monkeypatch.setattr(drain, "past_hard_stop", lambda hard_stop_str: False)
     return path
 TRADING = lambda now: now.astimezone(dp.ET).weekday() < 5  # noqa: E731 - weekday calendar for the tests
 
@@ -517,8 +526,11 @@ def test_refusal_is_struck_then_charged_on_a_second_run(monkeypatch):
     assert _counted_ids(first) == [] and _struck_ids(first) == [61]
     assert "drain_rejection_strike" in store[61]
     assert [p for s, p in first if "SET status = 'running'" in s] == [(61,), (62,), (63,)]
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+    # Job 61's prompt is the one rejected (job-specific, not call-order: round 15 runs a struck job after the
+    # run's first answer, so a call-order "first call fails" would now hit job 62 -- a blip, not a bad prompt).
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({61}))
     second = _run(monkeypatch, ["--route", "cloud", "--limit", "3"], rows=rows, store=store)
+    assert [p for s, p in second if "SET status = 'running'" in s] == [(62,), (61,), (63,)]
     assert _counted_ids(second) == [61] and "drain_rejection_strike" not in store[61], "charged; strike cleared"
 
 
@@ -540,7 +552,7 @@ def test_job_specific_400_is_counted_when_the_next_job_is_answered(monkeypatch, 
 
     store, counted = {}, []
     for _ in range(2):
-        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({71}))
         log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(71), _row(72), _row(73)],
                    store=store)
         counted += _counted_ids(log)
@@ -848,6 +860,29 @@ def test_long_outage_pages_once(monkeypatch, _isolated_breaker):
         _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
     assert len(sent) == 1 and "every lane has refused" in sent[0] and "/" not in sent[0]
     assert w.load_breaker(_isolated_breaker)["outage"]["paged_since"] == since
+
+
+def test_the_outage_page_reaches_the_telegram_transport(monkeypatch, _isolated_breaker):
+    """Firing test for the alarm: the real _send_page runs and the message reaches telegram_alert.send_telegram
+    (stubbed: nothing leaves the machine) once, at P2, under the drain's producer id."""
+    import lib.llm_fallback as lf
+    import telegram_alert
+
+    calls = []
+
+    def transport(message, *args, **kwargs):
+        calls.append((message, kwargs))
+        return True
+
+    monkeypatch.setattr(telegram_alert, "send_telegram", transport)
+    _long_open_breaker(_isolated_breaker, hours_ago=7)
+    for _ in range(2):
+        monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+        _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert len(calls) == 1
+    message, kwargs = calls[0]
+    assert "every lane has refused" in message
+    assert kwargs == {"priority": "P2", "producer": "deep_overnight_llm_drain"}
 
 
 def test_long_outage_page_retries_after_a_failed_send(monkeypatch, _isolated_breaker):
@@ -1596,3 +1631,103 @@ def test_a_single_transient_refusal_records_no_progress_never(monkeypatch, _isol
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1)], store={})
     assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+# Round 15 (review of #2438/#2439): a blip at the start of every run must never charge good jobs.
+def _blip_then_ok(n_bad, total=200):
+    return _sequence_generator(["400"] * n_bad + ["ok"] * total)
+
+
+def test_a_start_of_run_blip_on_every_run_never_charges_a_good_job(monkeypatch):
+    """A proxy that 400s the first 8 calls of EVERY run; every job is good. Struck jobs used to stay at the head, so
+    the next run's blip hit exactly the same jobs and a later answer confirmed it: their second strike."""
+    import lib.llm_fallback as lf
+
+    store, rows, counted = {}, [_row(i) for i in range(1, 41)], []
+    for _ in range(6):
+        monkeypatch.setattr(lf, "generate_with_fallback", _blip_then_ok(8))
+        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=rows, store=store))
+    assert counted == []
+
+
+def test_struck_jobs_run_right_after_the_runs_first_answer(monkeypatch):
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {1: {w.STRIKE_KEY: stamp}, 2: {w.STRIKE_KEY: stamp}}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)], store=store)
+    assert _running(log) == [3, 1, 2, 4, 5]
+
+
+def test_struck_jobs_wait_while_the_run_has_no_answer(monkeypatch):
+    """Before the first answer a struck job is not tried: a blip that lasts the whole run never reaches it."""
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {1: {w.STRIKE_KEY: stamp}}
+    monkeypatch.setattr(lf, "generate_with_fallback", _blip_then_ok(50))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 5)], store=store)
+    assert 1 not in _running(log) and _counted_ids(log) == []
+    assert store[1][w.STRIKE_KEY] == stamp
+
+
+def test_an_expired_strike_is_not_deferred(monkeypatch):
+    import lib.llm_fallback as lf
+
+    old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 4)],
+               store={1: {w.STRIKE_KEY: old}})
+    assert _running(log) == [1, 2, 3]
+
+
+def test_when_every_fetched_job_is_struck_they_run_in_order(monkeypatch):
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 4)],
+               store={i: {w.STRIKE_KEY: stamp} for i in range(1, 4)})
+    assert _running(log) == [1, 2, 3]
+
+
+def test_a_bad_struck_job_is_still_charged_on_its_second_run(monkeypatch):
+    """The deferral must not shield a really bad prompt: it runs after the first answer, is rejected, and the next
+    answer confirms it -- charged on the second run, as before."""
+    import lib.llm_fallback as lf
+
+    store, rows = {}, [_row(i) for i in range(1, 6)]
+    counted = []
+    for _ in range(2):
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1}))
+        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=rows, store=store))
+    assert counted == [1]
+
+
+def test_a_released_struck_block_longer_than_the_bound_does_not_end_the_run(monkeypatch):
+    """12 struck jobs, all still bad, run right after the first answer. They are exempt from the request-rejection
+    bound: after an answer only one probe is allowed, and it would land in the same block and end the run."""
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 13)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 13))))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 41)], store=store)
+    assert _running(log) == [13, *range(1, 11), 14, 11, 12, *range(15, 41)]
+    assert sorted(_done(log)) == list(range(13, 41))
+
+
+def test_struck_jobs_are_released_in_chunks_of_the_bound_each_behind_an_answer(monkeypatch):
+    """24 struck jobs, all still bad: a chunk of at most the bound runs after each real answer, so every chunk is
+    confirmed by the answer that follows it even when a time budget cuts the run short."""
+    import lib.llm_fallback as lf
+
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 25)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 25))))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "60"], rows=[_row(i) for i in range(1, 61)], store=store)
+    assert bound == 10
+    assert _running(log)[:27] == [25, *range(1, 11), 26, *range(11, 21), 27, *range(21, 25)]
+    assert sorted(_done(log)) == list(range(25, 61))
