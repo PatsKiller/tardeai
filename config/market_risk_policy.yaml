@@ -324,6 +324,14 @@ decay:
   # breadth UNKNOWN by Monday 08:00 premarket, with no new market information at all. "wall" restores wall-clock age.
   clock: market
   reopen_et: "18:00"
+  # Hard caps every staleness check obeys (scoring.staleness; categories through _marketdata.stale): beyond either,
+  # an input is UNKNOWN whatever its own stale_after says. 96 market hours = four trading days without a refresh (72
+  # refused FRED's HY OAS on a Friday evening: the newest knowable observation is dated Tuesday, published with a
+  # one-to-two-day lag, 72.5 market hours old on 2026-10-30 18:30 ET); 120 wall hours covers the longest closure (a
+  # Friday close to the Tuesday open after a Monday holiday is 89.5h).
+  max_market_hours: 96
+  max_wall_hours: 120
+  future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
     - {max_age_hours: 12, weight: 1.0}
     - {max_age_hours: 24, weight: 0.8}
@@ -392,10 +400,17 @@ extended_hours:
   heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
   lookback_hours: 18             # and never less than back to the last regular close (Friday's after-hours on a weekend)
   stale_after_hours: 2           # in the decay clock (market hours); an older quote is named, with its age, as UNKNOWN
-  # Feeds whose stored price is a last trade that includes extended-hours prints. Alpaca IEX latestTrade does (IEX
-  # trades 04:00-20:00 on its own book); yfinance regularMarketPrice does not (it is the regular close), so a yfinance
-  # row fetched at 18:00 is not an after-hours quote. Add schwab when a Schwab quote lane writes market_quotes.
-  extended_sources: [alpaca, schwab]
+  # Stores/feeds whose rows are real extended-session prints. market_quotes_extended (#2384) holds Alpaca SIP 5-minute
+  # bars (a row exists only when something traded; bar_end is when it became knowable; reference_close is that
+  # session's official daily close). market_quotes is NOT one: its fetched_at is a fetch time and Alpaca IEX
+  # latestTrade repeats the closing print when nothing traded (20 of 106 after-close QQQ/SPY rows in the 30 days to
+  # 2026-10-31 were priced exactly at the close), and yfinance regularMarketPrice is the regular close. Even from an
+  # allowed source, a price equal to its reference close or a reference from another session is "not proven" and
+  # reads UNKNOWN, never CALM (review of #2415, F1/F4). Add schwab when a Schwab quote lane exists.
+  extended_sources: [market_quotes_extended, schwab]
+  # Feeds with an overnight (24/5, 20:00-04:00 ET) book. Alpaca (IEX and SIP bars) has none: an Alpaca row stamped
+  # overnight is an earlier last trade and is "not proven", never a calm overnight market.
+  overnight_sources: [schwab]
   # Overnight-gap proxy (gap-close 2026-10-31): today's 09:30 open vs the previous close, from daily bars. Known from
   # the open only, so it covers the session after a night the extended-session quotes were not collected (and all of
   # history before the system existed). Same % thresholds as above, or a gap of this many 14-day ATRs; plan §5.14

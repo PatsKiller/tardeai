@@ -126,23 +126,14 @@ def test_composite_holds_its_tier_over_the_weekend():
     assert fri.score == pytest.approx(mon.score, rel=0.25) and mon.tier == fri.tier
 
 
-# ── reader: session tag and post-close reference ─────────────────────────────────────────────────────────────────
+# ── extended prints: market_quotes_extended rows (#2384 reader shape); market_quotes is never an extended print ─────
 class _Cur:
     def __init__(self, conn):
         self.conn, self.description, self._rows = conn, [], []
 
     def execute(self, sql, params=None):
         self.conn.log.append((sql, params))
-        if "DISTINCT ON (symbol) symbol, price, fetched_at" in sql:
-            lo, hi = params[1], params[2]
-            best = {}
-            for r in self.conn.quotes:
-                if r["symbol"] in params[0] and lo <= r["fetched_at"] <= hi and r["price"] is not None:
-                    if r["symbol"] not in best or r["fetched_at"] > best[r["symbol"]]["fetched_at"]:
-                        best[r["symbol"]] = r
-            cols = ["symbol", "price", "fetched_at"]
-            rows = list(best.values())
-        elif "FROM market_quotes" in sql:
+        if "FROM market_quotes" in sql and "market_quotes_extended" not in sql:
             cols = ["symbol", "source", "price", "prev_close", "day_change_pct", "volume", "fetched_at"]
             rows = [
                 r for r in self.conn.quotes if r["symbol"] in params[0] and params[1] <= r["fetched_at"] <= params[2]
@@ -185,51 +176,30 @@ def _q(sym, price, prev, at, source="alpaca"):
     }
 
 
-FRIDAY = [  # the live 2026-10-30 QQQ rows (Alpaca prev_close = Thursday's 715.42 all day)
-    _q("QQQ", 690.56, 715.42, et(2026, 10, 30, 15, 58, 20)),
-    _q("QQQ", 690.54, 715.42, et(2026, 10, 30, 16, 0, 4)),
-    _q("QQQ", 691.11, 715.42, et(2026, 10, 30, 16, 3, 47)),
-    _q("QQQ", 690.80, 715.42, et(2026, 10, 30, 16, 9, 35)),
-]
-
-
-def test_reader_tags_session_and_rebases_after_hours_on_the_days_close():
-    r = rd.PgReader(lambda: _Conn(FRIDAY))
-    rows = r.quotes(["QQQ"], start=et(2026, 10, 30, 15), end=et(2026, 10, 30, 18))
-    by_t = {x["as_of"][11:19]: x for x in rows}
-    assert by_t["19:58:20"]["session"] == "regular" and by_t["19:58:20"]["prev_close"] == 715.42
-    assert by_t["20:00:04"]["session"] == "regular"  # the closing snapshot, inside the 16:00:59 cutoff
-    ah = by_t["20:09:35"]
-    assert ah["session"] == "afterhours" and ah["prev_close"] == 690.54 and ah["prev_close_stored"] == 715.42
-    assert ah["reference"] == "regular close 2026-10-30"
-    assert 100 * (ah["price"] / ah["prev_close"] - 1) == pytest.approx(0.04, abs=0.01)  # not -3.4%
-
-
-def test_reader_drops_the_reference_when_the_days_close_is_missing():
-    r = rd.PgReader(lambda: _Conn([FRIDAY[-1]]))
-    (row,) = r.quotes(["QQQ"], start=et(2026, 10, 30, 16, 5), end=et(2026, 10, 30, 18))
-    assert row["session"] == "afterhours" and row["prev_close"] is None
-    assert row["reference"] == "no regular close found"
-
-
-def test_reader_close_lookup_is_bounded_by_the_close_cutoff():
-    # the day's close is the last quote at or before 16:00:59 ET (REGULAR_CLOSE_CUTOFF_ET); a 16:03 quote is not it
-    conn = _Conn(FRIDAY[:1] + [FRIDAY[2]])
-    r = rd.PgReader(lambda: conn)
-    rows = r.quotes(["QQQ"], start=et(2026, 10, 30, 15), end=et(2026, 10, 30, 16, 5))
-    close_q = [p for q, p in conn.log if "DISTINCT ON (symbol) symbol, price, fetched_at" in q]
-    assert close_q and close_q[0][2] == et(2026, 10, 30, 16, 0, 59)
-    assert [x for x in rows if x["session"] == "afterhours"][0]["prev_close"] == 690.56
+def test_f4_market_quotes_rows_are_never_an_after_hours_move():
+    # review of #2415, F4: a 10:00 quote and a 17:00 quote in market_quotes (fetch times, not trades) must not make
+    # a -1.6% "after-hours" move. Through the production reader they are not extended prints at all.
+    rows = [_q("QQQ", 700.0, 715.42, et(2026, 10, 30, 10)), _q("QQQ", 689.0, 715.42, et(2026, 10, 30, 17))]
+    ctx = c.EvalContext(
+        now=et(2026, 10, 30, 17, 5), reader=rd.PgReader(lambda: _Conn(rows)), policy=P, session="afterhours"
+    )
+    ctx.reader.session_opens = lambda *a, **k: []
+    o = xh.evaluate(ctx)
+    assert o.state == "UNKNOWN" and "no proven extended-session print" in o.reason_unknown
 
 
 # ── extended_hours category over production-shaped rows ──────────────────────────────────────────────────────────
 class _R:
-    def __init__(self, rows):
-        self.rows, self.calls = rows, []
+    def __init__(self, rows, filt=True):
+        self.rows, self.calls, self.filt = rows, [], filt
 
     def quotes(self, symbols, *, start, end):
         self.calls.append((start, end))
-        return [r for r in self.rows if r["symbol"] in symbols and start <= datetime.fromisoformat(r["as_of"]) <= end]
+        return [
+            r
+            for r in self.rows
+            if r["symbol"] in symbols and (not self.filt or start <= datetime.fromisoformat(r["as_of"]) <= end)
+        ]
 
     def session_opens(self, symbols, *, sessions, end):
         return []
@@ -238,7 +208,8 @@ class _R:
         return []
 
 
-def _row(sym, price, prev, at, session, source="alpaca"):
+def _row(sym, price, prev, at, session, source="market_quotes_extended:sip", ref_date=None):
+    """A row as #2384's PgReader.extended_quotes returns it (bar_end -> as_of, reference_close -> prev_close)."""
     return {
         "symbol": sym,
         "price": price,
@@ -246,55 +217,228 @@ def _row(sym, price, prev, at, session, source="alpaca"):
         "as_of": at.isoformat(),
         "session": session,
         "source": source,
-        "reference": "regular close",
+        "reference_date": ref_date or sessions.last_closed_session(at).isoformat(),
     }
 
 
-def _ctx(now, rows):
-    return c.EvalContext(now=now, reader=_R(rows), policy=P, session=sessions.session_label(now))
+def _ctx(now, rows, filt=True):
+    return c.EvalContext(now=now, reader=_R(rows, filt), policy=P, session=sessions.session_label(now))
 
 
-def test_after_hours_quote_is_read_with_its_age():
+@pytest.mark.parametrize(
+    "t,want",
+    [
+        (et(2026, 10, 30, 16, 5), "2026-10-30"),  # after-hours on D -> D
+        (et(2026, 10, 30, 16, 0, 30), "2026-10-29"),  # inside the closing-snapshot minute: D not closed yet
+        (et(2026, 11, 1, 20, 30), "2026-10-30"),  # Sunday overnight -> Friday
+        (et(2026, 11, 2, 8), "2026-10-30"),  # Monday pre-market -> Friday
+        (et(2026, 11, 27, 8), "2026-11-25"),  # the day after Thanksgiving -> Wednesday
+        (et(2026, 11, 27, 13, 5), "2026-11-27"),  # early close 13:00
+    ],
+)
+def test_last_closed_session(t, want):
+    assert sessions.last_closed_session(t).isoformat() == want
+
+
+def test_after_hours_print_is_read_with_its_age_and_reference():
     rows = [_row("QQQ", 675.0, 690.0, et(2026, 10, 30, 17, 0), "afterhours")]  # -2.2%
     o = xh.evaluate(_ctx(et(2026, 10, 30, 18, 0), rows))
     assert o.state == "STRESS" and "afterhours" in o.evidence[0].label
-    assert "1.0h old" in o.evidence[0].detail and "17:00 ET" in o.evidence[0].detail
+    d = o.evidence[0].detail
+    assert "vs 2026-10-30 close" in d and "1.0h old" in d and "17:00 ET" in d
+    assert o.evidence[0].source == "market_quotes_extended:sip"
 
 
-def test_overnight_quote_counts():
+def test_overnight_print_from_an_overnight_feed_counts():
     rows = [_row("SPY", 740.0, 750.0, et(2026, 11, 2, 1, 0), "overnight", source="schwab")]
     o = xh.evaluate(_ctx(et(2026, 11, 2, 1, 30), rows))
     assert o.state == "WARN"
 
 
-def test_regular_close_feed_is_not_an_after_hours_print():
-    rows = [_row("SPY", 750.0, 750.0, et(2026, 10, 30, 17, 54), "afterhours", source="yfinance")]
+@pytest.mark.parametrize("source", ["yfinance", "alpaca", "market_quotes"])
+def test_market_quotes_feeds_are_not_extended_prints(source):
+    rows = [_row("SPY", 740.0, 750.0, et(2026, 10, 30, 17, 54), "afterhours", source=source)]
     o = xh.evaluate(_ctx(et(2026, 10, 30, 18, 0), rows))
     assert o.state == "UNKNOWN"
 
 
-def test_weekend_names_the_last_after_hours_quote_and_its_age():
+def test_f1_price_equal_to_the_close_is_not_a_calm_print():
+    # live shape, Wed 10-28 16:45: IEX latestTrade still the closing print
+    rows = [
+        _row("QQQ", 725.59, 725.59, et(2026, 10, 28, 16, 45), "afterhours"),
+        _row("SPY", 680.0, 680.0, et(2026, 10, 28, 16, 45), "afterhours"),
+    ]
+    o = xh.evaluate(_ctx(et(2026, 10, 28, 16, 50), rows))
+    assert o.state == "UNKNOWN" and "no extended-session trade proven" in o.reason_unknown
+    assert "QQQ" in o.reason_unknown and "SPY" in o.reason_unknown
+
+
+def test_f1_alpaca_overnight_row_is_not_a_calm_print():
+    rows = [_row("QQQ", 690.8, 690.54, et(2026, 11, 2, 2, 0), "overnight")]
+    o = xh.evaluate(_ctx(et(2026, 11, 2, 2, 10), rows))
+    assert o.state == "UNKNOWN" and "no overnight trades" in o.reason_unknown
+
+
+def test_f1_newest_unproven_row_hides_an_older_print_for_that_symbol():
+    rows = [
+        _row("QQQ", 689.0, 690.54, et(2026, 10, 30, 16, 20), "afterhours"),
+        _row("QQQ", 690.54, 690.54, et(2026, 10, 30, 16, 40), "afterhours"),
+    ]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 16, 45), rows))
+    assert o.state == "UNKNOWN"
+
+
+def test_f4_reference_from_another_session_is_not_proven():
+    # a Friday after-hours print against Thursday's close is the regular-session move (-3.4%), not an extended one
+    rows = [_row("QQQ", 690.80, 715.42, et(2026, 10, 30, 16, 10), "afterhours", ref_date="2026-10-29")]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 16, 15), rows))
+    assert o.state == "UNKNOWN" and "is not the 2026-10-30 session close" in o.reason_unknown
+
+
+def test_f4_monday_premarket_against_fridays_close_counts():
+    rows = [_row("QQQ", 680.0, 690.80, et(2026, 11, 2, 8, 0), "premarket", ref_date="2026-10-30")]
+    o = xh.evaluate(_ctx(et(2026, 11, 2, 8, 30), rows))
+    assert o.state == "STRESS"
+
+
+def test_f5_future_quote_is_invalid():
+    rows = [_row("QQQ", 670.0, 690.54, et(2026, 10, 30, 19, 0), "afterhours")]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 17, 0), rows, filt=False))
+    assert o.state == "UNKNOWN" and "stamped in the future" in o.reason_unknown
+
+
+def test_f5_stale_proxy_is_named_beside_a_fresh_one():
+    rows = [
+        _row("QQQ", 670.0, 690.54, et(2026, 10, 30, 16, 30), "afterhours"),
+        _row("SPY", 681.0, 680.0, et(2026, 10, 30, 19, 0), "afterhours"),
+    ]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 19, 30), rows))
+    assert o.state == "CALM"
+    assert "not measured: QQQ -3.0%" in o.headline and "3.0 market hours old" in o.headline
+    assert any(e.label == "index proxy not measured" and "QQQ" in e.detail for e in o.evidence)
+
+
+def test_weekend_names_the_last_after_hours_print_and_its_age():
     rows = [_row("QQQ", 690.80, 690.54, et(2026, 10, 30, 16, 9, 35), "afterhours")]
     ctx = _ctx(et(2026, 10, 31, 19, 50), rows)
     o = xh.evaluate(ctx)
     assert o.state == "UNKNOWN"
-    assert "QQQ +0.0%" in o.reason_unknown and "Fri 10-30 16:09 ET" in o.reason_unknown
-    assert "7.8 market hours old" in o.reason_unknown
+    assert "QQQ +0.0% at Fri 10-30 16:09 ET is 7.8 market hours old" in o.reason_unknown
     assert ctx.reader.calls[0][0] <= et(2026, 10, 30, 16, 0)  # the query reached back to Friday's close
 
 
-# ── --shadow: snapshot written, alert path never touched ─────────────────────────────────────────────────────────
-class _FixedReader(_R):
-    pass
+def test_reader_error_is_named():
+    ctx = _ctx(et(2026, 10, 30, 18, 0), [])
+    ctx.reader.extended_quotes_error = "market_quotes_extended not created (migration not applied)"
+    assert "migration not applied" in xh.evaluate(ctx).reason_unknown
 
 
-def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch):
+# ── F2: every category's staleness on the market clock, with hard caps ───────────────────────────────────────────
+def _bars(end_day, n=300):
+    """Daily closes for the sector SPDRs + RSP/SPY ending ``end_day`` (weekdays only), each knowable at 16:00 ET."""
+    from scripts.lib.market_risk.categories._marketdata import ts as _ts  # noqa: F401
+
+    days, d = [], end_day
+    while len(days) < n:
+        if sessions.is_trading_day(d):
+            days.append(d)
+        d -= timedelta(days=1)
+    days.reverse()
+    out = []
+    for sym in P["breadth"]["proxy"]["universe"] + ["RSP", "SPY"]:
+        for i, dd in enumerate(days):
+            out.append(
+                {
+                    "symbol": sym,
+                    "date": dd.isoformat(),
+                    "close": 100.0 + i * 0.05,
+                    "as_of": datetime.combine(dd, datetime.min.time().replace(hour=16), ET).isoformat(),
+                }
+            )
+    return out
+
+
+class _BreadthReader:
+    def __init__(self, bars):
+        self.bars = bars
+
+    def sector_states(self, *, end):
+        return []
+
+    def daily_bars(self, symbols, *, sessions, end):
+        return [b for b in self.bars if b["symbol"] in symbols and datetime.fromisoformat(b["as_of"]) <= end]
+
+
+@pytest.mark.parametrize(
+    "now,known",
+    [
+        (et(2026, 10, 31, 19, 50), True),  # Saturday
+        (et(2026, 11, 1, 18, 30), True),  # Sunday futures open
+        (et(2026, 11, 2, 8, 0), True),  # Monday premarket
+        (et(2026, 11, 4, 9, 0), False),  # Wednesday morning: Friday's bars are really stale now
+    ],
+)
+def test_f2_breadth_evaluates_over_the_weekend_from_fridays_bars(now, known):
+    from datetime import date
+
+    from scripts.lib.market_risk.categories import breadth
+
+    ctx = c.EvalContext(now=now, reader=_BreadthReader(_bars(date(2026, 10, 30))), policy=P, session="closed")
+    o = breadth.evaluate(ctx)
+    assert (o.state != "UNKNOWN") is known, o.reason_unknown
+    if not known:
+        assert "stale" in o.reason_unknown and "no sector-ETF daily bars" not in o.reason_unknown
+
+
+def test_f2_wall_cap_refuses_old_data_the_market_clock_would_keep():
+    # 10 days of holidays-free wall time but a policy without a market cap: the wall cap still refuses it
+    cfg = dict(P["decay"], max_market_hours=None)
+    at = et(2026, 10, 23, 16)
+    age, why = scoring.staleness(at, et(2026, 11, 2, 9), cfg, 999)
+    assert why and "wall clock" in why
+    _, why_m = scoring.staleness(at, et(2026, 11, 2, 9), P["decay"], 999)
+    assert why_m and "market hours" in why_m
+
+
+def test_f2_future_stamped_observation_is_unknown():
+    o = _obs(et(2026, 10, 30, 18), cat="technical")
+    assert scoring.decay_weight(o, et(2026, 10, 30, 16), P)[0] == 0.0
+
+
+def test_f2_market_stale_helper_matches_the_scorer():
+    from scripts.lib.market_risk.categories import _marketdata as md
+
+    fri = et(2026, 10, 30, 16)
+    assert not md.stale(fri, et(2026, 11, 2, 8), 30, P["decay"])  # Monday premarket: 22 market hours
+    assert md.stale(fri, et(2026, 11, 2, 8), 30)  # wall clock (no policy): 64h
+    assert not md.stale(fri, et(2026, 11, 4, 12), 999, P["decay"])  # 74 market hours: inside the 96h cap
+    assert md.stale(fri, et(2026, 11, 5, 12), 999, P["decay"])  # 98 market hours: past the cap
+
+
+# ── --shadow: snapshot written, alert path never touched; replays write no snapshot ──────────────────────────────
+FIXED = datetime(2026, 10, 31, 23, 50, tzinfo=timezone.utc)
+
+
+def _shadow_env(tmp_path, monkeypatch):
     import importlib
 
     ev = importlib.import_module("scripts.market_risk_evaluate")
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     monkeypatch.setenv("MARKET_RISK_EPISODES_PATH", str(tmp_path / "ep.json"))
     monkeypatch.setenv("MARKET_RISK_SENT_LEDGER", str(tmp_path / "sk.json"))
+    monkeypatch.setattr(ev, "production_reader", lambda: _R([]))
+
+    class _DT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return FIXED
+
+    monkeypatch.setattr(ev, "datetime", _DT)
+    return ev
+
+
+def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)
     trip = types.ModuleType("telegram_alert")
 
     def _boom(*a, **k):
@@ -307,11 +451,9 @@ def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch
 
     monkeypatch.setattr(alerts, "deliver", _boom)
     monkeypatch.setattr(alerts, "outbox_put", _boom)
-    monkeypatch.setattr(ev, "production_reader", lambda: _R([]))
-    rc = ev.main(["--shadow", "--no-portfolio", "--as-of", "2026-10-31T23:50:00+00:00"])
-    assert rc == 0
+    assert ev.main(["--shadow", "--no-portfolio"]) == 0
     snap = json.loads((tmp_path / "data/runtime/market_risk_latest.json").read_text())
-    assert snap["tier"] in c.TIERS
+    assert snap["tier"] in c.TIERS and snap["mode"] == "shadow" and snap["history"][-1]["mode"] == "shadow"
     d = tmp_path / "data/runtime/market_risk"
     assert (d / "shadow_latest.json").exists() and not (d / "latest.json").exists()
     assert [p.name for p in (d / "receipts").iterdir()] == ["20261031T235000Z-shadow.json"]
@@ -319,25 +461,46 @@ def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch
     assert not (tmp_path / "ep.json").exists() and not (tmp_path / "sk.json").exists()
 
 
-def test_dry_run_beats_shadow(tmp_path, monkeypatch):
-    import importlib
+def test_f3_projection_carries_the_mode(tmp_path, monkeypatch):
+    from scripts.lib import market_risk_projection as proj
 
-    ev = importlib.import_module("scripts.market_risk_evaluate")
-    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
-    monkeypatch.setenv("MARKET_RISK_EPISODES_PATH", str(tmp_path / "ep.json"))
-    monkeypatch.setenv("MARKET_RISK_SENT_LEDGER", str(tmp_path / "sk.json"))
-    monkeypatch.setattr(ev, "production_reader", lambda: _R([]))
-    assert ev.main(["--shadow", "--dry-run", "--no-portfolio", "--as-of", "2026-10-31T23:50:00+00:00"]) == 0
+    ev = _shadow_env(tmp_path, monkeypatch)
+    assert ev.main(["--shadow", "--no-portfolio"]) == 0
+    snap = json.loads((tmp_path / "data/runtime/market_risk_latest.json").read_text())
+    assert proj.build(snap, None, now=FIXED)["mode"] == "shadow"
+    assert proj.snapshot_from_assessment({"mode": "apply", "tier": "BLUE"})["mode"] == "live"
+
+
+def test_f3_shadow_replay_never_writes_the_snapshot_or_prior(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)
+    assert ev.main(["--shadow", "--no-portfolio", "--as-of", "2026-10-29T19:00:00Z"]) == 0
+    d = tmp_path / "data/runtime/market_risk"
+    assert not (tmp_path / "data/runtime/market_risk_latest.json").exists()
+    assert not (d / "shadow_latest.json").exists() and not (d / "latest.json").exists()
+    assert [p.name for p in (d / "receipts").iterdir()] == ["20261029T190000Z-shadow-replay.json"]
+
+
+def test_f3_history_stays_in_time_order(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)
+    snap_p = tmp_path / "data/runtime/market_risk_latest.json"
+    snap_p.parent.mkdir(parents=True)
+    later = {"as_of": "2026-11-01T00:30:00+00:00", "score": 1, "tier": "BLUE", "mode": "live"}
+    earlier = {"as_of": "2026-10-31T20:00:00+00:00", "score": 1, "tier": "BLUE", "mode": "live"}
+    snap_p.write_text(json.dumps({"history": [later, earlier]}))
+    assert ev.main(["--shadow", "--no-portfolio"]) == 0
+    hist = [h["as_of"][:16] for h in json.loads(snap_p.read_text())["history"]]
+    assert hist == ["2026-10-31T20:00", "2026-10-31T23:50", "2026-11-01T00:30"]
+
+
+def test_dry_run_beats_shadow(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)
+    assert ev.main(["--shadow", "--dry-run", "--no-portfolio"]) == 0
     assert not (tmp_path / "data").exists()
 
 
 def test_shadow_reports_the_files_it_wrote(tmp_path, monkeypatch, capsys):
-    import importlib
-
-    ev = importlib.import_module("scripts.market_risk_evaluate")
-    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
-    monkeypatch.setattr(ev, "production_reader", lambda: _R([]))
-    assert ev.main(["--shadow", "--json", "--no-portfolio", "--as-of", "2026-10-31T23:50:00+00:00"]) == 0
+    ev = _shadow_env(tmp_path, monkeypatch)
+    assert ev.main(["--shadow", "--json", "--no-portfolio"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["mode"] == "shadow" and doc["written"].endswith("market_risk/shadow_latest.json")
     assert Path(doc["written"]).exists() and Path(doc["snapshot"]).exists()

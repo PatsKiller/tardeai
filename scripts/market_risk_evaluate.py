@@ -73,9 +73,17 @@ def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     atomic_write_json(d / "receipts" / f"{stamp}{'-shadow' if shadow else ''}.json", body)
     atomic_write_json(d / (SHADOW_PRIOR if shadow else "latest.json"), body)
     prev = _read_prior(snapshot_path()) or {}
-    hist = [h for h in (prev.get("history") or []) if isinstance(h, dict)]
-    hist.append({"as_of": doc.get("as_of"), "score": doc.get("score"), "tier": doc.get("tier")})
-    atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))
+    hist = [h for h in (prev.get("history") or []) if isinstance(h, dict) and h.get("as_of") != doc.get("as_of")]
+    hist.append(
+        {
+            "as_of": doc.get("as_of"),
+            "score": doc.get("score"),
+            "tier": doc.get("tier"),
+            "mode": "shadow" if shadow else "live",
+        }
+    )
+    hist.sort(key=lambda h: scoring._parse(h.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc))
+    atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))  # carries mode: live|shadow
     return str(d / (SHADOW_PRIOR if shadow else "latest.json"))
 
 
@@ -322,15 +330,25 @@ def _read_prior(path: Path) -> dict | None:
         return None
 
 
-def _shadow(now: datetime, reader: Any, policy: dict, prior: dict | None, portfolio, *, as_json: bool) -> int:
+def _shadow(
+    now: datetime, reader: Any, policy: dict, prior: dict | None, portfolio, *, as_json: bool, replay: bool = False
+) -> int:
     """--shadow: evaluate, then persist the receipt, the shadow prior and the consumers' snapshot. The alert path
     (outbox, episode store, sent-key ledger, curation, send_telegram) is never imported or called."""
     assessment = evaluate(now, reader, policy, prior, portfolio)
     doc = assessment.to_dict()
     doc["mode"] = "shadow"
     doc["session"] = session_of(now)
-    doc["written"] = persist(doc, now, shadow=True)
-    doc["snapshot"] = str(snapshot_path())
+    if replay:
+        # a replay (--as-of) is never what the market looks like now: it writes only its own receipt, never the
+        # snapshot Home/API/CIO read, its history, or the shadow prior (review of #2415, F3)
+        stamp = now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = state_dir() / "receipts" / f"{stamp}-shadow-replay.json"
+        atomic_write_json(path, doc)
+        doc["written"], doc["snapshot"] = str(path), None
+    else:
+        doc["written"] = persist(doc, now, shadow=True)
+        doc["snapshot"] = str(snapshot_path())
     if as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:
@@ -341,7 +359,10 @@ def _shadow(now: datetime, reader: Any, policy: dict, prior: dict | None, portfo
             f"  hysteresis: raw {assessment.hysteresis.get('raw_tier')} -> {assessment.tier} "
             f"(bootstrap={assessment.hysteresis.get('bootstrap')})"
         )
-        print(f"  wrote {doc['written']} and {doc['snapshot']}")
+        print(
+            f"  wrote {doc['written']}"
+            + (f" and {doc['snapshot']}" if doc["snapshot"] else " (replay: snapshot untouched)")
+        )
     return 0
 
 
@@ -393,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     prior = _read_prior(prior_path) if prior_path else None
     portfolio = None if a.no_portfolio else portfolio_context(now)
     if shadow:
-        return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json)
+        return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json, replay=bool(a.as_of))
     written: dict[str, str] = {}
 
     def _persist(d: dict) -> None:

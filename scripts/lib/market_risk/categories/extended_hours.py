@@ -16,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from scripts.lib.market_risk import sessions
+from scripts.lib.market_risk.categories._marketdata import ts as _ts
 from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
 
 CATEGORY = "extended_hours"
@@ -76,21 +77,80 @@ def _move(row: dict[str, Any]) -> float | None:
 EXTENDED_SESSIONS = ("premarket", "afterhours", "overnight", "extended", "pre", "post")
 
 
-def _latest(rows: list[dict[str, Any]], sources: list[str] | None = None) -> dict[str, dict[str, Any]]:
-    """Newest extended-session quote per symbol. A row naming a ``source`` outside ``sources`` is skipped: a feed
-    whose price is the regular-session close (yfinance ``regularMarketPrice``) fetched at 18:00 is not an
-    after-hours print, and reading it as one would report a flat after-hours market that was never measured."""
+def _proof(r: dict[str, Any], now, cfg: dict[str, Any]) -> str | None:
+    """Why this row is NOT a usable extended-session print, or None when it is.
+
+    ``market_quotes.fetched_at`` is the fetch time, not a trade time, and Alpaca IEX ``latestTrade`` returns the
+    closing print when nothing has traded since: 20 of 106 after-close QQQ/SPY rows in the 30 days to 2026-10-31
+    were priced exactly at that day's close (Wed 10-28 16:50 QQQ 725.59 = close). Such a row proves nothing about
+    the after-hours market, so it can never read CALM. Likewise a feed with no overnight book (IEX: 04:00-20:00)
+    fetched 20:00-04:00 is a stale last trade."""
+    try:
+        at = _ts(r)
+    except Exception:  # noqa: BLE001
+        at = None
+    if at is None:
+        return "no timestamp"
+    if at > now + timedelta(seconds=float(cfg.get("future_tolerance_seconds", 60))):
+        return "stamped in the future"
+    if r.get("prev_close") in (None, "") or r.get("price") in (None, ""):
+        return f"no reference close ({r.get('reference') or 'missing'})"
+    # The reference must be the close of the session this print follows (after-hours on D -> D's close; Sunday
+    # overnight / Monday pre-market -> Friday's). market_quotes_extended (#2384) stamps reference_date; a row
+    # referencing any other session (a 10:00 quote, Thursday's close for a Friday after-hours print) measures the
+    # regular-session move, not an extended one (review of #2415, F4).
+    if r.get("reference_date"):
+        want = sessions.last_closed_session(at).isoformat()
+        if str(r["reference_date"])[:10] != want:
+            return f"reference close {str(r['reference_date'])[:10]} is not the {want} session close"
+    src = str(r.get("source") or "").lower().split(":", 1)[-1]  # feed name (market_quotes_extended:sip -> sip)
+    sess = str(r.get("session") or "").lower()
+    overnight_ok = {str(x).lower() for x in cfg.get("overnight_sources") or []}
+    if sess == "overnight" and src and src not in overnight_ok:
+        return f"{src} has no overnight trades (20:00-04:00 ET); its price is an earlier last trade"
+    try:
+        if float(r["price"]) == float(r["prev_close"]):
+            return "price equals the reference close: no extended-session trade proven"
+    except (TypeError, ValueError):
+        return "unreadable price"
+    return None
+
+
+def _source_ok(source: str, allowed: set[str]) -> bool:
+    """``market_quotes_extended:sip`` matches ``market_quotes_extended``; ``alpaca`` matches ``alpaca``."""
+    src = source.lower()
+    return src in allowed or src.split(":", 1)[0] in allowed
+
+
+def _latest(
+    rows: list[dict[str, Any]], sources: list[str] | None = None, now=None, cfg: dict[str, Any] | None = None
+) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[dict[str, Any], str]]]:
+    """(newest PROVEN extended-session print per symbol, {symbol: (newest unproven row, why)} for symbols whose
+    newest extended row proves nothing). A row naming a ``source`` outside ``sources`` is skipped: a feed whose price
+    is the regular-session close (yfinance ``regularMarketPrice``) fetched at 18:00 is not an after-hours print."""
     allowed = {str(x).lower() for x in sources} if sources else None
-    out: dict[str, dict[str, Any]] = {}
+    newest: dict[str, tuple[dict[str, Any], str | None]] = {}
+    future: dict[str, tuple[dict[str, Any], str]] = {}
     for r in rows:
         if str(r.get("session") or "").lower() not in EXTENDED_SESSIONS:
             continue
-        if allowed is not None and r.get("source") and str(r["source"]).lower() not in allowed:
+        if allowed is not None and r.get("source") and not _source_ok(str(r["source"]), allowed):
             continue
         s = str(r.get("symbol") or "").upper()
-        if s and (s not in out or str(r.get("as_of")) > str(out[s].get("as_of"))):
-            out[s] = r
-    return out
+        if not s:
+            continue
+        why = _proof(r, now, cfg or {}) if now is not None else None
+        if why == "stamped in the future":
+            future.setdefault(s, (r, f"{why} (invalid; the reader should never return it)"))
+            continue  # never newer than a valid row; it is not a row at all
+        if s not in newest or str(r.get("as_of")) > str(newest[s][0].get("as_of")):
+            newest[s] = (r, why)
+    good = {s: r for s, (r, why) in newest.items() if why is None}
+    bad = {s: (r, why) for s, (r, why) in newest.items() if why is not None}
+    for s, rw in future.items():
+        if s not in good:
+            bad.setdefault(s, rw)
+    return good, bad
 
 
 def _last_close(now):
@@ -129,12 +189,32 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     proxies = [str(s).upper() for s in cfg.get("index_proxies") or ["QQQ", "SPY"]]
     heavy = [str(s).upper() for s in cfg.get("heavyweights") or []]
     start = min(ctx.now - timedelta(hours=float(cfg.get("lookback_hours", 18))), _last_close(ctx.now))
-    latest = _latest(ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now), cfg.get("extended_sources"))
+    pcfg = dict(cfg, future_tolerance_seconds=(ctx.policy.get("decay") or {}).get("future_tolerance_seconds", 60))
+    latest, unproven = _latest(
+        ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now), cfg.get("extended_sources"), ctx.now, pcfg
+    )
     stale_h = float(cfg.get("stale_after_hours", 2))
     aged = {s: _age(latest[s], ctx) for s in latest}
     fresh = {s: r for s, r in latest.items() if aged[s] is not None and aged[s] <= stale_h}
     old_quotes = {s: r for s, r in latest.items() if s not in fresh}
     latest = fresh
+    # Index proxies that are not measured now, by name: a stale QQQ at -3% beside a fresh flat SPY must not read as
+    # a silent CALM (review of #2415, F5).
+    dropped: list[str] = []
+    for s in proxies:
+        if s in latest:
+            continue
+        if s in old_quotes:
+            m0 = _move(old_quotes[s])
+            dropped.append(
+                f"{s}{f' {m0:+.1f}%' if m0 is not None else ''} at {_et_label(old_quotes[s].get('as_of'))} is "
+                f"{aged[s]:.1f} market hours old (limit {stale_h:g}h)"
+            )
+        elif s in unproven:
+            r0, why = unproven[s]
+            dropped.append(f"{s} {r0.get('session')} {_et_label(r0.get('as_of'))} ({r0.get('source')}): {why}")
+        else:
+            dropped.append(f"{s}: no extended-session quote")
     shock = (ctx.extras or {}).get("opening_shock") or {}
     moves = {s: _move(latest[s]) for s in proxies if s in latest and _move(latest[s]) is not None}
     try:
@@ -143,23 +223,17 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         print(f"market_risk: extended_hours gap proxy failed ({type(exc).__name__}: {exc})", file=sys.stderr)
         gaps = {}
     if not moves and not shock.get("shock") and not gaps:
-        newest = [
-            (s, r)
-            for s, r in sorted(old_quotes.items(), key=lambda kv: str(kv[1].get("as_of")), reverse=True)
-            if s in proxies
-        ]
-        if newest:
-            s0, r0 = newest[0]
-            m0 = _move(r0)
-            mv = f" {m0:+.1f}%" if m0 is not None else ""
-            return unknown(
-                CATEGORY,
-                ctx.now,
-                f"latest extended-session quote {s0}{mv} ({r0.get('session')}, {_et_label(r0.get('as_of'))}, "
-                f"{r0.get('source') or 'quote'}) is {aged[s0]:.1f} market hours old, beyond {stale_h:g}h; "
-                "no fresher extended-session quote and no opening print for the index proxies",
-            )
-        return unknown(CATEGORY, ctx.now, "no extended-session quotes and no opening print for the index proxies")
+        return unknown(
+            CATEGORY,
+            ctx.now,
+            ("no proven extended-session print for the index proxies: " + "; ".join(dropped))[:400]
+            + "; no opening print"
+            + (
+                f"; market_quotes_extended: {err}"
+                if (err := getattr(ctx.reader, "extended_quotes_error", None))
+                else ""
+            ),
+        )
     warn, stress = float(cfg.get("warn_pct", -0.75)), float(cfg.get("stress_pct", -1.5))
     worst_sym = min(moves, key=moves.get) if moves else None
     worst = moves[worst_sym] if worst_sym else 0.0
@@ -168,8 +242,10 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             label=f"{s} {latest[s].get('session') or 'extended'} move vs {latest[s].get('reference') or 'previous close'}",
             value=round(m, 2),
             as_of=latest[s].get("as_of"),
-            source=f"market_quotes:{latest[s].get('source')}" if latest[s].get("source") else "market_quotes",
-            detail=f"{m:+.1f}% ({_et_label(latest[s].get('as_of'))}, {aged[s]:.1f}h old)",
+            source=str(latest[s].get("source") or "market_quotes"),
+            detail=f"{m:+.1f}%"
+            + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else "")
+            + f" ({_et_label(latest[s].get('as_of'))}, {aged[s]:.1f}h old)",
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
     ]
@@ -237,6 +313,12 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         head += " · " + ", ".join(big[:3])
     if shock.get("shock"):
         head = "PANIC OPEN · " + head
+    if dropped and (moves or gaps):
+        head += " · not measured: " + "; ".join(dropped)
+        evidence.extend(
+            Evidence(label="index proxy not measured", value=None, as_of=None, source="market_quotes", detail=d)
+            for d in dropped
+        )
     observed = max(
         [str(latest[s].get("as_of")) for s in latest] + [str(g["as_of"]) for g in gaps.values()],
         default=ctx.now.isoformat(),

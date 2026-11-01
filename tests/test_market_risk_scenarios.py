@@ -218,9 +218,10 @@ KNOWN_MISSES = {
     "single-evaluation shock rule did not apply",
     "carry2024": "Red at the 08-05 close, not by 08-02: the window has three sessions and the unwind showed in the "
     "08-05 opening gap",
-    "dec2018_selloff": "max YELLOW: since review B2, Orange and Red need STRESS in their require_stress_any lists on "
-    "the score path too; options_flow, cross_asset and event have no 2018 history, and breadth reached only WARN",
-    "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-11",
+    # dec2018_selloff left this list with #2415 (market-clock staleness): RED at the 2018-12-24 early close, the
+    # selloff's low, with technical, breadth and volatility at STRESS. Late, not early: no RED before the low.
+    "banks2023": "Orange by 03-10 missed: RED first on 03-13 (the Monday after SVB; the market clock keeps "
+    "Friday's STRESS through the weekend); HY OAS history in the fixture starts 2023-11",
     "corrections2026": "Orange before each QQQ -10% correction: max YELLOW on daily fixtures (out-of-sample year)",
     "bear2022_turn": "GREEN not reached (needs >= 3 categories IMPROVING at once with no WARN); RED at the 10-13 open "
     "on the CPI gap-down inside the turn window",

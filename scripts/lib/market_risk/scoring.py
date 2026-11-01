@@ -49,15 +49,36 @@ def _age_hours(at: datetime, now: datetime, cfg: dict) -> float:
     return max(0.0, (now - at).total_seconds() / 3600.0)
 
 
+def staleness(at: datetime, now: datetime, cfg: dict, stale_after: float) -> tuple[float, str | None]:
+    """(age in the decay clock, reason it is unusable or None). The ONE staleness rule every category and the scorer
+    share. Unusable when: stamped in the future (beyond ``decay.future_tolerance_seconds``); older than
+    ``stale_after`` in the decay clock; or past a hard cap that no clock can stretch — ``decay.max_market_hours``
+    of market time or ``decay.max_wall_hours`` of wall time. The caps keep truly old data UNKNOWN even though a
+    weekend no longer ages it (a feed dead since Wednesday is not "fresh" on Monday)."""
+    tol = float(cfg.get("future_tolerance_seconds", 60))
+    wall = (now - at).total_seconds() / 3600.0
+    if wall < -tol / 3600.0:
+        return 0.0, f"stamped {-wall:.1f}h in the future"
+    age = _age_hours(at, now, cfg)
+    if age > float(stale_after):
+        return age, f"stale: {age:.0f}h old (limit {float(stale_after):g}h)"
+    cap_m, cap_w = cfg.get("max_market_hours"), cfg.get("max_wall_hours")
+    if cap_m is not None and str(cfg.get("clock") or "wall").lower() == "market" and age > float(cap_m):
+        return age, f"stale: {age:.0f} market hours old (cap {float(cap_m):g}h)"
+    if cap_w is not None and wall > float(cap_w):
+        return age, f"stale: {wall:.0f}h old by the wall clock (cap {float(cap_w):g}h)"
+    return age, None
+
+
 def decay_weight(obs: c.CategoryObservation, now: datetime, policy: dict) -> tuple[float, float | None]:
-    """(weight, age_hours). Weight 0 means stale beyond stale_after: the category becomes UNKNOWN."""
+    """(weight, age_hours). Weight 0 means unusable (``staleness``): the category becomes UNKNOWN."""
     cfg = policy["decay"]
     at = _parse(obs.observed_at)
     if at is None:
         return 0.0, None
-    age = _age_hours(at, now, cfg)
     stale_after = obs.stale_after_hours if obs.stale_after_hours is not None else cfg["default_stale_after_hours"]
-    if age > float(stale_after):
+    age, why = staleness(at, now, cfg, float(stale_after))
+    if why:
         return 0.0, age
     for step in cfg["steps"]:
         if age <= float(step["max_age_hours"]):
@@ -70,7 +91,12 @@ def _effective(observations: list[c.CategoryObservation], now: datetime, policy:
     for o in observations:
         w_decay, age = decay_weight(o, now, policy) if o.state != "UNKNOWN" else (0.0, None)
         if o.state != "UNKNOWN" and w_decay == 0.0:
-            o = replace(o, state="UNKNOWN", score=None, reason_unknown=f"stale: {age:.0f}h old" if age else "no time")
+            at = _parse(o.observed_at)
+            sa = (
+                o.stale_after_hours if o.stale_after_hours is not None else policy["decay"]["default_stale_after_hours"]
+            )
+            why = staleness(at, now, policy["decay"], float(sa))[1] if at else "no time"
+            o = replace(o, state="UNKNOWN", score=None, reason_unknown=why or "stale")
         out.append(
             {"obs": o, "decay": w_decay, "age_hours": age, "weight": float(policy["weights"].get(o.category, 0))}
         )

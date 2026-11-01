@@ -124,7 +124,15 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
         "probabilities": probs if isinstance(probs, list) and probs else None,
         "history": list(history or [])[-30:],
         "episode": None,
+        "mode": snapshot_mode(doc.get("mode")),
     }
+
+
+def snapshot_mode(mode: Any) -> str | None:
+    """``live`` for an --apply evaluation, ``shadow`` for --shadow (no alert path ran), else None. Home, the API and
+    the CIO see it on every projection so a shadow tier is never mistaken for one the operator was alerted on."""
+    m = str(mode or "").lower()
+    return "live" if m in ("apply", "live") else "shadow" if m == "shadow" else None
 
 
 def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
@@ -206,6 +214,7 @@ def build(
         "book": snapshot.get("book"),
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
+        "mode": snapshot.get("mode"),
         "sources": sources,
         "generated_at": now.isoformat(),
     }

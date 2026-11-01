@@ -108,3 +108,20 @@ def market_hours_between(start: datetime, end: datetime, *, reopen: time | None 
             total += (hi - lo).total_seconds() / 3600.0
         day += timedelta(days=1)
     return total
+
+
+def last_closed_session(now: datetime) -> date:
+    """The most recent NYSE trading day whose close (plus the 59-second closing-snapshot cutoff) had passed by
+    ``now``: the session an extended-hours print must be measured against (after-hours on D -> D; Sunday overnight
+    and Monday pre-market -> Friday; the day after a holiday -> the day before it)."""
+    from datetime import timedelta
+
+    local = now.astimezone(ET)
+    d = local.date()
+    for _ in range(15):
+        if is_trading_day(d):
+            cl = close_time(d)
+            if d < local.date() or local.time() > time(cl.hour, cl.minute, 59):
+                return d
+        d -= timedelta(days=1)
+    return d
