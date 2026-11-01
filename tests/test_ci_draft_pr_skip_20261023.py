@@ -171,7 +171,9 @@ def test_draft_quick_check_runs_only_on_drafts_and_is_cheap():
 
 
 def test_required_contexts_still_run_on_ready_prs():
-    """The three required contexts keep reporting on every non-draft PR: no path filter was added."""
-    for name in ("agent-governance.yml", "cio-production-hardening-ci.yml", "release-readiness.yml"):
+    """The required contexts keep reporting on every non-draft PR: no path filter was added.
+    Since 29.3.0 the combined suite (cio-full-suite-sharded.yml) provides BOTH ci-gate and
+    cio-hardening from one run; the legacy hardening workflow is dispatch-only."""
+    for name in ("agent-governance.yml", "cio-full-suite-sharded.yml", "release-readiness.yml"):
         pr = _on(_load(WF_DIR / name))["pull_request"] or {}
         assert "paths" not in pr and "paths-ignore" not in pr, name

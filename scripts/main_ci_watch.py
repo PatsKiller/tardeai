@@ -54,7 +54,7 @@ MAIN_BRANCH = "main"
 #: Must equal scripts/release_grant_preflight.py REQUIRED_PUSH_WORKFLOWS (the promote gate); a test pins it.
 REQUIRED_WORKFLOWS = (
     ".github/workflows/agent-governance.yml",
-    ".github/workflows/cio-production-hardening-ci.yml",
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/release-readiness.yml",
 )
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
