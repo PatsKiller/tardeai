@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -145,6 +146,28 @@ def format_env_line(key: str, value: str) -> str:
     return f"{key}={value}"
 
 
+def _atomic_write_private(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` as 0600 via a same-directory temp file, fsync and ``os.replace``.
+
+    A full disk fails the temp write and leaves ``path`` untouched; ``path.write_text`` truncated it to 0 bytes first
+    (2026-10-30: the disk .env emptied at 00:50 during ENOSPC).
+    """
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def upsert_disk_env_key(
     key: str,
     value: str,
@@ -164,9 +187,13 @@ def upsert_disk_env_key(
     key = (key or "").strip()
     if not key:
         return False
+    if path.is_symlink():
+        path = path.resolve()  # rewrite the target, never replace the link with a file
     lines: list[str] = []
+    original: Optional[str] = None
     if path.is_file():
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        original = path.read_text(encoding="utf-8", errors="replace")
+        lines = original.splitlines()
     found = False
     new_lines: list[str] = []
     for line in lines:
@@ -187,12 +214,10 @@ def upsert_disk_env_key(
             return False
         new_lines.append(format_env_line(key, value))
     text = "\n".join(new_lines) + ("\n" if new_lines else "")
+    if text == original:
+        return False  # unchanged: never rewrite (each rewrite is a chance to lose the file)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_private(path, text)
     return True
 
 
