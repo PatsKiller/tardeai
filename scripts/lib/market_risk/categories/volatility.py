@@ -35,7 +35,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if len(vix) < 6:
         return unknown(CATEGORY, ctx.now, "VIX history missing")
     vt, v = vix[-1]
-    if md.stale(vt, ctx.now, cfg["stale_after_hours"]):
+    if md.stale(vt, ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
         return unknown(CATEGORY, ctx.now, f"VIX stale (newest {md.iso(vt)})")
     asof = md.iso(vt)
     fired: list[tuple[str, Evidence]] = []

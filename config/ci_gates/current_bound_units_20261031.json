@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "current_bound_units_20261031",
+  "files": [
+    "tests/test_current_bound_units_20261031.py"
+  ],
+  "anchor": "CURRENT_BOUND_UNITS_20261031",
+  "comment": [
+    "ANCHOR: CURRENT_BOUND_UNITS_20261031 — AGENTS.md 28.1.0 §25.10: after a healthy promote/rollback the deploy",
+    "restarts a FAIL-CLOSED list (long-standing defaults + 3 named daemons, WorkingDirectory=CURRENT, installed, §23.14 tokens",
+    "over name/argv/env, ops-applier never, callback-poller never in session, cap 12), reads back each cwd, receipts, pages P1.",
+    "Shell tests run the real function under set -euo pipefail with a fake systemctl; no restarts."
+  ]
+}

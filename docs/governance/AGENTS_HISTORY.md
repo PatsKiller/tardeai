@@ -2187,3 +2187,12 @@ Every rule-bearing passage of AGENTS.md 25.0.1, by line range in `tests/fixtures
 | 6492-6494 | §28.15 item 8(c): hands_off_policy.py gate in PRs #2115, #2118, #2125 must key on the 21.0.0 version row. |
 | 6521-6526 | §28.16 "Status: PROPOSED in 25.0.0" — missed ratifying edit; watchers, supervisor and page shipped in #2238. |
 | 6547-6549 | §29 "Status: PROPOSED in 25.0.0 (adds obligations only)" — missed ratifying edit. |
+
+### 28.0.0 banner (moved from AGENTS.md when 28.2.0 was drafted; kept by its renumbering to 29.2.0)
+
+**28.0.0 is ACTIVE (MAJOR) — operator-delegated merge (§25.10.3).** Ratified 2026-10-31 by the operator in session
+(`APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793`, §20). An agent never merges on its own; after the operator's explicit in-session approval naming the PR
+numbers (§28.4), or the operator's own Command Center Approvals → Merges tap, it may record the approval (verbatim,
+head-SHA bound) and apply `operator-merge`, or merge directly when the operator says not to wait for Mergify.
+**Why MAJOR:** adds a merge-approval recording authority to agents. §0 untouched; §0 rules 1–2 / §24.7 never overridable; `MBI_BEHAVIOR = 0`.
+

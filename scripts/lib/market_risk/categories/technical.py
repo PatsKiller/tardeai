@@ -51,7 +51,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if not usable:
         return unknown(CATEGORY, ctx.now, "no daily bars for the index symbols")
     newest = max(v[-1][0] for v in usable.values())
-    if md.stale(newest, ctx.now, cfg["stale_after_hours"]):
+    if md.stale(newest, ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
         return unknown(CATEGORY, ctx.now, f"daily bars stale (newest {md.iso(newest)})")
 
     fired: dict[str, tuple[str, Evidence]] = {}  # one firing per sub-signal: the worst symbol
