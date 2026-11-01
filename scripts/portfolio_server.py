@@ -46,6 +46,12 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+if __name__ == "__main__":  # one module object per file for lib.X / scripts.lib.X / bare X (lib/module_single_load.py)
+    try:
+        from lib import module_single_load as _module_single_load  # noqa: E402
+        _module_single_load.install(PROJECT_ROOT / "scripts")
+    except Exception as _msl_exc:  # fail open: without the finder each spelling loads its own copy, as before
+        print(f"[warn] module_single_load not installed: {_msl_exc}")
 try:  # Command Center auth policy (config/cc_auth.yaml) — also owns the listener ports
     from lib import cc_auth as _cc_auth  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
