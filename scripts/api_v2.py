@@ -16584,10 +16584,15 @@ def _defense_posture(query=None):
                        WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
                        ORDER BY updated_at DESC LIMIT 1""")
         _hint = _hc.fetchone()
-        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
+        _hc.execute("""SELECT symbol, threshold, last_fired_at, created_at FROM watch_alerts
                        WHERE created_by='defense_hedge' AND active AND note LIKE '%%bounce%%'
                        ORDER BY id DESC LIMIT 1""")
         _bounce = _hc.fetchone()
+        # design home/v006 (review of #2460, B2): the newest THESIS -> GREEN transition; a bounce alert armed before it
+        # belongs to an earlier episode and is never shown as live
+        _hc.execute("""SELECT instrument, max(created_at) FROM inverse_stoplight_transitions
+                       WHERE light='THESIS' AND split_part(new_state, '|', 1)='GREEN' GROUP BY instrument""")
+        _green_since = {str(r[0]).upper(): r[1] for r in _hc.fetchall()}
         _rows = (out.get("momentum") or {}).get("rows") or []
         _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
         _in_play_line, _close_meta = None, None
@@ -16617,6 +16622,7 @@ def _defense_posture(query=None):
             stale_days=int(_sl_cfg.get("stale_calendar_days", 4)),
             in_play_line=_in_play_line,
             close_meta=_close_meta,
+            green_since=_green_since,
         )
         out["hedge_state"] = hs
     except Exception as e:

@@ -76,7 +76,7 @@
     },
     "rotate_rs": {
       "label": "vs SPY",
-      "text": "The group's return minus SPY's over the same 1 or 5 sessions: +2% means it beat SPY by 2 points. It shows where money is moving, not what to buy."
+      "text": "The group's return minus SPY's over the same 1 or 5 sessions: +2% means it beat SPY by 2 points. It shows where money is moving; it is not a recommendation."
     },
     "protect": {
       "label": "Protect",

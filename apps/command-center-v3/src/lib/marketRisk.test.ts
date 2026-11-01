@@ -199,11 +199,11 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     book_exposure: { total_usd: 1000, reconciles: true, cash_usd: 400, invested_usd: 600, stressed_groups: ['tech'], stressed_usd: 60, stressed_pct_book: 6, stressed_pct_invested: 10, cash_pct_book: 40,
       groups: { fin: { usd: 400, pct_book: 40 }, tech: { usd: 60, pct_book: 6 } }, unmapped: [], rows: [], more: { count: 0, usd: 0 }, zero_exposure_symbols: [] },
     review: [{ symbol: 'DEMOA', account_label: 'A', kinds: ['stop_near'], text: 'stop 3.6% below last', usd: 500, to: '/risk?tab=exposure&symbol=DEMOA' }],
-    protect: { items: [{ symbol: 'DEMOA', account_label: 'A', kinds: ['stop_near'], text: 'stop 3.6% below last', usd: 500, to: '/risk?tab=exposure&symbol=DEMOA', pct_account: 96.3,
-      consideration: 'stop 3.6% below last; one stock is 96% of the account, far above the 30% sector budget' }],
+    protect: { items: [{ symbol: 'DEMOA', account_label: 'A', kinds: ['stop_near'], text: 'stop 3.6% below last', usd: 500, to: '/risk?tab=exposure&symbol=DEMOA', pct_account: 88.0,
+      consideration: 'stop 3.6% below last; one stock is 88% of the account, far above the 30% sector budget' }],
       more: [{ symbol: 'DEMOB', account_label: 'B', short: 'no stop', to: '/x' }] },
     hedge: { verdict: 'NOT_NOW', thesis_state: 'RED', candidates: ['SH', 'PSQ'], since: '2031-03-07', thresholds: { trigger_book_pct: 10, index_trigger_lagging_sectors: 4 },
-      largest_weakening: { label: 'Technology', pct_invested: 4.8 }, lagging_count: 1, stressed_usd: 19241, stressed_pct_book: 1.54, stressed_pct_invested: 4.82,
+      largest_weakening: { label: 'Technology', pct_invested: 5.5 }, lagging_count: 1, stressed_usd: 12345, stressed_pct_book: 2.5, stressed_pct_invested: 4.0,
       size_band: '2-5%', playbook: ['x'] },
     rotate: { as_of: '2031-03-07', groups: [{ key: 'fin', label: 'Financials', rs1: 1.03, rs5: 1.63, desk_state: 'LEADING', usd: 400 }] },
     sectors_folded: [{ key: 'ai', label: 'AI basket', state: 'STRESS', usd: 28 }, { key: 're', label: 'Real estate', state: 'UNKNOWN', usd: 1 }],
@@ -216,11 +216,11 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(a.foldLine, 'Also stressed, you hold under $100: AI basket ($28). Not measured, you hold under $100: Real estate ($1).')
   assert.equal(a.sectors.find(r => r.key === 'fin')!.chip, 'RESILIENT')
   assert.equal(a.sectors.find(r => r.key === 'ind')!.chip, 'HOLDING')
-  assert.equal(a.protect!.items[0].pct, '96% of account')
+  assert.equal(a.protect!.items[0].pct, '88% of account')
   assert.equal(a.protect!.items[0].linkLabel, 'Review stop →')
   assert.equal(a.protect!.more, '+1 more: DEMOB · B (no stop)')
   assert.equal(a.hedge!.verdict, 'Not now')
-  assert.equal(a.hedge!.line, '$19,241 (1.5% of book · 4.8% of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ 10% of invested, or 4+ sectors lag — now Technology 4.8%, 1 sector lagging.')
+  assert.equal(a.hedge!.line, '$12,345 (2.5% of book · 4.0% of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ 10% of invested, or 4+ sectors lag — now Technology 5.5%, 1 sector lagging.')
   assert.match(a.hedge!.lane, /^Inverse lane SH · PSQ: no bearish thesis since /)
   assert.ok(!/2-5%|size|band|playbook/i.test(JSON.stringify(a.hedge)), 'never a hedge size band or playbook')
   assert.equal(a.rotate!.rows[0].rs1, '+1.0%'); assert.equal(a.rotate!.rows[0].desk, 'desk LEADING')

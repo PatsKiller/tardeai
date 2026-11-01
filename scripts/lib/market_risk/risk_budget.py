@@ -72,26 +72,32 @@ def _pct(part: float, whole: float) -> float | None:
     return round(100.0 * part / whole, 2) if whole > 0 else None
 
 
-# Engine group key -> the symbol_profiles sector label the budgets use, so a segment-weighted issuer lands in the same
-# sector bucket as a single-sector stock of that sector (design home/v006; lookthrough.SECTOR_TO_GROUP inverted).
-GROUP_TO_SECTOR: dict[str, str] = {
-    "tech": "Technology",
-    "comm": "Communication Services",
-    "discretionary": "Consumer Cyclical",
-    "staples": "Consumer Defensive",
-    "healthcare": "Healthcare",
-    "utilities": "Utilities",
-    "energy": "Energy",
-    "financials": "Financial Services",
-    "industrials": "Industrials",
-    "materials": "Basic Materials",
-    "real_estate": "Real Estate",
-}
+# The symbol_profiles sector vocabulary the budgets bucket by (the yfinance labels). GROUP_TO_SECTOR is DERIVED from
+# lookthrough.SECTOR_TO_GROUP (review of #2460): a segment-weighted issuer lands in the same sector bucket as a
+# single-sector stock of that sector, and a group with no profile label fails at import, never silently.
+PROFILE_SECTOR_LABELS = (
+    "Technology", "Communication Services", "Consumer Cyclical", "Consumer Defensive", "Healthcare", "Utilities",
+    "Energy", "Financial Services", "Industrials", "Basic Materials", "Real Estate",
+)
 
 
-def approved_segments() -> dict[str, dict[str, float]]:
+def _group_to_sector() -> dict[str, str]:
+    from scripts.lib.market_risk.lookthrough import SECTOR_TO_GROUP
+
+    out = {SECTOR_TO_GROUP[label.lower()]: label for label in PROFILE_SECTOR_LABELS}
+    missing = set(SECTOR_TO_GROUP.values()) - set(out)
+    if missing:
+        raise RuntimeError(f"risk_budget: no profile sector label for look-through group(s) {sorted(missing)}")
+    return out
+
+
+GROUP_TO_SECTOR: dict[str, str] = _group_to_sector()
+
+
+def approved_segments(today: date | None = None) -> dict[str, dict[str, float]]:
     """{SYMBOL: {group: weight}} for every APPROVED entry in config/issuer_segments.json, through
-    ``lookthrough.issuer_segments_for`` (the same validation the look-through uses: sector weights sum to 1)."""
+    ``lookthrough.issuer_segments_for`` (the same validation the look-through uses: sector weights sum to 1). With
+    ``today``, an entry approved (or for a period ending) after it is ignored: point in time for replays."""
     from scripts.lib.market_risk import lookthrough as lt
 
     sp = lt._segments_policy()
@@ -103,7 +109,7 @@ def approved_segments() -> dict[str, dict[str, float]]:
         return {}
     out: dict[str, dict[str, float]] = {}
     for sym in (doc.get("issuers") or {}):
-        seg = lt.issuer_segments_for(sym, doc.get("issuers"), seg_policy=sp)
+        seg = lt.issuer_segments_for(sym, doc.get("issuers"), seg_policy=sp, today=today)
         if seg:
             out[str(sym).upper()] = dict(seg["groups"])
     return out
@@ -139,7 +145,7 @@ def measure(
     them). A segmented issuer is split across sectors by its weights for ``single_sector_pct``; its growth share is the
     weight of its segments in a growth sector; its AI-basket share is its ``ai_basket`` theme weight. Every other
     symbol keeps its ``symbol_profiles`` sector, as before."""
-    segs = {k.upper(): v for k, v in (approved_segments() if segments is None else segments).items()}
+    segs = {k.upper(): v for k, v in (approved_segments(today) if segments is None else segments).items()}
     growth_sectors = set((budget.get("classification") or {}).get("growth_sectors") or [])
     defensive_sectors = set((budget.get("classification") or {}).get("defensive_sectors") or [])
     cls = budget.get("classification") or {}

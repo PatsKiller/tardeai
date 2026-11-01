@@ -4,6 +4,7 @@
  *  (stop review, Defense desk, Rotation desk, Best opportunities); there is no order, size, stop level or "buy"
  *  anywhere (MBI_BEHAVIOR = 0). */
 import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars } from '../../lib/designTokens'
 import { SUMMARY_PHONE_MAX_PX, type ActionableModel, type GlossaryTerm } from '../../lib/marketRisk'
@@ -19,7 +20,8 @@ const SHEET_CSS = `
 @media(max-width:${SUMMARY_PHONE_MAX_PX}px){[data-mr-sheet]{left:0;right:0;top:auto;bottom:0;transform:none;width:100%;border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding-bottom:22px}}
 `
 
-/** A tap-friendly (i): 16 px glyph, 44 × 44 hit area, opens a short sheet (phone) or dialog (desktop). Not hover. */
+/** A tap-friendly (i): 16 px glyph, 44 × 44 hit area, opens a short sheet (phone) or dialog (desktop), rendered in a
+ *  portal on document.body (no ancestor transform or overflow can clip it) with Tab kept inside. Not hover. */
 export function Explain({ term }: { term: string }) {
   const g = useContext(GlossaryContext)[term]
   const [open, setOpen] = useState(false)
@@ -29,7 +31,11 @@ export function Explain({ term }: { term: string }) {
   useEffect(() => {
     if (!open) return
     closeBtn.current?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); btn.current?.focus() } }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); btn.current?.focus() }
+      // focus trap: the sheet's only control is Close, so Tab and Shift+Tab stay on it (review of PR 2460, follow-up 7)
+      if (e.key === 'Tab') { e.preventDefault(); closeBtn.current?.focus() }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
@@ -42,7 +48,7 @@ export function Explain({ term }: { term: string }) {
         style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-14px -14px', padding: 0, border: 0, background: 'transparent', cursor: 'pointer', verticalAlign: 'middle', flex: '0 0 auto' }}>
         <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', border: `1px solid ${TOKENS.text[3]}`, color: TOKENS.text[2], fontSize: 10, fontWeight: 700, fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1 }} data-mr-i="" />
       </button>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <>
           <style>{SHEET_CSS}</style>
           <div data-testid="mr-explain-scrim" onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,.55)' }} />
@@ -52,7 +58,8 @@ export function Explain({ term }: { term: string }) {
             <button ref={closeBtn} type="button" data-testid="mr-explain-close" onClick={close}
               style={{ minHeight: 44, width: '100%', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], fontWeight: 700, fontSize: TYPE.md, cursor: 'pointer' }}>Close</button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </>
   )

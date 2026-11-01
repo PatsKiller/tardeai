@@ -33,27 +33,42 @@ def _snapshot_date(snap: dict[str, Any]) -> date | None:
 
 
 def stoplight_thesis(snap: dict[str, Any] | None, *, today: date, stale_days: int) -> dict[str, Any]:
-    """``{state: GREEN|AMBER|RED|UNKNOWN, candidates: [inverse…], as_of, reason}`` across the actionable lane."""
+    """``{state: GREEN|AMBER|RED|UNKNOWN, candidates: [inverse…], benches: [bench…], as_of, reason}`` across the
+    actionable lane. The one thesis reader: the Home Hedge block (``market_risk_home_actions.hedge``) calls it too."""
     if not isinstance(snap, dict) or not snap.get("candidates"):
-        return {"state": "UNKNOWN", "candidates": [], "as_of": None, "reason": "no stoplight evaluation yet"}
+        return {"state": "UNKNOWN", "candidates": [], "benches": [], "as_of": None, "reason": "no stoplight evaluation yet"}
     if snap.get("config_error"):
-        return {"state": "UNKNOWN", "candidates": [], "as_of": snap.get("generated_at"), "reason": "stoplight config error"}
+        return {"state": "UNKNOWN", "candidates": [], "benches": [], "as_of": snap.get("generated_at"), "reason": "stoplight config error"}
     d = _snapshot_date(snap)
     if d is None or (today - d).days > int(stale_days):
         return {
             "state": "UNKNOWN",
             "candidates": [],
+            "benches": [],
             "as_of": snap.get("generated_at"),
-            "reason": f"stoplight last ran {d.isoformat() if d else 'unknown'} (older than {stale_days} days)",
+            "reason": "stale",
+            "last_ran": d.isoformat() if d else None,
         }
-    by_state: dict[str, list[str]] = {}
+    by_state: dict[str, list[dict[str, Any]]] = {}
     for c in snap.get("candidates") or []:
         st = str(((c.get("lights") or {}).get("THESIS") or {}).get("state") or "UNKNOWN").upper()
-        by_state.setdefault(st, []).append(str(c.get("inverse") or "?"))
+        by_state.setdefault(st, []).append(c)
     for st in ("GREEN", "AMBER", "RED"):
         if by_state.get(st):
-            return {"state": st, "candidates": by_state[st], "as_of": snap.get("generated_at"), "reason": None}
-    return {"state": "UNKNOWN", "candidates": [], "as_of": snap.get("generated_at"), "reason": "no THESIS light"}
+            return {"state": st, "candidates": [str(c.get("inverse") or "?") for c in by_state[st]],
+                    "benches": [str(c.get("bench") or "").upper() for c in by_state[st]],
+                    "as_of": snap.get("generated_at"), "reason": None}
+    return {"state": "UNKNOWN", "candidates": [], "benches": [], "as_of": snap.get("generated_at"), "reason": "no THESIS light"}
+
+
+def _ts(v: Any) -> datetime | None:
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        t = datetime.fromisoformat(str(v))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def hedge_state(
@@ -66,17 +81,25 @@ def hedge_state(
     stale_days: int,
     in_play_line: str | None = None,
     close_meta: dict[str, Any] | None = None,
+    green_since: Any = None,
 ) -> dict[str, Any]:
     """The posture's ``hedge_state``. ``intent`` = (status, fill_price, symbol) of the newest inverse-ETF intent;
-    ``bounce`` = (symbol, threshold, last_fired_at) of a ``defense_hedge`` bounce alert; ``in_play_line`` is the
-    caller's formatted in-play line (it reads the last close)."""
+    ``bounce`` = (symbol, threshold, last_fired_at[, armed_at]) of an active ``defense_hedge`` bounce alert;
+    ``green_since`` = the newest THESIS → GREEN transition (a datetime, or {instrument: datetime} from which the GREEN
+    candidates' newest is taken); ``in_play_line`` is the caller's
+    formatted in-play line (it reads the last close).
+
+    A bounce level is shown only when it belongs to THIS green episode (review of #2460, B2): the alert's bench is a
+    GREEN candidate's bench AND it was armed at or after ``green_since``. An alert left from an earlier episode, or
+    one whose arming time or the episode start is unknown, is never shown."""
     if tech_state not in ("LAGGING", "WEAKENING", None) and intent:
         return {"state": "stand_down", "line": f"HEDGE: stand-down signaled — Technology recovered to {tech_state}"}
     if intent and intent[0] == "filled":
         return {"state": "in_play", "line": in_play_line or f"HEDGE: {intent[2]} in play", **(close_meta or {})}
     th = stoplight_thesis(stoplights, today=today, stale_days=stale_days)
     if th["state"] == "UNKNOWN":
-        return {"state": "unknown", "line": f"HEDGE: no verdict — {th['reason']}", "stoplight_as_of": th["as_of"]}
+        why = f"stoplight last ran {th.get('last_ran') or 'unknown'} (older than {stale_days} days)" if th["reason"] == "stale" else th["reason"]
+        return {"state": "unknown", "line": f"HEDGE: no verdict — {why}", "stoplight_as_of": th["as_of"]}
     if th["state"] == "RED":
         return {
             "state": "no_thesis",
@@ -89,12 +112,18 @@ def hedge_state(
             "line": f"HEDGE: watch — deteriorating, not yet eligible ({'/'.join(th['candidates'])})",
             "stoplight_as_of": th["as_of"],
         }
-    # THESIS GREEN: the bounce-day entry rule applies
-    if bounce and bounce[2] and str(bounce[2])[:10] == today.isoformat():
+    # THESIS GREEN: the bounce-day entry rule applies, with this episode's alert only
+    armed = _ts(bounce[3]) if bounce and len(bounce) > 3 else None
+    if isinstance(green_since, dict):  # {instrument: newest GREEN transition}: this episode = the GREEN candidates' latest
+        stamps = [_ts(green_since.get(c.upper())) for c in th["candidates"]]
+        since = max((t for t in stamps if t is not None), default=None)
+    else:
+        since = _ts(green_since)
+    live = bool(bounce) and str(bounce[0]).upper() in th["benches"] and armed is not None and since is not None and armed >= since
+    if not live:
+        return {"state": "armed", "line": f"HEDGE: thesis green ({'/'.join(th['candidates'])}) — bounce level arming tonight",
+                "stoplight_as_of": th["as_of"]}
+    if bounce[2] and str(bounce[2])[:10] == today.isoformat() and (_ts(bounce[2]) or since) >= since:
         return {"state": "entry_window_open", "line": f"HEDGE: entry window OPEN — {bounce[0]} bounce ≥ ${bounce[1]}",
                 "stoplight_as_of": th["as_of"]}
-    return {
-        "state": "armed",
-        "line": f"HEDGE: waiting for a bounce day ({bounce[0]} ≥ ${bounce[1]})" if bounce else "HEDGE: alerts arming tonight",
-        "stoplight_as_of": th["as_of"],
-    }
+    return {"state": "armed", "line": f"HEDGE: waiting for a bounce day ({bounce[0]} ≥ ${bounce[1]})", "stoplight_as_of": th["as_of"]}

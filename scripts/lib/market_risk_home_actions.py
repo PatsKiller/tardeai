@@ -13,15 +13,19 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
 try:
+    from scripts.lib.defense_hedge_state import stoplight_thesis
+    from scripts.lib.market_risk.contract import assert_no_behavior_fields
     from scripts.lib.market_risk.lookthrough import SECTOR_TO_GROUP
 except ImportError:  # pragma: no cover — the API imports as lib.*
+    from lib.defense_hedge_state import stoplight_thesis  # type: ignore
+    from lib.market_risk.contract import assert_no_behavior_fields  # type: ignore
     from lib.market_risk.lookthrough import SECTOR_TO_GROUP  # type: ignore
 
 #: Keys a hedge block may never carry (the Defense desk's hedge card has them; Home shows none).
@@ -122,27 +126,6 @@ def protect(
 
 
 # ── Hedge ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-def _thesis(snap: dict[str, Any] | None, today: date, stale_days: int) -> tuple[str, list[str], str | None, str | None]:
-    if not isinstance(snap, dict) or not snap.get("candidates"):
-        return "UNKNOWN", [], None, "no stoplight evaluation yet"
-    if snap.get("config_error"):
-        return "UNKNOWN", [], snap.get("generated_at"), "stoplight config error"
-    try:
-        d = datetime.fromisoformat(str(snap.get("generated_at"))).astimezone(timezone.utc).date()
-    except (TypeError, ValueError):
-        d = None
-    if d is None or (today - d).days > stale_days:
-        return "UNKNOWN", [], snap.get("generated_at"), "stale"
-    by: dict[str, list[str]] = {}
-    for c in snap.get("candidates") or []:
-        st = str(((c.get("lights") or {}).get("THESIS") or {}).get("state") or "UNKNOWN").upper()
-        by.setdefault(st, []).append(str(c.get("inverse")))
-    for st in ("GREEN", "AMBER", "RED"):
-        if by.get(st):
-            return st, by[st], snap.get("generated_at"), None
-    return "UNKNOWN", [], snap.get("generated_at"), "no THESIS light"
-
-
 def hedge(
     *,
     stoplights: dict[str, Any] | None,
@@ -162,7 +145,9 @@ def hedge(
         "materiality_exposure_pct": sl.get("materiality_exposure_pct"),
         "bounce_day_pct": sl.get("bounce_day_pct"),
     }
-    state, cands, as_of, reason = _thesis(stoplights, today, int(sl.get("stale_calendar_days", 4)))
+    # the one thesis reader, shared with the Defense posture's hedge_state (review of #2460, follow-up 1)
+    th = stoplight_thesis(stoplights, today=today, stale_days=int(sl.get("stale_calendar_days", 4)))
+    state, cands, as_of, reason = th["state"], th["candidates"], th["as_of"], th["reason"]
     rows = [r for r in momentum_rows or [] if isinstance(r, dict)]
     weak = [r for r in rows if r.get("state") in ("WEAKENING", "LAGGING") and r.get("book_pct") is not None]
     largest = max(weak, key=lambda r: _f(r.get("book_pct")), default=None)
@@ -193,7 +178,10 @@ def hedge(
                    if ((c.get("lights") or {}).get("THESIS") or {}).get("state") == "GREEN"), {})
         en = (c0.get("lights") or {}).get("ENTRY") or {}
         block["entry"] = {"inverse": c0.get("inverse"), "bench": c0.get("bench"), "state": en.get("state"), "label": en.get("label")}
-    assert not any(k in block for k in HEDGE_FORBIDDEN)
+    leaked = [k for k in HEDGE_FORBIDDEN if k in block]
+    if leaked:  # an explicit raise, not an assert (asserts vanish under -O); review of #2460, follow-up 4
+        raise ValueError(f"hedge block carries forbidden key(s) {leaked}: Home never shows a hedge size or plan")
+    assert_no_behavior_fields(block)
     return block
 
 
@@ -276,6 +264,15 @@ def glossary(policy: dict[str, Any], defense_cfg: dict[str, Any], budget_cfg: di
     g = (policy.get("glossary") or {})
     p = path or (ROOT / str(g.get("path") or "config/market_risk_glossary.json"))
     doc = json.loads(Path(p).read_text(encoding="utf-8"))
+    if budget_cfg is None:
+        try:
+            try:
+                from scripts.lib.market_risk.risk_budget import load_budget
+            except ImportError:  # pragma: no cover
+                from lib.market_risk.risk_budget import load_budget  # type: ignore
+            budget_cfg = load_budget()
+        except (OSError, ValueError):
+            budget_cfg = {}
     acc = ((budget_cfg or {}).get("accounts") or {}).get("default") or {}
     fill = {
         "single_sector_pct": acc.get("max_single_sector_pct"),

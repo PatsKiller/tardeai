@@ -422,6 +422,7 @@ def attach(
             profiles=inp.get("profiles") or {},
             reporting_soon=report,
             themes=cfg.get("theme_overrides") or {},
+            as_of=now,
         )
         for s in syms
     }
@@ -497,7 +498,7 @@ def attach(
         if s in expo:
             continue
         e = lt.exposure_for(s, ai_basket=basket, holdings=holdings, profiles=inp.get("profiles") or {},
-                            themes=cfg.get("theme_overrides") or {})
+                            themes=cfg.get("theme_overrides") or {}, as_of=now)
         residual_lt[s] = {k: e.get(k) for k in ("groups", "ai_share", "basis", "note")}
     book_meta["residual_look_through"] = residual_lt
     a.positions = {**stances, "_book": book_meta}
@@ -732,7 +733,7 @@ def reentry_watch_block(
         elif dates:
             before = [cl for d, cl in zip(dates, closes) if d < e["exit_date"]]
             pre = before[-1] if before else None
-        ex = lt.exposure_for(sym, ai_basket=basket, themes=themes, profiles=profiles)
+        ex = lt.exposure_for(sym, ai_basket=basket, themes=themes, profiles=profiles, as_of=now)
         groups = ex.get("groups") or {}
         main = max(groups.items(), key=lambda kv: kv[1])[0] if groups else None
         gh = [next((g.get("state") for g in (h.get("groups") or []) if g.get("key") == main), "UNKNOWN") for h in hist]

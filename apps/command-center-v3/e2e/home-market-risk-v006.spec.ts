@@ -140,6 +140,13 @@ test('v006 1440: expanded by default, three blocks side by side, every term has 
   await expect(sheet).toContainText('at least 10% of your invested money, or 4 or more sectors are lagging')
   const sb = (await sheet.boundingBox())!
   expect(sb.width).toBeLessThanOrEqual(420) // a centred dialog on desktop
+  // portal + focus trap: the dialog is a child of <body>, and Tab / Shift+Tab stay on Close
+  expect(await sheet.evaluate(e => e.parentElement === document.body)).toBeTruthy()
+  await expect(page.getByTestId('mr-explain-close')).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('mr-explain-close')).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByTestId('mr-explain-close')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(sheet).toHaveCount(0)
   await expect(page.locator('[data-testid=mr-hedge] [data-testid=mr-explain]')).toBeFocused()

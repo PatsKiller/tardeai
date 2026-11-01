@@ -17,8 +17,8 @@ Rules every method keeps:
 
 Daily closes: ``market_ohlcv_bars`` (``timeframe='daily'``) covers few index ETFs and stopped updating for some
 (SPY's last daily bar is 2026-10-09 as of 2026-10-31; XLC, XLRE and XLK never had one), so ``daily_bars`` merges it,
-in order of preference, with ``ticker_prices`` (the daily-close projection, about a year deep) and then closes derived
-from the Alpaca quote snapshots in ``market_quotes``: the close of session D is the ``prev_close`` carried by the first quote
+in order of preference, with closes derived from the Alpaca quote snapshots in ``market_quotes`` and, last, the yfinance
+end-of-day rows of ``ticker_prices`` (only sessions neither of the first two has). A quote close: the close of session D is the ``prev_close`` carried by the first quote
 of the next session; the newest session's close is its last regular-hours quote, flagged ``provisional``.
 """
 
@@ -40,6 +40,8 @@ REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the 
 VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
+#: ticker_prices sources that carry an official end-of-day close (review of #2460, B1)
+TICKER_PRICE_CLOSE_SOURCES = ("yfinance", "yfinance_eod")
 SECTOR_COLUMNS = (
     "as_of",
     "etf",
@@ -226,12 +228,14 @@ class PgReader:
                 "as_of": _iso(_close_instant(d)),
             }
         span = timedelta(days=int(sessions * 1.6) + 10)
-        # Second source: the platform's daily-close projection (``ticker_prices``, data-broker domain ``technicals``,
-        # the table the Defense desk's sector momentum reads). It covers the sector ETFs ``market_ohlcv_bars`` never
-        # had (XLC, XLRE, XLK) and SPY after 2026-10-09 (design home/v006, Communications "insufficient history").
-        for row in self._ticker_price_closes(syms, start=end - span, end=end):
-            out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
+        # Second source: closes derived from the Alpaca quote snapshots (the official prev_close of the next session).
         for row in self._quote_closes(syms, start=end - span, end=end):
+            out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
+        # Last resort: the platform's daily-close projection (``ticker_prices``, data-broker domain ``technicals``, the
+        # table the Defense desk's sector momentum reads). Ranked AFTER the bars and the quote closes, so it only fills
+        # sessions neither has: the sector ETFs ``market_ohlcv_bars`` never had (XLC, XLRE, XLK) before the quote
+        # history starts. A symbol with bars or quote closes for a session keeps them (SPY's benchmark is unchanged).
+        for row in self._ticker_price_closes(syms, start=end - span, end=end):
             out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
         if VIX_SYMBOL in syms:
             for row in self._vix_closes(start=end - span, end=end):
@@ -310,20 +314,36 @@ class PgReader:
         return [out[d] for d in sorted(out)]
 
     def _ticker_price_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Daily closes from ``ticker_prices`` (close only), as-of correct: a row counts only when it was written
-        (``created_at``) by ``end`` and its session had closed by ``end``. Never preferred over ``market_ohlcv_bars``."""
+        """Daily closes from ``ticker_prices`` (close only), as-of correct and conservative (review of #2460, B1):
+
+        * only the official-daily-close sources in ``TICKER_PRICE_CLOSE_SOURCES`` (``yfinance``); ``market_quotes`` rows
+          are the last intraday / after-hours print of the day, not the close, and are never read;
+        * a row counts only when it was written AFTER its session closed (``created_at >= close_instant(price_date)``)
+          and by ``end`` (``created_at <= end``); a NULL ``created_at`` is unknowable and excluded.
+
+        Residual risk (documented, not detectable): the table is upserted on (symbol, price_date) and an upsert never
+        updates ``created_at``, so a close rewritten later (a vendor correction) keeps its first ``created_at`` and a
+        replay at an instant between the two writes sees the corrected value. There is no ``updated_at`` column to
+        exclude it. Restricting to the yfinance end-of-day source keeps such rewrites to vendor corrections."""
         rows = self._rows(
             "SELECT upper(symbol) AS symbol, price_date, close_price, source, created_at FROM ticker_prices "
             "WHERE upper(symbol) = ANY(%s) AND price_date >= %s AND price_date <= %s "
-            "AND (created_at IS NULL OR created_at <= %s) AND close_price IS NOT NULL ORDER BY 1, price_date",
-            [symbols, start.astimezone(ET).date(), end.astimezone(ET).date(), end],
+            "AND created_at IS NOT NULL AND created_at <= %s AND source = ANY(%s) AND close_price IS NOT NULL "
+            "ORDER BY 1, price_date",
+            [symbols, start.astimezone(ET).date(), end.astimezone(ET).date(), end, list(TICKER_PRICE_CLOSE_SOURCES)],
         )
         out: list[dict[str, Any]] = []
         for r in rows:
             d = r["price_date"]
             if isinstance(d, datetime):
                 d = d.astimezone(ET).date()
-            if not isinstance(d, date) or _close_instant(d) > end:
+            seen = r.get("created_at")
+            if not isinstance(d, date) or not isinstance(seen, datetime) or str(r.get("source") or "") not in TICKER_PRICE_CLOSE_SOURCES:
+                continue
+            seen = _aware(seen)
+            close_at = _close_instant(d)
+            # written before its session closed (an intraday print later upserted), or after `end`: not a knowable close
+            if seen < close_at or seen > end or close_at > end:
                 continue
             out.append(
                 {
@@ -334,9 +354,9 @@ class PgReader:
                     "low": None,
                     "close": r["close_price"],
                     "volume": None,
-                    "source": f"ticker_prices:{r.get('source') or 'unknown'}",
+                    "source": f"ticker_prices:{r.get('source')}",
                     "provisional": False,
-                    "as_of": _iso(_close_instant(d)),
+                    "as_of": _iso(seen),
                 }
             )
         return out

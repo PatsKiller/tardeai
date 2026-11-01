@@ -55,13 +55,34 @@ def test_hedge_state_amber_is_watch_and_missing_or_stale_snapshot_is_unknown():
         assert hs["state"] == "unknown" and "720.48" not in hs["line"]
 
 
-def test_hedge_state_green_keeps_the_bounce_day_rule():
-    hs = dhs.hedge_state(stoplights=_stoplights({"PSQ": "GREEN"}), intent=None, bounce=("QQQ", 700.1, None),
-                         tech_state="LAGGING", today=TODAY, stale_days=4)
+def test_hedge_state_green_shows_only_this_episodes_bounce_level():
+    green = _stoplights({"PSQ": "GREEN", "SH": "RED"})
+    since = {"PSQ": datetime(2031, 3, 8, 22, 55, tzinfo=timezone.utc)}
+    fresh = ("QQQ", 700.1, None, datetime(2031, 3, 8, 23, 30, tzinfo=timezone.utc))  # armed after the GREEN transition
+    hs = dhs.hedge_state(stoplights=green, intent=None, bounce=fresh, tech_state="LAGGING", today=TODAY, stale_days=4, green_since=since)
     assert hs["state"] == "armed" and "QQQ ≥ $700.1" in hs["line"]
-    hs = dhs.hedge_state(stoplights=_stoplights({"PSQ": "GREEN"}), intent=None, bounce=("QQQ", 700.1, TODAY.isoformat() + " 10:00"),
-                         tech_state="LAGGING", today=TODAY, stale_days=4)
+    today_fire = (*fresh[:2], f"{TODAY.isoformat()}T15:00:00+00:00", fresh[3])
+    hs = dhs.hedge_state(stoplights=green, intent=None, bounce=today_fire, tech_state="LAGGING", today=TODAY, stale_days=4, green_since=since)
     assert hs["state"] == "entry_window_open"
+    # an alert armed before this episode's GREEN, one for another bench, or unknown timing: never a live level
+    old = ("QQQ", 720.48, None, datetime(2031, 3, 1, 23, 0, tzinfo=timezone.utc))
+    other_bench = ("SPY", 769.75, None, datetime(2031, 3, 9, 1, 0, tzinfo=timezone.utc))
+    for b, gs in ((old, since), (other_bench, since), (fresh[:3], since), (fresh, None)):
+        hs = dhs.hedge_state(stoplights=green, intent=None, bounce=b, tech_state="LAGGING", today=TODAY, stale_days=4, green_since=gs)
+        assert hs["state"] == "armed" and "$" not in hs["line"], (b, gs, hs)
+
+
+def test_H_green_does_not_revive_an_old_episode_alert():
+    """The reviewer's probe (review of #2460, B2): THESIS turned GREEN; the only active bounce alert is from an earlier
+    episode (10-28 QQQ 720.48) and must not read as this episode's entry level."""
+    snap = {"generated_at": datetime(2026, 11, 2, 21, 0, tzinfo=timezone.utc).isoformat(),
+            "candidates": [{"inverse": "SQQQ", "bench": "QQQ", "lights": {"THESIS": {"state": "GREEN"}, "ENTRY": {"state": "AMBER"}}}]}
+    out = dhs.hedge_state(stoplights=snap, intent=None, bounce=("QQQ", 720.48, "2026-10-28T14:00:00+00:00"), tech_state="LAGGING",
+                          today=date(2026, 11, 2), stale_days=4)
+    assert "720.48" not in out["line"], out
+    out = dhs.hedge_state(stoplights=snap, intent=None, bounce=("QQQ", 720.48, None, "2026-10-26T15:00:00+00:00"), tech_state="LAGGING",
+                          today=date(2026, 11, 2), stale_days=4, green_since={"SQQQ": "2026-11-02T21:00:00+00:00"})
+    assert "720.48" not in out["line"], out
 
 
 def test_hedge_in_play_and_stand_down_are_reported_whatever_the_stoplight():
@@ -81,8 +102,8 @@ def test_api_posture_uses_the_stoplight_helper_and_only_active_alerts():
 
 
 # ── Hedge block ─────────────────────────────────────────────────────────────────────────────────────────────────
-BE = {"stressed_usd": 19241.13, "stressed_pct_book": 1.54, "stressed_pct_invested": 4.82}
-MOMENTUM = [{"etf": "XLK", "sector": "Technology", "state": "LAGGING", "book_pct": 4.8}, {"etf": "XLV", "sector": "Healthcare", "state": "LEADING", "book_pct": 8.6}]
+BE = {"stressed_usd": 12345.0, "stressed_pct_book": 2.5, "stressed_pct_invested": 4.0}
+MOMENTUM = [{"etf": "XLK", "sector": "Technology", "state": "LAGGING", "book_pct": 5.5}, {"etf": "XLV", "sector": "Healthcare", "state": "LEADING", "book_pct": 9.0}]
 
 
 @pytest.mark.parametrize("thesis,verdict", [({"SH": "RED", "PSQ": "RED"}, "NOT_NOW"), ({"PSQ": "AMBER"}, "WATCH"), ({"PSQ": "GREEN"}, "CONSIDER")])
@@ -92,7 +113,7 @@ def test_hedge_verdict_from_the_stoplight_with_the_desks_config_thresholds(thesi
     assert h["verdict"] == verdict
     assert h["thresholds"]["trigger_book_pct"] == DEFENSE["inverse_etf"]["trigger_book_pct"]
     assert h["thresholds"]["materiality_exposure_pct"] == DEFENSE["inverse_stoplights"]["materiality_exposure_pct"]
-    assert h["largest_weakening"] == {"label": "Technology", "pct_invested": 4.8} and h["lagging_count"] == 1
+    assert h["largest_weakening"] == {"label": "Technology", "pct_invested": 5.5} and h["lagging_count"] == 1
     assert h["since"] == "2031-03-07"
     assert not set(h) & set(ha.HEDGE_FORBIDDEN)
     if verdict == "CONSIDER":
@@ -116,13 +137,13 @@ HEAT = [_heat("tech", "STRESS", -3.1, -1.5), _heat("healthcare", "RESILIENT", 2.
 
 
 def test_rotate_ranks_resilient_groups_leading_on_both_horizons():
-    r = ha.rotate(HEAT, leadership=None, momentum_rows=MOMENTUM, book_groups={"healthcare": {"usd": 34093.07}}, policy=POLICY,
+    r = ha.rotate(HEAT, leadership=None, momentum_rows=MOMENTUM, book_groups={"healthcare": {"usd": 11111.0}}, policy=POLICY,
                   sector_groups=[{"key": "healthcare", "kind": "sector", "symbols": ["XLV"]},
                                  {"key": "defensive", "kind": "defensive", "symbols": ["XLP", "XLV", "XLU"]}], as_of="2031-03-07")
     keys = [g["key"] for g in r["groups"]]
     assert keys == ["healthcare", "materials", "energy"]  # mean(rs1, rs5): 2.97, 2.76, 2.59
     assert "fin" not in keys and "disc" not in keys  # NEUTRAL; negative 1d
-    assert r["groups"][0]["desk_state"] == "LEADING" and r["groups"][0]["usd"] == 34093.07
+    assert r["groups"][0]["desk_state"] == "LEADING" and r["groups"][0]["usd"] == 11111.0
     assert not any(k in json.dumps(r).lower() for k in ("buy", "add ", "size"))
 
 
@@ -137,7 +158,7 @@ def test_rotate_fading_leadership_is_dropped_and_nothing_qualifying_says_so():
 def test_folded_groups_under_the_config_amount():
     heat = [_heat("tech", "STRESS", -3, -1), _heat("ai_basket", "STRESS", -3, -3, "theme"), _heat("real_estate", "UNKNOWN", None, None),
             _heat("staples", "RESILIENT", 1, 1)]
-    f = ha.folded(heat, {"tech": {"usd": 19241}, "ai_basket": {"usd": 28.06}, "real_estate": {"usd": 1.2}}, POLICY)
+    f = ha.folded(heat, {"tech": {"usd": 12000}, "ai_basket": {"usd": 50.0}, "real_estate": {"usd": 5.0}}, POLICY)
     assert [x["key"] for x in f] == ["ai_basket", "real_estate"]
     assert POLICY["home_actions"]["sectors"]["fold_below_usd"] == 100
 
@@ -150,24 +171,24 @@ def _item(sym, acct, kinds, usd, **facts):
 
 def test_protect_clauses_are_built_from_facts_in_config_order():
     review = [
-        _item("DEMOA", "Roth", ["stop_near"], 53233, pct_account=96.3, stop_distance_pct=3.6, groups={"financials": 1.0}),
-        _item("DEMOA", "Rollover", ["no_stop"], 41117, pct_account=3.7, groups={"financials": 1.0}),
-        _item("DEMOB", "Individual", ["no_stop"], 29498, pct_account=45.9, groups={"industrials": 1.0}),
-        _item("DEMOC", "Rollover", ["stop_near"], 25980, pct_account=2.3, stop_distance_pct=4.5),
+        _item("DEMOA", "Acct-1", ["stop_near"], 40000, pct_account=88.0, stop_distance_pct=3.6, groups={"financials": 1.0}),
+        _item("DEMOA", "Acct-2", ["no_stop"], 30000, pct_account=5.0, groups={"financials": 1.0}),
+        _item("DEMOB", "Acct-3", ["no_stop"], 20000, pct_account=40.0, groups={"industrials": 1.0}),
+        _item("DEMOC", "Acct-2", ["stop_near"], 10000, pct_account=1.5, stop_distance_pct=4.5),
     ]
     budgets = [
-        {"account_label": "Roth", "budget": "growth_style_pct", "limit": 50, "actual": 96.31, "actual_usd": 53232.5, "drivers": [{"name": "DEMOA", "usd": 53233}]},
-        {"account_label": "Roth", "budget": "single_sector_pct", "limit": 30, "actual": 96.31, "actual_usd": 53232.5, "drivers": [{"name": "Financial Services", "usd": None}]},
-        {"account_label": "Individual", "budget": "unprotected_pct", "limit": 10, "actual": 46.6, "actual_usd": 29938, "drivers": [{"name": "DEMOB", "usd": 29498}, {"name": "X", "usd": 128}]},
+        {"account_label": "Acct-1", "budget": "growth_style_pct", "limit": 50, "actual": 88.0, "actual_usd": 40000.0, "drivers": [{"name": "DEMOA", "usd": 40000}]},
+        {"account_label": "Acct-1", "budget": "single_sector_pct", "limit": 30, "actual": 88.0, "actual_usd": 40000.0, "drivers": [{"name": "Financial Services", "usd": None}]},
+        {"account_label": "Acct-3", "budget": "unprotected_pct", "limit": 10, "actual": 41.2, "actual_usd": 21000, "drivers": [{"name": "DEMOB", "usd": 20000}, {"name": "X", "usd": 128}]},
     ]
-    reentry = {"DEMOB": {"wash_sale": {"state": "occurred", "account_label": "Individual", "rebuy_date": "2031-03-05"}}}
+    reentry = {"DEMOB": {"wash_sale": {"state": "occurred", "account_label": "Acct-3", "rebuy_date": "2031-03-05"}}}
     p = ha.protect(review, budgets=budgets, reentry=reentry, overnight={"DEMOB"}, policy=POLICY)
     a, b, c = p["items"]
-    assert a["consideration"] == ("stop 3.6% below last; one stock is 96% of the account, far above the 30% sector budget; "
-                                  "with the Rollover position, $94,350 in DEMOA across 2 accounts")
-    assert b["consideration"] == "no stop; with the Roth position, $94,350 in DEMOA across 2 accounts"
-    assert c["consideration"] == "no stop; trades overnight now; 46.6% of the account unprotected vs the 10% budget"
-    assert p["more"] == [{"symbol": "DEMOC", "account_label": "Rollover", "short": "stop 4.5% below last", "to": "/risk?symbol=DEMOC"}]
+    assert a["consideration"] == ("stop 3.6% below last; one stock is 88% of the account, far above the 30% sector budget; "
+                                  "with the Acct-2 position, $70,000 in DEMOA across 2 accounts")
+    assert b["consideration"] == "no stop; with the Acct-1 position, $70,000 in DEMOA across 2 accounts"
+    assert c["consideration"] == "no stop; trades overnight now; 41.2% of the account unprotected vs the 10% budget"
+    assert p["more"] == [{"symbol": "DEMOC", "account_label": "Acct-2", "short": "stop 4.5% below last", "to": "/risk?symbol=DEMOC"}]
     for it in p["items"]:
         assert not ha.has_action_verb(it["consideration"]), it["consideration"]
         assert not re.search(r"\$\d+(\.\d+)? stop|stop (at|to) \$", it["consideration"])  # never a stop level
@@ -269,31 +290,58 @@ def _et(y, m, d, hh, mm=0):
     return datetime(y, m, d, hh, mm, tzinfo=ET)
 
 
+TPCOLS = ["symbol", "price_date", "close_price", "source", "created_at"]
+QCOLS = ["symbol", "price", "prev_close", "fetched_at"]
+
+
+class _AllRows(_Conn):
+    """Returns every routed row whatever the SQL says, so the reader's own as-of check must reject (kills a mutant that
+    forces the created_at filter to pass, review of #2460 T1)."""
+
+
 def test_daily_bars_use_ticker_prices_for_a_symbol_without_ohlcv_bars():
     tp = [{"symbol": "XLC", "price_date": date(2031, 3, d), "close_price": 100.0 + d, "source": "yfinance", "created_at": _et(2031, 3, d, 16, 7)}
           for d in (5, 6, 7)]
-    conn = _Conn({"FROM market_ohlcv_bars": (["symbol"], []), "FROM ticker_prices": (["symbol", "price_date", "close_price", "source", "created_at"], tp)})
-    r = rd.PgReader(lambda: conn)
-    bars = r.daily_bars(["XLC"], sessions=10, end=_et(2031, 3, 7, 18))
+    conn = _Conn({"FROM market_ohlcv_bars": (["symbol"], []), "FROM ticker_prices": (TPCOLS, tp)})
+    bars = rd.PgReader(lambda: conn).daily_bars(["XLC"], sessions=10, end=_et(2031, 3, 7, 18))
     assert [(b["date"], b["close"]) for b in bars] == [("2031-03-05", 105.0), ("2031-03-06", 106.0), ("2031-03-07", 107.0)]
     assert all(b["source"] == "ticker_prices:yfinance" for b in bars)
     sql, params = next((s, p) for s, p in conn.log if "FROM ticker_prices" in s)
-    assert "created_at <= %s" in sql  # as-of correct: a row written after `end` is not knowable
-    assert params[-1] == _et(2031, 3, 7, 18)
+    assert "created_at IS NOT NULL AND created_at <= %s" in sql and "source = ANY(%s)" in sql
+    assert params[3] == _et(2031, 3, 7, 18) and params[4] == list(rd.TICKER_PRICE_CLOSE_SOURCES)
 
 
-def test_daily_bars_prefer_ohlcv_then_ticker_prices_and_skip_an_open_session():
+def test_ticker_prices_as_of_rejects_late_null_preclose_and_intraday_rows():
+    end = _et(2031, 3, 9, 18)
+    tp = [
+        {"symbol": "XLC", "price_date": date(2031, 3, 3), "close_price": 103.0, "source": "yfinance", "created_at": _et(2031, 3, 3, 16, 30)},  # ok
+        {"symbol": "XLC", "price_date": date(2031, 3, 4), "close_price": 999.0, "source": "yfinance", "created_at": _et(2031, 3, 9, 19)},  # after end
+        {"symbol": "XLC", "price_date": date(2031, 3, 5), "close_price": 777.0, "source": "yfinance", "created_at": None},  # unknowable
+        {"symbol": "XLC", "price_date": date(2031, 3, 6), "close_price": 555.0, "source": "yfinance", "created_at": _et(2031, 3, 6, 10)},  # pre-close
+        {"symbol": "XLC", "price_date": date(2031, 3, 9), "close_price": 333.0, "source": "market_quotes", "created_at": _et(2031, 3, 9, 16, 7)},  # intraday print
+    ]
+    conn = _AllRows({"FROM market_ohlcv_bars": (["symbol"], []), "FROM ticker_prices": (TPCOLS, tp)})
+    bars = rd.PgReader(lambda: conn).daily_bars(["XLC"], sessions=10, end=end)
+    assert [(b["date"], b["close"]) for b in bars] == [("2031-03-03", 103.0)]
+
+
+def test_ticker_prices_rank_after_bars_and_quote_closes_so_spy_is_unchanged():
     bcols = ["symbol", "bar_time", "open", "high", "low", "close", "volume", "source", "created_at"]
     bars = [{"symbol": "SPY", "bar_time": _et(2031, 3, 5, 0), "open": 1, "high": 2, "low": 0.5, "close": 680, "volume": 1, "source": "yfinance",
              "created_at": _et(2031, 3, 5, 17)}]
-    tp = [{"symbol": "SPY", "price_date": date(2031, 3, d), "close_price": 600.0 + d, "source": "market_quotes", "created_at": _et(2031, 3, d, 16, 7)}
-          for d in (5, 6, 7)]
-    conn = _Conn({"FROM market_ohlcv_bars": (bcols, bars), "FROM ticker_prices": (["symbol", "price_date", "close_price", "source", "created_at"], tp)})
-    out = rd.PgReader(lambda: conn).daily_bars(["SPY"], sessions=10, end=_et(2031, 3, 7, 12))
+    quotes = [{"symbol": "SPY", "price": 605.0, "prev_close": 680.0, "fetched_at": _et(2031, 3, 6, 9, 35)},
+              {"symbol": "SPY", "price": 611.0, "prev_close": 606.0, "fetched_at": _et(2031, 3, 7, 9, 35)},
+              {"symbol": "SPY", "price": 612.0, "prev_close": 606.0, "fetched_at": _et(2031, 3, 7, 15, 59)}]
+    tp = [{"symbol": "SPY", "price_date": date(2031, 3, d), "close_price": 900.0 + d, "source": "yfinance", "created_at": _et(2031, 3, d, 16, 30)}
+          for d in (3, 5, 6, 7)]
+    conn = _Conn({"FROM market_ohlcv_bars": (bcols, bars), "FROM market_quotes WHERE source": (QCOLS, quotes), "FROM ticker_prices": (TPCOLS, tp)})
+    out = rd.PgReader(lambda: conn).daily_bars(["SPY"], sessions=10, end=_et(2031, 3, 7, 18))
     assert [(b["date"], b["close"], b["source"]) for b in out] == [
-        ("2031-03-05", 680.0, "market_ohlcv_bars:yfinance"),  # the bar wins over ticker_prices
-        ("2031-03-06", 606.0, "ticker_prices:market_quotes"),
-    ]  # 03-07 is still trading at 12:00 ET: no close yet
+        ("2031-03-03", 903.0, "ticker_prices:yfinance"),  # only a session neither bars nor quotes have
+        ("2031-03-05", 680.0, "market_ohlcv_bars:yfinance"),
+        ("2031-03-06", 606.0, "market_quotes:alpaca_prev_close"),  # the quote close wins over ticker_prices
+        ("2031-03-07", 612.0, "market_quotes:alpaca_last"),
+    ]
 
 
 # ── APPROVED issuer segments: look-through and the risk budget ───────────────────────────────────────────────────
@@ -337,3 +385,27 @@ def test_risk_budget_default_reads_the_approved_file():
     segs = rb.approved_segments()
     assert "SPCX" in segs and segs["SPCX"]["tech"] == 0.4818
     assert all(s == s.upper() for s in segs)
+
+
+def test_segments_are_point_in_time():
+    """Weights approved after the evaluation instant were not known then (review of #2460, follow-up 2)."""
+    cfg = json.loads((ROOT / "config" / "issuer_segments.json").read_text())["issuers"]
+    approved = date.fromisoformat(cfg["SPCX"]["approved_at"])
+    assert lt.issuer_segments_for("SPCX", cfg, today=approved - timedelta(days=1)) is None
+    assert lt.issuer_segments_for("SPCX", cfg, today=datetime(approved.year, approved.month, approved.day, 21, tzinfo=timezone.utc)) is not None
+    before = lt.exposure_for("SPCX", ai_basket=[], profiles={"SPCX": {"sector": "Industrials"}}, fund_cfg={}, ipos={},
+                             as_of=datetime(2026, 10, 30, 21, tzinfo=timezone.utc))
+    assert before["groups"] == {"industrials": 1.0} and before["basis"].startswith("stock")
+    assert rb.approved_segments(approved - timedelta(days=1)) == {} and "SPCX" in rb.approved_segments(approved)
+
+
+def test_group_to_sector_is_derived_from_the_lookthrough_map():
+    assert set(rb.GROUP_TO_SECTOR) == set(lt.SECTOR_TO_GROUP.values())
+    for g, label in rb.GROUP_TO_SECTOR.items():
+        assert lt.SECTOR_TO_GROUP[label.lower()] == g
+
+
+def test_hedge_block_refuses_a_forbidden_key_without_asserts(monkeypatch):
+    monkeypatch.setattr(ha, "HEDGE_FORBIDDEN", ("thresholds",))
+    with pytest.raises(ValueError):
+        ha.hedge(stoplights=_stoplights({"PSQ": "RED"}), momentum_rows=[], book_exposure=BE, defense_cfg=DEFENSE, today=TODAY)
