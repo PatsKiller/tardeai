@@ -21781,10 +21781,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/oauth_lane_status.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/oauth_lane_keepalive.py:20 STATUS_FILE, _save_status(state) at :95 each run; host mtime 2026-10-09T16:00:20"
+        "kind": "json_key",
+        "path": "data/runtime/oauth_lane_keepalive_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/oauth_lane_keepalive.py writes a LaneRunReceipt at data/runtime/oauth_lane_keepalive_last.json via lib.lane_last_receipt on every real run (lane id oauth-lane-keepalive). STATUS_FILE is the per-lane probe state, which a failed probe also rewrites (2026-11-01)."
       },
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P12",
@@ -22380,9 +22381,11 @@
       "expected_cadence_hours": 0.05,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/process_reaper.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/process-reaper_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/process_reaper.py writes a LaneRunReceipt via lib.lane_last_receipt at the end of every completed sweep; findings are its output, not a failure. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",

@@ -94,6 +94,8 @@ def test_real_run_regression_exits_1_and_receipt_carries_ok_at(env, monkeypatch)
     assert oak.main(["grok,chatgpt"]) == 1
     rc = json.loads(rc_path.read_text())
     assert rc["status"] == "failed" and rc["ok_at"] == ok_at and rc["summary"]["regressions"] == ["chatgpt"]
+    # The receipt names the registry lane id, so the Jobs projection and the source clock match it.
+    assert rc["lane_id"] == "oauth-lane-keepalive"
     assert len(env["sent"]) == 1  # the send itself is unchanged: one deduped alert
     st = json.loads(env["status"].read_text())
     assert st["chatgpt"]["ok"] is False and st["chatgpt"]["consec_fail"] == 1
