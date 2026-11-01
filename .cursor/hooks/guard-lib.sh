@@ -61,10 +61,14 @@ classify_cmd() {
   [[ "$cmd" =~ guard_push_free ]] && { echo git-push; return; }
   # gh on this host is logged in as the operator, so an agent-written comment or review would read as an operator
   # approval (AGENTS.md §28.15 item 8 evidence). Comment/review writes need a gh-write grant.
+  # Issue create/edit/reopen/close/... are writes too: a standing push approval lives on an issue (§28.15 item 8 (c)).
   local _ghc='(^|[^[:alnum:]_.-])gh[[:space:]]+(pr|issue)[[:space:]]+(comment|review)([[:space:]]|$)'
+  local _ghi='(^|[^[:alnum:]_.-])gh[[:space:]]+issue[[:space:]]+(create|new|edit|reopen|close|delete|transfer|pin|unpin|lock|unlock|develop)([[:space:]]|$)'
   local _gha='(^|[^[:alnum:]_.-])gh[[:space:]]+api[[:space:]]'
-  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
+  # Field flags spaced or attached (-f body=x, -fbody=x, -Fbody=@f, --field=..), --input, or a write method.
+  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-f|-F)[^[:space:]]|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
   [[ "$cmd" =~ $_ghc ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_ghi ]] && { echo gh-write; return; }
   if [[ "$cmd" =~ $_gha ]] && [[ "$cmd" =~ $_ghw ]] && [[ "$cmd" =~ (comments|reviews|issues|pulls|graphql) ]]; then
     echo gh-write; return
   fi

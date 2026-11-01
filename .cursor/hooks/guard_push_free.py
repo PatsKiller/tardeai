@@ -48,11 +48,14 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
     (c) STANDING approval (operator, 2026-11-01: "Yes, draft stand and approval."): on path (a) only -- the pusher's
         own live claim on the branch is still required -- when no per-branch ref resolves, an operator comment on the
         configured standing-approval issue with the line ``APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>`` admits
-        the branch if: the glob starts with a configured literal prefix (wt/ feat/ fix/ chore/ docs/), never ``*``
+        the branch only while remote main's AGENTS.md is 29.3.0+ ACTIVE, if: the glob starts with a configured literal prefix (wt/ feat/ fix/ chore/ docs/), never ``*``
         alone and never anything that could match main/master/release/train; the date is today or later (UTC) and at
         most ``standing_max_days`` after the comment; the comment carries no ``APPROVE_AGENTS_POLICY_`` token; and no
-        later operator comment on that issue has a ``REVOKE_PUSH_STANDING`` line. A closed issue admits nothing. The
-        admitting comment's URL is the logged ``approval_ref``. Every other condition above still runs.
+        later operator comment on that issue contains ``REVOKE_PUSH_STANDING`` (any case or markup). A closed issue
+        admits nothing, and comments made before its latest close never count again (a reopen does not revive them);
+        an edited operator comment refuses; lines inside code fences are ignored; dates are UTC. The issue is pinned by
+        number or is the single operator issue with the configured title (duplicates refuse). The admitting
+        comment's URL is the logged ``approval_ref``. Every other condition above still runs.
     Agent-side ``gh`` comment/review writes are guarded by the shell guard (tier ``gh-write``) because ``gh`` on the
     host is logged in as the operator; the durable fix is a separate agent GitHub identity or passkey-signed
     approvals (follow-up). The
@@ -116,10 +119,12 @@ COMMENT_URL_RE = re.compile(
 _SECTION = re.compile(r"^##\s+(?P<name>.+?)\s*$", re.MULTILINE)
 STANDING_RE = re.compile(r"^[ \t]*APPROVE_PUSH_STANDING[ \t]+(?P<glob>\S+)[ \t]+until[ \t]+(?P<until>\S+)[ \t]*$",
                          re.MULTILINE)
-REVOKE_RE = re.compile(r"^[ \t]*REVOKE_PUSH_STANDING\b", re.MULTILINE)
 #: A standing glob: one literal prefix segment, then a name part of branch characters plus ``*``/``?`` only.
 STANDING_GLOB_RE = re.compile(r"^(?P<prefix>[a-z][a-z0-9-]{1,19}/)(?P<rest>[A-Za-z0-9._*?-]{1,121})$")
 PREFIX_RE = re.compile(r"^[a-z][a-z0-9-]{1,19}/$")
+#: (c) is live only once main's AGENTS.md carries it, ACTIVE.
+STANDING_MIN_POLICY = (29, 3, 0)
+STANDING_MIN_POLICY_TEXT = "29.3.0"
 _PROTECTED_PROBES = ("main", "master", "HEAD", "head", "release/x", "release/2026-11-01", "train/x", "train/2026-11-01")
 
 DEFAULTS: dict[str, Any] = {
@@ -589,62 +594,117 @@ def _standing_repo(cfg: dict[str, Any]) -> str:
     return want
 
 
+def _gh_pages(cfg: dict[str, Any], path: str, what: str) -> list[dict]:
+    """Every page of a list endpoint (``path`` already has a query string). Fails closed on any error or the cap."""
+    max_pages = int(cfg.get("standing_max_pages") or 10)
+    out: list[dict] = []
+    for page in range(1, max_pages + 1):
+        rows = _gh_api_list(cfg, f"{path}&per_page=100&page={page}")
+        if rows is None:
+            raise Refused(f"standing approval: could not read {what}")
+        out += [r for r in rows if isinstance(r, dict)]
+        if len(rows) < 100:
+            return out
+    # a revocation, a close or a duplicate could sit past the cap: fail closed
+    raise Refused(f"standing approval: {what} has more than {max_pages * 100} entries; refusing")
+
+
+def _login(doc: Any) -> str:
+    return str(((doc or {}).get("user") or {}).get("login") or "") if isinstance(doc, dict) else ""
+
+
 def standing_issue(cfg: dict[str, Any], repo: str) -> int:
-    """The configured standing-approval issue; it must be OPEN (closing it voids every standing approval)."""
+    """The standing-approval issue: pinned by ``standing_issue``, or the ONE issue (never a PR) the operator opened with
+    exactly ``standing_issue_title``, searched over every page oldest first; two such issues refuse (a newer duplicate
+    must never shadow a revoked original). It must be open and opened by the operator."""
+    op = str(cfg["operator_login"])
     num = cfg.get("standing_issue")
     if num is None:
         title = str(cfg.get("standing_issue_title") or "")
-        rows = _gh_api_list(cfg, f"repos/{repo}/issues?creator={cfg['operator_login']}&state=open&per_page=100")
-        if rows is None:
-            raise Refused("standing approval: could not list the operator's issues")
-        nums = sorted(int(r["number"]) for r in rows if isinstance(r, dict) and r.get("title") == title
-                      and "pull_request" not in r and isinstance(r.get("number"), int)
-                      and str((r.get("user") or {}).get("login") or "") == cfg["operator_login"])
+        rows = _gh_pages(cfg, f"repos/{repo}/issues?creator={op}&state=all&sort=created&direction=asc",
+                         "the operator's issues")
+        nums = sorted({r["number"] for r in rows if r.get("title") == title and "pull_request" not in r
+                       and isinstance(r.get("number"), int) and not isinstance(r.get("number"), bool)
+                       and _login(r) == op})
         if not nums:
-            raise Refused(f"standing approval: no open operator issue titled {title!r}")
+            raise Refused(f"standing approval: no operator issue titled {title!r}")
+        if len(nums) > 1:
+            raise Refused(f"standing approval: {len(nums)} operator issues are titled {title!r} "
+                          f"(#{', #'.join(map(str, nums[:5]))}); pin one with standing_issue")
         num = nums[0]
     if not isinstance(num, int) or isinstance(num, bool) or num <= 0:
         raise Refused("standing approval: standing_issue is not an issue number")
     doc = _gh_api(cfg, f"repos/{repo}/issues/{num}")
     if doc.get("number") != num or str(doc.get("state") or "") != "open" or "pull_request" in doc:
         raise Refused(f"standing approval: issue #{num} is not an open issue")
+    if _login(doc) != op:
+        raise Refused(f"standing approval: issue #{num} was not opened by the operator (got {_login(doc) or 'none'})")
     return num
 
 
+_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)[^\n]*\n.*?(^[ \t]*\1[ \t]*$|\Z)", re.MULTILINE | re.DOTALL)
+
+
+def _unfenced(body: str) -> str:
+    """The body with fenced code blocks removed: an example inside a fence is never an approval."""
+    return _FENCE_RE.sub("", body)
+
+
 def standing_approval(branch: str, cfg: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, str]:
-    """(c): the newest unrevoked, unexpired operator ``APPROVE_PUSH_STANDING`` line whose glob covers ``branch``."""
+    """(c): the newest unrevoked, unexpired operator ``APPROVE_PUSH_STANDING`` line whose glob covers ``branch``.
+
+    Comments created at or before the issue's latest ``closed`` event never count (a close voids for good, even after
+    a reopen). An edited operator comment after that point refuses the whole path (its earlier text is unknowable).
+    A ``REVOKE_PUSH_STANDING`` anywhere in an operator comment, in any case or markup, voids everything before it.
+    Dates are UTC: the expiry is the last valid UTC day, and the cap counts days from the comment's UTC date."""
     if PROTECTED_RE.search(branch):
         raise Refused(f"standing approval never covers {branch}")
+    st = cfg.get("_main_policy") or {}
+    sv = _semver(st.get("version"))
+    if not st.get("active") or sv is None or sv < STANDING_MIN_POLICY:
+        raise Refused(f"standing approval needs AGENTS.md {STANDING_MIN_POLICY_TEXT}+ ACTIVE on main "
+                      f"(main has {st.get('version') or 'unknown'}, {'ACTIVE' if st.get('active') else 'not active'})")
     repo = _standing_repo(cfg)
     num = standing_issue(cfg, repo)
-    max_pages = int(cfg.get("standing_max_pages") or 10)
-    comments: list[dict] = []
-    for page in range(1, max_pages + 1):
-        rows = _gh_api_list(cfg, f"repos/{repo}/issues/{num}/comments?per_page=100&page={page}")
-        if rows is None:
-            raise Refused(f"standing approval: could not read the comments of #{num}")
-        comments += [r for r in rows if isinstance(r, dict)]
-        if len(rows) < 100:
-            break
-    else:  # a revocation could sit past the cap: fail closed
-        raise Refused(f"standing approval: #{num} has more than {max_pages * 100} comments; refusing")
+    op = str(cfg["operator_login"])
+    events = _gh_pages(cfg, f"repos/{repo}/issues/{num}/events?direction=asc", f"the events of #{num}")
+    closes = [e for e in events if str(e.get("event") or "") == "closed"]
+    cutoff: Optional[datetime] = None
+    for e in closes:
+        t = _parse_ts(e.get("created_at"))
+        if t is None:
+            raise Refused(f"standing approval: a close event on #{num} has no time; refusing")
+        cutoff = t if cutoff is None or t > cutoff else cutoff
+    comments = _gh_pages(cfg, f"repos/{repo}/issues/{num}/comments?direction=asc", f"the comments of #{num}")
     prefix = f"https://github.com/{repo}/issues/{num}#issuecomment-"
-    op = [c for c in comments if str((c.get("user") or {}).get("login") or "") == cfg["operator_login"]
-          and str(c.get("html_url") or "") == f"{prefix}{c.get('id')}"]
-    op.sort(key=lambda c: (str(c.get("created_at") or ""), int(c.get("id") or 0)))
+    op_rows = []
+    for c in comments:
+        if _login(c) != op:
+            continue
+        made = _parse_ts(c.get("created_at"))
+        if made is None or not isinstance(c.get("id"), int) or isinstance(c.get("id"), bool):
+            raise Refused(f"standing approval: an operator comment on #{num} has no usable id or time; refusing")
+        if cutoff is not None and made <= cutoff:
+            continue  # voided by a later close, even if the issue was reopened
+        if str(c.get("updated_at") or "") != str(c.get("created_at") or ""):
+            raise Refused(f"standing approval: operator comment {c.get('id')} on #{num} was edited; post a new comment"
+                          " (close and reopen the issue to clear it)")
+        op_rows.append((made, c["id"], c))
+    op_rows.sort(key=lambda r: (r[0], r[1]))
     lines: list[tuple[dict, str, str]] = []
-    for c in op:
+    for _made, _cid, c in op_rows:
         body = str(c.get("body") or "")
-        if REVOKE_RE.search(body):
+        if "REVOKE_PUSH_STANDING" in body.upper():
             lines = []  # voids everything before it, and the revoking comment itself
             continue
-        if "APPROVE_AGENTS_POLICY_" in body:
+        if "APPROVE_AGENTS_POLICY_" in body or str(c.get("html_url") or "") != f"{prefix}{c['id']}":
             continue
-        lines += [(c, m.group("glob").strip("`"), m.group("until").strip("`")) for m in STANDING_RE.finditer(body)]
+        lines += [(c, m.group("glob").strip("`"), m.group("until").strip("`"))
+                  for m in STANDING_RE.finditer(_unfenced(body))]
     if not lines:
         raise Refused(f"standing approval: no unrevoked APPROVE_PUSH_STANDING line on #{num}")
     now = now or datetime.now(timezone.utc)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     max_days = int(cfg.get("standing_max_days") or 45)
     errs: list[str] = []
     for c, glob, until in reversed(lines):  # newest first
@@ -658,13 +718,13 @@ def standing_approval(branch: str, cfg: dict[str, Any], *, now: Optional[datetim
         elif made is None:
             errs.append(f"{url}: comment has no created_at")
         elif exp < today:
-            errs.append(f"{url}: expired {until}")
-        elif (exp - made.replace(hour=0, minute=0, second=0, microsecond=0)).days > max_days:
+            errs.append(f"{url}: expired {until} (UTC)")
+        elif (exp - made.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)).days > max_days:
             errs.append(f"{url}: expiry {until} is more than {max_days} days after the comment")
         elif not _standing_glob_re(glob).match(branch):
             errs.append(f"{url}: {glob} does not cover {branch}")
         else:
-            return {"kind": "standing_comment", "ref": url, "author": str(cfg["operator_login"]),
+            return {"kind": "standing_comment", "ref": url, "author": op,
                     "comment_id": str(c.get("id")), "bound": f"standing:{glob} until {until}", "glob": glob,
                     "until": until, "issue": str(num)}
     raise Refused("standing approval: " + " | ".join(errs[:3]))
@@ -919,6 +979,7 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     if not main_sha:
         raise Refused("the canonical remote has no main")
     st = check_policy(repo, main_sha)
+    cfg["_main_policy"] = st  # gates (c): the standing path needs main's AGENTS.md 29.3.0+ ACTIVE
     check_prepush(repo, main_sha)
     remote_sha = refs.get(f"refs/heads/{branch}")
     ff = check_fast_forward(repo, remote_sha, local_sha)

@@ -18,8 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_guard_item8_grant_free_push_20261025 import (BRANCH, GH_DOCS, HOOKS, OK_COMMENT, OTHER_COMMENT,
-                                                             SESSION, Env, _refused, pytestmark)  # noqa: F401
+from tests.test_guard_item8_grant_free_push_20261025 import (BRANCH, GH_DOCS, HOOKS, OK_COMMENT, OTHER_COMMENT,  # noqa: F401
+                                                             SESSION, Env, _classify, _refused, agents_md, pytestmark)
+
+STANDING_POLICY = "29.3.0"
 
 REPO = "PatsKiller/tardeai"
 ISSUE = 50
@@ -41,8 +43,9 @@ def _ts(offset_days: int = 0, minute: int = 0) -> str:
 
 
 def comment(cid: int, body: str, *, login: str = "PatsKiller", created: str | None = None,
-            html: str | None = None) -> dict:
-    return {"id": cid, "user": {"login": login}, "body": body, "created_at": created or _ts(0, cid % 60),
+            html: str | None = None, updated: str | None = None) -> dict:
+    made = created or _ts(0, cid % 60)
+    return {"id": cid, "user": {"login": login}, "body": body, "created_at": made, "updated_at": updated or made,
             "html_url": f"{URL}{cid}" if html is None else html}
 
 
@@ -62,15 +65,28 @@ sys.exit(1)
 """
 
 
+LIST = f"repos/{REPO}/issues?creator=PatsKiller&state=all&sort=created&direction=asc"
+COMMENTS = f"repos/{REPO}/issues/{ISSUE}/comments?direction=asc"
+EVENTS = f"repos/{REPO}/issues/{ISSUE}/events?direction=asc"
+
+
+def _pg(path: str, n: int = 1) -> str:
+    return f"{path}&per_page=100&page={n}"
+
+
 def standing(E: Env, comments: list[dict], *, state: str = "open", number: int | None = ISSUE,
-             listed: list[dict] | None = None, pages: list[list[dict]] | None = None, **cfg) -> None:
+             listed: list[dict] | None = None, pages: list[list[dict]] | None = None,
+             events: list[dict] | None = None, issue_author: str = "PatsKiller", extra: dict | None = None,
+             **cfg) -> None:
     """Point the fake gh + test config at a standing-approval issue carrying ``comments`` (oldest first)."""
     exact = {f"repos/{REPO}/issues/{ISSUE}": {"number": ISSUE, "state": state, "title": TITLE,
-                                              "user": {"login": "PatsKiller"}}}
+                                              "user": {"login": issue_author}},
+             _pg(EVENTS): events or []}
     for n, page in enumerate(pages or [comments], 1):
-        exact[f"repos/{REPO}/issues/{ISSUE}/comments?per_page=100&page={n}"] = page
-    exact[f"repos/{REPO}/issues?creator=PatsKiller&state=open&per_page=100"] = listed if listed is not None else [
+        exact[_pg(COMMENTS, n)] = page
+    exact[_pg(LIST)] = listed if listed is not None else [
         {"number": ISSUE, "title": TITLE, "user": {"login": "PatsKiller"}}]
+    exact.update(extra or {})
     data = E.tmp / "fake-gh-exact.json"
     data.write_text(json.dumps(exact))
     E.gh.write_text(FAKE_GH % (str(data), GH_DOCS))
@@ -82,7 +98,7 @@ def standing(E: Env, comments: list[dict], *, state: str = "open", number: int |
 @pytest.fixture
 def E(tmp_path: Path) -> Env:
     e = Env(tmp_path)
-    e.build()
+    e.build(agents=agents_md(STANDING_POLICY))  # (c) is live only under main's AGENTS.md 29.3.0+ ACTIVE
     return e
 
 
@@ -129,7 +145,7 @@ def test_no_operator_issue_with_title_refused(E):
     E.claim(note="x")
     standing(E, [comment(101, ok_line())], number=None,
              listed=[{"number": ISSUE, "title": TITLE, "user": {"login": "someone-else"}}])
-    _refused(E, E.checker(), "no open operator issue")
+    _refused(E, E.checker(), "no operator issue titled")
 
 
 def test_backticked_glob_and_expiry_today_admit(E):
@@ -182,7 +198,7 @@ def test_bad_per_branch_ref_with_no_standing_still_refused(E):
     standing(E, [], number=None, listed=[])
     out = E.checker()
     _refused(E, out, "not authored by the operator")
-    assert "no open operator issue" in out["reason"]
+    assert "no operator issue titled" in out["reason"]
 
 
 # =========================================================================== refusals
@@ -286,7 +302,7 @@ def test_comment_cap_fails_closed(E):
     E.claim(note="x")
     full = [comment(1000 + i, "noise") for i in range(100)]
     standing(E, [], pages=[[comment(101, ok_line())] + full[:99], full], standing_max_pages=2)
-    _refused(E, E.checker(), "more than 200 comments")
+    _refused(E, E.checker(), "more than 200 entries")
 
 
 # ---------------------------------------------------------------- every other check still runs under a standing ok
@@ -357,8 +373,7 @@ def test_glob_validation_unit(glob, ok):
 MUTATIONS = {
     "expired": ("        elif exp < today:\n", "        elif False:\n",
                 lambda: [comment(101, f"APPROVE_PUSH_STANDING feat/* until {_day(-1)}", created=_ts(-10))]),
-    "non-operator": ('    op = [c for c in comments if str((c.get("user") or {}).get("login") or "") == cfg["operator_login"]\n',
-                     "    op = [c for c in comments if True\n",
+    "non-operator": ("        if _login(c) != op:\n            continue\n", "",
                      lambda: [comment(101, ok_line(), login="someone-else")]),
     "revoked": ("            lines = []  # voids everything before it, and the revoking comment itself\n            continue\n",
                 "            pass\n",
@@ -367,8 +382,24 @@ MUTATIONS = {
                        lambda: [comment(101, ok_line("feat/other-*"))]),
     "glob-prefix": ("    if m.group(\"prefix\") not in standing_prefixes(cfg):\n", "    if False:\n",
                     lambda: [comment(101, ok_line("feat/*"))], {"standing_prefixes": ["wt/"]}),
-    "cap": ("        elif (exp - made.replace(hour=0, minute=0, second=0, microsecond=0)).days > max_days:\n",
+    "cap": ("        elif (exp - made.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)).days > max_days:\n",
             "        elif False:\n", lambda: [comment(101, ok_line(days=120), created=_ts(0))]),
+    # r2 (security review of #2450)
+    "edited": ('        if str(c.get("updated_at") or "") != str(c.get("created_at") or ""):\n',
+               "        if False:\n", lambda: [comment(101, ok_line(), created=_ts(-5), updated=_ts(0, 5))]),
+    "close-cutoff": ("        if cutoff is not None and made <= cutoff:\n", "        if False:\n",
+                     lambda: [comment(101, ok_line(), created=_ts(-3))],
+                     {"events": [{"event": "closed", "created_at": _ts(-2)}]}),
+    "duplicate-title": ("        if len(nums) > 1:\n", "        if False:\n",
+                        lambda: [comment(101, ok_line())],
+                        {"number": None, "listed": [{"number": ISSUE, "title": TITLE, "user": {"login": "PatsKiller"}},
+                                                    {"number": 900, "title": TITLE, "user": {"login": "PatsKiller"}}]}),
+    "fence": ("                  for m in STANDING_RE.finditer(_unfenced(body))]", "                  for m in STANDING_RE.finditer(body)]",
+              lambda: [comment(101, f"```\n{ok_line()}\n```")]),
+    "revoke-lenient": ('        if "REVOKE_PUSH_STANDING" in body.upper():', '        if body.startswith("REVOKE_PUSH_STANDING"):',
+                       lambda: [comment(101, ok_line()), comment(102, "**REVOKE_PUSH_STANDING**")]),
+    "issue-author": ("    if _login(doc) != op:\n", "    if False:\n", lambda: [comment(101, ok_line())],
+                     {"issue_author": "someone-else"}),
 }
 
 
@@ -389,3 +420,236 @@ def test_mutation_glob_covering_main_layers():
     assert "release/" not in gpf.standing_prefixes(cfg)
     for g in ("*", "release/*", "train/*", "main", "ma*"):
         assert gpf.standing_glob_problem(g, cfg) is not None, g
+
+
+# =========================================================================== r2: security review of #2450 (B1-B3, M1-M3)
+
+
+def _issue_row(n: int, *, title: str = TITLE, login: str = "PatsKiller", pr: bool = False) -> dict:
+    d = {"number": n, "title": title, "user": {"login": login}}
+    return {**d, "pull_request": {}} if pr else d
+
+
+# ---- B1: the issue lookup
+
+
+def test_b1_issue_found_past_the_first_page_oldest_first(E):
+    E.claim(note="x")
+    page1 = [_issue_row(3000 + i, title=f"pr {i}", pr=True) for i in range(100)]
+    standing(E, [comment(101, ok_line())], number=None, listed=page1,
+             extra={_pg(LIST, 2): [_issue_row(ISSUE)]})
+    out = E.checker(mode="check")
+    assert out["allow"] and out["plan"]["approval_issue"] == str(ISSUE), out
+
+
+def test_b1_two_operator_issues_with_the_title_refuse(E):
+    """A newer same-title issue must never shadow a revoked original: duplicates refuse outright."""
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line()), comment(102, "REVOKE_PUSH_STANDING")], number=None,
+             listed=[_issue_row(ISSUE), _issue_row(900)])
+    _refused(E, E.checker(), "2 operator issues are titled")
+
+
+def test_b1_lower_numbered_pr_with_the_title_is_not_the_issue(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line())], number=None, listed=[_issue_row(7, pr=True), _issue_row(ISSUE)])
+    out = E.checker(mode="check")
+    assert out["allow"] and out["plan"]["approval_issue"] == str(ISSUE), out
+
+
+def test_b1_only_a_pr_with_the_title_refuses(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line())], number=None, listed=[_issue_row(ISSUE, pr=True)])
+    _refused(E, E.checker(), "no operator issue titled")
+
+
+def test_b1_issue_list_unreadable_page_two_fails_closed(E):
+    E.claim(note="x")
+    page1 = [_issue_row(3000 + i, title=f"pr {i}", pr=True) for i in range(100)]
+    standing(E, [comment(101, ok_line())], number=None, listed=page1)  # page 2 missing
+    _refused(E, E.checker(), "could not read the operator's issues")
+
+
+@pytest.mark.parametrize("number", [ISSUE, None])
+def test_b1_issue_opened_by_someone_else_refused(E, number):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line())], number=number, issue_author="someone-else",
+             listed=[_issue_row(ISSUE)])
+    _refused(E, E.checker(), "not opened by the operator")
+
+
+# ---- B2: gh writes that could forge or revive an approval need a gh-write grant
+
+
+@pytest.mark.parametrize("cmd", [
+    "gh api repos/PatsKiller/tardeai/issues/50/comments -fbody='APPROVE_PUSH_STANDING wt/* until 2026-12-15'",
+    "gh api repos/PatsKiller/tardeai/issues/50/comments -Fbody=@/tmp/approve.txt",
+    "gh api -fbody='APPROVE_PUSH_STANDING wt/* until 2026-12-15' repos/PatsKiller/tardeai/issues/comments/123 -XPATCH",
+    "gh api repos/PatsKiller/tardeai/issues/50/comments --input body.json",
+    "gh api repos/PatsKiller/tardeai/issues/50/comments --input=body.json",
+    "gh api repos/PatsKiller/tardeai/issues -Ftitle='Standing push approvals'",
+    "gh issue reopen 50", "gh issue close 50", "gh issue create --title 'Standing push approvals' --body x",
+    "gh issue edit 7 --title 'Standing push approvals'", "gh issue delete 50 --yes", "gh issue transfer 50 o/r",
+    "cd /x && gh issue reopen 50 -R PatsKiller/tardeai",
+])
+def test_b2_gh_issue_and_attached_field_writes_are_gh_write(cmd):
+    assert _classify(cmd) == "gh-write", cmd
+
+
+@pytest.mark.parametrize("cmd", ["gh issue view 50", "gh issue list --state all", "gh issue status",
+                                 "gh api repos/o/r/issues/50/comments", "gh api 'repos/o/r/issues?per_page=100'"])
+def test_b2_gh_issue_reads_stay_unguarded(cmd):
+    assert _classify(cmd) == "none", cmd
+
+
+@pytest.mark.parametrize("cmd", ["gh issue reopen 50", "gh issue create --title x --body y",
+                                 "gh api repos/o/r/issues/50/comments -fbody=x"])
+def test_b2_hook_denies_without_a_grant(E, cmd):
+    assert E.hook(cmd).get("permission") != "allow", cmd
+
+
+# ---- B3: a close voids for good, even after a reopen
+
+
+def _closed(at: str) -> dict:
+    return {"event": "closed", "created_at": at, "actor": {"login": "PatsKiller"}}
+
+
+def test_b3_reopened_issue_does_not_revive_earlier_approvals(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line(), created=_ts(-3))],
+             events=[_closed(_ts(-2)), {"event": "reopened", "created_at": _ts(-1)}])
+    _refused(E, E.checker(), "no unrevoked")
+
+
+def test_b3_approval_posted_after_the_reopen_admits(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line(), created=_ts(-3)), comment(102, ok_line(), created=_ts(0, 30))],
+             events=[_closed(_ts(-2)), {"event": "reopened", "created_at": _ts(-1)}])
+    out = E.checker(mode="check")
+    assert out["allow"] and out["approval_ref"] == f"{URL}102", out
+
+
+def test_b3_latest_close_wins(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line(), created=_ts(-1))],
+             events=[_closed(_ts(-5)), _closed(_ts(0, 30))])
+    _refused(E, E.checker(), "no unrevoked")
+
+
+def test_b3_events_unreadable_fails_closed(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line())])
+    data = json.loads((E.tmp / "fake-gh-exact.json").read_text())
+    del data[_pg(EVENTS)]
+    (E.tmp / "fake-gh-exact.json").write_text(json.dumps(data))
+    _refused(E, E.checker(), "could not read the events")
+
+
+# ---- M1: edited operator comments refuse
+
+
+def test_m1_edited_approval_refused(E):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line(), created=_ts(-5), updated=_ts(0, 5))])
+    _refused(E, E.checker(), "was edited")
+
+
+def test_m1_edited_comment_anywhere_after_the_close_refuses(E):
+    """An edit could have removed a revoke: the whole path refuses, even with a later clean approval."""
+    E.claim(note="x")
+    standing(E, [comment(101, "note", created=_ts(-2), updated=_ts(0, 1)), comment(102, ok_line())])
+    _refused(E, E.checker(), "was edited")
+
+
+def test_m1_edit_before_the_latest_close_is_ignored(E):
+    E.claim(note="x")
+    standing(E, [comment(101, "old", created=_ts(-5), updated=_ts(-4)), comment(102, ok_line(), created=_ts(0, 30))],
+             events=[_closed(_ts(-3))])
+    assert E.checker(mode="check")["allow"]
+
+
+def test_m1_edited_non_operator_comment_is_ignored(E):
+    E.claim(note="x")
+    standing(E, [comment(101, "hi", login="someone-else", updated=_ts(0, 59)), comment(102, ok_line())])
+    assert E.checker(mode="check")["allow"]
+
+
+# ---- M2: a revoke counts however it is written
+
+
+@pytest.mark.parametrize("body", ["- REVOKE_PUSH_STANDING (all of them)", "**REVOKE_PUSH_STANDING**",
+                                  "please revoke_push_standing now", "> REVOKE_PUSH_STANDING",
+                                  "```\nREVOKE_PUSH_STANDING\n```", "`REVOKE_PUSH_STANDING`"])
+def test_m2_revoke_in_any_markup_or_case_revokes(E, body):
+    E.claim(note="x")
+    standing(E, [comment(101, ok_line()), comment(102, body)])
+    _refused(E, E.checker(), "no unrevoked")
+
+
+# ---- M3: gated on main's AGENTS.md 29.3.0+ ACTIVE
+
+
+@pytest.mark.parametrize("version,header,row", [("29.2.1", "ACTIVE", "ACTIVE"), ("29.3.0", "PROPOSED", "PROPOSED"),
+                                                ("29.3.0", "ACTIVE", "PROPOSED")])
+def test_m3_standing_needs_main_agents_29_3_0_active(tmp_path, version, header, row):
+    e = Env(tmp_path)
+    e.build(agents=agents_md(version, header, row))
+    e.claim(note="x")
+    standing(e, [comment(101, ok_line())])
+    out = e.checker(mode="check")
+    assert not out["allow"], out
+    # 29.2.1 ACTIVE still lets the per-branch path work; the others fail the base policy gate first
+    if version == "29.2.1":
+        assert "needs AGENTS.md 29.3.0+ ACTIVE" in out["reason"], out
+
+
+def test_m3_per_branch_path_unaffected_below_29_3_0(tmp_path):
+    e = Env(tmp_path)
+    e.build(agents=agents_md("29.2.1"))
+    e.claim()
+    standing(e, [comment(101, ok_line())])
+    assert e.checker()["allow"]
+
+
+def test_m3_later_versions_admit(tmp_path):
+    e = Env(tmp_path)
+    e.build(agents=agents_md("30.0.0"))
+    e.claim(note="x")
+    standing(e, [comment(101, ok_line())])
+    assert e.checker(mode="check")["allow"]
+
+
+# ---- follow-ups
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~", "```text"])
+def test_fenced_example_is_not_an_approval(E, fence):
+    E.claim(note="x")
+    close = fence[:3]
+    standing(E, [comment(101, f"Example for docs:\n{fence}\n{ok_line()}\n{close}\n")])
+    _refused(E, E.checker(), "no unrevoked")
+
+
+def test_unterminated_fence_hides_the_rest(E):
+    E.claim(note="x")
+    standing(E, [comment(101, f"```\n{ok_line()}\n")])
+    _refused(E, E.checker(), "no unrevoked")
+
+
+def test_line_after_a_closed_fence_counts(E):
+    E.claim(note="x")
+    standing(E, [comment(101, f"```\nexample\n```\n{ok_line()}")])
+    assert E.checker(mode="check")["allow"]
+
+
+def test_non_int_comment_id_fails_closed(E):
+    E.claim(note="x")
+    standing(E, [{**comment(101, ok_line()), "id": "abc", "html_url": f"{URL}abc"}])
+    _refused(E, E.checker(), "no usable id")
+
+
+def test_expiry_is_utc_and_cap_counts_from_the_comment_utc_date():
+    """Unit: a comment at 23:30 ET on day D is day D+1 in UTC; the cap counts from the UTC date."""
+    made = datetime(2026, 11, 2, 4, 30, tzinfo=timezone.utc)  # 2026-11-01 23:30 ET
+    assert gpf._date("2026-12-17") - made.replace(hour=0, minute=0) == timedelta(days=45)
