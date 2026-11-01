@@ -222,9 +222,10 @@ def test_stripped_hand_rows_keep_their_live_schedules():
 def test_snapshot_carries_the_post_install_crontab():
     # ops-crons L1051-L1052 stay contiguous (L1053, the drift check, was withdrawn 2026-10-27: it is a user timer);
     # siem-active-flip 2026-10-11 appends L1060+L1063 after them; tmp-scratch-cleanup 2026-10-14 appends L1065;
-    # market-risk-evaluate 2026-11-01 appends L1083-L1086 last (the Market Risk Engine shadow, operator "run it now")
+    # market-risk-evaluate 2026-11-01 appends L1083-L1086 last (the Market Risk Engine, operator "run it now"; shadow
+    # until ~11:10 ET, then --apply on "I also approve turning on real alerts")
     assert len(SNAP_LINES[-4:]) == 4 and all(
-        "scripts/market_risk_evaluate.py --scheduled --shadow" in ln for ln in SNAP_LINES[-4:]
+        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-4:]
     )
     before = SNAP_LINES[:-4]
     assert before[-5:-3] == LINES
