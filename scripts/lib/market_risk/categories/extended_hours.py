@@ -5,6 +5,10 @@ at or below ``warn_pct`` WARN, at or below ``stress_pct`` STRESS. Heavyweights d
 ``heavyweight_stress_pct`` are named as evidence (the 10-29 case: INTC -22%, AMZN -6% after the close while NQ
 fell 1.6%). An opening-shock verdict in ``ctx.extras["opening_shock"]`` of ``panic_open`` forces STRESS with
 ``shock=True`` evidence, which scoring treats as a single-evaluation RED. No extended-session quotes → UNKNOWN.
+
+Overnight (20:00-04:00 ET) and Sunday futures-open prints, including ``futures_proxies`` (/ES, /NQ), count as
+extended-session prints. Their staleness and level-only baselines are handled in ``_overnight``: a stale overnight
+row is UNKNOWN with its session and age named, never CALM.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from datetime import date, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from scripts.lib.market_risk.categories import _overnight
 from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
 
 CATEGORY = "extended_hours"
@@ -75,7 +80,8 @@ def _move(row: dict[str, Any]) -> float | None:
 def _latest(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for r in rows:
-        if str(r.get("session") or "").lower() not in ("premarket", "afterhours", "extended", "pre", "post"):
+        if str(r.get("session") or "").lower() not in ("premarket", "afterhours", "extended", "pre", "post",
+                                                        *_overnight.NIGHT_SESSIONS):
             continue
         s = str(r.get("symbol") or "").upper()
         if s and (s not in out or str(r.get("as_of")) > str(out[s].get("as_of"))):
@@ -86,17 +92,22 @@ def _latest(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy.get("extended_hours") or {}
     proxies = [str(s).upper() for s in cfg.get("index_proxies") or ["QQQ", "SPY"]]
+    futures = [str(s).upper() for s in cfg.get("futures_proxies") or []]
     heavy = [str(s).upper() for s in cfg.get("heavyweights") or []]
     start = ctx.now - timedelta(hours=float(cfg.get("lookback_hours", 18)))
-    latest = _latest(ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now))
+    rows = _overnight.with_baselines(ctx.reader.quotes(proxies + futures + heavy, start=start, end=ctx.now))
+    latest, stale_night = _overnight.split_stale(_latest(rows), ctx.now, cfg)
+    measured = proxies + [f for f in futures if f not in proxies]  # gaps stay on the equity proxies (daily bars)
     shock = (ctx.extras or {}).get("opening_shock") or {}
-    moves = {s: _move(latest[s]) for s in proxies if s in latest and _move(latest[s]) is not None}
+    moves = {s: _move(latest[s]) for s in measured if s in latest and _move(latest[s]) is not None}
     try:
         gaps = _gap_moves(ctx, cfg, proxies)
     except Exception as exc:  # noqa: BLE001 — the gap proxy failing must not blank the live-quote evidence
         print(f"market_risk: extended_hours gap proxy failed ({type(exc).__name__}: {exc})", file=sys.stderr)
         gaps = {}
     if not moves and not shock.get("shock") and not gaps:
+        if stale_night:
+            return unknown(CATEGORY, ctx.now, _overnight.stale_reason(stale_night, cfg))
         return unknown(CATEGORY, ctx.now, "no extended-session quotes and no opening print for the index proxies")
     warn, stress = float(cfg.get("warn_pct", -0.75)), float(cfg.get("stress_pct", -1.5))
     worst_sym = min(moves, key=moves.get) if moves else None
@@ -107,10 +118,14 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             value=round(m, 2),
             as_of=latest[s].get("as_of"),
             source=str(latest[s].get("source") or "market_quotes"),
-            detail=f"{m:+.1f}%" + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else ""),
+            detail=f"{m:+.1f}%"
+            + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else "")
+            + (f" vs {latest[s]['reference_label']}" if latest[s].get("reference_label") else "")
+            + (f" ({latest[s]['session']}, trading date {latest[s].get('session_date')})"
+               if latest[s].get("session") in _overnight.NIGHT_SESSIONS else ""),
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
-    ]
+    ] + _overnight.stale_evidence(stale_night, cfg)
     hw_cut = float(cfg.get("heavyweight_stress_pct", -8))
     big = []
     for s in heavy:
@@ -179,7 +194,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         [str(latest[s].get("as_of")) for s in latest] + [str(g["as_of"]) for g in gaps.values()],
         default=ctx.now.isoformat(),
     )
-    stale_h = float(cfg.get("stale_after_hours", 2))
+    stale_h = _overnight.stale_after_hours(latest, cfg, float(cfg.get("stale_after_hours", 2)))
     if gaps and not latest:
         stale_h = float((cfg.get("gap_proxy") or {}).get("stale_after_hours", 7))
     return CategoryObservation(

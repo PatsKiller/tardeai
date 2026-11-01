@@ -41,3 +41,12 @@ schwab:
   reference_basis:
     afterhours_equity: schwab_regular_market_last_price     # regular.regularMarketLastPrice, same trading day
     premarket: schwab_quote_close_price_previous_session    # quote.closePrice (Schwab: previous day's close)
+  # Overnight (20:00-04:00 ET, Sunday night to Friday 04:00) and the Sunday 18:00-20:00 futures open
+  # (scripts/lib/overnight_session.py, migrations/2026_10_31_market_quotes_extended_overnight.sql). The trading date is
+  # the NEXT NYSE trading day; the reference is the close of the trading day before it. Equities use
+  # regular.regularMarketLastPrice, futures/indices quote.closePrice; a dated reference on another day, or none,
+  # stores the level only (labelled level_only), and the engine compares it with the earlier stored level.
+  overnight_reference_basis:
+    equity: schwab_regular_market_last_price_last_session
+    non_equity: schwab_quote_close_price_previous_settle
+    level_only: none_level_only_no_reference_in_payload

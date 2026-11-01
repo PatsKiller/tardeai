@@ -121,11 +121,12 @@ def test_premarket_after_holiday_uses_last_session(cfg):
 
 
 @pytest.mark.parametrize("ts", [
-    "2026-10-29T21:00:00-04:00",   # weekday overnight
-    "2026-11-01T19:10:00-05:00",   # Sunday evening futures
-    "2026-10-30T02:00:00-04:00",   # small hours
+    # weekday overnight, Sunday 18:00 futures open and the small hours are stored since
+    # migrations/2026_10_31_market_quotes_extended_overnight.sql (tests/test_market_quotes_overnight_20261031.py)
     "2026-10-29T11:00:00-04:00",   # regular session
     "2026-10-31T12:00:00-04:00",   # Saturday
+    "2026-10-30T21:00:00-04:00",   # Friday 20:00+: no overnight session into the weekend
+    "2026-11-01T17:30:00-05:00",   # Sunday before the 18:00 futures open
 ])
 def test_prints_outside_store_sessions_are_refused(ts, cfg):
     p = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": _ms(ts)}}}

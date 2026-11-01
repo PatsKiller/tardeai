@@ -392,6 +392,15 @@ extended_hours:
     warn_atr: 0.75
     stress_atr: 1.5
     stale_after_hours: 7          # an opening gap stays current through that session's close
+  # Overnight 20:00-04:00 ET (Sunday night to Friday 04:00) and the Sunday 18:00 futures open (operator 2026-10-31,
+  # "No excuses"; scripts/lib/overnight_session.py, categories/_overnight.py). Index futures are read as index proxies
+  # with the same warn/stress thresholds (the 10-29 18:15 ET case was NQ futures -1.5%..-2%).
+  futures_proxies: ["/ES", "/NQ"]
+  overnight:
+    # An overnight / futures-open print older than this is not measured: the category is UNKNOWN, naming the symbol,
+    # session, trading date and age, never CALM. 45 = the Schwab lane's max_trade_age_minutes (30) plus one 15-minute
+    # collection cycle.
+    stale_after_minutes: 45
 
 composite:
   # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).

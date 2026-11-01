@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_quotes_overnight_20261031",
+  "files": [
+    "tests/test_market_quotes_overnight_20261031.py"
+  ],
+  "anchor": "MARKET_QUOTES_OVERNIGHT_20261031",
+  "comment": [
+    "ANCHOR: MARKET_QUOTES_OVERNIGHT_20261031 — overnight (20:00-04:00 ET, Sunday night to Friday 04:00) and Sunday 18:00",
+    "futures_open sessions in market_quotes_extended (operator 2026-10-31, stacked on #2416). Proves DST weekends, the Sunday",
+    "futures open, holiday-Monday trading dates, no Friday-night session, 04:00:00 = premarket, the next-trading-day date on the",
+    "market_day_gate.sh calendar, a proven reference or level-only (never invented), writer + Schwab producer (fixture dry run),",
+    "engine reader/category (stale overnight -> UNKNOWN naming session and age), additive migration on a throwaway cluster.",
+    "Hermetic: fixtures only, no network, no live DB, no credential. Schedules nothing."
+  ]
+}

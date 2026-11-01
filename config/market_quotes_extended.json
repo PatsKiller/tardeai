@@ -9,6 +9,15 @@
   "regular_open_et": "09:30",
   "afterhours_close_et": "20:00",
   "reference_basis": "alpaca_sip_daily_bar_close",
+  "overnight": {
+    "_why": "2026-10-31 operator: the Market Risk Engine must see the overnight session and index futures from the Sunday 18:00 ET open (\"No excuses\"). Two sessions added to the store by migrations/2026_10_31_market_quotes_extended_overnight.sql, defined in scripts/lib/overnight_session.py: overnight = afterhours_close_et (20:00) to premarket_open_et (04:00) ET, Sunday 20:00 to Friday 04:00 (none Friday 20:00 to Sunday 20:00); futures_open = Sunday futures_open_et (18:00) to 20:00 ET, futures only, kept apart so an 'overnight' row always lies in 20:00-04:00. session_date = the NEXT NYSE trading day (the session the night leads into; market_session.market_holidays, the market_day_gate.sh calendar); the reference is the close of the trading day before it. A 04:00:00 print is premarket.",
+    "first_open_day": "sun",
+    "last_close_day": "fri",
+    "futures_open_day": "sun",
+    "futures_open_et": "18:00",
+    "futures_open_asset_types": ["FUTURE"],
+    "level_only_sessions": ["overnight", "futures_open"]
+  },
   "daily_lookback_days": 10,
   "retry": {"attempts": 3, "backoff_seconds": [2, 6, 18]},
   "_symbols_note": "2026-10-31 off-hours collector (PR #2416): DIA, RSP, SOXX and XLK added so the engine's full index, breadth and sector proxy set is collected; the Schwab extended-hours lane reads this same list (config/market_risk_offhours_quotes.yaml universe.sources).",
