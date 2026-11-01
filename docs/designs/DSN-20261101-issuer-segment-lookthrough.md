@@ -17,6 +17,7 @@ phases:
   status: IN_PROGRESS
   tasks:
   - {id: DSN-20261101-issuer-segment-lookthrough-P0-T1, title: 'This design; proposed_domains row issuer_segments + sec_edgar scope amendment (no grant)', status: IN_PROGRESS, areas: [docs/designs/DSN-20261101-issuer-segment-lookthrough.md, config/data_source_authority.json]}
+  - {id: DSN-20261101-issuer-segment-lookthrough-P0-T2, title: 'Public repo: remove the hard-coded personal email from the SEC User-Agent (scripts/sec_data_ingest.py L44, scripts/lib/financial_senses/sec_companyfacts_reader.py L17); read config/sec_edgar_client.json; placeholder fails closed, never falls back', status: PROPOSED, areas: [scripts/sec_data_ingest.py, scripts/lib/financial_senses/sec_companyfacts_reader.py, config/sec_edgar_client.json]}
 - id: DSN-20261101-issuer-segment-lookthrough-P1
   title: Engine plumbing on fixtures (no network, no store) — look-through + risk budget read one split
   status: PROPOSED
@@ -177,12 +178,19 @@ prospectus. Order:
 
 ### 2.6 Client rules
 
-- **User-Agent from config, not code.** `config/sec_edgar_client.json` holds `{app, contact, max_rps, spacing_s}`. The
-  `contact` field is a **project address**, not the operator's personal mailbox, and the writer refuses to run if it is
-  empty. Measured on 2026-11-01: a request with no contact address got **HTTP 403** from `www.sec.gov`. Today two modules
-  hard-code a personal address: `scripts/sec_data_ingest.py` L44 and
-  `scripts/lib/financial_senses/sec_companyfacts_reader.py` L17. P2-T1 points them at the same config (no behaviour
-  change).
+- **User-Agent from config, not code — a required input that fails closed.** `config/sec_edgar_client.json` holds
+  `{app, contact, max_rps, spacing_s}`. `contact` ships as the placeholder `"REQUIRED: project contact address (operator)"`.
+  Every SEC caller refuses to send a request, with an error that says the contact is missing, when `contact` is empty,
+  still the placeholder, or not an address. There is **no fallback** to any other address, and in particular never to
+  the operator's personal email. The contact must be a **project address**; the operator has not yet supplied it
+  (pending, 2026-11-01). Measured on 2026-11-01: a request with no contact address got **HTTP 403** from `www.sec.gov`,
+  so a missing contact cannot silently half-work.
+- **P0 fix (public repo).** Two modules hard-code the operator's personal email in the SEC User-Agent today:
+  `scripts/sec_data_ingest.py` L44 and `scripts/lib/financial_senses/sec_companyfacts_reader.py` L17. P0-T2 replaces
+  both with the config read above, with the same fail-closed rule. Consequence to state plainly: until the operator
+  supplies the project address, the existing SEC feeds that use these modules refuse instead of sending. That is the
+  intended fail-closed trade, and the P0-T2 PR names it. A test scans `scripts/` for an email literal in any
+  User-Agent string.
 - **Rate.** SEC's fair-access limit is 10 requests/s. We use 0.15 s spacing per process (about 6.7/s, the existing
   convention) and `max_rps ≤ 8`. Volume is small: about 3 requests per new filing (submissions or companyconcept, then
   `FilingSummary.xml`, then the instance) times the covered issuers, and filings come quarterly.
@@ -397,7 +405,7 @@ split. If the operator wants it, it goes in `config/issuer_segments.json` as `AP
 |---|---|---|
 | **P1** (no grant needed: no source called, no store) | XBRL instance parser (pure); mapping engine + `issuer_segment_map.json`; lookthrough precedence; `risk_budget.measure` on the per-symbol split; shadow diff; comm fix | **Recorded fixtures**: the `_htm.xml` instance, `FilingSummary.xml` and companyconcept JSON for T (`0000732717-26-000120`, `…-000372`), IBM (`0000051143-26-000010`), HON (`0000773840-26-000013`) and SPCX (`0001628280-26-066880`). They are recorded once at P2 under the grant, and committed with their sha256 and the request date. Until then P1 uses hand-built minimal instances that reproduce the §2 numbers. **Parser goldens**: the §2 tables to the dollar, the reconciliation pass, T's re-segmentation (two accessions, different members, both parse), and HON's tag choice (`Revenues` absent, contract-revenue tag used). **Mapping goldens**: T → comm 1.0 (Q3 2026: three telecom segments 0.997 + 0.003 corporate residual to the profile sector, also comm); IBM → tech 0.989, financials 0.011; SPCX → industrials 0.1212, comm 0.3970, tech 0.4818, ai_basket 0.4818; HON → industrials 0.916, `hon_EnergyAndSustainabilitySolutionsMember` ambiguous → classifier queue. **Ambiguity**: a label that hits two keyword groups is never auto-mapped. **Fallback path**: a missing split, a sub-floor confidence, a rejected quote or a hard-stale split each give the profile sector plus a visible flag; nothing is silent. **Budget routing**: SPCX in a fixture book moves single_sector_pct off Industrials, and growth and AI budgets read the same split as the card. **BEHAVIOR_FIELDS guard**: `contract.assert_no_behavior_fields` runs over the look-through, the budget and the card payloads. `weight` is a forbidden key, so store and payload fields are `revenue_share`/`share`, and a test feeds a config entry using `weight` (the #2447 schema) and asserts the output carries no `weight` key. **No model in scoring**: an import scan of `scripts/lib/market_risk/`. **comm**: a fixture with ≥ 60 XLC sessions yields a non-UNKNOWN comm row. |
 | **P1-T4 comm** | Today `comm` shows UNKNOWN "insufficient history" although XLC has data. `sectors.measure` marks a group UNKNOWN when its index has < 60 sessions (`sectors.py` L126). `reader.daily_bars` reads `market_ohlcv_bars` (timeframe daily) and adds quote closes. **Hypothesis, not measured**: XLC is short of 60 daily bars in `market_ohlcv_bars` because it is outside the daily-bar writer's universe. First step: count XLC daily rows read-only (`SELECT count(*) … WHERE symbol='XLC' AND timeframe=…`). Then backfill through the existing bar writer, adding the sector ETFs in `sectors.groups` to its universe, and pin it with the test above. Matters because about 40% of SPCX lands in comm. | |
-| **P2** (after the grant) | Promote the row; migration; writer (dry-run first, quote the output); `config/sec_edgar_client.json` with the project contact; repoint the two hard-coded User-Agents; lane `issuer-segments-refresh` (lane registry row + `output_signal`); record the real fixtures | Writer dry run on T/IBM/HON/SPCX prints rows and writes nothing. A single-writer scan (`WRITER_COUNT_ROSE`). The User-Agent refusal when the contact is empty. A 403 surfaces as a refusal on the lane, not a silent zero. |
+| **P2** (after the grant) | Promote the row; migration; writer (dry-run first, quote the output); `config/sec_edgar_client.json` (contact supplied by the operator; P0-T2 already made it fail closed); lane `issuer-segments-refresh` (lane registry row + `output_signal`); record the real fixtures | Writer dry run on T/IBM/HON/SPCX prints rows and writes nothing. A single-writer scan (`WRITER_COUNT_ROSE`). The User-Agent refusal when the contact is empty or the placeholder (no fallback address). A 403 surfaces as a refusal on the lane, not a silent zero. |
 | **P3** | Classifier process, template and schema; deterministic acceptance | A quote not in the text → rejected. Confidence below the floor → fallback flag. A theme suggestion is never applied. Cost cap respected (the governed bridge's reservation test). |
 | **P4** | Card chip + source sheet; shadow review; `auto_apply: true`; `issuer_segments.json` comment and schema switch | Playwright tap tests at 390 and 412 (chip → full-screen sheet → filing link). Snapshot test: `auto_apply` false gives identical numbers to today's. |
 
