@@ -199,3 +199,8 @@ c67d2dbc658ea604846e04145644b57254de0930:tests/test_packet_a2_strict_acceptance.
 9354b48a78731f26c3d7f1038a94ebd504a69528:tests/test_release_train_github_app_config_20261023.py:github-app-token:29
 # tests/test_release_train_github_app_config_20261023.py [tradeai-github-token] x1
 9354b48a78731f26c3d7f1038a94ebd504a69528:tests/test_release_train_github_app_config_20261023.py:tradeai-github-token:29
+# tests/test_jobs_health_log_diagnostic_20261031.py — synthetic fixtures in the Jobs error-line redaction
+# tests (PR #2426 round 2). Values are invented (AbCdEfGh..., PKABC...); the test's point is that the page
+# redacts them. Commit-scoped, so they cover only this commit's two lines.
+56296dc6edbfef151450b4c104cdfe44b21e8147:tests/test_jobs_health_log_diagnostic_20261031.py:generic-api-key:272
+56296dc6edbfef151450b4c104cdfe44b21e8147:tests/test_jobs_health_log_diagnostic_20261031.py:generic-api-key:274

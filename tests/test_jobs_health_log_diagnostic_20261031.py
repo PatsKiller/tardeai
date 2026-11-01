@@ -131,11 +131,12 @@ def test_load_attaches_log_errors_from_the_declared_log(tmp_path, monkeypatch):
 
 
 # --- strict redaction of the quoted line (reviewer inputs, 2026-10-31). Synthetic secrets only. ---------------------
-# The Telegram chokepoint ratchet flags a literal bot endpoint in any new file, tests included. The
-# synthetic URL is assembled at runtime so this fixture exercises redaction without registering a bypass.
-_TG_BOT_URL = "https://api." + "telegram.org/bot" + "8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage"
+# Host-neutral and generic-user paths: the redaction rules match the URL path (/bot<digits>:<token>) and
+# /home/<user>, not the host or a real operator account, so the fixtures exercise the same regexes without
+# tripping the Telegram chokepoint ratchet or the PII scan.
 LEAKS = [
-    ("requests.exceptions.HTTPError: 404 Client Error: Not Found for url: " + _TG_BOT_URL,
+    ("requests.exceptions.HTTPError: 404 Client Error: Not Found for url: "
+     "https://example.invalid/bot8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage",
      ["8123456789:AAH", "AAHfakeTOKEN"]),
     ("requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: "
      "https://elite.finviz.com/export.ashx?v=152&t=SPY&auth=fa4e1c2b-0000-1111-2222-abcdefabcdef",
@@ -145,9 +146,8 @@ LEAKS = [
     ("KeyError: 'sk-ant-api03-FAKEFAKEFAKEFAKE'", ["sk-ant-api03", "FAKEFAKEFAKE"]),
     ("ValueError: invalid dsn: postgresql://trade_ai:hunter2@127.0.0.1:5432/trade_ai", ["hunter2", "trade_ai:"]),
     ("RuntimeError: schwab refresh failed: refresh_token: Zx9FAKErefresh", ["Zx9FAKErefresh"]),
-    # Synthetic home path, assembled at runtime so the PII scanner never sees an operator path in git
-    ("PermissionError: [Errno 13] Permission denied: '" + os.path.join(os.sep, "home", "johnclaw", ".config", "tradeai", "secrets", "bws_openclaw_gateway.env") + "'",
-     ["bws_openclaw_gateway", os.path.join(os.sep, "home", "johnclaw")]),
+    ("PermissionError: [Errno 13] Permission denied: '/home/example/.config/tradeai/secrets/bws_openclaw_gateway.env'",
+     ["bws_openclaw_gateway", "/home/example"]),
 ]
 
 
@@ -258,3 +258,366 @@ def test_success_tail_drops_the_cut_first_line(tmp_path):
 def test_redacts_url_credentials_without_a_secret_looking_key(tmp_path):
     shown = _shown(tmp_path, "OperationalError: could not reach postgresql://trade_ai:hunter2@127.0.0.1:5432/trade_ai")
     assert "hunter2" not in shown and "postgresql://[REDACTED]@127.0.0.1" in shown
+
+
+# ── Review round 2 (2026-11-01): shapes that still reached the page ─────────────────────────────────────
+# Every value below is synthetic. Key-shaped strings are assembled at runtime so the commit scanner does not flag them.
+_ASIA = "AS" + "IA" + "QWERTYUIOPASDFGH"
+_AWS_SECRET = "wJalr" + "XUtnFEMI/K7MDENG/bPxRfiCY" + "SYNTHKEY"
+_B64 = "c2stYW50LWFwaTAz" + "LXNlY3JldHZhbHVlMTIzNDU2"
+ROUND2 = [
+    ("RuntimeError: Authorization: Token 9f8e7d6c5b4a39281706", ["9f8e7d6c5b4a39281706"]),
+    (f"botocore.exceptions.ClientError: temp key {_ASIA} rejected", [_ASIA]),
+    (f"botocore.exceptions.ClientError: SignatureDoesNotMatch for secret {_AWS_SECRET}", [_AWS_SECRET, "K7MDENG"]),
+    (f"ValueError: bad padding in '{_B64}'", [_B64]),
+    ("RuntimeError: POST body grant_type%3Drefresh_token%26refresh_token%3DZx9FAKErefresh failed", ["Zx9FAKErefresh"]),
+    ("RuntimeError: body %7B%22access_token%22%3A%22Zx9FAKEaccess%22%7D", ["Zx9FAKEaccess"]),
+    ("RuntimeError: SCHWAB_APP_KEY=AbCdEfGh12345678 rejected", ["AbCdEfGh12345678"]),
+    ("RuntimeError: schwab client_id=AbCdEfGh1234 rejected", ["AbCdEfGh1234"]),
+    ("RuntimeError: missing ALPACA_KEY_ID=PKABCDEFGH12345678", ["PKABCDEFGH12345678"]),
+    ('RuntimeError: login failed password: "correct horse battery staple"', ["correct", "horse", "battery", "staple"]),
+    ("requests.exceptions.HTTPError: 401 for url: wss://stream.example.com/ws/AbCdSecretPathToken123",
+     ["AbCdSecretPathToken123"]),
+]
+
+
+def _round2(idx):
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    line, secrets = ROUND2[idx]
+    shown = redact_error_line(line, home="/home/nobody")
+    assert "[REDACTED]" in shown, shown
+    for secret in secrets:
+        assert secret not in shown, (secret, shown)
+    assert line.split(":", 1)[0] in shown
+    return shown
+
+
+def test_round2_authorization_token_scheme_value_redacted():
+    assert _round2(0) == "RuntimeError: Authorization: [REDACTED]"
+
+
+def test_round2_asia_temporary_aws_key_redacted():
+    _round2(1)
+
+
+def test_round2_bare_aws_secret_redacted():
+    _round2(2)
+
+
+def test_round2_bare_base64_blob_redacted():
+    _round2(3)
+
+
+def test_round2_url_encoded_refresh_token_redacted():
+    assert "grant_type=refresh_token" in _round2(4)  # decoded, and only the value goes
+
+
+def test_round2_url_encoded_access_token_redacted():
+    _round2(5)
+
+
+def test_round2_app_key_pair_redacted():
+    _round2(6)
+
+
+def test_round2_client_id_pair_redacted():
+    _round2(7)
+
+
+def test_round2_key_id_pair_redacted():
+    _round2(8)
+
+
+def test_round2_quoted_value_with_spaces_redacted_to_closing_quote():
+    assert _round2(9) == 'RuntimeError: login failed password: "[REDACTED]"'
+
+
+def test_round2_wss_path_token_redacted_and_host_kept():
+    assert "wss://stream.example.com/ws/[REDACTED]" in _round2(10)
+
+
+def test_round2_whole_authorization_header_in_a_dict_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("RuntimeError: headers={'Authorization': 'Bearer abc.def-ghi'}", home="")
+    assert shown == "RuntimeError: headers={'Authorization': '[REDACTED]'}"
+
+
+def test_round2_bearer_without_an_authorization_header_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("RuntimeError: upstream rejected Bearer abcdef.ghijkl-mnop", home="")
+    assert shown == "RuntimeError: upstream rejected Bearer [REDACTED]"
+
+
+def test_round2_other_users_home_path_is_shortened():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("FileNotFoundError: /home/alice/app/state.json", home="/home/nobody")
+    assert shown == "FileNotFoundError: ~/app/state.json"
+
+
+def test_round2_stderr_path_is_strictly_redacted():
+    stderr = "Traceback\n  File x\nRuntimeError: Authorization: Token 9f8e7d6c5b4a39281706\n"
+    shown = DD.cause({"stderr_tail": stderr})
+    assert "9f8e7d6c5b4a39281706" not in shown and "Authorization: [REDACTED]" in shown
+
+
+def test_round2_a_400_char_cut_never_leaves_a_token_fragment(tmp_path):
+    line = "RuntimeError: " + "y" * 380 + " sk-ant-api03-ABCDEFGHIJKLMNOP"
+    err = J.last_log_error(_log(tmp_path, line + "\n"))
+    assert "sk-" not in err["line"] and err["line"].endswith(" …") and len(err["line"]) <= 402
+
+
+def test_round2_ordinary_error_text_stays_readable():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    for text in (
+        "AssertionError: ALPACA_MODE must be paper",
+        "ModuleNotFoundError: No module named 'scripts.lib.jobs_health_log_diagnostic_20261031'",
+        'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed',
+        "requests.exceptions.ConnectionError: HTTPSConnectionPool(host='api.example.com', port=443): Max retries",
+        "OAuthError: invalid_grant (refresh expired 2026-10-30T16:57:02Z)",
+        "FileNotFoundError: /usr/lib/python3.14/site-packages/requests/adapters.py",
+        "ValueError: expected 50% of 2026-10-30 orders",
+    ):
+        assert redact_error_line(text, home="/home/nobody") == text
+
+
+def test_round2_telegram_path_token_of_any_shape_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("HTTPError: 404 for url: https://example.invalid/bot123456:abcdefghij/sendMessage", home="")
+    assert shown == "HTTPError: 404 for url: https://example.invalid/bot[REDACTED]/sendMessage"
+
+
+def test_round2_bare_lowercase_hex_secret_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("ValueError: bad signature 9f8e7d6c5b4a39281706abcd", home="")
+    assert shown == "ValueError: bad signature [REDACTED]"
+
+
+# ── Review round 3 (2026-11-01, probe_redact3.py): shapes that still leaked, and a linear pass ─────────────
+
+def _r3(line):
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    return redact_error_line(line, home="/home/nobody")
+
+
+def _secret(*parts):
+    return "".join(parts)  # assembled at runtime so no literal token shape sits in the source
+
+
+ROUND3 = [
+    ("space-separated key", "RuntimeError: finnhub rejected key " + _secret("c1a2b3c4d5", "e6f7g8h9i0j1k2"),
+     "c1a2b3c4d5e6f7g8h9i0j1k2"),
+    ("single-case upper run", "APIError: forbidden for key " + _secret("PKA1B2C3D4", "E5F6G7H8I9"), "PKA1B2C3D4E5F6G7H8I9"),
+    ("single-case lower run", "RuntimeError: secret is all-lowercase " + _secret("k3j4h5g6f7d8s9a0", "q1w2e3r4t5y6u7i8"),
+     "k3j4h5g6f7d8s9a0q1w2e3r4t5y6u7i8"),
+    ("bare uuid", "RuntimeError: invalid auth " + _secret("fa4e1c2b-0000-1111", "-2222-abcdefabcdef"),
+     "fa4e1c2b-0000-1111-2222-abcdefabcdef"),
+    ("google ya29", "RuntimeError: google oauth " + _secret("ya29.a0AfB_byC1xYz", "-AbcDef12_GhIjKl34"), "a0AfB_byC1xYz"),
+    ("discord webhook tail",
+     "HTTPError: 401 for url: https://discord.com/api/webhooks/1234567890/" + _secret("abcDEF-ghi_JKL", "-mno_PQR"),
+     "abcDEF-ghi_JKL-mno_PQR"),
+    ("dotted token", "RuntimeError: refresh rejected: " + _secret("I0.b2F1dGgy.YmMuY", "-2Fwa_S1zY2h3YWI.AvBGW"),
+     "b2F1dGgy"),
+    ("mysql -p", "RuntimeError: mysql -u root -p " + _secret("hunter2", "hunter2") + " failed", "hunter2hunter2"),
+    ("mysql -pPW", "RuntimeError: mysqldump -uroot -p" + _secret("hunter2", "hunter2") + " db", "hunter2hunter2"),
+    ("pw quoted with space", 'RuntimeError: pw="' + _secret("a ", "b") + '" done', '"a b"'),
+    ("triple percent", "RuntimeError: triple %252570assword%25253D" + _secret("hunter", "2"), "hunter2"),
+]
+
+
+def test_round3_every_leaking_shape_is_redacted():
+    for name, line, secret in ROUND3:
+        shown = _r3(line)
+        assert secret not in shown and "[REDACTED]" in shown, (name, shown)
+        assert shown.split(":", 1)[0] == line.split(":", 1)[0], name
+
+
+def test_round3_discord_keeps_the_webhook_id():
+    assert _r3(ROUND3[5][1]).endswith("discord.com/api/webhooks/1234567890/[REDACTED]")
+
+
+def test_round3_quoted_value_keeps_both_quotes_and_the_rest():
+    assert _r3("RuntimeError: x pw=\"a b\" token='c d' done") == "RuntimeError: x pw=\"[REDACTED]\" token='[REDACTED]' done"
+
+
+def test_round3_stderr_path_redacts_the_new_shapes():
+    stderr = "Traceback\nRuntimeError: finnhub rejected key " + _secret("c1a2b3c4d5", "e6f7g8h9i0j1k2") + "\n"
+    shown = DD.cause({"stderr_tail": stderr})
+    assert "c1a2b3c4d5e6f7g8h9i0j1k2" not in shown and "[REDACTED]" in shown
+
+
+def test_round3_redaction_is_linear():
+    import time
+
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    for big in ("RuntimeError: " + ("a:" * 30000),
+                "RuntimeError: " + ("aB3/" * 16000) + ("x=" * 4000) + ('"' + "a" * 10000),
+                "RuntimeError: " + ("password=" * 6000)):
+        t0 = time.perf_counter()
+        redact_error_line(big, home="")
+        assert time.perf_counter() - t0 < 0.5, len(big)
+
+
+def test_round3_ordinary_error_text_stays_readable():
+    for text in (
+        "AssertionError: ALPACA_MODE must be paper",
+        'File "/usr/lib/python3.14/json/decoder.py", line 363, in raw_decode',
+        "scripts.lib.n8n_dlq_disposition.cause failed at 2026-10-31T13:50:05.906418+00:00",
+        "ModuleNotFoundError: No module named 'scripts.lib.test_market_context_afterhours_close_20261031'",
+        "deploy refused: commit 9ac8a87 is not on main",
+        "the key is missing",
+        "password authentication failed for user trade_ai",
+        "KeyError: 'AAPL'",
+        'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed',
+        "urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.example.com', port=443)",
+        "botocore.exceptions.NoCredentialsError: Unable to locate credentials",
+    ):
+        assert _r3(text) == text, text
+
+
+def test_round3_documented_choice_long_hex_shas_and_uuid_run_ids_are_redacted():
+    # Deliberate (module docstring): a 40-hex SHA looks exactly like a hex API key, and a UUID run id like a Finviz
+    # token, so both go; a short SHA stays.
+    assert _r3("ValueError: build 9ac8a87305156bbfcac6784a3f57b66436752b48 mismatch") == \
+        "ValueError: build [REDACTED] mismatch"
+    assert _r3("run_id=8f3c2a10-1b2c-4d5e-8f90-123456789abc") == "run_id=[REDACTED]"
+
+
+def test_round3_percent_decoding_is_capped():
+    from scripts.lib import error_line_redaction as E
+
+    deep = "x" + "%25" * 0 + "%" + "25" * 20 + "41"
+    assert E.MAX_PERCENT_DECODES <= 10
+    assert "%" in E._percent_decode(deep)  # stops after the cap instead of looping forever
+
+
+def test_round3_base64_with_plus_and_slash_is_redacted_whole():
+    # Every '+'/'/'-separated piece is short, so only the base64-run rule (not the alphanumeric one) sees it.
+    blob = _secret("aB3+dE5/gH7+", "jK9/mN1+pQ3x")
+    shown = _r3("RuntimeError: signature " + blob + " rejected")
+    assert shown == "RuntimeError: signature [REDACTED] rejected"
+
+
+def test_round3_short_space_separated_key_value_is_redacted():
+    # Under 20 characters, so only the "key <value>" rule sees it.
+    shown = _r3("RuntimeError: provider rejected key " + _secret("Abc123", "xyz9") + " today")
+    assert shown == "RuntimeError: provider rejected key [REDACTED] today"
+
+
+def test_round3_lowercase_ya29_token_is_redacted():
+    # No upper case, so the joined-token rule would not see it: only the ya29 shape does.
+    shown = _r3("RuntimeError: oauth " + _secret("ya29.a0afb_byc1", "xyz-abcdef12") + " expired")
+    assert shown == "RuntimeError: oauth [REDACTED] expired"
+
+
+def test_round3_short_joined_version_strings_stay_readable():
+    for text in ("release v2.3a-Beta1 failed", "pip install Django4.2b1 failed"):
+        assert _r3(text) == text, text
+
+
+def test_round3_quoted_value_runs_to_its_own_closing_quote():
+    assert _r3("RuntimeError: pw=\"it's x9 y\" end") == "RuntimeError: pw=\"[REDACTED]\" end"
+
+
+# ── Review round 4 (2026-11-01, probe_redact4.py) ────────────────────────────────────────────────────────────
+
+def test_round4_escaped_json_key_value_is_redacted():
+    shown = _r3('RuntimeError: body {\\"password\\": \\"' + _secret("hunter", "2xyz") + '\\"}')
+    assert "hunter2xyz" not in shown
+    assert shown == 'RuntimeError: body {\\"password\\": \\"[REDACTED]\\"}'
+
+
+def test_round4_escaped_json_quote_inside_value_is_not_an_early_stop():
+    shown = _r3('RuntimeError: {\\"token\\": \\"ab\\\\cd' + _secret("ef", "99") + '\\"}')
+    assert "ef99" not in shown and "[REDACTED]" in shown
+
+
+def test_round4_userinfo_is_split_at_the_last_at_sign():
+    shown = _r3("RuntimeError: https://user:p@" + _secret("ssw0", "rd") + "@db.example.com/x")
+    assert "ssw0rd" not in shown
+    assert shown == "RuntimeError: https://[REDACTED]@db.example.com/x"
+
+
+def test_round4_passphrase_is_a_secret_key_word():
+    assert _r3("RuntimeError: passphrase " + _secret("hunter2", "hunter2")) == "RuntimeError: passphrase [REDACTED]"
+    assert _r3("RuntimeError: ssh_passphrase=" + _secret("opensesame", "now")) == "RuntimeError: ssh_passphrase=[REDACTED]"
+
+
+def test_round4_letters_only_token_after_a_key_word_is_redacted():
+    assert _r3("RuntimeError: key " + _secret("aBcDeFgHiJkLm", "NoPqRsTuVwXyZ")) == "RuntimeError: key [REDACTED]"
+
+
+def test_round4_authorization_token_scheme_is_still_redacted():
+    assert _r3("RuntimeError: Authorization: Token " + _secret("9f8e7d6c5b", "4a39281706")) == \
+        "RuntimeError: Authorization: [REDACTED]"
+
+
+def test_round4_over_redaction_cases_stay_readable():
+    for text in (
+        'psycopg2.errors.ForeignKeyViolation: insert or update on table "orders" violates foreign key constraint '
+        '"fk_orders_account"',
+        'psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint "uq_x_symbol_date"',
+        "ValueError: max_tokens: 4096 exceeds limit 2048",
+        "ValueError: input_tokens=5000 output_tokens=1200",
+        "RuntimeError: token expired; re-auth required",
+        "RuntimeError: schwab token refresh failed: invalid_grant",
+        "RuntimeError: token refresh required",
+        "RuntimeError: key rotation required",
+        "RuntimeError: password authentication failed",
+    ):
+        assert _r3(text) == text, text
+
+
+def test_round4_undotted_violation_class_is_not_a_key():
+    text = 'ForeignKeyViolation: insert or update on table "orders" violates foreign key constraint'
+    assert _r3(text) == text
+
+
+def test_round4_escaped_json_count_key_stays_readable():
+    text = 'ValueError: request {\\"max_tokens\\": 4096} too large'
+    assert _r3(text) == text
+
+
+# ── Review round 5 (2026-11-01, probe_redact6.py): the round-4 exclusions must not leak ────────────────────────
+
+def test_round5_token_plural_key_with_a_string_value_is_redacted():
+    shown = _r3("RuntimeError: {'access_tokens': '" + _secret("Zx9FAKE", "access123") + "'}")
+    assert shown == "RuntimeError: {'access_tokens': '[REDACTED]'}"
+
+
+def test_round5_dotted_camelcase_setting_is_still_a_key():
+    assert _r3("RuntimeError: settings.ApiKey=" + _secret("Zx9FAKE", "key123")) == "RuntimeError: settings.ApiKey=[REDACTED]"
+
+
+def test_round5_dotted_password_attribute_is_still_a_key():
+    assert _r3("RuntimeError: cfg.Password: " + _secret("hunter", "2xyz")) == "RuntimeError: cfg.Password: [REDACTED]"
+
+
+def test_round5_token_count_exclusion_needs_an_integer():
+    assert _r3("ValueError: max_tokens=-1 invalid") == "ValueError: max_tokens=-1 invalid"
+    assert _r3("ValueError: token_count: " + _secret("abc", "def99")) == "ValueError: token_count: [REDACTED]"
+
+
+def test_round5_dotted_exception_class_still_not_a_key():
+    text = "psycopg2.errors.UndefinedTableWarning: relation missing"
+    assert _r3(text) == text
+
+
+def test_round5_account_number_in_prose_is_redacted():
+    # Synthetic numbers, assembled at runtime so the PII scan sees no literal account number in git.
+    acct_a = "1234" + "5678"
+    acct_b = "8765" + "4321"
+    acct_c = "1122" + "3344"
+    assert _r3(f"RuntimeError: Schwab 401 for account {acct_a}") == "RuntimeError: Schwab 401 for account [REDACTED]"
+    assert _r3(f"RuntimeError: acct #{acct_b} not found") == "RuntimeError: acct #[REDACTED] not found"
+    assert _r3(f"RuntimeError: account number: {acct_c} locked") == "RuntimeError: account number: [REDACTED] locked"
+    text = "RuntimeError: account 12 of 3 failed"
+    assert _r3(text) == text

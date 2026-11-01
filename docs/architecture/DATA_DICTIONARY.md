@@ -53,7 +53,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Options positioning | **option_chain_strikes** | PROPOSED | `option_chain_strikes` (table) | `scripts/options_chain_snapshot.py` | host: options-chain-snapshot | 8 h on market days; the 10:00 row is expected by 10:15 ET | Risk, CIO, Telegram |
 | ETF look-through | **etf_holdings_snapshot** | PROPOSED | `etf_holdings_snapshot` (table) | UNCONSOLIDATED → `scripts/lib/writers/etf_holdings_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: etf-holdings-weekly | 8 days; a held ETF with no snapshot is a gap the Risk page says so about | Risk, Home, CIO, Telegram |
 | Market risk escalation | **market_risk_episodes** | PROPOSED | `market_risk_episodes` (table) | UNCONSOLIDATED → `scripts/lib/market_risk/escalation.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | event: market-risk-evaluate | event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page | Home, Risk, Approvals, Telegram |
-| Extended-session prints | **quote_extended_session** | PROPOSED | `market_quotes_extended` (table) | `scripts/lib/writers/market_quotes_extended_writer.py` | host: market-quotes-extended | 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; otherwise the newest print is the previous extended session's | scripts/lib/market_risk/reader.py (PgReader.extended_quotes) |
 
 ## Entity by entity
 
@@ -500,19 +499,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Readers:** Home, Risk, Approvals, Telegram
 - **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
 
-### Pre-market / after-hours prints (Market Risk Engine) — `quote_extended_session` (PROPOSED)
-
-**Operator decision (§17):** operator approved new stores as design §11 item 1 on 2026-10-31; grant recorded at promotion (activation PR)
-
-- **Facts:** price, reference_close, change_pct, session, bar_end
-- **Store of record:** `market_quotes_extended` (table)
-- **Single writer:** `scripts/lib/writers/market_quotes_extended_writer.py`
-- **Cadence:** */15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days · stale after 0.5 h
-- **Freshness SLA:** 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; otherwise the newest print is the previous extended session's
-- **Refresh lane:** host: market-quotes-extended — Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under §25.10.2.
-- **Read path (projection):** `none`
-- **Readers:** scripts/lib/market_risk/reader.py (PgReader.extended_quotes)
-
 ## Field level
 
 ### `CIOProspect` — domain `cio_prospect`; InstrumentRecord@v1 (AGENTS.md §13.4; extended, not cloned, per §13.5)
@@ -579,7 +565,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 These carry no dictionary block yet; their store, writer and read path are in [`docs/SOURCE_OF_TRUTH.md`](../SOURCE_OF_TRUTH.md). A domain marked superseded becomes a derived copy when the superseding row is granted.
 
-`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`, `operator_decisions`, `conflict_ledger`, `conflict_rule_proposals`
+`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`, `operator_decisions`, `conflict_ledger`, `conflict_rule_proposals`, `quote_extended_session`
 
 ## Surfaces scanned for copy reads
 
