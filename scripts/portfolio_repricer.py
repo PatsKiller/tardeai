@@ -1228,6 +1228,7 @@ if __name__ == "__main__":
     # enter/exit keeps this a minimal diff (a `with` block would re-indent ~30
     # lines and trip the line-ending churn guard).
     from scripts.lib.holdings_write_lock import holdings_write_lock
+    from scripts.lib.atomic_json_store import atomic_write_bytes
     _holdings_lock = holdings_write_lock()
     _holdings_lock.__enter__()
 
@@ -1252,7 +1253,7 @@ if __name__ == "__main__":
             _skipped.append(f"{_target} (absent)")
             continue
         try:
-            _target.write_text(_payload, encoding="utf-8")
+            atomic_write_bytes(_target, _payload.encode("utf-8"))
             _written.append(str(_target))
         except OSError as _e:
             # Never let a secondary copy failure lose the primary reprice.

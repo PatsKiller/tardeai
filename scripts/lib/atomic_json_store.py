@@ -31,6 +31,33 @@ def atomic_write_json(path: Path | str, payload: Any, *, indent: int = 2) -> Pat
     return path
 
 
+def atomic_write_bytes(path: Path | str, data: bytes) -> Path:
+    """Atomically write exact raw bytes: unique temp + fsync + os.replace.
+
+    The target is never truncated in place — the bytes are written to a temp
+    file in the same directory, fsynced, then atomically renamed over the
+    target. A failure (e.g. ENOSPC) leaves the prior target byte-for-byte
+    intact. Contrast with ``Path.write_bytes``, which opens the target in
+    "wb" (truncate) mode first and can leave a 0-byte file on failure.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    try:
+        with tmp.open("wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+    return path
+
+
 def append_jsonl(path: Path | str, rec: dict[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
