@@ -660,37 +660,7 @@
       ],
       "writer_facade": "scripts/external_market_data_ingest.py",
       "extended_hours_provider": "finviz_elite",
-      "extended_hours_note": "2026-09-28 (plan root cause 6): outside 09:30-16:00 the header is priced by portfolio_repricer from Finviz Elite (label 'after-hours mark'); alpaca stays the RTH authority for market_quotes. Mutual funds carry a cached NAV (price_cache_nav) — a mark, not a degraded quote. PROPOSED by the agent; operator ratification pending (approval block above unchanged).",
-      "off_hours_collection": {
-        "status": "proposed",
-        "_why": "The Market Risk Engine (#2383) reads market_quotes from sources alpaca and schwab; no quote was collected after about 16:10 ET or before 09:30 (2026-10-30 selloff RCA). Same store, same single writer; the approval block above is unchanged and the cadence column is not changed until activation.",
-        "config": "config/market_risk_offhours_quotes.yaml",
-        "lanes": [
-          {
-            "lane": "external-market-data-ingest-offhours",
-            "provider": "alpaca",
-            "entry": "scripts/external_market_data_ingest.py --quotes-offhours",
-            "scheduler": "none (NEVER_SCHEDULED)",
-            "proposed_cadence": "*/15 16:00-20:00 and 04:00-09:30 ET, trading days (scripts/market_day_gate.sh)",
-            "grant": "alpaca already supplies quotes for this domain (approval above); activation is the operator's in-session word (§25.10.2)"
-          },
-          {
-            "lane": "market-quotes-offhours-schwab",
-            "provider": "schwab",
-            "entry": "scripts/market_quotes_offhours_schwab.py --apply",
-            "scheduler": "none (NEVER_SCHEDULED)",
-            "proposed_cadence": "*/15 Sun 18:00 to Fri 09:30 ET, regular session skipped",
-            "grant": "PENDING: AGENTS.md 28.2.0 (PR #2407) ratification, then an operator §7A grant adding quotes (market-data endpoint only) to providers.schwab.supplies; config switch schwab.enabled stays false until then"
-          }
-        ],
-        "timestamps": "fetched_at = the quote's own trade time (UTC); session (premarket/after_hours/overnight) derives from fetched_at via scripts/lib/offhours_quotes.session_tag; market_quotes has no session column",
-        "reader_risk": "Review of #2384: about 20 readers take the newest market_quotes row with no source or session filter (data broker latest quote, repricer, stop checks, watch alerts, sector RS). Activating either lane makes an off-hours print their latest quote. The operator decides at activation: accept, filter those readers, or redirect to the market_quotes_extended store proposed in #2384.",
-        "proposal": {
-          "proposed_by": "agent (Claude Code, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
-          "proposed_on": "2026-10-31",
-          "reference": "Coordinator brief 2026-10-31: off-hours quote collector for the Market Risk Engine, ONE DRAFT PR, nothing activated"
-        }
-      }
+      "extended_hours_note": "2026-09-28 (plan root cause 6): outside 09:30-16:00 the header is priced by portfolio_repricer from Finviz Elite (label 'after-hours mark'); alpaca stays the RTH authority for market_quotes. Mutual funds carry a cached NAV (price_cache_nav) — a mark, not a degraded quote. PROPOSED by the agent; operator ratification pending (approval block above unchanged)."
     },
     {
       "domain": "symbol_identity",

@@ -19515,40 +19515,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "external-market-data-ingest-offhours",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "none"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled. Market Risk Engine off-hours quotes (16:00-20:00 and 04:00-09:30 ET on trading days, every 15 min): scripts/external_market_data_ingest.py --quotes-offhours, Alpaca IEX snapshots for the universe in config/market_risk_offhours_quotes.yaml plus the engine's large-cap list read from config/market_risk_policy.yaml, written to market_quotes source alpaca through the one writer scripts/lib/writers/market_quotes_writer.py with fetched_at = each trade's own timestamp. Same store, same writer and same entry as lane external-market-data-ingest (no second writer). Activation is the operator's in-session word (AGENTS.md §25.10.2).",
-      "output_signal": {
-        "kind": "none"
-      },
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line, timer or n8n row runs --quotes-offhours; the mode was added on branch wt/offhours-quotes-20261031. Dry run on the recorded fixture tests/fixtures/offhours_quotes/alpaca_snapshots_afterhours_20261029.json: 3 rows tagged after_hours, 3 skipped, 0 written.",
-      "note": "Proposed host crontab lines (NOT installed): '*/15 16-19 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/external_market_data_ingest.py --quotes-offhours >> logs/market_quotes_offhours.log 2>&1'; '0 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/external_market_data_ingest.py --quotes-offhours >> logs/market_quotes_offhours.log 2>&1'; '*/15 4-8 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/external_market_data_ingest.py --quotes-offhours >> logs/market_quotes_offhours.log 2>&1'; '0,15,30 9 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/external_market_data_ingest.py --quotes-offhours >> logs/market_quotes_offhours.log 2>&1'. The code also refuses outside the configured ET windows and on non-trading days. Activation precondition: the readers of market_quotes that take the newest row with no source or session filter (data broker latest quote, repricer, stop checks, watch alerts, sector RS; review of #2384) will see these after-hours prints as the latest quote."
-    },
-    {
-      "lane_id": "market-quotes-offhours-schwab",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "none"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled, and switched OFF in config (schwab.enabled: false). Schwab MARKET-DATA quotes for index futures (/ES /NQ /RTY /YM), indices ($SPX $COMPX $VIX) and the universe's extended-hours/overnight prices: scripts/market_quotes_offhours_schwab.py, GET /marketdata/v1/quotes only via the Schwab token manager's public read API, written to market_quotes source schwab through scripts/lib/writers/market_quotes_writer.py. Depends on AGENTS.md 28.2.0 (PR #2407, PROPOSED) and a §7A grant adding quotes to the schwab provider's supplies. Broker lane: host cron only, never n8n-dispatcher-eligible (§23.14).",
-      "output_signal": {
-        "kind": "none"
-      },
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line, timer or n8n row runs scripts/market_quotes_offhours_schwab.py; config/market_risk_offhours_quotes.yaml schwab.enabled is false, and --apply returns status disabled before any Schwab or DB module is imported (tests/test_offhours_quotes_20261031.py).",
-      "note": "Proposed host crontab lines, Sun 18:00 to Fri 09:30 ET every 15 min (NOT installed): '*/15 18-23 * * 0 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'; '*/15 * * * 1-4 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'; '*/15 0-9 * * 5 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The code also skips the regular session on trading days and refuses outside the window. Switch-on order: (1) operator ratifies AGENTS.md 28.2.0; (2) operator grants the §7A row; (3) a PR flips schwab.enabled; (4) operator activates in session (§25.10.2)."
-    },
-    {
       "lane_id": "llm-intelligence-enrichment",
       "owner": "portfolio",
       "scheduler": {
