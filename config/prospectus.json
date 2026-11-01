@@ -388,6 +388,9 @@
     "conflict_ledger": {
       "excluded": "conflict-engine lifecycle ledger (site-wide conflict lifecycle); not per-security research content"
     },
+    "quote_extended_session": {
+      "excluded": "Market Risk Engine input (index proxies and heavyweights pre-market / after-hours prints); read only by scripts/lib/market_risk/reader.py, never a per-security research fact"
+    },
     "conflict_rule_proposals": {
       "excluded": "AI-proposed conflict rule and rulebook amendments (site-wide); not per-security research content"
     }

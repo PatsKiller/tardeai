@@ -55,7 +55,8 @@ def _write(release: Path, report: dict) -> None:
 
 def _summary(report: dict) -> dict:
     return {k: report[k] for k in ("changed", "diff_id", "added", "removed", "new", "served")} | {
-        "exclusions": len(report["exclusions"])}
+        "exclusions": len(report["exclusions"]), "indeterminate": bool(report.get("indeterminate")),
+        "indeterminate_reasons": report.get("indeterminate_reasons") or {}}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.cmd == "gate":
         ok, why = G.gate(report)
+        if why == "indeterminate" and os.environ.get("TRADE_AI_CI") != "1":
+            report["page"] = G.notify(report, state, event="indeterminate")
         print(json.dumps({"ok": ok, "reason": why, "diff_id": report["diff_id"], "added": report["added"],
                           "removed": report["removed"], "new_source": report["new"]["source"],
                           "served_source": report["served"]["source"]}, sort_keys=True))
@@ -95,7 +98,14 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         return 0
     event = "rollback" if a.cmd == "rollback-diff" else "promote"
-    if report["changed"]:
+    if report.get("indeterminate"):
+        print(f"WARN relay live set could not be read at {event}: {report.get('indeterminate_reasons')} "
+              f"(diff_id {report['diff_id']})", file=sys.stderr)
+        if a.notify and os.environ.get("TRADE_AI_CI") != "1":
+            # Same marker as the promote gate's page, so prepare + promote page once per diff_id, not twice.
+            report["page"] = G.notify(report, state,
+                                      event="indeterminate" if event == "promote" else f"{event}-indeterminate")
+    elif report["changed"]:
         print(f"WARN relay live set would change at {event}: +{len(report['added'])} {report['added']} "
               f"-{len(report['removed'])} {report['removed']} (diff_id {report['diff_id']})", file=sys.stderr)
         if a.notify and os.environ.get("TRADE_AI_CI") != "1":

@@ -15,6 +15,25 @@ CATEGORY = "options_flow"
 SOURCE = "option_chain_snapshots"
 
 
+def _allowance(newest, ctx: EvalContext, ccfg: dict) -> float:
+    """Market hours a snapshot taken at ``newest`` stays current. With ``expected_slots_et`` it lasts until the second
+    expected snapshot slot after it is due (+ ``late_slack_minutes``): one missed or late slot is tolerated, two are
+    not, so a Monday or post-holiday 10:00 snapshot that lands late does not blank the category, and a feed that stops
+    still goes UNKNOWN (review of #2425). Without slots: the fixed ``stale_after_hours``."""
+    slots = ccfg.get("expected_slots_et")
+    if not slots:
+        return float(ccfg["stale_after_hours"])
+    from scripts.lib.market_risk import scoring, sessions as mr_sessions
+
+    deadline = mr_sessions.slot_deadline(
+        newest,
+        list(slots),
+        float(ccfg.get("late_slack_minutes", 45)),
+        missed_allowed=int(ccfg.get("missed_slots_allowed", 1)),
+    )
+    return scoring._age_hours(newest, deadline, ctx.policy.get("decay") or {})
+
+
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     dcfg, ccfg = ctx.policy["options_flow"], ctx.policy["options_flow_category"]
     sessions = int(dcfg["lookback_sessions"]) + int(ccfg["history_extra_sessions"])
@@ -32,8 +51,11 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         today[sym] = {**lst[0], "as_of": md.iso(md.ts(lst[0]))}
         history[sym] = lst[1:]
     newest = max(md.ts(r) for r in today.values())
-    if md.stale(newest, ctx.now, ccfg["stale_after_hours"]):
-        return unknown(CATEGORY, ctx.now, f"option snapshots stale (newest {md.iso(newest)})")
+    stale_after = _allowance(newest, ctx, ccfg)
+    if md.stale(newest, ctx.now, stale_after, ctx.policy.get("decay")):
+        return unknown(
+            CATEGORY, ctx.now, f"option snapshots stale (newest {md.iso(newest)}, limit {stale_after:.1f} market hours)"
+        )
     findings = detector.evaluate(today, history, dcfg)
     known = [f for f in findings if f.get("state") != "UNKNOWN"]
     unknowns = [f for f in findings if f.get("state") == "UNKNOWN"]
@@ -77,7 +99,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         observed_at=md.iso(newest) or "",
         headline=f"Options flow: {head}",
         evidence=tuple(ev),
-        stale_after_hours=float(ccfg["stale_after_hours"]),
+        stale_after_hours=stale_after,
     )
     assert_no_behavior_fields(obs.to_dict())
     return obs

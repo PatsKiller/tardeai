@@ -2407,6 +2407,58 @@
       "notes": "PROPOSED 2026-11-01 (draft PR #2422). daily_cost_cap_usd and daily_soft_cap are 0 PLACEHOLDERS the operator sets (llm_cap_admin / sync). At 0: Grok and ChatGPT OAuth calls run (projected $0); every paid DeepSeek reservation is refused (COST_CAP_EXCEEDED); the Anthropic promo credit is NOT admitted (anthropic_routing.credit_admitted needs both caps > 0) even though anthropic_first is true. A refusal returns the job to pending without counting an attempt and stops the run.",
       "registered_at": "2026-11-01T01:30:00Z",
       "registered_by": "llm-queue-drain-windows-20261031"
+    },
+    {
+      "id": "market_risk_deep_brief",
+      "name": "Market risk deep brief (model picks facts and templates; the system renders)",
+      "category": "Alerts",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/lib/market_risk/deep_brief.py (DSN-20261031-market-risk-engine deep brief; operator 2026-10-31 'as part of the deeper analysis after the initial alert that you can use the LLM to coordinate'): the model only returns JSON picks of (template id, fact id) per section from the deterministic fact pack (scripts/lib/market_risk/deep_brief_facts.py); the system renders each fact's own text with a fixed lead-in. Free text from the model is never sent; any invalid pick, failure or timeout sends the deterministic brief. Free OAuth lanes only (allow_paid=false). OFF by default (config/market_risk_deep_brief.yaml enabled: false, disabled_until review_by 2026-11-07). READ_ONLY_ADVISORY; sends nothing itself.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "max_input_tokens": 6000,
+      "max_output_tokens": 600,
+      "daily_soft_cap": 40,
+      "tools_allowed": false,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "registered_by": "market-risk-deep-brief-20261031",
+      "registered_at": "2026-10-31T17:00:00Z",
+      "anthropic_first": false
+    },
+    {
+      "id": "cio_ask_web_search",
+      "name": "Ask the CIO web search (Sonnet 5.5, hosted web_search)",
+      "category": "CIO",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/lib/anthropic_web_search.py: ONE Anthropic hosted web-search call per Ask subject, the paid second web source behind `web.anthropic` in scripts/lib/cio_ask_research.py. Sends the Ask question plus the subject symbol and receives only cited results (title / url / page_age); it returns no page text. Claude Sonnet 5.5 on the Anthropic credit (credit tier mid via process_tiers in config/anthropic_credit_policy.json) and is the only process that policy admits a `tools` payload for (tools_processes). Never DeepSeek and never another provider: when the credit or a cap is unusable the caller records no_data for that subject. READ_ONLY_ADVISORY; MBI_BEHAVIOR=0 - never sizes, orders, stops, weights or writes to a broker.",
+      "allowed_lanes": [
+        "fast"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 4000,
+      "max_output_tokens": 1500,
+      "daily_soft_cap": 120,
+      "daily_cost_cap_usd": 1.0,
+      "tools_allowed": [
+        "web_search"
+      ],
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "operator 2026-11-01: \"sonnet for search, build it and push live\" (Ask-the-CIO paid web source; Opus for answers, Sonnet for search)",
+      "registered_at": "2026-11-01T18:10:00Z",
+      "notes": "One call ~ under 2k input + <= 1500 output tokens plus up to 3 server-side searches (~$0.01-0.02 at Sonnet 5.5 list price and the $10/1k-search tool fee); 120/day and $1.00/day bound the source well inside the $10/day credit cap. Enablement is the lane env flag TRADEAI_ANTHROPIC_WEB_SEARCH=1: registering this row does not turn the source on.",
+      "anthropic_first": true
     }
   ],
   "default_deepseek_policy": "FAST",

@@ -10,6 +10,8 @@ memory for the wash-sale note and dropped.
 
 from __future__ import annotations
 
+import re
+
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -203,7 +205,24 @@ def compact_sectors(block: dict[str, Any] | None) -> dict[str, Any]:
     return {"groups": groups}
 
 
-def session_history(prior: dict | None, *, now: datetime, tier: Any, sectors_block: dict | None) -> list[dict]:
+_HEDGE_FACTOR_RE = re.compile(r"\(([0-9]+(?:\.[0-9]+)?)x median\)")
+
+
+def hedging_factor(observations: list[dict] | None) -> float | None:
+    """The largest index put/call-vs-trailing-median factor in the options-flow observation (e.g. "QQQ P/C OI 3.97
+    (3.85x median)" -> 3.85), recorded per session so the re-entry Stage 1 can tell hedging easing from its peak."""
+    obs = next((o for o in observations or [] if isinstance(o, dict) and o.get("category") == "options_flow"), None)
+    vals = []
+    for ev in (obs or {}).get("evidence") or []:
+        m = _HEDGE_FACTOR_RE.search(str((ev or {}).get("detail") or ""))
+        if m:
+            vals.append(float(m.group(1)))
+    return max(vals) if vals else None
+
+
+def session_history(
+    prior: dict | None, *, now: datetime, tier: Any, sectors_block: dict | None, hedging: float | None = None
+) -> list[dict]:
     """B3: per-session ``{session, tier, sectors}`` history, newest last, carried in the assessment (``prior`` is the
     previous assessment). A session is recorded only once its close has passed (``sessions.completed_session``): an
     evaluation after the close upserts that session (the latest post-close evaluation wins); pre-market, intraday,
@@ -213,7 +232,7 @@ def session_history(prior: dict | None, *, now: datetime, tier: Any, sectors_blo
     hist = [h for h in ((prior or {}).get("session_history") or []) if isinstance(h, dict) and h.get("session")]
     done = ss.completed_session(now)
     if done:
-        entry = {"session": done, "tier": str(tier), "sectors": compact_sectors(sectors_block)}
+        entry = {"session": done, "tier": str(tier), "sectors": compact_sectors(sectors_block), "hedging_factor": hedging}
         hist = [h for h in hist if h["session"] != entry["session"]] + [entry]
         hist.sort(key=lambda h: h["session"])
     return hist[-SESSION_HISTORY_MAX:]
@@ -346,7 +365,7 @@ def attach(
     doc = a.to_dict()
     block = doc.get("sectors") or {}
     hist = getattr(a, "session_history", None) or session_history(
-        prior, now=now, tier=doc.get("tier"), sectors_block=block
+        prior, now=now, tier=doc.get("tier"), sectors_block=block, hedging=hedging_factor(doc.get("observations"))
     )
     a.session_history = hist
     inp = exposure.load_inputs(now=now, **loaders)
@@ -471,14 +490,168 @@ def attach(
         rec["look_through"] = {k: expo[s].get(k) for k in ("groups", "ai_share", "reporting", "basis", "note")}
         if s in playbooks:
             rec["playbook"] = playbooks[s]
+    # design home/v005: residual lots get a look-through too (the Home card counts their dollars; no stance, no
+    # playbook — materiality still hides those), and the book shares are VALUE-weighted, never equal per position
+    residual_lt = {}
+    for s in book["residuals"]:
+        if s in expo:
+            continue
+        e = lt.exposure_for(s, ai_basket=basket, holdings=holdings, profiles=inp.get("profiles") or {},
+                            themes=cfg.get("theme_overrides") or {})
+        residual_lt[s] = {k: e.get(k) for k in ("groups", "ai_share", "basis", "note")}
+    book_meta["residual_look_through"] = residual_lt
     a.positions = {**stances, "_book": book_meta}
-    a.heatmap = sec.heatmap(block, lt.book_group_exposure(list(expo.values())))
+    a.heatmap = sec.heatmap(block, book_shares(expo, book["material"]))
     c.assert_no_behavior_fields(a.positions)
     return {"available": True, "flagged": flagged, "clusters": clusters, "hedge": hedge, "evening": sorted(evening)}
 
 
+def book_shares(expo: dict[str, dict[str, Any]], material: list[dict[str, Any]]) -> dict[str, float]:
+    """Book share per group, VALUE-weighted by each material position's shares x mark (design home/v005; the
+    equal-per-position average let a residual count as much as the largest holding). Shares only, no amount out."""
+    values: dict[str, float] = {}
+    for p in material:
+        if p.get("mark") and p.get("shares"):
+            values[p["symbol"]] = values.get(p["symbol"], 0.0) + float(p["shares"]) * float(p["mark"])
+    return lt.book_group_exposure(list(expo.values()), weights=values)
+
+
+def _acct_key(raw: Any) -> str:
+    """Canonical account key (``schwab_roth`` and ``schwab_roth_ira`` are one account; config/account_display_names)."""
+    try:
+        from scripts.lib import account_display as ad
+    except ImportError:  # pragma: no cover
+        from lib import account_display as ad  # type: ignore
+    return ad.canonical_key(raw) or str(raw or "")
+
+
+def _held_accounts(policy: dict[str, Any], doc: dict | None = None) -> set[tuple[str, str]]:
+    """(canonical account, SYMBOL) pairs the holdings store holds now, at or above the materiality share floor."""
+    try:
+        if doc is None:
+            from pathlib import Path as _Path
+
+            from scripts.lib import canonical_store_registry as reg
+            from scripts.lib import portfolio_positions as pp_
+
+            doc = pp_.load_store(_Path(reg.resolve_store(HOLDINGS_STORE_ID)["path"]))
+    except Exception:  # noqa: BLE001 — unreadable store: nothing is known held, exits stand as the ledger says
+        return set()
+    floor = float((((policy.get("positions") or {}).get("materiality") or {}).get("min_shares", 1.0)))
+    return {
+        (_acct_key(h.get("account")), str(h.get("symbol")).upper())
+        for h in (doc or {}).get("holdings") or []
+        if isinstance(h, dict) and not h.get("is_cash") and float(h.get("shares") or h.get("quantity") or 0) >= floor
+    }
+
+
+def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any, held_now: bool = False) -> bool:
+    """A Buy is a RE-buy only when it came after the sale: a later date, or the same date at a later time. A same-day
+    Buy without times on both sides counts only when the account holds the symbol now (then the buy must have come
+    after the sale); otherwise it is not counted (a buy-then-sell day trade must stay an exit). Review of #2447."""
+    if buy_date != sell_date:
+        return buy_date > sell_date
+    if buy_time is not None and sell_time is not None:
+        return buy_time > sell_time
+    return held_now
+
+
+def per_account_exits(
+    closes_rows: list[tuple],
+    buys: list[tuple],
+    *,
+    held: set[tuple[str, str]],
+    wash_days: int,
+    sells: list[tuple] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Exits per symbol, decided per ACCOUNT (design home/v005 SPEC section 2). Pure.
+
+    ``closes_rows``: (symbol, account, close_date, is_loss, sell_price) from trade_closed. ``buys``: (SYMBOL,
+    canonical account, trade_date, price[, trade_time]) and ``sells``: (SYMBOL, canonical account, trade_date,
+    trade_time) from trade_transactions (the times order a same-day sell and buy). An account is EXITED when it does not hold the
+    symbol now and no Buy in that account is dated on or after its latest sale. A symbol with no exited account is
+    held, not an exit, and is left out. Wash sale per taxable loss sale: ``occurred`` when the same account re-bought
+    within ``wash_days``, else ``window_open`` until the loss date + ``wash_days``."""
+    from datetime import date as _date, timedelta as _td
+
+    last: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in closes_rows:
+        sym, acct, d, loss = row[:4]
+        px = row[4] if len(row) > 4 else None
+        k = (str(sym).upper(), _acct_key(acct))
+        d = str(d)[:10]
+        r = last.setdefault(k, {"date": d, "price": None, "loss_date": None})
+        if d >= r["date"]:
+            r["date"], r["price"] = d, (float(px) if px is not None else r["price"])
+        if loss and _account_type(acct) == "taxable":
+            r["loss_date"] = max(r["loss_date"] or d, d)
+
+    def sell_time(sym: str, acct: str, d: str) -> Any:
+        return max((t for ss, sa, sd, t in (sells or []) if ss == sym and sa == acct and sd == d and t is not None),
+                   default=None)
+
+    def rebuys(sym: str, acct: str, d: str, held_now: bool) -> list[tuple[str, Any]]:
+        st = sell_time(sym, acct, d)
+        return sorted(
+            (b[2], b[3]) for b in buys
+            if b[0] == sym and b[1] == acct and _after(b[2], b[4] if len(b) > 4 else None, d, st, held_now)
+        )
+
+    by_sym: dict[str, dict[str, Any]] = {}
+    for (sym, acct), r in last.items():
+        held_now = (acct, sym) in held
+        rebuy = rebuys(sym, acct, r["date"], held_now)
+        e = by_sym.setdefault(sym, {"accounts": [], "wash": None})
+        exited = not held_now and not rebuy
+        e["accounts"].append({"account": acct, "date": r["date"], "price": r["price"], "exited": exited})
+        if r["loss_date"]:
+            ld = _date.fromisoformat(r["loss_date"])
+            # the wash-sale test runs from the LOSS sale, not the latest sale (a later gain sale must not hide it)
+            rb = [(bd, bp) for bd, bp in rebuys(sym, acct, r["loss_date"], held_now)
+                  if _date.fromisoformat(bd) <= ld + _td(days=wash_days)]
+            w = (
+                {"state": "occurred", "account_scope": _opaque(acct), "loss_sale_date": r["loss_date"],
+                 "rebuy_date": rb[0][0], "rebuy_price": float(rb[0][1]) if rb[0][1] is not None else None}
+                if rb
+                else {"state": "window_open", "account_scope": _opaque(acct), "loss_sale_date": r["loss_date"],
+                      "until": (ld + _td(days=wash_days)).isoformat()}
+            )
+            if e["wash"] is None or w["loss_sale_date"] >= e["wash"]["loss_sale_date"]:
+                e["wash"] = w
+    out: dict[str, dict[str, Any]] = {}
+    for sym, e in by_sym.items():
+        ex = [x for x in e["accounts"] if x["exited"]]
+        if not ex:
+            continue
+        top = max(ex, key=lambda x: x["date"])
+        taxable_loss = e["wash"]["loss_sale_date"] if e["wash"] and e["wash"]["state"] == "window_open" else None
+        out[sym] = {
+            "exit_date": top["date"],
+            "exit_price": top["price"],
+            "exit_account_scope": _opaque(top["account"]),
+            "exit_account_type": _account_type(top["account"]),
+            "held_elsewhere": sorted(_opaque(a) for a, s in held if s == sym),
+            "taxable_loss_date": taxable_loss,
+            "wash_sale": e["wash"],
+        }
+    return out
+
+
+def _opaque(acct: Any) -> str:
+    from scripts.lib.market_risk.exposure import opaque_account
+
+    return opaque_account(acct)
+
+
 def reentry_watch_block(
-    a: Any, *, now: datetime, reader: Any, policy: dict[str, Any], prior: dict | None, conn_factory: Any
+    a: Any,
+    *,
+    now: datetime,
+    reader: Any,
+    policy: dict[str, Any],
+    prior: dict | None,
+    conn_factory: Any,
+    held_accounts: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """RE-ENTRY WATCH for every symbol exited in the last ``lookback_days`` (trade_closed, read-only), held or not."""
     from datetime import date as _date
@@ -491,18 +664,31 @@ def reentry_watch_block(
     conn = read_only(conn_factory)  # M4: read-only from the first statement
     try:
         with conn.cursor() as cur:
+            lookback = int(cfg.get("lookback_days", 30))
             cur.execute(
-                "SELECT symbol, account, close_date, (pnl < 0) FROM trade_closed "
+                "SELECT symbol, account, close_date, (pnl < 0), sell_price FROM trade_closed "
                 "WHERE close_date >= %s::date - %s AND close_date <= %s::date ORDER BY close_date",
-                (now.date(), int(cfg.get("lookback_days", 30)), now.date()),
+                (now.date(), lookback, now.date()),
             )
-            for sym, acct, d, loss in cur.fetchall():
-                e = exits.setdefault(str(sym).upper(), {"exit_date": str(d), "taxable_loss_date": None})
-                e["exit_date"] = max(e["exit_date"], str(d))
-                # B4: the wash-sale clock runs from the latest LOSS sale in a TAXABLE account only — a taxable gain
-                # plus an IRA loss is no wash sale
-                if loss and _account_type(acct) == "taxable":
-                    e["taxable_loss_date"] = max(e["taxable_loss_date"] or str(d), str(d))
+            closes_rows = cur.fetchall()
+            # design home/v005: a symbol re-bought in the SAME account after the sale is held there, not exited
+            # (operator 2026-11-01, from a broker screenshot: a same-day sale and re-buy)
+            cur.execute(
+                "SELECT symbol, account, trade_date, price, trade_time, lower(action) FROM trade_transactions "
+                "WHERE (lower(action) LIKE 'buy%%' OR lower(action) LIKE 'sell%%') "
+                "AND trade_date >= %s::date - %s AND trade_date <= %s::date",
+                (now.date(), lookback, now.date()),
+            )
+            tx = [r for r in cur.fetchall() if len(r) >= 6]
+            buys = [
+                (str(r[0]).upper(), _acct_key(r[1]), str(r[2])[:10], r[3], r[4]) for r in tx if str(r[5]).startswith("buy")
+            ]
+            sells = [
+                (str(r[0]).upper(), _acct_key(r[1]), str(r[2])[:10], r[4]) for r in tx if str(r[5]).startswith("sell")
+            ]
+            exits = per_account_exits(
+                closes_rows, buys, held=held_accounts or set(), wash_days=int(cfg.get("wash_sale_days", 30)), sells=sells
+            )
             syms = sorted(exits)
             earn: dict[str, Any] = {}
             profiles: dict[str, dict[str, Any]] = {}
@@ -528,6 +714,12 @@ def reentry_watch_block(
     basket = list((policy.get("ai_concentration") or {}).get("basket") or [])
     themes = (policy.get("positions") or {}).get("theme_overrides") or {}
     flow = next((o for o in doc.get("observations") or [] if o.get("category") == "options_flow"), {})
+    from scripts.lib.market_risk import reentry_stages as rs_stages
+
+    sector_symbols = {
+        r.get("key"): list(r.get("symbols") or []) for r in block.get("groups") or [] if r.get("kind") == "sector"
+    }
+    bench_sym = str((block.get("benchmark") or {}).get("symbol") or "SPY")
     cards = {}
     for sym, e in exits.items():
         bars = [r for r in (reader.daily_bars([sym], sessions=400, end=now) or []) if r.get("close") is not None]
@@ -553,6 +745,25 @@ def reentry_watch_block(
         if lst:
             since_e = int((now.date() - _date.fromisoformat(str(lst)[:10])).days * 5 / 7)
 
+        weights = {g: w for g, w in groups.items() if g in sector_symbols and w}
+        gcl = {}
+        for g in weights:
+            gb = [r for r in (reader.daily_bars(sector_symbols[g][:1], sessions=40, end=now) or []) if r.get("close") is not None]
+            gcl[g] = [float(r["close"]) for r in gb]
+        bench = [float(r["close"]) for r in (reader.daily_bars([bench_sym], sessions=40, end=now) or []) if r.get("close") is not None]
+        try:
+            st = rs_stages.evaluate(
+                symbol=sym,
+                exit_date=e["exit_date"],
+                exit_price=e.get("exit_price"),
+                bars=bars,
+                group_ratio=rs_stages.weighted_group_ratio(gcl, weights, bench),
+                hedging_series=[h.get("hedging_factor") for h in sh],
+                market_tier=str(doc.get("market_tier")),
+                policy=policy,
+            )
+        except Exception as exc:  # noqa: BLE001 — the stages are additive; the legacy card still renders
+            st = {"error": f"{type(exc).__name__}: {exc}"}
         try:
             cards[sym] = rw.card(
                 symbol=sym,
@@ -569,10 +780,22 @@ def reentry_watch_block(
                 market_tier=str(doc.get("market_tier")),
                 options_flow_state=str(flow.get("state") or "UNKNOWN"),
                 taxable_loss_days_ago=(
-                    (now.date() - _date.fromisoformat(e["taxable_loss_date"])).days if e["taxable_loss_date"] else None
+                    (now.date() - _date.fromisoformat(e["taxable_loss_date"])).days
+                    if e["taxable_loss_date"] and (e.get("wash_sale") or {}).get("state") != "occurred"
+                    else None
                 ),
                 policy=policy,
             )
+            cards[sym].update(
+                exit_price=e.get("exit_price"),
+                exit_account_scope=e.get("exit_account_scope"),
+                exit_account_type=e.get("exit_account_type"),
+                held_elsewhere=e.get("held_elsewhere") or [],
+                wash_sale=e.get("wash_sale"),
+                look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
+                stages=st,
+            )
+            c.assert_no_behavior_fields(cards[sym])
         except Exception as exc:  # noqa: BLE001 — one symbol failing is reported, the rest still render
             cards[sym] = {"symbol": sym, "error": f"{type(exc).__name__}: {exc}"}
     a.reentry_watch = cards

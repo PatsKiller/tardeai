@@ -218,9 +218,11 @@ KNOWN_MISSES = {
     "single-evaluation shock rule did not apply",
     # carry2024 removed 2026-10-31 (precision PR): with the AI-basket names in the fixture, the technical category's
     # basket participation is measured instead of UNKNOWN, and the scenario now reaches its expectation.
-    "dec2018_selloff": "max YELLOW: since review B2, Orange and Red need STRESS in their require_stress_any lists on "
-    "the score path too; options_flow, cross_asset and event have no 2018 history, and breadth reached only WARN",
-    "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-11",
+    "dec2018_selloff": "max YELLOW: Orange and Red need STRESS in their require_stress_any lists; options_flow, "
+    "cross_asset and event have no 2018 history. #2415 reached RED at the 12-24 close by carrying the 12-21 STRESS over "
+    "the weekend; the operator's hold-not-escalate policy (2026-10-31) forbids escalating on carried data",
+    "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-11 (the Monday 03-13 RED of "
+    "#2415 came from Friday's STRESS carried over the weekend, which hold-not-escalate no longer allows)",
     "corrections2026": "Orange before each QQQ -10% correction: max YELLOW on daily fixtures (out-of-sample year)",
     "bear2022_turn": "GREEN not reached (needs >= 3 categories IMPROVING at once with no WARN); RED at the 10-13 open "
     "on the CPI gap-down inside the turn window",

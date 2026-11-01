@@ -160,6 +160,12 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
     cfg = policy.get("alerts") or {}
     tier = str(assessment.get("tier") or "NONE").upper()
     was = str((prior or {}).get("tier") or "NONE").upper()
+    if ((prior or {}).get("hysteresis") or {}).get("carried_only") and not (
+        (assessment.get("hysteresis") or {}).get("carried_only")
+    ):
+        # a fresh observation now supports the tier the operator was never alerted on: a normal transition from
+        # nothing, with the tier's own priority (PR 2431)
+        was = "NONE"
     if tier == was:
         return None
     if _rank(tier) > _rank(was):
@@ -176,6 +182,15 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
             key, transition = "deescalated", f"down_from_{was.lower()}"
     pri = (cfg.get("priority") or {}).get(key, "P2")
     dedupe = int((cfg.get("dedupe_minutes") or {}).get(key, 240))
+    hy = assessment.get("hysteresis") or {}
+    if hy.get("carried_only"):
+        # the tier rests only on data carried across a closure: one informational card per tier, never P1/P2
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"carried_{tier.lower()}"
+    elif hy.get("bootstrap") or not prior:
+        # a first reading (no prior tier) never pages P1, whatever the tier (review of PR 2425 round 4, finding 2)
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"first_reading_{tier.lower()}"
     as_of = assessment.get("as_of")
     try:
         session_date = datetime.fromisoformat(str(as_of).replace("Z", "+00:00")).astimezone(ET).date().isoformat()
@@ -183,7 +198,7 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
         session_date = "unknown"
     return {
         "priority": pri,
-        "dedupe_minutes": 0 if tier == "RED" else dedupe,
+        "dedupe_minutes": 0 if tier == "RED" and pri == "P1" else dedupe,
         "dedupe_key": f"market_risk:{tier}:{session_date}:{transition}",
         "tier": tier,
         "transition": transition,

@@ -18847,19 +18847,130 @@
       "lane_id": "market-risk-evaluate",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/15 4-19 * * 1-5 + 0 * * * 0,6 + 0 20-23 * * 1-5 + 0 0-3 * * 1-5",
+        "match": "scripts/market_risk_evaluate.py --scheduled --apply",
+        "schedules": [
+          "*/15 4-19 * * 1-5",
+          "0 * * * 0,6",
+          "0 20-23 * * 1-5",
+          "0 0-3 * * 1-5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
       },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled. The Market Risk Engine evaluator (scripts/market_risk_evaluate.py, DSN-20261031-market-risk-engine P2-T1) lands in PR #2337 with its categories, reader and alerts in #2335-#2342 and #2351. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after the engine merges and its replay and live dry run pass. Proposed cadence: weekdays every 15 min 04:00-20:00 ET plus Sunday 18:30 ET, first in DRY_RUN (shadow) mode, writing nothing and sending nothing.",
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-01",
+      "state_reason": "Operator, in session 2026-11-01 ~11:10 ET (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" The coordinator switched the four host crontab lines (crontab -l L1083-L1086; backup in persistent-state/archive/crontab/) from --scheduled --shadow to --scheduled --apply, so the Market Risk Engine evaluator (scripts/market_risk_evaluate.py) now runs live: it writes the assessment (latest.json and a dated receipt), the snapshot every consumer reads, run_last.json, and raises real alerts through the episode ledger and sent-key ledger. Before that, from 2026-11-01 ~09:10 ET (operator: \"run it now\"; schedule approved as design §11 item 2 on 2026-10-31) the same four lines ran in shadow. Coverage is 24/5-plus: after-hours, overnight, and the weekend into the Sunday 18:00 ET futures and Asia open.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L1083 '*/15 4-19 * * 1-5 ... bash scripts/market_day_gate.sh $PY scripts/market_risk_evaluate.py --scheduled --apply', L1084 '0 * * * 0,6', L1085 '0 20-23 * * 1-5', L1086 '0 0-3 * * 1-5' (L1084-L1086 ungated). Host timezone: timedatectl reports America/New_York and the crontab sets no CRON_TZ, so the fields are ET and follow DST. Output signal: run_last.json is written by every scheduler-launched run including --shadow (scripts/market_risk_evaluate.py _shadow(scheduled_started=...), fixed in #2409; before it main() returned from _shadow() ahead of the --scheduled receipt write, so the lane would have read stale); tests tests/test_market_risk_scheduled_shadow_receipt_20261101.py, including a mutant of the old early return.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/runtime/market_risk/latest.json"
+        "path": "data/runtime/market_risk/run_last.json"
+      },
+      "note": "Gate: only the */15 trading-day line runs through market_day_gate.sh (it skips when market_session.is_trading_day() is false: weekends and NYSE holidays; it fails open on error). The overnight lines (Mon-Fri 20:00-23:00 and 00:00-03:00) and the weekend hourly line (Sat+Sun 00:00-23:00) are ungated, so Sunday evening and the night before and after an NYSE holiday still run (futures and Asia trade). On the holiday itself the gated 04:00-19:45 line skips, so the snapshot reads stale that day between 03:00 and 20:00 ET; expected_cadence_hours 1.0 is the max gap ignoring holidays (union of the four expressions, fixed Monday base). One lock, /tmp/market_risk_evaluate.lock (safe_flock), for every line; the evaluator also takes data/runtime/market_risk/evaluate.lock. Overnight and weekend cadence must stay at most hourly: the API serves the snapshot as stale after 1.0 hour (scripts/lib/market_risk_projection.py build(stale_after_hours=1.0)), so a run delayed past the top of the hour reads stale briefly. Hand-maintained row: reconcile_lane_registry.py keeps it in place.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1083-L1086 (\"run it now\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      }
+    },
+    {
+      "lane_id": "market-quotes-extended",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 4-9 * * 1-5 + */15 16-20 * * 1-5",
+        "match": "scripts/market_quotes_extended.py --apply",
+        "schedules": [
+          "*/15 4-9 * * 1-5",
+          "*/15 16-20 * * 1-5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1"
+      },
+      "expected_cadence_hours": 55.25,
+      "state": "ACTIVE",
+      "state_since": "2026-11-01",
+      "state_reason": "Operator, in session 2026-11-01 ~11:10 ET (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" The store was granted in config/data_source_authority.json by #2448 (AGENTS.md 29.2.1; store, writer, provider and schedule approved as design DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31). The coordinator's session installed two host crontab lines (crontab -l L1089-L1090; backup persistent-state/archive/crontab/crontab.pre-market-quotes-extended.20261101T125651.txt) running scripts/market_quotes_extended.py --apply every 15 minutes in the pre-market and after-hours windows of NYSE trading days. Alpaca SIP 5-minute bars into market_quotes_extended through its single writer; never market_quotes.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/market_quotes_extended.log",
+        "evidence": "CRON_LOG_REDIRECT"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line and no timer exist for scripts/market_risk_evaluate.py; the evaluator is not on main yet (PR #2337). This row exists so the lane is declared before it is scheduled (AGENTS.md §23.11), and the activation PR flips it to ACTIVE with the cron expression.",
-      "note": "Proposed host crontab lines (shadow): '*/15 4-19 * * 1-5', '0 20 * * 1-5' and '30 18 * * 0', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --dry-run --json >> logs/market_risk_evaluate.log 2>&1'. Shadow lasts until the operator promotes it to --apply."
+      "reason_evidence": "crontab -l L1089 '*/15 4-9 * * 1-5 ... bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply', L1090 '*/15 16-20 * * 1-5' (same command). Migrations applied to the prod DB 2026-11-01: migrations/2026_10_31_market_quotes_extended.sql at 11:07 ET and migrations/2026_10_31_market_quotes_extended_overnight.sql at 12:41 ET (session CHECK now premarket/afterhours/overnight/futures_open; reference columns nullable only for overnight/futures_open). First live run 2026-11-01 12:56 ET from release 4bc61bcdb (CURRENT): --apply inserted 23 rows (afterhours, session_date 2026-10-30, feed sip); table count 23. Host timezone America/New_York, no CRON_TZ.",
+      "note": "Gate: both lines run through market_day_gate.sh (skips weekends and NYSE holidays). The writer labels only bars inside an extended session of a trading day (pre-market 04:00-09:30, after-hours close-20:00), so the 09:30-09:45 and 20:00-20:45 fires write the newest complete in-session bar or nothing. expected_cadence_hours 55.25 is the max gap of the union of the two expressions (Friday 20:45 to Monday 04:00, reconcile_lane_registry.cron_cadence_hours_union); inside a session the cadence is 15 minutes and the store's freshness SLA is 30 minutes (config/data_source_authority.json quote_extended_session). One lock, /tmp/market_quotes_extended.lock (safe_flock). The Schwab off-hours reader (scripts/market_quotes_offhours_schwab.py, overnight and Sunday futures_open) is a separate lane, still switched off (schwab.enabled false) pending its own operator approval. Hand-maintained row.",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1089-L1090 (\"I approve the after-hour\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      }
+    },
+    {
+      "lane_id": "market-quotes-offhours-schwab",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-9 * * 5",
+        "match": "scripts/market_quotes_offhours_schwab.py --apply",
+        "schedules": [
+          "*/15 18-23 * * 0",
+          "*/15 * * * 1-4",
+          "*/15 0-9 * * 5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
+      },
+      "expected_cadence_hours": 56.25,
+      "state": "ACTIVE",
+      "state_since": "2026-11-01",
+      "state_reason": "Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). #2454 set schwab.enabled true and recorded the grant (config/data_source_authority.json providers.schwab.supply_grants). The coordinator's session installed three host crontab lines (crontab -l L1092-L1094; backup persistent-state/archive/crontab/crontab.pre-schwab-offhours.20261101T161509.txt) running scripts/market_quotes_offhours_schwab.py --apply every 15 minutes from Sunday 18:00 to Friday 09:45 ET; the script's own window (Sunday 18:00 to Friday 09:30, regular session skipped) decides when Schwab is called.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L1092 '*/15 18-23 * * 0', L1093 '*/15 * * * 1-4', L1094 '*/15 0-9 * * 5', each '... $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1' (ungated). Release a618e759b (CURRENT, carries #2454) --probe 2026-11-01 17:45 ET: enabled true, store_domain_granted true, url_rail_ok true, live_call_made false. First scheduled run 2026-11-01 18:00 ET: status ok, window futures_overnight, 30 symbols, inserted 4 (session futures_open, session_date 2026-11-02, feed schwab: /ESZ26 7638.25, /NQZ26 28677.0, /RTYZ26 2829.7, /YMZ26 52030.0, all level-only: no dated settlement in the payload), 26 skipped (25 stale_trade equities/indices last traded 2026-10-30, 1 not_a_quote 'errors' key). market_quotes_extended now holds feed schwab 4 rows, feed sip 23 rows.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/market_quotes_offhours_schwab.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "Installed host crontab lines L1092-L1094 (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads. expected_cadence_hours 56.25 is the max gap of the union of the three expressions (Friday 09:45 to Sunday 18:00, reconcile_lane_registry.cron_cadence_hours_union); inside the window the cadence is 15 minutes.",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1092-L1094 (\"enable schwab\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

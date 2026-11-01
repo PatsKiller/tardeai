@@ -1,0 +1,100 @@
+# Market Risk deep brief — the follow-up after the initial alert (DSN-20261031-market-risk-engine, deep brief).
+# Operator 2026-10-31: "as part of the deeper analysis after the initial alert that you can use the LLM to coordinate
+# and to put together is the historical facts on what normally happens in the market when X is happening. Also, use the
+# other data sources so we can get a clear consensus on what's happening. You should also be looking at the options
+# market to see how people are hedging. Everything needs to be factored in, earnings, every particular catalyst."
+#
+# Rails: detection and scoring stay deterministic; the fact pack (scripts/lib/market_risk/deep_brief_facts.py) is
+# built without a model. The model never writes prose: it may only pick (template id, fact id) pairs per section and
+# the system renders each fact's own text; any invalid pick sends the deterministic brief. MBI_BEHAVIOR = 0. The initial alert is never delayed: the brief runs after it.
+schema: MarketRiskDeepBrief@v1
+as_of: 2026-10-31
+enabled: false                          # model coordination OFF until review passes; the deterministic brief ships
+disabled_until:
+  name: market-risk deep brief model coordination
+  reason: "Review of #2393 (item 3): free-text prose let advice paraphrases, obfuscations and number spoofs through. Rebuilt as template picks over the fact pack (the model chooses, the system renders); off until that passes independent adversarial review"
+  disabled_at: 2026-10-31
+  review_by: 2026-11-07
+  owner: coordinator
+  reenable_plan: "template-pick writer (deep_brief.parse_picks/render_picks) passes independent adversarial review; then set enabled: true and remove this block in the same PR"
+process_id: market_risk_deep_brief      # config/llm_process_registry.json row (free OAuth lanes only)
+lane: grok                              # first lane; llm_fallback walks grok -> chatgpt
+allow_paid: false                       # metered DeepSeek would hit the off-peak deferral and delay a P2 follow-up
+timeout_s: 20                           # wall clock (daemon thread); on expiry the deterministic brief is sent
+max_tokens: 600
+max_input_chars: 14000
+min_n: 20                               # base-rate statistic with fewer matching days says "insufficient history"
+triggers:
+  tiers: [ORANGE, RED]                  # a transition INTO one of these tiers (from a lower tier or no prior)
+  shock_type_change_min_tier: YELLOW    # a change of shock type at or above this tier
+delivery:
+  priority: P2
+  dedupe_minutes: 720                   # at most once per episode transition / shock type; keys in the sent-key ledger
+lookahead_sessions: [1, 3, 5, 10]       # catalyst windows
+news_window_hours: 72
+social_window_hours: 72
+option_lookback_sessions: 20
+heavyweights: [AAPL, MSFT, NVDA, AMZN, GOOGL, META, AVGO, TSLA, AMD, INTC, ORCL, NFLX]   # index look-through catalysts
+consensus:
+  sources: [engine, options, breadth, credit, news, analysts, social, cio]
+  news_tone_band: 0.10                  # mean sentiment beyond +/- this is a directional read
+  analyst_target_band: 0.02             # mean 20-day consensus price-target change beyond +/- this is a read
+  social_bullish_hi: 0.60               # bullish share above this reads as complacent retail
+  # CIO posture is rendered only when it is one of these names (review of #2410 r3, B3); anything else is withheld
+  posture_names: [DEFENSIVE, RISK_OFF, CAUTIOUS, HOLD, NEUTRAL, NORMAL, MODERATE, SELECTIVE, CONSTRUCTIVE, RISK_ON]
+  posture_risk_up: [DEFENSIVE, RISK_OFF, CAUTIOUS, HOLD]   # postures that vote risk_up (was: contains DEFENSIVE or HOLD)
+  pc_vol_warn_factor: 1.5               # index put/call volume / trailing median at or above this reads as hedging
+sections:                               # the model may order facts in these six; "Your exposure" is always deterministic
+  - What's happening
+  - What usually happens next
+  - How the market is hedging
+  - Catalysts ahead
+  - Where sources agree and disagree
+  - What would change the picture
+# Free text from other stores never reaches the brief (review of #2410, B1/N3): a CIO stance renders as its stance
+# name only, and a catalyst or material change as symbol + a label from these fixed maps; anything else is counted as
+# withheld. Labels are descriptive nouns only (no trade verbs: "insider_buy" -> "insider purchase filing").
+stance_names: [ADD, HOLD, TRIM, EXIT, AVOID, WATCH, WATCH_CLOSELY, RE_ENTER, RE_ENTER_IF, HOLD_CASH_FOR, TRIM_REVIEW, EXIT_REVIEW, EXITED]
+catalyst_labels:
+  news_momentum: news momentum
+  analyst_upgrade: analyst upgrade
+  analyst_downgrade: analyst downgrade
+  analyst: analyst note
+  earnings_beat: earnings above estimates
+  earnings_miss: earnings below estimates
+  earnings: earnings
+  earnings_release: earnings release
+  earnings_report: earnings report
+  earnings_call: earnings call
+  merger_acquisition: merger or acquisition
+  contract_win: contract award
+  contract: contract
+  geopolitical: geopolitical event
+  insider_buy: insider purchase filing
+  insider_sell: insider sale filing
+  buyback: share repurchase program
+  offering_dilution: share offering
+  fda_approval: FDA approval
+  dividend_increase: dividend increase
+  dividend_cut: dividend cut
+  guidance_raise: guidance raised
+  guidance_lower: guidance lowered
+  regulatory_disclosure: regulatory disclosure
+  regulatory: regulatory event
+  ceo_change: CEO change
+  executive_change: executive change
+  material_agreement: material agreement
+  filing_quarterly: quarterly filing
+  filing_annual: annual filing
+  stock_split: stock split
+  clinical_trial: clinical trial
+  product_launch: product launch
+  legal: legal matter
+  lawsuit: lawsuit
+  partnership: partnership
+material_change_labels:
+  news_burst: news burst
+  catalyst_new: new catalyst
+  price_excursion: price excursion
+  sec_filing: SEC filing
+  sector_move: sector move

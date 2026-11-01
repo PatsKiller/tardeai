@@ -1059,6 +1059,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261030-workspace-lifecycle.md` | Workspace lifecycle |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
+| `docs/designs/DSN-20261101-issuer-segment-lookthrough.md` | Issuer segment look-through |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2647,6 +2648,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy |
+| `docs/runbooks/RELAY_LIVE_SET_GATE.md` | Relay live-set gate — operator runbook |
 | `docs/runbooks/TRADING_LOCK.md` | Trading lock (READ-ONLY toward brokers) — operator runbook |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 |

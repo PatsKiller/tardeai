@@ -2058,7 +2058,44 @@
           "cost_ceiling_usd": 0.1,
           "anthropic_first": true
         },
+        "cio_ask_web_search": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1,
+          "route_profile": "anthropic_promotional_only",
+          "anthropic_first": true
+        },
         "market_risk_alert_curation": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.25,
+          "anthropic_first": false
+        },
+        "market_risk_deep_brief": {
           "primary": {
             "provider": "grok",
             "policy": "FAST"

@@ -78,6 +78,12 @@ CALLER_PROCESS_MAP: dict[str, str] = {
 
 # Task-type overrides for multi-policy callers (server-side only).
 CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
+    # 2026-11-01: the Ask web-search source. Its own process id, so the registry's cost caps bind
+    # server-side and a caller cannot relabel into another process. Tool-bearing only (the credit
+    # policy's tools_processes names it); process registration is the live gate.
+    "web_search": {
+        "web_search": "cio_ask_web_search",
+    },
     # 2026-10-08 (Phase 2 G1): the n8n model-job caller has two small-cap processes, chosen by task type
     # server-side; an unknown task type falls back to the digest (cannot escalate — tested).
     "n8n_model_job": {

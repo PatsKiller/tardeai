@@ -1446,6 +1446,9 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
 
         facts["market_risk"] = _mr_cio.ask_facts(_mr_cio.load_market_risk())
         sources.append("market_risk_projection")
+        if _mr_cio.wants_deep_brief(str(intent.get("text") or "")):  # on-demand deep brief (operator 2026-10-31)
+            facts["market_risk_deep_brief"] = _mr_cio.deep_brief_on_demand()
+            sources.append("market_risk_deep_brief")
     except Exception as exc:  # noqa: BLE001 — a named gap, never a crash of the answer path
         soft_gaps.append({
             "domain": "market_risk", "symbol": None, "field": "tier",

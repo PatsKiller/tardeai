@@ -266,6 +266,7 @@
   "tests/test_cio_answer_quality.py": 1.6,
   "tests/test_cio_api_contract_census.py": 10.3,
   "tests/test_cio_ask_20261023.py": 2.6,
+    "tests/test_cio_ask_anthropic_search_20261101.py": 2.0,
   "tests/test_cio_ask_contract_20261023.py": 2.0,
   "tests/test_cio_ask_groups_20261025.py": 1.6,
   "tests/test_cio_ask_hourly_20261026.py": 2.7,
