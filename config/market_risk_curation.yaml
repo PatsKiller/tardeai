@@ -6,6 +6,17 @@
 schema: MarketRiskCuration@v1
 as_of: 2026-10-31
 enabled: true
+# Off on purpose, with a due date (operator 2026-10-31: "there needs to be a reminder to switch it back on. We just
+# don't want to leave it off; we got to get it working correctly."). scripts/check_disabled_features.py pages P2 once a
+# day after review_by; the projection, the Risk payload and Ask-the-CIO show "curation: OFF — pending review, due …".
+# The PR that re-enables curation removes this block.
+disabled_until:
+  name: market-risk alert curation
+  reason: "LLM rewording of the alert 'why' sentence is off for every tier (skip_tiers) after review #2383 round 2 (B3): free-text curation let advice paraphrases and invented numbers through"
+  disabled_at: 2026-10-31
+  review_by: 2026-11-07
+  owner: coordinator
+  reenable_plan: "allowlist template passes independent adversarial review; enable BLUE/YELLOW/GREEN first"
 process_id: market_risk_alert_curation   # config/llm_process_registry.json row (free OAuth lanes only)
 lane: grok                               # first lane; llm_fallback walks grok -> chatgpt
 allow_paid: false                        # never a metered lane for alert prose

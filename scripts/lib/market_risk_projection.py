@@ -16,6 +16,7 @@ the operator's acknowledgment to the episode ledger (`market_risk.escalation`, f
 
 from __future__ import annotations
 
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -139,6 +140,45 @@ def _age_hours(as_of: str | None, now: datetime | None = None) -> float | None:
     return round(((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600, 2)
 
 
+
+def curation_status(config_dir=None) -> dict:
+    """Whether LLM curation of the alert prose is on, and when its review is due (operator 2026-10-31: "there needs
+    to be a reminder to switch it back on"). ON/OFF comes from the curation config itself (``enabled`` and
+    ``skip_tiers``), the due date from its ``disabled_until`` block (review #2399 F11). Never raises."""
+    try:
+        try:
+            from lib import disabled_features as df  # type: ignore
+            from lib.market_risk import curation_config as cur  # type: ignore  # config only: no LLM/DB/broker reach
+        except ImportError:  # pragma: no cover - imported as scripts.lib
+            from scripts.lib import disabled_features as df  # type: ignore
+            from scripts.lib.market_risk import curation_config as cur  # type: ignore
+        root = Path(config_dir) if config_dir else df.CONFIG_DIR
+        path = root / "market_risk_curation.yaml"
+        cfg = cur.load_config(path)
+        skipped = {str(t).upper() for t in cfg.get("skip_tiers") or []}
+        on_tiers = sorted({"BLUE", "YELLOW", "GREEN"} - skipped) if cfg.get("enabled") else []
+        entry = df.entry_for(path)
+        due = (entry or {}).get("review_by")
+        if on_tiers:
+            note = "curation: ON for " + ", ".join(on_tiers)
+            if entry:
+                note += " (review block still present)"
+        elif entry and not entry.get("error"):
+            word = "OVERDUE since" if entry.get("overdue") else "pending review, due"
+            note = f"curation: OFF — {word} {due}"
+        else:
+            note = "curation: OFF — no valid review date set"
+        return {
+            "state": "ON" if on_tiers else "OFF",
+            "tiers_on": on_tiers,
+            "note": note,
+            "review_by": due,
+            "overdue": (not on_tiers) and (entry is None or bool(entry.get("overdue")) or bool(entry.get("error"))),
+            "reenable_plan": (entry or {}).get("reenable_plan"),
+        }
+    except Exception as exc:  # noqa: BLE001 - a status line must never break the projection
+        return {"state": "OFF", "note": f"curation: status unreadable ({type(exc).__name__})", "overdue": True}
+
 def build(
     snapshot: dict | None,
     radar: dict | None,
@@ -178,6 +218,7 @@ def build(
             "book": None,
             "probabilities": None,
             "sources": sources,
+            "curation": curation_status(),
             "generated_at": now.isoformat(),
         }
     age = _age_hours(snapshot.get("as_of"), now)
@@ -207,6 +248,7 @@ def build(
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
         "sources": sources,
+        "curation": curation_status(),
         "generated_at": now.isoformat(),
     }
 

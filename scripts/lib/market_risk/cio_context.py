@@ -133,6 +133,8 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
         "as_of": mr.get("as_of"),
         "line": tier_line(mr),
     }
+    if isinstance(mr.get("curation"), dict):  # "curation: OFF — pending review, due …" (operator 2026-10-31)
+        out["curation"] = {k: mr["curation"].get(k) for k in ("state", "note", "review_by", "overdue")}
     if out["tier"] == "NOT_EVALUATED":
         out["reason"] = mr.get("reason")
         flow = (mr.get("sources") or {}).get("options_flow") or {}

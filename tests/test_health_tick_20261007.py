@@ -129,7 +129,7 @@ def test_snap_floors_a_late_timer_fire_onto_the_grid():
 
 def test_live_table_loads_and_reproduces_the_crontab_weekly_count():
     table = ht.load_table(LIVE_TABLE)
-    assert len(table["steps"]) == 17  # +premarket-delivery-deadman (2026-10-31, P0-T4)
+    assert len(table["steps"]) == 18  # +premarket-delivery-deadman (P0-T4), +disabled-features-reminder (declared off), 2026-10-31
     counts = ht.firings_per_week(table, datetime.fromisoformat("2026-10-05T00:00:00"))
     # Hand-computed from the 17 crontab lines (weekday 1166 + weekend 786 per day) = 7402, minus the
     # retired portfolio-live-monitor step (every 20 min, 09-16 weekdays: 24/day x 5 = 120), retire-wave1
