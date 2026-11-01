@@ -48,5 +48,9 @@
   "max_consecutive_request_rejections": 10,
   "strike_max_age_days": 7,
   "max_probes_per_run": 4,
-  "probe_ahead_rule": "When max_consecutive_request_rejections is hit: record no progress if nothing was answered yet, then probe untried jobs FORWARD in priority order at positions 0, 2b, 4b, 8b (b = the bound; clamped to the last untried job), up to max_probes_per_run (one probe if lanes already answered in this run). The first answered probe confirms the waiting rejections and the run continues forward through the untried jobs; each job is tried at most once per run. Systemic only when every probe is rejected. A run whose fetch runs out with request rejections and no answer also records no progress."
+  "probe_ahead_rule": "When max_consecutive_request_rejections is hit: record no progress if nothing was answered yet, then probe untried jobs FORWARD in priority order at positions 0, 2b, 4b, 8b (b = the bound; clamped to the last untried job), up to max_probes_per_run (one probe if lanes already answered in this run). The first answered probe confirms the waiting rejections and the run continues forward through the untried jobs; each job is tried at most once per run. Systemic only when every probe is rejected. A run whose fetch runs out with request rejections and no answer also records no progress.",
+  "low_throughput_floor": 3,
+  "low_throughput_runs": 6,
+  "ratio_guard_rule": "The ratio guard limit is max(2, 10% of the run's FETCH), never of jobs processed. It is compared with the number of separate rejection runs a later answer confirmed (interleaving): a systemic or throttling 400 alternates with answers, bad prompts sit together. After an answered probe, at most max_consecutive_request_rejections rejections in a row inside the between range are spent before its remaining jobs move behind the jobs after the probe.",
+  "low_throughput_rule": "Fewer than low_throughput_floor good jobs per run while request rejections stay uncharged, for low_throughput_runs runs in a row, pages once (claim-before-send); a run at or above the floor clears it."
 }

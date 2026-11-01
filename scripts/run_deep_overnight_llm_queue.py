@@ -764,16 +764,17 @@ def load_breaker(path):
         return _fresh_breaker()
     state = _fresh_breaker()
     state["flaps"] = min(_int_or_zero(doc.get("flaps")), 10)
-    np_src = doc.get("no_progress") if isinstance(doc.get("no_progress"), dict) else {}
-    if _int_or_zero(np_src.get("runs")) and isinstance(np_src.get("since"), str):
-        state["no_progress"] = {"since": np_src["since"], "runs": _int_or_zero(np_src.get("runs")),
-                                "reason": str(np_src.get("reason") or "")[:300]}
-        for extra in ("paged_since",):
-            if isinstance(np_src.get(extra), str):
-                state["no_progress"][extra] = np_src[extra]
-        if isinstance(np_src.get("paging_claim"), dict):
-            state["no_progress"]["paging_claim"] = {"since": str(np_src["paging_claim"].get("since")),
-                                                    "at": str(np_src["paging_claim"].get("at"))}
+    for rec in ("no_progress", "low_throughput"):
+        np_src = doc.get(rec) if isinstance(doc.get(rec), dict) else {}
+        if _int_or_zero(np_src.get("runs")) and isinstance(np_src.get("since"), str):
+            state[rec] = {"since": np_src["since"], "runs": _int_or_zero(np_src.get("runs")),
+                          "reason": str(np_src.get("reason") or "")[:300]}
+            for extra in ("paged_since",):
+                if isinstance(np_src.get(extra), str):
+                    state[rec][extra] = np_src[extra]
+            if isinstance(np_src.get("paging_claim"), dict):
+                state[rec]["paging_claim"] = {"since": str(np_src["paging_claim"].get("since")),
+                                              "at": str(np_src["paging_claim"].get("at"))}
     for k in _BREAKER_KINDS:
         src = doc.get(k) if isinstance(doc.get(k), dict) else {}
         state[k] = {"trips": _int_or_zero(src.get("trips")),
@@ -878,7 +879,12 @@ def maybe_page_long_outage(state, policy, now=None, persist=None, kind="outage")
         since_dt = since_dt.replace(tzinfo=timezone.utc)
     hours = float((policy or {}).get("outage_page_after_hours") or 6)
     now = now or datetime.now(timezone.utc)
-    if now - since_dt < timedelta(hours=hours) or b.get("paged_since") == since:
+    if kind == "low_throughput":
+        # Due by consecutive runs, not by hours (follow-up to round 14).
+        due = _int_or_zero(b.get("runs")) >= max(1, int((policy or {}).get("low_throughput_runs") or 6))
+    else:
+        due = now - since_dt >= timedelta(hours=hours)
+    if not due or b.get("paged_since") == since:
         return False
     claim = b.get("paging_claim")
     if isinstance(claim, dict) and claim.get("since") == since:
@@ -897,7 +903,11 @@ def maybe_page_long_outage(state, policy, now=None, persist=None, kind="outage")
             b.pop("paging_claim", None)
             return False
     open_h = (now - since_dt).total_seconds() / 3600
-    if kind == "outage":
+    if kind == "low_throughput":
+        message = (f"Deep overnight LLM queue drain: low throughput for {_int_or_zero(b.get('runs'))} runs in a row "
+                   f"({open_h:.1f} h): fewer than {int((policy or {}).get('low_throughput_floor') or 3)} good jobs per "
+                   f"run while request rejections stay uncharged. Lanes: {safe_reason_summary(b.get('reason'))}")
+    elif kind == "outage":
         message = (f"Deep overnight LLM queue drain: every lane has refused for {open_h:.1f} h "
                    f"({_int_or_zero(b.get('trips'))} breaker trips). No job is charged during an outage; the queue "
                    f"waits. Lanes: {safe_reason_summary(b.get('reason'))}")
@@ -965,10 +975,11 @@ def _job_meta(job):
     return meta if isinstance(meta, dict) else {}
 
 
-def systemic_rejection_limit(jobs_seen):
-    """Round 11 ratio guard: more than max(2, 10% of the run's jobs) confirmed request rejections in one run is a
-    systemic or throttling pattern, not that many bad prompts: nobody is struck or charged for it."""
-    return max(2, -(-int(jobs_seen) // 10))
+def systemic_rejection_limit(fetch_size):
+    """Ratio guard limit: max(2, 10% of the run's FETCH). Follow-up to round 14: sized by the fetch (the rows the run
+    selected, at most --limit), never by jobs processed -- a time budget that cuts a run to ~25 calls must not shrink
+    the limit to ~3 and leave every bad block uncharged forever."""
+    return max(2, -(-int(fetch_size) // 10))
 
 
 def _strike_is_fresh(prev, run_id, max_age_days):
@@ -985,17 +996,23 @@ def _strike_is_fresh(prev, run_id, max_age_days):
     return timedelta(0) <= run_dt - prev_dt <= timedelta(days=float(max_age_days))
 
 
-def apply_rejection_strikes(cur, confirmed, run_id, jobs_seen, log=lambda m: None, max_age_days=7):
+def apply_rejection_strikes(cur, confirmed, run_id, jobs_seen, log=lambda m: None, max_age_days=7, segments=None):
     """Two strikes across runs (round 11). ``confirmed`` = [(job_id, reason, job_metadata)]: request rejections that
     a LATER real-text answer in this run confirmed. Unless the ratio guard says the run was systemic, a job struck
     in a DIFFERENT earlier run is charged now (its strike cleared); otherwise it is struck. The strike lives in the
-    job's own metadata_json, never in memory, and a strike is never an attempt. Returns (charged_ids, struck_ids)."""
+    job's own metadata_json, never in memory, and a strike is never an attempt. Returns (charged_ids, struck_ids).
+
+    ``segments`` (follow-up to round 14) is the number of separate runs of consecutive request rejections that a
+    later answer confirmed. The guard measures INTERLEAVING: a systemic or throttling 400 alternates with answers
+    (one segment per rejection), while bad prompts sit together (one segment per block). With ``segments`` the run
+    is systemic when segments > limit; without it (older callers) the raw count is used, as before."""
     if not confirmed:
         return [], []
     limit = systemic_rejection_limit(jobs_seen)
-    if len(confirmed) > limit:
-        log(f"  Ratio guard: {len(confirmed)} request rejections in {jobs_seen} jobs (> {limit}): systemic; "
-            "nobody struck or charged.")
+    measure = len(confirmed) if segments is None else int(segments)
+    if measure > limit:
+        log(f"  Ratio guard: {measure} {'rejection runs' if segments is not None else 'request rejections'} in a "
+            f"fetch of {jobs_seen} (> {limit}): systemic; nobody struck or charged.")
         return [], []
     charged, struck = [], []
     for job_id, reason, meta in confirmed:
@@ -1450,6 +1467,7 @@ def main():
     failure_probe = bool(cloud and breaker_open(breaker, "failure"))
     suspects = []  # [(job_id, reason, metadata)]: request rejections waiting for a later REAL answer to confirm them
     confirmed = []  # suspects a later real-text answer confirmed; struck or charged at the end of the run
+    confirm_segments = 0  # separate runs of consecutive rejections a later answer confirmed (the ratio guard's measure)
     run_id = datetime.now(timezone.utc).isoformat()
     refusals_in_row = 0  # NON-request refusals since the last answer: the outage signal (round 12)
     rejections_in_row = 0  # request rejections since the last answer: bounded separately, never an outage
@@ -1467,6 +1485,8 @@ def main():
     probe_snapshot_ids = []  # untried job ids, in priority order, when the bound tripped
     current_probe_pos = None
     between_ids = set()  # untried jobs before an ANSWERED probe: a good job follows them, so they never trip the bound
+    between_rejections_in_row = 0
+    between_capped = False
     rejections_in_run = 0
     no_progress_recorded = False
     lanes_proven = False  # a lane answered in this run
@@ -1474,6 +1494,7 @@ def main():
     outage_after = max(2, int((drain_policy or {}).get("outage_after_refusals") or 3))
     if outage_probe or failure_probe:
         log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
+    fetch_size = len(jobs)  # rows this run selected (at most --limit), before any flap cap: the ratio guard's base
     flaps = _int_or_zero(breaker.get("flaps")) if cloud else 0
     if flaps:
         # The lane flapped (an outage after answers) on recent runs: back off, halving this run's volume per flap.
@@ -1640,6 +1661,15 @@ def main():
                     rejections_in_run += 1
                     if job_id not in between_ids:
                         rejections_in_row += 1
+                    elif not between_capped:
+                        between_rejections_in_row += 1
+                        if between_rejections_in_row >= max_rejections:
+                            # The between range is itself a long bad stretch: stop spending the run on it now. Its
+                            # remaining jobs move to the end of this run's queue (behind the jobs after the probe),
+                            # still exempt from the bound, so any good jobs among them run once the rest is done.
+                            rest = [r for r in queue_rows if r[0] in between_ids]
+                            queue_rows = deque([r for r in queue_rows if r[0] not in between_ids] + rest)
+                            between_capped = True
                     if cloud and rejections_in_row >= max_rejections:
                         # Round 12: request rejections never count toward an outage and never trip the breaker.
                         # Round 13: the bound no longer simply ends the run (a block of >= bound bad prompts at the
@@ -1691,14 +1721,19 @@ def main():
             lanes_proven = True
             refusals_in_row = 0
             rejections_in_row = 0
+            between_rejections_in_row = 0
             if probing and current_probe_pos is not None:
                 # The probe at this position was answered: the untried jobs before it are the rest of the block
                 # (or good jobs) -- process them next, in priority order, without letting them trip the bound.
                 between_ids = set(probe_snapshot_ids[:current_probe_pos])
+                # between_capped is never re-armed: a multi-position probe round only happens before the first
+                # answer of a run (one probe at position 0 afterwards), so a run has at most one between range.
             probing = False
             probe_targets = []
             current_probe_pos = None
             if text:
+                if suspects:
+                    confirm_segments += 1
                 confirmed.extend(suspects)
                 suspects = []
             if cloud and (outage_probe or breaker["outage"]["trips"]):
@@ -1826,7 +1861,7 @@ def main():
         save_breaker(bpath, breaker)
     if cloud and confirmed:
         charged_ids, struck_ids = apply_rejection_strikes(
-            cur, confirmed, run_id, processed, log,
+            cur, confirmed, run_id, fetch_size, log, segments=confirm_segments,
             max_age_days=float((drain_policy or {}).get("strike_max_age_days") or 7))
         conn.commit()
         failed += len(charged_ids)
@@ -1834,6 +1869,26 @@ def main():
             log(f"  COUNTED #{sid} — request rejected on two runs, each confirmed by a later answer")
         for sid in struck_ids:
             log(f"  STRUCK #{sid} — request rejected, confirmed by a later answer; charged if it recurs on another run")
+    if cloud:
+        # Follow-up to round 14: a silent throughput collapse (good jobs per run below low_throughput_floor while
+        # request rejections stay uncharged) for low_throughput_runs runs in a row pages once (claim-before-send);
+        # a run at or above the floor, or with nothing left uncharged, clears it.
+        floor = int((drain_policy or {}).get("low_throughput_floor") or 3)
+        uncharged = rejections_in_run - (len(charged_ids) if confirmed else 0)
+        if succeeded < floor and uncharged > 0:
+            ltr = breaker.get("low_throughput") if isinstance(breaker.get("low_throughput"), dict) else {}
+            if not _int_or_zero(ltr.get("runs")) or not isinstance(ltr.get("since"), str):
+                ltr = {"since": datetime.now(timezone.utc).isoformat(), "runs": 0}
+            ltr["runs"] = _int_or_zero(ltr.get("runs")) + 1
+            ltr["reason"] = (suspects[-1][1] if suspects else (confirmed[-1][1] if confirmed else ""))[:300]
+            breaker["low_throughput"] = ltr
+            if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st),
+                                      kind="low_throughput"):
+                log("  Paged the operator: low drain throughput while request rejections stay uncharged.")
+            save_breaker(bpath, breaker)
+        elif breaker.get("low_throughput") and (succeeded >= floor or uncharged <= 0):
+            breaker.pop("low_throughput", None)
+            save_breaker(bpath, breaker)
     if cloud and lanes_proven and not outage_tripped and refusals_in_row < 2 and _int_or_zero(breaker.get("flaps")):
         breaker["flaps"] = 0  # a run that ended without an outage: the lane is no longer flapping
         save_breaker(bpath, breaker)

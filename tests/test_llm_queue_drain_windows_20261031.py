@@ -502,7 +502,8 @@ def _counted_ids(log):
 
 
 def _struck_ids(log):
-    return [p[1] for s, p in log if "SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) ||" in s]
+    return [p[1] for s, p in log
+            if "SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) ||" in s and w.STRIKE_KEY in p[0]]
 
 
 def test_refusal_is_struck_then_charged_on_a_second_run(monkeypatch):
@@ -1596,3 +1597,236 @@ def test_a_single_transient_refusal_records_no_progress_never(monkeypatch, _isol
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1)], store={})
     assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+# ── follow-up to round 14: fetch-sized ratio guard on interleaving; charged marker; low-throughput page ─────────
+
+class _StatefulQueue:
+    """A queue fake that persists status, attempt_count and metadata_json across runs (and honours LIMIT)."""
+
+    def __init__(self, n):
+        self.rows = {i: {"status": "pending", "attempt_count": 0, "meta": {}} for i in range(1, n + 1)}
+
+    def pending(self):
+        return [(i, "strategy_classification", f"S{i}", None, None, None, "P1", 1000 - i, ["x"], None, None,
+                 dict(r["meta"]), r["attempt_count"], "h", None, None)
+                for i, r in sorted(self.rows.items()) if r["status"] == "pending"]
+
+    def conn(self):
+        db = self
+
+        class Cur:
+            description = [(c,) for c in _COLS]
+            rowcount = 0
+
+            def __init__(self):
+                self._rows = []
+
+            def execute(self, sql, params=None):
+                q, p = " ".join(sql.split()), list(params or [])
+                self._rows = []
+                if q.startswith("SELECT") and "FROM deep_overnight_llm_queue" in q and "COUNT" not in q:
+                    lim = p[-1] if p and isinstance(p[-1], int) and "LIMIT %s" in q else None
+                    self._rows = db.pending()[:lim] if lim else db.pending()
+                    return
+                if not q.startswith("UPDATE deep_overnight_llm_queue") or "WHERE id = %s" not in q:
+                    return
+                r = db.rows.get(p[-1])
+                if r is None:
+                    return
+                if "SET status = 'running'" in q:
+                    r["status"], r["attempt_count"] = "running", r["attempt_count"] + 1
+                elif "GREATEST(attempt_count - 1, 0)" in q:
+                    r["status"], r["attempt_count"] = "pending", max(0, r["attempt_count"] - 1)
+                elif "SET attempt_count = attempt_count + 1" in q:
+                    r["attempt_count"] += 1
+                elif "THEN 'failed' ELSE 'pending'" in q:
+                    r["status"] = "failed" if r["attempt_count"] >= 3 else "pending"
+                elif "status = 'done'" in q:
+                    r["status"] = "done"
+                elif "|| %s::jsonb" in q:
+                    r["meta"].update(json.loads(p[0]))
+                elif "metadata_json, '{}'::jsonb) - %s" in q:
+                    r["meta"].pop(p[0], None)
+
+            def fetchall(self):
+                return self._rows
+
+            def fetchone(self):
+                return self._rows[0] if self._rows else (0,)
+
+            def close(self):
+                pass
+
+        class Conn:
+            def cursor(self):
+                return Cur()
+
+            def commit(self):
+                pass
+
+            def rollback(self):
+                pass
+
+            def close(self):
+                pass
+
+        return Conn()
+
+    def done(self):
+        return sum(1 for r in self.rows.values() if r["status"] == "done")
+
+
+def _timed_runs(monkeypatch, q, is_bad, runs, budget_min=25, per_call=60.0, limit=100):
+    import lib.llm_fallback as lf
+
+    clock = {"t": 0.0}
+    monkeypatch.setattr(w, "get_db_connection", lambda: q.conn())
+    monkeypatch.setattr(w, "log", lambda m: None)
+    monkeypatch.setattr(w, "build_prompt", lambda job, *a, **k: f"JOB{job['id']}")
+    monkeypatch.setattr(w, "_extract_and_register_gaps", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(w.time, "monotonic", lambda: clock["t"])
+
+    def gen(prompt, **kw):
+        clock["t"] += per_call
+        if is_bad(int(prompt[3:])):
+            raise _AllLanesFailed(list(_HTTP400))
+        return _Res()
+
+    monkeypatch.setattr(lf, "generate_with_fallback", gen)
+    per_run = []
+    for _ in range(runs):
+        d0 = q.done()
+        monkeypatch.setattr(sys, "argv", ["x", "--route", "cloud", "--limit", str(limit),
+                                          "--time-budget-min", str(budget_min)])
+        w.main()
+        per_run.append(q.done() - d0)
+    return per_run
+
+
+def test_mid_blocks_drain_under_a_time_budget(monkeypatch, _isolated_breaker):
+    """12-blocks at 1-12, 40-51, 80-91 in 400 jobs; ~25 calls per run; 16 runs."""
+    bad = lambda j: 1 <= j <= 12 or 40 <= j <= 51 or 80 <= j <= 91  # noqa: E731
+    q = _StatefulQueue(400)
+    _timed_runs(monkeypatch, q, bad, 16)
+    assert q.done() >= 16 * 8
+    assert all(q.rows[i]["status"] == "failed" for i in range(1, 13)), "the head block is charged out"
+
+
+def test_a_block_is_struck_even_when_the_time_budget_cuts_the_run(monkeypatch, _isolated_breaker):
+    """The guard is sized by the fetch (100 -> 10), not by the ~25 jobs a time budget lets the run process."""
+    q = _StatefulQueue(200)
+    _timed_runs(monkeypatch, q, lambda j: j <= 12, 1)
+    assert all(w.STRIKE_KEY in q.rows[i]["meta"] for i in range(1, 13))
+
+
+@pytest.mark.parametrize(
+    "count,segments,fetch,systemic",
+    [(30, 1, 100, False), (12, 2, 100, False), (12, 11, 100, True), (10, 10, 100, False), (3, 3, 20, True),
+     (2, 2, 20, False)],
+)
+def test_ratio_guard_measures_interleaving_against_the_fetch(count, segments, fetch, systemic):
+    log = []
+
+    class Cur:
+        def execute(self, sql, params=None):
+            log.append(sql)
+
+    confirmed = [(i, "r", {}) for i in range(1, count + 1)]
+    charged, struck = w.apply_rejection_strikes(Cur(), confirmed, "2026-11-01T00:00:00+00:00", fetch,
+                                                segments=segments)
+    assert (not struck and not charged) is systemic
+
+
+def test_ratio_guard_without_segments_keeps_the_count_rule():
+    class Cur:
+        def execute(self, sql, params=None):
+            pass
+
+    result = w.apply_rejection_strikes(Cur(), [(i, "r", {}) for i in range(11)], "2026-11-01T00:00:00+00:00", 100)
+    assert result == ([], [])
+
+
+def test_a_long_bad_between_range_is_capped_and_the_jobs_after_the_probe_run_next(monkeypatch, _isolated_breaker):
+    """Blocks merged at the head: once the between range yields max_consecutive_request_rejections rejections in a
+    row, its remaining jobs move behind the jobs after the answered probe, so good jobs still drain this run."""
+    import lib.llm_fallback as lf
+
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    bad = set(range(1, 37))  # 36 bad at the head: probes at +0 (job 11), +20 (job 31), +40 (job 51, good)
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(bad))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    ran = _running(log)
+    probes = [11, 31, 51]
+    assert ran[:bound + 3] == list(range(1, bound + 1)) + probes
+    between_tried = ran[bound + 3: bound + 3 + bound]
+    assert between_tried == [j for j in range(12, 23) if j not in probes][:bound], "the cap is the bound"
+    assert ran[bound + 3 + bound] == 52, "then the jobs after the probe"
+    assert sorted(_done(log)) == list(range(37, 101)), "the moved between range still runs at the end"
+    assert len(ran) == len(set(ran))
+
+
+def test_a_good_between_range_is_still_processed_first(monkeypatch, _isolated_breaker):
+    """The cap only applies to a run of rejections: good jobs in the between range keep their priority."""
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 13))))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    ran = _running(log)
+    assert ran[12:31] == [j for j in range(12, 32) if j != 31]
+
+
+def test_the_between_cap_counts_rejections_in_a_row_not_in_total(monkeypatch, _isolated_breaker):
+    """An answer inside the between range resets its run: two bad stretches of 6 split by a good job never reach the
+    cap, so the whole between range keeps its priority over the jobs after the probe."""
+    import lib.llm_fallback as lf
+
+    bad = set(range(1, 18)) | set(range(19, 25)) | {31}  # head trips at 10; probes 11 and 31 rejected, 51 answers
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(bad))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    ran = _running(log)
+    assert ran[:13] == list(range(1, 11)) + [11, 31, 51]
+    between = [j for j in range(12, 51) if j != 31]
+    assert ran[13:13 + len(between)] == between, "12 rejections in total, never 10 in a row: no cap"
+    assert ran[13 + len(between)] == 52
+
+
+def _low_tp_run(monkeypatch, q, bad, budget_min=3):
+    return _timed_runs(monkeypatch, q, bad, 1, budget_min=budget_min)
+
+
+def test_low_throughput_pages_once_after_n_runs_and_clears_on_recovery(monkeypatch, _isolated_breaker):
+    n = int(POLICY["low_throughput_runs"])
+    sent = _pages(monkeypatch)
+    q = _StatefulQueue(200)
+    bad = lambda j: j <= 40  # noqa: E731 - a long uncharged block at the head, ~3 calls per run
+    for i in range(1, n + 2):
+        _low_tp_run(monkeypatch, q, bad)
+        rec = w.load_breaker(_isolated_breaker).get("low_throughput")
+        assert rec and rec["runs"] == i
+        assert len(sent) == (1 if i >= n else 0), "pages once, at the N-th run"
+    assert "low throughput" in sent[0] and "/" not in sent[0]
+    _timed_runs(monkeypatch, q, lambda j: False, 1, budget_min=10000)
+    assert "low_throughput" not in w.load_breaker(_isolated_breaker)
+
+
+def test_low_throughput_is_not_recorded_without_uncharged_rejections(monkeypatch, _isolated_breaker):
+    q = _StatefulQueue(2)
+    _timed_runs(monkeypatch, q, lambda j: False, 1, budget_min=10000)
+    assert "low_throughput" not in w.load_breaker(_isolated_breaker)
+
+
+def test_low_throughput_record_round_trips(_isolated_breaker):
+    _isolated_breaker.write_text(json.dumps({"schema": w.BREAKER_SCHEMA, "low_throughput": {
+        "since": "2026-11-01T00:00:00+00:00", "runs": "4", "paged_since": "2026-11-01T00:00:00+00:00"}}))
+    rec = w.load_breaker(_isolated_breaker)["low_throughput"]
+    assert rec["runs"] == 4 and rec["paged_since"] == "2026-11-01T00:00:00+00:00"
+
+
+def test_guard_is_sized_by_the_fetch_not_by_the_jobs_a_time_budget_let_through(monkeypatch, _isolated_breaker):
+    """5 separate rejected jobs in a 100-job fetch cut to ~25 calls: 5 runs of rejections <= 10 (fetch-sized limit),
+    though > 3 (what a processed-sized limit would be): the jobs are struck."""
+    q = _StatefulQueue(200)
+    bad_ids = {2, 5, 8, 11, 14}
+    _timed_runs(monkeypatch, q, lambda j: j in bad_ids, 1)
+    assert all(w.STRIKE_KEY in q.rows[i]["meta"] for i in bad_ids)
