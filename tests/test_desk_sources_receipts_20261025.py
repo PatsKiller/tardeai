@@ -36,6 +36,10 @@ def test_declared_receipt_is_success_evidence(tmp_path):
     assert train['last_success_at'] == OK_AT.replace('+00:00', 'Z')
     assert train['evidence_source'] == 'lane run receipt'
     assert train['reason'] is None
+    # The read clock is not the freshness clock: last_success_at is six hours old while the
+    # projection read the evidence now (2026-11-01).
+    assert train['evidence_read_at'] == NOW.isoformat().replace('+00:00', 'Z')
+    assert train['evidence_as_of'] == train['evidence_read_at']
     # A file mtime is never evidence.
     (tmp_path / 'logs').mkdir()
     (tmp_path / 'logs/x.log').write_text('ran')

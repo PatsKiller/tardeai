@@ -135,19 +135,22 @@ def get_sources(query=None, *, registry_path=None, root=None, now=None) -> dict:
             reason = 'No scheduled writer is registered for this source.'
         last = successes.get(lane_id)
         evidence_source = 'n8n run receipt' if last else None
-        evidence_as_of = iso(now) if last else None
+        # When this projection READ the evidence. Deliberately not a freshness clock: last_success_at
+        # is. The old key stays as a one-release alias (operator review 2026-11-01).
+        evidence_read_at = iso(now) if last else None
         receipt = _receipt_success(root, row, now) if row else None
         if receipt and (last is None or instant(receipt) > instant(last)):
             last = receipt
             evidence_source = 'lane run receipt'
-            evidence_as_of = iso(now)
+            evidence_read_at = iso(now)
         measured = instant(monitor.get(lane_id, {}).get('last_success_at')) if row else None
         if measured and measured <= observed and (last is None or measured > instant(last)):
             last = iso(measured)
             evidence_source = 'missed-run monitor'
-            evidence_as_of = iso(observed)
+            evidence_read_at = iso(observed)
         result.append({'lane_id': lane_id, 'state': state, 'last_success_at': last,
-                       'evidence_source': evidence_source, 'evidence_as_of': evidence_as_of,
+                       'evidence_source': evidence_source, 'evidence_read_at': evidence_read_at,
+                       'evidence_as_of': evidence_read_at,
                        'reason': reason or (None if last else 'No successful run is recorded in the available execution evidence.')})
     return {'observed_at': iso(now), 'writers': result,
             'scope': 'Registry state and execution evidence; source freshness is a separate clock.'}
