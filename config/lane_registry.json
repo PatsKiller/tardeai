@@ -1703,8 +1703,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "data/cio/wake_record_consult.json",
-        "key": "as_of"
+        "path": "data/runtime/cio-wake-dispatch_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/cio_wake_dispatch_entrypoint.py writes a LaneRunReceipt at the end of a live dispatch; --dry-run returns earlier with only the consult record (2026-11-01)."
       },
       "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended — a hand-run leaves no trace here.",
       "value_class": "Business Critical",
@@ -2797,8 +2799,11 @@
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/wakes.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/persistent-wake-hourly_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/run_persistent_wake.py writes a LaneRunReceipt after a live, non-select run; the previous path was outside the state root and never admitted (2026-11-01)."
       },
       "note": "The L1/L2/L3 wake spine. Every maturity claim about grounded cognition rests on this lane, and it was undeclared: nothing would have reported it silent. The signal is the durable wake store, not the cron log — a wake that refuses still appends a row, so the file advancing proves the lane ran even on a slot that produced no judgment. 2026-09-19: WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER=1 on this hourly line (actual L3 consumer).",
       "value_class": "Nice to Have",
@@ -3008,8 +3013,11 @@
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/material_change_notify.log"
+        "kind": "json_key",
+        "path": "data/runtime/material-change-notifier-stage2_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/notify_material_change.py writes a LaneRunReceipt at the entry point on a live pass; --dry-run returns at module import. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree).",
       "value_class": "Operationally Important",
@@ -3125,8 +3133,11 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/due_diligence_questions.log"
+        "kind": "json_key",
+        "path": "data/runtime/due-diligence-questions_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/due_diligence_questions.py writes a LaneRunReceipt at the entry point; --dry-run returns before it. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "note": "Stages 3-5 curation and routing. | 2026-09-14: gated to the operator window; weekday 21:00-09:00 ET produces nothing by design. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Operationally Important",
@@ -7602,8 +7613,11 @@
       "state_since": "2026-10-07",
       "state_reason": "Communications hub lifecycle (operator 2026-10-07): classify unclassified messages, mark expired by category TTL (operational 72h, market/securities 96h, watchlist 1 week), then archive (jsonl.gz under persistent-state/archive/comms_lifecycle) and remove expired and replaced (newer data on the same symbol) messages past a 24h grace. Operator decisions: same TTL for approvals/broker facts; archive-then-delete.",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/comms_lifecycle_latest.json"
+        "kind": "json_key",
+        "path": "data/runtime/comms-lifecycle_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/comms_lifecycle.py writes a LaneRunReceipt at the entry point on --apply; a dry run persists nothing. The latest-json was a report, not a run record (2026-11-01)."
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/COMMS_HUB_2026-10-07.md; tests/test_comms_hub_20261007.py.",
@@ -18964,9 +18978,11 @@
       "expected_cadence_hours": 13.25,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/watchlist_agent_jobs_offpeak.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/run-watchlist-agent-jobs-offpeak_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/run_watchlist_agent_jobs_offpeak.sh writes a LaneRunReceipt via the standard Python writer only when the drain exits 0; a lock-skip, timeout or failure writes nothing (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -20661,9 +20677,11 @@
       "expected_cadence_hours": 0.17,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/claude_escalation.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/claude-escalation-handler_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/claude_escalation_handler.py writes a LaneRunReceipt after process_queue on a non-dry run. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
