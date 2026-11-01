@@ -129,47 +129,36 @@ def _parse_generated_at(raw: Any) -> datetime | None:
         return None
 
 
+def _universe_trend_point(snap: dict[str, Any], ts: datetime) -> dict[str, Any]:
+    heat = snap.get("counts_by_heat") or {}
+    return {
+        "at": ts.isoformat(),
+        "day": ts.strftime("%Y-%m-%d"),
+        "run_id": snap.get("run_id"),
+        "hot": heat.get("hot"),
+        "warm": heat.get("warm"),
+        "cold": heat.get("cold"),
+        "live_universe": snap.get("live_universe"),
+    }
+
+
 def load_universe_trend(days: int = 30) -> dict[str, Any]:
-    """Daily Hot/Warm/Cold trend from governed-universe history (latest per UTC day)."""
+    """Daily Hot/Warm/Cold trend from governed-universe history (latest per UTC day).
+
+    1,100 snapshots made the old full scan 50 s (route sweep 2026-11-01). The index parses each file at most once
+    and stores only the trend point; see scripts/lib/hermes_trend_index.py."""
     days = max(1, min(int(days), 90))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    snapshots: list[tuple[datetime, dict[str, Any]]] = []
-    current = read_universe_feed()
-    if current:
-        ts = _parse_generated_at(current.get("generated_at"))
-        if ts and ts >= cutoff:
-            snapshots.append((ts, current))
+    from ..hermes_trend_index import daily_points
 
-    if HISTORY_DIR.exists():
-        for path in HISTORY_DIR.glob("universe_*.json"):
-            try:
-                snap = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            ts = _parse_generated_at(snap.get("generated_at"))
-            if ts and ts >= cutoff:
-                snapshots.append((ts, snap))
-
-    by_day: dict[str, tuple[datetime, dict[str, Any]]] = {}
-    for ts, snap in snapshots:
-        day = ts.strftime("%Y-%m-%d")
-        cur = by_day.get(day)
-        if cur is None or ts > cur[0]:
-            by_day[day] = (ts, snap)
-
-    series = []
-    for _day, (ts, snap) in sorted(by_day.items()):
-        heat = snap.get("counts_by_heat") or {}
-        series.append({
-            "at": ts.isoformat(),
-            "day": ts.strftime("%Y-%m-%d"),
-            "run_id": snap.get("run_id"),
-            "hot": heat.get("hot"),
-            "warm": heat.get("warm"),
-            "cold": heat.get("cold"),
-            "live_universe": snap.get("live_universe"),
-        })
+    series = daily_points(
+        history_dir=HISTORY_DIR,
+        prefix="universe_",
+        days=days,
+        point=_universe_trend_point,
+        index_path=HISTORY_DIR.parent / "trend_index" / "universe.json",
+        current=UNIVERSE_PATH,
+    )
 
     hot = [s["hot"] for s in series if s.get("hot") is not None]
     return {
