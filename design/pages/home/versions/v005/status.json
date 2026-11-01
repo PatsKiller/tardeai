@@ -2,17 +2,18 @@
   "schema": "DesignVersionStatus@v1",
   "page": "home",
   "version": "v005",
-  "state": "PROPOSED",
+  "state": "APPROVED",
   "title": "Home: actionable market-risk card (sectors with your dollars, positions at risk, budget breaches, review list, re-entry stages, look-through)",
   "created": "2026-11-01",
   "approval": {
-    "by": null,
-    "at": null,
-    "ref": null,
-    "kind": "awaiting the operator's decision in Approvals -> Designs",
+    "by": "operator",
+    "at": "2026-11-01",
+    "ref": "in-session directive (coordinator session_01GeLa7JgVXENzWSJSDhcHkF)",
+    "kind": "operator in-session words, verbatim: \"Are you approved? Homepage version 005.\" (2026-11-01, ~11:30 ET). Recorded from the message under AGENTS.md \u00a720, as for home/v002 and home/v004; the Approvals -> Designs tap is not yet recording to the ledger. Applied with the operator's correction from his broker screenshot (a same-account re-buy after a stop-out is a holding; its wash sale has occurred), which changed section 2 of the SPEC and the mockups before these fingerprints were taken.",
     "source": [
       "docs/designs/DSN-20261031-market-risk-ui.md"
     ],
+    "push_approval": "https://github.com/PatsKiller/tardeai/pull/2441#issuecomment-6560722751",
     "ledger": null
   },
   "spec": "SPEC.md",
@@ -31,38 +32,38 @@
     "files": [
       {
         "path": "v005/mockups/HomeV005DesktopYellow.dc.html",
-        "sha256": "9ee9c9f7db9c03393de2f5ec04ddac8d8177b4f223ce6a83e8b036743026d2de",
-        "bytes": 19724,
+        "sha256": "f51fac8097714b8fcc6b48217d940e3895ec0ae6b71c78bd02467e5eebfcb84f",
+        "bytes": 19726,
         "role": "mockups"
       },
       {
         "path": "v005/mockups/HomeV005PhoneYellowCollapsed.dc.html",
-        "sha256": "ecbdf95c8f6dba20423c6318e35bdda0797d7140c9d4e9b7517f16082bb1e8a6",
-        "bytes": 19715,
+        "sha256": "7f9f576379c6e74efa6f246c9dbe8457f780a5cd5791b48cf086e27c2a091480",
+        "bytes": 19717,
         "role": "mockups"
       },
       {
         "path": "v005/mockups/HomeV005PhoneYellowExpanded.dc.html",
-        "sha256": "81e811daa98f2b50bd0e2e73835d93038ba7ab5cf86459ccc0b9643b78097f45",
-        "bytes": 19718,
+        "sha256": "232151d3e4249c2a99a596b2a74a9c2f59c1e211ba5bdcef4e33b15dbc34390a",
+        "bytes": 19720,
         "role": "mockups"
       },
       {
         "path": "v005/mockups/HomeV005DesktopOrange.dc.html",
-        "sha256": "29b9e2b5bbb36607ad60bf55234c9e474628488783d0ecda26cd7282e5e4c0cd",
-        "bytes": 19945,
+        "sha256": "b75c0ba40a073adc3056dc6487115cc7d96335061d2aea44317e06830053e25b",
+        "bytes": 19947,
         "role": "mockups"
       },
       {
         "path": "v005/mockups/HomeV005PhoneOrange.dc.html",
-        "sha256": "d5116d3d57d6158460e599fdd48fa191bfbd707ba899297ab34176bc47ef3a23",
-        "bytes": 19945,
+        "sha256": "6f9a9cea5a2ae23a715b31fd26ec433cc685c14c6a04f9dd866d6dca2735f5af",
+        "bytes": 19947,
         "role": "mockups"
       },
       {
         "path": "v005/mockups/HomeV005States.dc.html",
-        "sha256": "9f8456167464273dbe64adc0daa3a1542103d2190ac15c320e819c6031f20c9d",
-        "bytes": 9515,
+        "sha256": "236abe64bfdfedeae6bb7db2b2f83962ece6278b767e8b8f547c7d53a76c524d",
+        "bytes": 9519,
         "role": "mockups"
       },
       {

@@ -38,3 +38,8 @@
   multi-segment issuers from a new operator-owned `config/issuer_segments.json`. Moves the contributor lines to "Why the
   score is N". Collapsed on phone to the verdict, exposure and the top review item. No size, order or stop level anywhere.
   Mockup only, awaiting the operator's decision in Approvals → Designs; mockups in the private design store.
+
+- 2026-11-01 APPROVED v005. The operator, verbatim: "Are you approved? Homepage version 005." Recorded from the message
+  under AGENTS.md §20 (as for v002 and v004). With his correction from the broker screenshot: a symbol re-bought in the
+  same account after a stop-out is a holding there, not an exit, and shows "wash sale occurred, loss deferred" instead of
+  a forward warning. Build follows in a PR stacked on this one, citing `Design: home/v005`.

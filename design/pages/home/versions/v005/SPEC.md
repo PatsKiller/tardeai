@@ -1,7 +1,11 @@
-# Home v005 — SPEC (PROPOSED 2026-11-01): actionable market-risk card
+# Home v005 — SPEC (APPROVED 2026-11-01): actionable market-risk card
 
-Builds on the approved home/v004 (YELLOW summary card) and home/v002 (ORANGE/RED banner). Mockup for the operator's
-decision in Approvals → Designs; nothing here is built. The build PR cites `Design: home/v005` only after approval.
+Builds on the approved home/v004 (YELLOW summary card) and home/v002 (ORANGE/RED banner).
+
+**APPROVED by the operator on 2026-11-01 (~11:30 ET): "Are you approved? Homepage version 005."** Recorded from the
+message under AGENTS.md §20, as for v002 and v004. The approval came with one correction from the operator's broker
+screenshot, applied here before recording: a symbol re-bought in the same account after a stop-out is a holding, not an
+exit, and its wash sale has already occurred (section 2). The build cites `Design: home/v005`.
 
 Mockups live in the private design store and are bound by sha256 in status.json (design/README.md rule 7). Market
 figures are from the 2026-11-01 shadow evaluation. Book values, symbols and accounts are placeholders (`[ACCT-1]`,
@@ -74,14 +78,24 @@ One row per group in `heatmap[]` of kind `sector` or `theme` (macro and defensiv
 
 Rows: every `reentry_watch` entry with `exit_date` inside `reentry_watch.card.recent_sessions` sessions (config;
 proposed 5), newest first; a link "+N older exits on watch (<first> → <last>) — Risk → Re-entry" for the rest of the
-`lookback_days` (30) window. One card per symbol, at most five lines:
+`lookback_days` (30) window. One card per (symbol, account) exit, at most five lines.
+
+**Held vs exited is decided per account, from the trade ledger (`trade_transactions`), never from `trade_closed`
+alone.** An account's exit is a stopped-out or sold position only when that account holds none of the symbol now (holdings
+store) and no Buy of the symbol in that account follows the exit Sell. A symbol **re-bought in the same account after the
+exit is HELD there**: that account gets no re-entry row; its position row (section 3) shows "re-bought <date> at $<p>"
+and, for a taxable loss sale, "wash sale occurred <date> — $<loss> loss deferred into the new lot's basis". The forward
+warning ("a re-buy before <date> would be a wash sale") appears only for a taxable loss-sale exit with no re-buy yet. The
+same symbol can be exited in one account and held in another; the exit card then names the other account's holding in
+one line.
 
 ```
-<SYM>  exit $<exit_price> · <ET day> · <account label>[ (<other account> <date> at $<price>)]
+<SYM>  exit $<exit_price> · <ET day> · <account label>[ · still held in <other account> (<qty-free status>)]
 now $<last> (<±%> vs exit) · <±%> vs 20-day · <trend arrow>          [VERDICT BADGE]
 Stage 1 (early setup): k of 5 — waiting: <unmet conditions in plain words>
 Invalidates below $<swing_low> (selloff low) · Stage 2 (confirmed): <unmet stage-2 conditions>
-⚠ Wash sale: <account> loss sale <date>. A <account> re-buy before <ET date> defers that loss.     (only when set)
+⚠ Wash sale: <account> loss sale <date> — a <account> re-buy before <ET date> would defer it.   (no re-buy yet)
+ⓘ <other account>: re-bought <date> — wash sale occurred, $<loss> loss deferred into the new basis.  (re-buy found)
 ⚠ Earnings <date> (inside 5 sessions)                                                           (only when set)
 look-through: <top 3 groups with %> · other <%>   |   segments (<status>): <segment> → <group> <w>% …
 ```
@@ -121,8 +135,10 @@ anchored VWAP from the swing low instead (`short_history_anchor: swing_low_vwap`
 place of "10-day".
 
 **Always shown, never gating:** earnings inside `earnings_ahead_sessions` (5) as a warning line (when two sources
-disagree on the date, the line says so); the wash-sale end date when `wash_sale_note` is set (taxable loss sale only,
-from the latest taxable loss sale; IRA sales never).
+disagree on the date, the line says so); the wash-sale state for a taxable loss sale (IRA sales never): either the forward window end date
+(no re-buy yet in that account) or "wash sale occurred, $X deferred" (re-buy found in that account within
+`wash_sale_days`). The engine's `wash_sale_note` today is forward-only and is wrong once a re-buy has happened; the build
+replaces it with `wash_sale {state: window_open | occurred, until, rebuy_date, rebuy_price, deferred_loss_usd}`.
 
 The v004-era 5-condition rule (trend repaired above the 20-day and the pre-exit close; group out of stress for 2
 sessions; earnings clear; tier ≤ YELLOW; hedging normal) is replaced by Stage 1 / Stage 2 above. Earnings moves from a
@@ -161,7 +177,7 @@ Item kinds (config `market_risk_policy.yaml` `home_review:`; thresholds there):
 | `stop_near` | "stop d% below last" | position value | stop distance ≤ `stop_near_pct` (5.0) |
 | `no_stop` | "no stop" | position value | material position, no working stop in that account |
 | `stressed_exposure` | "s% in stressed groups" | $ exposed | `usd_exposed` ≥ `stressed_min_usd` (1000) |
-| `data_conflict` | "ledger says stopped out <date>, holdings still show the position — confirm with the broker" | position value | a trade-ledger close for the account+symbol after the holdings `positions_built_at` |
+| `data_conflict` | "ledger says sold <date>, holdings still show the position — confirm with the broker" | position value | a Sell in `trade_transactions` for the account+symbol after the holdings `positions_built_at` with **no later Buy** in that account, while the holdings store still shows shares (a same-account re-buy is a holding, never a conflict) |
 | `no_lookthrough` | "no look-through (sector unknown)" | position value | `look_through.basis` in (`stock_unknown`, `fund_unknown`) and value ≥ materiality |
 
 Footer: "Advisory only. Each link opens the existing Review or stop review. No order, size or stop level is implied."
@@ -199,7 +215,9 @@ moved under the actionable sections.
 4. `reentry_watch[sym]`: the engine must add `exit_price`, `exit_account_type`, `last_close`, `last_date`, `swing_low`,
    `invalidation_level`, `sma10`, `sma20`, `anchored_vwap` (short history), `pct_vs_exit`, `pct_vs_sma20`,
    `trend` (up/flat/down over 5 sessions), `verdict`, `stage1 {met, of, conditions[]}`,
-   `stage2 {met, conditions[]}`, `earnings_warning`, `wash_sale_until`, `look_through`. Today the card carries only
+   `stage2 {met, conditions[]}`, `earnings_warning`, `wash_sale {state, until, rebuy_date, rebuy_price,
+   deferred_loss_usd}` (dollars API side), `account_scope`, `held_elsewhere[]`, `look_through`. Exits keyed per
+   (symbol, account); a same-account re-buy after the exit removes the exit (held). Today the card carries only
    `conditions`, `met`, `of`, `exit_date`, `wash_sale_note`; `breakdown_close` and the closes are computed and dropped.
    Exit price comes from `trade_closed.sell_price` (latest close per symbol, account recorded).
 5. New **`book_exposure`** block, built **in the projection (API side) from the holdings store**, never in the engine
