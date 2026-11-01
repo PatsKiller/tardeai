@@ -87,9 +87,20 @@ def test_a_present_but_other_or_broken_pin_never_falls_back(tmp_path: Path, env:
 def test_header_flip_without_pin_is_caught_and_held(tmp_path: Path, env: dict) -> None:
     served = _root(tmp_path, "served", status="ACTIVE")
     new = _root(tmp_path, "new", status="PROPOSED", pin=None, build="b" * 40)
+    env = {**env, RLL.LIVE_LANES_ENV: "host-only-lane"}  # a real host list: the flip is a known change
     rep = G.compute(new, served, env)
     assert rep["changed"] is True and rep["new"]["source"] == "host_env_legacy"
+    assert rep["indeterminate"] is False
     assert G.gate(rep, rows={}) == (False, "unacknowledged")
+
+
+def test_header_flip_onto_a_missing_host_list_is_indeterminate(tmp_path: Path, env: dict) -> None:
+    # No host list at all: that side's live set is unknown, so it is refused as indeterminate, never "unchanged".
+    served = _root(tmp_path, "served", status="ACTIVE")
+    new = _root(tmp_path, "new", status="PROPOSED", pin=None, build="b" * 40)
+    rep = G.compute(new, served, env)
+    assert rep["indeterminate"] is True and "new" in rep["indeterminate_reasons"]
+    assert G.gate(rep, rows={}) == (False, "indeterminate")
 
 
 def test_unchanged_set_passes_the_gate(tmp_path: Path, env: dict) -> None:
@@ -359,7 +370,7 @@ def _poller(monkeypatch, tmp_path: Path, *, log: str, rc: int = 1, ack=None):
     monkeypatch.setattr(DM, "write_receipt", lambda **kw: receipts.append(kw))
     monkeypatch.setattr(DM, "track_outcome", lambda *a, **k: None)
     monkeypatch.setattr(DM, "run_post_release_tester", lambda repo, dry_run=False: (0, "ok"))
-    monkeypatch.setattr(DM, "hold_acknowledged", lambda did: ack)
+    monkeypatch.setattr(DM, "hold_acknowledged", lambda did, since=None: ack)
 
     def deploy(repo, sha, dry_run=False, extra_env=None):
         calls.append(sha)
@@ -388,6 +399,15 @@ def test_poller_latches_a_held_promote_and_does_not_prepare_again(monkeypatch, t
         assert again["outcome"] == "held_relay_live_set"
     assert calls == ["a" * 40]
     assert receipts[-1]["detail"]["prepare_skipped"] is True
+
+
+def test_poller_records_the_held_release_for_recompute(monkeypatch, tmp_path: Path) -> None:
+    sd = tmp_path / "rw"
+    log = HELD_LOG + (" (relay live set would change and the operator has not acknowledged this diff_id — promote held "
+                      f"({tmp_path}/rel-a/N8N_RELAY_LIVE_SET_DIFF.json))")
+    DM, calls, _ = _poller(monkeypatch, tmp_path, log=log)
+    _tick(DM, sd, "a" * 40)
+    assert DM.load_hold(sd)["release"] == f"{tmp_path}/rel-a"
 
 
 def test_poller_resumes_when_the_operator_acknowledges(monkeypatch, tmp_path: Path) -> None:

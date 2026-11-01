@@ -594,6 +594,8 @@ def poll_once(
 
 HOLD_NAME = "relay_live_set_hold.json"
 _HELD_RE = re.compile(r"RELAY_LIVE_SET_HELD diff_id=([0-9a-f]{16})")
+#: The deploy script's die line names the held release's diff file: "... promote held (<release>/N8N_RELAY_LIVE_SET_DIFF.json)".
+_HELD_RELEASE_RE = re.compile(r"promote held \((/\S+?)/N8N_RELAY_LIVE_SET_DIFF\.json\)")
 
 
 def _hold_path(sd: Path) -> Path:
@@ -621,23 +623,75 @@ def held_diff_id(log: str) -> str:
     return m.group(1) if m else ""
 
 
-def hold_acknowledged(diff_id: str) -> Optional[dict[str, Any]]:
-    """The operator guard grant acknowledging ``diff_id`` (see relay_live_set_gate.acknowledgement), or None."""
+def held_release(log: str) -> str:
+    m = _HELD_RELEASE_RE.search(log or "")
+    return m.group(1) if m else ""
+
+
+def hold_acknowledged(diff_id: str, since: Optional[int] = None) -> Optional[dict[str, Any]]:
+    """The operator guard grant acknowledging ``diff_id`` (see relay_live_set_gate.acknowledgement), or None.
+    ``since``: the hold's epoch; a grant whose window ended before it does not count."""
     from scripts.lib import relay_live_set_gate as RLSG
 
-    return RLSG.acknowledgement({"diff_id": diff_id})
+    return RLSG.acknowledgement({"diff_id": diff_id}, since=since)
+
+
+def hold_recompute(hold: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Recompute the held release's live-set diff against what CURRENT serves now, read-only.
+
+    None when it cannot be recomputed (no release recorded, the release directory is gone, or the computation
+    failed): the hold then stays as latched. Otherwise ``relay_live_set_gate.compute``'s report.
+    """
+    release = str(hold.get("release") or "")
+    if not release or not Path(release).is_dir():
+        return None
+    try:
+        from scripts.lib import relay_live_set_gate as RLSG
+
+        env = RLSG.host_env(RLSG.DEFAULT_HOST_FILE)
+        return RLSG.compute(Path(release), (DEFAULT_RELEASES / "CURRENT").resolve(), env)
+    except Exception:  # noqa: BLE001 - a hold we cannot re-check keeps holding (fail closed)
+        return None
+
+
+def _epoch(iso: Any) -> Optional[int]:
+    try:
+        return int(datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp())
+    except (TypeError, ValueError):
+        return None
 
 
 def hold_blocks(sd: Path, sha: str) -> Optional[dict[str, Any]]:
-    """The latched hold when it still blocks a prepare of ``sha``; None when there is none, main moved, or the
-    operator acknowledged it (the latch is then rewritten as released, not deleted)."""
+    """The latched hold when it still blocks a prepare of ``sha``; None when there is none, main moved, the change
+    disappeared, or the operator acknowledged it. The latch is rewritten with the outcome, never deleted.
+
+    Each tick recomputes the held release's diff (2026-11-01, round-3 review): when CURRENT changed underneath (a
+    rollback, a host-file edit) so that promoting would no longer change the live set, the hold clears; when the
+    delta changed, the hold moves to the new diff_id (the old acknowledgement no longer applies, by construction).
+    """
     hold = load_hold(sd)
     if hold.get("status") != "held":
         return None
     if hold.get("main_sha") != sha:
         _save_hold(sd, {**hold, "status": "superseded", "superseded_by": sha, "closed_at": _utc_now()})
         return None
-    ack = hold_acknowledged(str(hold.get("diff_id") or ""))
+    fresh = hold_recompute(hold)
+    if fresh is not None and fresh.get("indeterminate"):
+        # The live set could not be read on one side: keep holding, never clear and never move the diff_id on an
+        # unknown (round-4 review: a 0-byte overrides file used to clear the hold as "no change").
+        _save_hold(sd, {**hold, "last_recompute": "indeterminate", "last_recompute_at": _utc_now(),
+                        "indeterminate_reasons": fresh.get("indeterminate_reasons")})
+        return load_hold(sd)
+    if fresh is not None:
+        if not fresh.get("changed"):
+            _save_hold(sd, {**hold, "status": "cleared_no_change", "closed_at": _utc_now()})
+            return None
+        new_id = str(fresh.get("diff_id") or "")
+        if new_id and new_id != hold.get("diff_id"):
+            hold = {**hold, "diff_id": new_id, "recomputed_at": _utc_now(),
+                    "previous_diff_ids": [*(hold.get("previous_diff_ids") or []), hold.get("diff_id")]}
+            _save_hold(sd, hold)
+    ack = hold_acknowledged(str(hold.get("diff_id") or ""), since=_epoch(hold.get("held_at")))
     if ack is not None:
         _save_hold(sd, {**hold, "status": "acknowledged", "grant_id": ack.get("grant_id"), "closed_at": _utc_now()})
         return None
@@ -733,7 +787,8 @@ def _deploy_under_lock(
     if rc != 0:
         did = held_diff_id(log)
         if did and after == decision.current_sha:
-            _save_hold(sd, {"status": "held", "main_sha": sha, "diff_id": did, "held_at": _utc_now()})
+            _save_hold(sd, {"status": "held", "main_sha": sha, "diff_id": did, "held_at": _utc_now(),
+                            "release": held_release(log)})
             write_receipt(
                 path_kind=PATH_POLLER,
                 outcome="held_relay_live_set",
