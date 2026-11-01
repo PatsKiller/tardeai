@@ -522,3 +522,62 @@ def test_round3_short_joined_version_strings_stay_readable():
 
 def test_round3_quoted_value_runs_to_its_own_closing_quote():
     assert _r3("RuntimeError: pw=\"it's x9 y\" end") == "RuntimeError: pw=\"[REDACTED]\" end"
+
+
+# ── Review round 4 (2026-11-01, probe_redact4.py) ────────────────────────────────────────────────────────────
+
+def test_round4_escaped_json_key_value_is_redacted():
+    shown = _r3('RuntimeError: body {\\"password\\": \\"' + _secret("hunter", "2xyz") + '\\"}')
+    assert "hunter2xyz" not in shown
+    assert shown == 'RuntimeError: body {\\"password\\": \\"[REDACTED]\\"}'
+
+
+def test_round4_escaped_json_quote_inside_value_is_not_an_early_stop():
+    shown = _r3('RuntimeError: {\\"token\\": \\"ab\\\\cd' + _secret("ef", "99") + '\\"}')
+    assert "ef99" not in shown and "[REDACTED]" in shown
+
+
+def test_round4_userinfo_is_split_at_the_last_at_sign():
+    shown = _r3("RuntimeError: https://user:p@" + _secret("ssw0", "rd") + "@db.example.com/x")
+    assert "ssw0rd" not in shown
+    assert shown == "RuntimeError: https://[REDACTED]@db.example.com/x"
+
+
+def test_round4_passphrase_is_a_secret_key_word():
+    assert _r3("RuntimeError: passphrase " + _secret("hunter2", "hunter2")) == "RuntimeError: passphrase [REDACTED]"
+    assert _r3("RuntimeError: ssh_passphrase=" + _secret("opensesame", "now")) == "RuntimeError: ssh_passphrase=[REDACTED]"
+
+
+def test_round4_letters_only_token_after_a_key_word_is_redacted():
+    assert _r3("RuntimeError: key " + _secret("aBcDeFgHiJkLm", "NoPqRsTuVwXyZ")) == "RuntimeError: key [REDACTED]"
+
+
+def test_round4_authorization_token_scheme_is_still_redacted():
+    assert _r3("RuntimeError: Authorization: Token " + _secret("9f8e7d6c5b", "4a39281706")) == \
+        "RuntimeError: Authorization: [REDACTED]"
+
+
+def test_round4_over_redaction_cases_stay_readable():
+    for text in (
+        'psycopg2.errors.ForeignKeyViolation: insert or update on table "orders" violates foreign key constraint '
+        '"fk_orders_account"',
+        'psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint "uq_x_symbol_date"',
+        "ValueError: max_tokens: 4096 exceeds limit 2048",
+        "ValueError: input_tokens=5000 output_tokens=1200",
+        "RuntimeError: token expired; re-auth required",
+        "RuntimeError: schwab token refresh failed: invalid_grant",
+        "RuntimeError: token refresh required",
+        "RuntimeError: key rotation required",
+        "RuntimeError: password authentication failed",
+    ):
+        assert _r3(text) == text, text
+
+
+def test_round4_undotted_violation_class_is_not_a_key():
+    text = 'ForeignKeyViolation: insert or update on table "orders" violates foreign key constraint'
+    assert _r3(text) == text
+
+
+def test_round4_escaped_json_count_key_stays_readable():
+    text = 'ValueError: request {\\"max_tokens\\": 4096} too large'
+    assert _r3(text) == text
