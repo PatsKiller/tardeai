@@ -7,7 +7,7 @@
 # NEVER market_quotes, whose newest row is the "latest quote" for stop checks, the repricer and watch alerts
 # (coordinator decision 2026-10-31, option 3; review of #2384).
 # Advisory market data only (MBI_BEHAVIOR = 0): no order, stop, account or auth endpoint is reachable from here.
-# NOTHING IS SCHEDULED by this file (lane market-quotes-offhours-schwab is NEVER_SCHEDULED in config/lane_registry.json).
+# Scheduling lives in the host crontab (lane market-quotes-offhours-schwab in config/lane_registry.json), not in this file.
 schema: MarketRiskOffHoursQuotes@v2
 as_of: 2026-10-31
 
@@ -19,10 +19,11 @@ universe:
     - {file: config/market_risk_policy.yaml, key: extended_hours.heavyweights}  # the engine's large-cap list
 
 schwab:
-  # OFF until the operator approves the schedule. AGENTS.md 28.2.0 (host lanes may read broker market data) was
-  # ratified by the operator on PR #2407 (ratify commit f060c2e78); #2407 is not yet merged to main.
-  enabled: false
-  requires_policy: "AGENTS.md 28.2.0 (PR #2407, ratified f060c2e78)"
+  # ON: operator in session 2026-11-01 ~13:45 ET, "enable schwab", under the 2026-10-31 broker-market-data allowance
+  # (AGENTS.md 29.2.0 §24.11, #2407 merged): read-only market data via host lanes; never orders, accounts, stops, 2FA,
+  # auth endpoints or credentials. Grant recorded in config/data_source_authority.json providers.schwab.supply_grants.
+  enabled: true
+  requires_policy: "AGENTS.md 29.2.0 §24.11 (PR #2407, merged)"
   marketdata_base_url: "https://api.schwabapi.com/marketdata/v1/"
   batch_size: 100
   feed: schwab                 # market_quotes_extended.feed; the unique key (symbol, bar_start, feed) keeps it apart from Alpaca sip

@@ -18930,6 +18930,23 @@
       }
     },
     {
+      "lane_id": "market-quotes-offhours-schwab",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-01",
+      "state_reason": "Declared, not yet scheduled. Schwab off-hours market-data quotes for the Market Risk Engine (scripts/market_quotes_offhours_schwab.py, #2416/#2423): index futures, indices and the extended-hours universe in the overnight (20:00-04:00 ET), Sunday futures_open (18:00-20:00 ET), pre-market and after-hours sessions, into market_quotes_extended (feed schwab) through its single writer. Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11). This PR sets schwab.enabled true and records the grant (config/data_source_authority.json providers.schwab.supply_grants); the crontab lines are installed after merge (§25.10.2) and this row then flips to ACTIVE.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_offhours_schwab.py. 2026-11-01 from release 4bc61bcdb: --probe reported enabled false (before this PR), store_domain_granted true, url_rail_ok true, live_call_made false; --dry-run --fixture tests/fixtures/offhours_quotes/schwab_quotes_overnight_20261102.json --now 2026-11-02T02:30-05:00 produced 5 rows, 2 skipped, 0 inserted.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Proposed host crontab lines (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
