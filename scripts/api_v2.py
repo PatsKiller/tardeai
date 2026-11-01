@@ -68364,6 +68364,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _proj = _mr_build(_snap, _radar, episode=_ep)
             if _ep_err:
                 _proj["episode_error"] = _ep_err
+            # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
+            # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
+            try:
+                from lib.market_risk_book_join import join as _mr_join
+
+                _proj = _mr_join(_proj)
+            except Exception as _e:  # noqa: BLE001
+                _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
             return 200, {"ok": True, "data": _json_clean(_proj)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
