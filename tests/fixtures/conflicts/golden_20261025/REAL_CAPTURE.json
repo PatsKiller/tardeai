@@ -1,0 +1,11 @@
+{
+ "expected_sha256": "5ce629b695ad0a602845389692993eb925dc3d2ddc64035910e6d94ebc9f089c",
+ "files": {
+  "expected": "golden_20261025_real_expected.json",
+  "inputs": "golden_20261025_real_inputs.json"
+ },
+ "inputs_sha256": "85422a98240f7a11ff9c63a9682e24fae5eb80b30917a90b647858004c6fddcc",
+ "location": "persistent-state/data/conflicts/golden/ (host only, chmod 600; never committed: it holds portfolio facts)",
+ "replay": "tests/test_conflict_golden_replay_20261025.py::test_host_only_real_capture_replay (skips when absent)",
+ "schema": "ConflictGoldenRealCapture@v1"
+}

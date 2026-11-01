@@ -1,0 +1,2021 @@
+{
+ "fixture": "inputs.json (synthetic)",
+ "reviewed": "2026-10-25 by the conflict-producers-b session: per-subject outcomes identical (as a multiset) to the private real capture; category review in docs/ops/CONFLICT_GOLDEN_REPLAY_20261025.md",
+ "schema": "ConflictGoldenExpected@v1",
+ "subjects": {
+  "SYM001": {
+   "run1": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM002": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM003": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM004": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM005": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM006": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM007": {
+   "run1": [
+    "GATE:R3"
+   ],
+   "run2": [
+    "GATE:R3"
+   ]
+  },
+  "SYM008": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM009": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM010": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM011": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM012": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM013": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM014": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM015": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM016": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM017": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM018": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM019": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM020": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM021": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM022": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM023": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM024": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM025": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM026": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM027": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM028": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM029": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM030": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM031": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM032": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM033": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM034": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM035": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM036": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM037": {
+   "run1": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM038": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM039": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM040": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM041": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM042": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM043": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM044": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM045": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM046": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM047": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM048": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM049": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM050": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM051": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM052": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM053": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM054": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM055": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM056": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM057": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM058": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM059": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM060": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM061": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM062": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R3"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R3"
+   ]
+  },
+  "SYM063": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM064": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM065": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM066": {
+   "run1": [
+    "AGREEMENT:R15",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "CONFLICT:U7",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM067": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM068": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "SYM069": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM070": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM071": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM072": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM073": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM074": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R13",
+    "GATE:R3",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R13",
+    "GATE:R3",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM075": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM076": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM077": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM078": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM079": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM080": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM081": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM082": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM083": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM084": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM085": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM086": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM087": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM088": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM089": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM090": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM091": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM092": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM093": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM094": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM095": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM096": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM097": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM098": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM099": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM100": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM101": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM102": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM103": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "SYM104": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM105": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM106": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM107": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM108": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM109": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM110": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM111": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM112": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM113": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM114": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM115": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R13",
+    "GATE:R3",
+    "GATE:R7b",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R13",
+    "GATE:R3",
+    "GATE:R7b",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM116": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM117": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM118": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM119": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM120": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM121": {
+   "run1": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM122": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7b"
+   ]
+  },
+  "SYM123": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM124": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM125": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM126": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM127": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM128": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM129": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM130": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM131": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ]
+  },
+  "SYM132": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM133": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM134": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM135": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "GATE:R7b",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM136": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM137": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM138": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM139": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM140": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM141": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM142": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM143": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM144": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM145": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM146": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM147": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM148": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM149": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM150": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM151": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM152": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM153": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM154": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM155": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM156": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM157": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM158": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM159": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM160": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM161": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM162": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM163": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM164": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM165": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM166": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM167": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM168": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM169": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM170": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM171": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM172": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM173": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM174": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM175": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM176": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM177": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM178": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM179": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM180": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM181": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM182": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM183": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM184": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM185": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM186": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM187": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM188": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R7"
+   ]
+  },
+  "SYM189": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM190": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM191": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM192": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM193": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ]
+  },
+  "SYM194": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM195": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM196": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM197": {
+   "run1": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "DATA_ERROR:R12",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM198": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM199": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM200": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM201": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM202": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM203": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM204": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM205": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM206": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM207": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM208": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM209": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM210": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM211": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM212": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM213": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM214": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM215": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM216": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM217": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM218": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM219": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM220": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM221": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM222": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM223": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM224": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3"
+   ]
+  },
+  "SYM225": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM226": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM227": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM228": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM229": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM230": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM231": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM232": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM233": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM234": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM235": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM236": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM237": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM238": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM239": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM240": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM241": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM242": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM243": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM244": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM245": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM246": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM247": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM248": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM249": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM250": {
+   "run1": [
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM251": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM252": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM253": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM254": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM255": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM256": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM257": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM258": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM259": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM260": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM261": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM262": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM263": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM264": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM265": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM266": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM267": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM268": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM269": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM270": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM271": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM272": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM273": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM274": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM275": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM276": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM277": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM278": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM279": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM280": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM281": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM282": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM283": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM284": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM285": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM286": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM287": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM288": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM289": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM290": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM291": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM292": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM293": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM294": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM295": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM296": {
+   "run1": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM297": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM298": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM299": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM300": {
+   "run1": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "GATE:R3",
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM301": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM302": {
+   "run1": [
+    "AGREEMENT:R6"
+   ],
+   "run2": [
+    "AGREEMENT:R6"
+   ]
+  },
+  "SYM303": {
+   "run1": [
+    "SUPERSEDED:R1"
+   ],
+   "run2": [
+    "SUPERSEDED:R1"
+   ]
+  },
+  "SYM304": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM305": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM306": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM307": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM308": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM309": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM310": {
+   "run1": [
+    "DATA_ERROR:U1"
+   ],
+   "run2": [
+    "DATA_ERROR:U1"
+   ]
+  },
+  "SYM311": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM312": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM313": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM314": {
+   "run1": [
+    "GATE:R7"
+   ],
+   "run2": [
+    "GATE:R7"
+   ]
+  },
+  "SYM315": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM316": {
+   "run1": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "AGREEMENT:R6",
+    "GATE:R7b"
+   ]
+  },
+  "SYM317": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM318": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM319": {
+   "run1": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ],
+   "run2": [
+    "AGREEMENT:R6",
+    "DATA_ERROR:U1",
+    "NEEDS_OPERATOR:R12"
+   ]
+  },
+  "SYM320": {
+   "run1": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ],
+   "run2": [
+    "DATA_ERROR:U1",
+    "GATE:R16"
+   ]
+  },
+  "SYM321": {
+   "run1": [],
+   "run2": []
+  },
+  "SYM322": {
+   "run1": [
+    "GATE:R7b"
+   ],
+   "run2": [
+    "GATE:R7b"
+   ]
+  },
+  "SYM323": {
+   "run1": [],
+   "run2": []
+  }
+ },
+ "summary": {
+  "flagged_subjects_run1": 89,
+  "flagged_subjects_run2": 89,
+  "run1": {
+   "AGREEMENT": 61,
+   "DATA_ERROR": 42,
+   "GATE": 72,
+   "NEEDS_OPERATOR": 9,
+   "SUPERSEDED": 23
+  },
+  "run2": {
+   "AGREEMENT": 60,
+   "CONFLICT": 1,
+   "DATA_ERROR": 42,
+   "GATE": 72,
+   "NEEDS_OPERATOR": 9,
+   "SUPERSEDED": 23
+  },
+  "subjects": 323
+ }
+}
