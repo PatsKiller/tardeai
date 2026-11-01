@@ -138,11 +138,11 @@ def load_market_risk_projection(project_root: Path | None = None) -> dict[str, A
             return None
 
     try:
-        from lib.market_risk_projection import SNAPSHOT_REL, build
+        from lib.market_risk_projection import build, load_snapshot
     except ImportError:  # pragma: no cover - imported as scripts.lib
-        from scripts.lib.market_risk_projection import SNAPSHOT_REL, build
+        from scripts.lib.market_risk_projection import build, load_snapshot
 
-    snap = _load(SNAPSHOT_REL)
+    snap = load_snapshot(_load)  # live when present, else the labelled shadow assessment
     radar = _load("data/runtime/hedging_radar_latest.json")
     if snap is None and radar is None:
         return None

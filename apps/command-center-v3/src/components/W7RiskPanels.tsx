@@ -7,7 +7,7 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
-import { bannerVisible, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { shadowMarker, bannerVisible, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -171,7 +171,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
         </p>
         {mr.deescalates_if && <p style={{ margin: 0, fontSize: TYPE.base, color: TOKENS.text[2] }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {mr.deescalates_if}</p>}
         {bannerVisible(mr) && !mr.episode?.acknowledged_at && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" data-testid="risk-market-risk-ack" onClick={acknowledge} style={{ minHeight: 44, padding: '0 20px', borderRadius: RADIUS.md, border: 0, background: tv.color, color: TOKENS.bg[0], fontSize: TYPE.md, fontWeight: 800, cursor: 'pointer' }}>Acknowledge</button>
+          <button type="button" data-testid="risk-market-risk-ack" onClick={acknowledge} disabled={!!shadowMarker(mr)} style={{ minHeight: 44, padding: '0 20px', borderRadius: RADIUS.md, border: 0, background: tv.color, color: TOKENS.bg[0], fontSize: TYPE.md, fontWeight: 800, cursor: shadowMarker(mr) ? 'default' : 'pointer', opacity: shadowMarker(mr) ? 0.7 : 1 }}>{shadowMarker(mr) ? 'Shadow: nothing to acknowledge' : 'Acknowledge'}</button>
           <Link to="/risk?tab=exposure" style={{ ...linkStyle, minHeight: 44, display: 'inline-flex', alignItems: 'center', padding: '0 14px', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }}>Review stops</Link>
         </div>}
         {ack && <p role="status" style={{ margin: 0, fontSize: TYPE.base, color: ack.startsWith('Not recorded') ? toneVars('warning').color : toneVars('success').color }}>{ack}</p>}

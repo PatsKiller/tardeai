@@ -437,7 +437,7 @@ def _shadow_env(tmp_path, monkeypatch):
     return ev
 
 
-def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch):
+def test_shadow_writes_only_shadow_latest_and_never_imports_telegram(tmp_path, monkeypatch):
     ev = _shadow_env(tmp_path, monkeypatch)
     trip = types.ModuleType("telegram_alert")
 
@@ -452,8 +452,8 @@ def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch
     monkeypatch.setattr(alerts, "deliver", _boom)
     monkeypatch.setattr(alerts, "outbox_put", _boom)
     assert ev.main(["--shadow", "--no-portfolio"]) == 0
-    snap = json.loads((tmp_path / "data/runtime/market_risk_latest.json").read_text())
-    assert snap["tier"] in c.TIERS and snap["mode"] == "shadow" and snap["history"][-1]["mode"] == "shadow"
+    # review of #2425: a shadow run never writes the snapshot Home/API/CIO read
+    assert not (tmp_path / "data/runtime/market_risk_latest.json").exists()
     d = tmp_path / "data/runtime/market_risk"
     assert (d / "shadow_latest.json").exists() and not (d / "latest.json").exists()
     assert [p.name for p in (d / "receipts").iterdir()] == ["20261031T235000Z-shadow.json"]
@@ -461,14 +461,55 @@ def test_shadow_writes_snapshot_and_never_imports_telegram(tmp_path, monkeypatch
     assert not (tmp_path / "ep.json").exists() and not (tmp_path / "sk.json").exists()
 
 
-def test_f3_projection_carries_the_mode(tmp_path, monkeypatch):
+def test_shadow_never_overwrites_a_live_snapshot(tmp_path, monkeypatch):
+    from scripts.lib import market_risk_projection as proj
+
+    ev = _shadow_env(tmp_path, monkeypatch)
+    live_p = tmp_path / proj.SNAPSHOT_REL
+    live_p.parent.mkdir(parents=True)
+    live = proj.snapshot_from_assessment(
+        {"schema": c.SCHEMA_ASSESSMENT, "tier": "ORANGE", "score": 66, "as_of": FIXED.isoformat(), "mode": "apply"}
+    )
+    live_p.write_text(json.dumps(live))
+    before = live_p.read_bytes()
+    assert ev.main(["--shadow", "--no-portfolio"]) == 0
+    assert live_p.read_bytes() == before
+
+
+def _loader(root):
+    def load(rel):
+        try:
+            return json.loads((root / rel).read_text())
+        except FileNotFoundError:
+            return None
+
+    return load
+
+
+def test_api_serves_live_when_present_else_shadow_labelled(tmp_path, monkeypatch):
     from scripts.lib import market_risk_projection as proj
 
     ev = _shadow_env(tmp_path, monkeypatch)
     assert ev.main(["--shadow", "--no-portfolio"]) == 0
-    snap = json.loads((tmp_path / "data/runtime/market_risk_latest.json").read_text())
-    assert proj.build(snap, None, now=FIXED)["mode"] == "shadow"
+    snap = proj.load_snapshot(_loader(tmp_path))  # no live snapshot: the shadow one, labelled
+    assert snap["mode"] == "shadow" and snap["schema"] == proj.SNAPSHOT_SCHEMA
+    p = proj.build(snap, None, now=FIXED, episode={"id": "EP-LIVE", "tier": "RED", "opened_at": FIXED.isoformat()})
+    assert p["mode"] == "shadow" and p["episode"] is None  # never a live episode on a shadow tier
+    live = proj.snapshot_from_assessment(
+        {"schema": c.SCHEMA_ASSESSMENT, "tier": "ORANGE", "score": 66, "as_of": FIXED.isoformat(), "mode": "apply"}
+    )
+    (tmp_path / proj.SNAPSHOT_REL).write_text(json.dumps(live))
+    snap2 = proj.load_snapshot(_loader(tmp_path))
+    assert snap2["mode"] == "live" and snap2["tier"] == "ORANGE"
+    ep = {"id": "EP-LIVE", "tier": "ORANGE", "opened_at": FIXED.isoformat()}
+    assert proj.build(snap2, None, now=FIXED, episode=ep)["episode"]["id"] == "EP-LIVE"
     assert proj.snapshot_from_assessment({"mode": "apply", "tier": "BLUE"})["mode"] == "live"
+
+
+def test_api_route_uses_the_loader():
+    src = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
+    seg = src[src.index('"/api/v2/market-risk/latest" and method == "GET"') :][:1800]
+    assert "load_snapshot" in seg and "_MR_REL" not in seg
 
 
 def test_f3_shadow_replay_never_writes_the_snapshot_or_prior(tmp_path, monkeypatch):
@@ -480,16 +521,18 @@ def test_f3_shadow_replay_never_writes_the_snapshot_or_prior(tmp_path, monkeypat
     assert [p.name for p in (d / "receipts").iterdir()] == ["20261029T190000Z-shadow-replay.json"]
 
 
-def test_f3_history_stays_in_time_order(tmp_path, monkeypatch):
+def test_f3_live_history_stays_in_time_order(tmp_path, monkeypatch):
     ev = _shadow_env(tmp_path, monkeypatch)
     snap_p = tmp_path / "data/runtime/market_risk_latest.json"
     snap_p.parent.mkdir(parents=True)
     later = {"as_of": "2026-11-01T00:30:00+00:00", "score": 1, "tier": "BLUE", "mode": "live"}
     earlier = {"as_of": "2026-10-31T20:00:00+00:00", "score": 1, "tier": "BLUE", "mode": "live"}
     snap_p.write_text(json.dumps({"history": [later, earlier]}))
-    assert ev.main(["--shadow", "--no-portfolio"]) == 0
-    hist = [h["as_of"][:16] for h in json.loads(snap_p.read_text())["history"]]
-    assert hist == ["2026-10-31T20:00", "2026-10-31T23:50", "2026-11-01T00:30"]
+    doc = {"schema": c.SCHEMA_ASSESSMENT, "as_of": FIXED.isoformat(), "tier": "BLUE", "score": 30, "mode": "apply"}
+    ev.persist(doc, FIXED)
+    got = json.loads(snap_p.read_text())
+    assert [h["as_of"][:16] for h in got["history"]] == ["2026-10-31T20:00", "2026-10-31T23:50", "2026-11-01T00:30"]
+    assert got["mode"] == "live"
 
 
 def test_dry_run_beats_shadow(tmp_path, monkeypatch):
@@ -503,7 +546,7 @@ def test_shadow_reports_the_files_it_wrote(tmp_path, monkeypatch, capsys):
     assert ev.main(["--shadow", "--json", "--no-portfolio"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["mode"] == "shadow" and doc["written"].endswith("market_risk/shadow_latest.json")
-    assert Path(doc["written"]).exists() and Path(doc["snapshot"]).exists()
+    assert Path(doc["written"]).exists() and doc["snapshot"] is None
 
 
 # ── Round 3 (review of #2415 round 2) ────────────────────────────────────────────────────────────────────────────
@@ -690,3 +733,111 @@ def test_r2_2_cio_summary_carries_the_shadow_marker():
     s2 = cms.build_market_context_state(regime_snapshot={}, evaluated_at=now, market_risk=live)
     s2 = s2["summary"]["market_risk"] if "summary" in s2 else s2["market_risk"]
     assert s2["mode"] == "live" and "SHADOW" not in s2["line"]
+
+
+# ── Round 4 (review of #2425): hold-not-escalate, options-flow slots ─────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "a,b,want",
+    [
+        (et(2026, 10, 30, 16), et(2026, 10, 30, 18, 30), False),  # same evening
+        (et(2026, 10, 29, 16), et(2026, 10, 30, 9, 31), False),  # weeknight: nothing closed in between
+        (et(2026, 10, 30, 16), et(2026, 10, 31, 19, 50), True),  # Saturday
+        (et(2026, 10, 30, 16), et(2026, 11, 2, 9, 31), True),  # Monday open
+        (et(2026, 11, 25, 16), et(2026, 11, 27, 10), True),  # Thanksgiving
+        (et(2026, 11, 2, 16), et(2026, 11, 3, 16), False),
+    ],
+)
+def test_closure_between(a, b, want):
+    assert sessions.closure_between(a, b) is want
+
+
+def _stress(cat, at, score=85.0, stale=96.0):
+    return c.CategoryObservation(
+        category=cat, state="STRESS", score=score, observed_at=at.isoformat(), headline="x", stale_after_hours=stale
+    )
+
+
+def _carry_case(prior_tier, now):
+    fri = et(2026, 10, 30, 16)
+    obs = [_stress("technical", fri), _stress("breadth", fri), _stress("volatility", fri), _stress("options_flow", fri)]
+    obs += [c.unknown(k, now, "x") for k in c.CATEGORIES if k not in {o.category for o in obs}]
+    prior = {"tier": prior_tier, "hysteresis": {}} if prior_tier else None
+    return obs, prior
+
+
+def test_hold_not_escalate_carried_stress_cannot_raise_the_tier():
+    now = et(2026, 11, 2, 9, 31)
+    obs, prior = _carry_case("YELLOW", now)
+    a = scoring.compose(obs, P, prior=prior, now=now)
+    assert a.hysteresis["carried"]["capped"] and a.hysteresis["raw_tier"] == "YELLOW" and a.tier == "YELLOW"
+    off = scoring.compose(obs, dict(P, decay=dict(P["decay"], carried_escalation="off")), prior=prior, now=now)
+    assert scoring.SEVERITY[off.hysteresis["raw_tier"]] > scoring.SEVERITY["YELLOW"]  # the escalation it prevents
+
+
+def test_hold_not_escalate_carried_data_still_holds_the_tier():
+    now = et(2026, 11, 2, 9, 31)
+    obs, prior = _carry_case("RED", now)
+    a = scoring.compose(obs, P, prior=prior, now=now)
+    assert not a.hysteresis["carried"]["capped"]
+    assert a.tier == "RED" and a.score > 0  # held, with its weight in the displayed score
+
+
+def test_hold_not_escalate_fresh_agreement_may_escalate():
+    now = et(2026, 11, 2, 16, 0)
+    obs, prior = _carry_case("YELLOW", now)
+    agree = ("technical", "breadth", "options_flow")
+    fresh = [o if o.category not in agree else _stress(o.category, now) for o in obs]
+    a = scoring.compose(fresh, P, prior=prior, now=now)
+    carried = set(a.hysteresis["carried"]["categories"])
+    assert carried.isdisjoint(agree) and carried == {"volatility"}
+    assert scoring.SEVERITY[a.hysteresis["raw_tier"]] > scoring.SEVERITY["YELLOW"]
+
+
+def test_hold_not_escalate_weeknight_is_not_a_closure():
+    now = et(2026, 10, 30, 9, 31)
+    thu = et(2026, 10, 29, 16)
+    obs = [_stress(k, thu) for k in ("technical", "breadth", "volatility", "options_flow")]
+    obs += [c.unknown(k, now, "x") for k in c.CATEGORIES if k not in {o.category for o in obs}]
+    a = scoring.compose(obs, P, prior={"tier": "YELLOW", "hysteresis": {}}, now=now)
+    assert a.hysteresis["carried"]["categories"] == [] and not a.hysteresis["carried"]["capped"]
+
+
+def test_hold_not_escalate_bootstrap_adopts_the_reconstruction():
+    now = et(2026, 10, 31, 19, 50)
+    obs, _ = _carry_case(None, now)
+    a = scoring.compose(obs, P, prior=None, now=now)
+    assert a.hysteresis["bootstrap"] and not a.hysteresis["carried"]["capped"]
+
+
+def test_hold_not_escalate_is_the_policy_with_the_operator_approval():
+    assert P["decay"]["carried_escalation"] == "hold_only"
+    txt = (ROOT / "config" / "market_risk_policy.yaml").read_text(encoding="utf-8")
+    assert "approve hold-not-escalate" in txt
+
+
+@pytest.mark.parametrize(
+    "obs_at,now,current",
+    [
+        (et(2026, 10, 30, 17, 35), et(2026, 11, 2, 10, 30), True),  # Fri 17:35 -> late Monday 10:00 run
+        (et(2026, 10, 30, 10, 0), et(2026, 11, 2, 10, 30), True),  # Fri 17:35 failed; Mon 10:00 late: one miss
+        (et(2026, 10, 30, 10, 0), et(2026, 11, 2, 10, 50), False),  # two slots missed: fail closed
+        (et(2026, 10, 30, 17, 35), et(2026, 11, 2, 18, 30), False),  # Monday's both slots missed
+        (et(2026, 11, 25, 17, 35), et(2026, 11, 27, 10, 30), True),  # after Thanksgiving
+        (et(2027, 1, 15, 17, 35), et(2027, 1, 19, 10, 30), True),  # after MLK
+    ],
+)
+def test_options_flow_staleness_follows_the_snapshot_slots(obs_at, now, current):
+    from scripts.lib.market_risk.categories import options_flow as of
+
+    ctx = c.EvalContext(now=now, reader=None, policy=P, session="regular")
+    allowance = of._allowance(obs_at, ctx, P["options_flow_category"])
+    age, why = scoring.staleness(obs_at, now, P["decay"], allowance)
+    assert (why is None) is current, (allowance, age, why)
+
+
+def test_options_flow_without_slots_falls_back_to_fixed_hours():
+    from scripts.lib.market_risk.categories import options_flow as of
+
+    cfg = {k: v for k, v in P["options_flow_category"].items() if k != "expected_slots_et"}
+    ctx = c.EvalContext(now=et(2026, 11, 2, 10), reader=None, policy=P, session="regular")
+    assert of._allowance(et(2026, 10, 30, 17, 35), ctx, cfg) == float(cfg["stale_after_hours"])

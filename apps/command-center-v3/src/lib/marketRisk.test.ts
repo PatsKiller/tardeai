@@ -46,4 +46,6 @@ const live = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7,
 assert.equal(live?.mode, 'live'); assert.equal(shadowMarker(live), ''); assert.ok(!factLine(live).sub.includes('SHADOW'))
 assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'BLUE', score: 30, contributors: [], categories: [], mode: 'bogus' })?.mode, null)
 assert.equal(shadowMarker(notEval), '', 'not evaluated: no shadow marker')
+// a live episode never rides on a shadow tier (the API drops it; the model keeps whatever arrives, so check the shape)
+assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 80, contributors: [], categories: [], mode: 'shadow', episode: null })?.episode, null)
 console.log('marketRisk.test ok')

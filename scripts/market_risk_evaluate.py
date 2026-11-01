@@ -63,8 +63,9 @@ SHADOW_PRIOR = "shadow_latest.json"
 def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     """Write the assessment (prior for the next run + dated receipt) and the consumers' snapshot. Atomic.
 
-    ``shadow``: the receipt is ``<stamp>-shadow.json`` and the prior is ``shadow_latest.json``, so a shadow run never
-    becomes the live prior (the first live --apply still announces its tier as a transition)."""
+    ``shadow``: the receipt is ``<stamp>-shadow.json`` and ``shadow_latest.json`` is both the shadow prior and what
+    the API serves when no live snapshot exists. A shadow run never becomes the live prior and never overwrites the
+    live snapshot (the first live --apply still announces its tier as a transition)."""
     from scripts.lib.market_risk_projection import snapshot_from_assessment
 
     d = state_dir()
@@ -72,6 +73,10 @@ def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     body = {k: v for k, v in doc.items() if k != "cycle"}
     atomic_write_json(d / "receipts" / f"{stamp}{'-shadow' if shadow else ''}.json", body)
     atomic_write_json(d / (SHADOW_PRIOR if shadow else "latest.json"), body)
+    if shadow:
+        # never the snapshot Home/API/CIO read (review of #2425): the API serves the live snapshot when one exists
+        # and falls back to shadow_latest.json, labelled, only when none does (market_risk_projection.load_snapshot)
+        return str(d / SHADOW_PRIOR)
     prev = _read_prior(snapshot_path()) or {}
     hist = [h for h in (prev.get("history") or []) if isinstance(h, dict) and h.get("as_of") != doc.get("as_of")]
     hist.append(
@@ -348,7 +353,7 @@ def _shadow(
         doc["written"], doc["snapshot"] = str(path), None
     else:
         doc["written"] = persist(doc, now, shadow=True)
-        doc["snapshot"] = str(snapshot_path())
+        doc["snapshot"] = None  # served from shadow_latest.json only while no live snapshot exists
     if as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:
@@ -361,7 +366,7 @@ def _shadow(
         )
         print(
             f"  wrote {doc['written']}"
-            + (f" and {doc['snapshot']}" if doc["snapshot"] else " (replay: snapshot untouched)")
+            + (" (replay: receipt only)" if replay else " (the live snapshot is never touched by a shadow run)")
         )
     return 0
 

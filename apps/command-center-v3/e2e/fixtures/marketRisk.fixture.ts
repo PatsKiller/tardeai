@@ -55,9 +55,15 @@ export function marketRiskNotEvaluated() {
     sources: { options_flow: { as_of: iso(3_600_000), findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309, pc_vol_factor: 3.4 }, { symbol: 'SPY', state: 'WARN', pc_oi_ratio: 1.51 }], priority: 'P1', session: 'regular' } } }
 }
 
+/** What the API serves from shadow_latest.json when no live snapshot exists: labelled, never with a live episode. */
+export function marketRiskShadow(tier: 'RED' | 'YELLOW') {
+  const base = tier === 'RED' ? marketRiskRed() : { ...marketRiskRed(), tier: 'YELLOW', score: 59.7, confirming: { n: 2, of: 9 }, uplift: null }
+  return { ...base, mode: 'shadow', episode: null }
+}
+
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated', writes: string[] = []) {
-  const body = variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : marketRiskNotEvaluated()
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow', writes: string[] = []) {
+  const body = variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : marketRiskNotEvaluated()
   await page.route('**/api/v2/market-risk/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname
     if (req.method() === 'POST' && p === '/api/v2/market-risk/ack') {

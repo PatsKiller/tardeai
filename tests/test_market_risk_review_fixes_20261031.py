@@ -157,7 +157,12 @@ def test_b1_one_path_constant_everywhere():
     api = (ROOT / "scripts/api_v2.py").read_text()
     ctx = (ROOT / "scripts/lib/cio_market_context_state.py").read_text()
     assert '"market_risk_latest.json"' not in api and '"data/runtime/market_risk_latest.json"' not in ctx
-    assert "SNAPSHOT_REL" in api and "SNAPSHOT_REL" in ctx
+    # since PR 2425 both read through market_risk_projection.load_snapshot, which owns SNAPSHOT_REL (live) and
+    # SHADOW_REL (the labelled fallback)
+    assert "load_snapshot" in api and "load_snapshot" in ctx
+    projection = (ROOT / "scripts/lib/market_risk_projection.py").read_text()
+    body = projection[projection.index("def load_snapshot") :][:900]
+    assert "load(SNAPSHOT_REL)" in body and "load(SHADOW_REL)" in body
 
 
 # ── B3: curation ─────────────────────────────────────────────────────────────────────────────────────────────

@@ -107,7 +107,14 @@ options_flow_category:
   # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
   # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
   # CALM the next Monday)
-  stale_after_hours: 32
+  stale_after_hours: 32          # fallback only when expected_slots_et is absent
+  # Staleness from the snapshot schedule instead (review of #2425): option_chain_snapshots run 10:00 and 17:35 ET on
+  # trading days (crontab, options_chain_snapshot.py). A snapshot stays current until the second expected slot after
+  # it is due + late_slack_minutes: one missed or late slot tolerated (Friday 10:00 with the 17:35 run failed is still
+  # current at a late Monday 10:30), two are not (fail closed).
+  expected_slots_et: ["10:00", "17:35"]
+  late_slack_minutes: 45
+  missed_slots_allowed: 1
   score: {CALM: 10, WARN: 50, STRESS: 85}
 
 macro_credit:
@@ -342,6 +349,12 @@ decay:
   # (a Friday close to the Tuesday open after a Monday holiday is 89.5h).
   max_market_hours: 120
   max_wall_hours: 120
+  # Hold, never escalate, on carried data (scoring._hold_not_escalate). An observation made before a market closure
+  # (a weekend or NYSE holiday between it and now, sessions.closure_between) keeps its market-clock weight for HOLDING
+  # and displaying the current tier, but the tier may rise only as far as fresh post-closure observations support.
+  # Operator approval, in session 2026-10-31 ~22:00 ET: "approve hold-not-escalate" (reviewer variant D, #2425).
+  # "off" restores carried data escalating.
+  carried_escalation: hold_only
   future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
     - {max_age_hours: 12, weight: 1.0}

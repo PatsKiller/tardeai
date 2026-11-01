@@ -28,6 +28,24 @@ ACTIONABLE = ("ORANGE", "RED")
 # persistent-state runtime dir (release dirs symlink it). Review of #2362, B1: the evaluator wrote
 # data/runtime/market_risk/latest.json while the CIO, the API and Home read data/runtime/market_risk_latest.json.
 SNAPSHOT_REL = "data/runtime/market_risk_latest.json"
+# What `market_risk_evaluate.py --shadow` writes (MarketRiskAssessment@v1, mode shadow). Served only while no live
+# snapshot exists, always labelled shadow, never with the live episode (review of #2425).
+SHADOW_REL = "data/runtime/market_risk/shadow_latest.json"
+
+
+def load_snapshot(load) -> dict | None:
+    """The snapshot consumers should show. ``load(rel) -> dict | None`` reads a JSON file under the project root.
+    The live snapshot when one exists; else the shadow assessment, converted and marked ``mode: shadow``; else
+    None (not evaluated). A legacy snapshot that says ``mode: shadow`` loses to a newer shadow_latest.json."""
+    live = load(SNAPSHOT_REL)
+    if isinstance(live, dict) and live.get("mode") != "shadow":
+        return live
+    sh = load(SHADOW_REL)
+    if isinstance(sh, dict):
+        sh = snapshot_from_assessment(sh) if sh.get("schema") == ASSESSMENT_SCHEMA else sh
+        sh["mode"] = "shadow"
+        return sh
+    return live if isinstance(live, dict) else None
 
 
 def _label(category: str) -> str:
@@ -195,6 +213,8 @@ def build(
         tier = "NOT_EVALUATED"
     if isinstance(snapshot.get("episode"), dict):
         episode = snapshot.get("episode")
+    if snapshot.get("mode") == "shadow":
+        episode = None  # a live episode (and its Acknowledge) never rides on a shadow tier (review of #2425)
     return {
         "schema": SCHEMA,
         "state": "stale" if stale else "evaluated",

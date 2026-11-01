@@ -125,3 +125,42 @@ def last_closed_session(now: datetime) -> date:
                 return d
         d -= timedelta(days=1)
     return d
+
+
+def closure_between(start: datetime, end: datetime) -> bool:
+    """True when a market closure lies between ``start`` and ``end``: a calendar day (ET) after ``start``'s day and up
+    to ``end``'s day that is not an NYSE trading day (a weekend or a holiday). An observation made before such a
+    closure and read after it is *carried* across it (decay.carried_escalation)."""
+    from datetime import timedelta
+
+    if end <= start:
+        return False
+    d, last = start.astimezone(ET).date() + timedelta(days=1), end.astimezone(ET).date()
+    while d <= last:
+        if not is_trading_day(d):
+            return True
+        d += timedelta(days=1)
+    return False
+
+
+def slot_deadline(
+    observed: datetime, slots_et: list[str], slack_minutes: float, *, missed_allowed: int = 1
+) -> datetime:
+    """The instant a snapshot taken at ``observed`` stops being current when snapshots are expected at ``slots_et``
+    (HH:MM ET) on NYSE trading days: the (``missed_allowed`` + 1)-th expected slot after it, plus ``slack_minutes``.
+    One missed or late slot is tolerated; two are not (fail closed)."""
+    from datetime import timedelta
+
+    times = sorted(time(int(s.split(":")[0]), int(s.split(":")[1])) for s in slots_et)
+    d = observed.astimezone(ET).date()
+    seen = 0
+    for _ in range(40):
+        if is_trading_day(d):
+            for t in times:
+                at = datetime.combine(d, t, ET)
+                if at > observed:
+                    seen += 1
+                    if seen == missed_allowed + 1:
+                        return at + timedelta(minutes=float(slack_minutes))
+        d += timedelta(days=1)
+    return observed  # no calendar ahead: fail closed
