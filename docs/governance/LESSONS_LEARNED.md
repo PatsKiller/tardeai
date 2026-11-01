@@ -1476,3 +1476,13 @@ The operator approves merges from a Telegram digest that shows only PR titles, a
 The 2026-10-27 audit found personal and financial data in tracked files. Listing those files by name in a public register would publish a map to them, so OPEN_ITEMS names the class of data and the remedy and the file list stays in the operator's private handoff.
 
 *Rule:* §2A — treat every commit as public.
+
+### L25-09 · A promote left long-running units on the old release (2026-10-31)
+**What happened.** Units whose WorkingDirectory is `CURRENT` resolve the symlink once, at start. The deploy restarted
+a fixed list, so tradeai-ops-applier ran 10-22 code until the operator restarted it by hand on 10-31 (it refused every
+newer Ops Controls kind as `KIND_UNKNOWN`) and went stale again at the next promote; grok-/chatgpt-oauth-proxy and
+heartbeat-receiver ran 10-11/10-13 code. Operator, verbatim: "Why does that keep happening and why do I need to keep
+resetting it? We need to build in a system that the system can automatically do that if needed with my approval and
+make an amendment." **Rule.** §25.10 (28.1.0): a fail-closed restart list (named units only, WorkingDirectory-bound,
+installed, §23.14 tokens over name/argv/env, approval and guard daemons excluded or session-gated, cap), each cwd read
+back and receipted, a P1 on failure, and the deploy continues.

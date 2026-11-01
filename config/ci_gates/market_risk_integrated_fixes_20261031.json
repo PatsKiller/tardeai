@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_integrated_fixes_20261031",
+  "files": [
+    "tests/test_market_risk_integrated_fixes_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_INTEGRATED_FIXES_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_INTEGRATED_FIXES_20261031 — integrated precision + rotation review findings: live evening exit",
+    "review from after-hours quotes knowable at now, per-session {tier, sectors} history (group_recovered across cycles),",
+    "wash-sale from the latest taxable loss only, canonical marks + stale-book UNKNOWN, earnings dict shape, unmeasured",
+    "group = exposure unknown, read-only connections, 2026 holdout in the track record, memory price/number guard on every",
+    "path, idempotent by trigger id, fan-out ledger written before apply with a per-day Hermes cap, no-edge caveat."
+  ]
+}

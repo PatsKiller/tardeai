@@ -121,6 +121,12 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
             else None
         ),
         "book": book,
+        "sectors": doc.get("sectors") or None,
+        "shock_type": doc.get("shock_type") or None,
+        "heatmap": doc.get("heatmap") or [],
+        "leadership": doc.get("leadership") or None,
+        "positions": doc.get("positions") or {},
+        "reentry_watch": doc.get("reentry_watch") or {},
         "probabilities": probs if isinstance(probs, list) and probs else None,
         "history": list(history or [])[-30:],
         "episode": None,
@@ -204,6 +210,12 @@ def build(
         "uplift": snapshot.get("uplift"),
         "episode": episode,
         "book": snapshot.get("book"),
+        "sectors": snapshot.get("sectors"),
+        "shock_type": snapshot.get("shock_type"),
+        "heatmap": list(snapshot.get("heatmap") or []),
+        "leadership": snapshot.get("leadership"),
+        "positions": snapshot.get("positions") or {},
+        "reentry_watch": snapshot.get("reentry_watch") or {},
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
         "sources": sources,
@@ -232,6 +244,17 @@ def ack_outcome(
     shown = (projection or {}).get("episode") or {}
     if wanted is None and shown.get("id"):
         wanted = str(shown.get("id"))
+    # the episode tier the PAGE showed, sent by the client as ``episode_tier`` (the projection here is rebuilt at POST
+    # time, so its tier is the server's current one, not what the operator saw — review of #2411, B1). It is required
+    # whenever an episode is open and checked under the ledger lock: an ORANGE->RED upgrade that lands after the page
+    # rendered is refused with the reason, never silently acknowledged.
+    shown_tier = str((body or {}).get("episode_tier") or "").strip() or None
     return esc.acknowledge(
-        wanted, actor=actor, channel="command_center", now=now or datetime.now(timezone.utc), path=path
+        wanted,
+        actor=actor,
+        channel="command_center",
+        now=now or datetime.now(timezone.utc),
+        path=path,
+        expected_tier=shown_tier,
+        require_expected_tier=True,
     )
