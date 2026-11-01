@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 R = "[REDACTED]"
 
@@ -27,17 +28,29 @@ _TOKEN_SHAPES = re.compile(
     r"|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{8,}"
     r"|\bgithub_pat_[A-Za-z0-9_]{8,}"
     r"|\bAIza[A-Za-z0-9_\-]{8,}"
-    r"|\bAKIA[0-9A-Z]{12,}"
+    r"|\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[0-9A-Z]{12,}"
     r"|\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}(?:\.[A-Za-z0-9_\-]+)?"
     r"|\b\d{6,12}:AA[A-Za-z0-9_\-]{6,}"
     r")"
 )
-_BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{6,}")
+_BEARER = re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=\-]{6,}")
+#: 2026-11-01 (review round 2): the whole value of an Authorization header, whatever its scheme
+#: ("Token <v>", "Bearer <v>", "Basic <v>", a bare value), up to the closing quote or the line end.
+_AUTH_HEADER = re.compile(r"""(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?)[^"'\n,;}]+""")
+#: High-entropy runs: a bare secret has no key word to anchor on. Base64-alphabet runs of >= 20 that mix
+#: upper case, lower case and digits, and hex runs of >= 20 that mix digits and letters. Ordinary words,
+#: identifiers (underscores split them) and lower-case paths never have all three classes.
+_B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}={0,2}(?![A-Za-z0-9+/=])")
+_HEX_RUN = re.compile(r"(?<![0-9A-Za-z])[0-9a-fA-F]{20,}(?![0-9A-Za-z])")
 _SECRET_KEY_WORD = re.compile(
     r"(?i)(token|secret|passw(?:or)?d|pwd|api[_\-]?key|apikey|auth(?:orization)?(?![a-z])|credential|private[_\-]?key|"
-    r"session|cookie|dsn|access[_\-]?key|signature|sig\b)"
+    r"session|cookie|dsn|access[_\-]?key|signature|sig\b|key|client[_\-]?id|app[_\-]?key|key[_\-]?id)"
 )
-_KEY_VALUE = re.compile(r"""(?P<key>["']?[A-Za-z_][\w.\-]*["']?)(?P<sep>\s*[:=]\s*)(?P<q>["']?)(?P<val>[^\s"',;)}\]]+)""")
+#: A quoted value runs to its closing quote (it may hold spaces); an unquoted one stops at a delimiter.
+_KEY_VALUE = re.compile(
+    r"""(?P<key>["']?[A-Za-z_][\w.\-]*["']?)(?P<sep>\s*[:=]\s*)"""
+    r"""(?:(?P<q>["'])(?P<qval>[^"'\n]*)|(?P<val>[^\s"',;)}\]&]+))"""
+)
 _NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt)$")
 
 
@@ -54,27 +67,65 @@ def _redact_pairs(text: str) -> str:
             out.append(text[pos:])
             return "".join(out)
         key = match.group("key").strip("\"'")
-        secret = not _NOT_A_KEY.search(key) and _SECRET_KEY_WORD.search(key) and R[:-1] not in match.group("val")
+        group = "qval" if match.group("q") else "val"
+        value = match.group(group) or ""
+        secret = not _NOT_A_KEY.search(key) and _SECRET_KEY_WORD.search(key) and value and R[:-1] not in value
         if secret:
-            out.append(text[pos:match.start("val")] + R)
-            pos = match.end("val")
+            out.append(text[pos:match.start(group)] + R)
+            pos = match.end(group)
         else:
             out.append(text[pos:match.end("sep")])
             pos = match.end("sep")
+
+
+def _mixed(run: str) -> bool:
+    return any(c.islower() for c in run) and any(c.isupper() for c in run) and any(c.isdigit() for c in run)
+
+
+def _high_entropy(match: re.Match) -> str:
+    """Redact a mixed-class base64 run. A run with '/' (a URL path) loses only its qualifying segments,
+    so ``wss://host/ws/<token>`` keeps its host and path; a secret whose '/'-separated pieces are each
+    short (an AWS secret key) is redacted whole."""
+    run = match.group(0)
+    if "/" in run:
+        parts = run.split("/")
+        if any(len(part) >= 20 and _mixed(part) for part in parts):
+            return "/".join(R if len(part) >= 20 and _mixed(part) else part for part in parts)
+    return R if _mixed(run) else run
+
+
+def _hex_secret(match: re.Match) -> str:
+    run = match.group(0)
+    return R if any(c.isdigit() for c in run) and any(c.isalpha() for c in run) else run
+
+
+def _percent_decode(text: str) -> str:
+    """Decode %XX escapes (twice, for double-encoded bodies) so encoded keys and values are matched."""
+    for _ in range(2):
+        if "%" not in text:
+            break
+        decoded = unquote(text)
+        if decoded == text:
+            break
+        text = decoded
+    return text
 
 
 def redact_error_line(text: str, *, home: str | None = None) -> str:
     """Return ``text`` with credentials, tokens, query strings and home paths removed."""
     if not text:
         return text
-    out = str(text)
+    out = _percent_decode(str(text))
     out = _SECRETS_PATH.sub("~/.config/tradeai/secrets/" + R, out)
     out = _TELEGRAM_PATH.sub("/bot" + R, out)
     out = _URL_USERINFO.sub(r"\1" + R + "@", out)
     out = _URL_QUERY.sub(r"\1?" + R, out)
+    out = _AUTH_HEADER.sub(lambda m: m.group(1) + R, out)
     out = _BEARER.sub(lambda m: f"{m.group(1)} {R}", out)
     out = _TOKEN_SHAPES.sub(R, out)
     out = _redact_pairs(out)
+    out = _B64_RUN.sub(_high_entropy, out)
+    out = _HEX_RUN.sub(_hex_secret, out)
     home = home if home is not None else str(Path.home())
     if home and home != "/":
         out = out.replace(home, "~")

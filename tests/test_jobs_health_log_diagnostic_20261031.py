@@ -255,3 +255,142 @@ def test_success_tail_drops_the_cut_first_line(tmp_path):
 def test_redacts_url_credentials_without_a_secret_looking_key(tmp_path):
     shown = _shown(tmp_path, "OperationalError: could not reach postgresql://trade_ai:hunter2@127.0.0.1:5432/trade_ai")
     assert "hunter2" not in shown and "postgresql://[REDACTED]@127.0.0.1" in shown
+
+
+# ── Review round 2 (2026-11-01): shapes that still reached the page ─────────────────────────────────────
+# Every value below is synthetic. Key-shaped strings are assembled at runtime so the commit scanner does not flag them.
+_ASIA = "AS" + "IA" + "QWERTYUIOPASDFGH"
+_AWS_SECRET = "wJalr" + "XUtnFEMI/K7MDENG/bPxRfiCY" + "SYNTHKEY"
+_B64 = "c2stYW50LWFwaTAz" + "LXNlY3JldHZhbHVlMTIzNDU2"
+ROUND2 = [
+    ("RuntimeError: Authorization: Token 9f8e7d6c5b4a39281706", ["9f8e7d6c5b4a39281706"]),
+    (f"botocore.exceptions.ClientError: temp key {_ASIA} rejected", [_ASIA]),
+    (f"botocore.exceptions.ClientError: SignatureDoesNotMatch for secret {_AWS_SECRET}", [_AWS_SECRET, "K7MDENG"]),
+    (f"ValueError: bad padding in '{_B64}'", [_B64]),
+    ("RuntimeError: POST body grant_type%3Drefresh_token%26refresh_token%3DZx9FAKErefresh failed", ["Zx9FAKErefresh"]),
+    ("RuntimeError: body %7B%22access_token%22%3A%22Zx9FAKEaccess%22%7D", ["Zx9FAKEaccess"]),
+    ("RuntimeError: SCHWAB_APP_KEY=AbCdEfGh12345678 rejected", ["AbCdEfGh12345678"]),
+    ("RuntimeError: schwab client_id=AbCdEfGh1234 rejected", ["AbCdEfGh1234"]),
+    ("RuntimeError: missing ALPACA_KEY_ID=PKABCDEFGH12345678", ["PKABCDEFGH12345678"]),
+    ('RuntimeError: login failed password: "correct horse battery staple"', ["correct", "horse", "battery", "staple"]),
+    ("requests.exceptions.HTTPError: 401 for url: wss://stream.example.com/ws/AbCdSecretPathToken123",
+     ["AbCdSecretPathToken123"]),
+]
+
+
+def _round2(idx):
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    line, secrets = ROUND2[idx]
+    shown = redact_error_line(line, home="/home/nobody")
+    assert "[REDACTED]" in shown, shown
+    for secret in secrets:
+        assert secret not in shown, (secret, shown)
+    assert line.split(":", 1)[0] in shown
+    return shown
+
+
+def test_round2_authorization_token_scheme_value_redacted():
+    assert _round2(0) == "RuntimeError: Authorization: [REDACTED]"
+
+
+def test_round2_asia_temporary_aws_key_redacted():
+    _round2(1)
+
+
+def test_round2_bare_aws_secret_redacted():
+    _round2(2)
+
+
+def test_round2_bare_base64_blob_redacted():
+    _round2(3)
+
+
+def test_round2_url_encoded_refresh_token_redacted():
+    assert "grant_type=refresh_token" in _round2(4)  # decoded, and only the value goes
+
+
+def test_round2_url_encoded_access_token_redacted():
+    _round2(5)
+
+
+def test_round2_app_key_pair_redacted():
+    _round2(6)
+
+
+def test_round2_client_id_pair_redacted():
+    _round2(7)
+
+
+def test_round2_key_id_pair_redacted():
+    _round2(8)
+
+
+def test_round2_quoted_value_with_spaces_redacted_to_closing_quote():
+    assert _round2(9) == 'RuntimeError: login failed password: "[REDACTED]"'
+
+
+def test_round2_wss_path_token_redacted_and_host_kept():
+    assert "wss://stream.example.com/ws/[REDACTED]" in _round2(10)
+
+
+def test_round2_whole_authorization_header_in_a_dict_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("RuntimeError: headers={'Authorization': 'Bearer abc.def-ghi'}", home="")
+    assert shown == "RuntimeError: headers={'Authorization': '[REDACTED]'}"
+
+
+def test_round2_bearer_without_an_authorization_header_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("RuntimeError: upstream rejected Bearer abcdef.ghijkl-mnop", home="")
+    assert shown == "RuntimeError: upstream rejected Bearer [REDACTED]"
+
+
+def test_round2_other_users_home_path_is_shortened():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("FileNotFoundError: /home/alice/app/state.json", home="/home/nobody")
+    assert shown == "FileNotFoundError: ~/app/state.json"
+
+
+def test_round2_stderr_path_is_strictly_redacted():
+    stderr = "Traceback\n  File x\nRuntimeError: Authorization: Token 9f8e7d6c5b4a39281706\n"
+    shown = DD.cause({"stderr_tail": stderr})
+    assert "9f8e7d6c5b4a39281706" not in shown and "Authorization: [REDACTED]" in shown
+
+
+def test_round2_a_400_char_cut_never_leaves_a_token_fragment(tmp_path):
+    line = "RuntimeError: " + "y" * 380 + " sk-ant-api03-ABCDEFGHIJKLMNOP"
+    err = J.last_log_error(_log(tmp_path, line + "\n"))
+    assert "sk-" not in err["line"] and err["line"].endswith(" …") and len(err["line"]) <= 402
+
+
+def test_round2_ordinary_error_text_stays_readable():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    for text in (
+        "AssertionError: ALPACA_MODE must be paper",
+        "ModuleNotFoundError: No module named 'scripts.lib.jobs_health_log_diagnostic_20261031'",
+        'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed',
+        "requests.exceptions.ConnectionError: HTTPSConnectionPool(host='api.example.com', port=443): Max retries",
+        "OAuthError: invalid_grant (refresh expired 2026-10-30T16:57:02Z)",
+        "FileNotFoundError: /usr/lib/python3.14/site-packages/requests/adapters.py",
+        "ValueError: expected 50% of 2026-10-30 orders",
+    ):
+        assert redact_error_line(text, home="/home/nobody") == text
+
+
+def test_round2_telegram_path_token_of_any_shape_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("HTTPError: 404 for url: https://api.telegram.org/bot123456:abcdefghij/sendMessage", home="")
+    assert shown == "HTTPError: 404 for url: https://api.telegram.org/bot[REDACTED]/sendMessage"
+
+
+def test_round2_bare_lowercase_hex_secret_is_redacted():
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    shown = redact_error_line("ValueError: bad signature 9f8e7d6c5b4a39281706abcd", home="")
+    assert shown == "ValueError: bad signature [REDACTED]"
