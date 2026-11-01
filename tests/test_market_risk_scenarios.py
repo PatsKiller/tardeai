@@ -216,8 +216,8 @@ KNOWN_MISSES = {
     "covid2020": "Red at the 02-24 close, the first -3% day itself (20 sessions before the 03-23 trough), not one "
     "session before it: the 02-24 opening gap was STRESS but the market tier was still below Orange, so the "
     "single-evaluation shock rule did not apply",
-    "carry2024": "Red at the 08-05 close, not by 08-02: the window has three sessions and the unwind showed in the "
-    "08-05 opening gap",
+    # carry2024 removed 2026-10-31 (precision PR): with the AI-basket names in the fixture, the technical category's
+    # basket participation is measured instead of UNKNOWN, and the scenario now reaches its expectation.
     "dec2018_selloff": "max YELLOW: since review B2, Orange and Red need STRESS in their require_stress_any lists on "
     "the score path too; options_flow, cross_asset and event have no 2018 history, and breadth reached only WARN",
     "banks2023": "Orange by 03-10: max YELLOW; HY OAS history in the fixture starts 2023-11",

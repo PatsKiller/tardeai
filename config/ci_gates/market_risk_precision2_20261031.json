@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_precision2_20261031",
+  "files": [
+    "tests/test_market_risk_precision2_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_PRECISION2_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_PRECISION2_20261031 — staples/healthcare HOLD 'defensive group holding up' on 10-23/29/30, a",
+    "one-day dip near the high is never STRESS (price-weakness gate), a weak non-theme group does not trim a proxy in a",
+    "SECTOR shock, the evening EXIT review when the after-hours implied open reaches the stop, operator theme overrides."
+  ]
+}
