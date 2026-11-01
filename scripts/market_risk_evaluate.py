@@ -71,6 +71,32 @@ def persist(doc: dict, now: datetime) -> str:
     return str(d / "latest.json")
 
 
+RUN_RECEIPT_NAME = "run_last.json"
+
+
+def run_receipt_path() -> Path:
+    """``data/runtime/market_risk/run_last.json``: written by EVERY scheduled run, dry or apply (not by a replay), so
+    the lane's output signal and the stalled-escalation check see the evaluator alive during the shadow period."""
+    return state_dir() / RUN_RECEIPT_NAME
+
+
+def write_run_receipt(doc: dict, *, started: datetime, finished: datetime) -> str:
+    receipt = {
+        "schema": "MarketRiskRunReceipt@v1",
+        "lane_id": "market-risk-evaluate",
+        "started_at": started.astimezone(timezone.utc).isoformat(),
+        "finished_at": finished.astimezone(timezone.utc).isoformat(),
+        "mode": doc.get("mode"),
+        "session": doc.get("session"),
+        "as_of": doc.get("as_of"),
+        "tier": doc.get("tier"),
+        "score": doc.get("score"),
+        "sends": len(((doc.get("cycle") or {}).get("sends")) or []),
+    }
+    atomic_write_json(run_receipt_path(), receipt)
+    return str(run_receipt_path())
+
+
 def session_of(now: datetime) -> str:
     """NYSE session of ``now``: weekends and exchange holidays are ``closed``, and an early-close day's regular
     session ends at its early close (sessions.py; review of #2383)."""
@@ -336,6 +362,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--policy", default=str(POLICY_PATH))
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
+    ap.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="this run was launched by the scheduler (the market-risk-evaluate cron lines): write the run receipt "
+        "data/runtime/market_risk/run_last.json that the stalled-escalation check reads; manual runs never write it",
+    )
     a = ap.parse_args(argv)
     apply = a.apply and not a.dry_run
     if apply:
@@ -352,7 +384,8 @@ def main(argv: list[str] | None = None) -> int:
             os.close(lock_fd)
             print("market_risk_evaluate: another --apply run holds the lock; exiting", file=sys.stderr)
             return 0
-    now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
+    started = datetime.now(timezone.utc)
+    now = scoring._parse(a.as_of) if a.as_of else started
     if now is None:
         ap.error(f"--as-of {a.as_of!r} is not ISO-8601")
     policy = load_policy(a.policy)
@@ -379,6 +412,10 @@ def main(argv: list[str] | None = None) -> int:
     doc["session"] = session_of(now)
     if apply:
         doc["written"] = written.get("latest") or str(state_dir() / "latest.json")
+    if a.scheduled and not a.as_of and not a.fixture:
+        # only a scheduler-launched run (dry or apply) leaves the receipt; a manual or replay run never does, so a
+        # hand-run cannot mask a dead schedule (review of #2411, M8)
+        doc["run_receipt"] = write_run_receipt(doc, started=started, finished=datetime.now(timezone.utc))
     if a.as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:
