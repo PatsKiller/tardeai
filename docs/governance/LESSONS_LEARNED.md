@@ -1454,6 +1454,15 @@ Passing mentions and ticker collisions have repeatedly been read as subject news
 
 *Rule:* §29 News drives a rewrite only after checks. AGENTS.md 25.0.1 lines 6560-6564.
 
+
+### L24-18 · Nothing closed what agents opened (2026-10-30)
+The disk reached 99.75%. 646 git worktrees existed (332 abandoned, 59.6 GiB); `~/.cache/agent-tmp` held 43 GB;
+release prepares copied `.env.*` backups into every release; older DB dumps were "archived" on the same disk, freeing
+nothing. The reviewed hygiene rules were plan-only, failed every `--standing` plan on a non-claim file, and held any
+folder with a nested repo or a fixture timestamp. The config `.env` was truncated to 0 bytes during the full-disk
+window. Rule: agents close what they open (archive, then remove); a recurring, pressure-triggered sweep closes the
+rest; backups keep one on host and N+1 verified on Drive; growth is audited twice a week (AGENTS.md §24.14–§24.15).
+
 ## Coordinator, 2026-10-27 (rules added during the consolidation)
 
 ### LC-01 · Approvals the operator could not read (2026-10-27)
@@ -1467,3 +1476,13 @@ The operator approves merges from a Telegram digest that shows only PR titles, a
 The 2026-10-27 audit found personal and financial data in tracked files. Listing those files by name in a public register would publish a map to them, so OPEN_ITEMS names the class of data and the remedy and the file list stays in the operator's private handoff.
 
 *Rule:* §2A — treat every commit as public.
+
+### L25-09 · A promote left long-running units on the old release (2026-10-31)
+**What happened.** Units whose WorkingDirectory is `CURRENT` resolve the symlink once, at start. The deploy restarted
+a fixed list, so tradeai-ops-applier ran 10-22 code until the operator restarted it by hand on 10-31 (it refused every
+newer Ops Controls kind as `KIND_UNKNOWN`) and went stale again at the next promote; grok-/chatgpt-oauth-proxy and
+heartbeat-receiver ran 10-11/10-13 code. Operator, verbatim: "Why does that keep happening and why do I need to keep
+resetting it? We need to build in a system that the system can automatically do that if needed with my approval and
+make an amendment." **Rule.** §25.10 (28.1.0): a fail-closed restart list (named units only, WorkingDirectory-bound,
+installed, §23.14 tokens over name/argv/env, approval and guard daemons excluded or session-gated, cap), each cwd read
+back and receipted, a P1 on failure, and the deploy continues.

@@ -129,6 +129,13 @@ class RiskAssessment:
     analogs: list[dict[str, Any]] = field(default_factory=list)  # explanation only, never scored
     deescalates_if: str = ""
     hysteresis: dict[str, Any] = field(default_factory=dict)
+    sectors: dict[str, Any] = field(default_factory=dict)  # sectors.measure: stressed / resilient / rotating
+    shock_type: dict[str, Any] = field(default_factory=dict)  # shock_type.classify: SYSTEMIC / SECTOR / ...
+    heatmap: list[dict[str, Any]] = field(default_factory=list)  # sectors.heatmap; book exposure only when live
+    leadership: dict[str, Any] = field(default_factory=dict)  # leadership.measure: durable leadership turns
+    positions: dict[str, Any] = field(default_factory=dict)  # position_stances.stances (live only)
+    reentry_watch: dict[str, Any] = field(default_factory=dict)  # reentry_watch cards (live only)
+    session_history: list[dict[str, Any]] = field(default_factory=list)  # per-session {session, tier, sectors} (live)
     schema: str = SCHEMA_ASSESSMENT
 
     def to_dict(self) -> dict[str, Any]:

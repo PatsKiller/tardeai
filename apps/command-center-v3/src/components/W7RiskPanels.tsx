@@ -149,7 +149,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
   }
   const acknowledge = async () => {
     try {
-      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr?.episode?.id ?? null }) })
+      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr?.episode?.id ?? null, episode_tier: mr?.episode?.tier ?? null }) })
       const j: any = await r.json().catch(() => ({}))
       setAck(r.ok ? `Acknowledged ${shortTime(new Date().toISOString())}` : `Not recorded: ${j?.error ?? `HTTP ${r.status}`}${j?.detail ? ` — ${j.detail}` : ''}`)
     } catch (e) { setAck(`Not recorded: ${String(e)}`) }

@@ -13,6 +13,16 @@ summary: >
 
 # Rule 6 amendment — agents delete their own scratch, plus a scheduled purge
 
+> **Revised as 27.0.1 (2026-10-30, branch `wt/scratch-purge-fix-20261030`).** Review of #2303 found: the
+> agent worktree hand-delete overlapped rule W and contradicted §24.12 unamended; rule T did not read its config
+> (`idle_days`, `entry_regex` hard-coded or ignored) and has no PR-merged check; every `--standing` plan failed on
+> `claim_unreadable` because `coordination/claims/policy_broadcast_state.json` is not a claim; the schedule text
+> (daily host timer, "never n8n") contradicted the lane registry and the pending allowlist change. 27.0.1 keeps
+> agent self-delete for `~/.cache/agent-tmp/<task-id>` only, makes rule T config-driven and validated, and states
+> what the code checks. The first standing plan (2026-10-30, read-only) found rule T candidates worth 48 MB of the
+> 43 GB under `agent-tmp`: the rest is younger than two days or holds git worktrees. Sections below are the 27.0.0
+> text, kept for the record.
+
 **This is a PROPOSAL, not a ratification.** It changes §0 rule 6 and §17 (both
 `Approval-Class: OPERATOR_REQUIRED`, §20, §25.10) and comes back to the operator for explicit approval.
 

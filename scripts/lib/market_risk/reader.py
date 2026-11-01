@@ -464,6 +464,31 @@ class PgReader:
             "source": "market_quotes.market_cap",
         }
 
+    def etf_holdings(self, symbols: Iterable[str], *, end: datetime) -> list[dict[str, Any]]:
+        """Newest ``etf_holdings_snapshot`` rows per ETF at or before ``end``. The store exists only once its §7A row
+        is granted and the writer has run; until then this returns [] and sets ``etf_holdings_note``."""
+        syms = [str(s).upper() for s in symbols]
+        if not syms:
+            return []
+        try:
+            cur = self._cur()
+            cur.execute(
+                "SELECT etf, holding, name, weight, as_of FROM etf_holdings_snapshot s WHERE etf = ANY(%s) AND as_of <= %s "
+                "AND as_of = (SELECT max(as_of) FROM etf_holdings_snapshot t WHERE t.etf = s.etf AND t.as_of <= %s)",
+                (syms, _aware(end), _aware(end)),
+            )
+            return [
+                {"etf": r[0], "holding": r[1], "name": r[2], "weight": float(r[3]), "as_of": _iso(r[4])}
+                for r in cur.fetchall()
+            ]
+        except Exception as exc:  # noqa: BLE001 — the store may not exist yet; look-through falls back to factsheets
+            try:
+                self._conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            self.etf_holdings_note = f"etf_holdings_snapshot unavailable: {type(exc).__name__}"
+            return []
+
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
         events: list[dict[str, Any]] = []
