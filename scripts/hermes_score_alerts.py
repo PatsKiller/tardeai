@@ -145,7 +145,17 @@ def run(send=False):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--send", action="store_true")
-    run(send=ap.parse_args().send)
+    result = run(send=ap.parse_args().send)
+    # Durable execution proof for the Jobs projection. --dry-run returns at module import and
+    # never reaches here, so a plan cannot write a receipt (2026-11-01).
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+
+        write_lane_receipt("hermes-score-alerts", ok=True, exit_code=0,
+                           summary={"new_alerts": (result or {}).get("new_alerts")},
+                           script="scripts/hermes_score_alerts.py")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

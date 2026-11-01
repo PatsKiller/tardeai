@@ -151,6 +151,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = ap.parse_args(argv)
     out = run_once(apply=args.apply)
     print(json.dumps(out, indent=2, default=str))
+    if args.apply and out.get("ok"):
+        # Durable execution proof; a dry run appends no history and writes no receipt.
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+
+            write_lane_receipt("deepseek-balance-snapshot", ok=True, exit_code=0,
+                               summary={"mode": "apply"},
+                               script="scripts/deepseek_balance_snapshot.py")
+        except Exception:
+            pass
     return 0 if out.get("ok") else 2
 
 

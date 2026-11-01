@@ -431,6 +431,16 @@ def main() -> int:
         except OSError as exc:
             print(f"  receipt: could not write ({exc})", file=sys.stderr)
             return 2
+        # Durable execution proof for the Jobs projection: the JSONL row is data, not a record
+        # that a run happened. A --no-write run writes nothing (2026-11-01).
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+
+            write_lane_receipt("goal-loop-baseline", ok=True, exit_code=0,
+                               summary={"artifact_written": True},
+                               script="scripts/report_goal_loop_baseline.py")
+        except Exception:
+            pass
     return 0
 
 

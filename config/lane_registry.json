@@ -4187,8 +4187,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/deepseek_balance_history.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/deepseek-balance-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/deepseek_balance_snapshot.py writes a LaneRunReceipt on --apply when the snapshot succeeded; a dry run writes nothing. The history jsonl is data, not a run record (2026-11-01)."
       },
       "note": "Hourly DeepSeek account balance (free API, no tokens). Drops = what DeepSeek deducted; the spend report compares them with logged DeepSeek cost. Operator 2026-09-14: 'research exactly what the complete costs are with DeepSeek's website'.",
       "value_class": "Operationally Important",
@@ -4413,8 +4416,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/goal_loop_baseline.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/goal-loop-baseline_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/report_goal_loop_baseline.py writes a LaneRunReceipt after a successful append; --no-write writes nothing. The control jsonl row is data, not a run record (2026-11-01)."
       },
       "note": "P0 control row for the goal-loop plan. INSTALLED crontab 20 * * * * with /run/user/$UID/tradeai/env loaded (E7 2026-09-16). Intake uses AGENT_RUNTIME_DISPATCH_DSN.",
       "value_class": "Duplicated",
@@ -21188,9 +21194,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_alerts.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-score-alerts_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_score_alerts.py writes a LaneRunReceipt after a completed run; --dry-run returns at module import and writes nothing. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Unused",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",

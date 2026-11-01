@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_lane_receipts_batch3_20261101",
+  "files": [
+    "tests/test_cron_lane_receipts_batch3_20261101.py"
+  ],
+  "anchor": "CRON_LANE_RECEIPTS_BATCH3_20261101",
+  "comment": [
+    "ANCHOR: CRON_LANE_RECEIPTS_BATCH3_20261101 — hermes-score-alerts, deepseek-balance-snapshot",
+    "and goal-loop-baseline write a lane receipt on a real run; their dry-run branches write nothing."
+  ]
+}
