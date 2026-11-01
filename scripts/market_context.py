@@ -249,6 +249,12 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
                 live_price, px_field = (reg_price or 0.0), "regularMarketPrice"
             elif session == "afterhours":
                 live_price, px_field = (post_price or 0.0), "postMarketPrice"
+                if not live_price and reg_price:
+                    # No after-hours print (an index such as ^VIX never has one): the newest real price is TODAY's
+                    # regular close. Until 2026-10-31 this fell through to prev_close -- YESTERDAY's close -- so every
+                    # 17:30 run published the prior session's VIX: 10-30 run said 17.2 (the 10-29 close) on the day
+                    # VIX closed 19.42, and the Home header kept showing it all weekend.
+                    live_price, px_field = reg_price, "regularMarketPrice"
             else:                                  # closed / overnight / weekend
                 live_price, px_field = 0.0, "closed"
             price_is_stale = False

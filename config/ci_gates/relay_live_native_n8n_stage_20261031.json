@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "relay_live_native_n8n_stage_20261031",
+  "files": [
+    "tests/test_relay_live_native_n8n_stage_20261031.py"
+  ],
+  "anchor": "RELAY_LIVE_NATIVE_N8N_STAGE_20261031",
+  "comment": [
+    "ANCHOR: RELAY_LIVE_NATIVE_N8N_STAGE_20261031 — the relay live-lane render names any ACTIVE native n8n lane it",
+    "drops for having no scheduler.stage (four lanes went silently off 2026-10-31 13:20 ET)."
+  ]
+}
