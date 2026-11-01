@@ -1731,3 +1731,16 @@ def test_struck_jobs_are_released_in_chunks_of_the_bound_each_behind_an_answer(m
     assert bound == 10
     assert _running(log)[:27] == [25, *range(1, 11), 26, *range(11, 21), 27, *range(21, 25)]
     assert sorted(_done(log)) == list(range(25, 61))
+
+
+def test_a_bad_job_right_after_a_struck_chunk_does_not_end_the_run(monkeypatch):
+    """The released chunk is exempt from the bound. Counted, its 10 rejections would trip the bound; after an answer
+    only one probe is allowed, it would hit the next (bad) job, and the run would end as systemic."""
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 11)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 11)) | {12, 13}))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store=store)
+    assert _running(log) == [11, *range(1, 11), *range(12, 31)]
+    assert sorted(_done(log)) == [11, *range(14, 31)]
