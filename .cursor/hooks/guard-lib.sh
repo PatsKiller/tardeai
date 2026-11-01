@@ -46,6 +46,9 @@ classify_cmd() {
   [[ "$cmd" =~ (\>|\>\>|tee|sed[[:space:]]+-i|mv|cp|rm|truncate|install|dd)[^|]*\.cursor/approvals ]] && { echo approvals; return; }
   [[ "$cmd" =~ (cat|less|more|head|tail|strings|grep|awk|sed|cp|scp|rsync|base64|xxd|env|printenv|source|\.)[[:space:]].*\.env ]] && { echo secret; return; }
   [[ "$cmd" =~ (id_ed25519|id_rsa|authorized_keys|\.ssh/|\.pgpass|credentials) ]] && { echo secret; return; }
+  # gh on this host is logged in as the operator: printing its token is reading a secret.
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+token([[:space:]]|$) ]] && { echo secret; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth[[:space:]].*(-t|--show-token)([[:space:]=]|$) ]] && { echo secret; return; }
   [[ "$cmd" =~ (\>|\>\>|tee)[^|]*(\.env|\.pem|\.key|credentials|\.pgpass) ]] && { echo secret; return; }
   [[ "$cmd" =~ (API_KEY|SECRET|TOKEN|PASSWORD|COOKIE)= ]] && [[ "$cmd" =~ (\>|\>\>|tee) ]] && { echo secret; return; }
   [[ "$cmd" =~ (win_rate|profit_factor|closed_trades|interlock|gate_status) ]] && \
@@ -61,10 +64,20 @@ classify_cmd() {
   [[ "$cmd" =~ guard_push_free ]] && { echo git-push; return; }
   # gh on this host is logged in as the operator, so an agent-written comment or review would read as an operator
   # approval (AGENTS.md §28.15 item 8 evidence). Comment/review writes need a gh-write grant.
-  local _ghc='(^|[^[:alnum:]_.-])gh[[:space:]]+(pr|issue)[[:space:]]+(comment|review)([[:space:]]|$)'
+  # Issue create/edit/reopen/close/... are writes too: a standing push approval lives on an issue (§28.15 item 8 (c)).
+  # gh accepts flags between the noun and the verb (gh issue -R o/r reopen 50, gh issue --repo o/r comment ...):
+  # any number of -x / --flag, each with or without a value, may sit there.
+  local _ghf='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+  local _ghc="(^|[^[:alnum:]_.-])gh[[:space:]]+(pr|issue)${_ghf}[[:space:]]+(comment|review)([[:space:]]|\$)"
+  local _ghi="(^|[^[:alnum:]_.-])gh[[:space:]]+issue${_ghf}[[:space:]]+(create|new|edit|reopen|close|delete|transfer|pin|unpin|lock|unlock|develop)([[:space:]]|\$)"
+  # An alias can wrap any write (gh alias set ic 'issue comment'); defining or importing one is a write.
+  local _gha_alias="(^|[^[:alnum:]_.-])gh[[:space:]]+alias${_ghf}[[:space:]]+(set|import)([[:space:]]|\$)"
   local _gha='(^|[^[:alnum:]_.-])gh[[:space:]]+api[[:space:]]'
-  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
+  # Field flags spaced or attached (-f body=x, -fbody=x, -Fbody=@f, --field=..), --input, or a write method.
+  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-f|-F)[^[:space:]]|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
   [[ "$cmd" =~ $_ghc ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_ghi ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_gha_alias ]] && { echo gh-write; return; }
   if [[ "$cmd" =~ $_gha ]] && [[ "$cmd" =~ $_ghw ]] && [[ "$cmd" =~ (comments|reviews|issues|pulls|graphql) ]]; then
     echo gh-write; return
   fi

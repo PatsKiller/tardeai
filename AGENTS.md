@@ -1,17 +1,19 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.3.0
+Policy-Version:      29.4.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-11-01
-Last-Reviewed:       2026-11-01T14:30:00-05:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-11-01T17:30:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.2.1
+Supersedes:          29.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.4.0 is PROPOSED (MINOR) — a standing, dated operator push approval for agent branches (§28.15 item 8).** Operator 2026-11-01: "Yes, draft stand and approval."; class "minor". **Why MINOR:** the operator's choice; it adds an operator-authored, dated, revocable way to meet the existing approved-plan step, and §0 and every other push rail are unchanged. The active version governs until ratified.
 
 **29.3.0 is ACTIVE (MINOR) — draft-first PRs, stack discipline, and one merge window.** DSN-20261031-ci-load-reduction
 §4.2/§4.4/§4.5, operator-approved in session 2026-11-01 (§20; the operator chose "approve both rules" and "one window,
@@ -29,10 +31,6 @@ generated table in §7A now lists it as an active domain; no rule-text change. S
 Ratified 2026-10-31 (`APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c`, §20). Renumbered only, no rule-text change: ratified as 28.2.0 on
 2026-10-31 (`APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef`) before 29.0.0 merged. Merges after 29.1.0. Operator-approved citation fix (2026-10-31, "fix 29.2.0 citations"): §24.12 causes restored to L24-16; the new lesson is L24-19 (29.0.0 already owns L24-18). §0 rules 1–2 and §24.7 unchanged.
 
-**29.1.0 is ACTIVE (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Ratified
-2026-10-31 (`APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf`, §20). Renumbered only, no rule-text change: ratified as 28.1.0 on
-2026-10-31 (`APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351`) before 29.0.0 merged. §28.1 unchanged.
-
 **29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
 rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
 27.0.1 (#2309), 28.0.0 (#2310) and 29.0.0 (#2311); those PRs never merged and #2306 took 27.0.1 on main first, so the
@@ -42,7 +40,7 @@ a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`), but #2334 merged its own 28.0.0 firs
 `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
 nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
 
-Older banners (27.0.1 and before): `docs/governance/AGENTS_HISTORY.md`.
+Older banners (29.1.0, 27.0.1 and before): `docs/governance/AGENTS_HISTORY.md`.
 
 ---
 
@@ -2634,6 +2632,8 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
   force-pushing, resetting, running `filter-branch` or deleting a remote branch. The guard hook must not ask for
   a `git-push` grant on such a push; it logs it. Running `npm run`, Playwright,
   `pytest` or builds is never `deps`. *Cause: 2026-10-25 — Telegram grant asks (LESSONS L28-26).*
+  **Standing approval (29.4.0):** for the pusher's own live claim, an operator line `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` on the single operator issue "Standing push approvals" (pinned in `guard_push_free.py`; duplicates refuse) meets the plan step, once main's AGENTS.md is 29.4.0+ ACTIVE. Literal prefix `wt/` `feat/` `fix/` `chore/` `docs/` only; never `*` or anything matching `main`, `master`, `release/*`, `train/*`.
+  Expiry required (UTC date), ≤45 days from the comment's UTC date, void when past. A later `REVOKE_PUSH_STANDING` in any markup voids earlier lines; any close voids earlier comments for good, even after a reopen; an edited operator comment refuses; fenced, indented or HTML-commented lines never count. To void and later restore, close and reopen that same issue and post a new line; a second issue with the same title locks the standing path out. All other checks run; the guard log records the comment URL. *Cause: LESSONS L28-31.*
 - **9 What reaches the operator is §17;** everything else ships through §25.10, and spending money is never delegated.
   *Cause: 2026-10-25 — "fully automatic" (LESSONS L28-27).*
 - **10 No self-review.** A sign-off counts only from a reviewer other than the author's agent and session; `SELF`
@@ -2672,6 +2672,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.4.0 | 2026-11-01 | PROPOSED | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close` (flags allowed before the verb), `gh alias set` and attached `gh api` field writes are `gh-write`; `gh auth token` is `secret`). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | PENDING `APPROVE_AGENTS_POLICY_29_4_0 <PR> <head-sha>` |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |
