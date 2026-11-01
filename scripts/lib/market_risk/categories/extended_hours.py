@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from scripts.lib.market_risk import sessions
 from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
 
 CATEGORY = "extended_hours"
@@ -72,10 +73,19 @@ def _move(row: dict[str, Any]) -> float | None:
     return 100.0 * (price - prev) / prev if prev else None
 
 
-def _latest(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+EXTENDED_SESSIONS = ("premarket", "afterhours", "overnight", "extended", "pre", "post")
+
+
+def _latest(rows: list[dict[str, Any]], sources: list[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Newest extended-session quote per symbol. A row naming a ``source`` outside ``sources`` is skipped: a feed
+    whose price is the regular-session close (yfinance ``regularMarketPrice``) fetched at 18:00 is not an
+    after-hours print, and reading it as one would report a flat after-hours market that was never measured."""
+    allowed = {str(x).lower() for x in sources} if sources else None
     out: dict[str, dict[str, Any]] = {}
     for r in rows:
-        if str(r.get("session") or "").lower() not in ("premarket", "afterhours", "extended", "pre", "post"):
+        if str(r.get("session") or "").lower() not in EXTENDED_SESSIONS:
+            continue
+        if allowed is not None and r.get("source") and str(r["source"]).lower() not in allowed:
             continue
         s = str(r.get("symbol") or "").upper()
         if s and (s not in out or str(r.get("as_of")) > str(out[s].get("as_of"))):
@@ -83,12 +93,48 @@ def _latest(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _last_close(now):
+    """The instant of the most recent regular-session close at or before ``now`` (so a Saturday or Sunday evaluation
+    still sees Friday's after-hours quotes and can report their age instead of "no quotes")."""
+    from datetime import datetime as _dt
+
+    d = now.astimezone(ET).date()
+    for _ in range(10):
+        if sessions.is_trading_day(d):
+            t = _dt.combine(d, sessions.close_time(d), ET)
+            if t <= now:
+                return t
+        d -= timedelta(days=1)
+    return now
+
+
+def _age(row: dict[str, Any], ctx: EvalContext) -> float | None:
+    """Age of a quote in the same clock the scorer decays with (``decay.clock``; market hours by default)."""
+    from scripts.lib.market_risk.categories._marketdata import ts as _ts
+    from scripts.lib.market_risk.scoring import _age_hours
+
+    at = _ts(row)
+    return None if at is None else _age_hours(at, ctx.now, ctx.policy.get("decay") or {})
+
+
+def _et_label(iso: Any) -> str:
+    from scripts.lib.market_risk.categories._marketdata import ts as _ts
+
+    t = _ts({"as_of": iso}) if iso else None
+    return t.astimezone(ET).strftime("%a %m-%d %H:%M ET") if t else "time unknown"
+
+
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy.get("extended_hours") or {}
     proxies = [str(s).upper() for s in cfg.get("index_proxies") or ["QQQ", "SPY"]]
     heavy = [str(s).upper() for s in cfg.get("heavyweights") or []]
-    start = ctx.now - timedelta(hours=float(cfg.get("lookback_hours", 18)))
-    latest = _latest(ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now))
+    start = min(ctx.now - timedelta(hours=float(cfg.get("lookback_hours", 18))), _last_close(ctx.now))
+    latest = _latest(ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now), cfg.get("extended_sources"))
+    stale_h = float(cfg.get("stale_after_hours", 2))
+    aged = {s: _age(latest[s], ctx) for s in latest}
+    fresh = {s: r for s, r in latest.items() if aged[s] is not None and aged[s] <= stale_h}
+    old_quotes = {s: r for s, r in latest.items() if s not in fresh}
+    latest = fresh
     shock = (ctx.extras or {}).get("opening_shock") or {}
     moves = {s: _move(latest[s]) for s in proxies if s in latest and _move(latest[s]) is not None}
     try:
@@ -97,17 +143,33 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         print(f"market_risk: extended_hours gap proxy failed ({type(exc).__name__}: {exc})", file=sys.stderr)
         gaps = {}
     if not moves and not shock.get("shock") and not gaps:
+        newest = [
+            (s, r)
+            for s, r in sorted(old_quotes.items(), key=lambda kv: str(kv[1].get("as_of")), reverse=True)
+            if s in proxies
+        ]
+        if newest:
+            s0, r0 = newest[0]
+            m0 = _move(r0)
+            mv = f" {m0:+.1f}%" if m0 is not None else ""
+            return unknown(
+                CATEGORY,
+                ctx.now,
+                f"latest extended-session quote {s0}{mv} ({r0.get('session')}, {_et_label(r0.get('as_of'))}, "
+                f"{r0.get('source') or 'quote'}) is {aged[s0]:.1f} market hours old, beyond {stale_h:g}h; "
+                "no fresher extended-session quote and no opening print for the index proxies",
+            )
         return unknown(CATEGORY, ctx.now, "no extended-session quotes and no opening print for the index proxies")
     warn, stress = float(cfg.get("warn_pct", -0.75)), float(cfg.get("stress_pct", -1.5))
     worst_sym = min(moves, key=moves.get) if moves else None
     worst = moves[worst_sym] if worst_sym else 0.0
     evidence = [
         Evidence(
-            label=f"{s} extended-session move vs previous close",
+            label=f"{s} {latest[s].get('session') or 'extended'} move vs {latest[s].get('reference') or 'previous close'}",
             value=round(m, 2),
             as_of=latest[s].get("as_of"),
-            source="market_quotes",
-            detail=f"{m:+.1f}%",
+            source=f"market_quotes:{latest[s].get('source')}" if latest[s].get("source") else "market_quotes",
+            detail=f"{m:+.1f}% ({_et_label(latest[s].get('as_of'))}, {aged[s]:.1f}h old)",
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
     ]
@@ -179,7 +241,6 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         [str(latest[s].get("as_of")) for s in latest] + [str(g["as_of"]) for g in gaps.values()],
         default=ctx.now.isoformat(),
     )
-    stale_h = float(cfg.get("stale_after_hours", 2))
     if gaps and not latest:
         stale_h = float((cfg.get("gap_proxy") or {}).get("stale_after_hours", 7))
     return CategoryObservation(

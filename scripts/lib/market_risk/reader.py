@@ -31,6 +31,11 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 from zoneinfo import ZoneInfo
 
+try:
+    from scripts.lib.market_risk import sessions as mr_sessions
+except ImportError:  # pragma: no cover - scripts/ on sys.path
+    from lib.market_risk import sessions as mr_sessions  # type: ignore[no-redef]
+
 ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
@@ -141,15 +146,58 @@ class PgReader:
 
     # -- DataReader -------------------------------------------------------------------------------------------
     def quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Quote snapshots in [start, end], each tagged with the US equity ``session`` it was fetched in
+        (``sessions.session_label``: premarket / regular / afterhours / overnight / closed). ``market_quotes`` stores
+        no session, so before this tag every production row was ignored by the extended_hours category.
+
+        Reference price: the Alpaca writer stores ``prev_close`` = the session BEFORE the newest daily bar, so a quote
+        fetched after the close of trading day D still carries D-1's close (Friday 16:09: QQQ 690.80 vs Thursday
+        715.42 = -3.4%, the regular-session move, not an after-hours one). Rows fetched on D at or after D's close are
+        re-based on D's own last regular-session quote (``reference``); when none exists their reference is dropped
+        (``prev_close`` None) rather than reporting the day's move as an extended one."""
         rows = self._rows(
             "SELECT symbol, source, price, prev_close, day_change_pct, volume, fetched_at FROM market_quotes "
             "WHERE symbol = ANY(%s) AND fetched_at >= %s AND fetched_at <= %s ORDER BY symbol, fetched_at",
             [list(symbols), _aware(start), _aware(end)],
         )
+        post_close: dict[date, list[dict[str, Any]]] = defaultdict(list)
         for r in rows:
-            r["as_of"] = _iso(r["fetched_at"])
+            t = r["fetched_at"]
+            t = t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+            local = t.astimezone(ET)
+            r["session"] = mr_sessions.session_label(t)
+            r["reference"] = "prev_close"
+            if mr_sessions.is_trading_day(local.date()) and local.time() >= mr_sessions.close_time(local.date()):
+                cl = mr_sessions.close_time(local.date())
+                if local.time() <= time(cl.hour, cl.minute, 59):
+                    r["session"] = "regular"  # the closing snapshot (same cutoff as REGULAR_CLOSE_CUTOFF_ET)
+                else:
+                    post_close[local.date()].append(r)
+            r["as_of"] = _iso(t)
             r["fetched_at"] = r["as_of"]
+        for d, todo in post_close.items():
+            closes = self._regular_last(sorted({r["symbol"] for r in todo}), d, end=_aware(end))
+            for r in todo:
+                ref = closes.get(r["symbol"])
+                r["prev_close_stored"] = r.get("prev_close")
+                r["prev_close"] = ref["price"] if ref else None
+                r["reference"] = f"regular close {d.isoformat()}" if ref else "no regular close found"
+                r["reference_as_of"] = _iso(ref["fetched_at"]) if ref else None
         return rows
+
+    def _regular_last(self, symbols: list[str], d: date, *, end: datetime) -> dict[str, dict[str, Any]]:
+        """Last regular-session quote of each symbol on trading day ``d`` that existed by ``end`` (D's close)."""
+        lo = datetime.combine(d, time(9, 30), ET)
+        cl = mr_sessions.close_time(d)
+        hi = min(datetime.combine(d, time(cl.hour, cl.minute, 59), ET), end)
+        if hi < lo:
+            return {}
+        rows = self._rows(
+            "SELECT DISTINCT ON (symbol) symbol, price, fetched_at FROM market_quotes WHERE symbol = ANY(%s) "
+            "AND price IS NOT NULL AND fetched_at >= %s AND fetched_at <= %s ORDER BY symbol, fetched_at DESC",
+            [symbols, lo, hi],
+        )
+        return {r["symbol"]: r for r in rows if r.get("price") is not None}
 
     def daily_bars(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
         syms = [s.upper() for s in symbols]

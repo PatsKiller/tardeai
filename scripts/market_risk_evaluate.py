@@ -8,6 +8,8 @@
   # evaluate, write, alert: the assessment (data/runtime/market_risk/latest.json + a dated receipt), the snapshot every
   # consumer reads (data/runtime/market_risk_latest.json, market_risk_projection.SNAPSHOT_REL), then the sends:
   python3 scripts/market_risk_evaluate.py --apply
+  # shadow: evaluate and write the receipt + the snapshot Home/API read, with no alert path at all:
+  python3 scripts/market_risk_evaluate.py --shadow
 
 Advisory only (MBI_BEHAVIOR = 0). On --apply the assessment and the snapshot are written BEFORE any card is sent, and
 every card's dedupe key is claimed in the sent-key ledger before the send, so a crash cannot re-send (review of #2362,
@@ -55,40 +57,35 @@ def snapshot_path() -> Path:
     return state_root() / SNAPSHOT_REL
 
 
-def persist(doc: dict, now: datetime) -> str:
-    """Write the assessment (prior for the next run + dated receipt) and the consumers' snapshot. Atomic."""
+SHADOW_PRIOR = "shadow_latest.json"
+
+
+def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
+    """Write the assessment (prior for the next run + dated receipt) and the consumers' snapshot. Atomic.
+
+    ``shadow``: the receipt is ``<stamp>-shadow.json`` and the prior is ``shadow_latest.json``, so a shadow run never
+    becomes the live prior (the first live --apply still announces its tier as a transition)."""
     from scripts.lib.market_risk_projection import snapshot_from_assessment
 
     d = state_dir()
     stamp = now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     body = {k: v for k, v in doc.items() if k != "cycle"}
-    atomic_write_json(d / "receipts" / f"{stamp}.json", body)
-    atomic_write_json(d / "latest.json", body)
+    atomic_write_json(d / "receipts" / f"{stamp}{'-shadow' if shadow else ''}.json", body)
+    atomic_write_json(d / (SHADOW_PRIOR if shadow else "latest.json"), body)
     prev = _read_prior(snapshot_path()) or {}
     hist = [h for h in (prev.get("history") or []) if isinstance(h, dict)]
     hist.append({"as_of": doc.get("as_of"), "score": doc.get("score"), "tier": doc.get("tier")})
     atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))
-    return str(d / "latest.json")
+    return str(d / (SHADOW_PRIOR if shadow else "latest.json"))
 
 
 def session_of(now: datetime) -> str:
-    """NYSE session of ``now``: weekends and exchange holidays are ``closed``, and an early-close day's regular
-    session ends at its early close (sessions.py; review of #2383)."""
+    """US equity session of ``now`` (sessions.session_label): premarket / regular / afterhours / overnight (the 24/5
+    session, Sunday 20:00 to Friday 04:00 ET) / closed. Weekends and exchange holidays are ``closed`` outside the
+    overnight session, and an early-close day's regular session ends at its early close (review of #2383)."""
     from scripts.lib.market_risk import sessions
 
-    et = now.astimezone(ET)
-    if not sessions.is_trading_day(et.date()):
-        return "closed"
-    hm = et.hour * 60 + et.minute
-    close = sessions.close_time(et.date())
-    close_m = close.hour * 60 + close.minute
-    if 4 * 60 <= hm < 9 * 60 + 30:
-        return "premarket"
-    if 9 * 60 + 30 <= hm < close_m:
-        return "regular"
-    if close_m <= hm < 20 * 60:
-        return "afterhours"
-    return "closed"
+    return sessions.session_label(now)
 
 
 def production_reader() -> Any:
@@ -325,10 +322,39 @@ def _read_prior(path: Path) -> dict | None:
         return None
 
 
+def _shadow(now: datetime, reader: Any, policy: dict, prior: dict | None, portfolio, *, as_json: bool) -> int:
+    """--shadow: evaluate, then persist the receipt, the shadow prior and the consumers' snapshot. The alert path
+    (outbox, episode store, sent-key ledger, curation, send_telegram) is never imported or called."""
+    assessment = evaluate(now, reader, policy, prior, portfolio)
+    doc = assessment.to_dict()
+    doc["mode"] = "shadow"
+    doc["session"] = session_of(now)
+    doc["written"] = persist(doc, now, shadow=True)
+    doc["snapshot"] = str(snapshot_path())
+    if as_json:
+        print(json.dumps(doc, indent=2, default=str))
+    else:
+        print(f"[market-risk] shadow as_of {doc['as_of']} session {doc['session']} (no alert path)")
+        for line in explain.card_lines(assessment):
+            print("  " + line)
+        print(
+            f"  hysteresis: raw {assessment.hysteresis.get('raw_tier')} -> {assessment.tier} "
+            f"(bootstrap={assessment.hysteresis.get('bootstrap')})"
+        )
+        print(f"  wrote {doc['written']} and {doc['snapshot']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="write latest.json + dated receipt")
-    ap.add_argument("--dry-run", action="store_true", help="default; overrides --apply")
+    ap.add_argument("--dry-run", action="store_true", help="default; overrides --apply and --shadow")
+    ap.add_argument(
+        "--shadow",
+        action="store_true",
+        help="evaluate and write the receipt + the snapshot Home/API read (mode shadow, prior shadow_latest.json); "
+        "no outbox, no episode, no Telegram/email/SMS, never the live prior",
+    )
     ap.add_argument("--as-of", help="ISO-8601 instant to evaluate (replay)")
     ap.add_argument("--fixture", help="fixture directory for a replay reader (scripts/lib/market_risk/fixture_reader)")
     ap.add_argument("--overlay", help="overlay fixture directory (e.g. tests/fixtures/market_risk_scenarios/oct2026)")
@@ -337,8 +363,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
     a = ap.parse_args(argv)
-    apply = a.apply and not a.dry_run
-    if apply:
+    apply = a.apply and not a.dry_run and not a.shadow
+    shadow = a.shadow and not a.dry_run
+    if apply or shadow:
         # one evaluator at a time (review round 3, H5): an overlapping cron/manual --apply exits cleanly instead of
         # racing the first one into a second RED initial
         import fcntl
@@ -361,9 +388,12 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2
-    prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / "latest.json")
+    prior_name = SHADOW_PRIOR if shadow else "latest.json"
+    prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / prior_name)
     prior = _read_prior(prior_path) if prior_path else None
     portfolio = None if a.no_portfolio else portfolio_context(now)
+    if shadow:
+        return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json)
     written: dict[str, str] = {}
 
     def _persist(d: dict) -> None:

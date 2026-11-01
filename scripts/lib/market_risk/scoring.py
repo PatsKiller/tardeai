@@ -35,13 +35,27 @@ def _parse(ts: str | None) -> datetime | None:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def _age_hours(at: datetime, now: datetime, cfg: dict) -> float:
+    """Age of an observation for decay and staleness. ``decay.clock: market`` counts only hours in which the market
+    could have produced newer information (``sessions.market_hours_between``): a weekend or holiday does not age
+    Friday's close, and from ``decay.reopen_et`` on the evening before a trading day (index futures and Asia open
+    Sunday 18:00 ET) the clock runs again. Any other value (or none) is wall-clock hours."""
+    if str(cfg.get("clock") or "wall").lower() == "market":
+        reopen = None
+        if cfg.get("reopen_et"):
+            hh, mm = str(cfg["reopen_et"]).split(":")
+            reopen = time(int(hh), int(mm))
+        return max(0.0, sessions.market_hours_between(at, now, reopen=reopen))
+    return max(0.0, (now - at).total_seconds() / 3600.0)
+
+
 def decay_weight(obs: c.CategoryObservation, now: datetime, policy: dict) -> tuple[float, float | None]:
     """(weight, age_hours). Weight 0 means stale beyond stale_after: the category becomes UNKNOWN."""
     cfg = policy["decay"]
     at = _parse(obs.observed_at)
     if at is None:
         return 0.0, None
-    age = max(0.0, (now - at).total_seconds() / 3600.0)
+    age = _age_hours(at, now, cfg)
     stale_after = obs.stale_after_hours if obs.stale_after_hours is not None else cfg["default_stale_after_hours"]
     if age > float(stale_after):
         return 0.0, age
