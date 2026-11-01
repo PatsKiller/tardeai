@@ -10,6 +10,8 @@ Gate. ``scripts/lib/hands_off_policy.py`` (read of ``<release>/AGENTS.md``, no e
 ACTIVE, ``resolve`` returns exactly what ``n8n_due.parse_relay_live_lanes`` returned before this module existed:
 the whitespace-split value of ``TRADEAI_N8N_RELAY_LIVE_LANES`` from the process environment, missing key = missing
 list (the relay refuses live, the dispatcher refuses to downgrade). Nothing else in this module runs.
+From 2026-10-31 the header no longer decides this once ``config/n8n_relay_live_source.json`` is present: that
+file pins the registry render as the base, one-way (``live_source``). A header edit cannot move the live set.
 
 Registry list (``registry_live_lanes``; rendered at deploy by ``scripts/render_n8n_relay_live_lanes.py`` into
 ``<release>/N8N_RELAY_LIVE_LANES.json``, a release-owned file stamped with the build sha and the sha256 of the
@@ -142,6 +144,37 @@ def legacy_lanes(environ: Mapping[str, str]) -> Optional[frozenset[str]]:
 def policy_active(root: Path | str = ROOT) -> dict[str, Any]:
     p = Path(root) / "AGENTS.md"
     return _memo("policy", p, lambda: _hop.policy_state_from_path(p))
+
+
+SOURCE_REL = "config/n8n_relay_live_source.json"
+SOURCE_SCHEMA = "N8nRelayLiveSource@v1"
+PINNED_SOURCE = "registry_render"
+
+
+def live_source(root: Path | str = ROOT) -> dict[str, Any]:
+    """Which layer is the base live list, decided by ``config/n8n_relay_live_source.json``, not by AGENTS.md.
+
+    2026-10-31: the base list used to follow the AGENTS.md header (``policy_active``). A no-rule-text PATCH that only
+    flipped ``Status:`` between PROPOSED and ACTIVE moved the live set by 10 lanes (5 dropped, 5 added, including
+    trade-ai-scalp-live) with no operator step. The setting is ONE-WAY: when the file exists the base is the
+    registry render and the header is not read for this decision. The only accepted value is ``registry_render``; a
+    present file naming anything else, or one that does not parse, still pins the registry render (it never falls
+    back to the header). Removing the file is guarded by tests/test_relay_live_source_oneway_20261031.py and, at
+    promote, by the live-set diff gate (scripts/relay_live_set_gate.py).
+    """
+    p = Path(root) / SOURCE_REL
+
+    def read():
+        if not p.exists():
+            return {"pinned": False, "detail": "source_config_absent"}
+        try:
+            doc = _read_json(p)
+        except (OSError, ValueError):
+            return {"pinned": True, "detail": "source_config_unreadable: pinned registry_render (one-way)"}
+        if not isinstance(doc, dict) or doc.get("schema") != SOURCE_SCHEMA or doc.get("source") != PINNED_SOURCE:
+            return {"pinned": True, "detail": "source_config_invalid: pinned registry_render (one-way)"}
+        return {"pinned": True, "detail": "ok"}
+    return _memo("source", p, read)
 
 
 # --------------------------------------------------------------------------- registry -> list
@@ -308,11 +341,13 @@ def read_ops_overrides(state: Path) -> tuple[Optional[frozenset[str]], str]:
 
 def resolve(environ: Mapping[str, str], root: Path | str = ROOT) -> dict[str, Any]:
     """The effective relay live list. ``lanes`` None = missing (callers refuse live, as before 20.4.0)."""
-    pol = policy_active(root)
-    if not pol.get("active"):
-        lanes = legacy_lanes(environ)
-        return {"source": "host_env_legacy", "lanes": lanes, "policy": pol.get("state"), "paused": [],
-                "detail": "AGENTS.md 20.4.0 not ACTIVE: host-file list unchanged"}
+    pin = live_source(root)
+    if not pin.get("pinned"):
+        pol = policy_active(root)
+        if not pol.get("active"):
+            lanes = legacy_lanes(environ)
+            return {"source": "host_env_legacy", "lanes": lanes, "policy": pol.get("state"), "paused": [],
+                    "detail": "AGENTS.md 20.4.0 not ACTIVE: host-file list unchanged", "source_pin": pin}
     base, why = load_render(root)
     source = "registry_render"
     if base is None:
