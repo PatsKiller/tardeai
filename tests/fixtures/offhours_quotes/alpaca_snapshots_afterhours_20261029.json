@@ -1,0 +1,82 @@
+{
+ "_note": "Synthetic values in the Alpaca /v2/stocks/snapshots shape (feed=iex). Clock for the dry run: 2026-10-29T18:00:00-04:00 (Thursday after-hours).",
+ "now": "2026-10-29T18:00:00-04:00",
+ "snapshots": {
+  "QQQ": {
+   "latestTrade": {
+    "p": 611.2,
+    "t": "2026-10-29T21:58:12.123456789Z"
+   },
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 615.0
+   },
+   "prevDailyBar": {
+    "t": "2026-10-28T04:00:00Z",
+    "c": 620.0
+   }
+  },
+  "SPY": {
+   "latestTrade": {
+    "p": 681.05,
+    "t": "2026-10-29T21:50:00Z"
+   },
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 683.1
+   },
+   "prevDailyBar": {
+    "t": "2026-10-28T04:00:00Z",
+    "c": 687.4
+   }
+  },
+  "NVDA": {
+   "latestTrade": {
+    "p": 197.4,
+    "t": "2026-10-29T21:59:30.5Z"
+   },
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 202.0
+   },
+   "prevDailyBar": {
+    "t": "2026-10-28T04:00:00Z",
+    "c": 207.0
+   }
+  },
+  "XLK": {
+   "latestTrade": {
+    "p": 290.1,
+    "t": "2026-10-29T19:59:59Z"
+   },
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 290.1
+   },
+   "prevDailyBar": {
+    "t": "2026-10-28T04:00:00Z",
+    "c": 293.0
+   }
+  },
+  "DIA": {
+   "latestTrade": {
+    "p": 0,
+    "t": "2026-10-29T21:55:00Z"
+   },
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 470.0
+   },
+   "prevDailyBar": {
+    "t": "2026-10-28T04:00:00Z",
+    "c": 471.0
+   }
+  },
+  "IWM": {
+   "dailyBar": {
+    "t": "2026-10-29T04:00:00Z",
+    "c": 245.0
+   }
+  }
+ }
+}

@@ -13,6 +13,7 @@ Usage:
     python3 scripts/external_market_data_ingest.py --fundamentals    # Finviz fundamentals via the data broker
     python3 scripts/external_market_data_ingest.py --fundamentals --dry-run --symbols V,CLF   # read-only preview
     python3 scripts/external_market_data_ingest.py --fred            # FRED macro snapshot
+    python3 scripts/external_market_data_ingest.py --quotes-offhours --dry-run   # Market Risk Engine off-hours (Alpaca)
     python3 scripts/external_market_data_ingest.py --all             # Everything
 """
 import json, os, sys, time
@@ -190,28 +191,11 @@ def _alpaca_creds():
             _env("ALPACA_SECRET_KEY") or _env("ALPACA_PAPER_SECRET_KEY") or _env("APCA_API_SECRET_KEY"))
 
 
-def _alpaca_prev_close(snap: dict):
-    """The last completed session's close, relative to the quote being stored.
-
-    Alpaca's ``prevDailyBar`` is the bar BEFORE ``dailyBar``. Before today's first
-    bar exists (overnight, pre-market, a Monday morning) ``dailyBar`` is still the
-    previous session, so ``prevDailyBar`` is two sessions back. Measured
-    2026-09-14 07:15-09:00 ET: HPE stored prev_close 55.23 (Thursday) against a
-    Friday close of 62.09 (Yahoo), so day_change_pct read +12.4% for a stock that
-    had not traded; 7 of 9 litmus symbols were wrong the same way.
-    """
-    daily = snap.get("dailyBar") or {}
-    prev = (snap.get("prevDailyBar") or {}).get("c")
-    try:
-        from zoneinfo import ZoneInfo
-        bar_day = datetime.fromisoformat(str(daily.get("t")).replace("Z", "+00:00")).astimezone(
-            ZoneInfo("America/New_York")).date()
-        today = datetime.now(ZoneInfo("America/New_York")).date()
-    except Exception:
-        return prev
-    if daily.get("c") and bar_day < today:
-        return daily.get("c")
-    return prev
+def _alpaca_prev_close(snap: dict, now=None):
+    """The last completed session's close, relative to the quote being stored (``now``: default wall clock).
+    One implementation: scripts/lib/offhours_quotes.alpaca_prev_close (2026-09-14 HPE litmus, see there)."""
+    from lib.offhours_quotes import alpaca_prev_close
+    return alpaca_prev_close(snap, now)
 
 
 def ingest_alpaca_quotes(symbols: list = None) -> dict:
@@ -255,6 +239,62 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
     missing = [s for s in symbols if s not in got]
     print(f"[alpaca] Fetched {fetched}/{len(symbols)} live quotes ({len(missing)} missing → fallback)")
     return {"source": "alpaca", "fetched": fetched, "total": len(symbols), "missing": missing}
+
+
+# ── Off-hours quotes for the Market Risk Engine (2026-10-31) ─────────────────────────────────────
+# 16:00-20:00 and 04:00-09:30 ET on trading days, the universe in config/market_risk_offhours_quotes.yaml (plus the
+# engine's large-cap list read from config/market_risk_policy.yaml). Same Alpaca IEX snapshot endpoint and the same
+# single writer as the regular lane; each row's fetched_at is the trade's own timestamp. NEVER_SCHEDULED in
+# config/lane_registry.json (lane external-market-data-ingest-offhours) until the operator activates it.
+
+def _alpaca_snapshots_fetch(symbols: list, feed: str = "iex", batch_size: int = 200) -> dict:
+    import requests
+    key, sec = _alpaca_creds()
+    if not (key and sec):
+        return {"_status": "no_creds", "_detail": "Alpaca key names unset"}
+    h = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec}
+    out: dict = {}
+    for i in range(0, len(symbols), batch_size):
+        chunk = symbols[i:i + batch_size]
+        r = requests.get("https://data.alpaca.markets/v2/stocks/snapshots",
+                         headers=h, params={"symbols": ",".join(chunk), "feed": feed}, timeout=25)
+        if r.status_code != 200:
+            print(f"  [alpaca-offhours] HTTP {r.status_code} on batch {i}")
+            continue
+        snaps = r.json()
+        if isinstance(snaps, dict):
+            out.update(snaps)
+    return out
+
+
+def ingest_alpaca_offhours_quotes(*, dry_run: bool = False, fixture: str | None = None, now=None,
+                                  force_window: bool = False, config_path: str | None = None) -> dict:
+    """One off-hours collection. ``fixture`` (a recorded snapshots JSON) replaces the network; ``dry_run`` opens
+    no database connection and writes nothing."""
+    from lib import offhours_quotes as oq
+    cfg = oq.load_config(config_path)
+    now = now or datetime.now(timezone.utc)
+    acfg = cfg.get("alpaca") or {}
+    if fixture:
+        doc = json.loads(Path(fixture).read_text(encoding="utf-8"))
+        fetch = lambda _syms: doc.get("snapshots", doc)  # noqa: E731
+    else:
+        fetch = lambda syms: _alpaca_snapshots_fetch(syms, acfg.get("feed", "iex"), int(acfg.get("batch_size", 200)))  # noqa: E731
+    conn_box: list = []
+
+    def write(rows: list):
+        conn = _get_conn(); conn_box.append(conn)
+        rc = write_market_quotes(conn.cursor(), rows, source="alpaca")
+        conn.commit()
+        return rc
+    try:
+        receipt = oq.run("alpaca", cfg=cfg, now=now, fetch=fetch, write=None if dry_run else write,
+                         dry_run=dry_run, force_window=force_window)
+    finally:
+        for c in conn_box:
+            c.close()
+    print(json.dumps(receipt, default=str, indent=1))
+    return receipt
 
 
 # ── Finviz (2nd-tier fallback: live quote.ashx, per-symbol incl. RVOL) ────────────────
@@ -883,6 +923,16 @@ if __name__ == "__main__":
         test()
     elif "--quotes" in sys.argv:
         ingest_quotes()  # Alpaca live-intraday primary → yfinance fallback
+    elif "--quotes-offhours" in sys.argv:
+        # Market Risk Engine off-hours collector. --dry-run writes nothing; --fixture PATH uses a recorded payload;
+        # --now ISO pins the clock (with a fixture); --force-window ignores the ET window (dry runs only).
+        _fx = sys.argv[sys.argv.index("--fixture") + 1] if "--fixture" in sys.argv else None
+        _now = (datetime.fromisoformat(sys.argv[sys.argv.index("--now") + 1])
+                if "--now" in sys.argv else None)
+        _dry = "--dry-run" in sys.argv
+        _r = ingest_alpaca_offhours_quotes(dry_run=_dry, fixture=_fx, now=_now,
+                                           force_window=_dry and "--force-window" in sys.argv)
+        sys.exit(0 if _r.get("status") in ("ok", "dry_run", "outside_window", "disabled") else 1)
     elif "--quotes-yf" in sys.argv:
         ingest_yfinance_quotes()  # legacy yfinance-only path (kept for comparison/debug)
     elif "--fundamentals" in sys.argv:

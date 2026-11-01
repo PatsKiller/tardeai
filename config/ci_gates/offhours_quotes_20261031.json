@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "offhours_quotes_20261031",
+  "files": [
+    "tests/test_offhours_quotes_20261031.py"
+  ],
+  "anchor": "OFFHOURS_QUOTES_20261031",
+  "comment": [
+    "ANCHOR: OFFHOURS_QUOTES_20261031 — Market Risk Engine off-hours quote collector (DSN-20261031-market-risk-engine).",
+    "Alpaca --quotes-offhours (16:00-20:00, 04:00-09:30 ET) and Schwab market-data quotes (OFF by default; AGENTS.md",
+    "28.2.0 / PR #2407 pending). Proves session tagging from each trade's own timestamp, universe read from config,",
+    "the Schwab path off by default and never reaching an order capability, and dry runs that write nothing.",
+    "Hermetic: fixtures only, no network, no DB, no credential. Schedules nothing."
+  ]
+}
