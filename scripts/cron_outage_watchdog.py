@@ -18,7 +18,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.lib.cron_outage_watchdog import evaluate, identity, instant, iso, job_key  # noqa: E402
+from scripts.lib.cron_outage_watchdog import (  # noqa: E402
+    advisory_mode, evaluate, identity, instant, iso, job_key)
 
 LATEST = "data/runtime/cron_outage_watchdog_latest.json"
 STATE = "data/runtime/cron_outage_watchdog_state.json"
@@ -134,6 +135,9 @@ def read_json(path: Path, max_bytes=2 * 1024 * 1024) -> dict:
 def collect(registry: dict, state_root: Path) -> dict:
     """Read only declared nonsecret data/log artifacts. Mtime is never collected as success."""
     events, successes, errors = [], {}, []
+    #: Lanes whose own declaration says a live receipt cannot exist (dry run / shadow / preflight).
+    #: Reported separately: an expected absence is coverage, never a monitor gap.
+    expected_absent = []
     journal = state_root / "logs/safe_flock_events.jsonl"
     try:
         st = journal.lstat()
@@ -169,6 +173,8 @@ def collect(registry: dict, state_root: Path) -> dict:
         # Only ACTIVE lanes are evaluated; a paused/retired/never-scheduled lane's absent log or
         # receipt is expected, not monitor blindness (it was 30 of 46 collection gaps 2026-10-24).
         active = lane.get("state") == "ACTIVE"
+        # A lane that declares a dry-run/shadow dispatch writes no live receipt by design.
+        advisory = advisory_mode(lane)
         if signal.get("kind") == "file_mtime" and str(signal.get("path") or "").endswith(".log"):
             # The journal itself can be refused/immutable. An explicit UTC
             # refusal on the wrapper's original stderr is still an observation;
@@ -205,13 +211,19 @@ def collect(registry: dict, state_root: Path) -> dict:
         path = (base / str(signal.get("path") or "")).resolve()
         if not path.is_relative_to(base / "data") and not path.is_relative_to(base / "logs"):
             if declared:
-                errors.append(f"{identity(lane)}:receipt_path_not_admitted")
+                if advisory:
+                    expected_absent.append({"lane_id": identity(lane), "mode": advisory})
+                else:
+                    errors.append(f"{identity(lane)}:receipt_path_not_admitted")
             continue
         try:
             receipt = read_json(path)
         except (OSError, ValueError):
             if declared:
-                errors.append(f"{identity(lane)}:receipt_unavailable")
+                if advisory:
+                    expected_absent.append({"lane_id": identity(lane), "mode": advisory})
+                else:
+                    errors.append(f"{identity(lane)}:receipt_unavailable")
             continue
         found = receipt_success(receipt, key if declared else None)
         if found:
@@ -219,6 +231,7 @@ def collect(registry: dict, state_root: Path) -> dict:
     jobs, census_gaps = registered_jobs(state_root)
     errors += census_gaps
     return {"events": events, "successes": successes, "collection_gaps": sorted(set(errors)),
+            "expected_absent_receipts": expected_absent,
             "registered_job_ids": sorted(jobs) if jobs is not None else None}
 
 
