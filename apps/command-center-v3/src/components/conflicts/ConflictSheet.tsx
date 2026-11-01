@@ -16,6 +16,8 @@ export type ConflictFinding = {
 }
 export type ConflictSection = {
   findings: ConflictFinding[]; headline: string | null; gap: {reason?: string; [key: string]: unknown} | null
+  /** A bounded page of a larger collection: the check ran, it has more records than one page. */
+  truncated?: { shown: number; total: number; limit?: number } | null
   source?: string; as_of?: string | null; stale?: boolean | null
 }
 export type ConflictDecision = {

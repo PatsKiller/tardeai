@@ -1578,5 +1578,19 @@ def main() -> int:
     return 0
 
 
+def _entry() -> int:
+    code = main()
+    if code == 0:
+        # --dry-run returns at module import, so this only ever runs on a live pass.
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("material-change-notifier-stage2", ok=True, exit_code=0,
+                               summary={"entry": "notify_material_change"},
+                               script="scripts/notify_material_change.py")
+        except Exception:
+            pass
+    return code
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_entry())

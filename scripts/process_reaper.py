@@ -327,6 +327,21 @@ def main():
             f"{n_reap} proc(s) {'reaped' if enabled else 'flagged (advisory)'}"
         )
 
+    # Durable execution proof for the Jobs projection: a completed sweep with exit 0, whether or
+    # not it found anything. Findings are the sweep's output, not a failure (2026-11-01).
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+
+        write_lane_receipt(
+            "process-reaper", ok=True, exit_code=0,
+            summary={"rules_tripped": len(findings),
+                     "actions": sum(len(f["actions"]) for f in findings),
+                     "enabled": enabled},
+            script="scripts/process_reaper.py",
+        )
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
     main()

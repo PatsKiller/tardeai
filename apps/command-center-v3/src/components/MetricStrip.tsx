@@ -437,6 +437,9 @@ export default function MetricStrip({ onDrill }: Props) {
       // The tile shows the POSITION observation. Saying "data_as_of" named no
       // clock at all; saying "positions observed" names the one on screen and
       // leaves the other three visibly absent rather than silently merged.
+      // The face names the newest observation; the amber stale chip names the decision clock
+      // (`data_as_of`, the oldest contributing row and its account), so both clocks are stated
+      // and neither label has to change meaning with the state.
       asOf: posNewest ?? overviewFresh.asOf,
       asOfLabel: 'positions observed',
       asOfNote: portfolioFaceNote,

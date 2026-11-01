@@ -66,6 +66,44 @@
         },
         "receipt_clock": "observed_at"
       }
+    },
+    {
+      "id": "n8n-breaker-probe",
+      "lane_id": "n8n-breaker-probe",
+      "why": "Half-open recovery for an n8n breaker that no completed run can close (Jobs & health review 2026-11-01). Host timer by design: it releases the very gate the dispatcher holds, so it must not depend on that dispatcher. Never probes a live canary lane; the operator releases those.",
+      "source_dir": "ops/systemd",
+      "units": [
+        "tradeai-n8n-breaker-probe.service",
+        "tradeai-n8n-breaker-probe.timer"
+      ],
+      "enable": [
+        "tradeai-n8n-breaker-probe.timer"
+      ],
+      "admission": {
+        "config": "config/n8n_breaker_probe.json",
+        "require": {
+          "enabled": true,
+          "review_status": "REVIEWED"
+        }
+      },
+      "dry_run": {
+        "argv": [
+          "scripts/n8n_breaker_probe.py",
+          "--dry-run",
+          "--json"
+        ],
+        "ok_exit": [
+          0
+        ],
+        "expect": {
+          "mode": "dry_run"
+        }
+      },
+      "verify": {
+        "active": [
+          "tradeai-n8n-breaker-probe.timer"
+        ]
+      }
     }
   ]
 }

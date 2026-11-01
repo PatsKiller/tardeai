@@ -42,3 +42,16 @@ def test_orchestrator_pile_up_keeps_oldest_under_cap_worker():
     flagged, reasons = process_reaper._flag(configured, [newest, oldest])
     assert flagged == [newest]
     assert "pile-up 2 > max_concurrent 1" in reasons[0]
+
+
+def test_a_completed_sweep_writes_a_lane_receipt(tmp_path, monkeypatch, capsys):
+    """The Jobs projection reads ok_at; a completed sweep is a run, even with no findings (2026-11-01)."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setattr(process_reaper, "_ps_snapshot", lambda: [])
+    monkeypatch.setattr(process_reaper, "_flag", lambda rule, procs: ([], []))
+    monkeypatch.setattr(sys, "argv", ["process_reaper"])
+    process_reaper.main()
+    receipt = json.loads((tmp_path / "data/runtime/process-reaper_last.json").read_text())
+    assert receipt["lane_id"] == "process-reaper"
+    assert receipt["status"] == "ok" and receipt["ok_at"]
+    assert receipt["summary"]["rules_tripped"] == 0

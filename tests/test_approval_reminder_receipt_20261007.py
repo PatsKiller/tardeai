@@ -205,3 +205,12 @@ def test_symlink_identity_and_stale_receipt(tmp_path):
     assert liveness(receipt, now=datetime.now(timezone.utc), max_age_s=3600) == "STALE"
     fresh = build_run_receipt([], now=datetime.now(timezone.utc), send_requested=False, recorded=False, sent=False)
     assert liveness(fresh, now=datetime.now(timezone.utc), max_age_s=3600) == "FRESH"
+
+
+def test_receipt_carries_an_explicit_ok_only_when_the_run_had_no_error():
+    """The Jobs projection reads this receipt's ok+as_of; a failed run must not advance ok_at (2026-11-01)."""
+    clean = build_run_receipt([], now=datetime.now(timezone.utc), send_requested=False, recorded=False, sent=False)
+    assert clean["ok"] is True
+    failed = build_run_receipt([{"kind": "approval"}], now=datetime.now(timezone.utc), send_requested=True,
+                               recorded=True, sent=False, error_class="sender_refusal")
+    assert failed["ok"] is False

@@ -1703,8 +1703,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "data/cio/wake_record_consult.json",
-        "key": "as_of"
+        "path": "data/runtime/cio-wake-dispatch_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/cio_wake_dispatch_entrypoint.py writes a LaneRunReceipt at the end of a live dispatch; --dry-run returns earlier with only the consult record (2026-11-01)."
       },
       "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended — a hand-run leaves no trace here.",
       "value_class": "Business Critical",
@@ -2549,8 +2551,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/rotation_summary_cache.json"
+        "kind": "json_key",
+        "path": "data/runtime/warm-caches_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/warm_caches.py:_receipt writes a LaneRunReceipt via lib.lane_last_receipt on every real run (2026-11-01). The previous file_mtime named the cache it refreshes, which a failed run also leaves behind."
       },
       "note": "DECLARED BY THE INTEGRATOR, not this lane's owner. The cron was added while PRs were in flight and check_lane_registry failed on clean main, blocking every merge. Facts used: the cron expression, and the script's own statement that it 'computes + writes data/runtime/rotation_summary_cache.json'. Cadence 1h against an 8-minute schedule -- deliberately loose, because an integrator guessing a tight cadence on someone else's lane manufactures false SILENTs. The owner should tighten it.",
       "value_class": "Technical Debt",
@@ -2794,8 +2799,11 @@
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/wakes.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/persistent-wake-hourly_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/run_persistent_wake.py writes a LaneRunReceipt after a live, non-select run; the previous path was outside the state root and never admitted (2026-11-01)."
       },
       "note": "The L1/L2/L3 wake spine. Every maturity claim about grounded cognition rests on this lane, and it was undeclared: nothing would have reported it silent. The signal is the durable wake store, not the cron log — a wake that refuses still appends a row, so the file advancing proves the lane ran even on a slot that produced no judgment. 2026-09-19: WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER=1 on this hourly line (actual L3 consumer).",
       "value_class": "Nice to Have",
@@ -2825,10 +2833,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "/home/johnclaw/trade-ai-state/persistent_wake/research_producer_health.json",
-        "key": "as_of"
+        "path": "data/runtime/governed-research-producer_last.json",
+        "key": "ok_at"
       },
-      "note": "L2's recurring organic research producer. Keyed on the health file's as_of rather than research_objects.jsonl mtime on purpose: the producer legitimately produces nothing when every target is budget-refused, and that run is still a run. outcome/produced in the same file say which.",
+      "note": "L2's recurring organic research producer. Keyed on the lane receipt's ok_at: the producer legitimately produces nothing when every target is budget-refused, and that run is still a run (summary.outcome says which). The runner writes the receipt with write_lane_receipt on a real run and nothing when disabled. The previous value named the wake health file outside the state root with key as_of, which the collector refuses (receipt_path_not_admitted) and which carries no ok flag (2026-11-01).",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
       "rationalization": {
@@ -3005,8 +3013,11 @@
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/material_change_notify.log"
+        "kind": "json_key",
+        "path": "data/runtime/material-change-notifier-stage2_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/notify_material_change.py writes a LaneRunReceipt at the entry point on a live pass; --dry-run returns at module import. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree).",
       "value_class": "Operationally Important",
@@ -3122,8 +3133,11 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/due_diligence_questions.log"
+        "kind": "json_key",
+        "path": "data/runtime/due-diligence-questions_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/due_diligence_questions.py writes a LaneRunReceipt at the entry point; --dry-run returns before it. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "note": "Stages 3-5 curation and routing. | 2026-09-14: gated to the operator window; weekday 21:00-09:00 ET produces nothing by design. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Operationally Important",
@@ -3286,9 +3300,13 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-usefulness-backfill_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_external_feedback_loop.py writes a LaneRunReceipt via lib.lane_last_receipt (2026-11-01); this closes the 'would make this verifiable' gap the note used to describe."
       },
-      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
+      "note": "Scores hermes_external_research.usefulness_score. A LaneRunReceipt now makes this lane verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P13",
       "rationalization": {
@@ -4180,8 +4198,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/deepseek_balance_history.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/deepseek-balance-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/deepseek_balance_snapshot.py writes a LaneRunReceipt on --apply when the snapshot succeeded; a dry run writes nothing. The history jsonl is data, not a run record (2026-11-01)."
       },
       "note": "Hourly DeepSeek account balance (free API, no tokens). Drops = what DeepSeek deducted; the spend report compares them with logged DeepSeek cost. Operator 2026-09-14: 'research exactly what the complete costs are with DeepSeek's website'.",
       "value_class": "Operationally Important",
@@ -4406,8 +4427,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/goal_loop_baseline.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/goal-loop-baseline_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/report_goal_loop_baseline.py writes a LaneRunReceipt after a successful append; --no-write writes nothing. The control jsonl row is data, not a run record (2026-11-01)."
       },
       "note": "P0 control row for the goal-loop plan. INSTALLED crontab 20 * * * * with /run/user/$UID/tradeai/env loaded (E7 2026-09-16). Intake uses AGENT_RUNTIME_DISPATCH_DSN.",
       "value_class": "Duplicated",
@@ -5409,7 +5433,8 @@
         "kind": "n8n",
         "expression": "c0d4c7845e5c4fcc",
         "match": "crontab_snapshot.txt.tmp",
-        "cadence": "*/20 * * * *"
+        "cadence": "*/20 * * * *",
+        "stage": "canary"
       },
       "expected_cadence_hours": 0.34,
       "state": "ACTIVE",
@@ -6436,7 +6461,8 @@
         "kind": "n8n",
         "expression": "078e8fcbea0c5020",
         "match": "scripts/n8n_pilot_dispatch.py",
-        "cadence": "*/15 * * * *"
+        "cadence": "*/15 * * * *",
+        "stage": "canary"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -6469,7 +6495,8 @@
         "kind": "n8n",
         "expression": "722fac0e043ea5c4",
         "match": "scripts/n8n_incident_fanin.py",
-        "cadence": "*/5 * * * *"
+        "cadence": "*/5 * * * *",
+        "stage": "canary"
       },
       "expected_cadence_hours": 0.1,
       "state": "ACTIVE",
@@ -7527,7 +7554,8 @@
         "kind": "n8n",
         "expression": "21fd15d5f8a4c4da",
         "match": "scripts/n8n_research_intake_consumer.py",
-        "cadence": "*/15 * * * *"
+        "cadence": "*/15 * * * *",
+        "stage": "canary"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -7585,8 +7613,11 @@
       "state_since": "2026-10-07",
       "state_reason": "Communications hub lifecycle (operator 2026-10-07): classify unclassified messages, mark expired by category TTL (operational 72h, market/securities 96h, watchlist 1 week), then archive (jsonl.gz under persistent-state/archive/comms_lifecycle) and remove expired and replaced (newer data on the same symbol) messages past a 24h grace. Operator decisions: same TTL for approvals/broker facts; archive-then-delete.",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/comms_lifecycle_latest.json"
+        "kind": "json_key",
+        "path": "data/runtime/comms-lifecycle_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/comms_lifecycle.py writes a LaneRunReceipt at the entry point on --apply; a dry run persists nothing. The latest-json was a report, not a run record (2026-11-01)."
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/COMMS_HUB_2026-10-07.md; tests/test_comms_hub_20261007.py.",
@@ -9933,10 +9964,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
-        "key": "checked_at",
+        "path": "data/runtime/classifier-health-check_last.json",
+        "key": "ok_at",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+        "evidence_ref": "scripts/monitoring/classifier_health_check.py writes a LaneRunReceipt at data/runtime/classifier-health-check_last.json via write_lane_receipt (state root). The previous value named a literal '~' path in the release dir with key checked_at; the collector never admitted it, so the lane could not be measured (2026-11-01)."
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",
@@ -18947,9 +18978,11 @@
       "expected_cadence_hours": 13.25,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/watchlist_agent_jobs_offpeak.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/run-watchlist-agent-jobs-offpeak_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/run_watchlist_agent_jobs_offpeak.sh writes a LaneRunReceipt via the standard Python writer only when the drain exits 0; a lock-skip, timeout or failure writes nothing (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -19215,9 +19248,11 @@
       "expected_cadence_hours": 744.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/monthly_trade_review.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/multi-tier-trade-reviewer-monthly_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/multi_tier_trade_reviewer.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P07",
@@ -20475,9 +20510,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/agent_event_router.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/agent-event-router_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/agent_event_router.py writes a LaneRunReceipt via lib.lane_last_receipt after a completed live drain; a dry run writes nothing. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",
@@ -20640,9 +20677,11 @@
       "expected_cadence_hours": 0.17,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/claude_escalation.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/claude-escalation-handler_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/claude_escalation_handler.py writes a LaneRunReceipt after process_queue on a non-dry run. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -21139,9 +21178,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_directive_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-directive-discovery_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_directive_discovery.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -21171,9 +21212,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_alerts.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-score-alerts_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_score_alerts.py writes a LaneRunReceipt after a completed run; --dry-run returns at module import and writes nothing. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Unused",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",
@@ -21766,10 +21809,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/oauth_lane_status.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/oauth_lane_keepalive.py:20 STATUS_FILE, _save_status(state) at :95 each run; host mtime 2026-10-09T16:00:20"
+        "kind": "json_key",
+        "path": "data/runtime/oauth_lane_keepalive_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/oauth_lane_keepalive.py writes a LaneRunReceipt at data/runtime/oauth_lane_keepalive_last.json via lib.lane_last_receipt on every real run (lane id oauth-lane-keepalive). STATUS_FILE is the per-lane probe state, which a failed probe also rewrites (2026-11-01)."
       },
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P12",
@@ -21832,9 +21876,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/directive_keyword_enhancer.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/directive-keyword-enhancer_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/directive_keyword_enhancer.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",
@@ -22363,9 +22409,11 @@
       "expected_cadence_hours": 0.05,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/process_reaper.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/process-reaper_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/process_reaper.py writes a LaneRunReceipt via lib.lane_last_receipt at the end of every completed sweep; findings are its output, not a failure. The log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",

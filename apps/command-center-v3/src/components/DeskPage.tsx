@@ -25,6 +25,9 @@ export type DeskWriter = {
   state: 'ACTIVE' | 'PAUSED' | 'RETIRED' | 'NONE' | null
   last_success_at: string | null
   evidence_source: string | null
+  /** When the projection READ the evidence. Not a freshness clock; last_success_at is. */
+  evidence_read_at?: string | null
+  /** @deprecated alias of evidence_read_at, kept for one release. */
   evidence_as_of: string | null
   reason: string | null
 }
@@ -135,8 +138,13 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+          // With no page-supplied update time, a writer's own clock is the honest one. Printing
+          // "Update time unavailable" above "Last successful run: 22h ago" states two clocks and
+          // tells the operator nothing (operator review 2026-11-01).
+          const writerClock = sourceWriters.some(writer => writer?.last_success_at || writer?.evidence_read_at || writer?.evidence_as_of)
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
-            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
+            <strong>{source.label}</strong>
+            {!(source.asOf == null && writerClock) && <div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>}
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
             {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
@@ -144,7 +152,7 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
               <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>Writer {writer?.state ?? (loading ? 'loading' : 'state unavailable')}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
               <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
               {writer?.last_success_at && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
-              {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
+              {(writer?.evidence_read_at || writer?.evidence_as_of) && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence read: {clock(writer.evidence_read_at || writer.evidence_as_of, now).text}</div>}
               {(writer?.reason || !writer) && <div style={{ color: BB.amber, marginTop: 4 }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
             </div>)}
             {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
