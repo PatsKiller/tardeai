@@ -1,4 +1,4 @@
-# Home v004 — SPEC (PROPOSED): YELLOW market-risk summary card
+# Home v004 — SPEC (APPROVED 2026-11-01): YELLOW market-risk summary card
 
 Proposed 2026-11-01. Builds on the approved home/v002 (DSN-20261031-market-risk-ui). Independent of home/v003 (the
 "Market advisory" section, PR #2394, still PROPOSED): v004 changes only the banner slot above the header and touches no
@@ -8,7 +8,7 @@ Mockups live in the private design store and are bound by sha256 in status.json 
 figures are from the live shadow evaluation of 2026-11-01. Book values, symbols and accounts are placeholders
 (`[ST-A]`, `[ETF-A]`, `[ACCT-1]`, `[xx]%`).
 
-**Mockup only. No UI code until the operator approves home/v004.**
+**APPROVED by the operator on 2026-11-01: "I approve the markups implement".** The build cites `Design: home/v004`.
 
 ## What changes vs v002
 

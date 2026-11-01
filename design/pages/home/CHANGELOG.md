@@ -24,3 +24,6 @@
   Open Risk / Review stops as links. No Acknowledge (YELLOW never pages). ORANGE/RED keep the v002 banner; not-evaluated
   and GREEN/BLUE unchanged; stale shows the stale line instead of numbers. Nothing removed. Mockup only, awaiting the
   operator's decision in Approvals → Designs; mockups in the private design store.
+
+- 2026-11-01 APPROVED v004. The operator, verbatim: "I approve the markups implement". Recorded from the message under
+  AGENTS.md §20 (as for v002). Build follows in a PR stacked on this one, citing `Design: home/v004`.

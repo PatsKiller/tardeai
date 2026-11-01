@@ -2,14 +2,14 @@
   "schema": "DesignVersionStatus@v1",
   "page": "home",
   "version": "v004",
-  "state": "PROPOSED",
+  "state": "APPROVED",
   "title": "Home: YELLOW market-risk summary card (calm warning tone, collapsible, no Acknowledge)",
   "created": "2026-11-01",
   "approval": {
-    "by": null,
-    "at": null,
-    "ref": null,
-    "kind": "awaiting the operator's decision in Approvals -> Designs; mockup only, no UI code until approved",
+    "by": "operator",
+    "at": "2026-11-01",
+    "ref": "in-session directive (coordinator session_01GeLa7JgVXENzWSJSDhcHkF)",
+    "kind": "operator in-session words, verbatim: \"I approve the markups implement\" (2026-11-01). Recorded from the message under AGENTS.md §20, as for home/v002; the Approvals -> Designs tap is not yet recording to the ledger.",
     "source": [
       "design/pages/home/versions/v002/SPEC.md"
     ],
