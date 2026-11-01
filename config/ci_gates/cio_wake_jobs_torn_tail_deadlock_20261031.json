@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_wake_jobs_torn_tail_deadlock_20261031",
+  "files": [
+    "tests/test_cio_wake_jobs_torn_tail_deadlock_20261031.py"
+  ],
+  "anchor": "CIO_WAKE_JOBS_TORN_TAIL_DEADLOCK_20261031",
+  "comment": [
+    "ANCHOR: CIO_WAKE_JOBS_TORN_TAIL_DEADLOCK_20261031 — a torn last record in cio_wake_jobs.jsonl must not",
+    "hang wake writers on their own flock, and a full disk must not leave 0-byte quarantine copies (10-30 outage)."
+  ]
+}
