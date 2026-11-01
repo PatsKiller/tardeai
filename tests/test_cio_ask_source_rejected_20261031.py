@@ -27,9 +27,21 @@ def test_errored_source_still_fails_and_names_the_reason(tmp_path):
     d = fixture(tmp_path)
     result = run(d, collect=lambda _: {"fingerprint": "same", "facts": [], "source_runs": _rows("ok", "error")})
     assert not result["ok"] and result["failed_count"] == 1
-    assert result["source_errors"] == ["thr_fixture:ValueError:SOURCE_CHECK_INCOMPLETE"]
+    # The failure names the source that did not answer (2026-11-01); it used to say only ValueError.
+    assert result["source_errors"] == ["thr_fixture:ValueError:SOURCE_CHECK_INCOMPLETE:fixture.1:error"]
     ended = [e for e in d.store.events() if e.get("kind") == "ask.check_finished"]
-    assert ended[-1]["reason"] == "CHECK_FAILED:ValueError:SOURCE_CHECK_INCOMPLETE"
+    assert ended[-1]["reason"] == "CHECK_FAILED:ValueError:SOURCE_CHECK_INCOMPLETE:fixture.1:error"
+
+
+def test_a_disabled_engine_is_a_recorded_gap_not_a_failed_check(tmp_path):
+    """ENGINE_DISABLED is a configuration state, not a runtime failure (2026-11-01).
+
+    It used to fail every hourly check while the engine stayed off, which re-opened the lane's
+    breaker every hour; the gap is already recorded by the research gather.
+    """
+    d = fixture(tmp_path)
+    result = run(d, collect=lambda _: {"fingerprint": "same", "facts": [], "source_runs": _rows("ok", "disabled")})
+    assert result["ok"] and result["failed_count"] == 0 and result["checked_count"] == 1
 
 
 def test_free_text_exception_messages_never_reach_the_reason():

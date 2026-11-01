@@ -531,17 +531,31 @@ def gather_facts(
         return {"facts": facts, "gaps": gaps, "runs": runs}
     pool = cf.ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(jobs))), thread_name_prefix="ask-gather")
     started = time.monotonic()
-    pending: dict[cf.Future, tuple[Entity, SourceSpec, float]] = {}
+
+    def _run(ent: Entity, spec: SourceSpec, box: dict[str, float]) -> Any:
+        # The budget starts when the source RUNS, not when it is queued. With fewer workers than
+        # jobs a queued source used to be marked "timeout" without ever starting, which failed the
+        # whole check on evidence that was in fact available (2026-11-01).
+        box["started"] = time.monotonic()
+        return spec.fn(ent, ctx)
+
+    pending: dict[cf.Future, tuple[Entity, SourceSpec, dict[str, float]]] = {}
     for ent, spec in jobs:
-        pending[pool.submit(spec.fn, ent, ctx)] = (ent, spec, started + float(spec.timeout_s))
+        box: dict[str, float] = {}
+        pending[pool.submit(_run, ent, spec, box)] = (ent, spec, box)
+
+    def _deadline(item: tuple[Entity, SourceSpec, dict[str, float]]) -> float | None:
+        at = item[2].get("started")
+        return None if at is None else at + float(item[1].timeout_s)
+
     try:
         while pending:
-            next_deadline = min(d for _, _, d in pending.values())
-            done, _ = cf.wait(
-                list(pending), timeout=max(0.0, next_deadline - time.monotonic()), return_when=cf.FIRST_COMPLETED
-            )
+            deadlines = [d for d in (_deadline(v) for v in pending.values()) if d is not None]
+            # A queued job has no deadline yet; wake regularly so a just-started one gets one.
+            wait_s = max(0.0, min(deadlines) - time.monotonic()) if deadlines else 1.0
+            done, _ = cf.wait(list(pending), timeout=wait_s, return_when=cf.FIRST_COMPLETED)
             for fut in done:
-                ent, spec, _ = pending.pop(fut)
+                ent, spec, _box = pending.pop(fut)
                 elapsed = round(time.monotonic() - started, 3)
                 try:
                     raw = fut.result()
@@ -612,8 +626,8 @@ def gather_facts(
                     }
                 )
             now_m = time.monotonic()
-            for fut in [f for f, (_, _, d) in pending.items() if d <= now_m]:
-                ent, spec, _ = pending.pop(fut)
+            for fut in [f for f, item in pending.items() if (d := _deadline(item)) is not None and d <= now_m]:
+                ent, spec, _box = pending.pop(fut)
                 fut.cancel()
                 gaps.append(
                     {"subject": ent.label, "source": spec.name, "reason": "TIMEOUT", "timeout_s": spec.timeout_s}
@@ -1116,15 +1130,17 @@ def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
 
 def default_sources() -> list[SourceSpec]:
     return [
-        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
-        SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
-        SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
-        SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
-        SourceSpec("internal.thesis", "internal", _src_thesis, 6.0),
-        SourceSpec("internal.catalysts", "internal", _src_catalysts, 6.0),
-        SourceSpec("internal.hermes_research", "internal", _src_research, 6.0),
-        SourceSpec("internal.alerts", "internal", _src_alerts, 6.0),
-        SourceSpec("internal.trades", "internal", _src_trades, 6.0),
+        # A local snapshot read measured at ~3.7 s on its own; under the 30-job gather it exceeded 6 s
+        # and failed the whole check on a source that had in fact answered (2026-11-01).
+        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 15.0),
+        SourceSpec("internal.cio_prospect", "internal", _src_prospect, 15.0),
+        SourceSpec("internal.prospectus", "internal", _src_prospectus, 15.0),
+        SourceSpec("internal.holdings", "internal", _src_holdings, 15.0),
+        SourceSpec("internal.thesis", "internal", _src_thesis, 15.0),
+        SourceSpec("internal.catalysts", "internal", _src_catalysts, 15.0),
+        SourceSpec("internal.hermes_research", "internal", _src_research, 15.0),
+        SourceSpec("internal.alerts", "internal", _src_alerts, 15.0),
+        SourceSpec("internal.trades", "internal", _src_trades, 15.0),
         SourceSpec("market.quote", "market", _src_price, 6.0),
         SourceSpec("street.targets", "street", _src_street, 6.0),
         SourceSpec("sec.filings", "sec", _src_sec_filings, 8.0),

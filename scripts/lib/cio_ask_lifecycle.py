@@ -29,7 +29,10 @@ REQUEST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 # not fail the whole check. Before 2026-10-31 it did: internal.thesis returned ``rejected`` for every tracked subject,
 # so each hourly check raised SOURCE_CHECK_INCOMPLETE, three in a row opened the n8n breakers for cio-ask-lifecycle and
 # cio-ask-material-events (10-30 16:25Z / 17:00Z) and Ask-the-CIO stopped tracking anything.
-SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "rejected"})
+# ``disabled`` means the engine is administratively OFF (ENGINE_DISABLED): a configuration state, not a
+# runtime failure. Its gap is already recorded, so failing the check forever only re-opens the lane's
+# breaker every hour while the engine stays off (2026-11-01).
+SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "rejected", "disabled"})
 _REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
 
 
@@ -887,7 +890,13 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 source_rows = evidence.get("source_runs") or []
                 errors = [x for x in source_rows if x.get("status") not in SOURCE_ANSWERED_STATUSES]
                 if errors:
-                    raise ValueError("SOURCE_CHECK_INCOMPLETE")  # names land in the report via _check_failed_reason
+                    exc = ValueError("SOURCE_CHECK_INCOMPLETE")
+                    # Names and statuses come from our own SourceSpec/status vocabulary, never free
+                    # text, so they are safe to persist; without them the failure named no cause.
+                    exc.source_check = sorted(
+                        {f"{x.get('source')}:{x.get('status')}" for x in errors if x.get("source")}
+                    )
+                    raise exc
                 prior_checks = [
                     e
                     for e in tevents
@@ -1052,6 +1061,12 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     }
                 )
             except Exception as exc:
+                reason = _check_failed_reason(exc)
+                detail = getattr(exc, "source_check", None)
+                if detail:
+                    # Name the sources that did not answer, so the next failure is diagnosable
+                    # instead of a bare ValueError (2026-11-01).
+                    reason += ":" + ",".join(detail)
                 life = finish_check(
                     d,
                     tid,
@@ -1059,12 +1074,12 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     now=now,
                     outcome="failed",
                     state="failed",
-                    reason=_check_failed_reason(exc),
+                    reason=reason,
                     checked=False,
                     automated=True,
                 )
                 report["failed_count"] += 1
-                report["source_errors"].append(tid + ":" + _check_failed_reason(exc).removeprefix("CHECK_FAILED:"))
+                report["source_errors"].append(tid + ":" + reason.removeprefix("CHECK_FAILED:"))
                 report["threads"].append(
                     {"thread_id": tid, "lifecycle": life, "consumer_readback": {"state": "not_measured"}}
                 )
