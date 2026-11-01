@@ -151,8 +151,39 @@ SOURCE_SCHEMA = "N8nRelayLiveSource@v1"
 PINNED_SOURCE = "registry_render"
 
 
-def live_source(root: Path | str = ROOT) -> dict[str, Any]:
-    """Which layer is the base live list, decided by ``config/n8n_relay_live_source.json``, not by AGENTS.md.
+#: Host-state copy of the pin, outside every release (``<state root>/data/governance/...``). A release that lacks
+#: ``config/n8n_relay_live_source.json`` (an older one, after a rollback, or one where the file was removed) is still
+#: pinned once this exists. Written once by ``latch_host_pin`` at a promote that passed the live-set gate; never
+#: removed by code. Its presence alone pins: an unreadable or edited file still pins (one-way).
+HOST_PIN_REL = "data/governance/n8n_relay_live_source_pin.json"
+
+
+def latch_host_pin(state: Path | str, *, build: Optional[str] = None) -> dict[str, Any]:
+    """Create the host pin if absent (O_EXCL; idempotent, never overwritten, never removed)."""
+    p = Path(state) / HOST_PIN_REL
+    if p.exists():
+        return {"latched": False, "path": str(p), "detail": "already_present"}
+    p.parent.mkdir(parents=True, exist_ok=True)
+    body = {"schema": SOURCE_SCHEMA, "source": PINNED_SOURCE, "one_way": True, "build": build,
+            "latched_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "why": "relay live list pinned to the registry render; no AGENTS.md header edit or rollback can move it"}
+    try:
+        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return {"latched": False, "path": str(p), "detail": "already_present"}
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(body, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return {"latched": True, "path": str(p), "detail": "created"}
+
+
+def live_source(root: Path | str = ROOT, state: Optional[Path | str] = None) -> dict[str, Any]:
+    """Which layer is the base live list, decided by the host pin or ``config/n8n_relay_live_source.json``, never by
+    AGENTS.md.
+
+    Host state first (``HOST_PIN_REL`` under ``state``): when it exists the base is the registry render, whatever the
+    release carries, so a rollback to a release without the config file cannot unpin a release that has this code.
 
     2026-10-31: the base list used to follow the AGENTS.md header (``policy_active``). A no-rule-text PATCH that only
     flipped ``Status:`` between PROPOSED and ACTIVE moved the live set by 10 lanes (5 dropped, 5 added, including
@@ -162,6 +193,10 @@ def live_source(root: Path | str = ROOT) -> dict[str, Any]:
     back to the header). Removing the file is guarded by tests/test_relay_live_source_oneway_20261031.py and, at
     promote, by the live-set diff gate (scripts/relay_live_set_gate.py).
     """
+    if state is not None:
+        hp = Path(state) / HOST_PIN_REL
+        if hp.exists():
+            return {"pinned": True, "detail": "host_pin", "host_pin": str(hp)}
     p = Path(root) / SOURCE_REL
 
     def read():
@@ -349,7 +384,7 @@ def read_ops_overrides(state: Path) -> tuple[Optional[frozenset[str]], str]:
 
 def resolve(environ: Mapping[str, str], root: Path | str = ROOT) -> dict[str, Any]:
     """The effective relay live list. ``lanes`` None = missing (callers refuse live, as before 20.4.0)."""
-    pin = live_source(root)
+    pin = live_source(root, state_root(environ))
     if not pin.get("pinned"):
         pol = policy_active(root)
         if not pol.get("active"):

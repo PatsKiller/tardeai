@@ -586,6 +586,64 @@ def poll_once(
         return result
 
 
+# ── relay live-set hold latch (2026-11-01) ──────────────────────────────────────────────────────────
+# A promote held by scripts/relay_live_set_gate.py (the operator has not acknowledged the live-set change) used to be
+# retried every 2-minute tick: each retry ran prepare again (a new release directory on a 91%-full disk) and paged
+# again. The poller now latches the hold for that main sha and diff_id and does not prepare again until the operator
+# acknowledges that diff_id (guard grant) or main moves. The latch file is rewritten, never deleted.
+
+HOLD_NAME = "relay_live_set_hold.json"
+_HELD_RE = re.compile(r"RELAY_LIVE_SET_HELD diff_id=([0-9a-f]{16})")
+
+
+def _hold_path(sd: Path) -> Path:
+    return Path(sd) / HOLD_NAME
+
+
+def load_hold(sd: Path) -> dict[str, Any]:
+    try:
+        body = json.loads(_hold_path(sd).read_text(encoding="utf-8"))
+        return body if isinstance(body, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_hold(sd: Path, body: dict[str, Any]) -> None:
+    p = _hold_path(sd)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(body, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def held_diff_id(log: str) -> str:
+    m = _HELD_RE.search(log or "")
+    return m.group(1) if m else ""
+
+
+def hold_acknowledged(diff_id: str) -> Optional[dict[str, Any]]:
+    """The operator guard grant acknowledging ``diff_id`` (see relay_live_set_gate.acknowledgement), or None."""
+    from scripts.lib import relay_live_set_gate as RLSG
+
+    return RLSG.acknowledgement({"diff_id": diff_id})
+
+
+def hold_blocks(sd: Path, sha: str) -> Optional[dict[str, Any]]:
+    """The latched hold when it still blocks a prepare of ``sha``; None when there is none, main moved, or the
+    operator acknowledged it (the latch is then rewritten as released, not deleted)."""
+    hold = load_hold(sd)
+    if hold.get("status") != "held":
+        return None
+    if hold.get("main_sha") != sha:
+        _save_hold(sd, {**hold, "status": "superseded", "superseded_by": sha, "closed_at": _utc_now()})
+        return None
+    ack = hold_acknowledged(str(hold.get("diff_id") or ""))
+    if ack is not None:
+        _save_hold(sd, {**hold, "status": "acknowledged", "grant_id": ack.get("grant_id"), "closed_at": _utc_now()})
+        return None
+    return hold
+
+
 def _deploy_under_lock(
     repo: Path, decision: PollDecision, result: dict[str, Any], sd: Path, *, dry_run: bool
 ) -> dict[str, Any]:
@@ -618,6 +676,20 @@ def _deploy_under_lock(
 
     extra_env: dict[str, str] = {}
     ticket: Optional[Path] = None
+    held = hold_blocks(sd, sha)
+    if held is not None:
+        # Not a failure and not a new prepare: the operator owes an acknowledgement of this exact diff_id.
+        write_receipt(
+            path_kind=PATH_POLLER,
+            outcome="held_relay_live_set",
+            main_sha=sha,
+            current_sha_before=decision.current_sha,
+            reason="relay_live_set_unacknowledged",
+            detail={"diff_id": held.get("diff_id"), "held_at": held.get("held_at"), "prepare_skipped": True},
+        )
+        result.update(outcome="held_relay_live_set", reason="relay_live_set_unacknowledged",
+                      diff_id=held.get("diff_id"))
+        return result
     if not dry_run:
         ci, errors = main_checks_status(repo, sha)
         detail["main_checks"] = ci
@@ -659,6 +731,20 @@ def _deploy_under_lock(
         result["matched_by"] = detail["matched_by"]
     after = current_pin_sha()
     if rc != 0:
+        did = held_diff_id(log)
+        if did and after == decision.current_sha:
+            _save_hold(sd, {"status": "held", "main_sha": sha, "diff_id": did, "held_at": _utc_now()})
+            write_receipt(
+                path_kind=PATH_POLLER,
+                outcome="held_relay_live_set",
+                main_sha=sha,
+                current_sha_before=decision.current_sha,
+                current_sha_after=after,
+                reason="relay_live_set_unacknowledged",
+                detail={**detail, "diff_id": did, "elapsed_s": round(time.monotonic() - t0, 1)},
+            )
+            result.update(outcome="held_relay_live_set", reason="relay_live_set_unacknowledged", diff_id=did)
+            return result
         return failed(rc, f"deploy_rc={rc}", log, after=after)
 
     vrc, vlog = run_post_release_tester(repo, dry_run=dry_run)

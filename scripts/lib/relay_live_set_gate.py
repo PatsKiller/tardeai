@@ -1,16 +1,19 @@
-"""relay_live_set_gate — what a promote would change in the n8n relay's EFFECTIVE live-lane set, and a hold on it.
+"""relay_live_set_gate — what a promote or a rollback would change in the n8n relay's EFFECTIVE live-lane set.
 
 2026-10-31: the relay's live list changed by 10 lanes at a promote that changed no rule text (5 lanes stopped, 5
-went live, including trade-ai-scalp-live), and nothing said so: the deploy log showed "render OK", the Jobs page
-showed "Missed" hours later. This module compares the live set the NEW release would serve with the one the CURRENT
-release serves, using the same resolver the relay uses (``n8n_relay_live_lanes.resolve``), and
+went live, including trade-ai-scalp-live), and nothing said so. This module compares the live set a release WOULD
+serve with the one the CURRENT release serves. Each side is computed with that release's OWN resolver
+(``<release>/scripts/lib/n8n_relay_live_lanes.py``, run in a child process), because that is the code the relay
+runs after the switch; a release without the module falls back to this process's resolver.
 
-  * at prepare: reports the difference (WARN line, ``<release>/N8N_RELAY_LIVE_SET_DIFF.json``, one page through the
-    communications gateway ``telegram_alert.send_telegram``);
-  * at promote: refuses while the difference is not acknowledged by the operator
-    (``scripts/relay_live_set_gate.py ack``; ack ids are bound to the new build sha and the exact lane delta);
-  * records every exclusion: each lane that could be live (allowlist ``live_arg`` or a live-looking registry row)
-    but is not in the effective set, with the reason.
+  * prepare: WARN line, ``<release>/N8N_RELAY_LIVE_SET_DIFF.json``, and ONE page per ``diff_id`` (a durable marker in
+    host state; the page names only the diff_id, the build and the counts, so a re-prepare cannot page again);
+  * promote: refuses while the change is not acknowledged by the OPERATOR. The acknowledgement is an operator guard
+    grant: a ``release-write`` row in the guard ledger (``bin/guard``, keyboard or Ops → Controls passkey) whose
+    reason contains ``relay-live-set:<diff_id>``, not revoked. There is no agent-runnable ack command, and no ack
+    command is printed into deploy logs. ``diff_id`` binds the build sha AND the exact lane delta;
+  * rollback: the same diff, WARN and page, never blocking (rollback is the recovery path);
+  * records every exclusion: each lane that could be live but is not in the effective set, with the reason.
 
 Inputs are lane ids only. The host file ``~/.config/tradeai/n8n-live-lanes.env`` is read for exactly two keys
 (``TRADEAI_N8N_RELAY_LIVE_LANES`` and ``..._PAUSED``, lane-id lists); every other line is skipped unread.
@@ -23,6 +26,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
@@ -33,15 +38,25 @@ except ImportError:  # pragma: no cover - imported as scripts.lib
     from scripts.lib import n8n_relay_live_lanes as RLL  # type: ignore[no-redef]
 
 SCHEMA = "RelayLiveSetDiff@v1"
-ACK_SCHEMA = "RelayLiveSetAck@v1"
 DIFF_NAME = "N8N_RELAY_LIVE_SET_DIFF.json"
-ACK_REL = "data/governance/relay_live_set_acks.jsonl"
+#: Durable "this diff_id was paged" markers (host state, one file per diff_id, created O_EXCL).
+PAGED_REL = "data/governance/relay_live_set_paged"
+#: The guard tier and reason token that acknowledge a live-set change (operator-issued only).
+ACK_TIER = "release-write"
+ACK_TOKEN = "relay-live-set:"
+#: Marker line on stderr when promote is held; deploy_on_main and release_window parse it.
+HELD_MARKER = "RELAY_LIVE_SET_HELD"
 DEFAULT_HOST_FILE = Path.home() / ".config" / "tradeai" / "n8n-live-lanes.env"
 HOST_KEYS = (RLL.LIVE_LANES_ENV, RLL.PAUSED_ENV)
 
 
 def host_env(path: Optional[Path]) -> dict[str, str]:
-    """{key: lane ids} for the two lane-list keys only. Missing file = {} (the resolver then sees no host list)."""
+    """{key: lane ids} for the two lane-list keys only; every other line is skipped unread.
+
+    Missing or unreadable file = {}: no host list and no host pauses. Under the registry pin the host list is only the
+    fallback when the release's render is missing, and ``..._PAUSED`` only narrows the rendered set; an unpinned
+    release (header not ACTIVE, no host pin) uses the host list as its whole live set.
+    """
     out: dict[str, str] = {}
     if path is None:
         return out
@@ -65,11 +80,43 @@ def _build(root: Path) -> Optional[str]:
         return None
 
 
+_OWN_CODE = r"""
+import json, sys
+root, env = sys.argv[1], json.loads(sys.stdin.read())
+sys.path[:0] = [root, root + "/scripts"]
+from scripts.lib import n8n_relay_live_lanes as R
+res = R.resolve(env, root)
+lanes = res.get("lanes")
+print(json.dumps({"lanes": None if lanes is None else sorted(lanes), "source": res.get("source"),
+                  "detail": res.get("detail"), "paused": list(res.get("paused") or [])}))
+"""
+
+
+def _own_module(root: Path) -> Optional[Path]:
+    p = Path(root) / "scripts" / "lib" / "n8n_relay_live_lanes.py"
+    return p if p.is_file() else None
+
+
 def effective(root: Path, environ: Mapping[str, str]) -> dict[str, Any]:
+    """The live set ``root`` would serve, computed by ``root``'s own resolver when it has one (an older release runs
+    older code: a rollback target may not know the pin at all, and that is what the relay will do)."""
+    if _own_module(root) is not None:
+        try:
+            r = subprocess.run([sys.executable, "-c", _OWN_CODE, str(root)], input=json.dumps(dict(environ)),
+                               capture_output=True, text=True, timeout=60, check=False, cwd=str(root))
+            if r.returncode == 0:
+                out = json.loads(r.stdout.strip().splitlines()[-1])
+                out["resolver"] = "own"
+                return out
+            why = (r.stderr or "").strip().splitlines()[-1:] or ["rc=%d" % r.returncode]
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            why = [f"{type(exc).__name__}"]
+        return {"lanes": None, "source": "resolver_failed", "detail": f"own resolver failed: {why[0][:160]}",
+                "paused": [], "resolver": "own_failed"}
     res = RLL.resolve(environ, root)
     lanes = res.get("lanes")
     return {"lanes": None if lanes is None else sorted(lanes), "source": res.get("source"),
-            "detail": res.get("detail"), "paused": list(res.get("paused") or [])}
+            "detail": res.get("detail"), "paused": list(res.get("paused") or []), "resolver": "gate"}
 
 
 def _render_excluded(root: Path) -> dict[str, str]:
@@ -160,66 +207,88 @@ def compute(new_root: Path, served_root: Path, environ: Mapping[str, str]) -> di
     }
 
 
-def _acks(state: Path) -> list[dict]:
-    p = Path(state) / ACK_REL
-    out = []
+def _guard_rows() -> dict[str, dict[str, Any]]:
+    """All guard ledger rows (any status), read-only. GUARD_APPROVALS_DIR selects the ledger (tests)."""
+    import importlib.util
+
+    for base in (Path(__file__).resolve().parents[2], Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"):
+        path = base / ".cursor" / "hooks" / "guard_ledger.py"
+        if path.is_file():
+            break
+    else:
+        return {}
+    spec = importlib.util.spec_from_file_location("_rlsg_guard_ledger", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
     try:
-        with p.open(encoding="utf-8") as fh:
-            for line in fh:
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(row, dict) and row.get("schema") == ACK_SCHEMA:
-                    out.append(row)
-    except OSError:
-        pass
-    return out
+        return dict(mod.ledger_list(mod.approvals_dir()).get("rows") or {})
+    except Exception:  # noqa: BLE001 - an unreadable ledger acknowledges nothing (fail closed)
+        return {}
 
 
-def is_acked(state: Path, report: Mapping[str, Any]) -> bool:
-    return any(r.get("diff_id") == report["diff_id"] and r.get("new_build") == report["new_build"] for r in _acks(state))
+def acknowledgement(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None
+                    ) -> Optional[dict[str, Any]]:
+    """The operator guard grant that acknowledges exactly this change, or None.
+
+    A ``release-write`` ledger row whose reason contains ``relay-live-set:<diff_id>`` and that was not revoked. The
+    diff_id already binds the build and the lane delta, so a grant for one delta never acknowledges another.
+    """
+    token = ACK_TOKEN + str(report["diff_id"])
+    rows = _guard_rows() if rows is None else rows
+    for key, row in sorted(rows.items()):
+        if not isinstance(row, Mapping) or row.get("tier") != ACK_TIER or row.get("status") == "revoked":
+            continue
+        reason = str(row.get("reason") or "")
+        if token in reason.replace(" ", ""):
+            return {"grant_id": row.get("grant_id") or key.split("@", 1)[-1], "status": row.get("status")}
+    return None
 
 
-def record_ack(state: Path, report: Mapping[str, Any], by: str) -> dict:
-    if not str(by or "").strip():
-        raise ValueError("ack needs --by")
-    row = {"schema": ACK_SCHEMA, "diff_id": report["diff_id"], "new_build": report["new_build"],
-           "added": report["added"], "removed": report["removed"], "by": str(by).strip(),
-           "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat()}
-    p = Path(state) / ACK_REL
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())
-    return row
+def is_acked(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None) -> bool:
+    return acknowledgement(report, rows) is not None
 
 
-def gate(report: Mapping[str, Any], state: Path) -> tuple[bool, str]:
+def gate(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None) -> tuple[bool, str]:
     if not report["changed"]:
         return True, "unchanged"
-    if is_acked(state, report):
+    if is_acked(report, rows):
         return True, "acknowledged"
     return False, "unacknowledged"
 
 
-def message(report: Mapping[str, Any], ack_cmd: str) -> str:
-    def lst(xs: list[str]) -> str:
-        return ", ".join(xs[:20]) + (f" (+{len(xs) - 20} more)" if len(xs) > 20 else "") if xs else "none"
-    return (f"RELAY LIVE SET WOULD CHANGE at promote of {str(report.get('new_build') or '?')[:12]}: "
-            f"+{len(report['added'])} / -{len(report['removed'])} lanes "
-            f"({report['served']['source']} -> {report['new']['source']}).\n"
-            f"Would go live: {lst(report['added'])}\nWould stop: {lst(report['removed'])}\n"
-            f"Promote is held until you acknowledge: {ack_cmd}")
+def message(report: Mapping[str, Any], *, event: str = "promote") -> str:
+    """Page text. Names only the diff_id, the build and the counts: stable for one diff_id, so it dedupes, and it
+    carries no release path and no command."""
+    build = str(report.get("new_build") or "?")[:12]
+    held = ("Promote is held until the operator acknowledges this diff_id."
+            if event == "promote" else "Rollback is not held; review the diff.")
+    return (f"RELAY LIVE SET CHANGE ({event}) diff_id {report['diff_id']} build {build}: "
+            f"{len(report['added'])} lanes would go live, {len(report['removed'])} would stop. {held}")
 
 
-def notify(report: Mapping[str, Any], ack_cmd: str, sender: Optional[Callable[..., Any]] = None) -> dict:
-    """One page through the communications gateway; fail-soft, the result goes in the report."""
+def _paged_marker(state: Path, did: str) -> Path:
+    return Path(state) / PAGED_REL / f"{did}.json"
+
+
+def notify(report: Mapping[str, Any], state: Path, *, event: str = "promote",
+           sender: Optional[Callable[..., Any]] = None) -> dict:
+    """At most one page per diff_id, ever: the marker is created O_EXCL BEFORE sending, so concurrent or repeated
+    prepares cannot page twice. Fail-soft; the result goes in the report."""
+    marker = _paged_marker(state, f"{report['diff_id']}-{event}")
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(marker), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return {"accepted": False, "skipped": "already_paged", "marker": str(marker)}
+    except OSError as exc:
+        return {"accepted": False, "error": f"marker: {type(exc).__name__}"}
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"diff_id": report["diff_id"], "build": report.get("new_build"), "event": event,
+                             "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat()}) + "\n")
     try:
         if sender is None:
             from telegram_alert import send_telegram as sender  # type: ignore[no-redef]
-        ok = sender(message(report, ack_cmd), priority="P1", dedupe_minutes=60, producer="relay_live_set_gate")
-        return {"accepted": bool(ok)}
-    except Exception as exc:  # noqa: BLE001 - recorded, never fatal at prepare
-        return {"accepted": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+        ok = sender(message(report, event=event), priority="P1", dedupe_minutes=60, producer="relay_live_set_gate")
+        return {"accepted": bool(ok), "marker": str(marker)}
+    except Exception as exc:  # noqa: BLE001 - recorded, never fatal
+        return {"accepted": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}", "marker": str(marker)}
