@@ -47,6 +47,6 @@
   "outage_after_refusals": 3,
   "max_consecutive_request_rejections": 10,
   "strike_max_age_days": 7,
-  "max_probes_per_run": 3,
-  "probe_ahead_rule": "When max_consecutive_request_rejections is hit, record no progress if nothing was answered yet, then probe the LAST untried job of the fetch. Answered: the waiting rejections are confirmed (later-answer rule) and the run continues through the remaining untried jobs from the tail toward the head. Rejected: systemic; the run ends without a breaker trip. At most max_probes_per_run probes per run."
+  "max_probes_per_run": 4,
+  "probe_ahead_rule": "When max_consecutive_request_rejections is hit: record no progress if nothing was answered yet, then probe untried jobs FORWARD in priority order at positions 0, 2b, 4b, 8b (b = the bound; clamped to the last untried job), up to max_probes_per_run (one probe if lanes already answered in this run). The first answered probe confirms the waiting rejections and the run continues forward through the untried jobs; each job is tried at most once per run. Systemic only when every probe is rejected. A run whose fetch runs out with request rejections and no answer also records no progress."
 }

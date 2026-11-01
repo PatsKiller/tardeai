@@ -928,7 +928,7 @@ def test_rejections_after_an_answer_are_not_charged_without_a_later_answer(monke
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(100 + i) for i in range(bound + 5)],
                store={})
     assert _counted_ids(log) == [] and _struck_ids(log) == []
-    # round 13: after the bound one probe past the block is tried; it is rejected too, so the run ends
+    # rounds 13-14: lanes answered earlier, so after the bound ONE probe is tried; it is rejected, so the run ends
     assert len([p for s, p in log if "SET status = 'running'" in s]) == 1 + bound + 1
     state = w.load_breaker(_isolated_breaker)
     assert not w.breaker_open(state, "outage") and state["flaps"] == 0
@@ -1299,7 +1299,8 @@ def test_request_rejection_bound_ends_the_run_without_tripping_and_records_no_pr
     bound = int(POLICY["max_consecutive_request_rejections"])
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 31)])
-    assert len([p for s, p in log if "SET status = 'running'" in s]) == bound + 1, "bound, then one rejected probe"
+    probes = len(w.probe_positions(30 - bound, bound, int(POLICY["max_probes_per_run"])))
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == bound + probes, "bound, then rejected probes"
     state = w.load_breaker(_isolated_breaker)
     assert not w.breaker_open(state, "outage") and state["flaps"] == 0
     assert state["no_progress"]["runs"] == 1, "a run with no answer at all must be recorded as no progress"
@@ -1382,13 +1383,29 @@ def test_rejections_interleaved_with_answers_never_hit_the_bound(monkeypatch, _i
 
 
 
-# ── round 13: probe past a bad block of any length; a rejected probe is systemic ───────────────────────────────
+# ── round 13/14: forward geometric probes past a bad block of any length; systemic only if every probe is rejected ──
 
 def _running(log):
     return [p[0] for s, p in log if "SET status = 'running'" in s]
 
 
-@pytest.mark.parametrize("block", [10, 12, 50])
+@pytest.mark.parametrize(
+    "n,bound,allowed,expected",
+    [
+        (90, 10, 4, [0, 20, 40, 80]),
+        (30, 10, 4, [0, 20, 29]),
+        (20, 10, 4, [0, 19]),
+        (1, 10, 4, [0]),
+        (0, 10, 4, []),
+        (90, 10, 1, [0]),
+        (90, 10, 0, []),
+    ],
+)
+def test_probe_positions_are_forward_and_geometric(n, bound, allowed, expected):
+    assert w.probe_positions(n, bound, allowed) == expected
+
+
+@pytest.mark.parametrize("block", [10, 12, 40, 50, 85])
 def test_a_bad_block_of_any_length_at_the_head_does_not_starve_the_queue(monkeypatch, _isolated_breaker, block):
     import lib.llm_fallback as lf
 
@@ -1396,9 +1413,22 @@ def test_a_bad_block_of_any_length_at_the_head_does_not_starve_the_queue(monkeyp
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, block + 1))))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=rows, store={})
     assert sorted(_done(log)) == list(range(block + 1, 101)), "every good job in the fetch drains"
+    ran = _running(log)
+    assert len(ran) == len(set(ran)), "each job is tried at most once per run"
     assert _counted_ids(log) == []
     assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
     assert "no_progress" not in w.load_breaker(_isolated_breaker), "a probe answer is progress"
+
+
+def test_good_jobs_after_a_block_drain_in_priority_order(monkeypatch, _isolated_breaker):
+    """B1-B12, G13..: the probe at +0 (job 11) is rejected, +2b (job 31) answers, then 12..30 run FORWARD before 32+."""
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 13))))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    ran = _running(log)
+    assert ran[:12] == list(range(1, 11)) + [11, 31]
+    assert ran[12:31] == [j for j in range(12, 32) if j != 31] and ran[31:] == list(range(32, 101))
 
 
 def test_probe_answer_confirms_the_block_struck_now_charged_next_run(monkeypatch, _isolated_breaker):
@@ -1406,65 +1436,103 @@ def test_probe_answer_confirms_the_block_struck_now_charged_next_run(monkeypatch
 
     bound = int(POLICY["max_consecutive_request_rejections"])
     rows = [_row(i) for i in range(1, 121)]
-    store, counted = {}, []
+    store = {}
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, bound + 1))))
     first = _run(monkeypatch, ["--route", "cloud", "--limit", "120"], rows=rows, store=store)
-    assert _running(first)[bound] == 120, "the probe is the last untried job of the fetch"
+    assert _running(first)[bound] == bound + 1, "the first probe is the next untried job, never the tail"
     assert sorted(_struck_ids(first)) == list(range(1, bound + 1)) and _counted_ids(first) == []
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, bound + 1))))
     second = _run(monkeypatch, ["--route", "cloud", "--limit", "120"], rows=rows, store=store)
     assert sorted(_counted_ids(second)) == list(range(1, bound + 1))
 
 
-def test_all_400_systemic_ends_after_one_probe_and_charges_nobody(monkeypatch, _isolated_breaker):
+def test_all_400_systemic_ends_after_every_probe_is_rejected_and_charges_nobody(monkeypatch, _isolated_breaker):
     import lib.llm_fallback as lf
 
     bound = int(POLICY["max_consecutive_request_rejections"])
+    cap = int(POLICY["max_probes_per_run"])
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
-    assert len(_running(log)) == bound + 1, "never burns the whole limit"
-    assert _running(log)[-1] == 100, "the one probe is the tail"
+    expected_probes = [bound + 1 + i for i in w.probe_positions(100 - bound, bound, cap)]
+    assert _running(log) == list(range(1, bound + 1)) + expected_probes, "never burns the whole limit"
+    assert 100 not in _running(log), "the tail is never the default probe"
     assert _counted_ids(log) == [] and _struck_ids(log) == []
     state = w.load_breaker(_isolated_breaker)
     assert not w.breaker_open(state, "outage") and state["no_progress"]["runs"] == 1
 
 
-def test_probes_are_capped_per_run(monkeypatch, _isolated_breaker):
-    """Alternating blocks: each block >= the bound needs a probe; after max_probes_per_run the run ends."""
+def test_a_rejected_first_probe_does_not_end_the_run(monkeypatch, _isolated_breaker):
+    """Bad head and the first probe position bad too: a later probe answers, and the run drains (round 14)."""
+    import lib.llm_fallback as lf
+
+    bad = set(range(1, 12)) | {99, 100}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(bad))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    assert sorted(_done(log)) == list(range(12, 99))
+
+
+def test_after_answers_a_block_gets_a_single_probe(monkeypatch, _isolated_breaker):
+    """Lanes answered earlier in this run: a systemic 400 burst costs the bound plus ONE probe."""
     import lib.llm_fallback as lf
 
     bound = int(POLICY["max_consecutive_request_rejections"])
-    cap = int(POLICY["max_probes_per_run"])
-    seq = []
-    for _ in range(cap + 3):
-        seq += ["400"] * bound + ["ok"]  # each probe answers, then another block follows
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(seq))
-    n = len(seq)
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", str(n)], rows=[_row(i) for i in range(1, n + 1)], store={})
-    assert len(_running(log)) == (cap + 1) * bound + cap, "cap probes, then the next bound ends the run"
-
-
-def test_a_rejected_probe_after_answers_ends_the_run_without_no_progress(monkeypatch, _isolated_breaker):
-    import lib.llm_fallback as lf
-
-    bound = int(POLICY["max_consecutive_request_rejections"])
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * (bound + 1) + ["ok"] * 50))
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] * 5 + ["400"] * 200))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "60"], rows=[_row(i) for i in range(1, 61)], store={})
-    assert len(_running(log)) == 1 + bound + 1
+    assert len(_running(log)) == 5 + bound + 1
     assert "no_progress" not in w.load_breaker(_isolated_breaker)
 
 
 def test_probes_disabled_by_config_end_the_run_at_the_bound(monkeypatch, _isolated_breaker):
+    import importlib
+
     import lib.llm_fallback as lf
 
     bound = int(POLICY["max_consecutive_request_rejections"])
-    import importlib
-
     for mod in {id(m): m for m in (dp, importlib.import_module("lib.llm_queue_drain_policy"))}.values():
         monkeypatch.setattr(mod, "load_policy", lambda *a, **k: dict(POLICY, max_probes_per_run=0))
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 20))))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "50"], rows=[_row(i) for i in range(1, 51)], store={})
     assert len(_running(log)) == bound and _done(log) == []
+
+
+def test_small_fetch_of_all_bad_jobs_records_no_progress(monkeypatch, _isolated_breaker):
+    """--limit below the bound (or a run shrunk by a flap): the fetch runs out with rejections and no answer."""
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)], store={})
+    assert w.load_breaker(_isolated_breaker)["no_progress"]["runs"] == 1
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)], store={})
+    assert w.load_breaker(_isolated_breaker)["no_progress"]["runs"] == 2
+
+
+def test_a_transient_outage_does_not_record_no_progress(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)], store={})
+    assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+def test_time_budget_cut_does_the_top_good_jobs_first(monkeypatch, _isolated_breaker):
+    """60 s per call, 25-minute budget: B1-B10, then G11-G20 must be the first good jobs done."""
+    import lib.llm_fallback as lf
+
+    clock = {"t": 0.0}
+    monkeypatch.setattr(w.time, "monotonic", lambda: clock["t"])
+    bad = set(range(1, 11))
+
+    def gen(prompt, **kw):
+        clock["t"] += 60.0
+        if int(prompt[3:]) in bad:
+            raise _AllLanesFailed(list(_HTTP400))
+        return _Res()
+
+    monkeypatch.setattr(lf, "generate_with_fallback", gen)
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100", "--time-budget-min", "25"],
+               rows=[_row(i) for i in range(1, 101)], store={})
+    done = _done(log)
+    assert set(range(11, 21)) <= set(done) and done[:10] == list(range(11, 21))
 
 
 def test_stall_is_recorded_at_the_bound_and_cleared_when_the_probe_answers(monkeypatch, _isolated_breaker):
@@ -1494,4 +1562,37 @@ def test_an_old_stall_is_not_paged_when_this_run_had_answers_before_the_bound(mo
     monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * (bound + 1)))
     _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store={})
     assert sent == [], "answers in this run are progress: no stall page"
+    assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+
+def test_the_probe_budget_is_per_run(monkeypatch, _isolated_breaker):
+    """A head block uses the run's probes; a second block later in the run gets none and ends the run."""
+    import lib.llm_fallback as lf
+
+    bad = set(range(1, 11)) | set(range(12, 22))
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(bad))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 101)], store={})
+    assert _running(log) == list(range(1, 11)) + [11] + list(range(12, 22))
+
+
+def test_a_rejection_then_a_transient_outage_records_no_progress_only_as_an_outage(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    seq = iter([_HTTP400, _CONN_REFUSED, _CONN_REFUSED, _CONN_REFUSED])
+
+    def gen(prompt, **kw):
+        raise _AllLanesFailed(list(next(seq)))
+
+    monkeypatch.setattr(lf, "generate_with_fallback", gen)
+    _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(i) for i in range(1, 5)], store={})
+    state = w.load_breaker(_isolated_breaker)
+    assert w.breaker_open(state, "outage") and "no_progress" not in state
+
+
+def test_a_single_transient_refusal_records_no_progress_never(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1)], store={})
     assert "no_progress" not in w.load_breaker(_isolated_breaker)
