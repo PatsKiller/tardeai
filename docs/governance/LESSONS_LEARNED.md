@@ -1154,6 +1154,12 @@ Root disk at 89%, ~100 GB in stale clones and worktrees and 36 GB in old release
 
 *Rule:* §24.12 Reclaimable. AGENTS.md 25.0.1 lines 5634-5649.
 
+
+### L24-19 · Broker market data and paid feeds (2026-10-31)
+
+After the 2026-10-30 selloff the engine lacked held-name option chains, an extended-hours cross-check, institutional flow, earnings dates and sector groups. Operator: "Modify the agents.md. Those are allowed. No problems at all. In FinViz, remember you get different data from the cookies than you do the APIs. I'm paying for it, we need to utilize both. So if you need a ratification on any type of data fees that we need, it's okay to use the broker accounts."
+
+*Rule:* §24.11 Broker market data and paid data feeds. AGENTS.md 29.2.0 (ratified as 28.2.0; renumbered).
 ### L25-01 · #2208 merged by gh with zero reviews (2026-10-26)
 
 PR #2208 was merged by `gh` under the `PR_MERGE_BOOTSTRAP_GH_MERGE` flag with zero reviews, rewriting §25.10 with no version bump (review H2).
