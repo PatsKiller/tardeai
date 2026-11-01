@@ -3,7 +3,7 @@
 .approvals a { color: var(--info-color); }
 .approvals button, .approvals input, .approvals select, .approvals textarea, .approvals .primary { min-height: 44px; font: inherit; border-radius: var(--radius-md); padding: 10px 12px; border: 1px solid var(--border-color); background: var(--bg-1); color: var(--text-0); }
 .approvals button { cursor: pointer; }
-.approvals button:disabled { cursor: default; opacity: .5; }
+.approvals button:disabled, .approvals button[data-unready="true"] { cursor: default; opacity: .5; }
 .approvals button:focus-visible, .approvals a:focus-visible, .approvals input:focus-visible, .approvals textarea:focus-visible { outline: 2px solid var(--info-color); outline-offset: 3px; }
 .approvals .primary { display: flex; justify-content: center; align-items: center; text-decoration: none; color: var(--info-color); border-color: var(--info-color); font-weight: 600; }
 .approvals .panel { border: 1px solid var(--border-color); background: var(--bg-1); border-radius: var(--radius-lg); padding: 16px; }
