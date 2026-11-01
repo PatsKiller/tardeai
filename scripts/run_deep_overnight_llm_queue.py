@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+from collections import deque
 import sys
 import time
 import urllib.request
@@ -1018,6 +1019,37 @@ def apply_rejection_strikes(cur, confirmed, run_id, jobs_seen, log=lambda m: Non
     return charged, struck
 
 
+def record_no_progress(breaker, policy, persist, reason, log=lambda m: None):
+    """A run reached max_consecutive_request_rejections with nothing answered yet: update the no_progress record
+    (since, runs) and page once through the claim-before-send path after outage_page_after_hours. Called at the
+    moment the bound is hit, so a stall is recorded even if a probe later in the run answers (which then clears it)."""
+    npr = breaker.get("no_progress") if isinstance(breaker.get("no_progress"), dict) else {}
+    if not _int_or_zero(npr.get("runs")) or not isinstance(npr.get("since"), str):
+        npr = {"since": datetime.now(timezone.utc).isoformat(), "runs": 0}
+    npr["runs"] = _int_or_zero(npr.get("runs")) + 1
+    npr["reason"] = str(reason or "")[:300]
+    breaker["no_progress"] = npr
+    if maybe_page_long_outage(breaker, policy, persist=persist, kind="no_progress"):
+        log("  Paged the operator: no progress past outage_page_after_hours.")
+    persist(breaker)
+
+
+def probe_positions(queue_len, bound, allowed):
+    """Round 14: forward probe positions in the untried queue (priority order) when the request-rejection bound
+    trips: 0, 2*bound, 4*bound, 8*bound, ... -- geometric so a few probes reach past long bad blocks (an 85-block in a
+    100-job fetch with the default 4) -- clamped once to the last untried job. At most ``allowed`` positions."""
+    if queue_len <= 0 or allowed <= 0:
+        return []
+    out = []
+    for k in range(allowed):
+        pos = 0 if k == 0 else bound * (2 ** k)
+        if pos >= queue_len:
+            pos = queue_len - 1
+        if pos not in out:
+            out.append(pos)
+    return out
+
+
 def call_cloud(prompt, policy, *, fallback=None, now=None):
     """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
 
@@ -1423,6 +1455,20 @@ def main():
     rejections_in_row = 0  # request rejections since the last answer: bounded separately, never an outage
     max_rejections = max(1, int((drain_policy or {}).get("max_consecutive_request_rejections") or 10))
     rejection_bound_hit = False
+    # Round 14 forward probes: when the bound trips, probe untried jobs in priority order at positions 0, 2b, 4b, 8b
+    # (probe_positions). The first answered probe confirms the waiting rejections and the run continues FORWARD
+    # through the untried queue (the jobs between the block and the probe first); every job is tried at most once per
+    # run. Systemic only when every probe is rejected or the queue runs out. If lanes already answered in this run,
+    # one probe only: a block after progress becomes a head block on the next run.
+    max_probes = max(0, int((drain_policy or {}).get("max_probes_per_run", 4)))
+    probes_used = 0
+    probing = False
+    probe_targets = []  # [(position in the snapshot, row)]
+    probe_snapshot_ids = []  # untried job ids, in priority order, when the bound tripped
+    current_probe_pos = None
+    between_ids = set()  # untried jobs before an ANSWERED probe: a good job follows them, so they never trip the bound
+    rejections_in_run = 0
+    no_progress_recorded = False
     lanes_proven = False  # a lane answered in this run
     outage_tripped = False
     outage_after = max(2, int((drain_policy or {}).get("outage_after_refusals") or 3))
@@ -1442,7 +1488,17 @@ def main():
         k = probe_index(breaker, len(jobs))
         jobs = [jobs[k]] + list(jobs[:k]) + list(jobs[k + 1:])
 
-    for row in jobs:
+    queue_rows = deque(jobs)
+    while queue_rows:
+        if probing:
+            if not probe_targets:
+                log("  Every probe past the block was refused: systemic; ending the run without tripping the breaker.")
+                rejection_bound_hit = True
+                break
+            current_probe_pos, row = probe_targets.pop(0)
+            queue_rows.remove(row)
+        else:
+            row = queue_rows.popleft()
         job = dict(zip(columns, row))
         job_id = job["id"]
         elapsed = time.monotonic() - start_time
@@ -1581,13 +1637,31 @@ def main():
                     # never because an earlier job was. A systemic or throttling 400, or a proxy's error body at the
                     # end of a run, is therefore never charged, and a bad job that is always last stays pending.
                     suspects.append((job_id, reason, _job_meta(job)))
-                    rejections_in_row += 1
+                    rejections_in_run += 1
+                    if job_id not in between_ids:
+                        rejections_in_row += 1
                     if cloud and rejections_in_row >= max_rejections:
-                        # Round 12: request rejections never count toward an outage (bad prompts at the head must
-                        # not trip the breaker), but a long unbroken run of them ends this run -- no breaker trip,
-                        # no flap. If nothing in this run was answered, it is recorded as no progress below.
-                        log(f"  REFUSED #{job_id} — {rejections_in_row} request rejections in a row with no answer "
-                            "(max_consecutive_request_rejections): ending the run without tripping the breaker.")
+                        # Round 12: request rejections never count toward an outage and never trip the breaker.
+                        # Round 13: the bound no longer simply ends the run (a block of >= bound bad prompts at the
+                        # head would starve the queue forever): it records no progress if nothing was answered yet,
+                        # then probes past the block. A rejected probe is systemic and ends the run.
+                        if not lanes_proven and not no_progress_recorded:
+                            record_no_progress(breaker, drain_policy, lambda st: save_breaker(bpath, st), reason, log)
+                            no_progress_recorded = True
+                        if probing:
+                            continue  # the next probe target is taken at the top of the loop
+                        allowed = (1 if lanes_proven else max_probes) if probes_used < max_probes else 0
+                        positions = probe_positions(len(queue_rows), max_rejections, allowed)
+                        if positions:
+                            probe_snapshot_ids = [r[0] for r in queue_rows]
+                            probe_targets = [(i, queue_rows[i]) for i in positions]
+                            probes_used += len(positions)
+                            probing = True
+                            log(f"  REFUSED #{job_id} — {rejections_in_row} request rejections in a row: probing "
+                                f"forward at untried positions {positions}.")
+                            continue
+                        log(f"  REFUSED #{job_id} — request rejections with no answer and nothing left to probe: "
+                            "ending the run without tripping the breaker.")
                         rejection_bound_hit = True
                         break
                 else:
@@ -1617,6 +1691,13 @@ def main():
             lanes_proven = True
             refusals_in_row = 0
             rejections_in_row = 0
+            if probing and current_probe_pos is not None:
+                # The probe at this position was answered: the untried jobs before it are the rest of the block
+                # (or good jobs) -- process them next, in priority order, without letting them trip the bound.
+                between_ids = set(probe_snapshot_ids[:current_probe_pos])
+            probing = False
+            probe_targets = []
+            current_probe_pos = None
             if text:
                 confirmed.extend(suspects)
                 suspects = []
@@ -1733,20 +1814,14 @@ def main():
 
         processed += 1
 
-    if cloud and rejection_bound_hit and not lanes_proven:
-        # No progress: the run ended on the request-rejection bound and nothing was answered. This must not hide a
-        # real stall, so it is recorded (and paged after outage_page_after_hours) like an open outage.
-        npr = breaker.get("no_progress") if isinstance(breaker.get("no_progress"), dict) else {}
-        if not _int_or_zero(npr.get("runs")) or not isinstance(npr.get("since"), str):
-            npr = {"since": datetime.now(timezone.utc).isoformat(), "runs": 0}
-        npr["runs"] = _int_or_zero(npr.get("runs")) + 1
-        npr["reason"] = suspects[-1][1] if suspects else ""
-        breaker["no_progress"] = npr
-        if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st),
-                                  kind="no_progress"):
-            log("  Paged the operator: no progress past outage_page_after_hours.")
-        save_breaker(bpath, breaker)
-    elif cloud and lanes_proven and breaker.get("no_progress"):
+    # no_progress is recorded at the moment the request-rejection bound is hit with nothing answered (above), and --
+    # round 14 -- also when the fetch runs out (a small --limit, or a run shrunk by a flap) with request rejections and
+    # no answer, so a stall below the bound is never silent.
+    if cloud and not lanes_proven and not outage_tripped and not no_progress_recorded and rejections_in_run:
+        record_no_progress(breaker, drain_policy, lambda st: save_breaker(bpath, st),
+                           suspects[-1][1] if suspects else "request rejections", log)
+        no_progress_recorded = True
+    if cloud and lanes_proven and breaker.get("no_progress"):
         breaker.pop("no_progress", None)  # an answer is progress
         save_breaker(bpath, breaker)
     if cloud and confirmed:
