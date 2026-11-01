@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from scripts.lib.market_risk import sessions
 from scripts.lib.market_risk.categories._marketdata import ts as _ts
+from scripts.lib.market_risk.categories import _overnight
 from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, unknown
 
 CATEGORY = "extended_hours"
@@ -74,7 +75,7 @@ def _move(row: dict[str, Any]) -> float | None:
     return 100.0 * (price - prev) / prev if prev else None
 
 
-EXTENDED_SESSIONS = ("premarket", "afterhours", "overnight", "extended", "pre", "post")
+EXTENDED_SESSIONS = ("premarket", "afterhours", "overnight", "futures_open", "extended", "pre", "post")
 
 
 def _proof(r: dict[str, Any], now, cfg: dict[str, Any]) -> str | None:
@@ -109,7 +110,7 @@ def _proof(r: dict[str, Any], now, cfg: dict[str, Any]) -> str | None:
     src = str(r.get("source") or "").lower().split(":", 1)[-1]  # feed name (market_quotes_extended:sip -> sip)
     sess = str(r.get("session") or "").lower()
     overnight_ok = {str(x).lower() for x in cfg.get("overnight_sources") or []}
-    if sess == "overnight" and src and src not in overnight_ok:
+    if sess in _overnight.NIGHT_SESSIONS and src and src not in overnight_ok:
         return f"{src} has no overnight trades (20:00-04:00 ET); its price is an earlier last trade"
     try:
         if float(r["price"]) == float(r["prev_close"]):
@@ -190,24 +191,37 @@ def _et_label(iso: Any) -> str:
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy.get("extended_hours") or {}
     proxies = [str(s).upper() for s in cfg.get("index_proxies") or ["QQQ", "SPY"]]
+    # index futures (/ES, /NQ): measured like the proxies, but CALM still needs every equity proxy proven (R2-5)
+    futures = [str(s).upper() for s in cfg.get("futures_proxies") or [] if str(s).upper() not in proxies]
     heavy = [str(s).upper() for s in cfg.get("heavyweights") or []]
     start = min(ctx.now - timedelta(hours=float(cfg.get("lookback_hours", 18))), _last_close(ctx.now))
     pcfg = dict(cfg, future_tolerance_seconds=(ctx.policy.get("decay") or {}).get("future_tolerance_seconds", 60))
-    latest, unproven = _latest(
-        ctx.reader.quotes(proxies + heavy, start=start, end=ctx.now), cfg.get("extended_sources"), ctx.now, pcfg
+    allowed = {str(x).lower() for x in cfg.get("extended_sources") or []}
+    rows, level_only = _overnight.anchor_level_only(
+        ctx.reader.quotes(proxies + futures + heavy, start=start, end=ctx.now),
+        EXTENDED_SESSIONS,
+        lambda src: _source_ok(src, allowed) if allowed else True,
     )
+    latest, unproven = _latest(rows, cfg.get("extended_sources"), ctx.now, pcfg)
+    for s, rw in level_only.items():  # a level-only print never replaces the symbol's referenced row (F1)
+        if s not in latest and s not in unproven:
+            unproven[s] = rw
     stale_h = float(cfg.get("stale_after_hours", 2))
     aged = {s: _age(latest[s], ctx) for s in latest}
-    fresh = {s: r for s, r in latest.items() if aged[s] is not None and aged[s] <= stale_h}
+    fresh = {s: r for s, r in latest.items() if _overnight.is_fresh(r, aged[s], stale_h, ctx.now, cfg)}
     old_quotes = {s: r for s, r in latest.items() if s not in fresh}
     latest = fresh
     # Index proxies that are not measured now, by name: a stale QQQ at -3% beside a fresh flat SPY must not read as
     # a silent CALM (review of #2415, F5).
     dropped: list[str] = []
-    for s in proxies:
+    for s in proxies + futures:
         if s in latest:
             continue
-        if s in old_quotes:
+        if s in futures and s not in old_quotes and s not in unproven:
+            continue  # futures are optional evidence: silent only when there is nothing at all to report
+        if s in old_quotes and _overnight.is_night(old_quotes[s]):
+            dropped.append(_overnight.stale_reason(s, old_quotes[s], _move(old_quotes[s]), ctx.now, cfg))
+        elif s in old_quotes:
             m0 = _move(old_quotes[s])
             dropped.append(
                 f"{s}{f' {m0:+.1f}%' if m0 is not None else ''} at {_et_label(old_quotes[s].get('as_of'))} is "
@@ -219,7 +233,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         else:
             dropped.append(f"{s}: no extended-session quote")
     shock = (ctx.extras or {}).get("opening_shock") or {}
-    moves = {s: _move(latest[s]) for s in proxies if s in latest and _move(latest[s]) is not None}
+    moves = {s: _move(latest[s]) for s in proxies + futures if s in latest and _move(latest[s]) is not None}
     try:
         gaps = _gap_moves(ctx, cfg, proxies)
     except Exception as exc:  # noqa: BLE001 — the gap proxy failing must not blank the live-quote evidence
@@ -335,6 +349,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         [str(latest[s].get("as_of")) for s in latest] + [str(g["as_of"]) for g in gaps.values()],
         default=ctx.now.isoformat(),
     )
+    stale_h = _overnight.stale_after_hours(latest, cfg, stale_h)
     if gaps and not latest:
         stale_h = float((cfg.get("gap_proxy") or {}).get("stale_after_hours", 7))
     return CategoryObservation(

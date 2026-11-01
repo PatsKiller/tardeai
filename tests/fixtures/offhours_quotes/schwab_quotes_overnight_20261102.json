@@ -1,0 +1,76 @@
+{
+ "_note": "Synthetic values in the Schwab /marketdata/v1/quotes shape (fields=quote,extended,regular) for the overnight session Sunday 2026-11-01 20:00 EST -> Monday 2026-11-02 04:00 EST (first night after the DST fall-back). Trading date = Monday 2026-11-02; reference session = Friday 2026-10-30. Clock for the dry run: 2026-11-02T02:30:00-05:00. Cases: /ES settle dated Friday (reference kept); /NQ settleTime dated Thursday (level only); /YM no closePrice (level only); QQQ equity regular close dated Friday (reference kept); SPY equity with no regular block (level only); $SPX index last trade Friday 16:00 (stale_trade); /RTY not entitled.",
+ "now": "2026-11-02T02:30:00-05:00",
+ "quotes": {
+  "/ES": {
+   "assetMainType": "FUTURE",
+   "symbol": "/ES",
+   "quote": {
+    "lastPrice": 6698.25,
+    "closePrice": 6800.0,
+    "settleTime": 1793390400000,
+    "tradeTime": 1793604580000,
+    "quoteTime": 1793604581000
+   }
+  },
+  "/NQ": {
+   "assetMainType": "FUTURE",
+   "symbol": "/NQ",
+   "quote": {
+    "lastPrice": 25100.0,
+    "closePrice": 25700.0,
+    "settleTime": 1793304000000,
+    "tradeTime": 1793604590000
+   }
+  },
+  "/YM": {
+   "assetMainType": "FUTURE",
+   "symbol": "/YM",
+   "quote": {
+    "lastPrice": 47010.0,
+    "tradeTime": 1793604480000
+   }
+  },
+  "QQQ": {
+   "assetMainType": "EQUITY",
+   "symbol": "QQQ",
+   "quote": {
+    "lastPrice": 699.0,
+    "closePrice": 700.0,
+    "tradeTime": 1793404740000
+   },
+   "extended": {
+    "lastPrice": 690.5,
+    "tradeTime": 1793604420000
+   },
+   "regular": {
+    "regularMarketLastPrice": 700.0,
+    "regularMarketTradeTime": 1793390400000
+   }
+  },
+  "SPY": {
+   "assetMainType": "EQUITY",
+   "symbol": "SPY",
+   "quote": {
+    "lastPrice": 671.2,
+    "tradeTime": 1793604360000
+   }
+  },
+  "$SPX": {
+   "assetMainType": "INDEX",
+   "symbol": "$SPX",
+   "quote": {
+    "lastPrice": 6790.0,
+    "closePrice": 6790.0,
+    "tradeTime": 1793390400000
+   }
+  },
+  "/RTY": {
+   "assetMainType": "FUTURE",
+   "symbol": "/RTY",
+   "errors": [
+    "not entitled"
+   ]
+  }
+ }
+}

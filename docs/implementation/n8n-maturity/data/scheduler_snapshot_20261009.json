@@ -1785,19 +1785,19 @@
   },
   {
    "n": 1083,
-   "line": "*/15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock bash scripts/market_day_gate.sh $PY scripts/market_risk_evaluate.py --scheduled --shadow >> logs/market_risk_evaluate.log 2>&1"
+   "line": "*/15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock bash scripts/market_day_gate.sh $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
   },
   {
    "n": 1084,
-   "line": "0 * * * 0,6 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --shadow >> logs/market_risk_evaluate.log 2>&1"
+   "line": "0 * * * 0,6 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
   },
   {
    "n": 1085,
-   "line": "0 20-23 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --shadow >> logs/market_risk_evaluate.log 2>&1"
+   "line": "0 20-23 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
   },
   {
    "n": 1086,
-   "line": "0 0-3 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --shadow >> logs/market_risk_evaluate.log 2>&1"
+   "line": "0 0-3 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
   }
  ],
  "units": {

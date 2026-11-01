@@ -132,7 +132,12 @@ def last_log_error(path: Path):
         at = mtime
     if at is None:
         return None
-    return {"line": lines[found][:400], "at": at}
+    line = lines[found]
+    if len(line) > 400:
+        # Cut at a word boundary: a cut through the middle of a token would leave a fragment that no
+        # redaction pattern recognises (review 2026-11-01).
+        line = line[:400].rsplit(" ", 1)[0] + " …"
+    return {"line": line, "at": at}
 
 
 def _json(path, limit=8 * 1024 * 1024):
