@@ -678,11 +678,17 @@ def _consensus(p: Pack, doc: dict, reads: dict, cat: dict, snap: dict, cfg: dict
         )
     cio = snap.get("cio") if isinstance(snap.get("cio"), dict) else None
     if cio and cio.get("posture"):
-        post = str(cio["posture"]).upper()
+        # Allowlist (review of #2410 round 3, B3): the posture is CIO free text from another store, like the stance
+        # reasons fixed under B1. Only a name from the fixed `posture_names` vocabulary is rendered or read; anything
+        # else ("Trim half above one ninety") is withheld and votes neutral.
+        raw = re.sub(r"[\s-]+", "_", str(cio["posture"]).strip().upper())
+        known = {str(x).upper() for x in c.get("posture_names") or []}
+        post = raw.replace("_", " ") if raw in known else "unrecognised (1 detail withheld)"
+        defensive = {str(x).upper() for x in c.get("posture_risk_up") or []}
         votes.append(
             {
                 "source": "cio",
-                "direction": "risk_up" if "DEFENSIVE" in post or "HOLD" in post else "neutral",
+                "direction": "risk_up" if raw in known and raw in defensive else "neutral",
                 "confidence": 0.5,
                 "basis": f"CIO posture {post}",
             }
