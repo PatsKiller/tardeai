@@ -58,6 +58,9 @@ HORIZONS = ("3m", "6m", "12m")
 CASES = ("bear", "base", "bull")
 STANCES = ("bullish", "neutral", "bearish")
 DEFAULT_PER_QUESTION_USD = 0.30
+#: Operator switch for the Anthropic hosted web-search source (paid egress). Default-off; the host overlay
+#: sets it once the ``cio_ask_web_search`` process is registered in the LLM registry.
+ANTHROPIC_WEB_SEARCH_ENV = "TRADEAI_ANTHROPIC_WEB_SEARCH"
 SIZE_SUGGESTION_POLICY = (
     "WITHHELD: MBI_BEHAVIOR=0; size_suggestion needs AGENTS >= 21.0.0 ACTIVE (operator decision pending)"
 )
@@ -575,11 +578,17 @@ def gather_facts(
                             "receipt": outcome.get("receipt"),
                         }
                     )
+                    # A source that declares itself a degradable enhancement (outcome["degraded"]) records
+                    # no_data instead of refused: its absence stays a recorded gap and never fails the check,
+                    # so an unavailable paid tier cannot open the Ask lane's n8n breaker.
+                    status = "no_data" if outcome.get("degraded") is True else (
+                        "disabled" if reason.upper() == "ENGINE_DISABLED" else "refused"
+                    )
                     runs.append(
                         {
                             "source": spec.name,
                             "subject": ent.label,
-                            "status": "disabled" if reason.upper() == "ENGINE_DISABLED" else "refused",
+                            "status": status,
                             "elapsed_s": elapsed,
                             **outcome,
                         }
@@ -1103,6 +1112,56 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     return out
 
 
+def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """Anthropic hosted web search (server tool ``web_search_20260209``) as a second, cited web source.
+
+    Opt-in per host: ``default_sources`` only registers it when ``TRADEAI_ANTHROPIC_WEB_SEARCH=1``, because it
+    spends paid credits and egresses the question — the same two-key shape as SEARCH_ROUTING_ENGINE. The
+    provider key and the credit book stay in the governed bridge; this source posts one tool-bearing call
+    under the registered caller ``web_search`` and receives only the ``web_search_tool_result`` blocks.
+    """
+    if ctx.dry_run:
+        # research(dry_run=True) returns before gather, so this is a belt-and-braces guard: a planned run
+        # must never spend a paid call.
+        return SourceFacts(outcome={"ok": True, "reason": "DRY_RUN", "provider": "anthropic"})
+    mod = _imp("lib.anthropic_web_search", "scripts.lib.anthropic_web_search")
+    q = f"{ent.symbol or ent.label} {ctx.question}"[:240]
+    resp = mod.search(q, count=5)
+    if resp.get("ok") is not True:
+        # A paid enhancement must never take the Ask lane down. The reason is recorded (gap + run row) and the
+        # source reports no data for this subject; the free/paid router source still answers the same query.
+        return SourceFacts(
+            outcome={
+                "ok": False,
+                "degraded": True,
+                "reason": str(resp.get("error") or "WEB_SEARCH_UNAVAILABLE"),
+                "provider": resp.get("provider") or "anthropic",
+            }
+        )
+    outcome = {"ok": True, "provider": resp.get("provider")}
+    out = SourceFacts(outcome=outcome)
+    for r in (resp.get("results") or []) if resp.get("ok") is True else []:
+        published = _iso(r.get("published"))
+        out.append(
+            make_fact(
+                source="web.anthropic",
+                family="web",
+                kind="web",
+                subject_key=ent.subject_key,
+                symbol=ent.symbol,
+                claim=f"{r.get('title')}: {(r.get('content') or '')[:300]}",
+                as_of=published or _iso(ctx.now),
+                citation={
+                    "url": r.get("url"),
+                    "as_of_basis": "published_at" if published else "retrieved_at",
+                    "provider": "anthropic",
+                    "outcome": outcome,
+                },
+            )
+        )
+    return out
+
+
 def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     """The latest Ticker Prospectus from the CIO memory (security_research_spine.latest_prospectus)."""
     from dataclasses import replace
@@ -1114,8 +1173,13 @@ def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     return [replace(f, egress="local_only") for f in mod.ask_facts(ent, ctx)]
 
 
+def anthropic_search_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Operator switch for the paid web source. Default-off: egress plus spend is a two-key decision."""
+    return str((os.environ if env is None else env).get(ANTHROPIC_WEB_SEARCH_ENV) or "").strip() == "1"
+
+
 def default_sources() -> list[SourceSpec]:
-    return [
+    sources = [
         SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
         SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
@@ -1132,6 +1196,10 @@ def default_sources() -> list[SourceSpec]:
         SourceSpec("news.articles", "news", _src_news, 6.0),
         SourceSpec("web.search", "web", _src_web, 20.0, needs_symbol=False),
     ]
+    if anthropic_search_enabled():
+        # Paid second opinion on the free/paid router lane: one hosted search, five cited results.
+        sources.append(SourceSpec("web.anthropic", "web", _src_anthropic_search, 60.0, needs_symbol=False))
+    return sources
 
 
 # --------------------------------------------------------------------------------------------------- MBI guard

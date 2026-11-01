@@ -259,7 +259,8 @@
     "prospectus_fact_check": "bulk",
     "prospectus_accuracy_review": "long_form",
     "prospectus_news_classify": "bulk",
-    "prospectus_cio_news_note": "mid"
+    "prospectus_cio_news_note": "mid",
+    "cio_ask_web_search": "mid"
   },
   "premium_tier_processes": [
     "prospectus_writer_premium"
@@ -271,8 +272,13 @@
     "prospectus_news_classify": "operator 2026-10-27 news methodology: Haiku relevance read on the credit only; unusable credit -> the items wait for the next window, never DeepSeek",
     "prospectus_cio_news_note": "operator 2026-10-27 news methodology: Sonnet 5.5 CIO note on the credit only; unusable credit or cap -> the note waits for the next window, never DeepSeek",
     "prospectus_accuracy_review": "accuracy audit 2026-10-26: monthly Opus prose-vs-facts sample of written prospectuses, <= $2 per UTC month (scripts/prospectus_accuracy_audit.py --review); skipped when the credit is unusable, never another provider",
-    "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget"
+    "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget",
+    "cio_ask_web_search": "operator 2026-11-01: Sonnet 5.5 hosted web_search for Ask-the-CIO; unusable credit or cap -> the source reports no_data for that subject, never another provider (a free-tier router result already covers the same query)"
   },
+  "tools_processes": [
+    "cio_ask_web_search"
+  ],
+  "tools_processes_note": "The ONLY processes anthropic_transport may send a `tools` payload for (AnthropicTransport.generate raises TOOLS_UNSUPPORTED otherwise). Today: the hosted server tool web_search_20260209 for Ask-the-CIO. The process registry row's tools_allowed is the bridge-side gate; this list is the transport-side one, so a caller cannot reach a tool-bearing call by relabelling.",
   "thinking_tiers": [
     "high",
     "highest",

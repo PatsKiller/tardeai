@@ -143,7 +143,9 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     # operator 2026-10-27: Sonnet 5.5 only as tier "mid" — prospectus news methodology (CIO news note, process_tiers)
     # and the incident supervisor (ops_process_tiers, #2238)
     assert [t for t, m in p["models"].items() if m == "claude-sonnet-5-5"] == ["mid"]
-    assert [k for k, t in p["process_tiers"].items() if t == "mid"] == ["prospectus_cio_news_note"]
+    # operator 2026-11-01: "sonnet for search" — cio_ask_web_search joins the mid tier (hosted web_search only)
+    assert [k for k, t in p["process_tiers"].items() if t == "mid"] == [
+        "prospectus_cio_news_note", "cio_ask_web_search"]
     assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "mid"}
     assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
@@ -319,7 +321,9 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     assert {r['process'] for r in rows if r['new'].startswith('anthropic')}==eligible
     # The four hourly Ask roles have exact, distinct identities; critics never enter promotional credit routing.
     ask_roles={'cio_ask_reanswer','cio_ask_critique_deepseek','cio_ask_critique_grok','cio_ask_critique_chatgpt'}
-    assert {p['id'] for p in registry if p['id'].startswith('cio_ask_')}==ask_roles|{'cio_ask_deep_research'}
+    # 2026-11-01: cio_ask_web_search is the one Ask role allowed a tools payload (hosted web_search).
+    assert {p['id'] for p in registry if p['id'].startswith('cio_ask_')}==ask_roles|{
+        'cio_ask_deep_research','cio_ask_web_search'}
     by_id={p['id']:p for p in registry}
     routed={r['process']:r for r in rows}
     for pid in ask_roles:
