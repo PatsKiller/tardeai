@@ -113,6 +113,11 @@ def write_run_receipt(doc: dict, *, started: datetime, finished: datetime) -> st
         "tier": doc.get("tier"),
         "score": doc.get("score"),
         "sends": len(((doc.get("cycle") or {}).get("sends")) or []),
+        # design home/v005 review: Home says "informational card sent (<priority>), no page" for a carried tier
+        "send_priorities": sorted(
+            {str((x.get("intent") or {}).get("priority")) for x in ((doc.get("cycle") or {}).get("sends") or [])
+             if isinstance(x, dict) and (x.get("intent") or {}).get("priority")}
+        ),
     }
     atomic_write_json(run_receipt_path(), receipt)
     return str(run_receipt_path())

@@ -12,7 +12,8 @@ Stage 1 ("early setup"), all five:
   hedging_easing    index put/call vs median at least ``hedging_ease_pct`` below its peak of the last
                     ``hedging_peak_sessions`` sessions (needs that much history; fewer sessions = not met, said so)
   tier_ok           market tier not in ``blocked_tiers``
-Invalidation level = the swing low: a close below it cancels a setup.
+Invalidation level = the swing low FROZEN at the bar where the setup completed: a later close below it (within
+``invalidation_sessions``) cancels the setup, and the count restarts from that bar with a new swing low.
 Stage 2 ("confirmed"), any one: a close above a ``confirm_ma_sessions`` average, or above the exit price. With fewer
 bars since the swing low than the average needs (a recent IPO), the anchored VWAP from the swing low stands in.
 
@@ -30,6 +31,8 @@ from typing import Any
 from scripts.lib.market_risk import contract as c
 
 VERDICTS = ("Invalidated", "Confirmed", "Early setup", "Basing", "Still falling")
+#: the Stage 1 conditions, in card order (the card shows "k of len(STAGE1_KEYS)")
+STAGE1_KEYS = ("follow_through", "volume", "group_no_new_low", "hedging_easing", "tier_ok")
 
 
 def _f(v: Any) -> float | None:
@@ -58,6 +61,7 @@ def _cfg(policy: dict[str, Any]) -> dict[str, Any]:
         "basing_band_pct": float(v.get("basing_band_pct", 3.0)),
         "invalidation_sessions": int(v.get("invalidation_sessions", 10)),
         "trend_sessions": int(v.get("trend_sessions", 5)),
+        "trend_band_pct": float(v.get("trend_band_pct", 1.0)),
     }
 
 
@@ -66,17 +70,30 @@ def _green(b: dict[str, Any]) -> bool:
     return o is not None and cl is not None and cl > o
 
 
-def follow_through(after_low: list[dict[str, Any]], swing_low: float) -> dict[str, Any]:
-    """Higher low, then two consecutive green closes, the second above the first green bar's high. Returns the index
-    (into ``after_low``) of the second green bar when it happened, else None, and what is still missing."""
-    higher_low = any((_f(b.get("low")) or _f(b.get("close")) or 0) > swing_low for b in after_low)
-    for i in range(1, len(after_low)):
-        a, b = after_low[i - 1], after_low[i]
-        if _green(a) and _green(b) and (_f(b.get("close")) or 0) > (_f(a.get("high")) or _f(a.get("close")) or 0):
-            # the higher low must hold up to and including the follow-through bar
-            if all((_f(x.get("low")) or _f(x.get("close")) or 0) > swing_low for x in after_low[: i + 1]):
-                return {"met": True, "index": i, "higher_low": True}
-    return {"met": False, "index": None, "higher_low": higher_low}
+def _low(b: dict[str, Any]) -> float:
+    lo = _f(b.get("low"))
+    return lo if lo is not None else float(b["close"])
+
+
+def find_setup(bars: list[dict[str, Any]], start: int = 0) -> dict[str, Any] | None:
+    """The first completed follow-through at or after ``start``: two consecutive green closes, the second closing above
+    the first green bar's high, after a swing low (the lowest low from ``start`` up to the setup) that the bars since
+    have not undercut (a higher low). Returns ``{index, swing_low, low_index}`` — the swing low FROZEN at that bar."""
+    for i in range(start + 1, len(bars)):
+        a, b = bars[i - 1], bars[i]
+        hi_a = _f(a.get("high"))
+        if not (_green(a) and _green(b)):
+            continue
+        if float(b["close"]) <= (hi_a if hi_a is not None else float(a["close"])):
+            continue
+        lows = [_low(x) for x in bars[start : i + 1]]
+        li = start + min(range(len(lows)), key=lambda k: lows[k])
+        if li >= i - 1:
+            continue  # the green bars themselves are the low: no higher low yet
+        sl = _low(bars[li])
+        if all(_low(x) > sl for x in bars[li + 1 : i + 1]):
+            return {"index": i, "swing_low": sl, "low_index": li}
+    return None
 
 
 def weighted_group_ratio(
@@ -153,20 +170,37 @@ def evaluate(
         "last_date": str(bars[-1]["date"])[:10] if bars else None,
     }
     if not since or last is None:
-        out.update(verdict="Still falling", stage1={"met": 0, "of": 5, "conditions": []}, stage2={"met": False, "conditions": []},
-                   note="no session since the exit")
+        out.update(verdict="Still falling", stage1={"met": 0, "of": len(STAGE1_KEYS), "conditions": []},
+                   stage2={"met": False, "conditions": []}, note="no session since the exit")
         c.assert_no_behavior_fields(out)
         return out
-    lows = [(_f(b.get("low")) if _f(b.get("low")) is not None else float(b["close"])) for b in since]
-    li = min(range(len(lows)), key=lambda i: lows[i])
-    swing_low = round(lows[li], 4)
-    after = since[li + 1 :]
 
-    ft = follow_through(after, swing_low)
-    conds = [{"key": "follow_through", "met": ft["met"], "text": "higher low + 2 green closes"}]
+    # Walk the setups since the exit. A setup freezes its swing low; a close below it within invalidation_sessions
+    # cancels it and the count restarts from that bar (review of #2447, B1).
+    start, active, last_invalidation = 0, None, None
+    while True:
+        st = find_setup(since, start)
+        if st is None:
+            break
+        i, frozen = st["index"], st["swing_low"]
+        inv = next(
+            (j for j in range(i + 1, min(len(since), i + 1 + k["invalidation_sessions"])) if float(since[j]["close"]) < frozen),
+            None,
+        )
+        if inv is None:
+            active = st
+            break
+        last_invalidation = {"at": inv, "level": frozen, "date": str(since[inv].get("date"))[:10]}
+        start = inv
+    window = since[start:]
+    wl = [_low(b) for b in window]
+    wli = min(range(len(wl)), key=lambda x: wl[x])
+    swing_low = round(active["swing_low"] if active else wl[wli], 4)
+
+    conds = [{"key": "follow_through", "met": active is not None, "text": "higher low + 2 green closes"}]
     vol_ok = False
-    if ft["met"]:
-        j = bars.index(after[ft["index"]])
+    if active is not None:
+        j = bars.index(since[active["index"]])
         vols = [_f(b.get("volume")) for b in bars[max(0, j - k["volume_avg_sessions"]) : j]]
         vols = [v for v in vols if v]
         v2 = _f(bars[j].get("volume"))
@@ -186,7 +220,7 @@ def evaluate(
     conds.append({"key": "tier_ok", "met": tier_ok, "text": f"market tier {str(market_tier).upper()}"})
     s1_met = sum(1 for x in conds if x["met"])
 
-    # Stage 2: a moving average, or the anchored VWAP when history since the swing low is short
+    # Stage 2: a moving average, or the anchored VWAP when history is short
     s2 = []
     smas: dict[str, float | None] = {}
     for n in k["confirm_ma_sessions"]:
@@ -196,7 +230,7 @@ def evaluate(
             s2.append({"key": f"above_sma{n}", "met": last > sma, "text": f"close above the {n}-day {sma:.2f}"})
     avwap = None
     if any(v is None for v in smas.values()) and k["short_history_anchor"] == "swing_low_vwap":
-        avwap = anchored_vwap(since[li:])
+        avwap = anchored_vwap(window[wli:] if not active else since[active["low_index"] :])
         if avwap is not None:
             s2.append({"key": "above_anchored_vwap", "met": last > avwap, "text": f"close above anchored VWAP {avwap:.2f}"})
     if k["confirm_above_exit"] and exit_price:
@@ -204,12 +238,14 @@ def evaluate(
     s2_met = any(x["met"] for x in s2)
 
     # verdict
-    invalidated = False
-    if ft["met"]:
-        tail = after[ft["index"] + 1 : ft["index"] + 1 + k["invalidation_sessions"]]
-        invalidated = any(float(b["close"]) < swing_low for b in tail)
-    recent_low = li >= len(since) - k["basing_min_sessions"]
-    band = swing_low * (1 + k["basing_band_pct"] / 100.0)
+    invalidated = (
+        active is None
+        and last_invalidation is not None
+        and len(since) - 1 - last_invalidation["at"] < k["invalidation_sessions"]
+    )
+    after = window[wli + 1 :]
+    recent_low = wli >= len(window) - k["basing_min_sessions"]
+    band = wl[wli] * (1 + k["basing_band_pct"] / 100.0)
     basing = (not recent_low) and len(after) >= k["basing_min_sessions"] and all(
         float(b["close"]) <= band for b in after[-k["basing_min_sessions"] :]
     )
@@ -223,15 +259,16 @@ def evaluate(
         verdict = "Basing"
     else:
         verdict = "Still falling"
-    tn = k["trend_sessions"]
+    tn, tb = k["trend_sessions"], k["trend_band_pct"] / 100.0
     trend = None
     if len(closes) > tn:
         d = closes[-1] / closes[-1 - tn] - 1
-        trend = "up" if d > 0.01 else "down" if d < -0.01 else "flat"
+        trend = "up" if d > tb else "down" if d < -tb else "flat"
     sma20 = smas.get("sma20")
     out.update(
         swing_low=swing_low,
         invalidation_level=swing_low,
+        invalidated=last_invalidation if invalidated else None,
         **smas,
         anchored_vwap=avwap,
         pct_vs_exit=round((last / float(exit_price) - 1) * 100, 2) if exit_price else None,

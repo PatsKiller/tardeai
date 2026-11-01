@@ -82,9 +82,9 @@ def test_close_below_swing_low_after_a_setup_is_invalidated():
     bars = _bars(hist + tail)
     out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
                       hedging_series=[], market_tier="YELLOW", policy=POLICY)
-    assert out["verdict"] in ("Invalidated", "Still falling")
-    # a new low resets the swing low to it; the verdict is never "Early setup" after a close below the old low
-    assert out["verdict"] != "Early setup"
+    # the swing low (88) is frozen at the setup bar; the later close (87) below it cancels the setup
+    assert out["verdict"] == "Invalidated"
+    assert out["invalidated"]["level"] == 88
 
 
 def test_close_above_exit_is_confirmed():
@@ -127,40 +127,40 @@ def test_stage_output_carries_no_behaviour_fields():
 
 
 def test_same_day_rebuy_after_the_sale_is_held_and_wash_sale_occurred():
-    closes = [("ZZZ", "acct_taxable", "2026-10-28", True, 146.0), ("ZZZ", "acct_ira", "2026-10-30", True, 137.0)]
-    buys = [("ZZZ", "acct_taxable", "2026-10-28", 144.0, "12:44")]
-    sells = [("ZZZ", "acct_taxable", "2026-10-28", "09:30")]
-    out = bp.per_account_exits(closes, buys, held={("acct_taxable", "ZZZ")}, wash_days=30, sells=sells)
-    e = out["ZZZ"]
-    assert e["exit_date"] == "2026-10-30" and e["exit_account_type"] == "ira" and e["exit_price"] == 137.0
-    assert e["wash_sale"]["state"] == "occurred" and e["wash_sale"]["rebuy_price"] == 144.0
+    closes = [("SYNA", "acct_taxable", "2031-05-12", True, 60.0), ("SYNA", "acct_ira", "2031-05-14", True, 55.0)]
+    buys = [("SYNA", "acct_taxable", "2031-05-12", 58.0, "14:20")]
+    sells = [("SYNA", "acct_taxable", "2031-05-12", "10:15")]
+    out = bp.per_account_exits(closes, buys, held={("acct_taxable", "SYNA")}, wash_days=30, sells=sells)
+    e = out["SYNA"]
+    assert e["exit_date"] == "2031-05-14" and e["exit_account_type"] == "ira" and e["exit_price"] == 55.0
+    assert e["wash_sale"]["state"] == "occurred" and e["wash_sale"]["rebuy_price"] == 58.0
     assert e["taxable_loss_date"] is None  # no forward "re-buy before ..." warning once the re-buy happened
     assert e["held_elsewhere"]
 
 
 def test_buy_then_sell_day_trade_stays_an_exit():
-    closes = [("DTR", "acct_ira", "2026-10-05", False, 4.5)]
-    buys = [("DTR", "acct_ira", "2026-10-05", 4.4, "10:07")]
-    sells = [("DTR", "acct_ira", "2026-10-05", "10:08")]
+    closes = [("SYNB", "acct_ira", "2031-05-05", False, 7.0)]
+    buys = [("SYNB", "acct_ira", "2031-05-05", 6.9, "11:01")]
+    sells = [("SYNB", "acct_ira", "2031-05-05", "11:02")]
     out = bp.per_account_exits(closes, buys, held=set(), wash_days=30, sells=sells)
-    assert "DTR" in out
+    assert "SYNB" in out
 
 
 def test_rebuy_in_every_exited_account_means_no_exit():
-    closes = [("RRR", "acct_taxable", "2026-10-28", True, 10.0)]
-    buys = [("RRR", "acct_taxable", "2026-10-29", 9.5, None)]
+    closes = [("RRR", "acct_taxable", "2031-05-12", True, 10.0)]
+    buys = [("RRR", "acct_taxable", "2031-05-13", 9.5, None)]
     assert bp.per_account_exits(closes, buys, held=set(), wash_days=30, sells=[]) == {}
 
 
 def test_taxable_loss_without_rebuy_opens_the_window():
-    closes = [("WWW", "acct_taxable", "2026-10-28", True, 10.0)]
+    closes = [("WWW", "acct_taxable", "2031-05-12", True, 10.0)]
     out = bp.per_account_exits(closes, [], held=set(), wash_days=30, sells=[])
     assert out["WWW"]["wash_sale"] == {"state": "window_open", "account_scope": out["WWW"]["wash_sale"]["account_scope"],
-                                       "loss_sale_date": "2026-10-28", "until": "2026-11-27"}
+                                       "loss_sale_date": "2031-05-12", "until": "2031-06-11"}
 
 
 def test_ira_loss_has_no_wash_sale():
-    out = bp.per_account_exits([("III", "acct_ira", "2026-10-28", True, 10.0)], [], held=set(), wash_days=30, sells=[])
+    out = bp.per_account_exits([("III", "acct_ira", "2031-05-12", True, 10.0)], [], held=set(), wash_days=30, sells=[])
     assert out["III"]["wash_sale"] is None
 
 
@@ -305,3 +305,130 @@ def test_reentry_labels_and_deferred_loss():
     r = _join()["reentry"]["XIT"]
     assert r["exit_account_label"] == "Acct One" and r["held_elsewhere_labels"] == ["Acct Two"]
     assert r["wash_sale"]["deferred_loss_usd"] == 123.45 and r["wash_sale"]["account_label"] == "Acct Two"
+
+
+# ── review of #2447: B1 invalidation, follow-through, held set, per-account wash, weights, stops, DB bounds ──────────
+
+
+def test_follow_through_needs_the_second_close_above_the_first_green_high():
+    hist = _history(25)
+    # two green closes after a higher low, but the second (91.0) does not close above the first's high (91.5)
+    tail = [(95, 96, 90, 91, 1000), (91, 92, 88, 89, 1000), (89.5, 91.5, 89.2, 90.5, 1000), (90.6, 91.2, 90.4, 91.0, 2000)]
+    bars = _bars(hist + tail)
+    out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
+                      hedging_series=[], market_tier="YELLOW", policy=POLICY)
+    assert {c["key"]: c["met"] for c in out["stage1"]["conditions"]}["follow_through"] is False
+
+
+def test_find_setup_freezes_the_swing_low_at_the_setup_bar():
+    bars = _bars([(95, 96, 90, 91, 1), (91, 92, 88, 89, 1), (89, 91, 89.5, 90.5, 1), (90.6, 92.0, 90.4, 91.8, 1)])
+    st = rs.find_setup(bars, 0)
+    assert st == {"index": 3, "swing_low": 88, "low_index": 1}
+
+
+def test_a_new_setup_after_an_invalidation_starts_a_new_count():
+    hist = _history(25)
+    tail = [(95, 96, 90, 91, 1000), (91, 92, 88, 89, 1000), (89, 91, 89.5, 90.5, 1000), (90.6, 92.0, 90.4, 91.8, 1000),
+            (93, 93, 86, 87, 2000),                                   # invalidates (87 < 88)
+            (87, 88, 85, 85.5, 1000), (85.6, 87, 85.8, 86.8, 1000), (86.9, 88.5, 86.7, 88.2, 3000)]  # new setup, low 85
+    bars = _bars(hist + tail)
+    out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[0.9, 0.9, 0.91, 0.92, 0.93, 0.94],
+                      hedging_series=[4.0, 3.9, 3.0], market_tier="YELLOW", policy=POLICY)
+    assert out["swing_low"] == 85 and out["verdict"] == "Early setup"
+
+
+def test_held_set_alone_makes_an_account_not_exited():
+    closes = [("HHH", "acct_ira", "2031-05-12", False, 10.0)]
+    assert bp.per_account_exits(closes, [], held={("acct_ira", "HHH")}, wash_days=30, sells=[]) == {}
+    assert "HHH" in bp.per_account_exits(closes, [], held=set(), wash_days=30, sells=[])
+
+
+def test_same_day_rebuy_without_times_counts_when_held_and_wash_occurred():
+    closes = [("S", "acct_taxable", "2031-05-12", True, 60.0), ("S", "acct_ira", "2031-05-14", True, 55.0)]
+    buys = [("S", "acct_taxable", "2031-05-12", 58.0, None)]
+    out = bp.per_account_exits(closes, buys, held={("acct_taxable", "S")}, wash_days=30, sells=[])
+    assert out["S"]["wash_sale"]["state"] == "occurred"
+
+
+def test_wash_is_tested_from_the_loss_sale_not_a_later_gain_sale():
+    closes = [("W", "acct_taxable", "2031-05-01", True, 10.0), ("W", "acct_taxable", "2031-05-20", False, 12.0)]
+    buys = [("W", "acct_taxable", "2031-05-05", 9.0, None)]
+    assert bp.per_account_exits(closes, buys, held=set(), wash_days=30, sells=[])["W"]["wash_sale"]["state"] == "occurred"
+
+
+def test_engine_book_shares_are_value_weighted():
+    expo = {"BIG": {"symbol": "BIG", "groups": {"financials": 1.0}}, "TINY": {"symbol": "TINY", "groups": {"comm": 1.0}}}
+    material = [{"symbol": "BIG", "shares": 100, "mark": 990.0}, {"symbol": "TINY", "shares": 10, "mark": 100.0}]
+    got = bp.book_shares(expo, material)
+    assert got["comm"] == pytest.approx(0.01) and got["financials"] == pytest.approx(0.99)
+
+
+def test_unread_stops_are_not_no_stop():
+    out = bd.build(_projection(), _store(), stops=None, policy=POLICY, label_fn=str, canon_fn=str)
+    kinds = [k for i in out["review"] for k in i["kinds"]]
+    assert "no_stop" not in kinds and out["book_exposure"]["stops_known"] is False
+    assert all(b["drivers"] == [{"name": "UNK", "usd": 10_000.0}] for b in out["budgets"])  # no inferred unprotected drivers
+
+
+def test_partial_sale_after_the_build_is_not_a_conflict_but_a_full_one_is():
+    proj = _projection()
+    st = _store()
+    part = bd.build(proj, st, stops=[], policy=POLICY, label_fn=str, canon_fn=str,
+                    ledger_sells=[{"symbol": "STK", "account": "a2", "date": "2031-05-12", "quantity": 40}])
+    assert "data_conflict" not in [k for i in part["review"] for k in i["kinds"]]
+    full = bd.build(proj, st, stops=[], policy=POLICY, label_fn=str, canon_fn=str,
+                    ledger_sells=[{"symbol": "STK", "account": "a2", "date": "2031-05-12", "quantity": 100}])
+    assert "data_conflict" in [k for i in full["review"] for k in i["kinds"]]
+    none = bd.build(proj, st, stops=[], policy=POLICY, label_fn=str, canon_fn=str,
+                    ledger_sells=[{"symbol": "STK", "account": "a2", "date": "2031-05-12"}])
+    assert "data_conflict" not in [k for i in none["review"] for k in i["kinds"]]
+
+
+def test_reconcile_tolerance_comes_from_config():
+    st = _store()
+    st["portfolio_totals"]["total_value"] = 300_004.0
+    loose = {**POLICY, "home_review": {**POLICY["home_review"], "reconcile_tolerance_usd": 10.0}}
+    assert bd.build(_projection(), st, stops=[], policy=loose, label_fn=str, canon_fn=str)["book_exposure"]["reconciles"] is True
+    tight = {**POLICY, "home_review": {**POLICY["home_review"], "reconcile_tolerance_usd": 1.0}}
+    assert bd.build(_projection(), st, stops=[], policy=tight, label_fn=str, canon_fn=str)["book_exposure"]["reconciles"] is False
+
+
+def test_join_connection_is_dedicated_bounded_and_read_only():
+    from scripts.lib import market_risk_book_join as bj
+
+    seen = {}
+
+    class Conn:
+        def set_session(self, readonly=False):
+            seen["readonly"] = readonly
+
+        def close(self):
+            seen["closed"] = True
+
+    def get_conn(**kw):
+        seen.update(kw)
+        return Conn()
+
+    pol = {"home_review": {"db": {"connect_timeout_s": 60, "statement_timeout_ms": 999_999, "lock_timeout_ms": 2_000}}}
+    bj._ro_conn(bj.db_bounds(pol), get_conn)
+    assert seen["readonly"] is True
+    assert seen["connect_timeout"] == 10  # never looser than the shared connection's 10 s
+    assert "statement_timeout=180000" in seen["options"] and "lock_timeout=2000" in seen["options"]
+
+
+def test_join_fails_soft_and_fast_when_the_db_is_unreachable():
+    import time
+
+    from scripts.lib import market_risk_book_join as bj
+
+    def stalled(**kw):
+        assert kw["connect_timeout"] <= 10
+        raise TimeoutError("connect timeout expired")
+
+    proj = {**_projection(), "state": "evaluated", "as_of": "T", "mode": "shadow"}
+    t0 = time.monotonic()
+    out = bj.join(proj, get_conn=stalled, store=_store(), policy=POLICY, budgets=[])
+    assert time.monotonic() - t0 < 5
+    be = out["book_exposure"]
+    assert be["stops_known"] is False and "TimeoutError" in be["ledger_error"]
+    assert "no_stop" not in [k for i in out["review"] for k in i["kinds"]]

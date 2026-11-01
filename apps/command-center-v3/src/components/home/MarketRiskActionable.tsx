@@ -5,7 +5,7 @@
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars } from '../../lib/designTokens'
-import { fmtUsd, type ActionableModel } from '../../lib/marketRisk'
+import { SUMMARY_PHONE_MAX_PX, fmtUsd, type ActionableModel } from '../../lib/marketRisk'
 
 export const ACTIONABLE_CSS = `
 [data-mr-actionable] table{width:100%;border-collapse:collapse}
@@ -13,7 +13,7 @@ export const ACTIONABLE_CSS = `
 [data-mr-actionable] th:first-child,[data-mr-actionable] td:first-child{text-align:left}
 [data-mr-actionable] td{padding:7px 6px;border-bottom:1px solid var(--border-subtle);text-align:right;white-space:nowrap;font-size:${TYPE.base + 1}px}
 [data-mr-actionable] .mr-phone-only{display:none}
-@media(max-width:820px){
+@media(max-width:${SUMMARY_PHONE_MAX_PX}px){
  [data-mr-actionable] .mr-hide-phone{display:none}
  [data-mr-actionable] .mr-phone-only{display:block}
  [data-mr-actionable] td,[data-mr-actionable] th{padding:6px 3px}
@@ -124,7 +124,7 @@ function Positions({ m }: { m: ActionableModel }) {
               <td className="mr-hide-phone" style={numStyle}>{p.pct_account != null ? `${p.pct_account.toFixed(1)}%` : '—'}</td>
               <td style={numStyle}>{Math.round(p.stressed_share * 100)}%</td>
               <td style={{ ...numStyle, fontWeight: 700 }}>{fmtUsd(p.usd_exposed)}</td>
-              <td style={{ color: p.stop_distance_pct == null ? toneVars('warning').color : TOKENS.text[1], fontWeight: p.stop_distance_pct == null ? 600 : 400 }}>{p.stop_distance_pct == null ? 'no stop' : `${p.stop_distance_pct.toFixed(1)}% below`}</td>
+              <td data-testid="mr-position-stop" style={{ color: !m.stopsKnown ? TOKENS.text[3] : p.stop_distance_pct == null ? toneVars('warning').color : TOKENS.text[1], fontWeight: m.stopsKnown && p.stop_distance_pct == null ? 600 : 400 }}>{!m.stopsKnown ? 'stops unavailable' : p.stop_distance_pct == null ? 'no stop' : `${p.stop_distance_pct.toFixed(1)}% below`}</td>
               <td className="mr-hide-phone" style={{ color: TOKENS.text[2] }}>{p.material ? (p.stance ?? 'hold') : 'residual'}</td>
             </tr>
           ))}
@@ -156,6 +156,14 @@ function Review({ m }: { m: ActionableModel }) {
 }
 
 function Budgets({ m }: { m: ActionableModel }) {
+  if (!m.budgets.length && m.budgetsNote) {
+    return (
+      <div data-testid="mr-budgets">
+        <h3 style={h3}>Budget breaches</h3>
+        <div data-testid="mr-budgets-unavailable" style={{ ...item, color: toneVars('warning').color }}>{m.budgetsNote}</div>
+      </div>
+    )
+  }
   if (!m.budgets.length) return null
   return (
     <div data-testid="mr-budgets">

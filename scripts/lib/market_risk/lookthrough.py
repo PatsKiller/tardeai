@@ -44,9 +44,6 @@ SECTOR_TO_GROUP = {
     "real estate": "real_estate",
 }
 SEMI_INDUSTRIES = ("semiconductor",)
-#: theme groups overlap sectors (a theme weight is extra, never part of the sector partition)
-THEME_GROUPS = ("ai_basket", "semis")
-SEGMENT_SUM_TOLERANCE = 0.01
 ALIASES = {"GOOG": "GOOGL"}
 
 
@@ -176,11 +173,39 @@ def _exposure_for(
     return out
 
 
-def issuer_segments_for(sym: str, segments_cfg: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Segment look-through for a multi-segment issuer from ``config/issuer_segments.json`` (design home/v005). Only
-    ``status: APPROVED`` entries count — the weights are operator-owned; a PROPOSED entry is never used in a number.
-    Sector-kind weights must sum to 1.0 within ``SEGMENT_SUM_TOLERANCE``, else the entry is refused (None)."""
-    cfg = segments_cfg if segments_cfg is not None else (_load("issuer_segments.json").get("issuers") or {})
+def _segments_policy() -> dict[str, Any]:
+    """``issuer_segments`` from config/market_risk_policy.yaml (path, theme groups, sum tolerance, staleness)."""
+    try:
+        from scripts.lib.market_risk.policy import load_policy
+    except ImportError:  # pragma: no cover
+        from lib.market_risk.policy import load_policy  # type: ignore
+    try:
+        return load_policy().get("issuer_segments") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def issuer_segments_for(
+    sym: str, segments_cfg: dict[str, Any] | None = None, *, seg_policy: dict[str, Any] | None = None,
+    today: Any = None,
+) -> dict[str, Any] | None:
+    """Segment look-through for a multi-segment issuer (design home/v005), from the file named by
+    ``issuer_segments.path`` in the market-risk policy. Only ``status: APPROVED`` entries count — the weights are
+    operator-owned; a PROPOSED entry is never used in a number. Sector-kind weights (groups not in
+    ``issuer_segments.theme_groups``) must sum to 1.0 within ``issuer_segments.sum_tolerance``, else the entry is
+    refused (None). An entry older than ``stale_after_days`` is still used and marked stale in its basis."""
+    from datetime import date as _date
+
+    sp = seg_policy if seg_policy is not None else _segments_policy()
+    themes = set(sp.get("theme_groups") or [])
+    tol = float(sp.get("sum_tolerance", 0.01))
+    if segments_cfg is None:
+        rel = str(sp.get("path") or "config/issuer_segments.json")
+        try:
+            segments_cfg = json.loads((ROOT / rel).read_text(encoding="utf-8")).get("issuers") or {}
+        except (OSError, ValueError):
+            segments_cfg = {}
+    cfg = segments_cfg
     e = cfg.get(str(sym).upper()) if isinstance(cfg, dict) else None
     if not isinstance(e, dict) or str(e.get("status") or "").upper() != "APPROVED":
         return None
@@ -189,10 +214,17 @@ def issuer_segments_for(sym: str, segments_cfg: dict[str, Any] | None = None) ->
         g, w = str((seg or {}).get("group") or ""), (seg or {}).get("weight")
         if g and isinstance(w, (int, float)) and w > 0:
             groups[g] = round(groups.get(g, 0.0) + float(w), 4)
-    sector_sum = sum(w for g, w in groups.items() if g not in THEME_GROUPS)
-    if abs(sector_sum - 1.0) > SEGMENT_SUM_TOLERANCE:
+    sector_sum = sum(w for g, w in groups.items() if g not in themes)
+    if abs(sector_sum - 1.0) > tol:
         return None
-    return {"groups": groups, "basis": f"segments ({e.get('source') or 'issuer_segments.json'}, {e.get('as_of') or 'no date'})"}
+    stale = ""
+    try:
+        age = ((today or _date.today()) - _date.fromisoformat(str(e.get("as_of"))[:10])).days
+        if sp.get("stale_after_days") is not None and age > int(sp["stale_after_days"]):
+            stale = "; stale"
+    except ValueError:
+        stale = "; no date"
+    return {"groups": groups, "basis": f"segments ({e.get('source') or 'issuer_segments.json'}, {e.get('as_of') or 'no date'}{stale})"}
 
 
 def book_group_exposure(

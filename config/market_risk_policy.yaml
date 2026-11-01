@@ -610,6 +610,7 @@ reentry_watch:
     basing_band_pct: 3.0
     invalidation_sessions: 10
     trend_sessions: 5
+    trend_band_pct: 1.0          # 5-session change within +/- this is "flat" (arrow on the card)
 home_review:
   # Design home/v005 "Review now": review prompts ranked by dollars at risk (API-side join,
   # scripts/lib/market_risk_book_dollars.py). Display thresholds only; nothing here sets or moves a stop.
@@ -617,10 +618,19 @@ home_review:
   max_position_rows: 5
   stop_near_pct: 5.0
   stressed_min_usd: 1000
+  reconcile_tolerance_usd: 1.0   # book total vs the Home "All accounts" total; beyond this the dollars are hidden
+  lookthrough_top_groups: 3      # groups named on a re-entry row's look-through line
+  budget_drivers_shown: 3        # drivers named per budget breach, then "+N"
+  db:                            # the join's dedicated read-only connection (never looser than db_adapter's 10s/180s/3s)
+    connect_timeout_s: 5
+    statement_timeout_ms: 10000
+    lock_timeout_ms: 3000
 issuer_segments:
   # config/issuer_segments.json — operator-owned segment weights for multi-segment issuers (APPROVED entries only)
   path: config/issuer_segments.json
   stale_after_days: 120
+  theme_groups: [ai_basket, semis]   # overlap a sector; not part of the sector partition
+  sum_tolerance: 0.01                # sector-kind weights must sum to 1.0 within this
 leadership:
   # scripts/lib/market_risk/leadership.py + rotation_advice.py — regime-turn rotation advisor (operator 2026-10-31:
   # "if stuff is turning for the long term, I should have advisement of what I should be getting into"). STATED RULE,

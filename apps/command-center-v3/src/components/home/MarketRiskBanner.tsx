@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
@@ -17,7 +17,7 @@ export function ShadowTag({ mr, testid }: { mr: MarketRisk | null; testid: strin
   if (!shadowMarker(mr)) return null
   return <span data-testid={testid}
     style={{ fontSize: TYPE.sm, color: TOKENS.text[1], border: `1px dashed ${toneVars('warning').border}`, borderRadius: RADIUS.pill, padding: '2px 8px' }}>
-    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : 'the tier rests on data from before the market closed; no alert sent'}
+    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · {markerRest(mr)} — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : (mr?.alerts?.sends ?? 0) > 0 ? 'the tier rests on data from before the market closed' : 'the tier rests on data from before the market closed; no alert sent'}
   </span>
 }
 
@@ -31,7 +31,7 @@ export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '0.04em' }}>Market risk</span>
       <span data-testid="home-market-risk-value" style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: f.tone === 'neutral' ? TOKENS.text[0] : tv.color }}>{loading && !mr ? '…' : f.value}</span>
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{loading && !mr ? '' : shadowMarker(mr)
-        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting{f.sub.slice(shadowMarker(mr).length)}</>
+        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · {markerRest(mr)}{f.sub.slice(shadowMarker(mr).length)}</>
         : f.sub}</span>
     </Link>
   )

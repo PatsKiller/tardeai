@@ -500,14 +500,20 @@ def attach(
                             themes=cfg.get("theme_overrides") or {})
         residual_lt[s] = {k: e.get(k) for k in ("groups", "ai_share", "basis", "note")}
     book_meta["residual_look_through"] = residual_lt
-    values: dict[str, float] = {}
-    for p in book["material"]:
-        if p.get("mark") and p.get("shares"):
-            values[p["symbol"]] = values.get(p["symbol"], 0.0) + float(p["shares"]) * float(p["mark"])
     a.positions = {**stances, "_book": book_meta}
-    a.heatmap = sec.heatmap(block, lt.book_group_exposure(list(expo.values()), weights=values))
+    a.heatmap = sec.heatmap(block, book_shares(expo, book["material"]))
     c.assert_no_behavior_fields(a.positions)
     return {"available": True, "flagged": flagged, "clusters": clusters, "hedge": hedge, "evening": sorted(evening)}
+
+
+def book_shares(expo: dict[str, dict[str, Any]], material: list[dict[str, Any]]) -> dict[str, float]:
+    """Book share per group, VALUE-weighted by each material position's shares x mark (design home/v005; the
+    equal-per-position average let a residual count as much as the largest holding). Shares only, no amount out."""
+    values: dict[str, float] = {}
+    for p in material:
+        if p.get("mark") and p.get("shares"):
+            values[p["symbol"]] = values.get(p["symbol"], 0.0) + float(p["shares"]) * float(p["mark"])
+    return lt.book_group_exposure(list(expo.values()), weights=values)
 
 
 def _acct_key(raw: Any) -> str:
@@ -539,12 +545,15 @@ def _held_accounts(policy: dict[str, Any], doc: dict | None = None) -> set[tuple
     }
 
 
-def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any) -> bool:
+def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any, held_now: bool = False) -> bool:
     """A Buy is a RE-buy only when it came after the sale: a later date, or the same date at a later time. A same-day
-    Buy without times on both sides is not counted (a buy-then-sell day trade must stay an exit; 2026-10-05)."""
+    Buy without times on both sides counts only when the account holds the symbol now (then the buy must have come
+    after the sale); otherwise it is not counted (a buy-then-sell day trade must stay an exit). Review of #2447."""
     if buy_date != sell_date:
         return buy_date > sell_date
-    return buy_time is not None and sell_time is not None and buy_time > sell_time
+    if buy_time is not None and sell_time is not None:
+        return buy_time > sell_time
+    return held_now
 
 
 def per_account_exits(
@@ -576,22 +585,30 @@ def per_account_exits(
             r["date"], r["price"] = d, (float(px) if px is not None else r["price"])
         if loss and _account_type(acct) == "taxable":
             r["loss_date"] = max(r["loss_date"] or d, d)
+
+    def sell_time(sym: str, acct: str, d: str) -> Any:
+        return max((t for ss, sa, sd, t in (sells or []) if ss == sym and sa == acct and sd == d and t is not None),
+                   default=None)
+
+    def rebuys(sym: str, acct: str, d: str, held_now: bool) -> list[tuple[str, Any]]:
+        st = sell_time(sym, acct, d)
+        return sorted(
+            (b[2], b[3]) for b in buys
+            if b[0] == sym and b[1] == acct and _after(b[2], b[4] if len(b) > 4 else None, d, st, held_now)
+        )
+
     by_sym: dict[str, dict[str, Any]] = {}
     for (sym, acct), r in last.items():
-        st = max(
-            (t for ss, sa, sd, t in (sells or []) if ss == sym and sa == acct and sd == r["date"] and t is not None),
-            default=None,
-        )
-        rebuy = sorted(
-            (b[2], b[3]) for b in buys
-            if b[0] == sym and b[1] == acct and _after(b[2], b[4] if len(b) > 4 else None, r["date"], st)
-        )
+        held_now = (acct, sym) in held
+        rebuy = rebuys(sym, acct, r["date"], held_now)
         e = by_sym.setdefault(sym, {"accounts": [], "wash": None})
-        exited = (acct, sym) not in held and not rebuy
+        exited = not held_now and not rebuy
         e["accounts"].append({"account": acct, "date": r["date"], "price": r["price"], "exited": exited})
         if r["loss_date"]:
             ld = _date.fromisoformat(r["loss_date"])
-            rb = [(bd, bp) for bd, bp in rebuy if _date.fromisoformat(bd) <= ld + _td(days=wash_days)]
+            # the wash-sale test runs from the LOSS sale, not the latest sale (a later gain sale must not hide it)
+            rb = [(bd, bp) for bd, bp in rebuys(sym, acct, r["loss_date"], held_now)
+                  if _date.fromisoformat(bd) <= ld + _td(days=wash_days)]
             w = (
                 {"state": "occurred", "account_scope": _opaque(acct), "loss_sale_date": r["loss_date"],
                  "rebuy_date": rb[0][0], "rebuy_price": float(rb[0][1]) if rb[0][1] is not None else None}
@@ -655,7 +672,7 @@ def reentry_watch_block(
             )
             closes_rows = cur.fetchall()
             # design home/v005: a symbol re-bought in the SAME account after the sale is held there, not exited
-            # (operator 2026-11-01, broker screenshot: sold 200 and re-bought 200 the same day)
+            # (operator 2026-11-01, from a broker screenshot: a same-day sale and re-buy)
             cur.execute(
                 "SELECT symbol, account, trade_date, price, trade_time, lower(action) FROM trade_transactions "
                 "WHERE (lower(action) LIKE 'buy%%' OR lower(action) LIKE 'sell%%') "

@@ -17,8 +17,6 @@ from typing import Any, Callable
 
 SCHEMA = "MarketRiskBookExposure@v1"
 STRESSED_STATES = ("STRESS", "WEAK")
-#: the book total must match the Home "All accounts" total within this many dollars, else dollars are hidden
-RECONCILE_TOLERANCE_USD = 1.0
 
 
 def _f(v: Any) -> float:
@@ -75,6 +73,10 @@ def build(
     stressed_min = _f(rv_cfg.get("stressed_min_usd", 1000.0))
     max_items = int(rv_cfg.get("max_items", 5))
     max_rows = int(rv_cfg.get("max_position_rows", 5))
+    # the book total must match the Home "All accounts" total within this many dollars, else dollars are hidden
+    tolerance = _f(rv_cfg.get("reconcile_tolerance_usd", 1.0))
+    # stops unread (the stop read failed) is NOT "no stop": no stop items and no stop column (review of #2447, B2)
+    stops_known = stops is not None
 
     heat = [h for h in projection.get("heatmap") or [] if isinstance(h, dict)]
     kinds = {h.get("key"): h.get("kind") for h in heat}
@@ -87,7 +89,7 @@ def build(
     cash = round(sum(_f(h.get("market_value")) for h in holdings if h.get("is_cash")), 2)
     invested = round(total - cash, 2)
     home_total = _f((store.get("portfolio_totals") or {}).get("total_value"))
-    reconciles = bool(home_total) and abs(home_total - total) <= RECONCILE_TOLERANCE_USD
+    reconciles = bool(home_total) and abs(home_total - total) <= tolerance
     acct_tot: dict[str, float] = {}
     for h in holdings:
         acct_tot[str(h.get("account"))] = acct_tot.get(str(h.get("account")), 0.0) + _f(h.get("market_value"))
@@ -154,6 +156,7 @@ def build(
         "more": {"count": max(0, len(exposed) - max_rows), "usd": round(sum(r["usd_exposed"] for r in exposed[max_rows:]), 2)},
         "zero_exposure_symbols": zero,
         "as_of": store.get("data_as_of"),
+        "stops_known": stops_known,
     }
 
     # Review now: one item per (symbol, account), reasons merged, ranked by dollars at risk
@@ -174,7 +177,7 @@ def build(
         page_to = f"/prospectus/{r['symbol']}"
         if r["stop_distance_pct"] is not None and r["stop_distance_pct"] <= stop_near:
             add(r, "stop_near", f"stop {r['stop_distance_pct']:.1f}% below last", r["value_usd"], stop_to)
-        if r["material"] and r["stop_distance_pct"] is None:
+        if stops_known and r["material"] and r["stop_distance_pct"] is None:
             add(r, "no_stop", "no stop", r["value_usd"], stop_to)
         if r["usd_exposed"] >= stressed_min:
             add(r, "stressed_exposure", f"{round(100 * r['stressed_share'])}% in stressed groups", r["usd_exposed"], page_to)
@@ -183,7 +186,10 @@ def build(
     held_keys = {(str(h["symbol"]).upper(), canon_fn(str(h.get("account")))): h for h in holdings if not h.get("is_cash")}
     for s in ledger_sells or []:
         h = held_keys.get((str(s.get("symbol")).upper(), canon_fn(str(s.get("account")))))
-        if h and _f(h.get("shares")) > 0:
+        # a conflict only when the sale would have closed out what the holdings still show (a partial sale after the
+        # build leaves shares; without a sold quantity the ledger cannot say — review of #2447)
+        sold = _f(s.get("quantity"))
+        if h and _f(h.get("shares")) > 0 and sold > 0 and sold >= _f(h.get("shares")):
             r = next((x for x in rows if x["symbol"] == str(s["symbol"]).upper() and x["account_scope"] == opaque_account(h.get("account"))), None)
             if r:
                 add(r, "data_conflict", f"ledger says sold {s.get('date')}, holdings still show it — confirm with the broker",
@@ -218,7 +224,7 @@ def build(
         for d in b.get("drivers") or []:
             usd = by_scope_sym.get((sc, str(d).upper()))
             drivers.append({"name": d, "usd": round(usd, 2) if usd is not None else None})
-        if b.get("budget") == "unprotected_pct":
+        if b.get("budget") == "unprotected_pct" and stops_known:
             # every unprotected holding of the account is a driver, largest first (the engine list is alphabetical
             # and truncated, so it can miss the largest one)
             known = {d["name"] for d in drivers}

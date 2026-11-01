@@ -40,7 +40,7 @@ for (const width of [412, 390]) {
     await expect(page.getByTestId('mr-exposure')).toContainText('Your exposure: $12,400 (2.5% of book · 4.1% of invested) in stressed groups — mostly DEMOF\'s 8% technology. Cash 40%.')
     const top = page.getByTestId('mr-top-review')
     await expect(top).toBeVisible()
-    await expect(top).toContainText('DEMOA · Demo Roth — stop 3.5% below last · $40,000')
+    await expect(top).toContainText('DEMOA · Demo Roth — stop 2.9% below last · $40,000')
     expect((await top.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     await expect(page.getByTestId('mr-actionable-body')).toBeHidden()
     expect(await noSideScroll(page)).toBeTruthy()
@@ -56,12 +56,12 @@ for (const width of [412, 390]) {
     await expect(rr).toHaveCount(2)
     await expect(rr.nth(1)).toContainText('still held in Demo Taxable')
     await expect(page.getByTestId('mr-reentry-wash')).toHaveAttribute('data-tone', 'info')
-    await expect(page.getByTestId('mr-reentry-wash')).toContainText('wash sale occurred, $1,050 loss deferred into the new basis')
+    await expect(page.getByTestId('mr-reentry-wash')).toContainText('wash sale occurred, $512 loss deferred into the new basis')
     await expect(rr.first()).toContainText('Stage 1 (early setup): 1 of 5')
-    await expect(rr.first()).toContainText('Invalidates below $33.97')
+    await expect(rr.first()).toContainText('Invalidates below $48.20')
     await expect(page.getByTestId('mr-reentry-more')).toContainText('+1 older exit')
     await expect(page.getByTestId('mr-review-item')).toHaveCount(5)
-    await expect(page.getByTestId('mr-budget-row').first()).toContainText('Demo Taxable unprotected 46.6% ($21,000) vs 10% limit')
+    await expect(page.getByTestId('mr-budget-row').first()).toContainText('Demo Taxable unprotected 41.2% ($21,000) vs 10% limit')
     await expect(page.getByTestId('mr-budget-row').first()).toContainText('DEMOB $20,000')
     expect(await minTap(page, '[data-testid=home-market-risk-summary]')).toBeGreaterThanOrEqual(44)
     expect(await noSideScroll(page)).toBeTruthy()
@@ -112,6 +112,13 @@ test('v005 1440: ORANGE banner open by default with the sections', async ({ page
 test('v005: a book total that does not reconcile hides the dollars', async ({ page }) => {
   await open(page, 'v005_unreconciled', 1440, 1000)
   await expect(page.getByTestId('mr-exposure')).toHaveText('Your exposure: book total does not reconcile to All accounts — dollars hidden.')
+})
+
+test('v005: an unread stop list says "stops unavailable", and unread budget numbers are said, not dropped', async ({ page }) => {
+  await open(page, 'v005_nostops', 1440, 1000)
+  await expect(page.getByTestId('mr-position-stop').first()).toHaveText('stops unavailable')
+  await expect(page.getByTestId('mr-review')).not.toContainText('no stop')
+  await expect(page.getByTestId('mr-budgets-unavailable')).toContainText('budget numbers unavailable')
 })
 
 test('v005: the v004 card still renders when the projection has no v005 data', async ({ page }) => {

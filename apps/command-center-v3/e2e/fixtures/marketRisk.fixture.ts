@@ -119,50 +119,54 @@ export function marketRiskV005(tier: 'YELLOW' | 'ORANGE' = 'YELLOW') {
       more: { count: 0, usd: 0 }, zero_exposure_symbols: ['DEMOA', 'DEMOB'], as_of: '2031-03-09', stops_known: true,
     },
     review: [
-      { symbol: 'DEMOA', account_label: 'Demo Roth', kinds: ['stop_near'], text: 'stop 3.5% below last', usd: 40_000, to: '/risk?tab=exposure&symbol=DEMOA' },
+      { symbol: 'DEMOA', account_label: 'Demo Roth', kinds: ['stop_near'], text: 'stop 2.9% below last', usd: 40_000, to: '/risk?tab=exposure&symbol=DEMOA' },
       { symbol: 'DEMOA', account_label: 'Demo IRA', kinds: ['no_stop'], text: 'no stop', usd: 30_000, to: '/risk?tab=exposure&symbol=DEMOA' },
       { symbol: 'DEMOB', account_label: 'Demo Taxable', kinds: ['no_stop'], text: 'no stop', usd: 20_000, to: '/risk?tab=exposure&symbol=DEMOB' },
       { symbol: 'DEMOF', account_label: 'Demo IRA', kinds: ['stressed_exposure'], text: '8% in stressed groups', usd: 12_000, to: '/prospectus/DEMOF' },
       { symbol: 'DEMOM', account_label: 'Demo IRA', kinds: ['no_stop', 'no_lookthrough'], text: 'no stop · no look-through (sector unknown)', usd: 3_000, to: '/prospectus/DEMOM' },
     ],
     budgets_detail: [
-      { account_label: 'Demo Taxable', budget: 'unprotected_pct', limit: 10, actual: 46.6, unit: '%', actual_usd: 21_000, drivers: [{ name: 'DEMOB', usd: 20_000 }, { name: 'DEMOC', usd: 600 }, { name: 'DEMOD', usd: 400 }, { name: 'DEMOE', usd: 100 }] },
-      { account_label: 'Demo Roth', budget: 'single_sector_pct', limit: 30, actual: 96.3, unit: '%', actual_usd: 40_000, drivers: [{ name: 'Financial Services', usd: null }] },
+      { account_label: 'Demo Taxable', budget: 'unprotected_pct', limit: 10, actual: 41.2, unit: '%', actual_usd: 21_000, drivers: [{ name: 'DEMOB', usd: 20_000 }, { name: 'DEMOC', usd: 600 }, { name: 'DEMOD', usd: 400 }, { name: 'DEMOE', usd: 100 }] },
+      { account_label: 'Demo Roth', budget: 'single_sector_pct', limit: 30, actual: 88.8, unit: '%', actual_usd: 40_000, drivers: [{ name: 'Financial Services', usd: null }] },
     ],
     reentry_watch: {
-      DEMOX: { symbol: 'DEMOX', exit_date: exitDay, exit_price: 34.46, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: true, text: '' }],
-        look_through: { groups: { tech: 0.46, discretionary: 0.14, comm: 0.12, healthcare: 0.08 }, basis: 'factsheet' },
-        stages: { verdict: 'Still falling', exit_price: 34.46, last_close: 34.32, swing_low: 33.97, invalidation_level: 33.97, sma10: 35.25, sma20: 35.82, pct_vs_exit: -0.41, pct_vs_sma20: -4.19, trend: 'down',
+      DEMOX: { symbol: 'DEMOX', exit_date: exitDay, exit_price: 50, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: true, text: '' }],
+        look_through: { groups: { tech: 0.4, discretionary: 0.2, comm: 0.1, healthcare: 0.1 }, basis: 'factsheet' },
+        stages: { verdict: 'Still falling', exit_price: 50, last_close: 49.1, swing_low: 48.2, invalidation_level: 48.2, sma10: 51, sma20: 52.4, pct_vs_exit: -1.8, pct_vs_sma20: -6.3, trend: 'down',
           stage1: { met: 1, of: 5, conditions: [
             { key: 'follow_through', met: false, text: 'higher low + 2 green closes' }, { key: 'volume', met: false, text: 'volume ≥1×' },
             { key: 'group_no_new_low', met: false, text: 'look-through groups still at relative lows' }, { key: 'hedging_easing', met: false, text: 'hedging easing (history 1 of 5 sessions)' },
             { key: 'tier_ok', met: true, text: 'market tier YELLOW' } ] },
-          stage2: { met: false, conditions: [{ key: 'above_sma10', met: false, text: 'close above the 10-day 35.25' }, { key: 'above_exit', met: false, text: 'close above 34.46' }] } } },
-      DEMOY: { symbol: 'DEMOY', exit_date: exitDay, exit_price: 137.19, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: false, text: '' }],
+          stage2: { met: false, conditions: [{ key: 'above_sma10', met: false, text: 'close above the 10-day 51.00' }, { key: 'above_exit', met: false, text: 'close above 50.00' }] } } },
+      DEMOY: { symbol: 'DEMOY', exit_date: exitDay, exit_price: 80, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: false, text: '' }],
         look_through: { groups: { industrials: 1.0 }, basis: 'stock' },
-        stages: { verdict: 'Basing', exit_price: 137.19, last_close: 134.72, swing_low: 134.5, invalidation_level: 134.5, pct_vs_exit: -1.8, pct_vs_sma20: -12.2, trend: 'flat',
+        stages: { verdict: 'Basing', exit_price: 80, last_close: 78.5, swing_low: 77.9, invalidation_level: 77.9, pct_vs_exit: -1.9, pct_vs_sma20: -7.4, trend: 'flat',
           stage1: { met: 2, of: 5, conditions: [{ key: 'follow_through', met: false, text: 'higher low + 2 green closes' }, { key: 'volume', met: false, text: 'volume ≥1×' },
             { key: 'group_no_new_low', met: true, text: '' }, { key: 'hedging_easing', met: false, text: 'hedging easing' }, { key: 'tier_ok', met: true, text: '' }] },
-          stage2: { met: false, conditions: [{ key: 'above_exit', met: false, text: 'close above 137.19' }] } } },
+          stage2: { met: false, conditions: [{ key: 'above_exit', met: false, text: 'close above 80.00' }] } } },
       DEMOZ: { symbol: 'DEMOZ', exit_date: '2031-02-10', exit_price: 10, stages: { verdict: 'Confirmed', stage1: { met: 3, of: 5, conditions: [] }, stage2: { met: true, conditions: [] } } },
     },
     reentry_detail: {
       DEMOX: { exit_account_label: 'Demo IRA', held_elsewhere_labels: [], wash_sale: null },
       DEMOY: { exit_account_label: 'Demo IRA', held_elsewhere_labels: ['Demo Taxable'],
-        wash_sale: { state: 'occurred', account_label: 'Demo Taxable', loss_sale_date: exitDay, rebuy_date: exitDay, rebuy_price: 144.78, deferred_loss_usd: 1049.6 } },
+        wash_sale: { state: 'occurred', account_label: 'Demo Taxable', loss_sale_date: exitDay, rebuy_date: exitDay, rebuy_price: 81.25, deferred_loss_usd: 512.34 } },
     },
     reentry_card: { recent_sessions: 5, max_rows: 5 },
+    card_config: { max_review_items: 5, max_reentry_rows: 5, recent_sessions: 5, lookthrough_top_groups: 3, budget_drivers_shown: 3 },
   }
 }
 
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange' | 'v005_yellow' | 'v005_orange' | 'v005_unreconciled' | 'v005_file', writes: string[] = []) {
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange' | 'v005_yellow' | 'v005_orange' | 'v005_unreconciled' | 'v005_nostops' | 'v005_file', writes: string[] = []) {
   const v4: Record<string, unknown> = {
     yellow_live: marketRiskYellow('live'), yellow_shadow: marketRiskYellow('shadow'),
     yellow_stale: { ...marketRiskYellow('shadow'), state: 'stale', stale: true, age_hours: 3.2, as_of: iso(3.2 * 3_600_000) },
     yellow_empty: { ...marketRiskYellow('live'), contributors: [], book: null },
     yellow_nobook: { ...marketRiskYellow('live'), book: null },
     v005_yellow: marketRiskV005('YELLOW'), v005_orange: marketRiskV005('ORANGE'),
+    v005_nostops: { ...marketRiskV005('YELLOW'), book_exposure: { ...marketRiskV005('YELLOW').book_exposure, stops_known: false },
+      review: marketRiskV005('YELLOW').review.filter((r: any) => !r.kinds.includes('no_stop') && !r.kinds.includes('stop_near')), budgets_detail: [],
+      book: { budgets: [{ budget: 'unprotected_pct', scope: 'account', breached: true }] } },
     v005_unreconciled: { ...marketRiskV005('YELLOW'), book_exposure: { ...marketRiskV005('YELLOW').book_exposure, reconciles: false } },
     orange: { ...marketRiskRed(), tier: 'ORANGE', score: 68, episode: { id: 'EP-FIXTURE-2', tier: 'ORANGE', opened_at: iso(3_600_000), repeats: 1, max_repeats: 12, acknowledged_at: null, status: 'OPEN' } },
   }

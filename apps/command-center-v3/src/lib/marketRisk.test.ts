@@ -139,7 +139,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
 {
   const hm = (key: string, label: string, kind: string, state: string, rs1: number | null = null) => ({ key, label, kind, state, rs1, rs5: rs1 })
   const base = { state: 'evaluated', tier: 'YELLOW', score: 60, as_of: '2031-03-10T15:00:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [],
-    shock_type: { class: 'SECTOR' }, sectors: { sectors_measured: 3 },
+    shock_type: { class: 'SECTOR' }, sectors: { sectors_measured: 3 }, card_config: { recent_sessions: 5, max_reentry_rows: 5 },
     heatmap: [hm('tech', 'Technology', 'sector', 'STRESS', -3.1), hm('fin', 'Financials', 'sector', 'RESILIENT', 1), hm('ind', 'Industrials', 'sector', 'RESILIENT', 0.2),
       hm('comm', 'Communications', 'sector', 'UNKNOWN'), hm('semis', 'Semis', 'theme', 'STRESS', -5)],
     book_exposure: { total_usd: 1000, reconciles: true, cash_usd: 400, invested_usd: 600, stressed_groups: ['tech'], stressed_usd: 60, stressed_pct_book: 6, stressed_pct_invested: 10, cash_pct_book: 40,
@@ -163,7 +163,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(a.sectors[1].chip, 'NOT MEAS.')
   assert.equal(a.topReview?.symbol, 'DEMOA')
   assert.equal(a.budgets[0].text, 'unprotected 46.6% ($300) vs 10% limit')
-  assert.equal(a.budgets[0].drivers, 'X $200 · Y $50 · Z $30 +1')
+  assert.equal(a.budgets[0].drivers, 'X $200 · Y $50 · Z $30 · W $20', 'no config: nothing cut')
   assert.equal(a.reentry.length, 1, 'only recent exits are rows')
   assert.match(a.reentryMore, /^\+1 older exit/)
   const r = a.reentry[0]
@@ -172,11 +172,21 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.match(r.wash!.text, /wash sale occurred, \$100 loss deferred into the new basis/)
   assert.equal(r.waiting, 'higher low + 2 green closes')
   assert.equal(r.invalidates, '$9.20')
-  assert.equal(fmtUsd(19241.13), '$19,241'); assert.equal(fmtSignedPct(-3.11), '−3.1%')
+  assert.equal(fmtUsd(12345.67), '$12,346'); assert.equal(fmtSignedPct(-3.11), '−3.1%')
   const bad = actionableModel(unwrapMarketRisk({ ok: true, data: { ...base, book_exposure: { ...base.book_exposure, reconciles: false } } }))!
   assert.equal(bad.exposure, null); assert.match(bad.exposureNote!, /does not reconcile/)
   assert.equal(actionableModel(unwrapMarketRisk({ ok: true, data: { ...base, stale: true, state: 'stale' } })), null, 'stale: no numbers')
   for (const s of [a.exposure!, ...a.review.map(x => x.text), ...a.reentry.map(x => x.waiting)]) assert.ok(!/\b(buy|sell) \d|shares to|set (a )?stop/i.test(s), 'no order/size text')
+  const noStops = actionableModel(unwrapMarketRisk({ ok: true, data: { ...base, book_exposure: { ...base.book_exposure, stops_known: false } } }))!
+  assert.equal(noStops.stopsKnown, false, 'stop read failed: stops unavailable, never no stop')
+  const named = actionableModel(unwrapMarketRisk({ ok: true, data: { ...base, budgets_detail: [], book: { budgets: [{ budget: 'unprotected_pct', breached: true }] } } }))!
+  assert.match(named.budgetsNote!, /1 budget breach: unprotected — budget numbers unavailable/)
+  const limited = actionableModel(unwrapMarketRisk({ ok: true, data: { ...base, card_config: { max_review_items: 0, budget_drivers_shown: 1 } } }))!
+  assert.equal(limited.review.length, 0); assert.equal(limited.budgets[0].drivers, 'X $200 +3')
+  const carriedSent = unwrapMarketRisk({ ok: true, data: { ...base, mode: 'live', carried_only: true, alerts: { sends: 1, priorities: ['P3'] } } })
+  assert.equal(shadowMarker(carriedSent), 'CARRIED · informational card sent (P3), no page')
+  const carriedNone = unwrapMarketRisk({ ok: true, data: { ...base, mode: 'live', carried_only: true, alerts: { sends: 0, priorities: [] } } })
+  assert.equal(shadowMarker(carriedNone), CARRIED_MARKER)
   console.log('marketRisk.test v005 actionable: ok')
 }
 console.log('marketRisk.test ok')

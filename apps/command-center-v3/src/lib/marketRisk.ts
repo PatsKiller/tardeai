@@ -50,7 +50,12 @@ export interface MarketRisk {
   budgets_detail?: BudgetDetail[]
   reentry_detail?: Record<string, ReentryDetail>
   reentry_card?: { recent_sessions?: number; max_rows?: number } | null
+  card_config?: CardConfig | null
+  alerts?: { sends: number; priorities: string[] } | null
 }
+
+/** Display limits from config (home_review / reentry_watch.card), passed by the API — never literals in the UI. */
+export interface CardConfig { max_review_items?: number; max_reentry_rows?: number; recent_sessions?: number; lookthrough_top_groups?: number; budget_drivers_shown?: number }
 
 export interface ShockType { class?: string; label?: string; headline?: string }
 export interface HeatRow { key: string; label: string; kind: string; state: string; tier?: string; r1?: number | null; r5?: number | null; rs1?: number | null; rs5?: number | null; reason_unknown?: string | null; as_of?: string | null }
@@ -100,6 +105,8 @@ export function unwrapMarketRisk(resp: unknown): MarketRisk | null {
     budgets_detail: Array.isArray(raw.budgets_detail) ? raw.budgets_detail : [],
     reentry_detail: raw.reentry_detail && typeof raw.reentry_detail === 'object' ? raw.reentry_detail : {},
     reentry_card: raw.reentry_card ?? null,
+    card_config: raw.card_config ?? null,
+    alerts: raw.alerts && typeof raw.alerts.sends === 'number' ? { sends: raw.alerts.sends, priorities: Array.isArray(raw.alerts.priorities) ? raw.alerts.priorities : [] } : null,
   }
 }
 
@@ -133,7 +140,15 @@ export const CARRIED_MARKER = 'CARRIED · not alerting'
 export function shadowMarker(mr: MarketRisk | null): string {
   if (!mr || mr.state === 'not_evaluated') return ''
   if (mr.mode === 'shadow') return SHADOW_MARKER
-  return mr.carried_only ? CARRIED_MARKER : ''
+  if (!mr.carried_only) return ''
+  // under --apply a carried tier sends one informational card and never pages (review of PR 2447); 0 sends: none
+  const a = mr.alerts
+  return a && a.sends > 0 ? `CARRIED · informational card sent (${a.priorities.join('/') || 'informational'}), no page` : CARRIED_MARKER
+}
+/** The marker after its first word ("not alerting", "informational card sent (P3), no page"). */
+export function markerRest(mr: MarketRisk | null): string {
+  const m = shadowMarker(mr)
+  return m.includes(' · ') ? m.slice(m.indexOf(' · ') + 3) : ''
 }
 
 /** The header fact: value line and one-line why (top contributor), with the tier's tone. */
@@ -322,12 +337,12 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
 
 /* ── Design home/v005: the actionable card (verdict with dollars, sectors, positions, review, budgets, re-entry) ──── */
 
-/** "$19,241" — whole dollars; "—" when unknown. */
+/** "$12,346" — whole dollars; "—" when unknown. */
 export function fmtUsd(v: number | null | undefined): string {
   if (v == null || Number.isNaN(Number(v))) return '—'
   return `$${Math.round(Number(v)).toLocaleString('en-US')}`
 }
-/** A price: "$34.46". */
+/** A price: "$12.34". */
 export function fmtPrice(v: number | null | undefined): string {
   if (v == null || Number.isNaN(Number(v))) return '—'
   return `$${Number(v).toFixed(2)}`
@@ -370,6 +385,10 @@ export interface ActionableModel {
   positionsMore: string
   review: ReviewItem[]
   budgets: BudgetLine[]
+  /** Breaches the engine named but whose numbers the API could not read: said, never dropped (review of PR 2447). */
+  budgetsNote: string | null
+  /** False when the stop read failed: the stop column says "stops unavailable", never "no stop". */
+  stopsKnown: boolean
   reentry: ReentryRowModel[]
   reentryMore: string
 }
@@ -404,6 +423,8 @@ export function verdictLine(mr: MarketRisk): string {
 export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   if (!mr || mr.state !== 'evaluated' || mr.stale) return null
   const heat = (mr.heatmap ?? []).filter(h => h.kind === 'sector' || h.kind === 'theme')
+  const themeKeys = new Set(heat.filter(h => h.kind === 'theme').map(h => h.key))
+  const cfg: CardConfig = mr.card_config ?? {}
   const be = mr.book_exposure ?? null
   if (!heat.length && !be) return null
   const verdict = verdictLine(mr)
@@ -452,12 +473,18 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const unit = b.unit || '%'
     const name = budgetLabel(b.budget)
     const amt = b.actual_usd != null ? ` (${fmtUsd(b.actual_usd)})` : ''
-    const dr = b.drivers.slice(0, 3).map(d => d.usd != null ? `${d.name} ${fmtUsd(d.usd)}` : d.name)
-    return { account: b.account_label, text: `${name} ${b.actual ?? '—'}${unit}${amt} vs ${b.limit ?? '—'}${unit} limit`, drivers: dr.join(' · ') + (b.drivers.length > 3 ? ` +${b.drivers.length - 3}` : '') }
+    const nDr = cfg.budget_drivers_shown ?? b.drivers.length
+    const dr = b.drivers.slice(0, nDr).map(d => d.usd != null ? `${d.name} ${fmtUsd(d.usd)}` : d.name)
+    return { account: b.account_label, text: `${name} ${b.actual ?? '—'}${unit}${amt} vs ${b.limit ?? '—'}${unit} limit`, drivers: dr.join(' · ') + (b.drivers.length > nDr ? ` +${b.drivers.length - nDr}` : '') }
   })
+  const named = (mr.book?.budgets ?? []).filter(b => b && b.breached !== false)
+  const budgetsNote = !budgets.length && named.length
+    ? `${named.length} budget breach${named.length === 1 ? '' : 'es'}: ${named.map(b => budgetLabel(b.budget)).join(', ')} — budget numbers unavailable`
+    : null
   // re-entry: recent exits, newest first
-  const recent = mr.reentry_card?.recent_sessions ?? 5
-  const maxRows = mr.reentry_card?.max_rows ?? 5
+  // limits come from config through the API; absent, nothing is cut (review of PR 2447: no literals in the UI)
+  const recent = cfg.recent_sessions ?? mr.reentry_card?.recent_sessions ?? Number.POSITIVE_INFINITY
+  const maxRows = cfg.max_reentry_rows ?? mr.reentry_card?.max_rows ?? Number.POSITIVE_INFINITY
   const asOf = (mr.as_of || '').slice(0, 10)
   const cards = Object.entries(mr.reentry_watch ?? {}).filter(([k, c]) => !k.startsWith('_') && c && c.exit_date && c.stages && !c.stages.error)
   cards.sort((a, b) => String(b[1].exit_date).localeCompare(String(a[1].exit_date)))
@@ -480,8 +507,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     }
     const earnCond = (c.conditions ?? []).find(x => x.key === 'earnings_clear')
     const earnings = c.status === 'PENDING_EARNINGS' || (earnCond && !earnCond.met) ? 'Earnings inside 5 sessions (or still settling)' : null
-    const lg = Object.entries(c.look_through?.groups ?? {}).filter(([k]) => k !== 'ai_basket' && k !== 'semis').sort((a, b) => b[1] - a[1])
-    const top3 = lg.slice(0, 3)
+    // themes overlap sectors: name sectors only (the heat map says which keys are themes)
+    const lg = Object.entries(c.look_through?.groups ?? {}).filter(([k]) => !themeKeys.has(k)).sort((a, b) => b[1] - a[1])
+    const top3 = lg.slice(0, cfg.lookthrough_top_groups ?? lg.length)
     const rest = Math.max(0, 1 - top3.reduce((a, [, v]) => a + v, 0))
     const ltLine = top3.length
       ? `look-through: ${top3.map(([k, v]) => `${heat.find(h => h.key === k)?.label ?? k} ${Math.round(v * 100)}%`).join(' · ')}${rest > 0.01 ? ` · other ${Math.round(rest * 100)}%` : ''}${c.look_through?.basis ? ` (${c.look_through.basis})` : ''}`
@@ -493,7 +521,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       now: fmtPrice(st.last_close), vsExit: fmtSignedPct(st.pct_vs_exit), vsExitNeg: (st.pct_vs_exit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
-      stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? 5}`,
+      stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
       invalidates: fmtPrice(st.invalidation_level),
       stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
@@ -504,11 +532,11 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   const reentryMore = older > 0
     ? `+${older} older exit${older === 1 ? '' : 's'} on watch (${shortDay(firstOld[firstOld.length - 1]?.[1].exit_date)} → ${shortDay(firstOld[0]?.[1].exit_date)})`
     : ''
-  const review = (mr.review ?? []).slice(0, 5)
+  const review = (mr.review ?? []).slice(0, cfg.max_review_items ?? (mr.review ?? []).length)
   return {
     verdict, exposure, exposureNote, topReview: review[0] ?? null,
     sectors: rows, sectorsFoot: foot,
     positions: be?.rows ?? [], positionsMore,
-    review, budgets, reentry, reentryMore,
+    review, budgets, budgetsNote, stopsKnown: be?.stops_known !== false, reentry, reentryMore,
   }
 }
