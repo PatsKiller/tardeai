@@ -58,7 +58,11 @@ def _toplevel_names(path: Path) -> set[str] | None:
 
 def unresolved_alarm_imports(scripts_dir: Path = SCRIPTS) -> list[tuple[str, int, str, str]]:
     """(file, line, module, symbol) for every alarm-path import that cannot resolve."""
-    mods = {p.stem: p for p in scripts_dir.rglob("*.py")}
+    # Several files can share a stem (scripts/lib/hermes_outcome_bus/alerts.py and scripts/lib/market_risk/alerts.py):
+    # keep every candidate, or whichever rglob visits last silently decides what `from alerts import x` means.
+    mods: dict[str, list[Path]] = {}
+    for p in scripts_dir.rglob("*.py"):
+        mods.setdefault(p.stem, []).append(p)
     bad: list[tuple[str, int, str, str]] = []
     for path in sorted(scripts_dir.rglob("*.py")):
         try:
@@ -75,8 +79,8 @@ def unresolved_alarm_imports(scripts_dir: Path = SCRIPTS) -> list[tuple[str, int
                 rel = str(path.relative_to(ROOT))
             except ValueError:
                 rel = str(path)   # scanning a tmp tree (the positive controls)
-            target = mods.get(mod)
-            if target is None:
+            candidates = mods.get(mod)
+            if not candidates:
                 # MISSING MODULE, not merely a missing symbol. An earlier version of
                 # this detector skipped here -- which is exactly the telegram_bot case
                 # it exists to catch. Only flag local-looking modules so third-party
@@ -85,11 +89,13 @@ def unresolved_alarm_imports(scripts_dir: Path = SCRIPTS) -> list[tuple[str, int
                     for alias in node.names:
                         bad.append((rel, node.lineno, mod, alias.name + "  [MODULE MISSING]"))
                 continue
-            names = _toplevel_names(target)
-            if names is None:
+            # Which same-stem file a bare import reaches depends on the sys.path the caller sets up, so the symbol
+            # must exist in at least one candidate (a missing symbol in all of them is still the send_alert defect).
+            parsed = [_toplevel_names(c) for c in candidates]
+            if any(n is None for n in parsed):
                 continue
             for alias in node.names:
-                if alias.name != "*" and alias.name not in names:
+                if alias.name != "*" and not any(alias.name in n for n in parsed):
                     bad.append((rel, node.lineno, mod, alias.name))
     return bad
 

@@ -1,0 +1,14 @@
+{
+  "schema": "N8nRelayLiveSource@v1",
+  "source": "registry_render",
+  "one_way": true,
+  "decided_at": "2026-10-31",
+  "why": "The relay live list followed the AGENTS.md header status. A PATCH that changed no rule text (27.0.0 PROPOSED -> 27.0.1 ACTIVE) moved the live set by 10 lanes with no operator step. The registry render is the base list from now on, whatever the header says.",
+  "read_by": "scripts/lib/n8n_relay_live_lanes.py live_source()",
+  "comment": [
+    "ONE-WAY. The only accepted value is registry_render. A present file naming anything else, or one that does not",
+    "parse, still pins registry_render. Removing this file is caught by tests/test_relay_live_source_oneway_20261031.py",
+    "and, at promote, by scripts/relay_live_set_gate.py (any change to the effective live set holds promote until the",
+    "operator acknowledges it)."
+  ]
+}

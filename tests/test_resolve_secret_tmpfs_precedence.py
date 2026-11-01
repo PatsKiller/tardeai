@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import os
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -136,3 +138,36 @@ def test_parse_env_quoted():
         assert d["FINVIZ_COOKIE"] == "a;b=c"
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_upsert_disk_env_key_is_atomic_and_skips_noop_rewrites(tmp_path, monkeypatch):
+    import resolve_secret as RS
+
+    env = tmp_path / ".env"
+    env.write_text("A=1\nB=2\n")
+    os.chmod(env, 0o600)
+    inode = env.stat().st_ino
+    assert RS.upsert_disk_env_key("A", "1", disk_env_path=env) is False  # unchanged: no rewrite
+    assert env.stat().st_ino == inode
+    assert RS.upsert_disk_env_key("A", "9", disk_env_path=env) is True
+    assert env.read_text() == "A=9\nB=2\n" and (env.stat().st_mode & 0o777) == 0o600
+
+    def full_disk(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(RS.os, "fsync", full_disk)
+    with pytest.raises(OSError):
+        RS.upsert_disk_env_key("B", "7", disk_env_path=env)
+    assert env.read_text() == "A=9\nB=2\n"  # untouched, never truncated
+    assert [p.name for p in tmp_path.iterdir()] == [".env"]  # no temp left behind
+
+
+def test_upsert_disk_env_key_rewrites_the_symlink_target(tmp_path):
+    import resolve_secret as RS
+
+    real = tmp_path / "real.env"
+    real.write_text("A=1\n")
+    link = tmp_path / ".env"
+    link.symlink_to(real)
+    assert RS.upsert_disk_env_key("A", "2", disk_env_path=link) is True
+    assert link.is_symlink() and real.read_text() == "A=2\n"
