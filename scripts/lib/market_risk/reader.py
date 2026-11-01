@@ -114,10 +114,19 @@ class PgReader:
     # -- plumbing ---------------------------------------------------------------------------------------------
     def _cur(self):
         if self._conn is None:
-            self._conn = self._factory()
-            cur = self._conn.cursor()
-            cur.execute("SET default_transaction_read_only = on")
-            cur.close()
+            conn = self._factory()
+            # Read-only from the FIRST statement. ``SET default_transaction_read_only`` only affects transactions that
+            # start after it, and the reader never commits, so its first transaction stayed read-write (data-feed
+            # review of #2383). ``set_session(readonly=True)`` (psycopg2) or ``read_only`` (psycopg 3) applies before
+            # the first transaction begins; a connection exposing neither is refused rather than used read-write.
+            if hasattr(conn, "set_session"):
+                conn.set_session(readonly=True)
+            elif hasattr(conn, "read_only"):
+                conn.read_only = True
+            else:
+                conn.close()
+                raise RuntimeError("market_risk reader: connection cannot be made read-only; refusing to use it")
+            self._conn = conn
         return self._conn.cursor()
 
     def _rows(self, sql: str, params: Iterable[Any]) -> list[dict[str, Any]]:
@@ -148,8 +157,9 @@ class PgReader:
         return rows + self.extended_quotes(symbols, start=start, end=end)
 
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes, the latest-quote ledger). A row
-        is returned only when its bar had ended AND it had been inserted by ``end`` (replays see what existed then).
+        """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
+        the latest-quote ledger). A row is returned only when its bar had ended AND it had been inserted by ``end``
+        (replays see what existed then).
         Before the migration is applied the table is absent: that is checked with ``to_regclass`` first, so no error
         is raised and the session's read-only setting is never rolled back (review of #2384 round 2). Any other read
         error rolls back and re-asserts ``default_transaction_read_only`` before returning nothing."""

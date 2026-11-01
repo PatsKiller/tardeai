@@ -32,7 +32,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         today[sym] = {**lst[0], "as_of": md.iso(md.ts(lst[0]))}
         history[sym] = lst[1:]
     newest = max(md.ts(r) for r in today.values())
-    if md.stale(newest, ctx.now, ccfg["stale_after_hours"]):
+    if md.stale(newest, ctx.now, ccfg["stale_after_hours"], ctx.policy.get("decay")):
         return unknown(CATEGORY, ctx.now, f"option snapshots stale (newest {md.iso(newest)})")
     findings = detector.evaluate(today, history, dcfg)
     known = [f for f in findings if f.get("state") != "UNKNOWN"]

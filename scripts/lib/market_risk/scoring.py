@@ -35,15 +35,50 @@ def _parse(ts: str | None) -> datetime | None:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def _age_hours(at: datetime, now: datetime, cfg: dict) -> float:
+    """Age of an observation for decay and staleness. ``decay.clock: market`` counts only hours in which the market
+    could have produced newer information (``sessions.market_hours_between``): a weekend or holiday does not age
+    Friday's close, and from ``decay.reopen_et`` on the evening before a trading day (index futures and Asia open
+    Sunday 18:00 ET) the clock runs again. Any other value (or none) is wall-clock hours."""
+    if str(cfg.get("clock") or "wall").lower() == "market":
+        reopen = None
+        if cfg.get("reopen_et"):
+            hh, mm = str(cfg["reopen_et"]).split(":")
+            reopen = time(int(hh), int(mm))
+        return max(0.0, sessions.market_hours_between(at, now, reopen=reopen))
+    return max(0.0, (now - at).total_seconds() / 3600.0)
+
+
+def staleness(at: datetime, now: datetime, cfg: dict, stale_after: float) -> tuple[float, str | None]:
+    """(age in the decay clock, reason it is unusable or None). The ONE staleness rule every category and the scorer
+    share. Unusable when: stamped in the future (beyond ``decay.future_tolerance_seconds``); older than
+    ``stale_after`` in the decay clock; or past a hard cap that no clock can stretch — ``decay.max_market_hours``
+    of market time or ``decay.max_wall_hours`` of wall time. The caps keep truly old data UNKNOWN even though a
+    weekend no longer ages it (a feed dead since Wednesday is not "fresh" on Monday)."""
+    tol = float(cfg.get("future_tolerance_seconds", 60))
+    wall = (now - at).total_seconds() / 3600.0
+    if wall < -tol / 3600.0:
+        return 0.0, f"stamped {-wall:.1f}h in the future"
+    age = _age_hours(at, now, cfg)
+    if age > float(stale_after):
+        return age, f"stale: {age:.0f}h old (limit {float(stale_after):g}h)"
+    cap_m, cap_w = cfg.get("max_market_hours"), cfg.get("max_wall_hours")
+    if cap_m is not None and str(cfg.get("clock") or "wall").lower() == "market" and age > float(cap_m):
+        return age, f"stale: {age:.0f} market hours old (cap {float(cap_m):g}h)"
+    if cap_w is not None and wall > float(cap_w):
+        return age, f"stale: {wall:.0f}h old by the wall clock (cap {float(cap_w):g}h)"
+    return age, None
+
+
 def decay_weight(obs: c.CategoryObservation, now: datetime, policy: dict) -> tuple[float, float | None]:
-    """(weight, age_hours). Weight 0 means stale beyond stale_after: the category becomes UNKNOWN."""
+    """(weight, age_hours). Weight 0 means unusable (``staleness``): the category becomes UNKNOWN."""
     cfg = policy["decay"]
     at = _parse(obs.observed_at)
     if at is None:
         return 0.0, None
-    age = max(0.0, (now - at).total_seconds() / 3600.0)
     stale_after = obs.stale_after_hours if obs.stale_after_hours is not None else cfg["default_stale_after_hours"]
-    if age > float(stale_after):
+    age, why = staleness(at, now, cfg, float(stale_after))
+    if why:
         return 0.0, age
     for step in cfg["steps"]:
         if age <= float(step["max_age_hours"]):
@@ -56,7 +91,12 @@ def _effective(observations: list[c.CategoryObservation], now: datetime, policy:
     for o in observations:
         w_decay, age = decay_weight(o, now, policy) if o.state != "UNKNOWN" else (0.0, None)
         if o.state != "UNKNOWN" and w_decay == 0.0:
-            o = replace(o, state="UNKNOWN", score=None, reason_unknown=f"stale: {age:.0f}h old" if age else "no time")
+            at = _parse(o.observed_at)
+            sa = (
+                o.stale_after_hours if o.stale_after_hours is not None else policy["decay"]["default_stale_after_hours"]
+            )
+            why = staleness(at, now, policy["decay"], float(sa))[1] if at else "no time"
+            o = replace(o, state="UNKNOWN", score=None, reason_unknown=why or "stale")
         out.append(
             {"obs": o, "decay": w_decay, "age_hours": age, "weight": float(policy["weights"].get(o.category, 0))}
         )
@@ -128,6 +168,14 @@ def _green_guard(
     blockers = []
     if coverage < float(g.get("min_coverage", 0.7)):
         blockers.append(f"coverage {coverage:.2f} below {float(g.get('min_coverage', 0.7)):.2f}")
+    # the categories that see a selloff coming must be measured, unless almost everything is (review round 3, M-B)
+    must = [str(k) for k in g.get("must_measure") or []]
+    measured = {e["obs"].category for e in eff if e["obs"].state != "UNKNOWN"}
+    missing = [k for k in must if k not in measured]
+    if missing and coverage < float(g.get("min_coverage_if_missing_must", 0.85)):
+        blockers.append("not measured: " + ", ".join(missing))
+    if not prior or prior.get("tier") not in SEVERITY:
+        blockers.append("bootstrap evaluation (no prior)")  # GREEN is never the first word (M-B)
     ls = _parse(last_stress) if last_stress else None
     if ls is not None and (now - ls).total_seconds() < hours * 3600:
         blockers.append(f"STRESS within {hours:g}h")
@@ -308,6 +356,7 @@ def budget_uplift_breaches(portfolio: c.PortfolioContext, cfg: dict) -> list[dic
     breach counts at ``1 + (ratio - 1) * book_share``, so a small single-name account over its sector or style limit
     (ratio 3.2 on 5% of the book -> 1.11) never lifts the tier on its own."""
     floor = float(cfg["budget_ratio_uplift"])
+    book_level = {b.get("budget") for b in portfolio.budget_breaches if b.get("scope", "book") == "book"}
     out = []
     for b in portfolio.budget_breaches:
         ratio = float(b.get("ratio") or 0)
@@ -315,6 +364,8 @@ def budget_uplift_breaches(portfolio: c.PortfolioContext, cfg: dict) -> list[dic
             share = b.get("book_share")
             if share is None:
                 continue  # an account breach with no known weight never lifts the tier
+            if b.get("budget") not in book_level:
+                continue  # an account breach counts only when the book breaches the same budget (round 3, L1)
             ratio = 1.0 + (ratio - 1.0) * float(share)
         if ratio >= floor:
             out.append(b)

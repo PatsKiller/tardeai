@@ -6,6 +6,7 @@ import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
+import { ShadowTag } from './home/MarketRiskBanner'
 import { bannerVisible, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
@@ -161,6 +162,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
       {mr && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span data-testid="risk-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tone === 'neutral' ? TOKENS.text[3] : tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.state === 'not_evaluated' ? 'NOT EVALUATED' : mr.tier}</span>
+          <ShadowTag mr={mr} testid="risk-market-risk-shadow" />
           <span style={{ ...mono, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
           {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
         </div>

@@ -81,8 +81,8 @@ def test_parse_ts_refuses_ambiguous(raw):
 
 def test_afterhours_rows_follow_store_contract(cfg):
     doc, rows, skipped = _rows(AH_FX, cfg)
-    assert [r["symbol"] for r in rows] == ["QQQ"]
-    r = rows[0]
+    assert [r["symbol"] for r in rows] == ["/ES", "QQQ"]
+    r = rows[1]
     assert validate(r) is None  # the store's own writer accepts it unchanged
     assert r["session"] == "afterhours" and str(r["session_date"]) == "2026-10-29"
     assert r["bar_end"] == oq.parse_ts(doc["quotes"]["QQQ"]["extended"]["tradeTime"])  # the trade instant, exactly
@@ -90,32 +90,40 @@ def test_afterhours_rows_follow_store_contract(cfg):
     assert r["price"] == 610.85  # extended block wins over quote.lastPrice
     # after-hours moves from the SAME day's close (#2384 review), never quote.closePrice (the previous day)
     assert r["reference_close"] == 615.0 and str(r["reference_date"]) == "2026-10-29"
-    assert r["reference_basis"] == "schwab_regular_market_last_price" and r["change_pct"] == -0.6748
+    assert r["reference_basis"] == "schwab_regular_market_last_price_dated" and r["change_pct"] == -0.6748
     assert r["feed"] == "schwab"
+    # weekday futures after-hours (review of #2423, F6): measured from that day's settlement when Schwab dates it
+    es = rows[0]
+    assert es["session"] == "afterhours" and es["reference_close"] == 6850.0 and str(es["reference_date"]) == "2026-10-29"
+    assert es["reference_basis"] == "schwab_quote_close_price_settle_dated" and validate(es) is None
     reasons = {s["symbol"]: s["reason"] for s in skipped}
-    assert reasons == {"/ES": "no_reference_close_for_afterhours", "/NQ": "no_reference_close_for_afterhours",
-                       "$VIX": "no_reference_close_for_afterhours", "$SPX": "stale_trade",
-                       "SPY": "no_trade_price_or_time", "/RTY": "not_a_quote"}
+    assert reasons == {"/NQ": "no_dated_reference_for_afterhours", "$VIX": "no_dated_reference_for_afterhours",
+                       "$SPX": "stale_trade", "SPY": "no_trade_price_or_time", "/RTY": "not_a_quote"}
 
 
 def test_premarket_rows_reference_previous_session(cfg):
     doc, rows, skipped = _rows(PM_FX, cfg)
     by = {r["symbol"]: r for r in rows}
-    assert set(by) == {"/ES", "/NQ", "QQQ", "$VIX"}
+    assert set(by) == {"/ES", "QQQ"}
     for sym, r in by.items():
         assert validate(r) is None
         assert r["session"] == "premarket" and str(r["session_date"]) == "2026-10-30"
         assert str(r["reference_date"]) == "2026-10-29"  # previous NYSE session
-        assert r["reference_basis"] == "schwab_quote_close_price_previous_session"
         q = doc["quotes"][sym]
         assert r["bar_end"] == oq.parse_ts((q.get("extended") or q["quote"])["tradeTime"])
+    assert by["/ES"]["reference_basis"] == "schwab_quote_close_price_settle_dated"
+    assert by["QQQ"]["reference_basis"] == "schwab_regular_market_last_price_dated"
     assert by["/ES"]["change_pct"] == round(100 * (6760.5 - 6850.0) / 6850.0, 4)
-    assert {s["symbol"]: s["reason"] for s in skipped} == {"NVDA": "no_reference_close_for_premarket"}
+    # no dated close in the payload: refused, never measured against an assumed previous close (review of #2416 F4)
+    assert {s["symbol"]: s["reason"] for s in skipped} == {
+        "NVDA": "no_dated_reference_for_premarket", "/NQ": "no_dated_reference_for_premarket",
+        "$VIX": "no_dated_reference_for_premarket"}
 
 
 def test_premarket_after_holiday_uses_last_session(cfg):
     # Friday 2026-11-27 pre-market: the previous NYSE session is Wednesday 11-25 (Thanksgiving closed).
-    p = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": _ms("2026-11-27T08:00:00-05:00")}}}
+    p = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": _ms("2026-11-27T08:00:00-05:00"),
+                           "settleTime": _ms("2026-11-25T16:00:00-05:00")}}}
     rows, _ = oq.schwab_rows(p, _t("2026-11-27T08:05:00-05:00"), cfg)
     assert str(rows[0]["reference_date"]) == "2026-11-25"
 
@@ -211,7 +219,7 @@ def test_apply_writes_through_the_extended_writer(cfg):
     got = []
     r = oq.run(cfg=on, now=_t(doc["now"]), fetch=lambda s: doc["quotes"], dry_run=False, promoted=lambda: True,
                write=lambda rows: got.extend(rows) or {"inserted": len(rows), "rejected": []})
-    assert r["status"] == "ok" and r["inserted"] == 4 and all(validate(x) is None for x in got)
+    assert r["status"] == "ok" and r["inserted"] == 2 and all(validate(x) is None for x in got)
 
 
 # ── Schwab: off by default, never reaches an order capability ───────────────────────────────────────
@@ -351,7 +359,7 @@ def test_called_token_manager_functions_never_reach_order_code():
 # ── dry runs write nothing ──────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("fx,n", [(AH_FX, 1), (PM_FX, 4)])
+@pytest.mark.parametrize("fx,n", [(AH_FX, 2), (PM_FX, 2)])
 def test_schwab_dry_run_writes_nothing(fx, n, monkeypatch, capsys):
     import market_quotes_offhours_schwab as ent
 

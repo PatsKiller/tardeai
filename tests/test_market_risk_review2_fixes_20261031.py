@@ -368,8 +368,9 @@ def _green_obs(now, unknown=0, stress_age_h=None):
 
 def test_n2_green_needs_coverage():
     now = datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc)
-    assert scoring.compose(_green_obs(now), POLICY, now=now).hysteresis["raw_tier"] == "GREEN"
-    assert scoring.compose(_green_obs(now, unknown=5), POLICY, now=now).hysteresis["raw_tier"] == "NONE"
+    prior = {"tier": "NONE", "market_tier": "NONE", "hysteresis": {}}  # GREEN is never emitted on bootstrap (round 3)
+    assert scoring.compose(_green_obs(now), POLICY, prior=prior, now=now).hysteresis["raw_tier"] == "GREEN"
+    assert scoring.compose(_green_obs(now, unknown=5), POLICY, prior=prior, now=now).hysteresis["raw_tier"] == "NONE"
 
 
 def test_n2_green_needs_no_stress_in_24h():
@@ -444,6 +445,8 @@ def test_n4_bars_without_high_low_never_blank_extended_hours():
                     "price": 600,
                     "prev_close": 615,
                     "as_of": (now - timedelta(minutes=5)).isoformat(),
+                    "source": "market_quotes_extended:sip",  # production shape since #2384/#2415 round 3
+                    "reference_date": "2026-10-29",
                 }
             ]
 

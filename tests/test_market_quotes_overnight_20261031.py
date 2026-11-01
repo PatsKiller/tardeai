@@ -6,6 +6,12 @@ Proves the session definition (DST weekends, the Sunday futures open, holiday tr
 (the last regular close before the night, or level-only and never invented), the writer, the Schwab producer
 (fixture dry run, no network, no DB), the engine reader and category (stale overnight -> UNKNOWN naming session and
 age, never CALM), and the additive migration on a throwaway socket-only Postgres cluster (never the live DB).
+
+Review round 1 (2026-10-31) fixes, each with the reviewer's exact failing input: F1 a level-only print never erases a
+real after-hours selloff (tied to the close through an earlier referenced print, else UNKNOWN); F2/F4 an undated or
+wrong-day reference is never trusted, in any session; F3 a stale print never rides on a fresh one (per-symbol aging,
+#2425); F5 every Schwab batch failing is http_error with a non-zero exit; F6 weekday futures after-hours have a
+reference rule; F7 the Alpaca dry run is fixture-only.
 """
 
 from __future__ import annotations
@@ -186,30 +192,81 @@ def test_overnight_rows_carry_the_next_trading_date_and_a_proven_reference_or_no
         assert w.validate(r) is None, (r["symbol"], w.validate(r))
     es, qqq = by["/ES"], by["QQQ"]
     assert es["reference_close"] == 6800.0 and es["reference_date"] == date(2026, 10, 30)
-    assert es["reference_basis"] == "schwab_quote_close_price_previous_settle"
+    assert es["reference_basis"] == "schwab_quote_close_price_settle_dated"
     assert es["change_pct"] == round(100 * (6698.25 - 6800.0) / 6800.0, 4)
     assert qqq["price"] == 690.5 and qqq["reference_close"] == 700.0 and qqq["reference_date"] == date(2026, 10, 30)
-    assert qqq["reference_basis"] == "schwab_regular_market_last_price_last_session"
+    assert qqq["reference_basis"] == "schwab_regular_market_last_price_dated"
     # settle dated Thursday, no closePrice, no regular block: the level is stored, the reference is NOT invented
     for sym in ("/NQ", "/YM", "SPY"):
         r = by[sym]
         assert r["reference_close"] is None and r["reference_date"] is None and r["change_pct"] is None
-        assert r["reference_basis"] == "none_level_only_no_reference_in_payload" and r["level_only_reason"]
+        assert r["reference_basis"] == "none_level_only_no_dated_reference_in_payload" and r["level_only_reason"]
     assert "2026-10-29" in by["/NQ"]["level_only_reason"]
     assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "not_a_quote"
 
 
-def test_sunday_futures_open_row(ocfg):
-    p = {"/ES": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6750.0, "closePrice": 6800.0,
-                                                      "tradeTime": _ms(_et(2026, 11, 1, 18, 0, 5))}},
-         "QQQ": {"assetMainType": "EQUITY", "quote": {"lastPrice": 699.0, "tradeTime": _ms(_et(2026, 11, 1, 18, 0, 5))}}}
-    rows, skipped = oq.schwab_rows(p, _et(2026, 11, 1, 18, 1), ocfg)
-    assert [(r["symbol"], r["session"], r["session_date"], r["reference_date"]) for r in rows] == [
-        ("/ES", "futures_open", date(2026, 11, 2), date(2026, 10, 30))
-    ]
+def test_undated_reference_is_never_trusted(ocfg):
+    """Review of #2423 F2: /ES Tue 02:30 with closePrice 6800 and NO settleTime, and NVDA with a regular close but no
+    regularMarketTradeTime, are stored as levels -- not as a -1.47% move against an unproven close."""
+    t = _et(2026, 11, 3, 2, 30)
+    p = {"/ES": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6700.0, "closePrice": 6800.0, "tradeTime": _ms(t)}},
+         "NVDA": {"assetMainType": "EQUITY", "quote": {"lastPrice": 190.0, "tradeTime": _ms(t)},
+                  "regular": {"regularMarketLastPrice": 200.0}}}
+    rows, skipped = oq.schwab_rows(p, t + timedelta(minutes=1), ocfg)
+    assert skipped == [] and {r["symbol"] for r in rows} == {"/ES", "NVDA"}
+    for r in rows:
+        assert r["session"] == "overnight" and r["reference_close"] is None and r["change_pct"] is None
+        assert "undated" in r["level_only_reason"] and w.validate(r) is None
+
+
+def test_afterhours_and_premarket_references_need_date_proof(ocfg):
+    """Review of #2416 F4: AAPL Mon 11-02 17:00 with a regular block dated Fri 10-30 must NOT be stamped +5.26% vs
+    11-02; undated premarket/after-hours closes are refused (those sessions cannot store a level)."""
+    t = _et(2026, 11, 2, 17, 0)
+    p = {"AAPL": {"assetMainType": "EQUITY", "quote": {"lastPrice": 210.5, "tradeTime": _ms(t)},
+                  "regular": {"regularMarketLastPrice": 200.0, "regularMarketTradeTime": _ms(_et(2026, 10, 30, 16))}},
+         "MSFT": {"assetMainType": "EQUITY", "quote": {"lastPrice": 500.0, "tradeTime": _ms(t)},
+                  "regular": {"regularMarketLastPrice": 505.0}}}
+    rows, skipped = oq.schwab_rows(p, t + timedelta(minutes=1), ocfg)
+    assert rows == []
+    why = {x["symbol"]: (x["reason"], x["detail"]) for x in skipped}
+    assert why["AAPL"][0] == "no_dated_reference_for_afterhours" and "dated 2026-10-30, not 2026-11-02" in why["AAPL"][1]
+    assert why["MSFT"][0] == "no_dated_reference_for_afterhours" and "undated" in why["MSFT"][1]
+    pm = _et(2026, 11, 3, 8, 0)
+    q = {"AAPL": {"assetMainType": "EQUITY", "quote": {"lastPrice": 199.0, "tradeTime": _ms(pm)},
+                  "regular": {"regularMarketLastPrice": 200.0, "regularMarketTradeTime": _ms(_et(2026, 11, 2, 16))}}}
+    rows, _ = oq.schwab_rows(q, pm + timedelta(minutes=1), ocfg)
+    assert rows[0]["session"] == "premarket" and rows[0]["reference_date"] == date(2026, 11, 2)
+
+
+def test_weekday_futures_after_hours_have_a_reference_rule(ocfg):
+    """Review of #2423 F6: /NQ Thu 18:15 is after-hours; it is measured from Thursday's settlement when Schwab dates
+    it, and refused (never assumed) when it does not."""
+    t = _et(2026, 10, 29, 18, 15)
+    dated = {"/NQ": {"assetMainType": "FUTURE", "quote": {"lastPrice": 25300.0, "closePrice": 25700.0,
+                                                          "tradeTime": _ms(t), "settleTime": _ms(_et(2026, 10, 29, 16))}}}
+    rows, _ = oq.schwab_rows(dated, t + timedelta(minutes=1), ocfg)
+    assert (rows[0]["session"], rows[0]["reference_date"], rows[0]["change_pct"]) == (
+        "afterhours", date(2026, 10, 29), round(100 * (25300 - 25700) / 25700, 4))
     assert w.validate(rows[0]) is None
-    assert skipped == [{"symbol": "QQQ", "reason": "session_not_in_store_contract", "as_of": skipped[0]["as_of"],
-                        "detail": skipped[0]["detail"]}]
+    stale_settle = {"/NQ": {**dated["/NQ"], "quote": {**dated["/NQ"]["quote"], "settleTime": _ms(_et(2026, 10, 28, 16))}}}
+    rows, skipped = oq.schwab_rows(stale_settle, t + timedelta(minutes=1), ocfg)
+    assert rows == [] and skipped[0]["reason"] == "no_dated_reference_for_afterhours"
+
+
+def test_sunday_futures_open_row(ocfg):
+    t = _et(2026, 11, 1, 18, 0, 5)
+    p = {"/ES": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6750.0, "closePrice": 6800.0, "tradeTime": _ms(t),
+                                                      "settleTime": _ms(_et(2026, 10, 30, 16, 0))}},
+         "/NQ": {"assetMainType": "FUTURE", "quote": {"lastPrice": 25000.0, "closePrice": 25500.0, "tradeTime": _ms(t)}},
+         "QQQ": {"assetMainType": "EQUITY", "quote": {"lastPrice": 699.0, "tradeTime": _ms(t)}}}
+    rows, skipped = oq.schwab_rows(p, _et(2026, 11, 1, 18, 1), ocfg)
+    by = {r["symbol"]: r for r in rows}
+    assert (by["/ES"]["session"], by["/ES"]["session_date"], by["/ES"]["reference_date"]) == (
+        "futures_open", date(2026, 11, 2), date(2026, 10, 30))
+    assert by["/NQ"]["session"] == "futures_open" and by["/NQ"]["reference_close"] is None  # undated: level only
+    assert all(w.validate(r) is None for r in rows)
+    assert [(x["symbol"], x["reason"]) for x in skipped] == [("QQQ", "session_not_in_store_contract")]
 
 
 def test_friday_20_00_print_is_refused(ocfg):
@@ -221,7 +278,8 @@ def test_friday_20_00_print_is_refused(ocfg):
 
 def test_04_00_00_print_is_stored_as_premarket(ocfg):
     p = {"/ES": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6750.0, "closePrice": 6800.0,
-                                                      "tradeTime": _ms(_et(2026, 11, 2, 4, 0, 0))}}}
+                                                      "tradeTime": _ms(_et(2026, 11, 2, 4, 0, 0)),
+                                                      "settleTime": _ms(_et(2026, 10, 30, 16, 0))}}}
     rows, _ = oq.schwab_rows(p, _et(2026, 11, 2, 4, 1), ocfg)
     assert rows[0]["session"] == "premarket" and rows[0]["session_date"] == date(2026, 11, 2)
     assert w.validate(rows[0]) is None
@@ -236,6 +294,75 @@ def test_holiday_monday_producer_row(ocfg):
         "overnight", date(2027, 1, 19), date(2027, 1, 15))
     assert w.validate(rows[0]) is None
 
+
+def _fake_fetch_env(monkeypatch, statuses):
+    """live_fetch with fake requests + token manager (never the real token store, never the network)."""
+    import types
+
+    import market_quotes_offhours_schwab as ent
+    from lib import schwab_access_mode as sam
+
+    monkeypatch.setattr(sam, "reads_allowed", lambda: True)
+    calls = []
+
+    class Resp:
+        def __init__(self, code):
+            self.status_code, self.text = code, "{}" if code == 200 else "server error"
+
+        def json(self):
+            return {"/ES": {"quote": {"lastPrice": 1.0}}}
+
+    req = types.ModuleType("requests")
+    req.get = lambda *a, **k: (calls.append(k["params"]["symbols"]), Resp(statuses[len(calls) - 1]))[1]
+    tm = types.ModuleType("schwab_token_manager")
+    tm.canonical_token_key = lambda: "k"
+    tm.get_access_token = lambda key: "fake-token"
+    tm.is_auth_failure = lambda text: False
+    tm.record_auth_failure = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "requests", req)
+    monkeypatch.setitem(sys.modules, "schwab_token_manager", tm)
+    return ent, calls
+
+
+def test_all_schwab_batches_failing_is_an_error_not_ok(ocfg, monkeypatch, capsys):
+    """Review of #2416 F5: every batch failing returned status ok, 0 rows, exit 0."""
+    cfg = {**ocfg, "schwab": {**ocfg["schwab"], "batch_size": 2}}
+    ent, calls = _fake_fetch_env(monkeypatch, [500, 503])
+    out = ent.live_fetch(["/ES", "/NQ", "QQQ"], cfg)
+    assert len(calls) == 2 and out["_status"] == "http_error" and len(out["_failed"]) == 2
+    r = oq.run(cfg={**cfg, "schwab": {**cfg["schwab"], "enabled": True}}, now=_et(2026, 11, 2, 2, 30),
+               fetch=lambda s: out, write=lambda rows: {}, dry_run=False, promoted=lambda: True, force_window=True)
+    assert r["status"] == "http_error" and r["inserted"] == 0 and len(r["failed_batches"]) == 2
+    monkeypatch.setattr(ent.oq, "run", lambda **k: r)
+    monkeypatch.setattr(ent.oq, "load_config", lambda *_a: cfg)
+    assert ent.main(["--apply"]) == 1  # non-zero exit
+
+
+def test_partial_batch_failure_is_reported(ocfg, monkeypatch):
+    cfg = {**ocfg, "schwab": {**ocfg["schwab"], "batch_size": 2}}
+    ent, _ = _fake_fetch_env(monkeypatch, [200, 500])
+    out = ent.live_fetch(["/ES", "/NQ", "QQQ"], cfg)
+    assert "_status" not in out and out["_failed"] == [{"batch": 1, "http_status": 500}]
+    got = []
+    r = oq.run(cfg={**cfg, "schwab": {**cfg["schwab"], "enabled": True}}, now=_et(2026, 11, 2, 2, 30),
+               fetch=lambda s: out, write=lambda rows: got.extend(rows) or {"inserted": len(rows)}, dry_run=False,
+               promoted=lambda: True, force_window=True)
+    assert r["status"] == "partial" and r["failed_batches"] == [{"batch": 1, "http_status": 500}]
+    assert all(x["symbol"] != "_FAILED" for x in r["skipped"])
+
+
+def test_alpaca_dry_run_is_fixture_only(monkeypatch, capsys):
+    """Review of #2384 F7: the default dry run without --bars-json called Alpaca live."""
+    def boom(*_a, **_k):
+        raise AssertionError("dry run reached the live Alpaca fetch")
+
+    monkeypatch.setattr(mqe, "fetch", boom)
+    assert mqe.main([]) == 2
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "refused" and "fixture-only" in out["detail"] and out["source"] is None
+    monkeypatch.setattr(mqe, "fetch", lambda cfg, now: ({}, {}))
+    assert mqe.main(["--live-read"]) == 0
+    assert json.loads(capsys.readouterr().out)["source"] == "alpaca_live"
 
 def test_dry_run_entry_on_the_fixture_writes_nothing(tmp_path):
     env = {**os.environ, "TRADE_AI_CI": "1"}
@@ -334,10 +461,10 @@ class _Reader:
         return [r for r in self.rows if r["symbol"] in symbols and start <= datetime.fromisoformat(r["as_of"]) <= end]
 
 
-def _q(sym, at, price, prev=None, session="overnight", sdate="2026-11-02", ref_date="2026-10-30"):
+def _q(sym, at, price, prev=None, session="overnight", sdate="2026-11-02", ref_date="2026-10-30", feed="schwab"):
     return {"symbol": sym, "session": session, "session_date": sdate, "price": price, "prev_close": prev,
             "reference_date": ref_date if prev is not None else None, "as_of": at.isoformat(),
-            "source": "market_quotes_extended:schwab"}
+            "reference_basis": "x" if prev is not None else "none_level_only", "source": f"market_quotes_extended:{feed}"}
 
 
 POLICY = load_policy()
@@ -350,62 +477,117 @@ def _eval(rows, now):
 def test_fresh_overnight_futures_drop_is_measured():
     now = _et(2026, 11, 2, 2, 30)
     obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
-    assert obs.state == "STRESS" and "/NQ" in obs.headline
-    assert "overnight, trading date 2026-11-02" in obs.evidence[0].detail
+    assert obs.state == "STRESS" and "/NQ" in obs.headline  # a real fresh STRESS stands without QQQ/SPY
+    assert obs.evidence[0].label.startswith("/NQ overnight move")
     assert obs.stale_after_hours == pytest.approx(45 / 60)
+
+
+def test_sunday_futures_open_print_is_measured_from_friday_close():
+    now = _et(2026, 11, 1, 18, 10)
+    obs = _eval([_q("/NQ", _et(2026, 11, 1, 18, 5), 25200.0, 25700.0, "futures_open")], now)
+    assert obs.state == "STRESS" and obs.evidence[0].label.startswith("/NQ futures_open move")
+    assert "2026-10-30 close" in obs.evidence[0].detail
 
 
 def test_stale_overnight_is_unknown_naming_session_and_age_never_calm():
     now = _et(2026, 11, 2, 2, 30)
     obs = _eval([_q("QQQ", now - timedelta(minutes=60), 700.5, 700.0),
+                 _q("SPY", now - timedelta(minutes=50), 671.0, 670.0),
                  _q("/ES", now - timedelta(minutes=95), 6801.0, 6800.0)], now)
     assert obs.state == "UNKNOWN" and obs.score is None
-    assert "overnight" in obs.reason_unknown and "60 min old" in obs.reason_unknown
-    assert "95 min old" in obs.reason_unknown and "QQQ" in obs.reason_unknown and "/ES" in obs.reason_unknown
-    assert "trading date 2026-11-02" in obs.reason_unknown and "never CALM" in obs.reason_unknown
+    r = obs.reason_unknown
+    assert "QQQ +0.1% overnight (trading date 2026-11-02)" in r and "60 min old" in r and "50 min old" in r
+    assert "limit 45 min; never CALM" in r
     # the same rows, fresh, are CALM: staleness alone made it UNKNOWN
-    assert _eval([_q("QQQ", now - timedelta(minutes=5), 700.5, 700.0)], now).state == "CALM"
+    fresh = [_q("QQQ", now - timedelta(minutes=5), 700.5, 700.0), _q("SPY", now - timedelta(minutes=5), 671.0, 670.0)]
+    assert _eval(fresh, now).state == "CALM"
 
 
-def test_stale_overnight_row_is_dropped_but_fresh_one_still_measured():
+def test_one_stale_proxy_is_named_and_blocks_calm():
     now = _et(2026, 11, 2, 2, 30)
     obs = _eval([_q("QQQ", now - timedelta(minutes=60), 600.0, 700.0),  # a stale -14% must not drive it
+                 _q("SPY", now - timedelta(minutes=3), 670.1, 670.0),
                  _q("/ES", now - timedelta(minutes=3), 6799.0, 6800.0)], now)
-    assert obs.state == "CALM" and any("QQQ overnight quote stale" in e.label for e in obs.evidence)
+    assert obs.state == "UNKNOWN" and "QQQ" in obs.reason_unknown and "never STRESS" not in obs.reason_unknown
 
 
-def test_level_only_futures_compare_with_the_first_stored_level():
-    now = _et(2026, 11, 2, 2, 30)
-    rows = [_q("/ES", _et(2026, 11, 1, 18, 1), 6800.0, session="futures_open"),
-            _q("/ES", _et(2026, 11, 1, 23, 0), 6760.0),
-            _q("/ES", now - timedelta(minutes=1), 6680.0)]
+def test_f1_level_only_never_erases_a_real_after_hours_selloff():
+    """Review of #2423 F1 (exact input): Thu 10-29 Alpaca 19:55 after-hours SPY 686.7 vs 700 and QQQ 588.6 vs 600
+    (-1.9%), then Schwab level-only overnight rows at 20:05 and 20:20. At 20:22 the engine must still see -1.9% vs
+    Thursday's close (anchored through the after-hours print), never CALM +0.1% vs its own first print."""
+    now = _et(2026, 10, 29, 20, 22)
+    rows = [
+        _q("SPY", _et(2026, 10, 29, 19, 55), 686.7, 700.0, "afterhours", "2026-10-29", "2026-10-29", "sip"),
+        _q("QQQ", _et(2026, 10, 29, 19, 55), 588.6, 600.0, "afterhours", "2026-10-29", "2026-10-29", "sip"),
+        _q("SPY", _et(2026, 10, 29, 20, 5), 686.5, sdate="2026-10-30"),
+        _q("QQQ", _et(2026, 10, 29, 20, 5), 588.5, sdate="2026-10-30"),
+        _q("SPY", _et(2026, 10, 29, 20, 20), 686.9, sdate="2026-10-30"),
+        _q("QQQ", _et(2026, 10, 29, 20, 20), 588.9, sdate="2026-10-30"),
+    ]
     obs = _eval(rows, now)
-    assert obs.state == "STRESS"  # -1.76% since the Sunday open
-    assert "first stored futures_open level Sun 18:01 ET (no close in payload)" in obs.evidence[0].detail
+    assert obs.state == "STRESS", (obs.state, obs.headline, obs.reason_unknown)
+    assert "SPY -1.9% extended" in obs.headline  # SPY -1.87% is the worst proxy; QQQ -1.83%
+    ev = {e.label.split()[0]: e for e in obs.evidence if "move vs" in e.label}
+    assert "2026-10-29 close (via afterhours market_quotes_extended:sip print Thu 10-29 19:55 ET)" in ev["SPY"].label
+    assert ev["SPY"].value == pytest.approx(100 * (686.9 - 700) / 700, abs=0.01)
 
 
-def test_single_level_only_row_has_no_move_and_is_unknown():
-    now = _et(2026, 11, 2, 2, 30)
-    obs = _eval([_q("/ES", now - timedelta(minutes=1), 6680.0)], now)
-    assert obs.state == "UNKNOWN" and obs.score is None
+def test_f1_unanchored_level_only_reads_unknown():
+    now = _et(2026, 10, 29, 20, 22)
+    rows = [_q(s, _et(2026, 10, 29, 20, 20), p, sdate="2026-10-30") for s, p in (("SPY", 686.9), ("QQQ", 588.9))]
+    obs = _eval(rows, now)
+    r = obs.reason_unknown
+    assert obs.state == "UNKNOWN" and "QQQ overnight Thu 10-29 20:20 ET" in r
+    assert "level-only (no dated close); no earlier referenced QQQ print ties it to the 2026-10-29 close" in r
+    assert "no earlier referenced SPY print" in r
 
 
-def test_baselines_never_cross_trading_dates():
-    rows = _overnight.with_baselines([
-        _q("/ES", _et(2026, 11, 2, 21, 0), 6900.0, sdate="2026-11-03"),
-        _q("/ES", _et(2026, 11, 2, 2, 0), 6800.0),
-        _q("/ES", _et(2026, 11, 2, 23, 0), 6850.0, sdate="2026-11-03"),
-    ])
-    assert rows[1]["prev_close"] is None and rows[2]["prev_close"] == 6900.0
+def test_f1_anchor_must_measure_against_the_same_close():
+    """Wednesday's after-hours print (vs Wednesday's close) cannot anchor Thursday night's level."""
+    now = _et(2026, 10, 29, 20, 22)
+    rows = [_q("SPY", _et(2026, 10, 28, 19, 55), 690.0, 700.0, "afterhours", "2026-10-28", "2026-10-28", "sip"),
+            _q("SPY", _et(2026, 10, 29, 20, 20), 686.9, sdate="2026-10-30")]
+    obs = _eval(rows, now)
+    assert obs.state == "UNKNOWN"
+    assert "no earlier referenced SPY print ties it to the 2026-10-29 close" in obs.reason_unknown
+
+
+def test_f1_anchor_skips_a_newer_print_measured_against_another_close():
+    """The anchor is the newest print measured against the RIGHT close, not just the newest print: a later row whose
+    reference is Wednesday's close (a bad writer) must not stop Thursday's 19:30 after-hours print anchoring the night."""
+    now = _et(2026, 10, 29, 20, 22)
+    rows = [_q("SPY", _et(2026, 10, 29, 19, 30), 686.0, 700.0, "afterhours", "2026-10-29", "2026-10-29", "sip"),
+            _q("QQQ", _et(2026, 10, 29, 19, 30), 588.0, 600.0, "afterhours", "2026-10-29", "2026-10-29", "sip"),
+            _q("SPY", _et(2026, 10, 29, 19, 55), 686.5, 690.0, "afterhours", "2026-10-29", "2026-10-28", "sip"),
+            _q("QQQ", _et(2026, 10, 29, 19, 55), 588.5, 590.0, "afterhours", "2026-10-29", "2026-10-28", "sip"),
+            _q("SPY", _et(2026, 10, 29, 20, 20), 686.9, sdate="2026-10-30"),
+            _q("QQQ", _et(2026, 10, 29, 20, 20), 588.9, sdate="2026-10-30")]
+    obs = _eval(rows, now)
+    assert obs.state == "STRESS" and "via afterhours market_quotes_extended:sip print Thu 10-29 19:30 ET" in str(
+        obs.evidence)
+
+
+def test_f3_stale_after_hours_does_not_ride_on_a_fresh_row():
+    """Review of #2423 F3 (exact inputs): SPY/QQQ from Mon 19:55 + a fresh NVDA overnight row at Tue 03:00 is not
+    CALM; a stale SPY -1.6% + a fresh flat /ES is not STRESS. Each symbol is aged on its own row."""
+    now = _et(2026, 11, 3, 3, 0)
+    mon = lambda s, p, prev: _q(s, _et(2026, 11, 2, 19, 55), p, prev, "afterhours", "2026-11-02", "2026-11-02", "sip")
+    calm = _eval([mon("SPY", 670.0, 670.5), mon("QQQ", 600.0, 600.2),
+                  _q("NVDA", now - timedelta(minutes=1), 200.0, 200.5, sdate="2026-11-03", ref_date="2026-11-02")], now)
+    assert calm.state == "UNKNOWN" and "market hours old" in calm.reason_unknown
+    stress = _eval([mon("SPY", 659.8, 670.5), mon("QQQ", 600.0, 600.2),
+                    _q("/ES", now - timedelta(minutes=1), 6801.0, 6800.0, sdate="2026-11-03", ref_date="2026-11-02")],
+                   now)
+    assert stress.state != "STRESS" and stress.state == "UNKNOWN"
+    assert "SPY -1.6% at Mon 11-02 19:55 ET" in stress.reason_unknown
 
 
 def test_policy_without_overnight_section_fails_loudly_only_when_a_night_row_exists():
     cfg = {k: v for k, v in POLICY["extended_hours"].items() if k != "overnight"}
-    fresh, stale = _overnight.split_stale({"QQQ": _q("QQQ", _et(2026, 11, 2, 8), 1.0, 1.0, "premarket")},
-                                          _et(2026, 11, 2, 8, 5), cfg)
-    assert list(fresh) == ["QQQ"] and stale == []
+    now = _et(2026, 11, 2, 8, 5)
+    assert _overnight.is_fresh(_q("QQQ", _et(2026, 11, 2, 8), 1.0, 1.0, "premarket"), 0.1, 2.0, now, cfg)
     with pytest.raises(ValueError):
-        _overnight.split_stale({"/ES": _q("/ES", _et(2026, 11, 2, 2), 1.0)}, _et(2026, 11, 2, 2, 5), cfg)
+        _overnight.is_fresh(_q("/ES", _et(2026, 11, 2, 2), 1.0), None, 2.0, now, cfg)
 
 
 # ── migration (static + throwaway cluster; never the live DB) ───────────────────────────────────────

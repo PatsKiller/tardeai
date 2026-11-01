@@ -2,24 +2,26 @@
 
 Rows come from ``market_quotes_extended`` with session ``overnight`` (20:00-04:00 ET, Sunday night to Friday 04:00)
 or ``futures_open`` (Sunday 18:00-20:00 ET, futures). Their ``session_date`` is the NEXT trading day
-(scripts/lib/overnight_session.py). Two rules live here, kept apart from extended_hours.py so the category's own
-logic is untouched:
+(scripts/lib/overnight_session.py). Built on #2425's per-symbol aging and fail-closed proof (``extended_hours._proof``).
 
-* **No reference, no guess.** A level-only row (Schwab gave no previous close or settlement for that date) is
-  compared with the EARLIEST stored level of the same symbol and trading date (``prior_stored_level``), and the
-  evidence says so. A symbol with only one stored level has no move at all.
-* **Stale is UNKNOWN, never CALM.** An overnight / futures-open row older than
-  ``extended_hours.overnight.stale_after_minutes`` is dropped from the measurement. When nothing fresher remains,
-  the category is UNKNOWN, and the reason names each symbol, its session, its trading date and its age.
+* **A level-only print is tied to the close, or it is not used** (review of #2423, F1). Schwab sends no dated
+  close for some prints, so they are stored as a level. Such a row gets the close of the last referenced print of
+  the SAME symbol that measures against the SAME close (``reference_date`` == the session the night follows;
+  e.g. Thursday's Alpaca 19:55 after-hours SPY, -1.9% vs Thursday's close). It then reads e.g. -1.9%, not +0.1% vs
+  its own first print. A level-only row with no such anchor is dropped. It never replaces the symbol's referenced
+  row, and when nothing else is left the symbol is named as unproven, so the category reads UNKNOWN.
+* **Stale is UNKNOWN, never CALM.** An overnight / futures-open print older than
+  ``extended_hours.overnight.stale_after_minutes`` (wall clock: the session is trading) is dropped. The reason names
+  the symbol, session, trading date and age in minutes.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from scripts.lib.market_risk.contract import Evidence
+from scripts.lib.market_risk import sessions
 
 NIGHT_SESSIONS = ("overnight", "futures_open")
 ET = ZoneInfo("America/New_York")
@@ -33,88 +35,87 @@ def _at(row: dict[str, Any]) -> datetime | None:
     return d if d.tzinfo else None
 
 
-def _night(row: dict[str, Any]) -> bool:
+def is_night(row: dict[str, Any]) -> bool:
     return str(row.get("session") or "").lower() in NIGHT_SESSIONS
 
 
-def _ocfg(cfg: dict[str, Any]) -> dict[str, Any]:
+def _limit_minutes(cfg: dict[str, Any]) -> float:
     o = cfg.get("overnight")
     if not isinstance(o, dict) or "stale_after_minutes" not in o:
         raise ValueError("config/market_risk_policy.yaml extended_hours.overnight.stale_after_minutes missing")
-    return o
+    return float(o["stale_after_minutes"])
 
 
-def with_baselines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Level-only night rows get ``prev_close`` = the earliest stored level of that symbol and trading date, and say
-    so (``reference_basis`` prior_stored_level, ``reference_label``). Rows with a reference are returned unchanged."""
-    first: dict[tuple[str, str], dict[str, Any]] = {}
+def _hhmm(at: datetime) -> str:
+    return at.astimezone(ET).strftime("%a %m-%d %H:%M ET")
+
+
+def anchor_level_only(
+    rows: list[dict[str, Any]], extended_sessions: tuple[str, ...], source_ok: Callable[[str], bool]
+) -> tuple[list[dict[str, Any]], dict[str, tuple[dict[str, Any], str]]]:
+    """(rows with every level-only night row either anchored or removed, {symbol: (newest unanchored row, why)}).
+
+    An anchor is an earlier row of the same symbol in an extended session, from an allowed source, carrying a
+    ``prev_close`` and a ``reference_date`` equal to the session the level-only print follows
+    (``sessions.last_closed_session``). The anchored row keeps its own price and takes the anchor's close and date,
+    so its move is measured from the close itself."""
+    refd: dict[str, list[tuple[datetime, dict[str, Any]]]] = {}
     for r in rows:
-        if _night(r) and _at(r) is not None:
-            k = (str(r.get("symbol") or "").upper(), str(r.get("session_date")))
-            if k not in first or _at(r) < _at(first[k]):
-                first[k] = r
-    out = []
+        at = _at(r)
+        if (
+            at is not None
+            and str(r.get("session") or "").lower() in extended_sessions
+            and r.get("prev_close") not in (None, "")
+            and r.get("reference_date")
+            and source_ok(str(r.get("source") or ""))
+        ):
+            refd.setdefault(str(r.get("symbol") or "").upper(), []).append((at, r))
+    out: list[dict[str, Any]] = []
+    unanchored: dict[str, tuple[dict[str, Any], str]] = {}
     for r in rows:
-        if not _night(r) or r.get("prev_close") not in (None, ""):
+        if not is_night(r) or r.get("prev_close") not in (None, ""):
             out.append(r)
             continue
-        base = first.get((str(r.get("symbol") or "").upper(), str(r.get("session_date"))))
-        if base is None or base is r or _at(base) is None or _at(base) >= _at(r):
-            out.append(r)  # nothing earlier: a level with no move
+        sym, at = str(r.get("symbol") or "").upper(), _at(r)
+        want = sessions.last_closed_session(at).isoformat() if at is not None else None
+        cands = [(t, a) for t, a in refd.get(sym, []) if at is not None and t < at
+                 and str(a.get("reference_date"))[:10] == want]
+        if not cands:
+            why = f"level-only (no dated close); no earlier referenced {sym} print ties it to the {want} close"
+            if sym not in unanchored or str(r.get("as_of")) > str(unanchored[sym][0].get("as_of")):
+                unanchored[sym] = (r, why)
             continue
-        hhmm = _at(base).astimezone(ET).strftime("%a %H:%M ET")
-        out.append({**r, "prev_close": base["price"], "reference_basis": "prior_stored_level", "reference_date": None,
-                    "reference_label": f"first stored {base.get('session')} level {hhmm} (no close in payload)"})
-    return out
+        t, a = max(cands, key=lambda c: c[0])
+        out.append({
+            **r,
+            "prev_close": a["prev_close"],
+            "reference_date": a["reference_date"],
+            "reference_basis": f"anchored:{a.get('reference_basis') or a.get('source')}",
+            "reference": f"{want} close (via {a.get('session')} {a.get('source')} print {_hhmm(t)})",
+        })
+    return out, unanchored
 
 
-def split_stale(latest: dict[str, dict[str, Any]], now: datetime, cfg: dict[str, Any]):
-    """(fresh rows, stale night rows as dicts). Only overnight / futures-open rows are aged here; premarket and
-    after-hours rows keep the category's own ``stale_after_hours``."""
-    fresh, stale = {}, []
-    for s, r in latest.items():
-        if not _night(r):
-            fresh[s] = r
-            continue
-        limit = float(_ocfg(cfg)["stale_after_minutes"])  # required once a night row is present; fails loudly
-        at = _at(r)
-        age = None if at is None else (now - at).total_seconds() / 60.0
-        if age is None or age > limit:
-            stale.append({"symbol": s, "session": r.get("session"), "session_date": str(r.get("session_date")),
-                          "as_of": r.get("as_of"), "age_minutes": None if age is None else round(age)})
-        else:
-            fresh[s] = r
-    return fresh, stale
+def is_fresh(row: dict[str, Any], market_age_h: float | None, stale_h: float, now: datetime,
+             cfg: dict[str, Any]) -> bool:
+    """Night rows: wall-clock minutes against ``overnight.stale_after_minutes``. Other rows: #2425's market-clock
+    hours against ``stale_after_hours``. Each symbol is aged on its own row (review of #2423, F3)."""
+    if not is_night(row):
+        return market_age_h is not None and market_age_h <= stale_h
+    at = _at(row)
+    return at is not None and (now - at).total_seconds() / 60.0 <= _limit_minutes(cfg)
 
 
-def stale_reason(stale: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
-    limit = _ocfg(cfg)["stale_after_minutes"]
-    parts = [
-        f"{x['symbol']} {x['session']} (trading date {x['session_date']}) "
-        + (f"{x['age_minutes']} min old" if x["age_minutes"] is not None else "has no timestamp")
-        for x in sorted(stale, key=lambda x: x["symbol"])
-    ]
-    return f"stale {'/'.join(sorted({str(x['session']) for x in stale}))} quotes: " + ", ".join(parts) + (
-        f"; stale after {limit} min, so not measured (never CALM)"
-    )
-
-
-def stale_evidence(stale: list[dict[str, Any]], cfg: dict[str, Any]) -> list[Evidence]:
-    limit = _ocfg(cfg)["stale_after_minutes"]
-    return [
-        Evidence(
-            label=f"{x['symbol']} {x['session']} quote stale (not used)",
-            value=x["age_minutes"],
-            as_of=x["as_of"],
-            source="market_quotes_extended",
-            detail=f"{x['age_minutes']} min old > {limit} min (trading date {x['session_date']})",
-        )
-        for x in stale
-    ]
+def stale_reason(sym: str, row: dict[str, Any], move: float | None, now: datetime, cfg: dict[str, Any]) -> str:
+    at = _at(row)
+    age = "with no timestamp" if at is None else f"{round((now - at).total_seconds() / 60.0)} min old"
+    mv = f" {move:+.1f}%" if move is not None else ""
+    return (f"{sym}{mv} {row.get('session')} (trading date {str(row.get('session_date'))[:10]}) at "
+            f"{_hhmm(at) if at else 'time unknown'} is {age} (limit {_limit_minutes(cfg):g} min; never CALM)")
 
 
 def stale_after_hours(latest: dict[str, dict[str, Any]], cfg: dict[str, Any], default: float) -> float:
     """The observation's own staleness: the overnight limit when a night row is measured, else ``default``."""
-    if any(_night(r) for r in latest.values()):
-        return min(default, float(_ocfg(cfg)["stale_after_minutes"]) / 60.0)
+    if any(is_night(r) for r in latest.values()):
+        return min(default, _limit_minutes(cfg) / 60.0)
     return default

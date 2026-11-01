@@ -65,7 +65,9 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
         return {"_status": "no_token", "_detail": "token manager returned no access token (fail closed)"}
     out: dict = {}
     size = int((cfg.get("schwab") or {}).get("batch_size", 100))
+    batches, failed = 0, []
     for i in range(0, len(symbols), size):
+        batches += 1
         r = requests.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
                          params={"symbols": ",".join(symbols[i:i + size]), "fields": "quote,extended,regular",
                                  "indicative": "false"}, timeout=20)
@@ -73,10 +75,22 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
             if tm.is_auth_failure(r.text):
                 tm.record_auth_failure(r.text[:200], source="market_quotes_offhours_schwab")
             print(f"  [schwab-offhours] HTTP {r.status_code} on batch {i}")
+            failed.append({"batch": i // size, "http_status": r.status_code})
             continue
-        body = r.json()
-        if isinstance(body, dict):
-            out.update(body)
+        try:
+            body = r.json()
+        except ValueError:
+            failed.append({"batch": i // size, "http_status": r.status_code, "error": "body is not JSON"})
+            continue
+        if not isinstance(body, dict):
+            failed.append({"batch": i // size, "http_status": r.status_code, "error": "body is not an object"})
+            continue
+        out.update(body)
+    # review of #2416 F5: a run where every batch failed is an error, never "ok with 0 rows"
+    if batches and len(failed) == batches:
+        return {"_status": "http_error", "_detail": f"all {batches} Schwab quote batch(es) failed", "_failed": failed}
+    if failed:
+        out["_failed"] = failed  # partial: surfaced on the receipt as fetch.failed_batches
     return out
 
 
@@ -141,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False)
     print(json.dumps(r, default=str, indent=1))
-    return 0 if r.get("status") in ("ok", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1
+    return 0 if r.get("status") in ("ok", "partial", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1
 
 
 if __name__ == "__main__":

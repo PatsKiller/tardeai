@@ -13,15 +13,12 @@ Contract reused exactly from #2384:
   Sunday night to Friday 04:00) or ``futures_open`` (Sunday 18:00-20:00 ET, futures only), labelled by
   ``lib.overnight_session.label`` with ``session_date`` = the NEXT trading day. Regular-session and other
   non-trading-day prints are NOT stored (``session_not_in_store_contract``).
-* Overnight / futures-open reference = the close of the trading day before the trading date (the last regular
-  close before the night began): equities ``regular.regularMarketLastPrice``, futures and indices
-  ``quote.closePrice`` (Schwab's previous close / settlement). When the payload carries the reference's time
-  (``regular.regularMarketTradeTime``, ``quote.settleTime``) it must fall on that date. With no such field, or a
-  time on another date, the row stores the LEVEL ONLY (reference_close, reference_date, change_pct all None, basis
-  ``schwab.overnight_reference_basis.level_only``) and the engine compares it with the earlier stored level. A
-  reference is never invented.
-* ``reference_close``: after-hours moves from the same trading day's close, pre-market from the previous session's
-  close; a missing reference refuses the row (never an older close).
+* Reference close (``dated_reference``, one rule for every session): the close of the same trading day
+  (afterhours), the previous session (premarket) or the trading day before the trading date (overnight /
+  futures_open), and only when the payload DATES it to that day -- equities ``regular.regularMarketLastPrice`` with
+  ``regularMarketTradeTime``, futures and indices ``quote.closePrice`` with ``settleTime``. Undated or another day:
+  premarket/afterhours rows are refused (``no_dated_reference_for_<session>``); overnight/futures_open rows store the
+  LEVEL ONLY (reference columns NULL). A reference is never assumed.
 * ``bar_end`` is when the print became knowable. A Schwab quote is a point in time, so ``bar_end`` = the trade
   instant exactly and ``bar_start`` = ``point_quote_span_ms`` earlier (the contract requires bar_end > bar_start).
 * ``--apply`` refuses while the §7A domain ``quote_extended_session`` is still proposed (``domain_promoted``).
@@ -192,7 +189,6 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
     """Schwab quotes payload -> (rows in the market_quotes_extended contract, skipped with reasons)."""
     ext_cfg = ext_cfg or mqe.load_config()
     s = cfg.get("schwab") or {}
-    basis = s.get("reference_basis") or {}
     span = timedelta(milliseconds=float(s.get("point_quote_span_ms", 1)))
     rows: list[dict] = []
     skipped: list[dict] = []
@@ -218,65 +214,66 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
             skipped.append({"symbol": sym_u, "reason": "future_timestamp", "as_of": ts.isoformat()})
             continue
         et = ts.astimezone(ET)
+        asset = str(blk.get("assetMainType", ""))
         sess = mqe.session_of(et, ext_cfg)
-        if sess is None:
-            night = ovn.label(ts, ext_cfg, asset_type=str(blk.get("assetMainType", "")))
+        if sess is not None:
+            tdate: date = et.date()
+            ref_date = tdate if sess == "afterhours" else mqe.previous_session(tdate)
+        else:
+            night = ovn.label(ts, ext_cfg, asset_type=asset)
             if night is None:
                 skipped.append({"symbol": sym_u, "reason": "session_not_in_store_contract", "as_of": ts.isoformat(),
                                 "detail": "market_quotes_extended stores premarket/afterhours of NYSE trading days, "
                                           "overnight 20:00-04:00 ET Sun-Thu nights and the Sunday 18:00 futures open"})
                 continue
-            rows.append(_night_row(sym_u, blk, q, reg, price, ts, night, span, s))
-            continue
-        sdate: date = et.date()
-        if sess == "afterhours":
-            ref = _num(reg.get("regularMarketLastPrice")) if str(blk.get("assetMainType", "")).upper() == "EQUITY" else None
-            ref_date, ref_basis = sdate, basis.get("afterhours_equity")
+            sess, tdate = night
+            ref_date = ovn.reference_date(tdate)
+        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s)
+        row = {"symbol": sym_u, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
+               "price": price, "volume": None, "feed": str(s["feed"])}
+        if why_not is None:
+            row.update(reference_close=ref, reference_date=ref_date, reference_basis=ref_basis,
+                       change_pct=round(100.0 * (price - ref) / ref, 4))
+        elif sess in ovn.SESSIONS:
+            # overnight / futures_open may store the level only; the engine ties it to the close through an earlier
+            # referenced print of the same symbol, or reads it as UNKNOWN (categories/_overnight.py)
+            row.update(reference_close=None, reference_date=None, change_pct=None,
+                       reference_basis=str((s.get("dated_reference_basis") or {}).get("level_only") or "none_level_only"),
+                       level_only_reason=why_not)
         else:
-            ref, ref_date, ref_basis = _num(q.get("closePrice")), mqe.previous_session(sdate), basis.get("premarket")
-        if ref is None or not ref_basis:
-            skipped.append({"symbol": sym_u, "reason": f"no_reference_close_for_{sess}", "as_of": ts.isoformat()})
+            skipped.append({"symbol": sym_u, "reason": f"no_dated_reference_for_{sess}", "as_of": ts.isoformat(),
+                            "detail": why_not})
             continue
-        rows.append({"symbol": sym_u, "session": sess, "session_date": sdate, "bar_start": ts - span, "bar_end": ts,
-                     "price": price, "volume": None, "reference_close": ref, "reference_date": ref_date,
-                     "reference_basis": ref_basis, "change_pct": round(100.0 * (price - ref) / ref, 4),
-                     "feed": str(s["feed"])})
+        rows.append(row)
     return rows, skipped
 
 
-def _same_et_date(value: Any, want: date) -> bool | None:
-    """True/False when ``value`` is a provider timestamp on/off ``want`` (ET), None when there is no timestamp."""
-    at = parse_ts(value)
-    return None if at is None else at.astimezone(ET).date() == want
+def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
+                    s: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
+    """(reference_close, basis, None) when the payload PROVES the close of ``ref_date``, else (None, None, why).
 
-
-def _night_row(sym: str, blk: dict, q: dict, reg: dict, price: float, ts: datetime, night: tuple[str, date],
-               span: timedelta, s: dict[str, Any]) -> dict[str, Any]:
-    """One overnight / futures-open row. The reference is the close of the trading day before the trading date,
-    taken only from a field that means exactly that and, when the payload dates it, only when the date matches."""
-    sess, tdate = night
-    ref_date = ovn.reference_date(tdate)
-    basis = s.get("overnight_reference_basis") or {}
-    if str(blk.get("assetMainType", "")).upper() == "EQUITY":
-        ref, when, ref_basis = _num(reg.get("regularMarketLastPrice")), reg.get("regularMarketTradeTime"), basis.get("equity")
+    One rule for every session (review of #2416 F4 and #2423 F2/F6, 2026-10-31): equities use
+    ``regular.regularMarketLastPrice`` dated by ``regular.regularMarketTradeTime``; futures and indices use
+    ``quote.closePrice`` dated by ``quote.settleTime``. The date must be present AND fall on ``ref_date`` (ET): an
+    undated price is not proof (a Monday 17:00 regular block can still hold Friday's close), so it is never used.
+    """
+    basis = s.get("dated_reference_basis") or {}
+    if str(asset).upper() == "EQUITY":
+        ref, when, label, what = (_num(reg.get("regularMarketLastPrice")), reg.get("regularMarketTradeTime"),
+                                  basis.get("equity"), "regular.regularMarketLastPrice/regularMarketTradeTime")
     else:
-        ref, when, ref_basis = _num(q.get("closePrice")), q.get("settleTime"), basis.get("non_equity")
-    level_only_why = None
+        ref, when, label, what = (_num(q.get("closePrice")), q.get("settleTime"), basis.get("non_equity"),
+                                  "quote.closePrice/settleTime")
     if ref is None:
-        level_only_why = "no previous close / settlement in the payload"
-    elif not ref_basis:
-        level_only_why = "no reference basis configured"
-    elif _same_et_date(when, ref_date) is False:
-        level_only_why = f"reference dated {parse_ts(when).astimezone(ET).date()}, not {ref_date}"
-    row = {"symbol": sym, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
-           "price": price, "volume": None, "feed": str(s["feed"])}
-    if level_only_why:
-        row.update(reference_close=None, reference_date=None, change_pct=None,
-                   reference_basis=str(basis.get("level_only") or "none_level_only"), level_only_reason=level_only_why)
-    else:
-        row.update(reference_close=ref, reference_date=ref_date, reference_basis=ref_basis,
-                   change_pct=round(100.0 * (price - ref) / ref, 4))
-    return row
+        return None, None, f"no {what.split('/')[0]} in the payload"
+    if not label:
+        return None, None, "no dated_reference_basis label configured"
+    at = parse_ts(when)
+    if at is None:
+        return None, None, f"{what}: the close is undated, so it is not proven to be the {ref_date} close"
+    if at.astimezone(ET).date() != ref_date:
+        return None, None, f"{what}: the close is dated {at.astimezone(ET).date()}, not {ref_date}"
+    return ref, label, None
 
 
 # ── one run ─────────────────────────────────────────────────────────────────────────────────────────
@@ -316,7 +313,12 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
     if isinstance(payload, dict) and payload.get("_status"):
         receipt["status"] = str(payload["_status"])
         receipt["detail"] = payload.get("_detail")
+        if payload.get("_failed"):
+            receipt["failed_batches"] = payload["_failed"]
         return receipt
+    if isinstance(payload, dict) and "_failed" in payload:  # symbols never start with "_"
+        payload = dict(payload)
+        receipt["failed_batches"] = payload.pop("_failed")
     rows, skipped = schwab_rows(payload, now, cfg)
     receipt["rows"] = [_jsonable(r) for r in rows]
     receipt["skipped"] = skipped
@@ -328,5 +330,5 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
     res = write(rows) if rows else {}
     receipt["inserted"] = int((res or {}).get("inserted", 0))
     receipt["rejected"] = list((res or {}).get("rejected", []))
-    receipt["status"] = "ok"
+    receipt["status"] = "partial" if receipt.get("failed_batches") else "ok"
     return receipt
