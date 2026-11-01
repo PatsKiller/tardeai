@@ -2377,6 +2377,27 @@
       "registered_by": "market-risk-p3-cio-llm-20261031",
       "registered_at": "2026-10-31T13:00:00Z",
       "anthropic_first": false
+    },
+    {
+      "id": "market_risk_deep_brief",
+      "name": "Market risk deep brief (follow-up prose from a deterministic fact pack)",
+      "category": "Alerts",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/lib/market_risk/deep_brief.py (DSN-20261031-market-risk-engine deep brief; operator 2026-10-31 'as part of the deeper analysis after the initial alert that you can use the LLM to coordinate and to put together is the historical facts on what normally happens in the market when X is happening'): writes six sections of a follow-up brief ONLY from the deterministic fact pack (scripts/lib/market_risk/deep_brief_facts.py). Every sentence must cite fact ids, every number must be in the cited facts, behaviour wording is rejected (config/market_risk_curation.yaml lexicon), and any failure or timeout sends the deterministic brief. Free OAuth lanes only (allow_paid=false). READ_ONLY_ADVISORY; sends nothing itself.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "max_input_tokens": 6000,
+      "max_output_tokens": 1400,
+      "daily_soft_cap": 40,
+      "tools_allowed": false,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "registered_by": "market-risk-deep-brief-20261031",
+      "registered_at": "2026-10-31T17:00:00Z",
+      "anthropic_first": false
     }
   ],
   "default_deepseek_policy": "FAST",

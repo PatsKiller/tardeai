@@ -1,0 +1,44 @@
+# Market Risk deep brief — the follow-up after the initial alert (DSN-20261031-market-risk-engine, deep brief).
+# Operator 2026-10-31: "as part of the deeper analysis after the initial alert that you can use the LLM to coordinate
+# and to put together is the historical facts on what normally happens in the market when X is happening. Also, use the
+# other data sources so we can get a clear consensus on what's happening. You should also be looking at the options
+# market to see how people are hedging. Everything needs to be factored in, earnings, every particular catalyst."
+#
+# Rails: detection and scoring stay deterministic; the fact pack (scripts/lib/market_risk/deep_brief_facts.py) is
+# built without a model; the LLM may only write prose FROM the pack, every sentence cites fact ids, every number must
+# be in the facts it cites, the curation lexicon (config/market_risk_curation.yaml) rejects behaviour wording, and any
+# failure sends the deterministic brief. MBI_BEHAVIOR = 0. The initial alert is never delayed: the brief runs after it.
+schema: MarketRiskDeepBrief@v1
+as_of: 2026-10-31
+enabled: true
+process_id: market_risk_deep_brief      # config/llm_process_registry.json row (free OAuth lanes only)
+lane: grok                              # first lane; llm_fallback walks grok -> chatgpt
+allow_paid: false                       # metered DeepSeek would hit the off-peak deferral and delay a P2 follow-up
+timeout_s: 45                           # wall clock for the model; on expiry the deterministic brief is sent
+max_tokens: 1400
+max_input_chars: 14000
+min_n: 20                               # base-rate statistic with fewer matching days says "insufficient history"
+triggers:
+  tiers: [ORANGE, RED]                  # a transition INTO one of these tiers (from a lower tier or no prior)
+  shock_type_change_min_tier: YELLOW    # a change of shock type at or above this tier
+delivery:
+  priority: P2
+  dedupe_minutes: 720                   # at most once per episode transition / shock type; keys in the sent-key ledger
+lookahead_sessions: [1, 3, 5, 10]       # catalyst windows
+news_window_hours: 72
+social_window_hours: 72
+option_lookback_sessions: 20
+heavyweights: [AAPL, MSFT, NVDA, AMZN, GOOGL, META, AVGO, TSLA, AMD, INTC, ORCL, NFLX]   # index look-through catalysts
+consensus:
+  sources: [engine, options, breadth, credit, news, analysts, social, cio]
+  news_tone_band: 0.10                  # mean sentiment beyond +/- this is a directional read
+  analyst_target_band: 0.02             # mean 20-day consensus price-target change beyond +/- this is a read
+  social_bullish_hi: 0.60               # bullish share above this reads as complacent retail
+  pc_vol_warn_factor: 1.5               # index put/call volume / trailing median at or above this reads as hedging
+sections:                               # the LLM writes these six; "Your exposure" is always deterministic
+  - What's happening
+  - What usually happens next
+  - How the market is hedging
+  - Catalysts ahead
+  - Where sources agree and disagree
+  - What would change the picture
