@@ -313,9 +313,9 @@ def test_f5_stale_proxy_is_named_beside_a_fresh_one():
         _row("SPY", 681.0, 680.0, et(2026, 10, 30, 19, 0), "afterhours"),
     ]
     o = xh.evaluate(_ctx(et(2026, 10, 30, 19, 30), rows))
-    assert o.state == "CALM"
-    assert "not measured: QQQ -3.0%" in o.headline and "3.0 market hours old" in o.headline
-    assert any(e.label == "index proxy not measured" and "QQQ" in e.detail for e in o.evidence)
+    # round 3 (R2-5): the stale proxy is named AND the category cannot read CALM
+    assert o.state == "UNKNOWN"
+    assert "not measured: QQQ -3.0%" in o.reason_unknown and "3.0 market hours old" in o.reason_unknown
 
 
 def test_weekend_names_the_last_after_hours_print_and_its_age():
@@ -504,3 +504,189 @@ def test_shadow_reports_the_files_it_wrote(tmp_path, monkeypatch, capsys):
     doc = json.loads(capsys.readouterr().out)
     assert doc["mode"] == "shadow" and doc["written"].endswith("market_risk/shadow_latest.json")
     assert Path(doc["written"]).exists() and Path(doc["snapshot"]).exists()
+
+
+# ── Round 3 (review of #2415 round 2) ────────────────────────────────────────────────────────────────────────────
+FIX = ROOT / "tests" / "fixtures" / "market_risk_scenarios"
+DAILY_BAR_CATS = ("technical", "volatility", "options_flow", "cross_asset")
+
+
+def _replay(as_of: str) -> dict:
+    import contextlib
+    import importlib
+    import io
+
+    ev = importlib.import_module("scripts.market_risk_evaluate")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        ev.main(
+            ["--fixture", str(FIX), "--overlay", str(FIX / "oct2026"), "--as-of", as_of, "--json", "--no-portfolio"]
+        )
+    d = json.loads(buf.getvalue())
+    return {o["category"]: o for o in d["observations"]} | {"_doc": d}
+
+
+def test_r2_1_daily_bar_limits_are_one_missed_session_in_market_hours():
+    for cat in ("technical", "volatility", "options_flow_category", "cross_asset"):
+        assert float(P[cat]["stale_after_hours"]) <= 32, cat
+    assert float(P["macro_credit"]["stale_after_hours"]) >= 96  # FRED publication lag
+
+
+@pytest.mark.parametrize(
+    "a,b,limit,usable",
+    [
+        (et(2026, 10, 30, 16), et(2026, 11, 2, 8), 32, True),  # Friday close -> Monday premarket: 22h
+        (et(2026, 10, 30, 16), et(2026, 11, 2, 17, 30), 32, True),  # Monday's close not in yet: 31.5h
+        (et(2026, 10, 30, 16), et(2026, 11, 4, 10), 32, False),  # review failing input: Fri bars, Wed 10:00
+        (et(2026, 10, 28, 16), et(2026, 11, 2, 10), 32, False),  # review failing input: Wed bars, Mon 10:00 (72h)
+        (et(2026, 10, 29, 16), et(2026, 11, 3, 9), 32, False),  # Fri and Mon missing
+        (et(2027, 1, 15, 16), et(2027, 1, 19, 9, 29), 32, True),  # MLK: nothing missing
+        (et(2027, 1, 14, 16), et(2027, 1, 19, 9, 29), 32, False),  # Friday missing before MLK
+        (et(2026, 10, 27, 17), et(2026, 10, 30, 18, 30), 120, True),  # FRED Tuesday obs on Friday evening
+    ],
+)
+def test_r2_1_staleness_cases(a, b, limit, usable):
+    assert (scoring.staleness(a, b, P["decay"], limit)[1] is None) is usable
+
+
+def test_r2_1_fixture_replay_fri_bars_wednesday_is_unknown_not_calm():
+    got = _replay("2026-11-04T15:00:00Z")  # Wed 10:00 ET; the fixture's bars end Fri 10-30
+    for cat in DAILY_BAR_CATS:
+        assert got[cat]["state"] == "UNKNOWN", (cat, got[cat].get("headline"))
+    mon = _replay("2026-11-02T13:00:00Z")  # Mon 08:00 ET: Friday's close is still current
+    assert mon["technical"]["state"] != "UNKNOWN" and mon["volatility"]["state"] != "UNKNOWN"
+
+
+class _GapReader:
+    """The scenario fixture with sessions removed (a data gap): every per-day read drops the gap dates."""
+
+    def __init__(self, base, gap):
+        self.base, self.gap = base, {d.isoformat() for d in gap}
+
+    def __getattr__(self, name):
+        return getattr(self.base, name)
+
+    def _keep(self, rows):
+        out = []
+        for r in rows:
+            d = str(r.get("date") or r.get("session_date") or r.get("as_of") or "")
+            if d[:10] not in self.gap:
+                out.append(r)
+        return out
+
+    def sessions(self, *, start, end, symbol="SPY"):
+        return [d for d in self.base.sessions(start=start, end=end, symbol=symbol) if d.isoformat() not in self.gap]
+
+    def daily_bars(self, symbols, *, sessions, end):
+        return self._keep(self.base.daily_bars(symbols, sessions=sessions + len(self.gap), end=end))
+
+    def session_opens(self, symbols, *, sessions, end):
+        return self._keep(self.base.session_opens(symbols, sessions=sessions, end=end))
+
+    def option_snapshots(self, symbols, *, sessions, end):
+        return self._keep(self.base.option_snapshots(symbols, sessions=sessions, end=end))
+
+    def quotes(self, symbols, *, start, end):
+        return self._keep(self.base.quotes(symbols, start=start, end=end))
+
+
+def test_r2_1_backtest_with_a_data_gap_reads_unknown_not_calm():
+    from datetime import date
+
+    from scripts import market_risk_backtest as bt
+    from scripts.lib.market_risk.fixture_reader import FixtureReader
+
+    base = FixtureReader(FIX, overlay=FIX / "oct2026")
+    gap = [date(2026, 10, 21), date(2026, 10, 22), date(2026, 10, 23)]  # Wed-Fri missing: three sessions
+    reader = _GapReader(base, gap)
+    s = {"id": "gap_oct2026", "start": "2026-10-19", "end": "2026-10-27", "expect": {}}
+    res = bt.run_scenario(s, reader=reader, analogs=False)
+    by = {(t["date"], t["session"]): t["states"] for t in res["timeline"]}
+    mon_open = by[("2026-10-26", "regular")]  # Monday 09:31: newest bar is Tuesday 10-20's (65.5 market hours)
+    for cat in ("technical", "volatility", "cross_asset"):
+        assert mon_open[cat] == "UNKNOWN", (cat, mon_open)
+    assert by[("2026-10-20", "close")]["technical"] != "UNKNOWN"  # before the gap: measured
+    full = bt.run_scenario(s, reader=base, analogs=False)
+    assert {(t["date"], t["session"]): t["states"] for t in full["timeline"]}[("2026-10-26", "regular")][
+        "technical"
+    ] != "UNKNOWN"  # positive control: without the gap Monday is measured
+
+
+# R2-4: fail closed
+def test_r2_4_missing_reference_date_is_unknown_never_stress():
+    r = _row("QQQ", 690.8, 715.42, et(2026, 10, 30, 16, 45), "afterhours", source="schwab")
+    r.pop("reference_date")
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 16, 50), [r]))
+    assert o.state == "UNKNOWN" and "no reference_date" in o.reason_unknown
+
+
+def test_r2_4_row_without_source_fails_the_source_filter():
+    r = _row("QQQ", 670.0, 690.54, et(2026, 10, 30, 16, 45), "afterhours")
+    r.pop("source")
+    assert xh.evaluate(_ctx(et(2026, 10, 30, 16, 50), [r])).state == "UNKNOWN"
+
+
+# R2-5: CALM needs every proxy proven fresh
+def test_r2_5_one_fresh_calm_proxy_with_one_stale_is_unknown():
+    rows = [
+        _row("QQQ", 670.0, 690.54, et(2026, 10, 30, 16, 30), "afterhours"),  # -3%, 3h old
+        _row("SPY", 756.5, 755.72, et(2026, 10, 30, 19, 25), "afterhours"),  # +0.1%, fresh
+    ]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 19, 30), rows))
+    assert o.state == "UNKNOWN" and "QQQ not proven fresh" in o.reason_unknown
+
+
+def test_r2_5_fresh_stress_still_stands_beside_an_unproven_proxy():
+    rows = [
+        _row("QQQ", 670.0, 690.54, et(2026, 10, 30, 19, 25), "afterhours"),  # -3% fresh
+        _row("SPY", 755.72, 755.72, et(2026, 10, 30, 19, 25), "afterhours"),  # unproven
+    ]
+    o = xh.evaluate(_ctx(et(2026, 10, 30, 19, 30), rows))
+    assert o.state == "STRESS" and "not measured: SPY" in o.headline
+
+
+def test_r2_5_both_proxies_fresh_and_flat_is_calm():
+    rows = [
+        _row("QQQ", 690.9, 690.54, et(2026, 10, 30, 19, 25), "afterhours"),
+        _row("SPY", 756.0, 755.72, et(2026, 10, 30, 19, 25), "afterhours"),
+    ]
+    assert xh.evaluate(_ctx(et(2026, 10, 30, 19, 30), rows)).state == "CALM"
+
+
+# Seasonal: New York's calendar, not UTC's
+@pytest.mark.parametrize(
+    "t,month,tag",
+    [
+        (et(2026, 9, 30, 21, 0), "September", "quarter_end_window"),
+        (et(2026, 12, 31, 20, 30), "December", "year_end_window"),
+        (et(2026, 11, 20, 20, 30), "November", "options_expiration"),
+        (et(2026, 10, 31, 20, 38), "October", None),
+    ],
+)
+def test_seasonal_uses_the_new_york_date(t, month, tag):
+    from scripts.lib.market_risk.categories import seasonal
+
+    o = seasonal.evaluate(c.EvalContext(now=t.astimezone(timezone.utc), reader=None, policy=P, session="closed"))
+    assert month in o.headline, o.headline
+    if tag:
+        assert tag in o.headline, o.headline
+
+
+# R2-2: the CIO sees the shadow marker
+def test_r2_2_cio_summary_carries_the_shadow_marker():
+    from scripts.lib import cio_market_context_state as cms
+    from scripts.lib import market_risk_projection as proj
+
+    now = datetime(2026, 11, 1, 0, 40, tzinfo=timezone.utc)
+    snap = proj.snapshot_from_assessment(
+        {"schema": c.SCHEMA_ASSESSMENT, "tier": "YELLOW", "score": 59.7, "as_of": now.isoformat(), "mode": "shadow"}
+    )
+    state = cms.build_market_context_state(
+        regime_snapshot={}, evaluated_at=now, market_risk=proj.build(snap, None, now=now)
+    )
+    s = state["summary"]["market_risk"] if "summary" in state else state["market_risk"]
+    assert s["mode"] == "shadow" and "(SHADOW, not alerting)" in s["line"]
+    live = proj.build(dict(snap, mode="live"), None, now=now)
+    s2 = cms.build_market_context_state(regime_snapshot={}, evaluated_at=now, market_risk=live)
+    s2 = s2["summary"]["market_risk"] if "summary" in s2 else s2["market_risk"]
+    assert s2["mode"] == "live" and "SHADOW" not in s2["line"]

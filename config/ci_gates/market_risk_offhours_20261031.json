@@ -9,6 +9,9 @@
     "ANCHOR: MARKET_RISK_OFFHOURS_20261031 — Market Risk Engine off-hours: session labels incl. the 24/5 overnight",
     "session, market-hours decay clock (weekends/holidays do not age Friday's close; Sunday 18:00 reopen), reader",
     "session tag + post-close reference re-based on the day's own close, extended_hours names the last quote and its",
-    "age, regular-close feeds are not after-hours prints, --shadow writes the snapshot with no alert path. Hermetic."
+    "age, regular-close feeds are not after-hours prints, --shadow writes the snapshot with no alert path. Hermetic.",
+    "Round 3 (review of #2415 round 2): 32 market-hour limits for daily-bar categories (Fri bars on Wed",
+    "read UNKNOWN; backtest with a 3-session data gap), shadow marker in the CIO line, fail-closed extended prints",
+    "(no reference_date / no source), no CALM unless every proxy is proven fresh, seasonal on the New York date."
   ]
 }

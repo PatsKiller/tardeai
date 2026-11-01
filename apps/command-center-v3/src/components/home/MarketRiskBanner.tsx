@@ -6,9 +6,17 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
+
+/** The shadow label beside a tier pill: a label only, no new widget (UI change control). Nothing when live. */
+export function ShadowTag({ mr, testid }: { mr: MarketRisk | null; testid: string }) {
+  const m = shadowMarker(mr)
+  if (!m) return null
+  return <span data-testid={testid} title="Evaluated in shadow mode (market_risk_evaluate.py --shadow): no Telegram, email or SMS was sent for this tier."
+    style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.text[1], border: `1px dashed ${TOKENS.border}`, borderRadius: RADIUS.pill, padding: '2px 8px' }}>{m}</span>
+}
 
 /** Header fact (replaces the "Market" fact; the old regime/VIX text moved to the Market-in-one-look card). */
 export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading?: boolean }) {
@@ -41,6 +49,7 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
     <div data-testid="home-market-risk-compact" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '3px 8px' }}>{mr.tier}</span>
+        <ShadowTag mr={mr} testid="home-market-risk-compact-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? `${Math.round(mr.score)}/100` : '—'}</span>
         {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>· {mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
         {mr.state === 'stale' && <span style={{ fontSize: TYPE.base, color: toneVars('warning').color }}>· stale, last evaluation {shortTime(mr.as_of)}</span>}
@@ -72,6 +81,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span data-testid="home-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.tier}</span>
+        <ShadowTag mr={mr} testid="home-market-risk-banner-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>MARKET RISK {mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
       </div>
       <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>

@@ -30,7 +30,10 @@ technical:
   semis_symbols: [SMH, SOXX]
   history_sessions: 260          # enough for a 52-week high and a 200-day average
   min_sessions: 25
-  stale_after_hours: 96          # a Friday close is still current on Monday morning
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   drawdown_52w_pct: 8.0          # NDX was 10% off its 10-06 record on 10-30
@@ -67,7 +70,10 @@ volatility:
   realized_symbol: SPY
   term_symbols: {vix9d: "^VIX9D", vix3m: "^VIX3M", vvix: "^VVIX", skew: "^SKEW"}
   history_sessions: 30
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   vix_warn: 20.0
@@ -98,13 +104,16 @@ volatility:
 options_flow_category:
   # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
   history_extra_sessions: 1
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   score: {CALM: 10, WARN: 50, STRESS: 85}
 
 macro_credit:
   series: {hy_oas: BAMLH0A0HYM2, ust10: DGS10, curve: T10Y2Y, wti: DCOILWTICO, dxy: DTWEXBGS}
   observations: 400
-  stale_after_hours: 120            # FRED publishes with a one-to-two-day lag
+  stale_after_hours: 120            # market hours; FRED publishes with a one-to-two-day lag (kept wide on purpose)
   warn_score: 30
   stress_score: 60
   hy_oas_5d_bp: 25                  # p95 of 5-obs change, 2023-11..2025 (FRED history starts 2023-11)
@@ -149,7 +158,10 @@ correlations:
 
 cross_asset:
   history_sessions: 280
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   hyg_5d_pct: -1.5
@@ -324,12 +336,11 @@ decay:
   # breadth UNKNOWN by Monday 08:00 premarket, with no new market information at all. "wall" restores wall-clock age.
   clock: market
   reopen_et: "18:00"
-  # Hard caps every staleness check obeys (scoring.staleness; categories through _marketdata.stale): beyond either,
-  # an input is UNKNOWN whatever its own stale_after says. 96 market hours = four trading days without a refresh (72
-  # refused FRED's HY OAS on a Friday evening: the newest knowable observation is dated Tuesday, published with a
-  # one-to-two-day lag, 72.5 market hours old on 2026-10-30 18:30 ET); 120 wall hours covers the longest closure (a
-  # Friday close to the Tuesday open after a Monday holiday is 89.5h).
-  max_market_hours: 96
+  # Backstops every staleness check obeys (scoring.staleness; categories through _marketdata.stale), beyond each
+  # category's own stale_after_hours (the binding limit: 32 market hours for daily-bar categories, 120 for FRED).
+  # max_market_hours only catches a category without a sensible limit; max_wall_hours: 120 covers the longest closure
+  # (a Friday close to the Tuesday open after a Monday holiday is 89.5h).
+  max_market_hours: 120
   max_wall_hours: 120
   future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
@@ -337,7 +348,7 @@ decay:
     - {max_age_hours: 24, weight: 0.8}
     - {max_age_hours: 48, weight: 0.6}
     - {max_age_hours: 72, weight: 0.4}
-  default_stale_after_hours: 96    # beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
+  default_stale_after_hours: 96    # market hours (backstop; every category sets its own); beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
   confirm_min_weight: 0.8          # a WARN/STRESS older than ~24h (weight < 0.8) no longer confirms a tier
 alerts:
   # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;

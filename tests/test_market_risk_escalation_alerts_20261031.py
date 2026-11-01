@@ -284,7 +284,18 @@ class Reader:
 
 
 def _q(sym, price, prev, session="afterhours", at=T0):
-    return {"symbol": sym, "price": price, "prev_close": prev, "session": session, "as_of": at.isoformat()}
+    # production shape since #2384/#2415: a market_quotes_extended print names its store and its reference session
+    from lib.market_risk import sessions as _s
+
+    return {
+        "symbol": sym,
+        "price": price,
+        "prev_close": prev,
+        "session": session,
+        "as_of": at.isoformat(),
+        "source": "market_quotes_extended:sip",
+        "reference_date": _s.last_closed_session(at).isoformat(),
+    }
 
 
 def test_extended_hours_stress_names_heavyweights():
@@ -305,8 +316,13 @@ def test_extended_hours_stress_names_heavyweights():
 def test_extended_hours_warn_calm_unknown_and_shock():
     warn = xh.evaluate(EvalContext(now=T0, reader=Reader([_q("QQQ", 629.0, 635.8)]), policy=POLICY))
     assert warn.state == "WARN" and 40 <= warn.score < 75
-    calm = xh.evaluate(EvalContext(now=T0, reader=Reader([_q("QQQ", 636.0, 635.8)]), policy=POLICY))
+    calm = xh.evaluate(
+        EvalContext(now=T0, reader=Reader([_q("QQQ", 636.0, 635.8), _q("SPY", 680.5, 680.0)]), policy=POLICY)
+    )
     assert calm.state == "CALM"
+    # #2415 round 3 (R2-5): CALM needs every index proxy proven fresh
+    one = xh.evaluate(EvalContext(now=T0, reader=Reader([_q("QQQ", 636.0, 635.8)]), policy=POLICY))
+    assert one.state == "UNKNOWN" and "SPY not proven fresh" in one.reason_unknown
     none = xh.evaluate(EvalContext(now=T0, reader=Reader([]), policy=POLICY))
     assert none.state == "UNKNOWN" and none.score is None and none.reason_unknown
     shock = xh.evaluate(
