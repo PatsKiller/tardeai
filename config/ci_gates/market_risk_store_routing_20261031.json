@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_store_routing_20261031",
+  "files": [
+    "tests/test_market_risk_store_routing_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_STORE_ROUTING_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_STORE_ROUTING_20261031 — review of #2412: market risk reads holdings only through",
+    "lib/portfolio_positions (load_store/store_path; the book fails closed on a missing store; reconciled price,",
+    "never current_price) and admits CIO memory only through intelligence_client.admit_memory, which refuses",
+    "behaviour fields before admission (MBI_BEHAVIOR = 0). Hermetic."
+  ]
+}

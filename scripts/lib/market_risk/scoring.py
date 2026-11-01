@@ -22,6 +22,9 @@ from scripts.lib.market_risk import sessions
 ET = ZoneInfo("America/New_York")
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN 0 < NONE 1 < BLUE 2 < YELLOW 3 < ORANGE 4 < RED 5
 CONFIRMING_STATES = ("WARN", "STRESS")
+# An observation stamped within this many seconds of the evaluation was computed by it (event calendar, seasonal prior)
+# and is never "carried"; anything older that crosses a closure is stored data (review of PR 2431).
+FRESH_WINDOW_SECONDS = 60
 SESSION_CLOSE_ET = time(16, 0)
 
 
@@ -300,6 +303,94 @@ def _composite(known: list[dict], known_w: float, policy: dict) -> tuple[dict[st
     return points, score
 
 
+def _carried(eff: list[dict], now: datetime) -> list[str]:
+    """Categories whose (known) observation was made before a market closure that lies between it and ``now``."""
+    out = []
+    for e in eff:
+        o = e["obs"]
+        at = _parse(o.observed_at) if o.state != "UNKNOWN" else None
+        # an observation computed at evaluation time (event calendar, seasonal prior) is current by construction,
+        # even on a weekend; only stored market data can be carried across a closure
+        if at is not None and (now - at).total_seconds() > FRESH_WINDOW_SECONDS and sessions.closure_between(at, now):
+            out.append(o.category)
+    return out
+
+
+def _fresh_only(eff: list[dict], carried: list[str], policy: dict) -> tuple[str, dict]:
+    """The raw tier the fresh (non-carried) observations alone support."""
+    fresh_eff = [
+        dict(
+            e, obs=replace(e["obs"], state="UNKNOWN", score=None, reason_unknown="carried across a closure"), decay=0.0
+        )
+        if e["obs"].category in carried
+        else e
+        for e in eff
+    ]
+    fk = [e for e in fresh_eff if e["obs"].state != "UNKNOWN"]
+    _, fscore = _composite(fk, sum(e["weight"] for e in fk), policy)
+    return _raw_tier(fscore, fresh_eff, policy)
+
+
+def _hold_not_escalate(
+    raw: str, why: dict, eff: list[dict], known_w: float, prior: dict | None, now: datetime, policy: dict
+) -> tuple[str, dict[str, Any]]:
+    """``decay.carried_escalation: hold_only`` (operator 2026-10-31, "approve hold-not-escalate"). An observation
+    carried across a market closure keeps its market-clock weight for HOLDING the current tier and for the displayed
+    score, but may not ESCALATE: the raw tier may rise above the held tier only as far as the fresh (post-closure)
+    observations alone support. A carried category stops counting as carried once a fresh observation replaces it.
+
+    With no prior (bootstrap) the held tier is set by ``decay.bootstrap_mode``: ``adopt_carried`` (default until the
+    operator answers) adopts the reconstruction from the carried observations; ``fresh_only_no_page`` starts at the
+    fresh-only tier and records the carried picture as a labelled ``carried_tier`` for display. Either way a bootstrap
+    evaluation never sends P1 (alerts.intent_for, market_risk_evaluate._cycle)."""
+    dcfg = policy.get("decay") or {}
+    mode = str(dcfg.get("carried_escalation") or "off").lower()
+    carried = _carried(eff, now) if mode == "hold_only" else []
+    info: dict[str, Any] = {"mode": mode, "categories": carried, "raw_with_carried": raw, "capped": False}
+    if not carried:
+        return raw, info
+    if not prior or prior.get("tier") not in SEVERITY:
+        bmode = str(dcfg.get("bootstrap_mode") or "adopt_carried").lower()
+        info["bootstrap_mode"] = bmode
+        if bmode != "fresh_only_no_page":
+            return raw, info
+        fresh_raw, fwhy = _fresh_only(eff, carried, policy)
+        if SEVERITY[fresh_raw] < SEVERITY[raw]:
+            info.update(
+                capped=True,
+                raw_fresh_only=fresh_raw,
+                carried_tier=raw,
+                note=f"first reading after a closure: {raw} on carried data shown for context; tier starts at {fresh_raw}",
+            )
+            why["shock"] = bool(fwhy.get("shock"))
+            return fresh_raw, info
+        return raw, info
+    held = str(prior["tier"])
+    if SEVERITY[raw] <= SEVERITY[held]:
+        return raw, info
+    fresh_raw, fwhy = _fresh_only(eff, carried, policy)
+    capped = fresh_raw if SEVERITY[fresh_raw] > SEVERITY[held] else held
+    capped = capped if SEVERITY[capped] <= SEVERITY[raw] else raw
+    if capped != raw:
+        info.update(capped=True, raw_fresh_only=fresh_raw, held_tier=held)
+        why["shock"] = bool(fwhy.get("shock"))
+    return capped, info
+
+
+def _carried_only(tier: str, carried: dict, eff: list[dict], prior: dict | None, policy: dict) -> bool:
+    """The CARRIED-ONLY mark (coordinator decision on PR 2431, pending the operator). Set when a first reading
+    (bootstrap) or an evaluation whose prior was already marked shows a tier that the fresh observations alone do not
+    reach: the tier rests only on data carried across a closure. While set the evaluator opens no episode, drains no
+    repeat and sends no P1/P2 card (at most one P3 card per tier). It clears as soon as the fresh-only tier reaches the
+    shown tier; the next card is then a normal transition (alerts.intent_for)."""
+    cats = list((carried or {}).get("categories") or [])
+    origin = not prior or prior.get("tier") not in SEVERITY or bool((prior.get("hysteresis") or {}).get("carried_only"))
+    if not origin or not cats or SEVERITY.get(tier, 0) <= SEVERITY["NONE"]:
+        return False
+    fresh_raw = carried.get("raw_fresh_only") or _fresh_only(eff, cats, policy)[0]
+    return SEVERITY[fresh_raw] < SEVERITY[tier]
+
+
 def compose(
     observations: list[c.CategoryObservation],
     policy: dict,
@@ -318,9 +409,26 @@ def compose(
     known_w = sum(e["weight"] for e in known)
     points, score = _composite(known, known_w, policy)
     raw, why = _raw_tier(score, eff, policy)
+    raw, carried = _hold_not_escalate(raw, why, eff, known_w, prior, now, policy)
     coverage = known_w / total_w
     raw, last_stress = _green_guard(raw, why, eff, coverage, prior, now, policy)
-    tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    if prior and bool((prior.get("hysteresis") or {}).get("carried_only")):
+        # the shown tier was never alerted (CARRIED-ONLY): hysteresis never holds it (review of PR 2431 round 6,
+        # FIX 1). The tier follows the raw tier at once, up or down; the mark below clears only when the fresh-only
+        # tier reaches it, and the transition is then a normal alert at that tier (alerts.intent_for).
+        tier = raw
+        hyst = {
+            "bootstrap": False,
+            "raw_tier": raw,
+            "prior_tier": prior.get("tier"),
+            "candidate": None,
+            "count": 0,
+            "below_sessions": [],
+            "unalerted_tier_released": SEVERITY.get(raw, 0) < SEVERITY.get(str(prior.get("tier")), 0),
+        }
+    else:
+        tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    hyst["carried_only"] = _carried_only(tier, carried, eff, prior, policy)
     hyst.update(
         {
             "last_stress_at": last_stress,
@@ -331,6 +439,7 @@ def compose(
                 e["obs"].category: (round(e["age_hours"], 2) if e["age_hours"] is not None else None) for e in eff
             },
             "why": why,
+            "carried": carried,
         }
     )
     a = c.RiskAssessment(

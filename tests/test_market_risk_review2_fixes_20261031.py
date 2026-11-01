@@ -445,6 +445,8 @@ def test_n4_bars_without_high_low_never_blank_extended_hours():
                     "price": 600,
                     "prev_close": 615,
                     "as_of": (now - timedelta(minutes=5)).isoformat(),
+                    "source": "market_quotes_extended:sip",  # production shape since #2384/#2415 round 3
+                    "reference_date": "2026-10-29",
                 }
             ]
 

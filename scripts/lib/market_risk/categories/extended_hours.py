@@ -95,14 +95,17 @@ def _proof(r: dict[str, Any], now, cfg: dict[str, Any]) -> str | None:
         return "stamped in the future"
     if r.get("prev_close") in (None, "") or r.get("price") in (None, ""):
         return f"no reference close ({r.get('reference') or 'missing'})"
+    if not r.get("reference_date"):
+        # fail closed (review of #2415 round 2, R2-4): without the session its reference closed, the move could be
+        # the regular-session move (Thursday's close against a Friday after-hours print reads -3.4%)
+        return "no reference_date: the reference close's session is unknown"
     # The reference must be the close of the session this print follows (after-hours on D -> D's close; Sunday
     # overnight / Monday pre-market -> Friday's). market_quotes_extended (#2384) stamps reference_date; a row
     # referencing any other session (a 10:00 quote, Thursday's close for a Friday after-hours print) measures the
     # regular-session move, not an extended one (review of #2415, F4).
-    if r.get("reference_date"):
-        want = sessions.last_closed_session(at).isoformat()
-        if str(r["reference_date"])[:10] != want:
-            return f"reference close {str(r['reference_date'])[:10]} is not the {want} session close"
+    want = sessions.last_closed_session(at).isoformat()
+    if str(r["reference_date"])[:10] != want:
+        return f"reference close {str(r['reference_date'])[:10]} is not the {want} session close"
     src = str(r.get("source") or "").lower().split(":", 1)[-1]  # feed name (market_quotes_extended:sip -> sip)
     sess = str(r.get("session") or "").lower()
     overnight_ok = {str(x).lower() for x in cfg.get("overnight_sources") or []}
@@ -134,8 +137,8 @@ def _latest(
     for r in rows:
         if str(r.get("session") or "").lower() not in EXTENDED_SESSIONS:
             continue
-        if allowed is not None and r.get("source") and not _source_ok(str(r["source"]), allowed):
-            continue
+        if allowed is not None and not _source_ok(str(r.get("source") or ""), allowed):
+            continue  # a row naming no source is not from an allowed store (R2-4: fail closed)
         s = str(r.get("symbol") or "").upper()
         if not s:
             continue
@@ -318,6 +321,15 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         evidence.extend(
             Evidence(label="index proxy not measured", value=None, as_of=None, source="market_quotes", detail=d)
             for d in dropped
+        )
+    # R2-5 (review of #2415 round 2): CALM needs every index proxy proven fresh, by a print or by today's opening gap.
+    # A stale or unproven proxy beside a calm one is UNKNOWN; a fresh WARN/STRESS still stands (it is real).
+    unmeasured = [p for p in proxies if p not in moves and p not in gaps]
+    if state == "CALM" and unmeasured and not shock.get("shock"):
+        return unknown(
+            CATEGORY,
+            ctx.now,
+            f"not CALM: {', '.join(unmeasured)} not proven fresh ({head})"[:400],
         )
     observed = max(
         [str(latest[s].get("as_of")) for s in latest] + [str(g["as_of"]) for g in gaps.values()],

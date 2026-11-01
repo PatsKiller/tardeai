@@ -6,7 +6,7 @@ const assert = {
   deepEqual(a: unknown, b: unknown, m?: string) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) fail(m ?? `expected ${x} to deep-equal ${y}`) },
   match(s: string, re: RegExp, m?: string) { if (!re.test(s)) fail(m ?? `expected ${JSON.stringify(s)} to match ${re}`) },
 }
-import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct } from './marketRisk.ts'
+import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -35,4 +35,22 @@ assert.equal(factLine(green).tone, 'success')
 assert.equal(tierTone('ORANGE'), 'elevated'); assert.equal(tierTone('BLUE'), 'info'); assert.equal(tierTone('bogus'), 'neutral')
 assert.equal(fmtPct(0.61), '61%'); assert.equal(fmtPct(61), '61%'); assert.equal(fmtPct(null), '—')
 assert.equal(unwrapMarketRisk({ ok: false }), null)
+// Shadow mode (review of #2415 round 2, R2-2): a tier from `--shadow` carries mode 'shadow' and every surface says so.
+const sh = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, as_of: '2026-11-01T00:38:00Z', age_hours: 0.1, stale: false,
+  contributors: [{ name: 'Options flow', points: 34 }], categories: [], mode: 'shadow' })
+assert.equal(sh?.mode, 'shadow')
+assert.equal(shadowMarker(sh), SHADOW_MARKER)
+assert.match(factLine(sh).sub, /^SHADOW · not alerting · options flow/)
+assert.equal(factLine(sh).value, 'YELLOW 60')
+const live = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, as_of: null, age_hours: 0.1, stale: false, contributors: [], categories: [], mode: 'live' })
+assert.equal(live?.mode, 'live'); assert.equal(shadowMarker(live), ''); assert.ok(!factLine(live).sub.includes('SHADOW'))
+assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'BLUE', score: 30, contributors: [], categories: [], mode: 'bogus' })?.mode, null)
+assert.equal(shadowMarker(notEval), '', 'not evaluated: no shadow marker')
+// a live episode never rides on a shadow tier (the API drops it; the model keeps whatever arrives, so check the shape)
+assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 80, contributors: [], categories: [], mode: 'shadow', episode: null })?.episode, null)
+// CARRIED-ONLY (PR 2431): a live tier resting only on data carried across a closure is labelled, never alerted
+const carried = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, contributors: [{ name: 'Options flow', points: 34 }], categories: [], mode: 'live', carried_only: true })
+assert.equal(carried?.carried_only, true); assert.equal(shadowMarker(carried), CARRIED_MARKER)
+assert.match(factLine(carried).sub, /^CARRIED · not alerting · options flow/)
+assert.equal(shadowMarker(unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, contributors: [], categories: [], mode: 'shadow', carried_only: true })), SHADOW_MARKER)
 console.log('marketRisk.test ok')

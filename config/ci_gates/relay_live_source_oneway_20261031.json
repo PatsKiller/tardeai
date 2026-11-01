@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "relay_live_source_oneway_20261031",
+  "files": [
+    "tests/test_relay_live_source_oneway_20261031.py"
+  ],
+  "anchor": "RELAY_LIVE_SOURCE_ONEWAY_20261031",
+  "comment": [
+    "ANCHOR: RELAY_LIVE_SOURCE_ONEWAY_20261031 — the n8n relay live-lane source is pinned to the registry render",
+    "one-way (no AGENTS.md header edit can move the live set); prepare reports the effective live-set change and every",
+    "exclusion; promote holds until the operator acknowledges that exact change."
+  ]
+}

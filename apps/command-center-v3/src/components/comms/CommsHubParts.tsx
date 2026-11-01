@@ -24,7 +24,7 @@ export const CATEGORY_COLOR: Record<string, string> = {
   re_entry: TOKENS.success, risk: TOKENS.warning, reward: TOKENS.chart[0], high_conviction_opportunity: TOKENS.chart[1],
   watchlist_candidate: TOKENS.ai, threat: TOKENS.danger, market_event: TOKENS.info, news: TOKENS.neutral,
   security_alert: TOKENS.chart[2], system_alert: TOKENS.neutral, operational_issue: TOKENS.chart[3], operator_conversation: TOKENS.chart[4],
-  held_position: TOKENS.chart[5],
+  held_position: TOKENS.chart[5], market_risk: TOKENS.danger,
 }
 
 export function labelOf(id?: string | null) {
