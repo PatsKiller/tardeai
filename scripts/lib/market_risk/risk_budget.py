@@ -72,6 +72,43 @@ def _pct(part: float, whole: float) -> float | None:
     return round(100.0 * part / whole, 2) if whole > 0 else None
 
 
+# Engine group key -> the symbol_profiles sector label the budgets use, so a segment-weighted issuer lands in the same
+# sector bucket as a single-sector stock of that sector (design home/v006; lookthrough.SECTOR_TO_GROUP inverted).
+GROUP_TO_SECTOR: dict[str, str] = {
+    "tech": "Technology",
+    "comm": "Communication Services",
+    "discretionary": "Consumer Cyclical",
+    "staples": "Consumer Defensive",
+    "healthcare": "Healthcare",
+    "utilities": "Utilities",
+    "energy": "Energy",
+    "financials": "Financial Services",
+    "industrials": "Industrials",
+    "materials": "Basic Materials",
+    "real_estate": "Real Estate",
+}
+
+
+def approved_segments() -> dict[str, dict[str, float]]:
+    """{SYMBOL: {group: weight}} for every APPROVED entry in config/issuer_segments.json, through
+    ``lookthrough.issuer_segments_for`` (the same validation the look-through uses: sector weights sum to 1)."""
+    from scripts.lib.market_risk import lookthrough as lt
+
+    sp = lt._segments_policy()
+    try:
+        import json
+
+        doc = json.loads((PROJECT_ROOT / str(sp.get("path") or "config/issuer_segments.json")).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, dict[str, float]] = {}
+    for sym in (doc.get("issuers") or {}):
+        seg = lt.issuer_segments_for(sym, doc.get("issuers"), seg_policy=sp)
+        if seg:
+            out[str(sym).upper()] = dict(seg["groups"])
+    return out
+
+
 def classify(symbol: str, profile: dict[str, Any], cls: dict[str, Any]) -> dict[str, bool]:
     sector = str(profile.get("sector") or "")
     text = f"{profile.get('name') or ''} {profile.get('description') or ''}".lower()
@@ -94,8 +131,17 @@ def measure(
     today: date,
     budget: dict[str, Any],
     sessions_48h: int = 2,
+    segments: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, Any]:
-    """Actual exposure percentages for one scope, plus the symbols driving each measure."""
+    """Actual exposure percentages for one scope, plus the symbols driving each measure.
+
+    ``segments`` = {SYMBOL: {group: weight}} of operator-APPROVED issuer segments (``approved_segments()``; None loads
+    them). A segmented issuer is split across sectors by its weights for ``single_sector_pct``; its growth share is the
+    weight of its segments in a growth sector; its AI-basket share is its ``ai_basket`` theme weight. Every other
+    symbol keeps its ``symbol_profiles`` sector, as before."""
+    segs = {k.upper(): v for k, v in (approved_segments() if segments is None else segments).items()}
+    growth_sectors = set((budget.get("classification") or {}).get("growth_sectors") or [])
+    defensive_sectors = set((budget.get("classification") or {}).get("defensive_sectors") or [])
     cls = budget.get("classification") or {}
     comp = (budget.get("vulnerability") or {}).get("components") or {}
     ev_sessions = int((comp.get("recent_event_entry") or {}).get("event_sessions", 5))
@@ -127,15 +173,27 @@ def measure(
         mv = float(p.get("market_value") or 0)
         prof = profiles.get(sym) or {}
         c = classify(sym, prof, cls)
-        sec = str(prof.get("sector") or "Unknown")
-        sectors[sec] = sectors.get(sec, 0.0) + mv
+        seg = segs.get(sym)
+        if seg:
+            # design home/v006: an APPROVED multi-segment issuer is split by its segment weights
+            sector_w = {GROUP_TO_SECTOR[g]: w for g, w in seg.items() if g in GROUP_TO_SECTOR}
+            for sec, w in sector_w.items():
+                sectors[sec] = sectors.get(sec, 0.0) + mv * w
+            g_share = sum(w for sec, w in sector_w.items() if sec in growth_sectors and sec not in defensive_sectors)
+            if g_share > 0:
+                add("growth_style_pct", sym, mv * g_share)
+        else:
+            sec = str(prof.get("sector") or "Unknown")
+            sectors[sec] = sectors.get(sec, 0.0) + mv
+            if c["growth"]:
+                add("growth_style_pct", sym, mv)
         if prof.get("theme"):
             themes[str(prof["theme"])] = themes.get(str(prof["theme"]), 0.0) + mv
-        if c["growth"]:
-            add("growth_style_pct", sym, mv)
         look = (etf_lookthrough or {}).get(sym)
         if c["ai"]:
             add("ai_basket_pct", sym, mv)
+        elif seg and seg.get("ai_basket"):
+            add("ai_basket_pct", sym, mv * float(seg["ai_basket"]))
         elif look:
             ai_w = sum(w for s, w in look.items() if s.upper() in set(cls.get("ai_basket") or []))
             if ai_w > 0:

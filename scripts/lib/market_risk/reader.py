@@ -1,7 +1,7 @@
 """Production read side of the Market Risk Engine: ``PgReader`` implements ``contract.DataReader``.
 
 Reads only EXISTING stores (DSN-20261031-market-risk-engine P1; new stores wait for their §7A rows):
-``market_quotes``, ``market_ohlcv_bars``, ``market_regime_indicators``, ``fred_economic_series``,
+``market_quotes``, ``market_ohlcv_bars``, ``ticker_prices``, ``market_regime_indicators``, ``fred_economic_series``,
 ``option_chain_snapshots``, ``sector_momentum_state``, ``symbol_profiles`` and the macro calendar
 (``<state root>/data/runtime/macro_calendar.json`` when the refresh lane has written it, else the operator's
 ``config/macro_calendar_overrides.json``).
@@ -16,8 +16,9 @@ Rules every method keeps:
   the exposure module, which reads positions through the positions projection).
 
 Daily closes: ``market_ohlcv_bars`` (``timeframe='daily'``) covers few index ETFs and stopped updating for some
-(SPY's last daily bar is 2026-10-09 as of 2026-10-31), so ``daily_bars`` merges it with closes derived from the
-Alpaca quote snapshots in ``market_quotes``: the close of session D is the ``prev_close`` carried by the first quote
+(SPY's last daily bar is 2026-10-09 as of 2026-10-31; XLC, XLRE and XLK never had one), so ``daily_bars`` merges it,
+in order of preference, with ``ticker_prices`` (the daily-close projection, about a year deep) and then closes derived
+from the Alpaca quote snapshots in ``market_quotes``: the close of session D is the ``prev_close`` carried by the first quote
 of the next session; the newest session's close is its last regular-hours quote, flagged ``provisional``.
 """
 
@@ -225,6 +226,11 @@ class PgReader:
                 "as_of": _iso(_close_instant(d)),
             }
         span = timedelta(days=int(sessions * 1.6) + 10)
+        # Second source: the platform's daily-close projection (``ticker_prices``, data-broker domain ``technicals``,
+        # the table the Defense desk's sector momentum reads). It covers the sector ETFs ``market_ohlcv_bars`` never
+        # had (XLC, XLRE, XLK) and SPY after 2026-10-09 (design home/v006, Communications "insufficient history").
+        for row in self._ticker_price_closes(syms, start=end - span, end=end):
+            out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
         for row in self._quote_closes(syms, start=end - span, end=end):
             out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
         if VIX_SYMBOL in syms:
@@ -302,6 +308,38 @@ class PgReader:
                     "as_of": _iso(_close_instant(d)),
                 }
         return [out[d] for d in sorted(out)]
+
+    def _ticker_price_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Daily closes from ``ticker_prices`` (close only), as-of correct: a row counts only when it was written
+        (``created_at``) by ``end`` and its session had closed by ``end``. Never preferred over ``market_ohlcv_bars``."""
+        rows = self._rows(
+            "SELECT upper(symbol) AS symbol, price_date, close_price, source, created_at FROM ticker_prices "
+            "WHERE upper(symbol) = ANY(%s) AND price_date >= %s AND price_date <= %s "
+            "AND (created_at IS NULL OR created_at <= %s) AND close_price IS NOT NULL ORDER BY 1, price_date",
+            [symbols, start.astimezone(ET).date(), end.astimezone(ET).date(), end],
+        )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = r["price_date"]
+            if isinstance(d, datetime):
+                d = d.astimezone(ET).date()
+            if not isinstance(d, date) or _close_instant(d) > end:
+                continue
+            out.append(
+                {
+                    "symbol": str(r["symbol"]),
+                    "date": d.isoformat(),
+                    "open": None,
+                    "high": None,
+                    "low": None,
+                    "close": r["close_price"],
+                    "volume": None,
+                    "source": f"ticker_prices:{r.get('source') or 'unknown'}",
+                    "provisional": False,
+                    "as_of": _iso(_close_instant(d)),
+                }
+            )
+        return out
 
     def _quote_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         rows = self._rows(
