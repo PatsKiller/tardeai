@@ -841,3 +841,227 @@ def test_options_flow_without_slots_falls_back_to_fixed_hours():
     cfg = {k: v for k, v in P["options_flow_category"].items() if k != "expected_slots_et"}
     ctx = c.EvalContext(now=et(2026, 11, 2, 10), reader=None, policy=P, session="regular")
     assert of._allowance(et(2026, 10, 30, 17, 35), ctx, cfg) == float(cfg["stale_after_hours"])
+
+
+# ── Round 5 (review of PR 2425 round 4) ──────────────────────────────────────────────────────────────────────────
+def _ob5(cat, st, sc, at, stale=32.0):
+    return c.CategoryObservation(
+        category=cat, state=st, score=sc, observed_at=at.isoformat(), headline=f"{cat} {st}", stale_after_hours=stale
+    )
+
+
+def _prior5(tier, now):
+    p = scoring.compose([_ob5("technical", "WARN", 45, now)], P, prior=None, now=now).to_dict()
+    p["tier"] = p["market_tier"] = tier
+    return p
+
+
+@pytest.mark.parametrize(
+    "at,want",
+    [
+        (et(2027, 1, 18, 10, 0), et(2027, 1, 15, 16, 0)),  # MLK holiday row -> Friday's close
+        (et(2026, 9, 7, 10, 43), et(2026, 9, 4, 16, 0)),  # Labor Day sector row -> Friday's close
+        (et(2026, 10, 31, 12, 0), et(2026, 10, 30, 16, 0)),  # Saturday -> Friday
+        (et(2026, 11, 27, 14, 0), et(2026, 11, 27, 14, 0)),  # an early-close trading day is its own
+        (et(2026, 11, 1, 20, 30), et(2026, 11, 1, 20, 30)),  # Sunday overnight session is real trading
+        (et(2026, 11, 3, 10, 0), et(2026, 11, 3, 10, 0)),
+    ],
+)
+def test_r5_attributed_instant(at, want):
+    assert sessions.attributed_instant(at) == want
+
+
+def test_r5_holiday_stamped_rows_are_carried_mlk():
+    # review failing input: Tue 2027-01-19 08:00 after MLK, prior YELLOW; options_flow + breadth re-captured on the
+    # holiday read as fresh and escalated to ORANGE with a P1 "up_from_yellow"
+    from scripts.lib.market_risk import alerts
+
+    f2, hol, tue = et(2027, 1, 15, 16), et(2027, 1, 18, 10, 0), et(2027, 1, 19, 8)
+    obs = [
+        _ob5("technical", "STRESS", 85, f2),
+        _ob5("volatility", "STRESS", 80, f2),
+        _ob5("cross_asset", "WARN", 45, f2),
+        _ob5("options_flow", "STRESS", 85, hol),
+        _ob5("breadth", "STRESS", 80, et(2027, 1, 18, 10, 43), 30),
+        _ob5("event", "CALM", 5, tue),
+        _ob5("seasonal", "CALM", 10, tue, 24),
+        _ob5("extended_hours", "CALM", 0, et(2027, 1, 19, 7, 55), 2),
+    ]
+    prior = _prior5("YELLOW", tue)
+    a = scoring.compose(obs, P, prior=prior, now=tue)
+    assert {"options_flow", "breadth"} <= set(a.hysteresis["carried"]["categories"])
+    assert a.hysteresis["raw_tier"] == "YELLOW" and a.tier == "YELLOW"
+    assert alerts.intent_for(a.to_dict(), prior, P) is None
+
+
+def test_r5_holiday_stamped_rows_are_carried_labor_day():
+    tue = et(2026, 9, 8, 8, 0)
+    obs = [
+        _ob5("options_flow", "STRESS", 85, et(2026, 9, 7, 10, 0)),
+        _ob5("breadth", "STRESS", 80, et(2026, 9, 7, 10, 43), 30),
+    ]
+    a = scoring.compose(obs, P, prior=_prior5("BLUE", tue), now=tue)
+    assert set(a.hysteresis["carried"]["categories"]) == {"options_flow", "breadth"}
+    assert scoring.SEVERITY[a.tier] <= scoring.SEVERITY["BLUE"]
+
+
+def test_r5_holiday_snapshot_does_not_extend_slot_currency():
+    hol = et(2027, 1, 18, 10, 0)
+    assert sessions.slot_deadline(hol, ["10:00", "17:35"], 45) == sessions.slot_deadline(
+        et(2027, 1, 15, 16, 0), ["10:00", "17:35"], 45
+    )
+    assert sessions.slot_deadline(hol, ["10:00", "17:35"], 45) == et(2027, 1, 19, 10, 45)
+
+
+# Fix 3: an unreadable live snapshot is not replaced by shadow, and keeps the live episode
+def test_r5_torn_live_snapshot_reads_not_evaluated_and_keeps_the_episode():
+    from scripts.lib import market_risk_projection as proj
+
+    shadow = {
+        "schema": proj.ASSESSMENT_SCHEMA,
+        "as_of": "2026-10-24T20:00:00+00:00",
+        "tier": "GREEN",
+        "score": 5,
+        "mode": "shadow",
+    }
+    ep = {"id": "EP-1", "tier": "RED", "status": "OPEN", "opened_at": "2026-10-31T19:00:00+00:00"}
+    for live in (None, [], "x"):
+        files = {proj.SNAPSHOT_REL: live, proj.SHADOW_REL: shadow}
+        snap = proj.load_snapshot(lambda rel: files.get(rel), lambda rel: rel in files)
+        p = proj.build(snap, None, episode=ep, now=FIXED)
+        assert p["state"] == "not_evaluated" and p["tier"] == "NOT_EVALUATED" and p.get("mode") != "shadow"
+        assert "unreadable" in p["reason"] and p["episode"]["id"] == "EP-1"
+    absent = {proj.SHADOW_REL: shadow}
+    snap = proj.load_snapshot(lambda rel: absent.get(rel), lambda rel: rel in absent)
+    assert snap["mode"] == "shadow" and proj.build(snap, None, episode=ep, now=FIXED)["episode"] is None
+
+
+def test_r5_loaders_pass_an_existence_check():
+    api = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
+    assert (
+        api.count("_mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())")
+        == 2
+    )
+    ctx = (ROOT / "scripts" / "lib" / "cio_market_context_state.py").read_text(encoding="utf-8")
+    assert "load_snapshot(_load, lambda rel: (root / rel).exists())" in ctx
+
+
+# Bootstrap: policy switch, never P1, torn prior never a bootstrap
+def _carried_red(now):
+    fri = et(2026, 10, 30, 16)
+    obs = [
+        _ob5("technical", "STRESS", 85, fri),
+        _ob5("breadth", "STRESS", 80, fri, 30),
+        _ob5("volatility", "STRESS", 80, fri),
+        _ob5("options_flow", "STRESS", 85, et(2026, 10, 30, 17, 35)),
+        _ob5("cross_asset", "WARN", 45, fri),
+        _ob5("extended_hours", "STRESS", 90, fri, 96),
+        _ob5("event", "CALM", 5, now),
+        _ob5("seasonal", "CALM", 10, now, 24),
+    ]
+    return obs + [c.unknown(k, now, "x") for k in c.CATEGORIES if k not in {o.category for o in obs}]
+
+
+def test_r5_bootstrap_mode_default_is_adopt_carried():
+    assert P["decay"]["bootstrap_mode"] == "adopt_carried"
+    now = et(2026, 11, 2, 8)
+    a = scoring.compose(_carried_red(now), P, prior=None, now=now)
+    assert a.hysteresis["bootstrap"] and not a.hysteresis["carried"]["capped"]
+
+
+def test_r5_bootstrap_fresh_only_no_page_starts_at_the_fresh_tier():
+    now = et(2026, 11, 2, 8)
+    pol = dict(P, decay=dict(P["decay"], bootstrap_mode="fresh_only_no_page"))
+    full = scoring.compose(_carried_red(now), P, prior=None, now=now)
+    a = scoring.compose(_carried_red(now), pol, prior=None, now=now)
+    car = a.hysteresis["carried"]
+    assert car["capped"] and car["carried_tier"] == full.tier and scoring.SEVERITY[a.tier] < scoring.SEVERITY[full.tier]
+    assert "first reading after a closure" in car["note"] and a.score == full.score  # carried picture still shown
+
+
+@pytest.mark.parametrize("mode", ["adopt_carried", "fresh_only_no_page"])
+def test_r5_bootstrap_never_pages_p1(tmp_path, monkeypatch, mode):
+    import importlib
+
+    from scripts.lib.market_risk import registry
+
+    ev = importlib.import_module("scripts.market_risk_evaluate")
+    sent = []
+    tg = types.ModuleType("telegram_alert")
+    tg.send_telegram = lambda m, **k: sent.append(k) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", tg)
+    now = et(2026, 11, 2, 8)
+    monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _carried_red(now))
+    pol = dict(P, decay=dict(P["decay"], bootstrap_mode=mode))
+    out = ev.run_cycle(
+        now, object(), pol, None, apply=True, episodes_path=tmp_path / "ep.json", ledger_path=tmp_path / "sk.json"
+    )
+    assert out["episode_event"] == "bootstrap_no_episode" and out["episode_id"] is None
+    assert all(k.get("priority") != "P1" for k in sent) and all(s["intent"]["priority"] != "P1" for s in out["sends"])
+
+
+def _state(tmp_path, monkeypatch):
+    import importlib
+
+    ev = importlib.import_module("scripts.market_risk_evaluate")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    d = tmp_path / "data/runtime/market_risk"
+    (d / "receipts").mkdir(parents=True)
+    return ev, d
+
+
+def test_r5_missing_prior_is_bootstrap(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    assert ev._resolve_prior(d / "latest.json", shadow=False) is None
+
+
+def test_r5_torn_prior_falls_back_to_the_live_snapshot(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text('{"tier": "RE')
+    (tmp_path / "data/runtime/market_risk_latest.json").write_text(json.dumps({"tier": "ORANGE", "mode": "live"}))
+    p = ev._resolve_prior(d / "latest.json", shadow=False)
+    assert p["tier"] == "ORANGE" and p["prior_source"] == "market_risk_latest.json"
+
+
+def test_r5_torn_prior_falls_back_to_the_newest_receipt(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text("[]")
+    (d / "receipts" / "20261030T200000Z.json").write_text(json.dumps({"tier": "BLUE"}))
+    (d / "receipts" / "20261030T210000Z.json").write_text(json.dumps({"tier": "YELLOW"}))
+    (d / "receipts" / "20261030T220000Z-shadow.json").write_text(json.dumps({"tier": "RED"}))
+    p = ev._resolve_prior(d / "latest.json", shadow=False)
+    assert p["tier"] == "YELLOW" and p["prior_source"] == "receipts/20261030T210000Z.json"
+    (d / "shadow_latest.json").write_text("{")
+    assert ev._resolve_prior(d / "shadow_latest.json", shadow=True)["tier"] == "RED"
+
+
+def test_r5_torn_prior_with_nothing_to_fall_back_on_is_not_a_bootstrap(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text("{")
+    p = ev._resolve_prior(d / "latest.json", shadow=False)
+    assert p is not None and p["tier"] == "NONE"
+
+
+# Finding 4: the options-flow slots match the lane registry (reconciled from the crontab)
+def test_r5_options_slots_match_the_lane_registry():
+    reg = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    lanes = [ln for ln in reg["lanes"] if ln.get("lane_id") == "options-chain-snapshot"]
+    assert len(lanes) == 1
+    slots = set()
+    for expr in lanes[0]["scheduler"]["schedules"]:
+        minute, hour, *_ = expr.split()
+        slots.add(f"{int(hour):02d}:{int(minute):02d}")
+    assert slots == set(P["options_flow_category"]["expected_slots_et"])
+
+
+def test_r5_observations_computed_now_are_never_carried():
+    # event and seasonal are computed at evaluation time; on a Saturday their stamp is a non-trading day but they are
+    # not stored market data and must not be attributed back to Friday
+    now = et(2026, 10, 31, 22, 55)
+    obs = [
+        _ob5("event", "CALM", 10, now),
+        _ob5("seasonal", "CALM", 22, now, 24),
+        _ob5("technical", "STRESS", 80, et(2026, 10, 30, 16)),
+    ]
+    a = scoring.compose(obs, P, prior=_prior5("YELLOW", now), now=now)
+    assert a.hysteresis["carried"]["categories"] == ["technical"]

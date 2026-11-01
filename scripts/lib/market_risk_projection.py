@@ -33,13 +33,28 @@ SNAPSHOT_REL = "data/runtime/market_risk_latest.json"
 SHADOW_REL = "data/runtime/market_risk/shadow_latest.json"
 
 
-def load_snapshot(load) -> dict | None:
-    """The snapshot consumers should show. ``load(rel) -> dict | None`` reads a JSON file under the project root.
-    The live snapshot when one exists; else the shadow assessment, converted and marked ``mode: shadow``; else
-    None (not evaluated). A legacy snapshot that says ``mode: shadow`` loses to a newer shadow_latest.json."""
+UNREADABLE_SCHEMA = "MarketRiskSnapshotUnreadable@v1"
+
+
+def load_snapshot(load, exists=None) -> dict | None:
+    """The snapshot consumers should show. ``load(rel) -> dict | None`` reads a JSON file under the project root;
+    ``exists(rel) -> bool`` says whether it is on disk (without it, a None load is read as "absent").
+
+    * live snapshot readable -> it;
+    * live snapshot ON DISK but unreadable or not an object -> an ``UNREADABLE_SCHEMA`` marker: the projection reads
+      not_evaluated with that reason and still carries the live episode. Never the shadow fallback: a stale shadow
+      tier must not replace a live one that is merely torn (review of PR 2425 round 4);
+    * live snapshot absent -> the shadow assessment, converted and marked ``mode: shadow``; else None."""
     live = load(SNAPSHOT_REL)
     if isinstance(live, dict) and live.get("mode") != "shadow":
         return live
+    on_disk = bool(exists(SNAPSHOT_REL)) if exists is not None else live is not None
+    if on_disk and not isinstance(live, dict):
+        return {
+            "schema": UNREADABLE_SCHEMA,
+            "reason": f"live market-risk snapshot {SNAPSHOT_REL} is on disk but unreadable "
+            f"({'not a JSON object' if live is not None else 'torn or unparseable'}); the next evaluation rewrites it",
+        }
     sh = load(SHADOW_REL)
     if isinstance(sh, dict):
         sh = snapshot_from_assessment(sh) if sh.get("schema") == ASSESSMENT_SCHEMA else sh
@@ -189,6 +204,7 @@ def build(
     if isinstance(snapshot, dict) and snapshot.get("schema") == ASSESSMENT_SCHEMA:
         snapshot = snapshot_from_assessment(snapshot)
     if not isinstance(snapshot, dict) or snapshot.get("schema") != SNAPSHOT_SCHEMA:
+        unreadable = isinstance(snapshot, dict) and snapshot.get("schema") == UNREADABLE_SCHEMA
         return {
             "schema": SCHEMA,
             "state": "not_evaluated",
@@ -197,10 +213,13 @@ def build(
             "as_of": None,
             "age_hours": None,
             "stale": False,
-            "reason": "Market Risk Engine not live yet (DSN-20261031-market-risk-engine P2-T1); only the P0 options-flow detector reports",
+            "reason": snapshot.get("reason")
+            if unreadable
+            else "Market Risk Engine not live yet (DSN-20261031-market-risk-engine P2-T1); only the P0 options-flow detector reports",
             "contributors": [],
             "categories": [],
-            "episode": None,
+            # a torn live snapshot keeps the live episode (and its Acknowledge): the episode ledger is still truth
+            "episode": episode if unreadable else None,
             "book": None,
             "probabilities": None,
             "sources": sources,

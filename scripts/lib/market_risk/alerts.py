@@ -158,6 +158,10 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
             key, transition = "deescalated", f"down_from_{was.lower()}"
     pri = (cfg.get("priority") or {}).get(key, "P2")
     dedupe = int((cfg.get("dedupe_minutes") or {}).get(key, 240))
+    if ((assessment.get("hysteresis") or {}).get("bootstrap")) or not prior:
+        # a first reading (no prior tier) never pages P1, whatever the tier (review of PR 2425 round 4, finding 2)
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"first_reading_{tier.lower()}"
     as_of = assessment.get("as_of")
     try:
         session_date = datetime.fromisoformat(str(as_of).replace("Z", "+00:00")).astimezone(ET).date().isoformat()
@@ -165,7 +169,7 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
         session_date = "unknown"
     return {
         "priority": pri,
-        "dedupe_minutes": 0 if tier == "RED" else dedupe,
+        "dedupe_minutes": 0 if tier == "RED" and pri == "P1" else dedupe,
         "dedupe_key": f"market_risk:{tier}:{session_date}:{transition}",
         "tier": tier,
         "transition": transition,

@@ -355,6 +355,12 @@ decay:
   # Operator approval, in session 2026-10-31 ~22:00 ET: "approve hold-not-escalate" (reviewer variant D, #2425).
   # "off" restores carried data escalating.
   carried_escalation: hold_only
+  # First evaluation with no prior tier (bootstrap), when observations are carried across a closure:
+  #   adopt_carried       - adopt the tier rebuilt from carried data (operator "keep bootstrap"; default for now)
+  #   fresh_only_no_page  - start at the tier fresh observations alone support; the carried tier is shown, labelled
+  # In both modes a bootstrap evaluation never sends P1 (alerts.bootstrap_priority). Pending operator decision
+  # (review of PR 2425 round 4, finding 2); a torn latest.json is never a bootstrap (market_risk_evaluate._resolve_prior).
+  bootstrap_mode: adopt_carried
   future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
     - {max_age_hours: 12, weight: 1.0}
@@ -366,6 +372,9 @@ decay:
 alerts:
   # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
   # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  # A bootstrap evaluation (no prior tier) never pages: its card, if any, is an informational "first reading" at this
+  # priority, never P1 (review of PR 2425 round 4, finding 2).
+  bootstrap_priority: P3
   producer: market_risk_engine
   max_contributors: 5
   priority:

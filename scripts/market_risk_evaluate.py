@@ -189,7 +189,14 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     esc_cfg = policy.get("escalation") or {}
     ttl = float(esc_cfg.get("claim_ttl_min") or 10)
     out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
-    ep = escalation.observe(doc, now=now, policy=policy, path=store)
+    bootstrap = bool((doc.get("hysteresis") or {}).get("bootstrap"))
+    if bootstrap:
+        # a first reading never pages (review of PR 2425 round 4, finding 2): no episode opens (an ORANGE/RED episode
+        # schedules P1 repeats) and no repeat is drained this cycle; the next evaluation, with this one as its prior,
+        # opens the episode if the tier holds
+        ep: dict[str, Any] = {"event": "bootstrap_no_episode", "episode": None}
+    else:
+        ep = escalation.observe(doc, now=now, policy=policy, path=store)
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
     intent = alerts.intent_for(doc, prior, policy)
@@ -207,7 +214,7 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             now=now,
             path=ledger,
         )
-    for rep in escalation.due_repeats(now=now, policy=policy, path=store):
+    for rep in [] if bootstrap else escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already queued this cycle
         rintent = {
@@ -371,6 +378,40 @@ def _shadow(
     return 0
 
 
+def _resolve_prior(path: Path, *, shadow: bool) -> dict | None:
+    """The previous assessment. None (bootstrap) only when ``path`` does not exist. A torn or unreadable prior is never
+    a bootstrap (review of PR 2425 round 4, finding 2): fall back to the tier in the live snapshot
+    (market_risk_latest.json, live runs only), then to the newest readable receipt of the same mode, then to a NONE
+    prior that still escalates through the normal two-evaluation path and never pages as a first reading."""
+    if not path.exists():
+        return None
+    p = _read_prior(path)
+    if isinstance(p, dict) and p.get("tier"):
+        return p
+    if not shadow:
+        snap = _read_prior(snapshot_path())
+        if isinstance(snap, dict) and snap.get("tier") and snap.get("mode") != "shadow":
+            return {
+                "tier": snap["tier"],
+                "as_of": snap.get("as_of"),
+                "hysteresis": {},
+                "prior_source": "market_risk_latest.json",
+            }
+    rdir = state_dir() / "receipts"
+    names = sorted(
+        (n for n in (os.listdir(rdir) if rdir.is_dir() else []) if n.endswith(".json")),
+        reverse=True,
+    )
+    for n in names:
+        if n.endswith("-shadow-replay.json") or n.endswith("-shadow.json") != shadow:
+            continue
+        r = _read_prior(rdir / n)
+        if isinstance(r, dict) and r.get("tier"):
+            return dict(r, prior_source=f"receipts/{n}")
+    print(f"market_risk_evaluate: prior {path} unreadable and nothing to fall back to; NONE prior", file=sys.stderr)
+    return {"tier": "NONE", "hysteresis": {}, "prior_source": "unreadable prior, no fallback"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="write latest.json + dated receipt")
@@ -415,8 +456,12 @@ def main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 2
     prior_name = SHADOW_PRIOR if shadow else "latest.json"
-    prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / prior_name)
-    prior = _read_prior(prior_path) if prior_path else None
+    if a.prior:
+        prior = _read_prior(Path(a.prior))
+    elif a.as_of:
+        prior = None
+    else:
+        prior = _resolve_prior(state_dir() / prior_name, shadow=shadow)
     portfolio = None if a.no_portfolio else portfolio_context(now)
     if shadow:
         return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json, replay=bool(a.as_of))

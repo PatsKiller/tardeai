@@ -68336,7 +68336,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.market_risk import escalation as _mr_esc
 
             # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
-            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel))
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
             _ep_err = None
             try:
@@ -68363,7 +68363,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not _mr_csrf_ok:
                 return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
 
-            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel))
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             try:
                 _ep = _mr_esc.open_episode(_mr_esc.load())
             except _mr_esc.EpisodeStoreCorrupt:

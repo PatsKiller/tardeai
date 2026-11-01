@@ -306,28 +306,15 @@ def _carried(eff: list[dict], now: datetime) -> list[str]:
     for e in eff:
         o = e["obs"]
         at = _parse(o.observed_at) if o.state != "UNKNOWN" else None
-        if at is not None and sessions.closure_between(at, now):
+        # an observation computed at evaluation time (event calendar, seasonal prior) is current by construction,
+        # even on a weekend; only stored market data can be carried across a closure
+        if at is not None and (now - at).total_seconds() > 60 and sessions.closure_between(at, now):
             out.append(o.category)
     return out
 
 
-def _hold_not_escalate(
-    raw: str, why: dict, eff: list[dict], known_w: float, prior: dict | None, now: datetime, policy: dict
-) -> tuple[str, dict[str, Any]]:
-    """``decay.carried_escalation: hold_only`` (operator 2026-10-31, "approve hold-not-escalate"). An observation
-    carried across a market closure keeps its market-clock weight for HOLDING the current tier and for the displayed
-    score, but may not ESCALATE: the raw tier may rise above the held tier only as far as the fresh (post-closure)
-    observations alone support. A carried category stops counting as carried once a fresh observation replaces it.
-    The held tier is the prior tier; with no prior (bootstrap) there is no tier to escalate from, so the
-    reconstruction from the carried observations is adopted (flagged ``bootstrap``)."""
-    mode = str((policy.get("decay") or {}).get("carried_escalation") or "off").lower()
-    carried = _carried(eff, now) if mode == "hold_only" else []
-    info: dict[str, Any] = {"mode": mode, "categories": carried, "raw_with_carried": raw, "capped": False}
-    if not carried or not prior or prior.get("tier") not in SEVERITY:
-        return raw, info
-    held = str(prior["tier"])
-    if SEVERITY[raw] <= SEVERITY[held]:
-        return raw, info
+def _fresh_only(eff: list[dict], carried: list[str], policy: dict) -> tuple[str, dict]:
+    """The raw tier the fresh (non-carried) observations alone support."""
     fresh_eff = [
         dict(
             e, obs=replace(e["obs"], state="UNKNOWN", score=None, reason_unknown="carried across a closure"), decay=0.0
@@ -338,7 +325,47 @@ def _hold_not_escalate(
     ]
     fk = [e for e in fresh_eff if e["obs"].state != "UNKNOWN"]
     _, fscore = _composite(fk, sum(e["weight"] for e in fk), policy)
-    fresh_raw, fwhy = _raw_tier(fscore, fresh_eff, policy)
+    return _raw_tier(fscore, fresh_eff, policy)
+
+
+def _hold_not_escalate(
+    raw: str, why: dict, eff: list[dict], known_w: float, prior: dict | None, now: datetime, policy: dict
+) -> tuple[str, dict[str, Any]]:
+    """``decay.carried_escalation: hold_only`` (operator 2026-10-31, "approve hold-not-escalate"). An observation
+    carried across a market closure keeps its market-clock weight for HOLDING the current tier and for the displayed
+    score, but may not ESCALATE: the raw tier may rise above the held tier only as far as the fresh (post-closure)
+    observations alone support. A carried category stops counting as carried once a fresh observation replaces it.
+
+    With no prior (bootstrap) the held tier is set by ``decay.bootstrap_mode``: ``adopt_carried`` (default until the
+    operator answers) adopts the reconstruction from the carried observations; ``fresh_only_no_page`` starts at the
+    fresh-only tier and records the carried picture as a labelled ``carried_tier`` for display. Either way a bootstrap
+    evaluation never sends P1 (alerts.intent_for, market_risk_evaluate._cycle)."""
+    dcfg = policy.get("decay") or {}
+    mode = str(dcfg.get("carried_escalation") or "off").lower()
+    carried = _carried(eff, now) if mode == "hold_only" else []
+    info: dict[str, Any] = {"mode": mode, "categories": carried, "raw_with_carried": raw, "capped": False}
+    if not carried:
+        return raw, info
+    if not prior or prior.get("tier") not in SEVERITY:
+        bmode = str(dcfg.get("bootstrap_mode") or "adopt_carried").lower()
+        info["bootstrap_mode"] = bmode
+        if bmode != "fresh_only_no_page":
+            return raw, info
+        fresh_raw, fwhy = _fresh_only(eff, carried, policy)
+        if SEVERITY[fresh_raw] < SEVERITY[raw]:
+            info.update(
+                capped=True,
+                raw_fresh_only=fresh_raw,
+                carried_tier=raw,
+                note=f"first reading after a closure: {raw} on carried data shown for context; tier starts at {fresh_raw}",
+            )
+            why["shock"] = bool(fwhy.get("shock"))
+            return fresh_raw, info
+        return raw, info
+    held = str(prior["tier"])
+    if SEVERITY[raw] <= SEVERITY[held]:
+        return raw, info
+    fresh_raw, fwhy = _fresh_only(eff, carried, policy)
     capped = fresh_raw if SEVERITY[fresh_raw] > SEVERITY[held] else held
     capped = capped if SEVERITY[capped] <= SEVERITY[raw] else raw
     if capped != raw:

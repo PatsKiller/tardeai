@@ -15,6 +15,9 @@
     "(no reference_date / no source), no CALM unless every proxy is proven fresh, seasonal on the New York date.",
     "Round 4 (review of PR 2425): hold-not-escalate on data carried across a closure (operator-approved),",
     "shadow never overwrites the live snapshot and never carries a live episode, options-flow staleness from",
-    "the snapshot slots (one missed or late slot tolerated)."
+    "the snapshot slots (one missed or late slot tolerated).",
+    "Round 5 (review of PR 2425 round 4): carried decided by the session a row belongs to (holiday-stamped",
+    "rows are carried; MLK and Labor Day cases), torn live snapshot -> not_evaluated keeping the live episode,",
+    "decay.bootstrap_mode, bootstrap never pages P1, torn prior never a bootstrap, options slots == lane registry."
   ]
 }
