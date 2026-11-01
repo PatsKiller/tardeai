@@ -12,8 +12,9 @@ Stage 1 ("early setup"), all five:
   hedging_easing    index put/call vs median at least ``hedging_ease_pct`` below its peak of the last
                     ``hedging_peak_sessions`` sessions (needs that much history; fewer sessions = not met, said so)
   tier_ok           market tier not in ``blocked_tiers``
-Invalidation level = the swing low FROZEN at the bar where the setup completed: a later close below it (within
-``invalidation_sessions``) cancels the setup, and the count restarts from that bar with a new swing low.
+Invalidation level = the swing low FROZEN at the bar where the setup completed: any later close below it cancels the
+setup, and the count restarts from that bar with a new swing low; the "Invalidated" badge shows for
+``invalidation_sessions`` sessions after that close.
 Stage 2 ("confirmed"), any one: a close above a ``confirm_ma_sessions`` average, or above the exit price. With fewer
 bars since the swing low than the average needs (a recent IPO), the anchored VWAP from the swing low stands in.
 
@@ -175,18 +176,16 @@ def evaluate(
         c.assert_no_behavior_fields(out)
         return out
 
-    # Walk the setups since the exit. A setup freezes its swing low; a close below it within invalidation_sessions
-    # cancels it and the count restarts from that bar (review of #2447, B1).
+    # Walk the setups since the exit. A setup freezes its swing low; ANY later close below it cancels the setup and the
+    # count restarts from that bar. ``invalidation_sessions`` only decides how long the "Invalidated" badge shows
+    # (review of PR 2447, B1 round 2).
     start, active, last_invalidation = 0, None, None
     while True:
         st = find_setup(since, start)
         if st is None:
             break
         i, frozen = st["index"], st["swing_low"]
-        inv = next(
-            (j for j in range(i + 1, min(len(since), i + 1 + k["invalidation_sessions"])) if float(since[j]["close"]) < frozen),
-            None,
-        )
+        inv = next((j for j in range(i + 1, len(since)) if float(since[j]["close"]) < frozen), None)
         if inv is None:
             active = st
             break

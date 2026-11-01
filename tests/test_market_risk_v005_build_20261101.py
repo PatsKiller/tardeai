@@ -432,3 +432,61 @@ def test_join_fails_soft_and_fast_when_the_db_is_unreachable():
     be = out["book_exposure"]
     assert be["stops_known"] is False and "TimeoutError" in be["ledger_error"]
     assert "no_stop" not in [k for i in out["review"] for k in i["kinds"]]
+
+
+# ── review of PR 2447, round 2 ───────────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_break_after_the_badge_window_still_cancels_the_setup():
+    """Q1: 11 quiet sessions after the setup, then a close below the frozen low: never "Early setup ... invalidates
+    below 88" while the price is 81."""
+    hist = _history(25)
+    setup = [(95, 96, 90, 91, 1000), (91, 92, 88, 89, 1000), (89, 91, 89.5, 90.5, 1000),
+             (90.6, 92.0, 90.4, 91.8, 1000), (91.9, 93.5, 91.7, 93.2, 1500)]
+    drift = [(93, 94, 92, 93, 1000)] * 11
+    crash = [(93, 93, 80, 81, 3000)]
+    bars = _bars(hist + setup + drift + crash)
+    out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
+                      hedging_series=[], market_tier="YELLOW", policy=POLICY)
+    ft = {c["key"]: c["met"] for c in out["stage1"]["conditions"]}["follow_through"]
+    assert ft is False and out["verdict"] == "Invalidated" and out["invalidated"]["level"] == 88
+    assert out["last_close"] >= out["invalidation_level"]  # the shown level is the new count's low (80), not 88
+
+
+def test_the_invalidated_badge_expires_after_its_window():
+    hist = _history(25)
+    setup = [(95, 96, 90, 91, 1000), (91, 92, 88, 89, 1000), (89, 91, 89.5, 90.5, 1000),
+             (90.6, 92.0, 90.4, 91.8, 1000), (93, 93, 86, 87, 2000)]
+    quiet = [(87, 87.5, 86.5, 87, 1000)] * 11
+    bars = _bars(hist + setup + quiet)
+    out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
+                      hedging_series=[], market_tier="YELLOW", policy=POLICY)
+    assert out["verdict"] != "Invalidated" and out["invalidated"] is None
+
+
+def test_several_partial_sales_that_close_the_position_are_a_conflict():
+    proj, st = _projection(), _store()
+    sells = [{"symbol": "STK", "account": "a2", "date": "2031-05-12", "quantity": -60},
+             {"symbol": "STK", "account": "a2", "date": "2031-05-13", "quantity": 40}]
+    out = bd.build(proj, st, stops=[], policy=POLICY, label_fn=str, canon_fn=str, ledger_sells=sells)
+    assert "data_conflict" in [k for i in out["review"] for k in i["kinds"]]
+
+
+def test_carried_label_reads_the_sent_key_ledger(tmp_path, monkeypatch):
+    import json
+
+    from scripts.lib import market_risk_book_join as bj
+
+    led = tmp_path / "sent_keys.json"
+    led.write_text(json.dumps({"keys": {"market_risk:YELLOW:2031-05-12:carried_yellow": {
+        "status": "sent", "intent": {"priority": "P3"}}}}))
+    monkeypatch.setenv("MARKET_RISK_SENT_LEDGER", str(led))
+    proj = {"carried_only": True, "mode": "live", "tier": "YELLOW", "as_of": "2031-05-12T18:00:00+00:00"}
+    assert bj.run_alerts(proj) == {"sends": 1, "priorities": ["P3"]}
+    assert bj.run_alerts({**proj, "as_of": "2031-05-13T18:00:00+00:00"}) == {"sends": 0, "priorities": []}
+    assert bj.run_alerts({**proj, "carried_only": False}) is None
+    led.write_text(json.dumps({"keys": {"market_risk:YELLOW:2031-05-12:carried_yellow": {
+        "status": "pending", "intent": {"priority": "P3"}}}}))
+    assert bj.run_alerts(proj) == {"sends": 0, "priorities": []}  # queued, not sent
+    led.write_text("{torn")
+    assert bj.run_alerts(proj) is None and led.read_text() == "{torn"  # read-only: never repaired or moved

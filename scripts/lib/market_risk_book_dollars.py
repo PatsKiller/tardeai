@@ -184,11 +184,23 @@ def build(
         if r["material"] and r["look_through_basis"] in ("stock_unknown", "fund_unknown", None):
             add(r, "no_lookthrough", "no look-through (sector unknown)", r["value_usd"], page_to)
     held_keys = {(str(h["symbol"]).upper(), canon_fn(str(h.get("account")))): h for h in holdings if not h.get("is_cash")}
+    # sales after the holdings build, summed per (symbol, account) — several partial sales can close a position; the
+    # ledger may sign a sale's quantity either way (review of PR 2447)
+    sold_by: dict[tuple[str, str], dict[str, Any]] = {}
     for s in ledger_sells or []:
-        h = held_keys.get((str(s.get("symbol")).upper(), canon_fn(str(s.get("account")))))
-        # a conflict only when the sale would have closed out what the holdings still show (a partial sale after the
-        # build leaves shares; without a sold quantity the ledger cannot say — review of #2447)
-        sold = _f(s.get("quantity"))
+        key = (str(s.get("symbol")).upper(), canon_fn(str(s.get("account"))))
+        agg = sold_by.setdefault(key, {"symbol": key[0], "account": s.get("account"), "date": s.get("date"), "quantity": 0.0,
+                                       "known": True})
+        q = s.get("quantity")
+        if q is None:
+            agg["known"] = False
+        agg["quantity"] += abs(_f(q))
+        agg["date"] = max(str(agg["date"] or ""), str(s.get("date") or ""))
+    for key, s in sold_by.items():
+        h = held_keys.get(key)
+        # a conflict only when the sales would have closed out what the holdings still show (a partial sale leaves
+        # shares; without every sold quantity the ledger cannot say)
+        sold = s["quantity"] if s["known"] else 0.0
         if h and _f(h.get("shares")) > 0 and sold > 0 and sold >= _f(h.get("shares")):
             r = next((x for x in rows if x["symbol"] == str(s["symbol"]).upper() and x["account_scope"] == opaque_account(h.get("account"))), None)
             if r:

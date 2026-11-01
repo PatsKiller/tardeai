@@ -91,19 +91,35 @@ def _assessment_budgets(projection: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def run_alerts(projection: dict[str, Any]) -> dict[str, Any] | None:
-    """``{sends, priorities}`` from the evaluator's run receipt (run_last.json) when it is the evaluation shown."""
+    """For a CARRIED tier: whether this session's ``carried_<tier>`` card was sent, from the engine's sent-key ledger
+    (``market_risk_<...>/sent_keys.json``; ``MARKET_RISK_SENT_LEDGER`` overrides, as in ``alerts.sent_ledger_path``).
+    Read-only: the file is parsed, never repaired or moved. A later run's 0-send receipt no longer flips the label
+    (review of PR 2447). ``{sends, priorities}`` or None when nothing can be said."""
     import json
     import os
     from pathlib import Path
+    from zoneinfo import ZoneInfo
 
-    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+    if not projection.get("carried_only") or projection.get("mode") == "shadow":
+        return None
+    tier = str(projection.get("tier") or "").upper()
     try:
-        r = json.loads((root / "data" / "runtime" / "market_risk" / "run_last.json").read_text(encoding="utf-8"))
+        day = datetime.fromisoformat(str(projection.get("as_of")).replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York")).date()
+    except (TypeError, ValueError):
+        return None
+    env = os.environ.get("MARKET_RISK_SENT_LEDGER")
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+    path = Path(env) if env else root / "data" / "runtime" / "market_risk" / "sent_keys.json"
+    try:
+        keys = (json.loads(path.read_text(encoding="utf-8")) or {}).get("keys") or {}
     except (OSError, ValueError):
         return None
-    if str(r.get("as_of") or "") != str(projection.get("as_of") or "") or r.get("mode") != "apply":
-        return None
-    return {"sends": int(r.get("sends") or 0), "priorities": list(r.get("send_priorities") or [])}
+    rec = keys.get(f"market_risk:{tier}:{day.isoformat()}:carried_{tier.lower()}")
+    if not isinstance(rec, dict):
+        return {"sends": 0, "priorities": []}
+    sent = rec.get("status") == "sent"
+    pri = (rec.get("intent") or {}).get("priority")
+    return {"sends": 1 if sent else 0, "priorities": [pri] if sent and pri else []}
 
 
 def card_config(policy: dict[str, Any]) -> dict[str, Any]:
