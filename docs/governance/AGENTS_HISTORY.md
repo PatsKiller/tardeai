@@ -88,6 +88,14 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+### Moved here by 29.2.1 (superseded version's banner, verbatim)
+
+**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
+27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
+LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
+2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
+(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
+
 ### Moved here by 29.0.0 (superseded versions' banners, verbatim)
 
 **26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
@@ -2187,3 +2195,12 @@ Every rule-bearing passage of AGENTS.md 25.0.1, by line range in `tests/fixtures
 | 6492-6494 | §28.15 item 8(c): hands_off_policy.py gate in PRs #2115, #2118, #2125 must key on the 21.0.0 version row. |
 | 6521-6526 | §28.16 "Status: PROPOSED in 25.0.0" — missed ratifying edit; watchers, supervisor and page shipped in #2238. |
 | 6547-6549 | §29 "Status: PROPOSED in 25.0.0 (adds obligations only)" — missed ratifying edit. |
+
+### 28.0.0 banner (moved from AGENTS.md when 28.2.0 was drafted; kept by its renumbering to 29.2.0)
+
+**28.0.0 is ACTIVE (MAJOR) — operator-delegated merge (§25.10.3).** Ratified 2026-10-31 by the operator in session
+(`APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793`, §20). An agent never merges on its own; after the operator's explicit in-session approval naming the PR
+numbers (§28.4), or the operator's own Command Center Approvals → Merges tap, it may record the approval (verbatim,
+head-SHA bound) and apply `operator-merge`, or merge directly when the operator says not to wait for Mergify.
+**Why MAJOR:** adds a merge-approval recording authority to agents. §0 untouched; §0 rules 1–2 / §24.7 never overridable; `MBI_BEHAVIOR = 0`.
+

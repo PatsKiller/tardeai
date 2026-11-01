@@ -270,6 +270,11 @@ def _crash_run(tmp_path, monkeypatch, crash_at, crash_i):
 def test_b5d_no_crash_point_loses_or_wedges_a_card(tmp_path, monkeypatch, crash_at, crash_i):
     base, ep0, _ = _crash_run(tmp_path, monkeypatch, "observe:before", 99)  # no crash
     sent, ep, stalled = _crash_run(tmp_path, monkeypatch, crash_at, crash_i)
+    # The deep brief is a best-effort follow-up card sent AFTER the cycle, not an alert card; its ordering and dedupe
+    # are covered by tests/test_market_risk_deep_brief_20261031.py. This invariant is about alert cards, so both
+    # sides exclude the brief.
+    base = [s for s in base if not s[1].startswith("MARKET RISK DEEP BRIEF")]
+    sent = [s for s in sent if not s[1].startswith("MARKET RISK DEEP BRIEF")]
     reds = [s for s in sent if "RED" in s[1]]
     assert reds, (crash_at, sent)  # the RED card is never lost
     assert ep["repeats"] == ep0["repeats"] and stalled is None, (crash_at, ep["repeats"], ep0["repeats"])
@@ -445,6 +450,8 @@ def test_n4_bars_without_high_low_never_blank_extended_hours():
                     "price": 600,
                     "prev_close": 615,
                     "as_of": (now - timedelta(minutes=5)).isoformat(),
+                    "source": "market_quotes_extended:sip",  # production shape since #2384/#2415 round 3
+                    "reference_date": "2026-10-29",
                 }
             ]
 

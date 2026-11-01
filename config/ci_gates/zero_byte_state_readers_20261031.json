@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "zero_byte_state_readers_20261031",
+  "files": [
+    "tests/test_zero_byte_state_readers_20261031.py"
+  ],
+  "anchor": "ZERO_BYTE_STATE_READERS_20261031",
+  "comment": [
+    "ANCHOR: ZERO_BYTE_STATE_READERS_20261031 — 0-byte state files read as missing, tax lots recover from",
+    "backup, and their writers are atomic (ENOSPC outage 2026-10-30)."
+  ]
+}

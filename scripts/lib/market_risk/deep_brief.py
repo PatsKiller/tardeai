@@ -70,6 +70,10 @@ def _shock(d: Optional[dict]) -> Optional[str]:
 
 def should_brief(doc: dict, prior: Optional[dict], cfg: dict) -> Optional[str]:
     """``"tier"`` on a transition into a trigger tier, ``"shock_type"`` on a shock change at the minimum tier, else None."""
+    # Carried-only data never escalates and never pages (operator's hold-not-escalate, #2425); a follow-up brief on it
+    # would be a page about information the engine has explicitly not confirmed.
+    if (doc.get("hysteresis") or {}).get("carried_only"):
+        return None
     trig = cfg.get("triggers") or {}
     tiers = {str(t).upper() for t in trig.get("tiers") or ["ORANGE", "RED"]}
     tier = str(doc.get("tier") or "NONE").upper()
@@ -156,6 +160,14 @@ def drain_gate(ent: dict, doc: dict, ledger_keys: dict, cfg: Optional[dict] = No
                 continue
             if rec.get("status") in UNSENT:
                 return "wait", f"card {k} of this episode is not sent yet"
+    # A first-reading card is not tied to an episode (a bootstrap opens none, the hold-not-escalate path), so the
+    # episode check above can let a brief overtake the very card it follows. Hold while any unsent non-brief card of
+    # this tier is outstanding; cards of other tiers and episodes do not block it.
+    for k, rec in ledger_keys.items():
+        if k == ent.get("key") or rec.get("kind") == "deep_brief" or rec.get("status") not in UNSENT:
+            continue
+        if str((rec.get("intent") or {}).get("tier") or "").upper() == tier:
+            return "wait", f"card {k} of this tier is not sent yet"
     return "send", "ok"
 
 
