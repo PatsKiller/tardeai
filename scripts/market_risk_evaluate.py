@@ -132,6 +132,24 @@ def portfolio_context(now: datetime) -> c.PortfolioContext | None:
         return c.PortfolioContext(vulnerability=None, note=f"portfolio unavailable: {type(exc).__name__}")
 
 
+def _prior_from_open_episode(prior: dict | None, store: Path) -> dict | None:
+    """An open episode in the ledger means the operator was already alerted: never a first reading (review of
+    PR 2431 round 6, FIX 2). With no prior (latest.json, the snapshot and the receipts all lost), the open episode's
+    tier is the prior, so the tier is held, the CARRIED-ONLY mark is never set and the episode's repeats keep
+    draining. A torn ledger is left to escalation.observe, which quarantines it."""
+    if prior:
+        return prior
+    from scripts.lib.market_risk import escalation
+
+    try:
+        ep = escalation.open_episode(escalation.load(store))
+    except Exception:  # noqa: BLE001 — EpisodeStoreCorrupt or unreadable: observe() handles and reports it
+        return prior
+    if not ep or ep.get("tier") not in ("ORANGE", "RED"):
+        return prior
+    return {"tier": ep["tier"], "hysteresis": {}, "prior_source": f"open episode {ep.get('id')}"}
+
+
 def run_cycle(
     now: datetime,
     reader: Any,
@@ -153,6 +171,7 @@ def run_cycle(
 
     from scripts.lib.market_risk import alerts, escalation
 
+    prior = _prior_from_open_episode(prior, episodes_path or escalation.store_path())
     a = evaluate(now, reader, policy, prior, portfolio)
     doc = a.to_dict()
     real_store = episodes_path or escalation.store_path()

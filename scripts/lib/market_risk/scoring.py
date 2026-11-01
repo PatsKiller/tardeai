@@ -412,7 +412,22 @@ def compose(
     raw, carried = _hold_not_escalate(raw, why, eff, known_w, prior, now, policy)
     coverage = known_w / total_w
     raw, last_stress = _green_guard(raw, why, eff, coverage, prior, now, policy)
-    tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    if prior and bool((prior.get("hysteresis") or {}).get("carried_only")):
+        # the shown tier was never alerted (CARRIED-ONLY): hysteresis never holds it (review of PR 2431 round 6,
+        # FIX 1). The tier follows the raw tier at once, up or down; the mark below clears only when the fresh-only
+        # tier reaches it, and the transition is then a normal alert at that tier (alerts.intent_for).
+        tier = raw
+        hyst = {
+            "bootstrap": False,
+            "raw_tier": raw,
+            "prior_tier": prior.get("tier"),
+            "candidate": None,
+            "count": 0,
+            "below_sessions": [],
+            "unalerted_tier_released": SEVERITY.get(raw, 0) < SEVERITY.get(str(prior.get("tier")), 0),
+        }
+    else:
+        tier, hyst = _hysteresis(raw, why, prior, now, policy)
     hyst["carried_only"] = _carried_only(tier, carried, eff, prior, policy)
     hyst.update(
         {

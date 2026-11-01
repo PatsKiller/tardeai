@@ -1307,3 +1307,80 @@ def test_r6_carried_only_tier_change_is_never_p1_or_p2():
     assert i["priority"] == P["alerts"]["bootstrap_priority"] and i["transition"] == "carried_red"
     down = alerts.intent_for(dict(doc, tier="YELLOW"), {"tier": "RED", "hysteresis": {"carried_only": True}}, P)
     assert down["priority"] not in ("P1", "P2")
+
+
+# ── Round 7 (review of PR 2431 round 6) ──────────────────────────────────────────────────────────────────────────
+MON_BARS = et(2026, 11, 2, 16)
+
+
+def _monday_refreshed(strength):
+    """Friday's carried STRESS until Monday's 16:00 bars arrive; then every carried category is refreshed with fresh
+    Monday data of the given strength ("WARN": weaker than the shown RED; "STRESS": as strong)."""
+
+    def obs(now):
+        if now < MON_BARS:
+            return _carried_red_cycle_obs(now)
+        out = [o for o in _carried_red_cycle_obs(now) if o.category in ("event", "seasonal")]
+        for k in ("technical", "breadth", "volatility", "options_flow"):
+            out.append(_ob5(k, strength, 85 if strength == "STRESS" else 45, MON_BARS, 32))
+        out.append(_ob5("cross_asset", "WARN", 45, MON_BARS, 32))
+        out.append(_ob5("macro_credit", "WARN", 40, MON_BARS, 120))
+        out.append(_ob5("extended_hours", strength, 95 if strength == "STRESS" else 50, now - timedelta(minutes=5), 2))
+        return out
+
+    return obs
+
+
+R7_TIMES = [
+    et(2026, 11, 2, 8, 0),
+    et(2026, 11, 2, 8, 15),
+    et(2026, 11, 2, 16, 30),
+    et(2026, 11, 2, 16, 45),
+    et(2026, 11, 2, 17, 1),
+    et(2026, 11, 3, 8, 0),
+]
+
+
+def test_r7_carried_red_refreshed_by_weaker_fresh_data_never_pages_p1(tmp_path, monkeypatch):
+    rows, sent = _chain(tmp_path, monkeypatch, R7_TIMES, _monday_refreshed("WARN"))
+    a1630 = rows[2][1]["assessment"]
+    assert rows[0][1]["assessment"]["tier"] == "RED" and rows[0][1]["assessment"]["hysteresis"]["carried_only"]
+    # the never-alerted RED is not held by hysteresis: it drops to what the fresh data supports, at once
+    assert scoring.SEVERITY[a1630["tier"]] < scoring.SEVERITY["RED"] and a1630["hysteresis"]["unalerted_tier_released"]
+    assert not any(k.get("priority") == "P1" for k in sent)
+    assert all(r["episode_id"] is None for _, r in rows)
+    released = [s for _, r in rows for s in r["sends"] if s["intent"]["transition"].startswith("up_from_none")]
+    assert len(released) == 1 and released[0]["intent"]["tier"] == a1630["tier"]  # a normal alert at that tier
+
+
+def test_r7_carried_red_refreshed_by_equal_fresh_data_alerts_normally(tmp_path, monkeypatch):
+    rows, sent = _chain(tmp_path, monkeypatch, R7_TIMES, _monday_refreshed("STRESS"))
+    a1630, r1630 = rows[2][1]["assessment"], rows[2][1]
+    assert a1630["tier"] == "RED" and a1630["hysteresis"]["carried_only"] is False
+    first = [s for s in r1630["sends"] if s["kind"] == "initial"]
+    assert first and first[0]["intent"]["priority"] == "P1" and first[0]["intent"]["transition"] == "up_from_none"
+    assert r1630["episode_id"] is not None
+    assert not any(k.get("priority") == "P1" for t, r in rows[:2] for k in [s["intent"] for s in r["sends"]])
+
+
+def test_r7_open_episode_is_not_a_first_run_and_keeps_repeating(tmp_path, monkeypatch):
+    def friday_fresh(now):
+        return [
+            _ob5(o.category, o.state, o.score, now - timedelta(minutes=10), o.stale_after_hours)
+            if o.category not in ("event", "seasonal", "extended_hours")
+            else o
+            for o in _carried_red_cycle_obs(now)
+        ]
+
+    fri = [et(2026, 10, 30, 15, 0), et(2026, 10, 30, 15, 15), et(2026, 10, 30, 15, 31)]
+    rows, _ = _chain(tmp_path, monkeypatch, fri, friday_fresh)
+    assert rows[-1][1]["episode_id"] is not None  # Friday's live RED episode, repeating
+    # every state file lost: _chain starts again with prior None, the episode ledger is intact
+    mon = [et(2026, 11, 2, 8, 0), et(2026, 11, 2, 8, 31), et(2026, 11, 2, 9, 32)]
+    rows2, sent2 = _chain(tmp_path, monkeypatch, mon, _carried_red_cycle_obs)
+    for _, r in rows2:
+        h = r["assessment"]["hysteresis"]
+        assert not h.get("bootstrap") and h["carried_only"] is False
+        assert r["episode_event"] not in ("bootstrap_no_episode", "carried_only_no_episode")
+    reps = [s for _, r in rows2 for s in r["sends"] if s["kind"] != "initial"]
+    assert reps and all(s["intent"]["priority"] == "P1" for s in reps)
